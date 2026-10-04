@@ -27,13 +27,22 @@ function t(lang: Lang, fr: string, en: string): string {
   return lang === 'fr' ? fr : en;
 }
 
-const VIGILANCE_LABELS: Record<MeteoVigilanceLevel, string> = {
+/** Couleurs officielles de la vigilance (spec 2026-10-04 environnement E1). */
+type OfficialMeteoLevel = 'green' | 'yellow' | 'orange' | 'red';
+
+const VIGILANCE_LABELS: Record<OfficialMeteoLevel, string> = {
   green: 'Vert',
   yellow: 'Jaune',
   orange: 'Orange',
   red: 'Rouge',
-  violet: 'Violet',
 };
+
+const METEO_RANK: Record<OfficialMeteoLevel, number> = { green: 0, yellow: 1, orange: 2, red: 3 };
+
+/** Couleur officielle d'une alerte (le type garde un cinquième niveau jamais publié jusqu'à la tâche 18 : lu comme rouge). */
+function officialMeteoLevel(level: MeteoVigilanceLevel): OfficialMeteoLevel {
+  return level === 'green' || level === 'yellow' || level === 'orange' ? level : 'red';
+}
 
 const RISK_LABELS: Record<string, string> = {
   wind: 'Vent',
@@ -72,21 +81,61 @@ function renderTimelineLane(lane: FranceIntelTimelineLane): string {
   `;
 }
 
-export type DomainLevel = 'low' | 'medium' | 'high';
+export type DomainLevel = 'low' | 'medium' | 'high' | 'critical';
+
+/** Chiffre distinct d'une tuile à plusieurs parts (tuile « Météo » : vigilance, crues, feux), avec son propre niveau. */
+export interface DomainTilePart { label: string; value: number; level: DomainLevel }
 
 export interface DomainTile {
   label: string;
-  value: number;
+  /** null : la tuile n'additionne pas ses parts (unités différentes), chacune est affichée. */
+  value: number | null;
   meta: string;
   level: DomainLevel;
+  parts?: DomainTilePart[];
 }
 
-/** Niveau L1 d'une tuile de domaine (couleurs du point, inchangées depuis le tiroir v1). */
-export const DOMAIN_LEVEL: Record<DomainLevel, VigilanceLevel> = { low: 'vert', medium: 'jaune', high: 'orange' };
+/** Niveau L1 d'une tuile de domaine (couleurs du point, inchangées depuis le tiroir v1 ; `critical` : rouge). */
+export const DOMAIN_LEVEL: Record<DomainLevel, VigilanceLevel> = { low: 'vert', medium: 'jaune', high: 'orange', critical: 'rouge' };
+
+const DOMAIN_RANK: Record<DomainLevel, number> = { low: 0, medium: 1, high: 2, critical: 3 };
+
+/** Rouge si un rouge, orange si un orange, vert sinon. */
+function partLevel(red: number, any: number): DomainLevel {
+  return red > 0 ? 'critical' : any > 0 ? 'high' : 'low';
+}
+
+/**
+ * Part « Feux », même règle que la pastille Feux : rouge si un foyer majeur, orange si un foyer confirmé d'au moins 10 MW ; des foyers
+ * confirmés seulement plus petits comptent comme des détections isolées, jaune (arbitrage 14 du contrôleur) ; vert sinon.
+ */
+function firePartLevel(s: FranceCountrySignals): DomainLevel {
+  if ((s.fireFoyersMajor ?? 0) > 0) return 'critical';
+  if ((s.fireFoyersOrange ?? 0) > 0) return 'high';
+  return (s.fireFoyersConfirmed ?? 0) > 0 ? 'medium' : 'low';
+}
+
+/**
+ * Tuile « Météo » (spec 2026-10-04 environnement § 2.7) : départements en vigilance orange ou rouge, tronçons orange ou rouges et
+ * foyers confirmés en France, trois chiffres distincts (jamais additionnés) ; niveau = le plus haut des trois.
+ */
+function meteoTile(s: FranceCountrySignals, lang: Lang): DomainTile {
+  const parts: DomainTilePart[] = [
+    { label: t(lang, 'Vigilance', 'Weather'), value: s.meteoAlerts, level: partLevel(s.meteoRedAlerts ?? 0, s.meteoAlerts) },
+    { label: t(lang, 'Crues', 'Floods'), value: s.floodAlerts, level: partLevel(s.floodRedAlerts ?? 0, s.floodAlerts) },
+    { label: t(lang, 'Feux', 'Fires'), value: s.fireFoyersConfirmed ?? 0, level: firePartLevel(s) },
+  ];
+  return {
+    label: t(lang, 'Météo', 'Weather'),
+    value: null,
+    meta: t(lang, 'dépts orange ou rouges · tronçons orange ou rouges · foyers confirmés', 'orange or red depts · orange or red sections · confirmed fires'),
+    level: parts.reduce<DomainLevel>((m, p) => (DOMAIN_RANK[p.level] > DOMAIN_RANK[m] ? p.level : m), 'low'),
+    parts,
+  };
+}
 
 export function domainTiles(s: FranceCountrySignals, lang: Lang): DomainTile[] {
   const outages = s.powerOutages + s.telecomOutages;
-  const meteoTotal = s.meteoAlerts + s.floodAlerts + s.fireDetections;
   return [
     {
       label: 'Cyber', value: s.cyberAlerts,
@@ -118,11 +167,7 @@ export function domainTiles(s: FranceCountrySignals, lang: Lang): DomainTile[] {
       meta: `${t(lang, 'câbles', 'cables')} ${s.defenseAlerts} · GPS ${s.jammingSignals}`,
       level: s.defenseHigh > 0 || s.jammingSignals > 0 ? 'high' : s.defenseAlerts > 0 ? 'medium' : 'low',
     },
-    {
-      label: t(lang, 'Météo', 'Weather'), value: meteoTotal,
-      meta: `${t(lang, 'vigies', 'watches')} ${s.meteoAlerts} · ${t(lang, 'crues', 'floods')} ${s.floodAlerts} · ${t(lang, 'feux', 'fires')} ${s.fireDetections}`,
-      level: s.meteoAlerts > 3 || s.floodAlerts > 2 ? 'high' : meteoTotal > 0 ? 'medium' : 'low',
-    },
+    meteoTile(s, lang),
     {
       label: 'Finance', value: s.marketStress,
       meta: t(lang, 'lignes sous tension', 'stressed lines'),
@@ -139,12 +184,13 @@ export interface DomainChip {
 /** Étiquettes sous les domaines : risques météo actifs, SNCF fortes, titres critiques. */
 export function domainChips(snapshot: Pick<FranceCountrySnapshot, 'signals' | 'meteo'>, lang: Lang): DomainChip[] {
   const s = snapshot.signals;
-  const riskMap = new Map<string, { level: MeteoVigilanceLevel; count: number }>();
+  const riskMap = new Map<string, { level: OfficialMeteoLevel; count: number }>();
   for (const alert of snapshot.meteo.filter((item) => item.level !== 'green')) {
+    const level = officialMeteoLevel(alert.level);
     for (const risk of alert.risks) {
       const prev = riskMap.get(risk);
       riskMap.set(risk, {
-        level: prev && (prev.level === 'red' || prev.level === 'violet') ? prev.level : alert.level,
+        level: prev && METEO_RANK[prev.level] >= METEO_RANK[level] ? prev.level : level,
         count: (prev?.count ?? 0) + 1,
       });
     }
@@ -190,11 +236,15 @@ export function oilStatusInfo(status: OilVigilanceStatus | null, lang: Lang): { 
 export function renderDomainsBlock(snapshot: Pick<FranceCountrySnapshot, 'signals' | 'meteo'>, lang: Lang): string {
   const tiles = domainTiles(snapshot.signals, lang);
   const levelColor = (level: DomainLevel): string => levelColorVar(DOMAIN_LEVEL[level]);
+  const valueHtml = (tile: DomainTile): string => (tile.parts
+    ? tile.parts.map((p) => `<span class="frintel-dom-part"><span class="frintel-dom-dot" style="background:${levelColor(p.level)};"></span>`
+      + `${escapeHtml(p.label)} ${p.value}</span>`).join('')
+    : `${tile.value ?? 'n.d.'}`);
   const tilesHtml = tiles.map((tile) => `
     <div class="frintel-dom-tile">
       <span class="frintel-dom-dot" style="background:${levelColor(tile.level)};"></span>
       <span class="frintel-dom-label">${escapeHtml(tile.label)}</span>
-      <div class="frintel-dom-value">${tile.value} <span class="frintel-dom-meta">${escapeHtml(tile.meta)}</span></div>
+      <div class="frintel-dom-value">${valueHtml(tile)} <span class="frintel-dom-meta">${escapeHtml(tile.meta)}</span></div>
     </div>
   `).join('');
 

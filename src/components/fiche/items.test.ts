@@ -88,7 +88,7 @@ describe('fiche thème (spec 2026-10-01 fiches § 4.3)', () => {
       meteo: [{ department: 'Var', departmentCode: '83', level: 'yellow', risks: [] }],
       situations: [situation({ id: 'flood-crisis', type: 'FLOOD_CRISIS', severity: 'critical', title: 'Crise hydrologique active' })],
     }),
-    snapshot: { signals: signals({ meteoAlerts: 3, floodAlerts: 2, fireDetections: 14 }), energy: null },
+    snapshot: { signals: signals({ meteoAlerts: 3, floodAlerts: 2, fireDetections: 14, fireFoyersConfirmed: 2 }), energy: null },
   });
 
   it('rien à traiter : fiche verte, contexte et synthèse', () => {
@@ -110,6 +110,8 @@ describe('fiche thème (spec 2026-10-01 fiches § 4.3)', () => {
     expect(m.sections[0]).toMatchObject({ collapsible: true, open: true });
     const html = m.sections[0].html;
     expect(html).toContain('Départements en vigilance orange ou rouge');
+    expect(html).toContain('Foyers confirmés en France');
+    expect(html).not.toContain('Feux détectés');
     expect(html).toContain('Signaux officiels');
     expect(html).toContain('Éléments à traiter');
     expect(html).toContain('fm-vig');
@@ -478,7 +480,7 @@ describe('fiche situation (spec 2026-10-01 fiches § 4.2)', () => {
 describe('fiches alerte officielle et marché (spec 2026-10-01 fiches § 4.4 et 4.5)', () => {
   const ids = (m: FicheModel): Array<string | undefined> => m.sections.map((s) => s.id);
   const officialGroup = (): ReturnType<typeof officialAlertGroups>[number] =>
-    officialAlertGroups(null, [{ department: '<Var>', departmentCode: '83', level: 'violet', risks: ['heat'] }], [])[0];
+    officialAlertGroups(null, [{ department: '<Var>', departmentCode: '83', level: 'red', risks: ['heat'] }], [])[0];
   const line = { symbol: 'CAC40', name: 'CAC 40', price: 7212.5, changePercent: -3.42, kind: 'index' } as const;
 
   it('alerte officielle : émetteur, lieux, niveau repris tel quel, détail par lieu échappé, sources repliées', () => {
@@ -490,7 +492,7 @@ describe('fiches alerte officielle et marché (spec 2026-10-01 fiches § 4.4 et 
     expect(m.sections[0]).toMatchObject({ open: true });
     expect(m.sections[0].html).toContain('Lieux concernés');
     expect(m.sections[0].html).toContain('Niveau publié par Météo-France, repris tel quel.');
-    expect(m.sections[0].html).toContain('Le violet de Météo-France compte comme rouge.');
+    expect(m.sections[0].html).not.toContain('violet');
     expect(m.sections[1]).toMatchObject({ title: 'Détail par lieu', open: true, summary: '1' });
     expect(m.sections[1].html).toContain('&lt;Var&gt; : Canicule');
     expect(m.sections[2]).toMatchObject({ open: false, tone: 'reference' });

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DetectedSituation, FireDetection, FiresResponse, LocatedFireIncident } from './types/index.ts';
 import type { FiresState } from './services/environment-fires.ts';
 import { PressAlertSource } from './services/press-alert-source.ts';
@@ -77,7 +77,7 @@ function appForAlerts(currentFireIncidents: LocatedFireIncident[]): App & Record
   Object.assign(app, {
     newsItems: [],
     currentMilitarySurges: [],
-    currentMeteoAlerts: [],
+    currentVigilance: null,
     currentDefenseAlerts: [],
     currentJammingSignals: [],
     currentAisAnomalies: [],
@@ -89,8 +89,18 @@ function appForAlerts(currentFireIncidents: LocatedFireIncident[]): App & Record
 }
 
 describe('App : alertes grands feux', () => {
+  // Collecte des feux lue le 27/07 à 11 h 30 UTC : l'horloge est posée cinq minutes plus tard (une collecte de plus de 2 jours ne
+  // compte plus, environment-inputs.ts).
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'], now: Date.parse('2026-07-27T11:35:00Z') });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('publie dans AlertMonitor un incident FIRMS qui franchit la porte grand feu', () => {
     const app = appForAlerts([incident()]);
+    Object.assign(app, { currentFires: firesState([]) });
 
     const alerts = (
       app as unknown as { buildAlertMonitorSituations: () => Array<{ type: string; title: string }> }
@@ -104,6 +114,14 @@ describe('App : alertes grands feux', () => {
     ]);
   });
 
+  it('collecte de plus de 2 jours, gardée par le client après une erreur : ses incidents ne publient plus d’alerte grand feu', () => {
+    const app = appForAlerts([incident()]);
+    Object.assign(app, { currentFires: firesState([]) });
+    vi.setSystemTime(Date.parse('2026-07-29T11:31:00Z'));
+
+    expect((app as unknown as { buildAlertMonitorSituations: () => unknown[] }).buildAlertMonitorSituations()).toEqual([]);
+  });
+
   it('regroupe les seules détections non récurrentes puis rafraîchit les situations dès que la géo-résolution aboutit', async () => {
     fetchFires.mockResolvedValue(firesState([
       detection('d1', 44.78, -0.93), detection('d2', 44.79, -0.92), detection('torchere', 43.3, 5.4, true),
@@ -115,7 +133,7 @@ describe('App : alertes grands feux', () => {
     const refreshFranceIntelPanel = vi.fn();
     const firesUpdate = vi.fn();
     Object.assign(app, {
-      currentFires: null, currentActiveFires: [], forestDangerFill: false, radarManifest: null, mtgFrpFeed: null,
+      currentFires: null, forestDangerFill: false, radarManifest: null, mtgFrpFeed: null,
       gibsEnabled: false, mtgFrpEnabled: false, echoTopsEnabled: false, mapLegend: null,
       statusPanel: { updateSource: vi.fn(), getSources: vi.fn(() => []) },
       mapContainer: { updateFiresLayer: vi.fn() },
@@ -128,7 +146,7 @@ describe('App : alertes grands feux', () => {
     ).loadFires();
     await vi.waitFor(() => expect(refreshFranceIntelPanel).toHaveBeenCalledTimes(2));
 
-    expect((app as unknown as { currentActiveFires: unknown[] }).currentActiveFires).toHaveLength(2);
+    expect((app as unknown as { environmentInputs: () => { activeFires: unknown[] } }).environmentInputs().activeFires).toHaveLength(2);
     expect(resolveIncidentGeography).toHaveBeenCalledWith([expect.objectContaining({ detectionsCount: 2 })]);
     expect(
       (app as unknown as { currentFireIncidents: LocatedFireIncident[] }).currentFireIncidents,

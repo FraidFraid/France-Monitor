@@ -43,12 +43,14 @@ import type {
   FranceScoreBreakdown,
   FranceScorePillarBreakdown,
   LocatedFireIncident,
+  FireFoyer,
 } from '@/types/index.ts';
 import type { DefenseAlert } from '@/services/cable-threats.ts';
 import type { EolienLive } from '@/services/eolien/types.ts';
 import { detectSituations } from './situation-engine.ts';
 import { computeCyberPressureAssessment } from './cyber-threat-scoring.ts';
 import { ecowattToday } from './ecowatt-official.ts';
+import { foyerLevel, isMajorFoyer } from './environment-levels.ts';
 
 /**
  * All raw data App.ts passes to the engine.
@@ -73,9 +75,12 @@ export interface FranceRawData {
   jammingSignals: GpsJammingSignal[];
   militaryFlightsCount: number;
   maritimeCount: number;
+  /** Détections en France non récurrentes (spec 2026-10-04 environnement § 2.7) : seule l'entrée change, la formule reste. */
   activeFires: ActiveFire[];
-  /** Incidents clusterisés et géo-résolus, fournis par App.ts (Task 10). */
+  /** Incidents DBSCAN sur ces détections, géo-résolus, fournis par App.ts (environmentInputs). */
   fireIncidents?: LocatedFireIncident[];
+  /** Foyers du serveur en France (tuile « Météo », fiche Environnement) ; absent : aucun. */
+  fireFoyers?: FireFoyer[];
   marketData: MarketData[];
   ecowattResponse: EcowattResponse | null;
   gasState: GasNetworkState | null;
@@ -451,13 +456,16 @@ export function buildFranceSignals(raw: FranceRawData): FranceCountrySignals {
     highNews: raw.newsItems.filter((i) => i.threat?.level === 'high').length,
     topNewsCount: Math.min(raw.newsItems.length, 20),
     // Météo / crues / feux (severe levels only)
-    meteoAlerts: raw.meteoAlerts.filter((a) =>
-      (a.level === 'orange' || a.level === 'red' || a.level === 'violet'),
-    ).length,
+    meteoAlerts: raw.meteoAlerts.filter((a) => a.level === 'orange' || a.level === 'red').length,
     floodAlerts: raw.floodSegments.filter((s) =>
       (s.level === 'orange' || s.level === 'red'),
     ).length,
     fireDetections: raw.activeFires.length,
+    meteoRedAlerts: raw.meteoAlerts.filter((a) => a.level === 'red').length,
+    floodRedAlerts: raw.floodSegments.filter((s) => s.level === 'red').length,
+    fireFoyersConfirmed: (raw.fireFoyers ?? []).filter((f) => f.confirmed && !f.recurrent).length,
+    fireFoyersOrange: (raw.fireFoyers ?? []).filter((f) => foyerLevel(f) === 'orange' || foyerLevel(f) === 'rouge').length,
+    fireFoyersMajor: (raw.fireFoyers ?? []).filter(isMajorFoyer).length,
     // Transport
     railDisruptions: raw.railTrains.length,
     // Ancien « critique ou élevé » : NO_SERVICE et SIGNIFICANT_DELAYS, soit les trains supprimés ou retardés.

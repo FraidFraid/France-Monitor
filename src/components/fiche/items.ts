@@ -122,7 +122,7 @@ function themeFigures(theme: SpecificThemeId, snapshot: ThemeFicheInput['snapsho
       return [
         { label: t(lang, 'Départements en vigilance orange ou rouge', 'Departments on orange or red'), value: String(s.meteoAlerts) },
         { label: t(lang, 'Tronçons en crue orange ou rouge', 'River sections on orange or red'), value: String(s.floodAlerts) },
-        { label: t(lang, 'Feux détectés', 'Fires detected'), value: String(s.fireDetections) },
+        { label: t(lang, 'Foyers confirmés en France', 'Confirmed fires in France'), value: String(s.fireFoyersConfirmed ?? 0) },
       ];
     case 'health':
       // Niveau national et entrées : section santé (healthIndicators), pas de chiffres isolés.
@@ -584,10 +584,7 @@ export function buildOfficialFiche(group: OfficialAlertGroup, input: { freshness
   const shown = group.places.slice(0, 5).join(', ');
   const more = n > 5 ? t(lang, ` et ${n - 5} autre${plural(n - 5)}`, ` and ${n - 5} more`) : '';
   const source = officialSourceName(group.source);
-  const violet = group.source === 'meteo'
-    ? ` ${t(lang, 'Le violet de Météo-France compte comme rouge.', 'Météo-France purple counts as red.')}`
-    : '';
-  const note = `${t(lang, `Niveau publié par ${source}, repris tel quel.`, `Level published by ${source}, shown as is.`)}${violet}`;
+  const note = t(lang, `Niveau publié par ${source}, repris tel quel.`, `Level published by ${source}, shown as is.`);
   return {
     key: `official:${group.source}:${group.level}`,
     kind: `${t(lang, 'Alerte officielle', 'Official alert')} · ${source}`,

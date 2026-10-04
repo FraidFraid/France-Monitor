@@ -15,8 +15,8 @@ import type { LineString, MultiLineString } from 'geojson';
 
 import {
   RISK_LABELS,
-  type ActiveFire,
   type DetectedSituation,
+  type FireDetection,
   type FloodSectionRef,
   type MeteoAlert,
   type NewsItem,
@@ -80,7 +80,8 @@ export interface ExportContext {
   situations: DetectedSituation[];
   meteoAlerts: MeteoAlert[];
   floods: FloodSectionRef[];
-  fires: ActiveFire[];
+  /** Détections en France de la dernière collecte (récurrentes comprises, dites dans une colonne). */
+  fires: FireDetection[];
   powerOutages: PowerOutage[];
   telecomOutages: TelecomOutage[];
   roadEvents: RoadEvent[];
@@ -204,12 +205,6 @@ function firstCoordinate(geom: LineString | MultiLineString): [number, number] |
   }
   const c = geom.coordinates[0]?.[0];
   return c ? [c[0], c[1]] : null;
-}
-
-/** Combine date (YYYY-MM-DD) + heure FIRMS (HHMM, UTC) en ISO 8601. */
-function fireDatetimeIso(acqDate: string, acqTime: string): string {
-  const padded = acqTime.padStart(4, '0');
-  return `${acqDate}T${padded.slice(0, 2)}:${padded.slice(2, 4)}:00Z`;
 }
 
 // ─── Sérialiseurs par couche ──────────────────────────────────────────────────
@@ -344,45 +339,45 @@ export function serializeFloods(items: FloodSectionRef[]): SerializedLayer {
   return { rows, columns, features };
 }
 
-/** Feux actifs (détections VIIRS / NASA FIRMS). */
-export function serializeFires(items: ActiveFire[]): SerializedLayer {
+/**
+ * Détections de feux en France (NASA FIRMS, collecte du serveur ; spec 2026-10-04 environnement § 2.4, E3) : satellite et capteur
+ * exacts, confiance publiée (lettre VIIRS ou 0 à 100 MODIS) et sa classe, FRP, département, récurrence (« oui » : source à vérifier,
+ * probablement industrielle, jamais comptée comme feu).
+ */
+export function serializeFires(items: FireDetection[]): SerializedLayer {
   const columns: ExportColumn[] = [
     { key: 'date', label: 'date_iso' },
     { key: 'satellite', label: 'satellite' },
+    { key: 'capteur', label: 'capteur' },
     { key: 'confiance', label: 'confiance' },
+    { key: 'confianceBrute', label: 'confiance_publiée' },
     { key: 'frp', label: 'puissance_radiative_mw' },
-    { key: 'temperature', label: 'température_k' },
     { key: 'jourNuit', label: 'jour_nuit' },
+    { key: 'departement', label: 'département' },
+    { key: 'recurrent', label: 'récurrent' },
     { key: 'lat', label: 'latitude' },
     { key: 'lon', label: 'longitude' },
   ];
   const rows: ExportRow[] = [];
   const features: ExportFeatureInput[] = [];
   for (const f of items) {
-    const date = fireDatetimeIso(f.acq_date, f.acq_time);
-    rows.push({
-      date,
+    const row: ExportRow = {
+      date: f.acquiredAt,
       satellite: f.satellite,
+      capteur: f.sensor,
       confiance: f.confidence,
-      frp: f.frp,
-      temperature: f.bright_ti4,
+      confianceBrute: f.confidenceRaw,
+      frp: f.frpMw,
       jourNuit: f.daynight,
-      lat: f.latitude,
-      lon: f.longitude,
-    });
-    if (Number.isFinite(f.latitude) && Number.isFinite(f.longitude)) {
-      features.push({
-        lat: f.latitude,
-        lon: f.longitude,
-        properties: {
-          date,
-          satellite: f.satellite,
-          confiance: f.confidence,
-          frp: f.frp,
-          temperature: f.bright_ti4,
-          jourNuit: f.daynight,
-        },
-      });
+      departement: f.dept,
+      recurrent: f.recurrent ? 'oui' : 'non',
+      lat: f.lat,
+      lon: f.lon,
+    };
+    rows.push(row);
+    if (Number.isFinite(f.lat) && Number.isFinite(f.lon)) {
+      const { lat: _lat, lon: _lon, ...properties } = row;
+      features.push({ lat: f.lat, lon: f.lon, properties });
     }
   }
   return { rows, columns, features };

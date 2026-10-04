@@ -86,7 +86,7 @@ exports[`rendu v1 figé avant extraction (spec 2026-10-01, v1 inchangée) > doma
     <div class="frintel-dom-tile">
       <span class="frintel-dom-dot" style="background:var(--sev-orange);"></span>
       <span class="frintel-dom-label">Météo</span>
-      <div class="frintel-dom-value">39 <span class="frintel-dom-meta">vigies 10 · crues 0 · feux 29</span></div>
+      <div class="frintel-dom-value"><span class="frintel-dom-part"><span class="frintel-dom-dot" style="background:var(--sev-orange);"></span>Vigilance 10</span><span class="frintel-dom-part"><span class="frintel-dom-dot" style="background:var(--sev-green);"></span>Crues 0</span><span class="frintel-dom-part"><span class="frintel-dom-dot" style="background:var(--sev-green);"></span>Feux 0</span> <span class="frintel-dom-meta">dépts orange ou rouges · tronçons orange ou rouges · foyers confirmés</span></div>
     </div>
   
     <div class="frintel-dom-tile">
@@ -147,7 +147,7 @@ exports[`rendu v1 figé avant extraction (spec 2026-10-01, v1 inchangée) > doma
     <div class="frintel-dom-tile">
       <span class="frintel-dom-dot" style="background:var(--sev-orange);"></span>
       <span class="frintel-dom-label">Weather</span>
-      <div class="frintel-dom-value">39 <span class="frintel-dom-meta">watches 10 · floods 0 · fires 29</span></div>
+      <div class="frintel-dom-value"><span class="frintel-dom-part"><span class="frintel-dom-dot" style="background:var(--sev-orange);"></span>Weather 10</span><span class="frintel-dom-part"><span class="frintel-dom-dot" style="background:var(--sev-green);"></span>Floods 0</span><span class="frintel-dom-part"><span class="frintel-dom-dot" style="background:var(--sev-green);"></span>Fires 0</span> <span class="frintel-dom-meta">orange or red depts · orange or red sections · confirmed fires</span></div>
     </div>
   
     <div class="frintel-dom-tile">

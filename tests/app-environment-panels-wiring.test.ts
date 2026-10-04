@@ -72,14 +72,18 @@ describe('panneaux Environnement : un panneau par couche (spec 2026-10-04 enviro
     expect(app).not.toMatch(/startWeatherPolling|startRadar2dPolling|POLL_WEATHER_VIGILANCE_MS|POLL_RADAR_2D_MS/);
     expect(methodBody('destroy')).toContain('environmentPolls');
   });
-  it('consommateurs historiques nourris par les services neufs (échéance du jour, tronçons en vigilance, détections nettoyées)', () => {
-    expect(methodBody('loadVigilance')).toContain("this.currentMeteoAlerts = vigilanceToMeteoAlerts(data, 'J');");
-    expect(methodBody('loadFloods')).toContain('this.currentFloodSegments = floodsToSectionRefs(data);');
+  it('consommateurs historiques : entrées Environnement lues par environmentInputs(), jamais copiées dans un champ (tâche 17)', () => {
+    expect(methodBody('environmentInputs')).toContain('buildEnvironmentInputs(');
     const fires = methodBody('loadFires');
-    expect(fires).toContain('this.currentActiveFires = scoreFireDetections(data).map(toActiveFire);');
-    expect(fires).toContain('clusterFireDetections(this.currentActiveFires, { epsKm: 3, minPoints: 2 })');
+    expect(fires).toContain('clusterFireDetections(this.environmentInputs().activeFires, { epsKm: 3, minPoints: 2 })');
     expect(fires).toContain('void resolveIncidentGeography(incidents)');
-    expect(app).toContain('private currentFloodSegments: FloodSectionRef[] = [];');
+    expect(methodBody('buildFranceSnapshot')).toContain('...this.environmentInputs(),');
+    expect(methodBody('buildFranceSnapshot')).not.toMatch(/activeFires:|fireIncidents:|meteoAlerts:|floodSegments:/);
+    for (const m of ['buildFranceTimeline', 'buildSituationReportContext', 'updatePoste', 'updateISNR', 'refreshHydraulicLayer', 'buildAlertMonitorSituations']) {
+      expect(methodBody(m)).toContain('this.environmentInputs()');
+    }
+    expect(methodBody('buildExportContext')).toContain('fires: this.currentFires?.fires.data?.detections ?? [],');
+    expect(app).not.toMatch(/currentMeteoAlerts|currentFloodSegments|currentActiveFires/);
     expect(app).not.toMatch(/fetchVigilanceMeteo|fetchVigilanceTimeline|fetchVigicrues|fetchFiresData|v2FloodSegments/);
   });
   it('carte : méthodes neuves seulement ; image radar commandée par la couche ; profil au clic ; légendes datées', () => {

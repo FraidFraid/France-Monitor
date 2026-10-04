@@ -1192,9 +1192,19 @@ export interface FranceCountrySignals {
   highNews: number;
   topNewsCount: number;      // min(newsItems.length, 20) — used in information axis formula
   // Météo / crues / feux (severe levels only)
-  meteoAlerts: number;       // orange | red | violet
+  meteoAlerts: number;       // orange | red
   floodAlerts: number;       // orange | red
-  fireDetections: number;
+  fireDetections: number;    // détections en France non récurrentes (spec 2026-10-04 environnement § 2.7)
+  /** Départements en vigilance rouge (échéance du jour). Absent : 0. */
+  meteoRedAlerts?: number;
+  /** Tronçons Vigicrues en rouge. Absent : 0. */
+  floodRedAlerts?: number;
+  /** Foyers confirmés (au moins deux passages) non récurrents, en France. Absent : 0. */
+  fireFoyersConfirmed?: number;
+  /** Parmi eux, ceux d'au moins 10 MW cumulés (orange ou rouge sur la pastille Feux, arbitrage 14 du contrôleur). Absent : 0. */
+  fireFoyersOrange?: number;
+  /** Parmi eux, les foyers majeurs (isMajorFoyer : au moins 100 MW cumulés, confiance non faible). Absent : 0. */
+  fireFoyersMajor?: number;
   // Transport
   railDisruptions: number;
   railSevere: number;

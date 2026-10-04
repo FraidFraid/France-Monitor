@@ -4,6 +4,9 @@ import {
   domainTiles, domainChips, DOMAIN_LEVEL, energySegments, oilStatusInfo, timelineIntensity,
 } from './france-intel-blocks.ts';
 import type { FranceCountrySignals, FranceIntelEnergySummary } from '../types/index.ts';
+import { ENV_FIXTURE_NOW, FIRES_FIXTURE, FLOODS_FIXTURE, VIGILANCE_FIXTURE } from './layer-panel/environment.fixture.ts';
+import { buildEnvironmentInputs } from '../services/environment-inputs.ts';
+import { buildFranceSignals, type FranceRawData } from '../services/france-country-intel.ts';
 
 function signals(over: Partial<FranceCountrySignals> = {}): FranceCountrySignals {
   return {
@@ -98,7 +101,51 @@ describe('données partagées des blocs (spec 2026-10-01)', () => {
     expect(tiles.map((t) => t.label)).toEqual(['Cyber', 'Rail', 'Militaire', 'Maritime', 'Pannes', 'Défense', 'Météo', 'Finance']);
     expect(tiles[0]).toEqual({ label: 'Cyber', value: 24, meta: 'alertes 30j · 20 CVE', level: 'high' });
     expect(tiles[2]?.level).toBe('medium');
-    expect(DOMAIN_LEVEL).toEqual({ low: 'vert', medium: 'jaune', high: 'orange' });
+    expect(DOMAIN_LEVEL).toEqual({ low: 'vert', medium: 'jaune', high: 'orange', critical: 'rouge' });
+  });
+
+  it('tuile « Météo » du 04/10 (jeux d’essai réels) : vigilance, crues et feux distincts, jamais additionnés ; niveau le plus haut', () => {
+    const env = buildEnvironmentInputs(VIGILANCE_FIXTURE(), FLOODS_FIXTURE(), FIRES_FIXTURE(), [], ENV_FIXTURE_NOW);
+    const raw = {
+      newsItems: [], isnrData: null, cyberData: null, railTrains: [], roadEvents: [], urbanJamCount: 0, powerOutages: [], telecomOutages: [],
+      defenseAlerts: [], jammingSignals: [], militaryFlightsCount: 0, maritimeCount: 0, marketData: [], ecowattResponse: null, gasState: null,
+      nuclearState: null, eolienLive: null, aisAnomalies: [], timeline: { days: [], lanes: [] }, briefLang: 'fr', oilDashboard: null,
+      fuelTensionDashboard: null, ...env,
+    } satisfies FranceRawData;
+    const tile = domainTiles(buildFranceSignals(raw), 'fr').find((x) => x.label === 'Météo');
+    expect(tile).toEqual({
+      label: 'Météo', value: null, level: 'high',
+      meta: 'dépts orange ou rouges · tronçons orange ou rouges · foyers confirmés',
+      parts: [
+        { label: 'Vigilance', value: 2, level: 'high' },
+        { label: 'Crues', value: 0, level: 'low' },
+        { label: 'Feux', value: 3, level: 'medium' },
+      ],
+    });
+  });
+
+  it('part « Feux » (arbitrage 14) : orange dès un foyer confirmé d’au moins 10 MW ; jaune s’ils sont tous plus petits', () => {
+    const big = domainTiles(signals({ fireFoyersConfirmed: 2, fireFoyersOrange: 1 }), 'fr').find((x) => x.label === 'Météo');
+    expect(big?.parts?.[2]).toEqual({ label: 'Feux', value: 2, level: 'high' });
+    const small = domainTiles(signals({ fireFoyersConfirmed: 2 }), 'fr').find((x) => x.label === 'Météo');
+    expect([small?.level, small?.parts?.[2]]).toEqual(['medium', { label: 'Feux', value: 2, level: 'medium' }]);
+  });
+
+  it('tuile « Météo » : un rouge ou un foyer majeur la met au rouge ; rien : vert ; les détections brutes n’y comptent plus', () => {
+    const red = domainTiles(signals({ meteoAlerts: 1, meteoRedAlerts: 1 }), 'fr').find((x) => x.label === 'Météo');
+    expect([red?.level, red?.parts?.[0].level]).toEqual(['critical', 'critical']);
+    const major = domainTiles(signals({ fireFoyersConfirmed: 1, fireFoyersMajor: 1 }), 'fr').find((x) => x.label === 'Météo');
+    expect([major?.level, major?.parts?.[2]]).toEqual(['critical', { label: 'Feux', value: 1, level: 'critical' }]);
+    const calm = domainTiles(signals({ fireDetections: 259 }), 'fr').find((x) => x.label === 'Météo');
+    expect([calm?.level, calm?.value, calm?.parts?.map((p) => p.value)]).toEqual(['low', null, [0, 0, 0]]);
+  });
+
+  it('tuile « Météo » rendue : chaque part avec sa puce et son chiffre, aucune somme', () => {
+    const html = renderDomainsBlock({ signals: signals({ meteoAlerts: 2, fireFoyersConfirmed: 3, fireDetections: 119 }), meteo: [] }, 'fr');
+    expect(html).toContain('<span class="frintel-dom-part"><span class="frintel-dom-dot" style="background:var(--sev-orange);"></span>Vigilance 2</span>');
+    expect(html).toContain('<span class="frintel-dom-part"><span class="frintel-dom-dot" style="background:var(--sev-green);"></span>Crues 0</span>');
+    expect(html).toContain('Feux 3</span>');
+    expect(html).not.toContain('124');
   });
 
   it('étiquettes : risques météo cumulés, SNCF fortes, titres critiques', () => {

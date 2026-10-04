@@ -19,7 +19,7 @@ function ctx(over: Partial<SituationReportContext> = {}): SituationReportContext
     permalink: 'https://example.org/?view=app&ui=v2',
     situations: [situation()],
     stability: { scores: [], nationalScore: 47, timestamp: new Date(0) },
-    meteoAlerts: [{ department: 'Var', departmentCode: '83', level: 'violet', risks: ['heat'] }],
+    meteoAlerts: [{ department: 'Var', departmentCode: '83', level: 'red', risks: ['heat'] }],
     floodSegments: [],
     ecowatt: {
       official: {
@@ -59,7 +59,7 @@ describe('collectSituationReportData — langage commun L1 (refonte UI étape 2)
     expect(data.sources).toEqual([{ label: 'Santé publique France', state: 'ok', ageLabel: 'S39 · publiée le 30/09' }]);
   });
 
-  it('les signaux officiels rouges sont rouges, violet Météo compris', () => {
+  it('les signaux officiels rouges sont rouges', () => {
     const data = collectSituationReportData(ctx());
     expect(data.domainSignals.find((d) => d.domain.startsWith('Écowatt'))?.level).toBe('rouge');
     expect(data.domainSignals.find((d) => d.domain === 'Vigilance météo')?.level).toBe('rouge');

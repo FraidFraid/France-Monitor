@@ -95,9 +95,10 @@ import { fetchMetropoles, type MetropoleConsumption } from './services/metropole
 import { METRO_LEGEND_LABELS, METRO_LEVEL } from './utils/metropolesElectric.ts';
 import type { MetroLoadPanel } from './components/MetroLoadPanel.ts';
 // Environnement (spec 2026-10-04 environnement) : vigilance et crues lues au démarrage (score, situations), feux en arrière-plan.
-import { fetchVigilance, mergeVigilance, vigilanceStatus, vigilanceToMeteoAlerts, type VigilanceState } from './services/environment-vigilance.ts';
-import { fetchFloods, floodsStatus, floodsToSectionRefs, mergeFloods, type FloodsState } from './services/environment-floods.ts';
-import { fetchFires, firesStatus, mergeFires, scoreFireDetections, toActiveFire, type FiresState } from './services/environment-fires.ts';
+import { fetchVigilance, mergeVigilance, vigilanceStatus, type VigilanceState } from './services/environment-vigilance.ts';
+import { fetchFloods, floodsStatus, mergeFloods, type FloodsState } from './services/environment-floods.ts';
+import { fetchFires, firesStatus, mergeFires, type FiresState } from './services/environment-fires.ts';
+import { buildEnvironmentInputs, type EnvironmentInputs } from './services/environment-inputs.ts';
 import { radarStatus, type RadarProfileState } from './services/environment-radar.ts';
 import { clusterFireDetections } from './services/fire-clustering.ts';
 import { fetchRadarColumn } from './services/radar-column.ts';
@@ -171,7 +172,7 @@ import { fetchGasNetwork, isGasPanelEnabled } from './services/gas.ts';
 import { buildDegradedFuelTensionDashboard, fetchFuelTensionDashboard } from './services/fuel-tension.ts';
 import { readUrlState, writeUrlState } from './utils/urlState.ts';
 import { loadNewsFromCache, saveNewsToCache } from './utils/newsCache.ts';
-import type { DromLiveResponse, NewsItem, FilterState, FuelTensionDashboard, MapLayers, MeteoAlert, EcowattResponse, FloodSectionRef, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailTrain, RoadEvent, HydraulicBackboneAsset, MarketData, GpsJammingSignal, DetectedSituation, SituationSeverity, ThreatLevel, ThreatEvent, BiogasState, BiomethaneSite, FireObservationFeedState, MilitaryFlight, CommodityData, VigilanceEcheance } from './types/index.ts';
+import type { DromLiveResponse, NewsItem, FilterState, FuelTensionDashboard, MapLayers, EcowattResponse, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailTrain, RoadEvent, HydraulicBackboneAsset, MarketData, GpsJammingSignal, DetectedSituation, SituationSeverity, ThreatLevel, ThreatEvent, BiogasState, BiomethaneSite, FireObservationFeedState, MilitaryFlight, CommodityData, VigilanceEcheance } from './types/index.ts';
 import { fetchISNRSynthesis, type NuclearBriefingContext, type EolienBriefingContext, type OilBriefingContext } from './services/isnr-synthesis.ts';
 import type { EolienLive, EolienParkSummary } from './services/eolien/types.ts';
 import { Watchdog } from './services/watchdog.ts';
@@ -1387,8 +1388,6 @@ export class App {
   private radarError: string | null = null;
   /** Point cliqué sur la carte, couche Radar active, et son profil vertical (démonstration). */
   private radarProfile: RadarProfileState | null = null;
-  /** Détections en France non récurrentes, au format du regroupement DBSCAN : entrée nettoyée du score (spec § 2.7). */
-  private currentActiveFires: import('./types/index.ts').ActiveFire[] = [];
   /** Incidents DBSCAN sur ces détections, géo-résolus : situations WILDFIRE_ESCALATION et onglet « Dossier d'un feu ». */
   private currentFireIncidents: import('./types/index.ts').LocatedFireIncident[] = [];
   private mtgFrpEnabled = false;
@@ -1498,7 +1497,6 @@ export class App {
   private rssRequestSeq = 0;
   private isSummarizationRunning = false;
   private currentISNRData: ISNRData | null = null;
-  private currentMeteoAlerts: MeteoAlert[] = [];
   private _aisZeroWarnLogged = false; // Avoid spamming "0 ships" warning
   private _aisLoaderEl: HTMLElement | null = null; // Loader overlay while AIS connects
   private _showAisLoaderFn: (() => void) | null = null; // Ref so onLayerToggle can trigger it
@@ -1525,8 +1523,6 @@ export class App {
   /** Positions de la carte : dernière lecture réussie (heure des états OpenSky, incidents) et dernier échec, pour leur ligne datée. */
   private airPositions: { read: { at: number | null; errors: string[] } | null; failure: string | null } = { read: null, failure: null };
   private legacyTomTomCleared = false;
-  /** Tronçons en vigilance (jaune et plus) au format de référence des consommateurs (score, note, file de travail, stress hydro). */
-  private currentFloodSegments: FloodSectionRef[] = [];
   /** Menu d'export CSV / GeoJSON, instancié à la demande au premier clic. */
   private exportMenu: ExportMenu | null = null;
   // Flag « données chargées » → affiche le loader unifié tant que false (cf. render*Panel()).
@@ -5623,7 +5619,6 @@ export class App {
       this.currentVigilance = mergeVigilance(this.currentVigilance, incoming);
       const now = Date.now();
       const data = this.currentVigilance.vigilance.data;
-      this.currentMeteoAlerts = vigilanceToMeteoAlerts(data, 'J');
       this.statusPanel?.updateSource('Météo-France', vigilanceStatus(this.currentVigilance, now));
       this.vigilancePanel?.update({ vigilance: this.currentVigilance });
       this.refreshEnvironmentLegend();
@@ -5643,7 +5638,6 @@ export class App {
       this.currentFloods = mergeFloods(this.currentFloods, incoming);
       const now = Date.now();
       const data = this.currentFloods.floods.data;
-      this.currentFloodSegments = floodsToSectionRefs(data);
       this.statusPanel?.updateSource('Vigicrues', floodsStatus(this.currentFloods, now));
       this.mapContainer?.updateFloodsLayer(data, now);
       this.floodsPanel?.update(this.currentFloods);
@@ -5664,8 +5658,7 @@ export class App {
       this.currentFires = mergeFires(this.currentFires, incoming);
       const now = Date.now();
       const data = this.currentFires.fires.data;
-      this.currentActiveFires = scoreFireDetections(data).map(toActiveFire);
-      const incidents = clusterFireDetections(this.currentActiveFires, { epsKm: 3, minPoints: 2 });
+      const incidents = clusterFireDetections(this.environmentInputs().activeFires, { epsKm: 3, minPoints: 2 });
       this.statusPanel?.updateSource('NASA FIRMS', firesStatus(this.currentFires, 'firms', now));
       this.statusPanel?.updateSource('Météo des forêts', firesStatus(this.currentFires, 'mdf', now));
       this.mapContainer?.updateFiresLayer(data, now, { forestDangerFill: this.forestDangerFill });
@@ -5699,10 +5692,11 @@ export class App {
     this.currentHydraulicHydrometry = await fetchHydraulicHydrometrySnapshot(
       this.currentHydraulicAssets.length > 0 ? this.currentHydraulicAssets : buildHydraulicBackboneAssets(null, [], []),
     );
+    const env = this.environmentInputs();
     this.currentHydraulicAssets = buildHydraulicBackboneAssets(
       this.currentEcowattResponse,
-      this.currentFloodSegments,
-      this.currentMeteoAlerts,
+      env.floodSegments,
+      env.meteoAlerts,
       this.currentHydraulicHydrometry,
     );
     this.mapContainer?.updateHydraulicBackbone(this.currentHydraulicAssets);
@@ -6352,6 +6346,19 @@ export class App {
     };
   }
 
+  /**
+   * Entrées Environnement du score France, de la frise, des situations, de la note, de l'export, du poste v2, de l'ISNR et du stress
+   * hydro (spec 2026-10-04 environnement § 2.7) : vigilance du jour, tronçons en vigilance, détections en France non récurrentes,
+   * incidents DBSCAN géo-résolus, foyers du serveur ; lues dans les dernières réponses des services, jamais copiées ailleurs. Une
+   * collecte des feux de plus de 2 jours, gardée après une erreur, ne compte plus.
+   */
+  private environmentInputs(): EnvironmentInputs {
+    return buildEnvironmentInputs(
+      this.currentVigilance?.vigilance.data ?? null, this.currentFloods?.floods.data ?? null, this.currentFires?.fires.data ?? null,
+      this.currentFireIncidents, Date.now(),
+    );
+  }
+
   private async loadMetropoles(): Promise<void> {
     this.statusPanel?.updateSource('Métropoles', { status: 'loading', lastUpdate: null });
     const metropoles = await fetchMetropoles();
@@ -6938,8 +6945,9 @@ export class App {
     }
 
     const todayIndex = dayKeys.length - 1;
-    laneMap.weather.counts[todayIndex]   += this.currentMeteoAlerts.filter((a) => a.level !== 'green').length;
-    laneMap.weather.counts[todayIndex]   += this.currentFloodSegments.filter((a) => a.level !== 'green').length;
+    const env = this.environmentInputs();
+    laneMap.weather.counts[todayIndex]   += env.meteoAlerts.filter((a) => a.level !== 'green').length;
+    laneMap.weather.counts[todayIndex]   += env.floodSegments.filter((a) => a.level !== 'green').length;
     const traffic = this.trafficInputs();
     laneMap.transport.counts[todayIndex] += traffic.railTrains.length + traffic.roadEvents.length + traffic.urbanJamCount;
     laneMap.security.counts[todayIndex]  += this.currentDefenseAlerts.length + this.currentJammingSignals.length;
@@ -6965,8 +6973,7 @@ export class App {
       isnrData:             this.currentISNRData,
       cyberData:            this.currentCyberData,
       threatEvents:         this.currentThreatEvents,
-      meteoAlerts:          this.currentMeteoAlerts,
-      floodSegments:        this.currentFloodSegments,
+      ...this.environmentInputs(),
       ...this.trafficInputs(),
       powerOutages:         this.currentPowerOutages,
       telecomOutages:       this.currentTelecomOutages,
@@ -6974,8 +6981,6 @@ export class App {
       jammingSignals:       this.currentJammingSignals,
       militaryFlightsCount: this.currentMilitaryFlightsCount,
       maritimeCount:        this.currentMaritimeTrafficFranceCount,
-      activeFires:          this.currentActiveFires,
-      fireIncidents:        this.currentFireIncidents,
       marketData:           this.currentMarketData,
       ecowattResponse:      this.currentEcowattResponse,
       gasState:             this.currentGasData,
@@ -7020,6 +7025,8 @@ export class App {
     const locale = language === 'fr' ? 'fr-FR' : 'en-US';
     const now = new Date();
     const nowMs = now.getTime();
+    // Vigilance du jour et incidents des feux : mêmes entrées que le score (collecte des feux de plus de 2 jours écartée).
+    const env = this.environmentInputs();
 
     // Presse : événements consolidés et corroborés quand ils sont chargés (spec 2026-09-28 § 4.7),
     // sinon repli sur les articles un par un.
@@ -7086,7 +7093,7 @@ export class App {
         updatedAt: now,
       }));
 
-    const weatherSituations = [...this.currentMeteoAlerts]
+    const weatherSituations = [...env.meteoAlerts]
       .filter((alert) => alert.level === 'red' || alert.level === 'orange')
       .sort((a, b) => (a.level === b.level ? 0 : a.level === 'red' ? -1 : 1))
       .slice(0, ALERT_MONITOR_LIMIT)
@@ -7200,7 +7207,7 @@ export class App {
       }));
 
     const wildfireSituations = detectWildfireIncidents({
-      fireIncidents: this.currentFireIncidents,
+      fireIncidents: env.fireIncidents,
     } as FranceRawData);
 
     const freshAlerts = [
@@ -7296,13 +7303,14 @@ export class App {
     const lang = this.intelLang();
     const snapshot = this.buildFranceSnapshot(lang);
     const traffic = this.trafficInputs();
+    const env = this.environmentInputs();
     const context: SituationReportContext = {
       generatedAt: new Date(),
       permalink: window.location.href,
       situations: snapshot.situations,
       stability: this.currentISNRData,
-      meteoAlerts: this.currentMeteoAlerts,
-      floodSegments: this.currentFloodSegments,
+      meteoAlerts: env.meteoAlerts,
+      floodSegments: env.floodSegments,
       ecowatt: this.currentEcowattResponse,
       railTrains: traffic.railTrains,
       roadEvents: traffic.roadEvents,
@@ -7330,12 +7338,14 @@ export class App {
   private buildExportContext(): ExportContext {
     const lang = this.intelLang();
     const snapshot = this.buildFranceSnapshot(lang);
+    const env = this.environmentInputs();
     return {
       news: this.newsItems,
       situations: snapshot.situations,
-      meteoAlerts: this.currentMeteoAlerts,
-      floods: this.currentFloodSegments,
-      fires: this.currentActiveFires,
+      meteoAlerts: env.meteoAlerts,
+      floods: env.floodSegments,
+      // Toutes les détections en France de la dernière collecte, récurrentes comprises (colonne « récurrent ») : l'export dit tout.
+      fires: this.currentFires?.fires.data?.detections ?? [],
       powerOutages: this.currentPowerOutages,
       telecomOutages: this.currentTelecomOutages,
       roadEvents: this.trafficInputs().roadEvents,
@@ -7636,12 +7646,13 @@ export class App {
   /** Données en cache (aucun fetch) remises à la v2 à chaque rafraîchissement. */
   private updatePoste(snapshot: FranceCountrySnapshot, alerts: DetectedSituation[], lang: 'fr' | 'en'): void {
     const now = Date.now();
+    const env = this.environmentInputs();
     this.poste?.update({
       snapshot,
       alerts,
       ecowatt: this.currentEcowattResponse,
-      meteo: this.currentMeteoAlerts,
-      floods: this.currentFloodSegments,
+      meteo: env.meteoAlerts,
+      floods: env.floodSegments,
       markets: this.currentMarketData,
       commodities: this.currentCommodityData,
       sources: this.statusPanel?.getSources() ?? [],
@@ -7682,10 +7693,11 @@ export class App {
   }
 
   private updateISNR(): void {
+    const env = this.environmentInputs();
     this.currentISNRData = computeISNR(
       this.newsItems,
-      this.currentMeteoAlerts,
-      this.currentFloodSegments,
+      env.meteoAlerts,
+      env.floodSegments,
       this.currentEcowattResponse,
       '24h',
       this.currentTelecomOutages,

@@ -126,8 +126,8 @@ function buildDomainSignals(ctx: SituationReportContext): ReportDomainSignal[] {
     }
   }
 
-  // Vigilance météo — départements orange/rouge (violet assimilé rouge).
-  const meteoRed = ctx.meteoAlerts.filter((a) => a.level === 'red' || a.level === 'violet');
+  // Vigilance météo : départements orange ou rouges.
+  const meteoRed = ctx.meteoAlerts.filter((a) => a.level === 'red');
   const meteoOrange = ctx.meteoAlerts.filter((a) => a.level === 'orange');
   if (meteoRed.length > 0 || meteoOrange.length > 0) {
     const names = [...meteoRed, ...meteoOrange].map((a) => a.department).slice(0, 6);

@@ -12,6 +12,7 @@ import {
   energySegments,
   oilStatusInfo,
   timelineIntensity,
+  type DomainTile,
   type EnergyKey,
 } from '../france-intel-blocks.ts';
 import { escapeHtml } from '../france-intel-events.ts';
@@ -77,9 +78,13 @@ export function infraSection(infra: InfraInput | null, lang: Lang): IndicatorSec
 
 export function domainsSection(snapshot: Pick<FranceCountrySnapshot, 'signals' | 'meteo'>, lang: Lang): IndicatorSection {
   const tiles = domainTiles(snapshot.signals, lang);
+  const value = (tile: DomainTile): string => (tile.parts
+    ? `<span class="fmk-domain-parts">${tile.parts.map((p) => `<span class="fmk-domain-part">${levelDot(DOMAIN_LEVEL[p.level])}`
+      + `${escapeHtml(p.label)} <b class="fmk-num">${formatNumber(p.value, lang)}</b></span>`).join('')}</span>`
+    : `<b class="fmk-num">${tile.value === null ? 'n.d.' : formatNumber(tile.value, lang)}</b>`);
   const grid = tiles.map((tile) => `<div class="fmk-domain">`
     + `<span class="fmk-domain-name">${levelDot(DOMAIN_LEVEL[tile.level])}${escapeHtml(tile.label)}</span>`
-    + `<b class="fmk-num">${formatNumber(tile.value, lang)}</b><small>${escapeHtml(tile.meta)}</small></div>`).join('');
+    + `${value(tile)}<small>${escapeHtml(tile.meta)}</small></div>`).join('');
   const chips = domainChips(snapshot, lang)
     .map((c) => `<span class="fmk-tag fmk-tag--${c.tone}">${escapeHtml(c.text)}</span>`).join('');
   return {
