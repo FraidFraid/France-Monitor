@@ -515,7 +515,6 @@ const DEFAULT_LAYERS: MapLayers = {
   outagesCloud: false,
   stability: false,
   cyber: false,
-  threatMap: false,
   gasNetwork: false,
   biomethaneSites: false,
   oilNetwork: false,
@@ -574,8 +573,7 @@ const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
   { id: 'trafficRail', label: 'Réseau ferroviaire', icon: 'train-front', layerKeys: ['trafficRail'] },
   { id: 'military', label: 'Défense', icon: 'shield', layerKeys: ['military'] },
   { id: 'subseaCables', label: 'Connectivité', icon: 'waves', layerKeys: ['subseaCables'] },
-  // threatMap retirée à A17 avec MapLayers.threatMap (contrats § 4.3).
-  { id: 'cyber', label: 'Vigilance cyber', icon: 'lock-keyhole', layerKeys: ['cyber', 'threatMap'] },
+  { id: 'cyber', label: 'Vigilance cyber', icon: 'lock-keyhole', layerKeys: ['cyber'] },
   { id: 'stability', label: 'Indice stabilité', icon: 'bar-chart-3', layerKeys: ['stability'] },
   {
     id: 'outagesElec',
@@ -2160,8 +2158,6 @@ export class App {
 
   private normalizeLayerState(layers: MapLayers): MapLayers {
     const normalized = { ...layers };
-    normalized.cyber = normalized.cyber || normalized.threatMap;
-    normalized.threatMap = normalized.cyber;
     normalized.newsGroup = normalized.news || normalized.stability || normalized.events;
     if (normalized.traffic && !normalized.trafficRoad && !normalized.trafficMaritime && !normalized.trafficAir && !normalized.trafficRail) {
       normalized.trafficRoad = true;
@@ -3236,7 +3232,6 @@ export class App {
         effective[config.id] = groupsOn.has(config.groupId);
       }
     }
-    effective.threatMap = effective.cyber;
     return effective;
   }
 
@@ -3266,11 +3261,6 @@ export class App {
     opts: { suppressPanel?: boolean } = {},
   ): void {
     this.activeLayers[key] = enabled;
-    if (key === 'cyber') {
-      this.activeLayers.threatMap = enabled;
-    } else if (key === 'threatMap') {
-      this.activeLayers.cyber = enabled;
-    }
     this._syncGroupFlags(key, enabled);
 
     this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
@@ -4743,11 +4733,10 @@ export class App {
       case 'trafficAir': return [this.ensureAirTrafficPanel()];
       case 'trafficRail': return [this.ensureTransportPanel()];
       case 'trafficMaritime': return [this.ensureMaritimePanel()];
-      // Souveraineté (contrats § 4.4 point 12) : un panneau par couche ; threatMap part à A17.
+      // Souveraineté (contrats § 4.4 point 12) : un panneau par couche.
       case 'military': return [this.ensureDefensePanel()];
       case 'subseaCables': return [this.ensureConnectivityPanel()];
       case 'cyber': return [this.ensureCyberPanel()];
-      case 'threatMap': return [this.ensureCyberPanel()];
       case 'sovereignty': return [this.ensureDefensePanel(), this.ensureConnectivityPanel(), this.ensureCyberPanel()];
       case 'oilNetwork': return [this.ensureOilPanel()];
       case 'nuclearFleet': return [this.ensureNuclearPanel()];
@@ -5131,38 +5120,11 @@ export class App {
       void this.ensureSentinelModal().then((modal) => modal.show(request));
     });
 
-    // Handle military flight clicks → show detailed popup
-    this.mapContainer.setOnMilitaryFlightClick((flight, x, y) => {
-      if (this.mapPopup) {
-        this.mapPopup.showMilitaryFlight(flight, x, y);
-      }
-    });
-
     // Handle military base clicks → show detailed popup
     this.mapContainer.setOnMilitaryBaseClick((base, x, y) => {
       if (this.mapPopup) {
         this.mapPopup.showMilitaryBase(base, x, y);
       }
-    });
-
-    // Handle military ship clicks → show detailed popup
-    this.mapContainer.setOnMilitaryShipClick((ship, x, y) => {
-      if (this.mapPopup) {
-        this.mapPopup.showMilitaryShip(ship, x, y);
-      }
-    });
-
-    // Handle threat event clicks → show detailed popup
-    this.mapContainer.setOnThreatEventClick((event, x, y) => {
-      if (this.mapPopup) {
-        this.mapPopup.showThreatEvent(event, x, y);
-      }
-    });
-
-    // Clic sur un navire de la carte : sa fiche dans le panneau maritime, s'il est ouvert.
-    this.mapContainer.setOnMaritimeShipClick((ship) => {
-      this.mapContainer?.setSelectedShip(ship.mmsi ?? null);
-      this.maritimePanel?.openShipModal(ship);
     });
 
     // Clic sur la carte, couche Radar active : profil vertical du point (démonstration, panneau Radar météo).
@@ -7830,8 +7792,6 @@ export class App {
       '24h',
       this.currentTelecomOutages,
       this.currentPowerOutages,
-      // Plus aucun lieu de victime publié (V3, V5) : aucun événement de menace ; le paramètre part à A17.
-      [],
     );
 
     // Update map layer

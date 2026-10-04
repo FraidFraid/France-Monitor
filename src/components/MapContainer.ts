@@ -5,7 +5,7 @@
 
 import type { DeckGLMap } from './DeckGLMap.ts';
 import type { Map as SVGMap } from './Map.ts';
-import type { NewsItem, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, EcowattResponse, FuelTensionDashboard, InfrastructurePoint, MapLayers, MapViewState, RestrictedZone, MilitaryBase, MilitaryFlight, AirTrafficFlight, TelecomOutage, PowerOutage, ISNRScore, AlertLevelsResponse, AplDataset, AplProfession, EmergencySite, HospitalsDataset, SyndromicResponse, GasNetworkState, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, HydraulicBackboneAsset, ThreatEvent } from '../types/index.ts';
+import type { NewsItem, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, EcowattResponse, FuelTensionDashboard, InfrastructurePoint, MapLayers, MapViewState, RestrictedZone, MilitaryBase, AirTrafficFlight, TelecomOutage, PowerOutage, ISNRScore, AlertLevelsResponse, AplDataset, AplProfession, EmergencySite, HospitalsDataset, SyndromicResponse, GasNetworkState, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, HydraulicBackboneAsset } from '../types/index.ts';
 import type { MilitaryShip } from '../services/military-ships.ts';
 import type { RTEIIPIncident } from '../services/rte-iip.ts';
 import type { EventMapPoint } from '../services/v2-map.ts';
@@ -46,13 +46,9 @@ export class MapContainer {
   private onClusterHover: ((items: NewsItem[], x: number, y: number, totalCount: number) => void) | null = null;
   private onClusterClick: ((items: NewsItem[], center: [number, number]) => void) | null = null;
   private onViewChange: ((vs: MapViewState) => void) | null = null;
-  private onMilitaryFlightClick: ((flight: MilitaryFlight, x: number, y: number) => void) | null = null;
   private onMilitaryBaseClick: ((base: MilitaryBase, x: number, y: number) => void) | null = null;
-  private onMilitaryShipClick: ((ship: { id: string; name: string; type: string; role: string; mmsi?: string; lat: number; lon: number; speed?: number; heading?: number; port?: string; isLive?: boolean }, x: number, y: number) => void) | null = null;
-  private _onMaritimeShipClickCb: ((ship: MilitaryShip, x: number, y: number) => void) | null = null;
   private onRawMapClick: ((lat: number, lon: number) => void) | null = null;
   private onSatelliteView: ((request: SatelliteViewRequest) => void) | null = null;
-  private onThreatEventClick: ((event: ThreatEvent, x: number, y: number) => void) | null = null;
   private dromEnergyData: DromEnergyDashboard | null = null;
   private dromEnergyLoadPromise: Promise<void> | null = null;
   private radar2dManifest: Radar2dManifest | null = null;
@@ -87,16 +83,12 @@ export class MapContainer {
     if (this.onViewChange) this.deckMap.setOnViewChange(this.onViewChange);
     if (this.onClusterHover) this.deckMap.setOnClusterHover(this.onClusterHover);
     if (this.onClusterClick) this.deckMap.setOnClusterClick(this.onClusterClick);
-    if (this.onMilitaryFlightClick) this.deckMap.setOnMilitaryFlightClick(this.onMilitaryFlightClick);
     if (this.onMilitaryBaseClick) this.deckMap.setOnMilitaryBaseClick(this.onMilitaryBaseClick);
-    if (this.onMilitaryShipClick) this.deckMap.setOnMilitaryShipClick(this.onMilitaryShipClick);
-    if (this._onMaritimeShipClickCb) this.deckMap.setOnMaritimeShipClick(this._onMaritimeShipClickCb);
     if (this.onRadarPointPick) this.deckMap.setOnRadarPointPick(this.onRadarPointPick);
     if (this.radarPick) this.deckMap.setRadarPick(this.radarPick);
     if (this.onSovereigntyFeatureClick) this.deckMap.setOnSovereigntyFeatureClick(this.onSovereigntyFeatureClick);
     if (this.onRawMapClick) this.deckMap.setOnRawMapClick(this.onRawMapClick);
     if (this.onSatelliteView) this.deckMap.setOnSatelliteView(this.onSatelliteView);
-    if (this.onThreatEventClick) this.deckMap.setOnThreatEventClick(this.onThreatEventClick);
     await this.deckMap.init();
     await this.deckMap.setRadar2dOverlay(this.radar2dManifest, this.radar2dEnabled);
     this.deckMap.setEchoTopsOverlay(this.radar2dManifest, this.echoTopsEnabled);
@@ -244,20 +236,8 @@ export class MapContainer {
     this.deckMap?.updateMilitaryZones(zones);
   }
 
-  updateMilitaryBases(bases: MilitaryBase[]): void {
-    this.deckMap?.updateMilitaryBases(bases);
-  }
-
-  updateMilitaryFlights(flights: MilitaryFlight[]): void {
-    this.deckMap?.updateMilitaryFlights(flights);
-  }
-
   updateAirTraffic(flights: AirTrafficFlight[]): void {
     this.deckMap?.updateAirTraffic(flights);
-  }
-
-  updateMilitaryShips(ships: Array<{ id: string; name: string; type: string; role: string; mmsi?: string; lat: number; lon: number; speed?: number; heading?: number; port?: string; isLive?: boolean }>): void {
-    this.deckMap?.updateMilitaryShips(ships);
   }
 
   /**
@@ -458,38 +438,14 @@ export class MapContainer {
     this.deckMap?.setOnClusterClick(handler);
   }
 
-  setOnMilitaryFlightClick(handler: (flight: MilitaryFlight, x: number, y: number) => void): void {
-    this.onMilitaryFlightClick = handler;
-    this.deckMap?.setOnMilitaryFlightClick(handler);
-  }
-
   setOnMilitaryBaseClick(handler: (base: MilitaryBase, x: number, y: number) => void): void {
     this.onMilitaryBaseClick = handler;
     this.deckMap?.setOnMilitaryBaseClick(handler);
   }
 
-  setOnMilitaryShipClick(handler: (ship: { id: string; name: string; type: string; role: string; mmsi?: string; lat: number; lon: number; speed?: number; heading?: number; port?: string; isLive?: boolean }, x: number, y: number) => void): void {
-    this.onMilitaryShipClick = handler;
-    this.deckMap?.setOnMilitaryShipClick(handler);
-  }
-
-  setOnMaritimeShipClick(cb: (ship: MilitaryShip, x: number, y: number) => void): void {
-    this._onMaritimeShipClickCb = cb;
-    this.deckMap?.setOnMaritimeShipClick(cb);
-  }
-
   setOnSatelliteView(handler: (request: SatelliteViewRequest) => void): void {
     this.onSatelliteView = handler;
     this.deckMap?.setOnSatelliteView(handler);
-  }
-
-  setOnThreatEventClick(handler: (event: ThreatEvent, x: number, y: number) => void): void {
-    this.onThreatEventClick = handler;
-    this.deckMap?.setOnThreatEventClick(handler);
-  }
-
-  updateThreatEvents(events: ThreatEvent[]): void {
-    this.deckMap?.updateThreatEvents(events);
   }
 
   project(longitude: number, latitude: number): { x: number; y: number } | null {

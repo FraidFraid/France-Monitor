@@ -234,8 +234,9 @@ describe('buildWorkQueue — tri et badges (spec §7.2)', () => {
 });
 
 describe('buildWorkQueue — identité de ligne de base sans le niveau (relecture finale m2)', () => {
-  const surge = (severity: DetectedSituation['severity'], suffix: string): DetectedSituation => situation({
-    id: `military-surge-concentration-${suffix}`, type: 'MILITARY_SURGE_ALERT', severity, title: 'Concentration inhabituelle de vols militaires',
+  /** Urgence militaire (moniteur d'alertes, tâche A16) : identifiant sans gravité, la même urgence monte d'un cran en se confirmant. */
+  const emergency = (severity: DetectedSituation['severity']): DetectedSituation => situation({
+    id: 'military-emergency-ae0805-7700', type: 'MILITARY_SURGE_ALERT', severity, title: '7700 (urgence) : RCH161 (C17)',
   });
 
   it('alerte officielle : même source, niveau plus haut → AGGRAVÉ, et non NOUVEAU ; clé d’affichage inchangée', () => {
@@ -257,23 +258,23 @@ describe('buildWorkQueue — identité de ligne de base sans le niveau (relectur
     });
   });
 
-  it('poussée militaire : la gravité dans l’identifiant ne fait pas un NOUVEAU ; clé d’affichage inchangée', () => {
+  it('urgence militaire vue une fois puis confirmée : même identité, AGGRAVÉ et non NOUVEAU', () => {
     const q = buildWorkQueue(input({
-      alerts: [surge('critical', 'alert')],
-      baseline: { 'alert:military-surge-concentration': 'orange' },
+      alerts: [emergency('high')],
+      baseline: { 'alert:military-emergency-ae0805-7700': 'jaune' },
     }));
-    expect(q.items.map((i) => [i.key, i.badge])).toEqual([['alert:military-surge-concentration-alert', 'aggrave']]);
+    expect(q.items.map((i) => [i.key, i.badge])).toEqual([['alert:military-emergency-ae0805-7700', 'aggrave']]);
   });
 
   it('ligne de base enregistrée par identité, au niveau le plus élevé de la source', () => {
     const q = buildWorkQueue(input({
       meteo: [meteo('Var', 'red'), meteo('Gard', 'orange')],
-      alerts: [surge('high', 'warning')],
+      alerts: [emergency('high')],
       situations: [situation()],
     }));
     expect(levelsForBaseline(q)).toEqual({
       'official:meteo': 'rouge',
-      'alert:military-surge-concentration': 'orange',
+      'alert:military-emergency-ae0805-7700': 'orange',
       'situation:energy-stress': 'orange',
     });
   });

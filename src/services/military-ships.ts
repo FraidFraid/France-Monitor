@@ -587,7 +587,7 @@ function computeRiskLevel(
         if (country !== 'France') { score += 25; reasons.push(`Navire militaire étranger (${country})`); }
     }
 
-    void nearestPort; // proximité câble déléguée au service cable-threats.ts
+    void nearestPort; // proximité des câbles : veille du serveur (api/_lib/cable-watch.js)
 
     if (score >= 40) return { level: 'critical', reasons };
     if (score >= 25) return { level: 'high', reasons };

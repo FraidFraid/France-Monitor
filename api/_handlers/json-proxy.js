@@ -63,7 +63,7 @@ function cacheControlForHost(hostname) {
   return 'public, s-maxage=300, stale-while-revalidate=60';
 }
 
-/** Fenêtre conservée pour posts.json : les consommateurs (cyber.ts, threat-map.ts) ne lisent que 30 jours. */
+/** Fenêtre conservée pour posts.json (45 jours, les anciens lecteurs du navigateur en lisaient 30 ; plus aucun client depuis la tâche A17). */
 const RANSOMWARE_POSTS_WINDOW_MS = 45 * 24 * 60 * 60 * 1000;
 
 /**

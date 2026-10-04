@@ -114,7 +114,6 @@ const DEFAULT_LAYERS: MapLayers = {
   outagesCloud: false,
   stability: false,
   cyber: false,
-  threatMap: false,
   gasNetwork: false,
   oilNetwork: false,
   nuclearFleet: false,

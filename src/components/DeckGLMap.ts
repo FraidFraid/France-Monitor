@@ -10,8 +10,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import { COORDINATE_SYSTEM } from '@deck.gl/core';
-import Supercluster from 'supercluster';
-import type { MapViewState, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, NewsItem, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, TelecomOutage, PowerOutage, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, HydraulicBackboneAsset, ThreatEvent } from '../types/index.ts';
+import type { MapViewState, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, NewsItem, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, AirTrafficFlight, EcowattResponse, TelecomOutage, PowerOutage, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, HydraulicBackboneAsset } from '../types/index.ts';
 import type { AirQualityResponse, DroughtResponse, EarthquakesResponse, FiresResponse, FloodSection, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
 import { ecowattToday, ecowattLevelLabel } from '../services/ecowatt-official.ts';
 import { DATA_FRESHNESS_LABELS } from '../types/index.ts';
@@ -54,8 +53,7 @@ import {
   VESSEL_TYPE_HEX, type VesselCategory, airAltitudeHex, vesselCategory, vesselHex, vesselTypeLabel,
 } from './layer-panel/traffic-legend.ts';
 import { identifyFrenchCallsign, identifyAlliedCallsign } from '../config/military.ts';
-import { interpolateFlightPosition } from '../services/military-flights.ts';
-import { getAllLiveTraffic, getMilitaryShips, type MilitaryShip } from '../services/military-ships.ts';
+import { getAllLiveTraffic, type MilitaryShip } from '../services/military-ships.ts';
 import { findShipByKey, isSubmarine } from './layer-panel/navy.ts';
 import { OIL_PIPELINE_COLORS } from '../config/oil-infrastructure.ts';
 import type { RTEIIPIncident } from '../services/rte-iip.ts';
@@ -75,7 +73,6 @@ import { loadDepartementsGeojson } from '../services/departements-geojson.ts';
 
 
 // ─── Extracted deckgl modules (constants & pure helpers) ───
-import type { ThreatMapDatum } from './deckgl/types.ts';
 import { resolveIIPCoords } from './deckgl/iip-geocoding.ts';
 import { LYR_SATELLITE, getFrenchStyle } from './deckgl/base-style.ts';
 import { ELECTRIC_FLOW_STYLE, getElectricFlowConfig, GAS_FLOW_STYLE, OIL_FLOW_STYLE } from './deckgl/flow-styles.ts';
@@ -255,9 +252,6 @@ import {
   LYR_METRO_LOAD_LABEL,
   SRC_MILITARY_ZONES,
   SRC_MILITARY_BASES,
-  SRC_MILITARY_FLIGHTS,
-  SRC_MILITARY_FLIGHT_TRAILS,
-  SRC_MILITARY_SHIPS,
   SRC_MILITARY_SHIPS_HIGHLIGHT,
   SRC_MILITARY_SHIPS_SELECTED,
   SRC_GLOBAL_TRAFFIC,
@@ -270,10 +264,6 @@ import {
   LYR_MILITARY_ZONES_LINE,
   LYR_MILITARY_BASES_CIRCLE,
   LYR_MILITARY_BASES_LABEL,
-  LYR_MILITARY_FLIGHT_TRAILS,
-  LYR_MILITARY_FLIGHTS,
-  LYR_MILITARY_FLIGHTS_LABEL,
-  LYR_MILITARY_SHIPS,
   LYR_MILITARY_SHIPS_HIGHLIGHT,
   LYR_MILITARY_SHIPS_SELECTED,
   LYR_SUBMARINE_CABLES,
@@ -425,19 +415,14 @@ export class DeckGLMap {
     | ((items: NewsItem[], center: [number, number]) => void)
     | null = null;
   private onViewChange: ((vs: MapViewState) => void) | null = null;
-  private onMilitaryFlightClick: ((flight: MilitaryFlight, x: number, y: number) => void) | null = null;
   private onMilitaryBaseClick: ((base: MilitaryBase, x: number, y: number) => void) | null = null;
-  private onMilitaryShipClick: ((ship: ReturnType<typeof import('../services/military-ships.ts').getMilitaryShips>[0], x: number, y: number) => void) | null = null;
-  private _onMaritimeShipClick: ((ship: MilitaryShip, x: number, y: number) => void) | null = null;
   private onSatelliteView: ((request: SatelliteViewRequest) => void) | null = null;
-  private onThreatEventClick: ((event: ThreatEvent, x: number, y: number) => void) | null = null;
   private _highlightedMmsi: string | null = null;
   private _selectedShipMmsi: string | null = null;
   private _satelliteMode = false;
   private _basemapLayerVisibility: Map<string, 'visible' | 'none'> = new Map();
   private _sentinelBlinkInterval: ReturnType<typeof setInterval> | null = null;
   // In-memory lookup tables for military data (populated by updateMilitary*)
-  private militaryFlightsById: Map<string, MilitaryFlight> = new Map();
   private airTrafficFlightsById: Map<string, AirTrafficFlight> = new Map();
   private militaryBasesById: Map<string, MilitaryBase> = new Map();
   private militaryShipsById: Map<string, { id: string; name: string; type: string; role: string; mmsi?: string; lat: number; lon: number; speed?: number; heading?: number; port?: string; isLive?: boolean }> = new Map();
@@ -482,7 +467,6 @@ export class DeckGLMap {
   private previewTrain: RailTrain | null = null;
   private dromEnergyHoverPopup: maplibregl.Popup | null = null;
   private fuelTensionHoverPopup: maplibregl.Popup | null = null;
-  private _flightInterpolTick: ReturnType<typeof setInterval> | null = null;
   private _modisOverlayEnabled = false;
   private _modisTilesProbe: Promise<void> | null = null;
   private _mtgFrpEnabled = false;
@@ -539,16 +523,8 @@ export class DeckGLMap {
   private hoveredClusterId: number | null = null;
   private lastClusterItems: NewsItem[] = [];
   
-  private threatEvents: ThreatEvent[] = [];
-  private threatEventsVisible: boolean = true;
-  private threatClusterIndex: Supercluster<Supercluster.AnyProps, Supercluster.AnyProps> | null = null;
   private lastClusterCount: number = 0;
   private clusterHideTimeout: ReturnType<typeof setTimeout> | null = null;
-  // Memoization of getThreatMapData() (invalidated on events change / zoom / bounds change)
-  private threatMapDataCache: ThreatMapDatum[] | null = null;
-  private threatMapDataCacheKey: string | null = null;
-  // Hash of the last threat events set — skips Supercluster rebuild when unchanged
-  private threatEventsHash: string | null = null;
   // Batching of deckOverlay.setProps + triggerRepaint via requestAnimationFrame
   private pendingOverlayUpdate = false;
   // Throttle for cluster hover leaves fetching (~100ms)
@@ -905,9 +881,6 @@ export class DeckGLMap {
     // Military
     this.map.addSource(SRC_MILITARY_ZONES, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_MILITARY_BASES, { type: 'geojson', data: emptyFC() });
-    this.map.addSource(SRC_MILITARY_FLIGHTS, { type: 'geojson', data: emptyFC() });
-    this.map.addSource(SRC_MILITARY_FLIGHT_TRAILS, { type: 'geojson', data: emptyFC() });
-    this.map.addSource(SRC_MILITARY_SHIPS, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_MILITARY_SHIPS_HIGHLIGHT, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_MILITARY_SHIPS_SELECTED, { type: 'geojson', data: emptyFC() });
     // Souveraineté (spec 2026-10-04 souveraineté § 2) : aéronefs, urgences, Marine nationale, ouvrages OSM, navires près d'un câble.
@@ -2649,102 +2622,6 @@ export class DeckGLMap {
       },
     });
 
-    // ─── Military Flight Trails — lignes de trajectoire ───
-    this.map.addLayer({
-      id: LYR_MILITARY_FLIGHT_TRAILS,
-      type: 'line',
-      source: SRC_MILITARY_FLIGHT_TRAILS,
-      layout: {
-        'line-join': 'round',
-        'line-cap': 'round',
-      },
-      paint: {
-        'line-color': [
-          'match', ['get', 'aircraftType'],
-          'fighter', '#ff3b30',
-          'transport', '#4a9eff',
-          'tanker', '#ff9500',
-          'awacs', '#a855f7',
-          'patrol', '#00d4c8',
-          'helicopter', '#22c55e',
-          'drone', '#ff6b9d',
-          'trainer', '#ffcc00',
-          'liaison', '#9898a8',
-          '#9898a8'  // unknown
-        ],
-        'line-width': 2,
-        'line-opacity': 0.6,
-      },
-    });
-
-    // ─── Military Flights — icône par TYPE d'avion, orientée par cap ───
-    this.map.addLayer({
-      id: LYR_MILITARY_FLIGHTS,
-      type: 'symbol',
-      source: SRC_MILITARY_FLIGHTS,
-      layout: {
-        'icon-image': [
-          'case',
-          // Emergency squawk → red pulsing icon
-          ['==', ['get', 'squawkSeverity'], 'critical'], 'mil-emergency',
-          // Otherwise, match by aircraft type
-          ['match', ['get', 'aircraftType'],
-            'fighter', 'mil-type-fighter',
-            'transport', 'mil-type-transport',
-            'tanker', 'mil-type-tanker',
-            'awacs', 'mil-type-awacs',
-            'patrol', 'mil-type-patrol',
-            'helicopter', 'mil-type-helicopter',
-            'drone', 'mil-type-drone',
-            'trainer', 'mil-type-trainer',
-            'liaison', 'mil-type-liaison',
-            'mil-type-unknown'
-          ]
-        ],
-        'icon-size': ['interpolate', ['linear'], ['zoom'], 4, 0.30, 8, 0.40, 12, 0.55],
-        'icon-rotate': ['get', 'heading'],
-        'icon-rotation-alignment': 'map',
-        'icon-allow-overlap': true,
-        'icon-ignore-placement': true,
-      },
-      paint: {},
-    });
-    this.map.addLayer({
-      id: LYR_MILITARY_FLIGHTS_LABEL,
-      type: 'symbol',
-      source: SRC_MILITARY_FLIGHTS,
-      minzoom: 7,
-      layout: {
-        'text-field': ['concat',
-          ['get', 'callsign'],
-          '\n',
-          ['case', ['>', ['get', 'altitude'], 0],
-            ['concat', 'FL', ['to-string', ['round', ['/', ['get', 'altitude'], 100]]]],
-            'Sol'
-          ]
-        ],
-        'text-size': 10,
-        'text-offset': [0, 2.0],
-        'text-anchor': 'top',
-        'text-allow-overlap': false,
-        'text-font': ['Open Sans Semibold'],
-      },
-      paint: {
-        'text-color': [
-          'match', ['get', 'operator'],
-          'armee-air', '#4a9eff',
-          'marine', '#00d4c8',
-          'gendarmerie', '#a855f7',
-          'alat', '#22c55e',
-          'securite-civile', '#ff6b35',
-          'douanes', '#eab308',
-          '#ffcc00'
-        ],
-        'text-halo-color': '#000000',
-        'text-halo-width': 1.5,
-      },
-    });
-
     // ─── Global AIS Traffic (civils/étrangers) ───
     // NOW RENDERED VIA DECK.GL TextLayer (see getDeckLayers())
     // Commented out MapLibre symbol layer:
@@ -2777,20 +2654,8 @@ export class DeckGLMap {
     });
     */
 
-    // ─── Military Ships (Marine Nationale) — ⚓ SVG ───
-    this.map.addLayer({
-      id: LYR_MILITARY_SHIPS,
-      type: 'symbol',
-      source: SRC_MILITARY_SHIPS,
-      layout: {
-        'icon-image': 'mil-ship',
-        'icon-size': ['interpolate', ['linear'], ['zoom'], 4, 0.28, 8, 0.38, 12, 0.5],
-        'icon-allow-overlap': true,
-        'icon-ignore-placement': true,
-      },
-      paint: {},
-    });
-
+    // Marine nationale : dessinée par la couche Souveraineté (SRC_SOV_NAVY, updateNavyLayer) ; restent la sélection et la surbrillance
+    // d'un bâtiment, partagées avec le Trafic maritime.
     this.map.addLayer({
       id: LYR_MILITARY_SHIPS_SELECTED,
       type: 'circle',
@@ -2813,27 +2678,6 @@ export class DeckGLMap {
         'circle-stroke-width': 2.5,
         'circle-stroke-color': '#ffffff',
         'circle-opacity': 0.95,
-      },
-    });
-
-    // ─── Military Ships label ───
-    this.map.addLayer({
-      id: `${LYR_MILITARY_SHIPS}-label`,
-      type: 'symbol',
-      source: SRC_MILITARY_SHIPS,
-      minzoom: 8,
-      layout: {
-        'text-field': ['concat', ['get', 'name'], ['case', ['has', 'type'], ['concat', '\n', ['get', 'type']], '']],
-        'text-size': 10,
-        'text-offset': [0, 2.0],
-        'text-anchor': 'top',
-        'text-allow-overlap': false,
-        'text-font': ['Open Sans Semibold'],
-      },
-      paint: {
-        'text-color': '#00d4c8',
-        'text-halo-color': '#000000',
-        'text-halo-width': 2,
       },
     });
 
@@ -4694,77 +4538,9 @@ export class DeckGLMap {
       this.onMilitaryBaseClick(base, pt.x, pt.y);
     });
 
-    // ─── Military Flights interactions ───
-    this.map.on('mouseenter', LYR_MILITARY_FLIGHTS, (e) => {
-      if (!this.map) return;
-      this.map.getCanvas().style.cursor = 'pointer';
-      const feat = e.features?.[0];
-      if (!feat) return;
-      const p = feat.properties || {};
-      const altFl = p.altitude > 0 ? `FL${Math.round(p.altitude / 100)}` : 'Au sol';
-      const typeModel = p.aircraftModel
-        ? `${p.aircraftModel}`
-        : (p.aircraftType && p.aircraftType !== 'unknown' ? p.aircraftType : 'MIL');
-      this.showMilitaryTooltip(
-        e.lngLat,
-        `<strong>${p.callsign || 'N/A'}</strong> · ${typeModel}<br><span style="color:#ffcc00;font-size:11px">${altFl} · ${p.speed || 0} kts</span>`
-      );
-    });
-    this.map.on('mouseleave', LYR_MILITARY_FLIGHTS, () => {
-      if (this.map) this.map.getCanvas().style.cursor = '';
-      this.militaryTooltip?.remove();
-      this.militaryTooltip = null;
-    });
-    this.map.on('click', LYR_MILITARY_FLIGHTS, (e) => {
-      if (!this.map || !e.features || e.features.length === 0) return;
-      const feat = e.features[0];
-      const flightId = feat.properties?.id as string | undefined;
-      if (!flightId || !this.onMilitaryFlightClick) return;
-      const flight = this.militaryFlightsById.get(flightId);
-      if (!flight) return;
-      this.militaryTooltip?.remove();
-      this.militaryTooltip = null;
-      const pt = this.map.project(e.lngLat);
-      this.onMilitaryFlightClick(flight, pt.x, pt.y);
-    });
-
     // ─── Civil Air Traffic interactions ───
     // Hover events are handled directly by DeckGL's IconLayer `onHover` handler.
 
-
-    // ─── Military Ships interactions ───
-    this.map.on('mouseenter', LYR_MILITARY_SHIPS, (e) => {
-      if (!this.map) return;
-      this.map.getCanvas().style.cursor = 'pointer';
-      const feat = e.features?.[0];
-      if (!feat) return;
-      const p = feat.properties || {};
-      this.showMilitaryTooltip(
-        e.lngLat,
-        `<strong>${fmIcon('anchor')} ${p.name || 'Navire'}</strong><br><span style="color:#00d4c8;font-size:11px">${p.type || 'Marine'}</span>${p.speed > 0 ? `<br><span style="color:#9898a8;font-size:10px">${p.speed} nœuds</span>` : ''}`
-      );
-    });
-    this.map.on('mouseleave', LYR_MILITARY_SHIPS, () => {
-      if (this.map) this.map.getCanvas().style.cursor = '';
-      this.militaryTooltip?.remove();
-      this.militaryTooltip = null;
-    });
-    this.map.on('click', LYR_MILITARY_SHIPS, (e) => {
-      if (!this.map || !e.features || e.features.length === 0) return;
-      const feat = e.features[0];
-      const shipId = feat.properties?.id as string | undefined;
-      if (!shipId) return;
-      const ship = this.militaryShipsById.get(shipId);
-      if (!ship) return;
-      this.militaryTooltip?.remove();
-      this.militaryTooltip = null;
-      const pt = this.map.project(e.lngLat);
-      if (this.onMilitaryShipClick) this.onMilitaryShipClick(ship, pt.x, pt.y);
-      if (this._onMaritimeShipClick) {
-        const full: MilitaryShip | undefined = findShipByKey(ship.id, getAllLiveTraffic(), getMilitaryShips());
-        if (full) this._onMaritimeShipClick(full, pt.x, pt.y);
-      }
-    });
 
     // ─── Câbles (Connectivité) : curseur ; infobulle et clic de initSovereigntyInteractions (câbles du Shom et d'OpenStreetMap) ───
     for (const layerId of [LYR_SUBMARINE_CABLES_HITAREA, LYR_SUBMARINE_CABLES_LANDING]) {
@@ -4787,9 +4563,6 @@ export class DeckGLMap {
       // Avions : icônes à tous les zooms ; sous le zoom 7, une animation en cours s'arrête sur les positions du dernier relevé.
       if (this.viewState.zoom < AIR_TWEEN_MIN_ZOOM && this.civilAirAnimFrame !== null) {
         this.stopCivilAirTween();
-        this.scheduleOverlayUpdate();
-      }
-      if (this.threatEventsVisible && this.threatEvents.length > 0 && this.deckOverlay) {
         this.scheduleOverlayUpdate();
       }
       this.onViewChange?.(this.viewState);
@@ -4996,86 +4769,6 @@ export class DeckGLMap {
           getIcon: this.civilAirTrafficFlights,
         },
       }),
-      new ScatterplotLayer<ThreatMapDatum>({
-        id: 'deck-threat-clusters',
-        data: this.getThreatMapData().filter((d) => d.kind === 'cluster'),
-        visible: this.threatEventsVisible,
-        opacity: 1,
-        coordinateSystem: COORDINATE_SYSTEM.LNGLAT,
-        getPosition: (d: ThreatMapDatum) => d.coordinates,
-        getRadius: (d: ThreatMapDatum) => d.kind === 'cluster' ? 15000 + Math.min(d.count, 80) * 950 : 10000,
-        getFillColor: (d: ThreatMapDatum) => this.getThreatColor(d.severity, d.kind === 'cluster' ? 210 : 200),
-        radiusMinPixels: 18,
-        radiusMaxPixels: 42,
-        stroked: true,
-        getLineColor: [186, 230, 253, 230],
-        lineWidthMinPixels: 2.5,
-        pickable: true,
-        onClick: (info) => {
-          if (!this.map || !info.object || info.object.kind !== 'cluster') return;
-          this.map.flyTo({
-            center: info.object.coordinates,
-            zoom: Math.min(info.object.expansionZoom + 0.35, 14),
-            duration: 850,
-            essential: true,
-          });
-        },
-        updateTriggers: {
-          getPosition: [this.threatEvents, this.viewState.zoom],
-          getFillColor: [this.threatEvents, this.viewState.zoom],
-          getRadius: [this.threatEvents, this.viewState.zoom],
-        },
-      }),
-      new TextLayer<ThreatMapDatum>({
-        id: 'deck-threat-cluster-count',
-        data: this.getThreatMapData().filter((d) => d.kind === 'cluster'),
-        visible: this.threatEventsVisible,
-        coordinateSystem: COORDINATE_SYSTEM.LNGLAT,
-        getPosition: (d: ThreatMapDatum) => d.coordinates,
-        getText: (d: ThreatMapDatum) => d.kind === 'cluster' ? String(d.count) : '',
-        getSize: 14,
-        getColor: [255, 255, 255, 255],
-        getTextAnchor: 'middle',
-        getAlignmentBaseline: 'center',
-        fontWeight: 800,
-        pickable: false,
-        updateTriggers: {
-          getPosition: [this.threatEvents, this.viewState.zoom],
-          getText: [this.threatEvents, this.viewState.zoom],
-        },
-      }),
-      new ScatterplotLayer<ThreatMapDatum>({
-        id: 'deck-threat-events',
-        data: this.getThreatMapData().filter((d) => d.kind === 'event'),
-        visible: this.threatEventsVisible,
-        opacity: 1,
-        coordinateSystem: COORDINATE_SYSTEM.LNGLAT,
-        getPosition: (d: ThreatMapDatum) => d.coordinates,
-        getRadius: (d: ThreatMapDatum) => {
-          if (d.severity === 'critical') return 30000;
-          if (d.severity === 'high') return 20000;
-          if (d.severity === 'medium') return 12000;
-          return 8000;
-        },
-        getFillColor: (d: ThreatMapDatum) => this.getThreatColor(d.severity, 205),
-        radiusMinPixels: 8,
-        radiusMaxPixels: 24,
-        stroked: true,
-        getLineColor: [255, 255, 255, 190],
-        lineWidthMinPixels: 2,
-        pickable: true,
-        onClick: (info) => {
-          if (!this.map || !info.object || info.object.kind !== 'event') return;
-          const evt = info.object.event;
-          const pt = this.map.project(info.object.coordinates);
-          this.onThreatEventClick?.(evt, pt.x, pt.y);
-        },
-        updateTriggers: {
-          getPosition: [this.threatEvents, this.viewState.zoom],
-          getFillColor: [this.threatEvents, this.viewState.zoom],
-          getRadius: [this.threatEvents, this.viewState.zoom],
-        },
-      }),
       new ScatterplotLayer<EventMapPoint>({
         id: 'deck-news-events',
         data: this.eventPoints,
@@ -5168,177 +4861,6 @@ export class DeckGLMap {
       this.deckOverlay.setProps({ layers: this.buildAisLayers() });
       this.map?.triggerRepaint();
     });
-  }
-
-  private getThreatSeverityRank(severity: ThreatEvent['severity']): number {
-    if (severity === 'critical') return 4;
-    if (severity === 'high') return 3;
-    if (severity === 'medium') return 2;
-    return 1;
-  }
-
-  private getThreatSeverityFromRank(rank: number): ThreatEvent['severity'] {
-    if (rank >= 4) return 'critical';
-    if (rank >= 3) return 'high';
-    if (rank >= 2) return 'medium';
-    return 'low';
-  }
-
-  private getThreatColor(severity: ThreatEvent['severity'], alpha: number): [number, number, number, number] {
-    if (severity === 'critical') return [239, 68, 68, alpha];
-    if (severity === 'high') return [249, 115, 22, alpha];
-    if (severity === 'medium') return [245, 158, 11, alpha];
-    return [59, 130, 246, alpha];
-  }
-
-  private offsetThreatCoordinate(
-    coordinates: [number, number],
-    precision: ThreatEvent['location']['precision'],
-    index: number,
-    groupSize: number,
-  ): [number, number] {
-    if (groupSize <= 1) return coordinates;
-
-    const baseKmByPrecision: Record<ThreatEvent['location']['precision'], number> = {
-      hq: 0.45,
-      city: 0.65,
-      region: 1.4,
-      country: 2.2,
-      unknown: 1.8,
-    };
-    const ringIndex = Math.floor(index / 6);
-    const slotIndex = index % 6;
-    const ringSize = Math.min(6, groupSize - ringIndex * 6);
-    const angle = (Math.PI * 2 * slotIndex) / Math.max(1, ringSize);
-    const radiusKm = baseKmByPrecision[precision] * (1 + ringIndex * 0.9);
-    const latRad = coordinates[1] * (Math.PI / 180);
-    const deltaLat = (radiusKm / 111.32) * Math.sin(angle);
-    const deltaLng = (radiusKm / (111.32 * Math.max(0.25, Math.cos(latRad)))) * Math.cos(angle);
-    return [coordinates[0] + deltaLng, coordinates[1] + deltaLat];
-  }
-
-  private buildThreatDisplayCoordinates(): Map<string, [number, number]> {
-    const grouped = new Map<string, ThreatEvent[]>();
-    for (const event of this.threatEvents) {
-      const [lng, lat] = event.location.coordinates;
-      const key = `${lng.toFixed(6)},${lat.toFixed(6)}`;
-      const existing = grouped.get(key) ?? [];
-      existing.push(event);
-      grouped.set(key, existing);
-    }
-
-    const displayCoordinates = new Map<string, [number, number]>();
-    for (const group of grouped.values()) {
-      if (group.length === 1) {
-        displayCoordinates.set(group[0].id, group[0].location.coordinates);
-        continue;
-      }
-
-      const sorted = [...group].sort((a, b) => a.id.localeCompare(b.id));
-      sorted.forEach((event, index) => {
-        displayCoordinates.set(
-          event.id,
-          this.offsetThreatCoordinate(event.location.coordinates, event.location.precision, index, sorted.length),
-        );
-      });
-    }
-
-    return displayCoordinates;
-  }
-
-  private rebuildThreatClusterIndex(): void {
-    const features = this.threatEvents.map((event) => ({
-      type: 'Feature' as const,
-      geometry: {
-        type: 'Point' as const,
-        coordinates: event.location.coordinates,
-      },
-      properties: {
-        event,
-        severityRank: this.getThreatSeverityRank(event.severity),
-      },
-    }));
-
-    this.threatClusterIndex = new Supercluster({
-      radius: 58,
-      maxZoom: 11,
-      minZoom: 0,
-      map: (props) => ({ maxSeverityRank: props.severityRank }),
-      reduce: (accumulated, props) => {
-        accumulated.maxSeverityRank = Math.max(
-          accumulated.maxSeverityRank || 0,
-          props.maxSeverityRank || 0,
-        );
-      },
-    });
-    this.threatClusterIndex.load(features);
-  }
-
-  /** Invalidate the memoized threat map data (call whenever threat events change). */
-  private invalidateThreatMapDataCache(): void {
-    this.threatMapDataCache = null;
-    this.threatMapDataCacheKey = null;
-  }
-
-  private getThreatMapData(): ThreatMapDatum[] {
-    if (!this.map || !this.threatClusterIndex) {
-      const displayCoordinates = this.buildThreatDisplayCoordinates();
-      return this.threatEvents.map((event) => ({
-        kind: 'event',
-        event,
-        coordinates: displayCoordinates.get(event.id) ?? event.location.coordinates,
-        severity: event.severity,
-      }));
-    }
-
-    const bounds = this.map.getBounds();
-    const zoom = Math.floor(this.map.getZoom());
-
-    // Memoization: the result only depends on the threat events (cache invalidated in
-    // updateThreatEvents), the integer zoom level and the visible bounds.
-    const cacheKey = [
-      zoom,
-      bounds.getWest().toFixed(3),
-      bounds.getSouth().toFixed(3),
-      bounds.getEast().toFixed(3),
-      bounds.getNorth().toFixed(3),
-    ].join('|');
-    if (this.threatMapDataCache && this.threatMapDataCacheKey === cacheKey) {
-      return this.threatMapDataCache;
-    }
-
-    const displayCoordinates = this.buildThreatDisplayCoordinates();
-    const clusters = this.threatClusterIndex.getClusters(
-      [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
-      zoom,
-    );
-
-    const data = clusters.map((feature): ThreatMapDatum => {
-      const coordinates = feature.geometry.coordinates as [number, number];
-      if (feature.properties?.cluster) {
-        const clusterId = Number(feature.properties.cluster_id);
-        return {
-          kind: 'cluster',
-          id: clusterId,
-          coordinates,
-          count: Number(feature.properties.point_count || 0),
-          severity: this.getThreatSeverityFromRank(Number(feature.properties.maxSeverityRank || 1)),
-          expansionZoom: this.threatClusterIndex?.getClusterExpansionZoom(clusterId) ?? 12,
-        };
-      }
-
-      const event = feature.properties.event as ThreatEvent;
-      return {
-        kind: 'event',
-        event,
-        coordinates: displayCoordinates.get(event.id) ?? event.location.coordinates,
-        severity: event.severity,
-      };
-    });
-
-    this.threatMapDataCache = data;
-    this.threatMapDataCacheKey = cacheKey;
-    return data;
   }
 
   private normalizeFlightHeading(heading?: number): number {
@@ -6922,30 +6444,6 @@ export class DeckGLMap {
 
   setOnSatelliteView(handler: (request: SatelliteViewRequest) => void): void {
     this.onSatelliteView = handler;
-  }
-
-  setOnThreatEventClick(handler: (event: ThreatEvent, x: number, y: number) => void): void {
-    this.onThreatEventClick = handler;
-  }
-
-  /** Update the threat events data and trigger a map re-render. */
-  updateThreatEvents(events: ThreatEvent[]): void {
-    // Cheap diff: skip the Supercluster rebuild + overlay update when the
-    // event set is identical (same ids / severities / dates / coordinates).
-    const hash = events
-      .map((e) => `${e.id}:${e.date}:${e.severity}:${e.location.coordinates[0]},${e.location.coordinates[1]}`)
-      .sort()
-      .join('|');
-    if (hash === this.threatEventsHash) {
-      this.threatEvents = events;
-      return;
-    }
-    this.threatEventsHash = hash;
-
-    this.threatEvents = events;
-    this.invalidateThreatMapDataCache();
-    this.rebuildThreatClusterIndex();
-    this.scheduleOverlayUpdate();
   }
 
   project(longitude: number, latitude: number): { x: number; y: number } | null {
@@ -9111,7 +8609,7 @@ export class DeckGLMap {
     const ids = [
       // Surfaces départementales exclues (comme la vigilance et la météo des forêts) : elles couvrent la carte et bloqueraient le profil radar ; séismes et marégraphes restent.
       ...ENV_HOVER_LAYERS.filter((id) => id !== LYR_WEATHER_FILL && id !== LYR_FOREST_DANGER_FILL && id !== LYR_DROUGHT_FILL && id !== LYR_AIR_FILL), LYR_WEATHER_ICONS,
-      LYR_POINTS, LYR_CLUSTER_CIRCLE, LYR_TELECOM_PTS, LYR_MILITARY_BASES_CIRCLE, LYR_MILITARY_FLIGHTS, LYR_MILITARY_SHIPS, LYR_HOSPITALS,
+      LYR_POINTS, LYR_CLUSTER_CIRCLE, LYR_TELECOM_PTS, LYR_MILITARY_BASES_CIRCLE, LYR_HOSPITALS,
       ...Object.values(TRAFFIC_LAYER_KEYS).flat(), ...SOV_HOVER_LAYERS,
     ].filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
     return ids.length > 0 && map.queryRenderedFeatures(point, { layers: ids }).length > 0;
@@ -10100,89 +9598,6 @@ export class DeckGLMap {
     });
   }
 
-  updateMilitaryBases(bases: MilitaryBase[]): void {
-    if (!this.map) return;
-    // Populate lookup table
-    this.militaryBasesById.clear();
-    for (const b of bases) this.militaryBasesById.set(b.id, b);
-
-    const src = this.map.getSource(SRC_MILITARY_BASES) as maplibregl.GeoJSONSource | undefined;
-    if (!src) return;
-    src.setData({
-      type: 'FeatureCollection',
-      features: bases.map((b) => ({
-        type: 'Feature' as const,
-        geometry: { type: 'Point', coordinates: b.coordinates },
-        properties: {
-          id: b.id,
-          name: b.name,
-          type: b.type,
-          description: b.description || '',
-        },
-      })),
-    });
-  }
-
-  updateMilitaryFlights(flights: MilitaryFlight[]): void {
-    if (!this.map) return;
-    // Populate lookup table
-    this.militaryFlightsById.clear();
-    for (const f of flights) this.militaryFlightsById.set(f.id, f);
-
-    this._renderMilitaryFlightsGeoJSON(flights);
-
-    // Update flight trails layer (only on real API fetch, not on interpolation ticks)
-    this.updateMilitaryFlightTrails(flights);
-
-    this._startFlightInterpolation();
-  }
-
-  private _renderMilitaryFlightsGeoJSON(flights: MilitaryFlight[]): void {
-    if (!this.map) return;
-    const src = this.map.getSource(SRC_MILITARY_FLIGHTS) as maplibregl.GeoJSONSource | undefined;
-    if (!src) return;
-    src.setData({
-      type: 'FeatureCollection',
-      features: flights.map((f) => ({
-        type: 'Feature' as const,
-        geometry: { type: 'Point', coordinates: [f.longitude, f.latitude] },
-        properties: {
-          id: f.id,
-          callsign: f.callsign,
-          country: f.country,
-          altitude: f.altitude,
-          velocity: f.velocity,
-          speed: f.speed,
-          heading: f.heading,
-          hexCode: f.hexCode || f.id,
-          aircraftType: f.aircraftType || 'unknown',
-          aircraftModel: f.aircraftModel || '',
-          operator: f.operator || 'unknown',
-          operatorLabel: f.operatorLabel || '',
-          confidence: f.confidence || 'low',
-          squawk: f.squawk || '',
-          squawkSeverity: f.squawkAlert?.severity || '',
-          squawkDescription: f.squawkAlert?.description || '',
-          isAllied: f.isAllied || false,
-          branch: f.branch || '',
-        },
-      })),
-    });
-  }
-
-  private _startFlightInterpolation(): void {
-    if (this._flightInterpolTick) return; // already running
-    this._flightInterpolTick = setInterval(() => {
-      if (!this.map || this.militaryFlightsById.size === 0) return;
-      const now = Date.now() / 1000;
-      const interpolated = Array.from(this.militaryFlightsById.values()).map(f => {
-        const pos = interpolateFlightPosition(f, now);
-        return { ...f, latitude: pos.latitude, longitude: pos.longitude };
-      });
-      this._renderMilitaryFlightsGeoJSON(interpolated);
-    }, 1_000);
-  }
-
   updateAirTraffic(flights: AirTrafficFlight[]): void {
     if (!this.map) return;
 
@@ -10191,7 +9606,7 @@ export class DeckGLMap {
     for (const flight of flights) this.airTrafficFlightsById.set(flight.id, flight);
 
     // OSINT: Filter out military flights for the civil traffic layer
-    // Military flights are displayed via the DÉFENSE layer (military-flights.ts → /v2/mil)
+    // Aéronefs militaires : couche Défense (adsb.lol, collecte du serveur, deckgl/sovereignty-map.ts)
     const newCivil = flights.filter(f => {
       const cs = f.callsign?.trim() ?? '';
       return !identifyFrenchCallsign(cs) && !identifyAlliedCallsign(cs);
@@ -10291,47 +9706,8 @@ export class DeckGLMap {
     this.civilAirTweenProgress = 1;
   }
 
-  private updateMilitaryFlightTrails(flights: MilitaryFlight[]): void {
-    if (!this.map) return;
-    const src = this.map.getSource(SRC_MILITARY_FLIGHT_TRAILS) as maplibregl.GeoJSONSource | undefined;
-    if (!src) return;
-
-    // Only include flights with trails of 2+ points
-    const trailFeatures = flights
-      .filter(f => f.trail && f.trail.length >= 2)
-      .map(f => ({
-        type: 'Feature' as const,
-        geometry: {
-          type: 'LineString' as const,
-          coordinates: f.trail!,
-        },
-        properties: {
-          id: f.id,
-          aircraftType: f.aircraftType || 'unknown',
-          operator: f.operator || 'unknown',
-        },
-      }));
-
-    src.setData({
-      type: 'FeatureCollection',
-      features: trailFeatures,
-    });
-  }
-
-  setOnMilitaryFlightClick(handler: (flight: MilitaryFlight, x: number, y: number) => void): void {
-    this.onMilitaryFlightClick = handler;
-  }
-
   setOnMilitaryBaseClick(handler: (base: MilitaryBase, x: number, y: number) => void): void {
     this.onMilitaryBaseClick = handler;
-  }
-
-  setOnMilitaryShipClick(handler: (ship: { id: string; name: string; type: string; role: string; mmsi?: string; lat: number; lon: number; speed?: number; heading?: number; port?: string; isLive?: boolean }, x: number, y: number) => void): void {
-    this.onMilitaryShipClick = handler;
-  }
-
-  setOnMaritimeShipClick(cb: (ship: MilitaryShip, x: number, y: number) => void): void {
-    this._onMaritimeShipClick = cb;
   }
 
   setHighlightedShip(mmsi: string | null): void {
@@ -10427,35 +9803,6 @@ export class DeckGLMap {
       new maplibregl.LngLat(Number(ship.lon), Number(ship.lat)),
       this.getAisTooltipHtml(ship)
     );
-  }
-
-  updateMilitaryShips(ships: Array<{ id: string; name: string; type: string; role: string; mmsi?: string; lat: number; lon: number; speed?: number; heading?: number; port?: string; isLive?: boolean }>): void {
-    if (!this.map) return;
-    const src = this.map.getSource(SRC_MILITARY_SHIPS) as maplibregl.GeoJSONSource | undefined;
-    if (!src) return;
-    // Update lookup table
-    this.militaryShipsById.clear();
-    for (const s of ships) this.militaryShipsById.set(s.id, s);
-    src.setData({
-      type: 'FeatureCollection',
-      features: ships.map(s => ({
-        type: 'Feature' as const,
-        geometry: { type: 'Point', coordinates: [s.lon, s.lat] },
-        properties: {
-          id: s.id,
-          name: s.name,
-          type: s.type,
-          role: s.role ?? '',
-          speed: s.speed ?? 0,
-          heading: s.heading ?? 0,
-          mmsi: s.mmsi ?? '',
-          port: s.port ?? '',
-          isLive: s.isLive ?? false,
-        },
-      })),
-    });
-    this.updateMilitaryShipMarkerSource(SRC_MILITARY_SHIPS_HIGHLIGHT, this._highlightedMmsi);
-    this.updateMilitaryShipMarkerSource(SRC_MILITARY_SHIPS_SELECTED, this._selectedShipMmsi);
   }
 
   /**
@@ -10791,14 +10138,9 @@ export class DeckGLMap {
     this.setVis(LYR_METRO_LOAD_LABEL, vis(layers.metroLoad));
 
     // Military layers : couches Souveraineté de deckgl/sovereignty-map.ts (aéronefs, urgences, Marine nationale, sites, zones) ; option des
-    // ouvrages OpenStreetMap éteinte par défaut. Les couches anciennes qui suivent ne sont plus nourries (vols : retirées à A17).
+    // ouvrages OpenStreetMap éteinte par défaut. Sélection et surbrillance d'un bâtiment : partagées avec le Trafic maritime.
     for (const id of SOV_LAYER_KEYS.military) this.setVis(id, vis(layers.military));
     for (const id of SOV_OPTION_LAYERS.osmWorks) this.setVis(id, vis(layers.military && this.osmWorksVisible));
-    this.setVis(LYR_MILITARY_FLIGHT_TRAILS, vis(layers.military));
-    this.setVis(LYR_MILITARY_FLIGHTS, vis(layers.military));
-    this.setVis(LYR_MILITARY_FLIGHTS_LABEL, vis(layers.military));
-    this.setVis(LYR_MILITARY_SHIPS, vis(layers.military));
-    this.setVis(`${LYR_MILITARY_SHIPS}-label`, vis(layers.military));
     this.setVis(LYR_MILITARY_SHIPS_HIGHLIGHT, vis(layers.trafficMaritime || layers.military));
     this.setVis(LYR_MILITARY_SHIPS_SELECTED, vis(layers.trafficMaritime || layers.military));
     // AIS traffic layer (Deck.gl IconLayer)
@@ -10838,13 +10180,6 @@ export class DeckGLMap {
     this.setVis(LYR_DC_HIGHLIGHT, vis(layers.outagesCloud));
     this.setVis(LYR_IXP_CIRCLE, vis(layers.outagesCloud));
     this.setVis(LYR_IXP_HIGHLIGHT, vis(layers.outagesCloud));
-
-    // Threat map — couche Deck.gl ScatterplotLayer
-    const threatMapEnabled = layers.threatMap ?? false;
-    if (this.threatEventsVisible !== threatMapEnabled) {
-      this.threatEventsVisible = threatMapEnabled;
-      this.scheduleOverlayUpdate();
-    }
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -10957,9 +10292,6 @@ export class DeckGLMap {
 
     // Cleanup civil air traffic tween animation
     this.stopCivilAirTween();
-
-    // Cleanup flight interpolation interval
-    if (this._flightInterpolTick) { clearInterval(this._flightInterpolTick); this._flightInterpolTick = null; }
     this.stopSentinelSceneBlink();
 
     this.revokeRadar2dObjectUrl(this.radar2dObjectUrl);

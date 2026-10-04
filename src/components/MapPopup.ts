@@ -10,13 +10,12 @@
  * Les deux modes sont interactifs : le popup reste visible quand on le survole.
  */
 
-import type { NewsItem, MilitaryFlight, MilitaryBase, NuclearSiteStats, ThreatEvent } from '../types/index.ts';
-import { FRENCH_OPERATOR_LABELS, FRENCH_OPERATOR_COLORS } from '../config/military.ts';
+import type { NewsItem, MilitaryBase, NuclearSiteStats } from '../types/index.ts';
 import { fmIcon } from './shared/icons.ts';
 import type Hls from 'hls.js';
 
 /** Popup display mode */
-type PopupMode = 'none' | 'item' | 'cluster' | 'militaryFlight' | 'militaryBase' | 'militaryShip' | 'nuclearSite' | 'threatEvent';
+type PopupMode = 'none' | 'item' | 'cluster' | 'militaryBase' | 'militaryShip' | 'nuclearSite';
 
 /** Escape HTML to prevent XSS */
 function escapeHtml(str: string): string {
@@ -280,38 +279,6 @@ export class MapPopup {
   }
 
   /**
-   * Show popup for a military flight at screen coordinates.
-   * Uses a fixed panel with ESC / outside-click to close.
-   */
-  showMilitaryFlight(flight: MilitaryFlight, x: number, y: number): void {
-    this.hideNow();  // close any existing popup
-    this.cancelHideTimeout();
-    this.ensureAttached();
-    this.mode = 'militaryFlight';
-
-    this.element.innerHTML = this.renderMilitaryFlightPopup(flight);
-    this.element.classList.add('wm-style');
-    this.element.style.cursor = 'default';
-    this.positionPopup(x, y, 340, 320);
-    this.element.style.display = 'block';
-    this.visible = true;
-
-    // Close button
-    this.element.querySelector('.wm-popup-close')?.addEventListener('click', () => this.hideNow());
-
-    // ESC key
-    this.removeEscAndOutside();
-    this.escKeyHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); this.hideNow(); } };
-    this.outsideClickHandler = (e: MouseEvent) => {
-      if (!this.element.contains(e.target as Node)) this.hideNow();
-    };
-    setTimeout(() => {
-      document.addEventListener('keydown', this.escKeyHandler!);
-      document.addEventListener('mousedown', this.outsideClickHandler!);
-    }, 0);
-  }
-
-  /**
    * Show popup for a military base at screen coordinates.
    */
   showMilitaryBase(base: MilitaryBase, x: number, y: number): void {
@@ -351,78 +318,10 @@ export class MapPopup {
     }
   }
 
-  private renderMilitaryFlightPopup(flight: MilitaryFlight): string {
-    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    const callsign = esc(flight.callsign || 'INCONNU');
-    const operator = flight.operator ?? 'unknown';
-    const operatorLabel = esc(flight.operatorLabel ?? FRENCH_OPERATOR_LABELS[operator] ?? 'INCONNU');
-    const operatorColor = FRENCH_OPERATOR_COLORS[operator] ?? '#9898a8';
-
-    const typeShortLabels: Record<string, string> = {
-      fighter: 'CHASSE', transport: 'TRANSPORT', tanker: 'RAVITAILLEUR',
-      awacs: 'AWACS', patrol: 'PATROUILLE MAR.', helicopter: 'HÉLICOPTÈRE',
-      trainer: 'ENTRAÎNEMENT', drone: 'DRONE', liaison: 'LIAISON', unknown: 'MILITAIRE',
-    };
-    const aircraftType = flight.aircraftType ?? 'unknown';
-    const typeLabel = typeShortLabels[aircraftType] ?? 'MILITAIRE';
-    const aircraftModel = flight.aircraftModel ? esc(flight.aircraftModel) : 'n.d.';
-    const hexCode = esc(flight.hexCode ?? flight.id.toUpperCase());
-    const registration = flight.registration ? esc(flight.registration) : 'n.d.';
-    const altFt = flight.altitude > 0
-      ? `FL${Math.round(flight.altitude / 100)}`
-      : 'SOL';
-    const altDetail = flight.altitude > 0 ? `${flight.altitude.toLocaleString()} ft` : '';
-    const speedKts = flight.speed > 0 ? `${flight.speed} kts`
-      : (flight.velocity > 0 ? `${Math.round(flight.velocity * 1.94384)} kts` : 'n.d.');
-    const heading = `${Math.round(flight.heading)}°`;
-    const squawk = flight.squawk ? esc(flight.squawk) : 'n.d.';
-    const confidence = flight.confidence ?? 'low';
-    const confidenceLabel = confidence === 'high' ? 'IDENTIFIÉ' : confidence === 'medium' ? 'PROBABLE' : 'INCONNU';
-
-    return `
-      <div class="wm-popup-header">
-        <div class="wm-popup-callsign">${callsign}</div>
-        <div class="wm-popup-badges">
-          <span class="wm-badge" style="background:${operatorColor}20;color:${operatorColor};border-color:${operatorColor}60">${operatorLabel}</span>
-          <span class="wm-badge wm-badge-type">${typeLabel}</span>
-        </div>
-        <button class="wm-popup-close">×</button>
-      </div>
-      <div class="wm-popup-subtitle">${aircraftModel}</div>
-      <div class="wm-popup-grid">
-        <div class="wm-field">
-          <span class="wm-field-label">ALTITUDE</span>
-          <span class="wm-field-value">${altFt}${altDetail ? `<small> ${altDetail}</small>` : ''}</span>
-        </div>
-        <div class="wm-field">
-          <span class="wm-field-label">VITESSE</span>
-          <span class="wm-field-value">${speedKts}</span>
-        </div>
-        <div class="wm-field">
-          <span class="wm-field-label">CAP</span>
-          <span class="wm-field-value">${heading}</span>
-        </div>
-        <div class="wm-field">
-          <span class="wm-field-label">CONFIANCE</span>
-          <span class="wm-field-value">${confidenceLabel}</span>
-        </div>
-        <div class="wm-field">
-          <span class="wm-field-label">ICAO HEX</span>
-          <span class="wm-field-value wm-mono">${hexCode}</span>
-        </div>
-        <div class="wm-field">
-          <span class="wm-field-label">IMMATRIC.</span>
-          <span class="wm-field-value wm-mono">${registration}</span>
-        </div>
-        <div class="wm-field">
-          <span class="wm-field-label">SQUAWK</span>
-          <span class="wm-field-value wm-mono">${squawk}</span>
-        </div>
-      </div>
-      <div class="wm-popup-footer">adsb.fi · airplanes.live · hexdb.io</div>
-    `;
-  }
-
+  /**
+   * Fiche d'un site de défense (amendement 7, O13) : nom et catégorie seulement, comme l'infobulle de la carte ; ni description non
+   * sourcée, ni unités, ni aéronefs, ni statut (aucun lien officiel n'est tenu par site).
+   */
   private renderMilitaryBasePopup(base: MilitaryBase): string {
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     const typeColors: Record<string, string> = {
@@ -430,47 +329,20 @@ export class MapPopup {
     };
     const typeShortLabels: Record<string, string> = {
       air: 'ARM\u00c9E DE L\'AIR', navy: 'MARINE NATIONALE', army: 'ARM\u00c9E DE TERRE', joint: 'INTERARM\u00c9ES',
+      fortification: 'FORTIFICATION', other: 'AUTRE',
     };
     const typeColor = typeColors[base.type] ?? '#9898a8';
     const typeLabel = typeShortLabels[base.type] ?? base.type.toUpperCase();
-
-    // Extended fields from MilitaryInstallation (cast, may be undefined)
-    const ext = base as unknown as Record<string, unknown>;
-
-    const icao = ext['icao'] as string | undefined;
-    const units = ext['units'] as string[] | undefined;
-    const aircraft = ext['aircraft'] as string[] | undefined;
-    const region = ext['region'] as string | undefined;
-    const status = ext['status'] as string | undefined;
-    const osmType = ext['osmType'] as string | undefined;
-    const isOsm = (base.id ?? '').startsWith('osm-');
-
-    const statusBadge = (status && status !== 'active')
-      ? `<span class="wm-badge" style="background:#ff390020;color:#ff3900;border-color:#ff390060">${status === 'closed' ? '&#9940; FERM\u00c9E' : '&#9888; R\u00c9DUITE'}</span>`
-      : '';
 
     return `
       <div class="wm-popup-header">
         <div class="wm-popup-callsign">${esc(base.name)}</div>
         <div class="wm-popup-badges">
           <span class="wm-badge" style="background:${typeColor}20;color:${typeColor};border-color:${typeColor}60">&#9650; ${typeLabel}</span>
-          <span class="wm-badge" style="background:#ffffff15;color:#ccc;border-color:#ffffff30">FRANCE</span>
-          ${statusBadge}
         </div>
         <button class="wm-popup-close">&times;</button>
       </div>
-      ${base.description ? `<div class="wm-popup-subtitle">${esc(base.description)}</div>` : ''}
-      <div class="wm-popup-grid">
-        ${region ? `<div class="wm-field"><span class="wm-field-label">R\u00c9GION</span><span class="wm-field-value">${esc(region)}</span></div>` : ''}
-        ${icao ? `<div class="wm-field"><span class="wm-field-label">CODE ICAO</span><span class="wm-field-value wm-mono">${esc(icao)}</span></div>` : ''}
-        <div class="wm-field">
-          <span class="wm-field-label">COORDONN\u00c9ES</span>
-          <span class="wm-field-value wm-mono">${base.coordinates[1].toFixed(4)}\u00b0, ${base.coordinates[0].toFixed(4)}\u00b0</span>
-        </div>
-        ${(units && units.length > 0) ? `<div class="wm-field" style="grid-column:span 2"><span class="wm-field-label">UNIT\u00c9S STATION\u00c9ES</span><span class="wm-field-value">${units.map(u => esc(u)).join(' &#183; ')}</span></div>` : ''}
-        ${(aircraft && aircraft.length > 0) ? `<div class="wm-field" style="grid-column:span 2"><span class="wm-field-label">A\u00c9RONEFS</span><span class="wm-field-value">${aircraft.map(a => esc(a)).join(' &#183; ')}</span></div>` : ''}
-      </div>
-      <div class="wm-popup-footer">${isOsm ? 'OpenStreetMap &#183; military=' + esc(osmType ?? 'base') : 'Minist\u00e8re des Arm\u00e9es &#183; data.gouv.fr'}</div>
+      <div class="wm-popup-footer">Liste interne de sites publics, sans date par site.</div>
     `;
   }
 
@@ -703,61 +575,13 @@ export class MapPopup {
     this.element.style.top = `${top}px`;
   }
 
-  private positionPopupMeasured(x: number, y: number): void {
-    const parentRect = this.parentEl.getBoundingClientRect();
-    const margin = 12;
-    const legend = this.parentEl.querySelector<HTMLElement>('.legend-banner-container');
-    const legendHeight = legend && getComputedStyle(legend).display !== 'none'
-      ? legend.getBoundingClientRect().height + 24
-      : 18;
-
-    const sidePanel = document.querySelector<HTMLElement>('.cyber-panel-modal');
-    let usableRight = parentRect.width - margin;
-    if (sidePanel && getComputedStyle(sidePanel).display !== 'none') {
-      const panelRect = sidePanel.getBoundingClientRect();
-      const panelLeft = panelRect.left - parentRect.left;
-      if (panelLeft > parentRect.width * 0.45) {
-        usableRight = Math.min(usableRight, panelLeft - 14);
-      }
-    }
-
-    const usableBottom = parentRect.height - legendHeight;
-    const width = Math.min(this.element.offsetWidth || 360, Math.max(280, usableRight - margin));
-    const height = Math.min(this.element.offsetHeight || 430, Math.max(260, usableBottom - margin));
-    const maxHeight = Math.max(260, usableBottom - margin * 2);
-
-    this.element.style.maxHeight = `${maxHeight}px`;
-    this.element.style.overflowY = 'auto';
-
-    const candidates = [
-      { left: x + 18, top: y - 18 },
-      { left: x - width - 18, top: y - 18 },
-      { left: x - width / 2, top: y - height - 22 },
-      { left: x - width / 2, top: y + 22 },
-    ];
-
-    const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(value, max));
-    const scored = candidates.map((candidate) => {
-      const left = clamp(candidate.left, margin, Math.max(margin, usableRight - width));
-      const top = clamp(candidate.top, margin, Math.max(margin, usableBottom - height));
-      return {
-        left,
-        top,
-        score: Math.abs(left - candidate.left) + Math.abs(top - candidate.top),
-      };
-    }).sort((a, b) => a.score - b.score)[0];
-
-    this.element.style.left = `${scored.left}px`;
-    this.element.style.top = `${scored.top}px`;
-  }
-
   /**
    * Hide the popup with a small delay (prevents flicker).
    * Only works for item mode - cluster mode must use hideCluster().
    */
   hide(): void {
     // Don't hide cluster or military popups via this method
-    if (this.mode === 'cluster' || this.mode === 'militaryFlight' || this.mode === 'militaryBase' || this.mode === 'militaryShip' || this.mode === 'threatEvent') {
+    if (this.mode === 'cluster' || this.mode === 'militaryBase' || this.mode === 'militaryShip') {
       return;
     }
 
@@ -861,185 +685,4 @@ export class MapPopup {
     this.element.remove();
   }
 
-  /**
-   * Show popup for a ThreatEvent
-   */
-  showThreatEvent(event: ThreatEvent, x: number, y: number): void {
-    this.hideNow();
-    this.cancelHideTimeout();
-    this.ensureAttached();
-    this.mode = 'threatEvent';
-
-    this.element.innerHTML = this.renderThreatEventPopup(event);
-    this.element.classList.add('wm-style', 'map-popup--threat');
-    this.element.style.cursor = 'default';
-    this.element.style.width = '360px';
-    this.element.style.maxWidth = 'min(360px, calc(100vw - 28px))';
-    this.element.style.zIndex = '1200';
-    this.element.style.visibility = 'hidden';
-    this.element.style.display = 'block';
-    this.positionPopupMeasured(x, y);
-    this.element.style.visibility = 'visible';
-    this.visible = true;
-
-    this.element.querySelector('.wm-popup-close')?.addEventListener('click', () => this.hideNow());
-
-    this.removeEscAndOutside();
-    this.escKeyHandler = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); this.hideNow(); } };
-    this.outsideClickHandler = (e: MouseEvent) => {
-      if (!this.element.contains(e.target as Node)) this.hideNow();
-    };
-    setTimeout(() => {
-      document.addEventListener('keydown', this.escKeyHandler!);
-      document.addEventListener('mousedown', this.outsideClickHandler!);
-    }, 0);
-  }
-
-  private renderThreatEventPopup(event: ThreatEvent): string {
-    const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-
-    const severityColors = {
-      critical: '#ef4444',
-      high: '#f97316',
-      medium: '#f59e0b',
-      low: '#3b82f6'
-    };
-    const severityLabels = {
-      critical: 'CRITIQUE',
-      high: 'ÉLEVÉ',
-      medium: 'MOYEN',
-      low: 'FAIBLE'
-    };
-    const sColor = severityColors[event.severity];
-    const sLabel = severityLabels[event.severity];
-
-    const typeIcons = {
-      leak: `${fmIcon('droplet')} LEAK`,
-      ransomware: `${fmIcon('skull')} RANSOMWARE`,
-      exposure: `${fmIcon('lock-keyhole')} EXPOSITION`,
-      vulnerability: `${fmIcon('triangle-alert')} VULNÉRABILITÉ`
-    };
-    const typeLabel = typeIcons[event.type] || event.type.toUpperCase();
-    const precisionLabels: Record<ThreatEvent['location']['precision'], string> = {
-      hq: 'HQ / siège',
-      city: 'Ville',
-      region: 'Région',
-      country: 'Pays',
-      unknown: 'Non précisée',
-    };
-    const [lng, lat] = event.location.coordinates;
-    const addressHtml = event.location.address
-      ? `<div style="font-size:10px;color:rgba(224,242,254,0.72);margin-top:3px;line-height:1.35;">${esc(event.location.address)}</div>`
-      : '';
-    const locationHtml = `
-      <div style="background:rgba(14,165,233,0.08); border:1px solid rgba(14,165,233,0.22); border-radius:8px; padding:10px 12px; margin:12px 0; display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center;">
-        <div>
-          <div style="font-size:9px;color:rgba(186,230,253,0.68);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:3px;">Localisation</div>
-          <div style="font-size:12px;color:#e0f2fe;font-weight:700;">${fmIcon('map-pin')} ${esc(event.location.label)}</div>
-          ${addressHtml}
-          <div style="font-size:10px;color:rgba(255,255,255,0.45);margin-top:2px;">${lat.toFixed(4)}, ${lng.toFixed(4)}</div>
-        </div>
-        <span style="background:rgba(14,165,233,0.18);border:1px solid rgba(14,165,233,0.32);border-radius:999px;padding:3px 8px;color:#bae6fd;font-size:9px;font-weight:800;text-transform:uppercase;">${esc(precisionLabels[event.location.precision])}</span>
-      </div>
-    `;
-
-    const initials = event.organizationName
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0]?.toUpperCase() ?? '')
-      .join('') || 'FR';
-    const logoHtml = event.logoUrl
-      ? `<img src="${esc(event.logoUrl)}" alt="" style="width:36px;height:36px;border-radius:6px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.14);object-fit:contain;padding:3px;box-sizing:border-box;" />`
-      : `<div style="width:36px;height:36px;border-radius:6px;background:rgba(16,185,129,0.14);border:1px solid rgba(16,185,129,0.25);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#10b981;">${esc(initials)}</div>`;
-
-    const formatMetric = (value: number): string => {
-      if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-      if (value >= 1000) return `${Math.round(value / 1000)}K`;
-      return String(value);
-    };
-    const attackNatureLabels: Record<ThreatEvent['type'], string> = {
-      leak: 'Fuite de données',
-      ransomware: 'Ransomware',
-      exposure: 'Exposition',
-      vulnerability: 'Vulnérabilité',
-    };
-
-    const factRows: Array<[string, string]> = [];
-    factRows.push(['Attaque', attackNatureLabels[event.type]]);
-    if (event.ransomwareGroup) factRows.push(['Groupe', event.ransomwareGroup]);
-    factRows.push(['Date', new Date(event.date).toLocaleDateString('fr-FR')]);
-    if (event.metrics?.records) factRows.push(['Volume', `${formatMetric(event.metrics.records)} comptes`]);
-    if (event.metrics?.affectedAssets) factRows.push(['Surface exposee', `${formatMetric(event.metrics.affectedAssets)} actif${event.metrics.affectedAssets > 1 ? 's' : ''}`]);
-    if (event.organizationProfile?.category) factRows.push(['Profil', event.organizationProfile.category]);
-    if (event.organizationProfile?.employeeRange) factRows.push(['Effectif', event.organizationProfile.employeeRange]);
-    if (event.organizationProfile?.activityCode) factRows.push(['NAF', event.organizationProfile.activityCode]);
-
-    const factsHtml = factRows.length > 0
-      ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:12px 0 10px;">
-          ${factRows.slice(0, 6).map(([label, value]) => `
-            <div style="background:rgba(255,255,255,0.035);border:1px solid rgba(255,255,255,0.07);border-radius:7px;padding:8px 9px;min-width:0;">
-              <div style="font-size:8px;color:rgba(255,255,255,0.38);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:3px;">${esc(label)}</div>
-              <div style="font-size:10px;color:rgba(255,255,255,0.82);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(value)}">${esc(value)}</div>
-            </div>
-          `).join('')}
-        </div>`
-      : '';
-
-    // Data compromised tags
-    let tagsHtml = '';
-    if (event.compromisedData && event.compromisedData.length > 0) {
-      tagsHtml = `
-        <div style="display:flex; flex-wrap:wrap; gap:6px; margin-top:12px;">
-          ${event.compromisedData.map(d => `<span style="background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.15);border-radius:12px;padding:2px 8px;font-size:10px;color:var(--text-secondary);">${esc(d)}</span>`).join('')}
-        </div>
-      `;
-    }
-
-    // Sources footer
-    const sourcesHtml = event.sources.map(s => s.name).join(' · ');
-
-    return `
-      <div style="background: rgba(10, 17, 30, 0.95); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; padding: 16px; color: var(--text-primary); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; min-width: 320px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
-          <div style="display:flex; gap:12px; align-items:center;">
-            ${logoHtml}
-            <div>
-              <div style="display:flex; align-items:center; gap:6px;">
-                <span style="font-size:14px;">🇫🇷</span>
-                <strong style="font-size:16px; color:#fff;">${esc(event.organizationName)}</strong>
-              </div>
-              <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">
-                ${esc([event.ransomwareGroup, event.domain, event.sector].filter(Boolean).join(' · ') || 'Secteur inconnu')}
-              </div>
-              <div style="font-size:10px; color:#7dd3fc; margin-top:3px;">
-                ${fmIcon('map-pin')} ${esc(event.location.label)} · ${esc(precisionLabels[event.location.precision])}
-              </div>
-            </div>
-          </div>
-          <button class="wm-popup-close" style="background:transparent; border:none; color:var(--text-muted); font-size:20px; cursor:pointer; padding:0 4px; line-height:1;">&times;</button>
-        </div>
-
-        <div style="display:flex; gap:8px; margin-bottom:16px;">
-          <span style="background:${sColor}20; color:${sColor}; border:1px solid ${sColor}40; border-radius:12px; padding:2px 8px; font-size:10px; font-weight:700; letter-spacing:0.5px;">${sLabel}</span>
-          <span style="background:rgba(59, 130, 246, 0.2); color:#60a5fa; border:1px solid rgba(59, 130, 246, 0.4); border-radius:12px; padding:2px 8px; font-size:10px; font-weight:600;">${typeLabel}</span>
-          ${event.sourceLabel ? `<span style="background:rgba(16,185,129,0.16); color:#34d399; border:1px solid rgba(16,185,129,0.32); border-radius:12px; padding:2px 8px; font-size:10px; font-weight:600;">${esc(event.sourceLabel)}</span>` : ''}
-        </div>
-
-        ${factsHtml}
-        ${locationHtml}
-
-        <div style="background:rgba(255,255,255,0.03); border-radius:8px; padding:11px 12px; font-size:12px; line-height:1.45; color:var(--text-secondary);">
-          ${esc(event.summary)}
-        </div>
-
-        ${tagsHtml}
-
-        <div style="margin-top:16px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.1); display:flex; justify-content:space-between; align-items:center;">
-          <span style="color:#059669; font-size:10px; font-weight:600;">${esc(sourcesHtml)}</span>
-          <span style="color:var(--text-muted); font-size:9px; text-transform:uppercase;">Confiance : ${esc(event.confidence)}</span>
-        </div>
-      </div>
-    `;
-  }
 }

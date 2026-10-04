@@ -31,7 +31,9 @@ L'API est au stade **0.1.0 (expérimental)**. Aucune garantie de stabilité form
 | `GET /api/environment/air` | Qualité de l'air (Atmo France) : épisodes de pollution de J à J+2 et indice ATMO de J par département. |
 | `GET /api/environment/earthquakes` | Séismes des 7 derniers jours en France et à 20 km autour (BCSF-RéNaSS, EMSC en repli). |
 | `GET /api/environment/sea-levels` | Hauteurs d'eau des marégraphes du SHOM (19 ports), variation sur 1 h et courbe de 24 h. |
-| `GET /api/threats` | Fuites de données et incidents cyber cartographiés en France. |
+| `GET /api/sovereignty/military` | Aéronefs militaires au-dessus de la France (Données adsb.lol, ODbL 1.0), appareils français en compte par département, urgences confirmées, comptes horaires. |
+| `GET /api/sovereignty/cables-watch` | Navires lents près d'un câble télécom sous-marin (AIS du relais, câbles du Shom et d'OpenStreetMap), « à vérifier ». |
+| `GET /api/sovereignty/cyber` | Alertes et avis du CERT-FR, vulnérabilités exploitées (CISA), revendications agrégées (Ransomware.live), fuites en .fr (HIBP), Cybermalveillance.gouv.fr. |
 
 Voir [`/openapi.json`](https://www.francemonitor.com/openapi.json) pour les schémas de réponse complets, champ par champ.
 
@@ -59,7 +61,9 @@ Chaque fonction positionne une directive de cache CDN (`s-maxage`) qui reflète 
 |----------|--------------------|
 | `/api/news` | ~1 min |
 | `/api/news/history` | ~5 min |
-| `/api/threats` | ~10 min |
+| `/api/sovereignty/military` | 1 min (collecte du serveur toutes les 2 min) |
+| `/api/sovereignty/cables-watch` | 2 min (relevé du relais toutes les 5 min) |
+| `/api/sovereignty/cyber` | 10 min (CERT-FR relu chaque heure) |
 | `/api/energy/ecowatt` | ~15 min |
 | `/api/energy/gas-pir` | ~30 min |
 | `/api/environment/fires`, `/api/environment/vigilance`, `/api/environment/floods` | 5 min (30 s pendant une collecte ou une lecture en cours) |

@@ -8,28 +8,6 @@ export const RADAR_2D_LAYER_ID = 'fire-radar-2d-layer';
 export const ECHO_TOPS_SOURCE_ID = 'fire-echo-tops-source';
 export const ECHO_TOPS_LAYER_ID = 'fire-echo-tops-layer';
 
-export function normalizeLandingPoints(value: unknown): string[] {
-  if (Array.isArray(value)) return value.map(v => String(v)).filter(Boolean);
-  if (typeof value === 'string') {
-    try {
-      const parsed = JSON.parse(value);
-      return Array.isArray(parsed) ? parsed.map(v => String(v)).filter(Boolean) : [value];
-    } catch {
-      return value.split(/[,;]+/).map(v => v.trim()).filter(Boolean);
-    }
-  }
-  return [];
-}
-
-export function toNumber(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string') {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
-
 export function escapeHtml(value: unknown): string {
   return String(value ?? '')
     .replaceAll('&', '&amp;')

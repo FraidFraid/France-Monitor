@@ -40,54 +40,6 @@ export interface ThreatClassification {
   source: 'keyword' | 'ml' | 'llm';
 }
 
-export interface ThreatEvent {
-  id: string;
-  type: 'leak' | 'ransomware' | 'exposure' | 'vulnerability';
-  organizationName: string;
-  domain?: string;
-  logoUrl?: string;
-  countryCode?: string;
-  countryName?: string;
-  flagEmoji?: string;
-  ransomwareGroup?: string;
-  sourceLabel?: string;
-  location: {
-    label: string;
-    coordinates: [number, number];
-    precision: 'hq' | 'city' | 'region' | 'country' | 'unknown';
-    address?: string;
-    source?: string;
-  };
-  severity: 'critical' | 'high' | 'medium' | 'low';
-  confidence: 'high' | 'medium' | 'low';
-  sector?: string;
-  organizationProfile?: {
-    legalName?: string;
-    siren?: string;
-    siret?: string;
-    category?: string;
-    employeeRange?: string;
-    activityCode?: string;
-    activitySection?: string;
-    createdAt?: string;
-    openEstablishments?: number;
-  };
-  date: string;
-  summary: string;
-  compromisedData?: string[];
-  metrics?: {
-    records?: number;
-    sources?: number;
-    affectedAssets?: number;
-  };
-  dataClasses?: string[];
-  sources: {
-    name: string;
-    url?: string;
-    observedAt: string;
-  }[];
-}
-
 // ═══ Feeds & News ═══
 
 export interface Feed {
@@ -171,7 +123,6 @@ export interface MapLayers {
   outagesCloud: boolean;
   stability: boolean;
   cyber: boolean;
-  threatMap: boolean;  // Flag interne synchronisé avec cyber pour la cartographie des incidents.
   gasNetwork: boolean;
   oilNetwork: boolean;
   nuclearFleet: boolean;
@@ -829,58 +780,6 @@ export type FrenchAircraftType =
   | 'liaison'
   | 'unknown';
 
-export interface MilitaryFlight {
-  id: string; // ICAO24
-  callsign: string;
-  country: string;
-  longitude: number;
-  latitude: number;
-  altitude: number;  // feet
-  velocity: number;  // m/s (raw) kept for compat
-  speed: number;     // knots
-  heading: number;
-  lastContact: number;
-  isMilitary?: boolean;
-  // Enriched classification fields
-  hexCode?: string;
-  aircraftType?: FrenchAircraftType;
-  aircraftModel?: string;  // e.g. "Rafale", "A400M"
-  operator?: FrenchMilitaryOperator;
-  operatorLabel?: string;  // human-readable label
-  confidence?: 'high' | 'medium' | 'low';
-  squawk?: string;
-  registration?: string;   // immatriculation (e.g. F-ZBMH, 5890)
-  // Trail (position history for path rendering)
-  trail?: [number, number][];  // [[lon, lat], ...] - last N positions
-  // Squawk alert (emergency codes)
-  squawkAlert?: {
-    code: string;
-    type: 'emergency' | 'military' | 'special';
-    severity: 'critical' | 'high' | 'info';
-    description: string;
-  };
-  // Allied aircraft info
-  isAllied?: boolean;
-  branch?: string;  // e.g. "USAF", "RAF", "Luftwaffe"
-  // Navigation accuracy — NAC-P (0–11), from ADS-B DO-260B §2.2.3.2.7.2
-  // 11 = <3m, 0 = unknown/no GPS fix. Only available from adsb.fi, not proxy.
-  nacP?: number;
-}
-
-export type MilitaryFlightsMode = 'live' | 'stale-cache' | 'empty';
-
-export interface MilitaryFlightsSnapshot {
-  source: string;
-  fetchedAt: number;
-  ttlMs: number;
-  flights: MilitaryFlight[];
-  sourceCounts: Record<string, number>;
-  errors: Array<{ source: string; message: string }>;
-  mode: MilitaryFlightsMode;
-  isMock: boolean;
-  isStale: boolean;
-}
-
 export interface AirTrafficFlight {
   id: string;
   callsign: string;
@@ -921,7 +820,6 @@ export interface MilitaryBase {
   name: string;
   type: 'air' | 'navy' | 'army' | 'joint' | 'fortification' | 'other';
   coordinates: [number, number]; // [lng, lat]
-  description?: string;
   /** Sous-type enrichi (aeronavale, commandement, fortification, etc.) */
   subtype?: string;
   /** Tier de visibilité (1=zoom 3+, 2=zoom 5+, 3=zoom 8+) */
@@ -1111,62 +1009,6 @@ export interface ISNRData {
   scores: ISNRScore[];
   nationalScore: number;
   timestamp: Date;
-}
-
-// ═══ Cybersécurité Nationale ═══
-
-export type CyberSeverity = 'low' | 'medium' | 'high' | 'critical';
-
-export type CyberSource = 'CERT-FR' | 'RansomwareLive' | 'NVD';
-
-export interface CyberSourceStatus {
-  source: CyberSource;
-  isUp: boolean;
-  lastSync: string;
-  error?: string;
-}
-
-export interface CyberAlert {
-  id: string;
-  title: string;
-  severity: CyberSeverity;
-  url: string;
-  date: string;
-  source: CyberSource;
-}
-
-export interface CyberRansomwareVictim {
-  sector: string;
-  count: number;
-}
-
-export interface CyberCVE {
-  id: string;
-  score: number;       // CVSS score 0-10
-  target: string;      // affected software/vendor
-  description?: string;
-  url: string;
-}
-
-export interface CyberState {
-  meta: {
-    globalScore: number;  // 0-100 (baromètre)
-    trend: 'rising' | 'stable' | 'falling';
-    sources: CyberSourceStatus[];
-    lastUpdate: Date;
-  };
-  alerts: {
-    count30d: number;
-    latest: CyberAlert[];
-  };
-  ransomware: {
-    total30d: number;
-    topSectors: CyberRansomwareVictim[];
-  };
-  vulnerabilities: {
-    criticalCount: number;
-    topCVEs: CyberCVE[];
-  };
 }
 
 // ═══ France Intelligence Card ═══
@@ -2176,26 +2018,6 @@ export interface FuelTensionDashboard {
   disclaimerFr: string;
   disclaimerEn?: string;
   errorMessage?: string;
-}
-
-// ═══ GPS Jamming / Guerre Électronique ═══
-
-/**
- * Signal OSINT de suspicion de brouillage GPS, construit à partir d'anomalies ADS-B.
- * Ce n'est pas une preuve de brouillage — c'est un signal heuristique plausible.
- *
- * Timestamp en secondes Unix (cohérent avec MilitaryFlight.lastContact).
- * Position en [lng, lat] (convention GeoJSON du projet).
- */
-export interface GpsJammingSignal {
-  id: string;                    // jamming-${ts}-${idx}
-  position: [number, number];    // [lng, lat] centroïde de la zone suspectée
-  timestamp: number;             // Unix seconds
-  severity: ThreatLevel;         // 'high' | 'medium' | 'low'
-  confidence: number;            // 0.0–1.0
-  reasons: string[];             // indicateurs déclencheurs lisibles
-  affectedIcao24s: string[];     // codes ICAO24 (hex) des aéronefs impliqués
-  clusterRadius?: number;        // km — rayon de la zone, si signal multi-aéronefs
 }
 
 // ═══ Situation Engine ═══

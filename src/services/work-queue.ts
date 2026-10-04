@@ -304,21 +304,15 @@ export function eventEnters(e: NewsEvent): boolean {
   return e.independentCount >= 2 || rank >= LEVEL_RANK.orange;
 }
 
-/** Gravité en fin d'identifiant d'une poussée militaire (App.ts : `military-surge-<type>-<gravité>`). */
-const MILITARY_SURGE_SEVERITY_SUFFIX = /-(?:info|warning|alert)$/;
-
 /**
  * Identité de ligne de base d'un élément (relecture finale m2) : sa clé d'affichage, sauf quand
- * celle-ci contient le niveau — alerte officielle (« official:<source>:<niveau> » → la source,
- * « official:<source> ») et poussée militaire (« alert:military-surge-<type>-<gravité> » →
- * « alert:military-surge-<type> »). Même identité à un niveau plus haut → « AGGRAVÉ », jamais
+ * celle-ci contient le niveau : alerte officielle (« official:<source>:<niveau> » → la source,
+ * « official:<source> »). Une urgence militaire (« alert:military-emergency-<icao24>-<code> ») ne
+ * porte pas de gravité dans son identifiant. Même identité à un niveau plus haut → « AGGRAVÉ », jamais
  * « NOUVEAU ». Les clés d'affichage (et celles de la v1) ne changent pas.
  */
 export function baselineIdentity(item: Pick<WorkItem, 'key' | 'ref'>): string {
   if (item.ref.kind === 'official') return `official:${item.ref.group.source}`;
-  if (item.ref.kind === 'alert' && item.ref.situation.type === 'MILITARY_SURGE_ALERT') {
-    return item.key.replace(MILITARY_SURGE_SEVERITY_SUFFIX, '');
-  }
   return item.key;
 }
 

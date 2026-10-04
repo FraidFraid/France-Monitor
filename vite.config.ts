@@ -1,6 +1,6 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import { resolve, dirname } from 'path';
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { brotliCompressSync, constants } from 'zlib';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -13,7 +13,6 @@ import { eolienProxyPlugin } from './src/plugins/eolien-proxy';
 import { financeProxyPlugin } from './src/plugins/finance-proxy';
 import { commoditiesProxyPlugin } from './src/plugins/commodities-proxy';
 import { trafficTileProxyPlugin } from './src/plugins/traffic-tile-proxy';
-import { militaryFlightsProxyPlugin } from './src/plugins/military-flights-proxy';
 import { oilProxyPlugin } from './src/plugins/oil-proxy';
 import { fuelPricesProxyPlugin } from './src/plugins/fuel-prices-proxy';
 import { internetOutagesProxyPlugin } from './src/plugins/internet-outages-proxy';
@@ -28,8 +27,6 @@ import { sentinelNdwiProxyPlugin } from './src/plugins/sentinel-ndwi-proxy';
 import { nuclearProxyPlugin } from './src/plugins/nuclear-proxy';
 import { gasPirProxyPlugin } from './src/plugins/gas-pir-proxy';
 import { situationHistoryProxyPlugin } from './src/plugins/situation-history-proxy';
-import { threatsProxyPlugin } from './src/plugins/threats-proxy';
-import { exposureProxyPlugin } from './src/plugins/exposure-proxy';
 import { newsProxyPlugin } from './src/plugins/news-proxy';
 import { mtgFrpProxyPlugin } from './src/plugins/mtg-frp-proxy';
 import { apiRouterFallbackPlugin } from './src/plugins/api-router-fallback';
@@ -123,7 +120,6 @@ export default defineConfig(({ mode }) => {
       financeProxyPlugin(),
       commoditiesProxyPlugin(),
       trafficTileProxyPlugin(),
-      militaryFlightsProxyPlugin(),
       oilProxyPlugin(),
       fuelPricesProxyPlugin(),
       internetOutagesProxyPlugin(),
@@ -140,8 +136,6 @@ export default defineConfig(({ mode }) => {
         clientSecret: env.RTE_CLIENT_SECRET ?? '',
       }),
       situationHistoryProxyPlugin(),
-      threatsProxyPlugin(),
-      exposureProxyPlugin(),
       newsProxyPlugin({
         databaseUrl: env.DATABASE_URL ?? '',
       }),

@@ -2,8 +2,8 @@
 // amendement 7, O1, O3, O5, S12). Une route (/api/sovereignty/cyber), cinq sources datées chacune par sa donnée : CERT-FR (statut
 // officiel des alertes, exploitation citée, rapports Menaces et incidents de l'ANSSI), CISA KEV, Ransomware.live (revendications
 // agrégées), Have I Been Pwned (un compte et un lien, jamais un titre ni un domaine) et Cybermalveillance.gouv.fr. Garde de forme
-// exacte élément par élément, lecture qui ne rejette jamais, fusion à l'écriture. Préfixe `Sov` : l'ancien type `CyberState`
-// (src/services/cyber.ts) vit jusqu'à la tâche A17.
+// exacte élément par élément, lecture qui ne rejette jamais, fusion à l'écriture. Préfixe `Sov` : nom gardé depuis la coexistence
+// avec l'ancien `CyberState` (retiré à la tâche A17).
 import type { CyberResponse } from '../types/index.ts';
 import type { SovereigntySource } from './sovereignty-levels.ts';
 import {

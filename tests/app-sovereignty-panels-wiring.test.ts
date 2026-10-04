@@ -56,7 +56,8 @@ describe('panneaux Souveraineté : un panneau par couche (contrats § 4.2 à 4.4
   it('trois panneaux flottants (Connectivité ajoutée) ; libellés du tiroir, des couches et des légendes ; aide sur les sources réelles', () => {
     expect(app).toContain("{ id: 'military', label: 'Défense', icon: 'shield', layerKeys: ['military'] },");
     expect(app).toContain("{ id: 'subseaCables', label: 'Connectivité', icon: 'waves', layerKeys: ['subseaCables'] },");
-    expect(app).toContain("{ id: 'cyber', label: 'Vigilance cyber', icon: 'lock-keyhole', layerKeys: ['cyber', 'threatMap'] },");
+    expect(app).toContain("{ id: 'cyber', label: 'Vigilance cyber', icon: 'lock-keyhole', layerKeys: ['cyber'] },");
+    expect(app).not.toContain('threatMap');
     expect(app).toContain("    label: 'Défense',\n    legend: DEFENSE_LEGEND,");
     expect(app).toContain("    label: 'Connectivité',\n    legend: CONNECTIVITY_LEGEND,");
     expect(app).toContain("    label: 'Vigilance cyber',\n    legend: CYBER_LEGEND,");

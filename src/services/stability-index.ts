@@ -17,7 +17,6 @@ import type {
   ISNRScore,
   TelecomOutage,
   PowerOutage,
-  ThreatEvent,
 } from '../types/index.ts';
 import { ecowattToday } from './ecowatt-official.ts';
 
@@ -236,23 +235,6 @@ export function scoreToLevel(score: number): 'critical' | 'high' | 'medium' | 'l
   return 'stable';
 }
 
-function describeSecurityDriver(family: 'leaks' | 'ransomware' | 'vulnerabilities' | 'exposure' | 'correlation' | null): string | undefined {
-  switch (family) {
-    case 'leaks':
-      return 'Fuites récentes plafonnées, pondérées par fraîcheur et secteur.';
-    case 'ransomware':
-      return 'Victimes ransomware 30j bornées pour éviter une saturation instantanée.';
-    case 'vulnerabilities':
-      return 'CERT-FR / NVD critiques pondérés par sévérité et ancienneté.';
-    case 'exposure':
-      return 'Exposition passive Shodan/Censys visible mais non saturante seule.';
-    case 'correlation':
-      return 'Bonus borné pour zones et secteurs où plusieurs signaux convergent.';
-    default:
-      return undefined;
-  }
-}
-
 function computeTrend(code: string, currentScore: number): 'up' | 'down' | 'stable' {
   const arr = previousScores.get(code);
   if (!arr || arr.length === 0) return 'stable';
@@ -326,148 +308,6 @@ function computeDimensionScore(
   }
   // Normaliser avec un max raisonnable (12 événements critical = max, seuil ×4 vs avant)
   return Math.min(maxScore, (total / 1200) * maxScore);
-}
-
-function threatSeverityWeight(severity: ThreatEvent['severity']): number {
-  if (severity === 'critical') return 1.35;
-  if (severity === 'high') return 1;
-  if (severity === 'medium') return 0.72;
-  return 0.45;
-}
-
-function normalizeThreatText(value: string | undefined): string {
-  return (value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim();
-}
-
-function isCriticalThreatSector(sector: string | undefined): boolean {
-  const normalized = normalizeThreatText(sector);
-  return ['sante', 'health', 'energie', 'energy', 'transport', 'collectivite', 'mairie', 'prefecture', 'gouvernement']
-    .some((keyword) => normalized.includes(keyword));
-}
-
-function computeThreatFreshnessWeight(eventDate: string): number {
-  const ts = new Date(eventDate).getTime();
-  if (!Number.isFinite(ts)) return 0;
-
-  const daysOld = Math.max(0, (Date.now() - ts) / (24 * 60 * 60 * 1000));
-  if (daysOld <= 2) return 1;
-  if (daysOld <= 7) return 0.88;
-  if (daysOld <= 21) return 0.68;
-  if (daysOld <= 45) return 0.42;
-  if (daysOld <= 90) return 0.22;
-  return 0.1;
-}
-
-function threatCoverageFactor(event: ThreatEvent, deptCode: string): number {
-  const [lon, lat] = event.location.coordinates;
-  const exactDept = findDepartmentByCoords(lon, lat);
-  if (exactDept === deptCode) return 1;
-  if (exactDept !== null) return 0;
-
-  switch (event.location.precision) {
-    case 'region':
-      return 0.18;
-    case 'hq':
-      return 0.16;
-    case 'country':
-      return 0.12;
-    case 'unknown':
-      return 0.1;
-    default:
-      return 0;
-  }
-}
-
-function computeSecurityFromThreatEvents(
-  threatEvents: ThreatEvent[],
-  deptCode: string,
-  cutoff: number,
-): { score: number; dominantFamily: 'leaks' | 'ransomware' | 'vulnerabilities' | 'exposure' | 'correlation' | null } {
-  const familyCaps = {
-    leaks: 18,
-    ransomware: 22,
-    vulnerabilities: 18,
-    exposure: 16,
-    correlation: 11,
-  } as const;
-
-  const familyScores = {
-    leaks: 0,
-    ransomware: 0,
-    vulnerabilities: 0,
-    exposure: 0,
-  };
-
-  const familyPresence = new Set<keyof typeof familyScores>();
-  let criticalSectorHits = 0;
-
-  for (const event of threatEvents) {
-    const eventTime = new Date(event.date).getTime();
-    if (!Number.isFinite(eventTime) || eventTime < cutoff) continue;
-
-    const coverage = threatCoverageFactor(event, deptCode);
-    if (coverage <= 0) continue;
-
-    const freshness = computeThreatFreshnessWeight(event.date);
-    if (freshness <= 0) continue;
-
-    const baseWeight = event.type === 'ransomware' ? 11
-      : event.type === 'leak' ? 8
-      : event.type === 'vulnerability' ? 9
-      : 7;
-    const sectorBoost = isCriticalThreatSector(event.sector) ? 1.15 : 1;
-    const contribution = baseWeight * threatSeverityWeight(event.severity) * freshness * coverage * sectorBoost;
-
-    if (event.type === 'ransomware') {
-      familyScores.ransomware += contribution;
-      familyPresence.add('ransomware');
-    } else if (event.type === 'leak') {
-      familyScores.leaks += contribution;
-      familyPresence.add('leaks');
-    } else if (event.type === 'vulnerability') {
-      familyScores.vulnerabilities += contribution;
-      familyPresence.add('vulnerabilities');
-    } else {
-      familyScores.exposure += contribution;
-      familyPresence.add('exposure');
-    }
-
-    if (isCriticalThreatSector(event.sector)) criticalSectorHits += coverage >= 0.5 ? 1 : 0.5;
-  }
-
-  const capped = {
-    leaks: Math.min(familyCaps.leaks, familyScores.leaks),
-    ransomware: Math.min(familyCaps.ransomware, familyScores.ransomware),
-    vulnerabilities: Math.min(familyCaps.vulnerabilities, familyScores.vulnerabilities),
-    exposure: Math.min(familyCaps.exposure, familyScores.exposure),
-  };
-
-  const correlation = Math.min(
-    familyCaps.correlation,
-    (familyPresence.size >= 2 ? 4 + Math.max(0, familyPresence.size - 2) * 2 : 0) + Math.min(5, criticalSectorHits * 1.5),
-  );
-
-  const total = Math.min(
-    85,
-    Math.round(capped.leaks + capped.ransomware + capped.vulnerabilities + capped.exposure + correlation),
-  );
-
-  const rankedFamilies: Array<{ family: 'leaks' | 'ransomware' | 'vulnerabilities' | 'exposure' | 'correlation'; score: number }> = [
-    { family: 'leaks' as const, score: capped.leaks },
-    { family: 'ransomware' as const, score: capped.ransomware },
-    { family: 'vulnerabilities' as const, score: capped.vulnerabilities },
-    { family: 'exposure' as const, score: capped.exposure },
-    { family: 'correlation' as const, score: correlation },
-  ].sort((a, b) => b.score - a.score);
-
-  return {
-    score: total,
-    dominantFamily: rankedFamilies[0]?.score ? rankedFamilies[0].family : null,
-  };
 }
 
 function computeVelocityScore(items: NewsItem[], _timeRangeMs: number): number {
@@ -598,7 +438,6 @@ export function computeISNR(
   timeRange: TimeRange,
   telecomOutages: TelecomOutage[],
   powerOutages: PowerOutage[],
-  threatEvents: ThreatEvent[] = [],
   nowMs: number = Date.now(),
 ): ISNRData {
   const now = new Date(nowMs);
@@ -624,10 +463,8 @@ export function computeISNR(
 
     // Calculer chaque dimension
     const social = Math.round(computeDimensionScore(items, SOCIAL_CATEGORIES));
-    const securityFromEvents = Math.round(computeDimensionScore(items, SECURITY_CATEGORIES));
-    const securityThreats = computeSecurityFromThreatEvents(threatEvents, code, cutoff);
-    const securityFromThreats = securityThreats.score;
-    const security = Math.round(Math.max(securityFromEvents, securityFromThreats));
+    // Sécurité : événements de presse seulement ; plus aucun lieu de victime publié (spec souveraineté V3, V5 ; arbitrage 26).
+    const security = Math.round(computeDimensionScore(items, SECURITY_CATEGORIES));
 
     // Infra = max(météo, crues, ecowatt, pannes) + events infra
     const infraFromEvents = computeDimensionScore(items, INFRA_CATEGORIES);
@@ -661,22 +498,7 @@ export function computeISNR(
         else if (infra === infraFromEvents) { source = 'Signal Réseau'; label = 'Incidents Infra'; }
         topDriver = { dimension: 'infra', label, score: infra, source };
       } else if (maxDimScore === security) {
-        const dominantFamilyLabels = {
-          leaks: 'Leaks récents',
-          ransomware: 'Ransomware 30j',
-          vulnerabilities: 'CERT/NVD critiques',
-          exposure: 'Exposition passive',
-          correlation: 'Corrélation cyber infra',
-        } as const;
-        topDriver = securityFromThreats >= securityFromEvents
-          ? {
-            dimension: 'security',
-            label: securityThreats.dominantFamily ? dominantFamilyLabels[securityThreats.dominantFamily] : 'Pression cyber multi-source',
-            score: security,
-            source: 'FrenchBreaches / CERT-FR / NVD / Shodan / Censys',
-            detail: describeSecurityDriver(securityThreats.dominantFamily),
-          }
-          : { dimension: 'security', label: 'Événements Sécurité', score: security, source: 'Signal Réseau' };
+        topDriver = { dimension: 'security', label: 'Événements Sécurité', score: security, source: 'Signal Réseau' };
       } else if (maxDimScore === social) {
         topDriver = { dimension: 'social', label: 'Tension Sociale', score: social, source: 'Signal Réseau' };
       } else if (maxDimScore === velocity) {
