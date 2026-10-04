@@ -20,6 +20,7 @@ import { dispatch } from '../../api/_utils/dispatch.js';
 import { addResponseHelpers, addQuery, readBody } from './vercel-compat.mjs';
 import { COLLECTORS, startTrafficCollectors } from './traffic-collectors.mjs';
 import { ENVIRONMENT_COLLECTORS } from './environment-collectors.mjs';
+import { SOVEREIGNTY_COLLECTORS } from './sovereignty-collectors.mjs';
 
 export const DEFAULT_HOST = '127.0.0.1';
 export const DEFAULT_PORT = 3000;
@@ -165,7 +166,8 @@ if (isMainModule) {
   });
 
   // Collectes serveur : TomTom et OpenSky (quota, spec trafic T4), FIRMS et archive de la vigilance (spec environnement § 2.4, E5).
-  const stopCollectors = startTrafficCollectors({ collectors: [...COLLECTORS, ...ENVIRONMENT_COLLECTORS] });
+  // Souveraineté : vols militaires, veille des câbles, vigilance cyber et page Vigipirate (spec 2026-10-04 souveraineté § 2, O14).
+  const stopCollectors = startTrafficCollectors({ collectors: [...COLLECTORS, ...ENVIRONMENT_COLLECTORS, ...SOVEREIGNTY_COLLECTORS] });
 
   let shuttingDown = false;
   /** @param {string} signal */

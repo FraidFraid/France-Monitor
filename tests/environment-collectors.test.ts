@@ -15,6 +15,6 @@ describe('collecteurs Environnement', () => {
     const server = readFileSync(new URL('../server/prod/http-server.mjs', import.meta.url), 'utf8');
     expect(server).toContain("import { COLLECTORS, startTrafficCollectors } from './traffic-collectors.mjs';");
     expect(server).toContain("import { ENVIRONMENT_COLLECTORS } from './environment-collectors.mjs';");
-    expect(server).toContain('startTrafficCollectors({ collectors: [...COLLECTORS, ...ENVIRONMENT_COLLECTORS] })');
+    expect(server).toContain('startTrafficCollectors({ collectors: [...COLLECTORS, ...ENVIRONMENT_COLLECTORS, ...SOVEREIGNTY_COLLECTORS] })');
   });
 });
