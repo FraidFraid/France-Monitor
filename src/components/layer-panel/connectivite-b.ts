@@ -149,18 +149,25 @@ function interruptedNote(c: ConnectivityResponse, now: number): string {
     : '';
 }
 
+/** « moins d’un jour » sous un jour révolu, « N jours » sinon. */
+function daysWord(days: number): string {
+  return days < 1 ? 'moins d’un jour' : plural(days, 'jour');
+}
+
 function historyChart(c: ConnectivityResponse, now: number, late: boolean): string {
   const samples = c.history.samples.filter((s) => Number.isFinite(Date.parse(s.at)) && Number.isFinite(s.minPct));
   const sinceMs = c.history.since === null ? null : Date.parse(c.history.since);
   const days = sinceMs === null || !Number.isFinite(sinceMs) ? 0 : Math.max(0, Math.floor((now - sinceMs) / DAY_MS));
-  const building = sinceMs !== null && days < HISTORY_DAYS ? paragraph(`Courbe : référence en construction (${plural(days, 'jour')}).`) : '';
+  const building = sinceMs !== null && days < HISTORY_DAYS ? paragraph(`Courbe : référence en construction (${daysWord(days)}).`) : '';
   const stopped = interruptedNote(c, now);
   if (late || samples.length < 2) return stopped + building;
   const points: ChartPoint[] = samples.map((s) => ({ at: Date.parse(s.at), value: s.minPct }));
   const last = samples[samples.length - 1].minPct;
+  // Série interrompue (dernier échantillon de plus de 9 h) : donnée périmée, courbe grise comme en retard.
+  const stale = now - points[points.length - 1].at > HISTORY_GAP_MS;
   const chart = lineChart(points, {
     label: 'Visibilité minimale des six grands réseaux, par instantané RIPE, sur 30 jours', from: Math.max(points[0].at, now - HISTORY_DAYS * DAY_MS),
-    to: now, stroke: levelColorVar(visibilityPctLevel(last)), value: (v) => formatPctVisibility(v), tick: dayMonth, gapMs: HISTORY_GAP_MS, nowAt: now,
+    to: now, stroke: stale ? 'var(--text-muted)' : levelColorVar(visibilityPctLevel(last)), value: (v) => formatPctVisibility(v), tick: dayMonth, gapMs: HISTORY_GAP_MS, nowAt: now,
   });
   return chart + stopped + building;
 }
@@ -184,11 +191,17 @@ function prefixCharts(c: ConnectivityResponse, now: number): string {
 
 /** État de la référence des préfixes : une seule ligne pour les six réseaux. */
 function prefixReference(c: ConnectivityResponse, now: number): string {
-  const building = c.networks.map((n) => prefixTrend(c.history.prefixSamples, n.asn, n.v4Prefixes + n.v6Prefixes, now, c.snapshotAt))
-    .filter((t): t is Extract<PrefixTrend, { kind: 'building' }> => t.kind === 'building');
+  const samples = c.history.prefixSamples ?? [];
+  const building = c.networks.map((n) => ({ n, t: prefixTrend(samples, n.asn, n.v4Prefixes + n.v6Prefixes, now, c.snapshotAt) }))
+    .filter((x): x is { n: NetworkVisibility; t: Extract<PrefixTrend, { kind: 'building' }> } => x.t.kind === 'building');
   if (building.length === 0) return '';
-  const days = Math.min(...building.map((t) => t.days));
-  return paragraph(`Préfixes annoncés : référence en construction (${plural(days, 'jour')}) ; la règle de baisse démarre à ${PREFIX_REFERENCE_DAYS} jours d’échantillons.`);
+  // Réseaux sans aucun échantillon nommés à part : ils ne ramènent pas la référence des autres à zéro.
+  const hasSample = (n: NetworkVisibility): boolean => samples.some((s) => typeof s.prefixes[String(n.asn)] === 'number');
+  const withData = building.filter((x) => hasSample(x.n));
+  const none = building.filter((x) => !hasSample(x.n)).map((x) => x.n.name);
+  const lead = withData.length > 0 ? `référence en construction (${daysWord(Math.min(...withData.map((x) => x.t.days)))})` : 'référence en construction';
+  const missing = none.length > 0 ? ` ; sans échantillon : ${none.join(', ')}` : '';
+  return paragraph(`Préfixes annoncés : ${lead}${missing} ; la règle de baisse démarre à ${PREFIX_REFERENCE_DAYS} jours d’échantillons.`);
 }
 
 /** Section « Visibilité Internet des réseaux » (ouverte, en tête). */

@@ -170,6 +170,14 @@ describe('sections', () => {
     expect(none).toContain('Courbe : historique n.d.');
     expect(text(input({ connectivity: { ...LATE, history: stale.history } }), 'reseaux')).toContain('Série interrompue depuis le 02/10 à 18:00');
   });
+  it('série interrompue sans retard RIPEstat : courbe grise, jamais la couleur de la dernière valeur', () => {
+    const c = CONNECTIVITY_FIXTURE();
+    const stale = { ...c, history: { ...c.history, samples: c.history.samples.filter((s) => s.at < '2026-10-04T00:00:00.000Z') } };
+    const h = section(input({ connectivity: stale }), 'reseaux')?.html ?? '';
+    expect(h).toContain('aria-label="Visibilité minimale');
+    expect(h).toContain('stroke="var(--text-muted)"');
+    expect(h).not.toContain('stroke="var(--sev-green)"');
+  });
   it('points d’échange : 27, ville, lien vers la fiche, date de mise à jour ; annuaire sans état en direct', () => {
     const s = section(input(), 'echanges');
     expect(s?.summary).toBe('27 en France (PeeringDB)');
@@ -200,6 +208,17 @@ describe('règle de baisse des préfixes annoncés (S8)', () => {
     expect(t).toContain(`Préfixes annoncés : référence en construction (5${NBSP}jours)`);
     expect(at(CONNECTIVITY_FIXTURE())).toEqual({ kind: 'building', days: 0 });
     expect(prefixTrend(undefined, 3215, 968, NOW, null)).toEqual({ kind: 'building', days: 0 });
+  });
+  it('un réseau sans échantillon ne ramène pas la référence des autres à zéro : il est nommé', () => {
+    const base = withPrefixes(prefixSamples(5, 1000), 1000);
+    const samples = (base.history.prefixSamples ?? []).map((s) => {
+      const { 3215: _omit, ...rest } = s.prefixes;
+      return { ...s, prefixes: rest };
+    });
+    const t = text(input({ connectivity: { ...base, history: { ...base.history, prefixSamples: samples } } }), 'reseaux');
+    expect(t).toContain(`référence en construction (5${NBSP}jours) ; sans échantillon : Orange ;`);
+    const all = text(input({ connectivity: { ...base, history: { ...base.history, prefixSamples: [] } } }), 'reseaux');
+    expect(all).toContain('référence en construction ; sans échantillon : Orange, SFR');
   });
   it('baisse de 10 % ou plus sous la médiane de 30 jours : note « à vérifier (−N %) » sur la ligne, aucune couleur ni pastille', () => {
     const c = withPrefixes(prefixSamples(10, 1000), 800);
