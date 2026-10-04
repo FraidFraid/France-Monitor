@@ -1,10 +1,11 @@
 // api/_lib/gels-avoirs.js : registre national des gels des avoirs, DG Trésor (spec 2026-10-04 souveraineté § 3.4 ; contrats § 2.7,
-// Vocabulaire des autorités (amendement 7, S7) pour le panneau : « nouveaux gels » (added), « radiations » (removed), lien « consulter la dernière version du registre » (GELS_REGISTRY_URL).
 // arbitrage 17 ; faits § 5.10). API publique (User-Agent exigé depuis janvier 2025 : le nôtre, jamais celui d'un navigateur). La date
 // de dernière publication (19 octets, heure de Paris) est relue toutes les heures ; le fichier complet (12 Mo) n'est lu qu'à une
 // publication nouvelle et réduit en mémoire : date, nombre d'entrées par nature, identifiants IdRegistre. Aucun nom ni détail
 // nominatif n'en sort, ni dans la réponse, ni dans le KV, ni dans un journal. Différence avec la publication précédente par les
 // identifiants (premier passage : n.d.). Hors score.
+// Vocabulaire des autorités pour le panneau (amendement 7, S7) : `added` se dit « nouveaux gels », `removed` « radiations », et
+// GELS_REGISTRY_URL porte le lien « consulter la dernière version du registre ».
 import { kvGetJson, kvSetJson, readLog, upsertLogEntry } from './kv-history.js';
 import { parisWallTime } from './paris-time.js';
 import { fetchStrictJson, fetchStrictText, sourceError } from './source-http.js';
@@ -143,18 +144,21 @@ async function refreshGels(now) {
   const stored = await kvGetJson(GELS_IDS_KEY, now);
   const previous = stored && typeof stored === 'object' && Array.isArray(stored.ids) && typeof stored.publishedAt === 'string' ? stored : null;
   const counts = { total: summary.total, physiques: summary.physiques, morales: summary.morales, navires: summary.navires };
+  const sameAsStored = previous !== null && sameSecond(previous.publishedAt, summary.publishedAt);
   let publication;
-  if (previous !== null && sameSecond(previous.publishedAt, summary.publishedAt)) {
+  if (sameAsStored) {
     const known = (await readHistory(now)).find((p) => sameSecond(p.publishedAt, summary.publishedAt));
     publication = { publishedAt: summary.publishedAt, ...counts, added: known?.added ?? null, removed: known?.removed ?? null };
   } else {
     publication = { publishedAt: summary.publishedAt, ...counts, ...diffIds(previous === null ? null : previous.ids, summary.ids) };
-    await kvSetJson(GELS_IDS_KEY, { publishedAt: summary.publishedAt, ids: summary.ids }, KEEP_SEC, now);
   }
   await upsertLogEntry(GELS_HISTORY_KEY, publication, {
     idOf: (p) => p.publishedAt, dateOf: (p) => p.publishedAt, maxAgeMs: GELS_HISTORY_MAX_AGE_MS, now,
   });
-  return save({ readAt: nowIso, dateCheckedAt: nowIso, attemptedAt: nowIso, current: publication, errors: [] }, now);
+  const result = await save({ readAt: nowIso, dateCheckedAt: nowIso, attemptedAt: nowIso, current: publication, errors: [] }, now);
+  // Les identifiants en dernier : une coupure avant cette écriture refait la même différence à la relève suivante.
+  if (!sameAsStored) await kvSetJson(GELS_IDS_KEY, { publishedAt: summary.publishedAt, ids: summary.ids }, KEEP_SEC, now);
+  return result;
 }
 
 /**

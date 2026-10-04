@@ -3,11 +3,13 @@
 // comptes par nature et différences d'IdRegistre, aucun nom ni détail nominatif dans la réponse ni dans le KV.
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../api/_lib/route-budget.js', async (orig) => ({ ...(await orig<typeof import('../api/_lib/route-budget.js')>()), ROUTE_BUDGET_MS: 25 }));
 import { __resetKvForTests, __setKvClientForTests } from '../api/_lib/kv-history.js';
 import {
-  GELS_DATE_URL, GELS_FILE_URL, __resetGelsForTests, diffIds, ensureGelsFresh, normalizePublicationDate, parseGelsDate, summarizeGels,
+  GELS_DATE_URL, GELS_FILE_URL, GELS_PENDING_NOTE, __resetGelsForTests, diffIds, ensureGelsFresh, normalizePublicationDate, storedGels, parseGelsDate, summarizeGels,
 } from '../api/_lib/gels-avoirs.js';
-import handler, { CACHE_CONTROL } from '../api/_handlers/sovereignty/sanctions.js';
+import handler, { CACHE_CONTROL, PENDING_CACHE_CONTROL, loadSanctions } from '../api/_handlers/sovereignty/sanctions.js';
 import type { SanctionsResponse } from '../src/types/index.ts';
 import { type FakeResponse, callHandler, respond, sentHeader, stubFetch } from './helpers/traffic-fixtures.ts';
 
@@ -31,16 +33,16 @@ function nominative(file: GelsFile): string[] {
   for (const e of file.Publications.PublicationDetail) { out.add(e.Nom); walk(e.RegistreDetail); }
   return [...out];
 }
-/** Publication suivante construite : l'entrée 4228 retirée, deux entrées fictives ajoutées (9401, 9402). */
+/** Publication suivante construite : l'entrée 900002 retirée, deux entrées fictives ajoutées (900101, 900102). */
 function nextPublication(): GelsFile {
-  const detail = FILE.Publications.PublicationDetail.filter((e) => e.IdRegistre !== 4228);
+  const detail = FILE.Publications.PublicationDetail.filter((e) => e.IdRegistre !== 900002);
   return {
     Publications: {
       DatePublication: '2026-10-04T17:30:00.0000000+02:00',
       PublicationDetail: [
         ...detail,
-        { IdRegistre: 9401, Nature: 'Personne morale', Nom: 'Entite fictive 041', RegistreDetail: [] },
-        { IdRegistre: 9402, Nature: 'Navire', Nom: 'Navire fictif 004', RegistreDetail: [] },
+        { IdRegistre: 900101, Nature: 'Personne morale', Nom: 'Entite fictive 041', RegistreDetail: [] },
+        { IdRegistre: 900102, Nature: 'Navire', Nom: 'Navire fictif 004', RegistreDetail: [] },
       ],
     },
   };
@@ -78,14 +80,14 @@ describe('analyse', () => {
     const s = summarizeGels(FILE);
     expect(Object.keys(s).sort()).toEqual(['ids', 'morales', 'navires', 'physiques', 'publishedAt', 'total']);
     expect([s.publishedAt, s.total, s.physiques, s.morales, s.navires, s.ids.length, s.ids[0], s.ids[39]])
-      .toEqual(['2026-10-02T10:36:17.126+02:00', 40, 27, 10, 3, 40, 1061, 9028]);
+      .toEqual(['2026-10-02T10:36:17.126+02:00', 40, 27, 10, 3, 40, 900001, 900040]);
     const text = JSON.stringify(s);
     for (const v of nominative(FILE)) expect(text).not.toContain(v);
     expect(() => summarizeGels({ Publications: {} })).toThrow('fichier illisible (publication ou entrées absentes)');
   });
   it('différence des IdRegistre ; premier passage : n.d., jamais « tout est nouveau »', () => {
     expect(diffIds(null, [1, 2, 3])).toEqual({ added: null, removed: null });
-    expect(diffIds([1, 2, 3, 4228], [1, 2, 3, 9401, 9402])).toEqual({ added: 2, removed: 1 });
+    expect(diffIds([1, 2, 3, 900002], [1, 2, 3, 900101, 900102])).toEqual({ added: 2, removed: 1 });
   });
 });
 
@@ -133,6 +135,97 @@ describe('relève', () => {
     const fileDown = await ensureGelsFresh(NOW + 122 * MIN);
     expect([fileDown.current?.publishedAt, fileDown.dateCheckedAt, fileDown.errors])
       .toEqual(['2026-10-02T10:36:17.126+02:00', '2026-10-04T16:50:22.000Z', ['Registre des gels, fichier : HTTP 503']]);
+  });
+});
+
+describe('reprises et ordre des écritures', () => {
+  /** Redis simulé et durable : survit à un redémarrage (mémoire vidée) ; `failKey` fait échouer l'écriture d'une clé. */
+  function persistentKv(failKey?: string) {
+    const store = new Map<string, string>();
+    const order: string[] = [];
+    __setKvClientForTests({
+      get: async (key: string) => store.get(key) ?? null,
+      set: async (key: string, value: string) => {
+        order.push(key);
+        if (failKey && key.endsWith(failKey)) throw new Error('écriture refusée');
+        store.set(key, value);
+      },
+    });
+    return { store, order };
+  }
+  it('premier passage : le fichier en panne donne 200 avec current nul et la date lue ; relève suivante une heure plus tard', async () => {
+    sources(DATE, respond('indisponible', 503));
+    const first = await ensureGelsFresh(NOW);
+    expect([first.current, first.dateCheckedAt, first.readAt, first.errors]).toEqual([null, '2026-10-04T14:48:22.000Z', null, ['Registre des gels, fichier : HTTP 503']]);
+    const route = await callHandler<SanctionsResponse>(handler);
+    expect(route.status).toBe(200);
+    const quiet = sources();
+    await ensureGelsFresh(NOW + 30 * MIN);
+    expect(quiet.urls).toEqual([]);
+    const retry = sources();
+    const r = await ensureGelsFresh(NOW + 61 * MIN);
+    expect(retry.urls).toEqual([GELS_DATE_URL, GELS_FILE_URL]);
+    expect([r.current?.total, r.errors, r.readAt]).toEqual([40, [], '2026-10-04T15:49:22.000Z']);
+  });
+  it('même publication relue après un redémarrage sans état : la différence gardée dans l’historique est reprise', async () => {
+    const kv = persistentKv();
+    sources();
+    await ensureGelsFresh(NOW);
+    sources('04/10/2026 17:30:00', nextPublication());
+    await ensureGelsFresh(NOW + 2 * 60 * MIN);
+    for (const key of [...kv.store.keys()]) if (key.endsWith('gels:state')) kv.store.delete(key);
+    __resetKvForTests();
+    __resetGelsForTests();
+    const log = sources('04/10/2026 17:30:00', nextPublication());
+    const r = await ensureGelsFresh(NOW + 3 * 60 * MIN);
+    expect(log.urls).toEqual([GELS_DATE_URL, GELS_FILE_URL]);
+    expect(r.current).toMatchObject({ publishedAt: '2026-10-04T17:30:00.000+02:00', total: 41, added: 2, removed: 1 });
+    expect(r.history.publications).toHaveLength(2);
+  });
+  it('les identifiants sont écrits en dernier : une coupure avant refait la même différence', async () => {
+    const kv = persistentKv();
+    sources();
+    await ensureGelsFresh(NOW);
+    kv.order.length = 0;
+    sources('04/10/2026 17:30:00', nextPublication());
+    await ensureGelsFresh(NOW + 2 * 60 * MIN);
+    expect(kv.order.map((k) => k.split(':').slice(-1)[0])).toEqual(['history', 'state', 'ids']);
+  });
+  it('écriture de l’historique refusée : la réponse garde la différence et les identifiants ne sont écrits qu’après', async () => {
+    const kv = persistentKv('gels:history');
+    sources();
+    await ensureGelsFresh(NOW);
+    sources('04/10/2026 17:30:00', nextPublication());
+    const r = await ensureGelsFresh(NOW + 2 * 60 * MIN);
+    expect(r.current).toMatchObject({ added: 2, removed: 1 });
+    expect(kv.order[kv.order.length - 1]).toMatch(/gels:ids$/);
+    expect(kv.order.filter((k) => k.endsWith('gels:history'))).toHaveLength(2);
+  });
+});
+
+describe('échéance de la route', () => {
+  it('lecture plus longue que l’échéance : état gardé avec la note, 200 et cache de 60 s ; la relève continue et sert la suivante', async () => {
+    sources();
+    await ensureGelsFresh(NOW);
+    const later = NOW + 2 * 60 * MIN;
+    vi.setSystemTime(later);
+    stubFetch(async (url) => {
+      await new Promise((resolve) => setTimeout(resolve, 120));
+      return url === GELS_DATE_URL ? respond('04/10/2026 17:30:00') : respond(nextPublication());
+    });
+    const slow = await callHandler<SanctionsResponse>(handler);
+    expect([slow.status, slow.cache, slow.body.current?.total, slow.body.errors]).toEqual([200, PENDING_CACHE_CONTROL, 40, [GELS_PENDING_NOTE]]);
+    const kept = await storedGels(later, GELS_PENDING_NOTE);
+    expect(kept.errors).toEqual([GELS_PENDING_NOTE]);
+    await ensureGelsFresh(later);
+    const done = await loadSanctions(later, { budgetMs: 1000 });
+    expect([done.current?.total, done.current?.added, done.errors]).toEqual([41, 2, []]);
+  });
+  it('jamais lu et lecture trop longue : 502 non mis en cache, avec la note', async () => {
+    stubFetch(async () => { await new Promise((resolve) => setTimeout(resolve, 120)); return respond(DATE); });
+    const r = await callHandler<SanctionsResponse>(handler);
+    expect([r.status, r.cache, r.body.current, r.body.errors]).toEqual([502, 'no-store', null, [GELS_PENDING_NOTE]]);
+    await ensureGelsFresh(NOW);
   });
 });
 
