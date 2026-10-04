@@ -319,9 +319,9 @@ describe('cableAlertLevel et cablesLevel (pastille Connectivité, § 2.2)', () =
       level: 'jaune', reason: `1${NBSP}navire lent vu une fois sur un câble, à vérifier : NAVIRE ESSAI (AMITIE) ; 1${NBSP}alerte non évaluée (flux de la zone muet)`,
     });
   });
-  it('câble du Shom sans nom : « câble télécom (Shom) » dans la raison', () => {
+  it('câble du Shom sans nom : « câble télécom du Shom » dans la raison, sans parenthèses imbriquées (capture du 05/10)', () => {
     expect(cablesLevel(watch({ alerts: [alert({ cableId: 'shom/FR000013709500001', cableName: null })] }), NOW).reason)
-      .toBe(`1${NBSP}navire lent confirmé sur un câble, à vérifier : NAVIRE ESSAI (câble télécom (Shom))`);
+      .toBe(`1${NBSP}navire lent confirmé sur un câble, à vérifier : NAVIRE ESSAI (câble télécom du Shom)`);
   });
   it(`relais jamais lu : n.d. ; relevé de plus de ${CABLES_WATCH_STALE_MIN} min : n.d.`, () => {
     expect(cablesLevel(watch({ readAt: null, aisLastMessageAt: null, evaluated: false }), NOW)).toEqual({ level: 'nd', reason: 'relais AIS jamais lu' });

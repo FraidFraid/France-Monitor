@@ -234,8 +234,9 @@ export function distinctVessels(alerts: readonly CableAlert[]): number {
   return new Set(alerts.map((a) => a.mmsi)).size;
 }
 
+/** « NAVIRE (câble) » : un câble du Shom sans nom se dit « câble télécom du Shom », comme au moniteur d'alertes (pas de parenthèses imbriquées). */
 function vesselWord(a: CableAlert): string {
-  const cable = a.cableName ?? (a.cableId.startsWith('shom/') ? 'câble télécom (Shom)' : 'câble sans nom');
+  const cable = a.cableName ?? (a.cableId.startsWith('shom/') ? 'câble télécom du Shom' : 'câble sans nom');
   return `${a.name ?? `MMSI ${a.mmsi}`} (${cable})`;
 }
 
