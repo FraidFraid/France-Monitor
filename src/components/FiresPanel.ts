@@ -859,7 +859,7 @@ export class FiresPanel {
             const renderProfile = (): void => {
                 profileContent.innerHTML = radarProfileLoadingHtml();
                 void fetchRadarColumn(incident.centroidLat, incident.centroidLon).then((result) => {
-                    profileContent.innerHTML = result === null ? radarProfileErrorHtml() : radarProfileHtml(result);
+                    profileContent.innerHTML = result === null ? radarProfileErrorHtml() : radarProfileHtml(result, Date.now());
                 });
             };
             profileBtn.onclick = (event) => {
