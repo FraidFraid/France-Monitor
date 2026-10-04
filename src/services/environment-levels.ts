@@ -216,7 +216,7 @@ function mw(v: number): string {
  * (api/_lib/fires-collect.js, LAST_TTL_SEC). Le client garde la collecte précédente après une erreur : un onglet resté ouvert
  * compterait sinon de vieilles détections.
  */
-export const FIRES_COLLECTION_MAX_AGE_MS = 2 * 86_400_000;
+const FIRES_COLLECTION_MAX_AGE_MS = 2 * 86_400_000;
 
 /** Détections FIRMS d'une réponse : à l'heure, en retard (S2) ou indisponibles (S3). */
 export type FirmsState = 'ok' | 'late' | 'down';
