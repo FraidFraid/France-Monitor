@@ -82,8 +82,9 @@ function positionOf(ac) {
 /**
  * Cumul de lectures en mémoire du processus (arbitrage 17) : au redémarrage, il recommence. Sert à la fois aux 24 h glissantes
  * (avec `prune`) et à un jour UTC (sans `prune`). Une observation (maille, aéronef, classe) garde sa date la plus récente.
- * `add(acList, atMs)` : une lecture /v2/point, dans l'ordre des dates ; `prune(nowMs)` : retire ce qui a plus de 24 h ; `cells()` :
- * mailles survolées ; `largestGapMs(from, to)` : plus long intervalle sans lecture entre deux bornes (couverture d'un jour).
+ * `add(acList, atMs, point?)` : une lecture /v2/point, dans l'ordre des dates, avec le point lu ; `prune(nowMs)` : retire ce qui a
+ * plus de 24 h ; `cells()` : mailles survolées ; `largestGapMs(from, to, point?)` : plus long intervalle sans lecture entre deux
+ * bornes, toutes lectures confondues ou pour un point (couverture d'un jour : chaque point doit être lu, pas seulement un).
  */
 export function createGnssWindow() {
   /** @type {Map<string, Map<string, { good: number | null, degraded: number | null, unknown: number | null }>>} */
@@ -92,6 +93,8 @@ export function createGnssWindow() {
   const lastGood = new Map();
   /** @type {number[]} */
   let readTimes = [];
+  /** Dates de lecture par point lu. @type {Map<string, number[]>} */
+  const readsByPoint = new Map();
   /** @type {number | null} */
   let startedAt = null;
   /** @type {Map<string, boolean>} */
@@ -111,10 +114,15 @@ export function createGnssWindow() {
     return good !== undefined && good < atMs && atMs - good < GNSS_WINDOW_MS ? 'degraded' : 'unknown';
   };
   return {
-    add(acList, atMs) {
+    add(acList, atMs, point = null) {
       if (!Number.isFinite(atMs)) return;
       if (startedAt === null) startedAt = atMs;
       readTimes.push(atMs);
+      if (point !== null) {
+        const times = readsByPoint.get(point) ?? [];
+        times.push(atMs);
+        readsByPoint.set(point, times);
+      }
       const goodNow = [];
       for (const ac of Array.isArray(acList) ? acList : []) {
         const p = positionOf(ac);
@@ -138,6 +146,11 @@ export function createGnssWindow() {
       const from = nowMs - GNSS_WINDOW_MS;
       readTimes = readTimes.filter((t) => t > from);
       if (readTimes.length === 0) startedAt = null;
+      for (const [point, times] of readsByPoint) {
+        const kept = times.filter((t) => t > from);
+        if (kept.length > 0) readsByPoint.set(point, kept);
+        else readsByPoint.delete(point);
+      }
       for (const [hex, t] of lastGood) if (t <= from) lastGood.delete(hex);
       for (const [key, cell] of byCell) {
         for (const [hex, seen] of cell) {
@@ -166,10 +179,11 @@ export function createGnssWindow() {
       }
       return out.sort((a, b) => b.lat - a.lat || a.lon - b.lon);
     },
-    largestGapMs(fromMs, toMs) {
+    largestGapMs(fromMs, toMs, point = null) {
+      const times = point === null ? readTimes : readsByPoint.get(point) ?? [];
       let previous = fromMs;
       let largest = 0;
-      for (const t of [...readTimes].sort((a, b) => a - b)) {
+      for (const t of [...times].sort((a, b) => a - b)) {
         if (t < fromMs || t > toMs) continue;
         largest = Math.max(largest, t - previous);
         previous = t;

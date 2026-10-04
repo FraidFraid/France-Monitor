@@ -6,7 +6,8 @@
 //   dégradation générale décidée avec le Kp de la même fenêtre (arbitrage 34), « référence en construction » sous 23 h 50 ;
 // - un cumul par jour UTC : à la première lecture du jour suivant, le jour se ferme ; ses mailles localisées ne sont servies que le
 //   lendemain (O17 : une maille qui se colore en direct peut signaler une protection en cours, et un brouillage peut être autorisé),
-//   et seulement si le jour est couvert (aucun intervalle sans lecture de plus de trois cycles). Ses comptes vont au journal des
+//   et seulement si le jour est couvert (chacun des cinq points lu sans intervalle de plus de trois cycles : un point jamais lu, par
+//   exemple un cycle toujours arrêté avant lui, laisse le jour non couvert, jamais « calme »). Ses comptes vont au journal des
 //   14 jours (`sov:gnss:days`) ; les deux derniers jours fermés donnent `degraded.previousUtcDays` (veille d'abord, null si non couvert).
 // Une collecte n'est « complète » qu'avec ses cinq lectures : alors seulement `readAt` change. Un échec au milieu d'un cycle l'arrête,
 // garde les lectures faites dans les cumuls et sert la dernière grille complète avec sa date : la donnée vieillit et passe « en retard »
@@ -33,7 +34,10 @@ export const GNSS_PENDING_NOTE = 'adsb.lol : collecte en cours';
 /** Cumul de moins de 23 h 50 (redémarrage du serveur) : note d'avancement. */
 export const GNSS_CONSTRUCTION_NOTE = 'Grille GNSS : référence en construction';
 export const GNSS_TOO_OLD_ERROR = 'Grille GNSS : dernière collecte complète de plus de 2 jours';
-/** Jour UTC couvert : aucun intervalle sans lecture de plus de trois cycles (30 min ; 90 min sur le serveur de dev). */
+/**
+ * Jour UTC couvert : chacun des cinq points lu sans intervalle de plus de trois cycles (30 min ; 90 min sur le serveur de dev), de
+ * 00:00 à sa première lecture, entre deux lectures et de sa dernière lecture à 24:00.
+ */
 export const GNSS_DAY_MAX_GAP_CYCLES = 3;
 const LAST_TTL_SEC = 2 * 86_400;
 const DAYS_MAX_AGE_MS = 14 * 86_400_000;
@@ -116,8 +120,8 @@ async function recordAttempt(stored, errors, attemptedAt, now) {
   return servedBody(record, errors, now);
 }
 
-/** Lecture versée aux deux cumuls ; la première lecture d'un nouveau jour UTC termine le jour précédent. */
-function addRead(acList, atMs) {
+/** Lecture d'un point versée aux deux cumuls ; la première lecture d'un nouveau jour UTC termine le jour précédent. */
+function addRead(acList, atMs, point) {
   gnssWindow.add(acList, atMs);
   const day = utcDay(atMs);
   // Une horloge source qui recule de quelques secondes autour de minuit ne rouvre jamais un jour : seul un jour plus récent le termine.
@@ -126,7 +130,7 @@ function addRead(acList, atMs) {
     today = null;
   }
   if (today === null) today = { day, window: createGnssWindow() };
-  today.window.add(acList, atMs);
+  today.window.add(acList, atMs, point);
 }
 
 /** Entrée du journal des jours : comptes de mailles françaises, `covered` gardé au stockage seulement (jamais servi). */
@@ -144,7 +148,8 @@ async function closeEndedDay(kp, now) {
   ended = null;
   const start = utcDayStart(day);
   const cells = window.cells();
-  const covered = window.largestGapMs(start, start + DAY_MS) <= GNSS_DAY_MAX_GAP_CYCLES * intervalMs();
+  const maxGapMs = GNSS_DAY_MAX_GAP_CYCLES * intervalMs();
+  const covered = GNSS_POINTS.every((p) => window.largestGapMs(start, start + DAY_MS, pointPath(p)) <= maxGapMs);
   await upsertLogEntry(GNSS_DAYS_KEY, dayEntry(day, gnssSummary(cells, maxKpInWindow(kp, start, start + DAY_MS)), covered), { ...DAYS_LOG, now });
   lastClosed = { day, cells: covered ? cells : null };
 }
@@ -180,9 +185,10 @@ export async function collectGnss(now = Date.now()) {
   let done = 0;
   for (let i = 0; i < GNSS_POINTS.length; i += 1) {
     try {
-      const read = await adsbLolGet(pointPath(GNSS_POINTS[i]));
+      const path = pointPath(GNSS_POINTS[i]);
+      const read = await adsbLolGet(path);
       const at = Number.isFinite(read.now) ? read.now : now;
-      addRead(read.ac, at);
+      addRead(read.ac, at, path);
       readAtMs = Math.max(readAtMs, at);
       done += 1;
     } catch (err) {

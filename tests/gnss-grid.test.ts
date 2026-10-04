@@ -147,7 +147,7 @@ describe('NACp 0 après une bonne précision : dégradé (O16)', () => {
   });
 });
 
-describe('dégradation générale : un orage géomagnétique n’est jamais une dégradation locale (Review Focus 3)', () => {
+describe('dégradation générale : un orage géomagnétique n’est jamais une dégradation locale', () => {
   it('40 % des mailles françaises dégradées et Kp 5− (4,67) : dégradation générale, aucune maille comptée', () => {
     const cells = franceCells(4);
     expect(frenchMeasuredCells(cells)).toHaveLength(10);
@@ -192,5 +192,17 @@ describe('jour UTC et couverture (O17 : mailles localisées du jour UTC précéd
     expect(w.largestGapMs(day, day + 24 * H)).toBe(24 * H - 52 * MIN);
     expect(w.largestGapMs(day, day + 50 * MIN)).toBe(35 * MIN);
     expect(w.largestGapMs(day + 10 * MIN, day + 40 * MIN)).toBe(25 * MIN);
+  });
+  it('intervalle par point de lecture : un point jamais lu reste sans lecture tout le jour, même quand les autres le sont toutes les 10 min', () => {
+    const day = utcDayStart('2026-10-04');
+    const w = createGnssWindow();
+    for (let t = day + 5 * MIN; t < day + 24 * H; t += 10 * MIN) {
+      w.add([], t, 'ouest');
+      w.add([], t + 6_000, 'nord-est');
+    }
+    expect(w.largestGapMs(day, day + 24 * H)).toBeLessThanOrEqual(10 * MIN);
+    expect([w.largestGapMs(day, day + 24 * H, 'ouest'), w.largestGapMs(day, day + 24 * H, 'sud-est')]).toEqual([10 * MIN, 24 * H]);
+    w.prune(day + 48 * H);
+    expect([w.reads, w.largestGapMs(day + 24 * H, day + 48 * H, 'ouest')]).toEqual([0, 24 * H]);
   });
 });

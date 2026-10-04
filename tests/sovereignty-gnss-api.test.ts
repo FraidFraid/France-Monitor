@@ -1,6 +1,6 @@
 // tests/sovereignty-gnss-api.test.ts : collecte de la grille GNSS et route /api/sovereignty/gnss (spec 2026-10-04 souveraineté § 3.1 ;
 // contrats § 2.5, arbitrages 2, 33, 34 ; amendement 7, O16 et O17). Les lectures adsb.lol passent par la vraie file unique de la tâche
-// A2 (6 s d'écart, recul de 10 min sur 429) : horloge simulée. Review Focus 4 : un 429 au troisième appel arrête le cycle, la dernière
+// A2 (6 s d'écart, recul de 10 min sur 429) : horloge simulée. Un 429 au troisième appel arrête le cycle, la dernière
 // grille complète reste servie avec sa date, aucun appel pendant le recul. O17 : les mailles localisées servies sont celles du jour UTC
 // précédent seulement, et seulement s'il est couvert ; en direct, un compte glissant de 24 h sans lieu.
 import { readFileSync } from 'node:fs';
@@ -41,13 +41,16 @@ async function settle<T>(p: Promise<T>): Promise<T> {
 }
 
 interface Calls { adsb: Array<{ url: string; at: number; ua: string | undefined }> }
-/** Sources simulées : lectures /v2/point alternées (ouest, sud-est), NOAA réel ; `point(n)` peut remplacer la n-ième lecture adsb.lol. */
-function sources(point: (n: number) => FakeResponse | null = () => null, noaa: (url: string) => FakeResponse | null = () => null): Calls {
+/**
+ * Sources simulées : lectures /v2/point alternées (ouest, sud-est), NOAA réel ; `point(n, url)` peut remplacer la n-ième lecture
+ * adsb.lol (adresse lue fournie).
+ */
+function sources(point: (n: number, url: string) => FakeResponse | null = () => null, noaa: (url: string) => FakeResponse | null = () => null): Calls {
   const calls: Calls = { adsb: [] };
   stubFetch((url, init) => {
     if (url.startsWith('https://api.adsb.lol/')) {
       calls.adsb.push({ url, at: Date.now(), ua: sentHeader(init, 'User-Agent') });
-      return point(calls.adsb.length) ?? respond(fx(calls.adsb.length % 2 === 1 ? 'adsb-lol-point-ouest.json' : 'adsb-lol-point-sud-est.json'));
+      return point(calls.adsb.length, url) ?? respond(fx(calls.adsb.length % 2 === 1 ? 'adsb-lol-point-ouest.json' : 'adsb-lol-point-sud-est.json'));
     }
     const n = noaa(url);
     if (n) return n;
@@ -124,7 +127,7 @@ describe('cycle de collecte', () => {
     expect([isGnssDue(null, T0), isGnssDue(new Date(T0).toISOString(), T0 + 9 * MIN), isGnssDue(new Date(T0).toISOString(), T0 + 8 * MIN)])
       .toEqual([true, true, false]);
   });
-  it('Review Focus 4 : 429 au troisième appel : cycle arrêté, dernière grille complète servie avec sa date, aucun appel pendant le recul', async () => {
+  it('429 au troisième appel : cycle arrêté, dernière grille complète servie avec sa date, aucun appel pendant le recul', async () => {
     sources();
     await settle(ensureGnssFresh(T0));
     const T1 = T0 + 11 * MIN;
@@ -212,6 +215,20 @@ describe('jour UTC précédent : mailles localisées et comptes sans lieu (O17)'
     expect([next.cells, next.cellsDay, next.frenchCells, next.degraded])
       .toEqual([[], null, 0, { rolling24h: 1, previousUtcDays: [null, null] }]);
     expect(next.days.days.map((d) => Object.keys(d).sort())).toEqual([['date', 'general', 'jaune', 'orange'], ['date', 'general', 'jaune', 'orange']]);
+    const log = await kvGetJson(GNSS_DAYS_KEY, Date.now()) as Array<{ date: string; covered: boolean }>;
+    expect(log.map((e) => `${e.date}:${e.covered}`)).toEqual(['2026-10-05:false', '2026-10-04:false']);
+  }, 60_000);
+  it('cycle arrêté à la troisième lecture toute la journée : Sud-Ouest, Sud-Est et Corse jamais lus, jour non couvert, ni mailles ni compte pour la veille', async () => {
+    const third = `https://api.adsb.lol${pointPath(GNSS_POINTS[2])}`;
+    sources((_n, url) => (url === third ? respond('erreur', 500) : builtRead()));
+    const D = Date.parse('2026-10-04T00:05:00Z');
+    const failing = await runCycles(D, D + 23 * 60 * MIN + 50 * MIN);
+    expect([...failing.values()].every((b) => b.readAt === null && b.errors[0] === 'Grille GNSS, lecture 3 sur 5 : adsb.lol : HTTP 500')).toBe(true);
+    sources(() => builtRead());
+    const midnight = D + 24 * 60 * MIN;
+    const next = (await runCycles(midnight, midnight)).get(midnight) as GnssBody;
+    expect([next.readAt === null, next.cells, next.cellsDay, next.frenchCells, next.degraded.previousUtcDays])
+      .toEqual([false, [], null, 0, [null, null]]);
     const log = await kvGetJson(GNSS_DAYS_KEY, Date.now()) as Array<{ date: string; covered: boolean }>;
     expect(log.map((e) => `${e.date}:${e.covered}`)).toEqual(['2026-10-05:false', '2026-10-04:false']);
   }, 60_000);
