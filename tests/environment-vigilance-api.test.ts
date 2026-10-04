@@ -131,6 +131,37 @@ describe('carte de vigilance (cartevigilance/encours)', () => {
     expect(periods[1].departments.map((d) => d.code)).toContain('66');
   });
 
+  it('domaine rejeté ou absent : jamais compté vert, nommé dans errors', () => {
+    const carte = carteDuJour();
+    const ids = carte.product.periods[0].timelaps.domain_ids;
+    const po = ids.find((d) => d.domain_id === '66');
+    if (po) po.max_color_id = 7;
+    carte.product.periods[0].timelaps.domain_ids = ids.filter((d) => d.domain_id !== '13' && d.domain_id !== '75');
+    const { periods, errors } = parseVigilanceCarte(carte);
+    expect(periods[0].greenDepartments).toBe(93 - 2);
+    expect(errors).toContain('Météo-France, carte : domaine 66 illisible');
+    expect(errors).toContain('Météo-France, carte : échéance J, 2 départements absents du produit (13, 75)');
+    expect(periods[1].greenDepartments).toBe(92);
+  });
+
+  it('échéance J+1 absente : nommée, J gardée', () => {
+    const carte = carteDuJour();
+    carte.product.periods = carte.product.periods.filter((p) => p.echeance === 'J');
+    const { periods, errors } = parseVigilanceCarte(carte);
+    expect(periods.map((p) => p.echeance)).toEqual(['J']);
+    expect(errors).toEqual(['Météo-France, carte : échéance J+1 absente du produit']);
+  });
+
+  it('textes tiers : signes de comparaison gardés, vraies balises retirées', () => {
+    const t = textesDuJour();
+    const national = t.product.text_bloc_items[0] as { bloc_items: Array<{ text_items: Array<{ term_items: Array<{ subdivision_text: unknown[] }> }> }> };
+    national.bloc_items[0].text_items[0].term_items[0].subdivision_text = [
+      { underline_text: '', bold_text: 'Cumuls :', text: ['Cumuls < 5 mm, jusqu\'à > 10 mm', 'Ligne<br/>suivante <b>forte</b> &lt; 3 &amp; plus'] },
+    ];
+    const { bulletins } = parseVigilanceTextes(t);
+    expect(bulletins[0].items[0].paragraphs[0].text).toEqual(['Cumuls < 5 mm, jusqu\'à > 10 mm', 'Ligne suivante forte < 3 & plus']);
+  });
+
   it('forme inattendue : erreur levée (jamais une carte vide)', () => {
     expect(() => parseVigilanceCarte({ product: {} })).toThrow(/forme inattendue/);
     expect(() => parseVigilanceCarte({ product: { update_time: '2026-10-04T08:00:12Z', periods: [{ echeance: 'J1' }] } })).toThrow(/forme inattendue/);

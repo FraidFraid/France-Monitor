@@ -5,7 +5,7 @@
 // domaines littoraux « XX10 » (vagues-submersion) ; FRA et tout autre domaine ignorés (l'outre-mer n'est pas dans ce
 // flux). Les niveaux sont repris tels quels (E1) : aucun calcul refait ici.
 import { DEPT_NAMES } from '../_shared/departments.js';
-import { cachedSource, cleanText, fetchStrictJson, sourceError } from './source-http.js';
+import { cachedSource, decodeEntities, fetchStrictJson, sourceError } from './source-http.js';
 import { overlayCurrentDay, readVigilanceHistory } from './vigilance-archive.js';
 
 export const CARTE_URL = 'https://public-api.meteofrance.fr/public/DPVigilance/v1/cartevigilance/encours';
@@ -30,6 +30,21 @@ const ECHEANCES = ['J', 'J1'];
 export function meteoFranceKey() {
   return (process.env.METEO_FRANCE_API_KEY || process.env.VITE_METEOFRANCE_API_KEY || '').replace(/\s+/g, '');
 }
+
+/**
+ * Texte lisible d'un texte tiers : seules les vraies balises HTML (`<` suivi d'une lettre ou de `/`, puis le nom et `>`)
+ * sont retirées avant le décodage des entités ; « Cumuls < 5 mm, jusqu'à > 10 mm » reste intact. Le résultat est du
+ * texte brut : le client l'affiche échappé (textContent), jamais en HTML. Aucun tiret cadratin affiché.
+ */
+function cleanText(raw) {
+  return decodeEntities(String(raw ?? '').replace(/<br\s*\/?>/gi, ' ').replace(/<\/?[a-z][^<>]*>/gi, ' '))
+    .replace(/\s*\u2014\s*/g, ' : ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** Codes des départements de métropole et Corse (96). */
+const METROPOLE_CODES = Object.keys(DEPT_NAMES).filter((c) => /^(?:0[1-9]|[1-8]\d|9[0-5]|2A|2B)$/.test(c));
 
 const isRecord = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const list = (v) => (Array.isArray(v) ? v : []);
@@ -95,6 +110,9 @@ function parsePeriod(raw, echeance, errors) {
   }
   const departments = [];
   const coast = [];
+  const seen = new Set();
+  const rejected = new Set();
+  let green = 0;
   let maxColor = 1;
   for (const d of domains) {
     if (!isRecord(d)) continue;
@@ -105,11 +123,16 @@ function parsePeriod(raw, echeance, errors) {
     const read = readDomain(d);
     if (read === null) {
       errors.push(`Météo-France, carte : domaine ${id} illisible`);
+      rejected.add(id);
       continue;
     }
     maxColor = Math.max(maxColor, read.color);
     if (isDepartment) {
-      if (read.color < 2) continue;
+      seen.add(id);
+      if (read.color < 2) {
+        green += 1;
+        continue;
+      }
       departments.push({
         code: id, name: DEPT_NAMES[id], color: read.color,
         phenomena: read.phenomena.filter((p) => p.color >= 2).sort(byStrength),
@@ -118,6 +141,10 @@ function parsePeriod(raw, echeance, errors) {
       const surge = read.phenomena.find((p) => p.id === '9');
       coast.push({ code: id, departement: coastOf, name: `${DEPT_NAMES[coastOf]}, littoral`, color: read.color, slots: surge?.slots ?? [] });
     }
+  }
+  const missing = METROPOLE_CODES.filter((c) => !seen.has(c) && !rejected.has(c));
+  if (missing.length > 0) {
+    errors.push(`Météo-France, carte : échéance ${echeance}, ${missing.length} départements absents du produit (${missing.join(', ')})`);
   }
   departments.sort((a, b) => b.color - a.color || a.name.localeCompare(b.name, 'fr'));
   coast.sort((a, b) => a.code.localeCompare(b.code));
@@ -128,7 +155,7 @@ function parsePeriod(raw, echeance, errors) {
     maxColor,
     comment: commentOf(raw.text_items),
     departments,
-    greenDepartments: Math.max(0, METROPOLE_DEPARTMENTS - departments.length),
+    greenDepartments: green,
     coast,
     counts: colorCounts(raw.max_count_items),
     perPhenomenon: list(raw.per_phenomenon_items)
@@ -153,6 +180,7 @@ export function parseVigilanceCarte(json) {
   for (const echeance of ECHEANCES) {
     const raw = product.periods.find((p) => isRecord(p) && p.echeance === echeance);
     if (raw) periods.push(parsePeriod(raw, echeance, errors));
+    else if (echeance !== 'J') errors.push('Météo-France, carte : échéance J+1 absente du produit');
   }
   if (periods[0]?.echeance !== 'J') throw shapeError('échéance J absente');
   return { updateTime: product.update_time, periods, errors: [...new Set(errors)] };
