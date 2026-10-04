@@ -343,4 +343,3 @@ export function earthquakesLevel(q: EarthquakesResponse, now: number): LevelVerd
   const level: VigilanceLevel = top.magnitude >= 5 ? 'rouge' : top.magnitude >= 4 ? 'orange' : 'jaune';
   return { level, reason: `séisme de magnitude ${magnitudeText(top.magnitude)} ${quakePlace(top)}` };
 }
-

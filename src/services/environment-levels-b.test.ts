@@ -62,6 +62,11 @@ describe('droughtLevel (§ 3.1) : crise rouge, alerte renforcée orange, alerte 
   it('aucune réponse lue : n.d.', () => {
     expect(droughtLevel(drought({}, 0))).toEqual({ level: 'nd', reason: 'arrêtés VigiEau indisponibles' });
   });
+  it('tous les départements « donnée indisponible » (arbitrage 15) : n.d., jamais vert', () => {
+    const d = drought({ aucun: 0 });
+    const allUnavailable: DroughtResponse = { ...d, departments: d.departments.map((x) => ({ ...x, available: false })) };
+    expect(droughtLevel(allUnavailable)).toEqual({ level: 'nd', reason: 'arrêtés VigiEau indisponibles' });
+  });
 });
 
 describe('airQualityLevel (§ 3.2) : alerte rouge, information orange, indice 4 ou pire jaune, vert sinon', () => {

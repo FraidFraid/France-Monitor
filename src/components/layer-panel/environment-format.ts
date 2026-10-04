@@ -108,7 +108,7 @@ export const SATELLITE_WORD: Readonly<Record<FireSatellite, string>> = {
 /** Unités de l'environnement ; l'unité s'arrête là où finit un mot. */
 const UNITS = String.raw`(?:m³\/s|mm\/h|mm|dBZ|MW|km|min|m|h|j|%)(?![\p{L}\p{N}])`;
 /** Mots comptés des raisons de pastille (« 10 départements », « 4 tronçons ») : collés à leur nombre par glueEnvUnits seulement. */
-const COUNTED = String.raw`(?:départements?|tronçons?|foyers?|détections?|stations?|sources?|autres?)(?![\p{L}\p{N}])`;
+const COUNTED = String.raw`(?:départements?|tronçons?|foyers?|détections?|stations?|sources?|autres?|communes?|séismes?)(?![\p{L}\p{N}])`;
 const ENV_BREAKABLE = new RegExp(String.raw`\d+(?:[,.]\d+)? ${UNITS}`, 'u');
 const GLUE = new RegExp(String.raw`(\d+(?:[,.]\d+)?) (${UNITS}|${COUNTED})`, 'gu');
 
@@ -182,4 +182,3 @@ export function dayMonthClock(iso: string | null | undefined): string {
   const time = d.toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' });
   return `${day} ${time}`;
 }
-

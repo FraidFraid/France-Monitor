@@ -83,6 +83,8 @@ describe('R1 : nombres collés à leur unité', () => {
     expect(glueEnvUnits('danger modéré aujourd’hui : 10 départements')).toBe(`danger modéré aujourd’hui : 10${N}départements`);
     expect(glueEnvUnits('foyer confirmé de 413 MW')).toBe(`foyer confirmé de 413${N}MW`);
     expect(glueEnvUnits('orages : Aude, Gard et 3 autres')).toBe(`orages : Aude, Gard et 3${N}autres`);
+    expect(glueEnvUnits('12 communes en indice mauvais ou pire')).toBe(`12${N}communes en indice mauvais ou pire`);
+    expect(glueEnvUnits('2 séismes en France')).toBe(`2${N}séismes en France`);
     expect(envBreakable(glueEnvUnits('foyer confirmé de 413 MW'))).toBeNull();
   });
 });
