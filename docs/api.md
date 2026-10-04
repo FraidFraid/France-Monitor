@@ -24,7 +24,9 @@ L'API est au stade **0.1.0 (expérimental)**. Aucune garantie de stabilité form
 | `GET /api/situation-history` | Historique de l'indice de situation nationale (créneaux de 6 h). |
 | `GET /api/energy/ecowatt` | Mix électrique régional temps réel + échanges aux frontières (source ODRE). |
 | `GET /api/energy/gas-pir` | Flux gaziers nets aux points d'interconnexion frontaliers (source ENTSOG). |
-| `GET /api/fires` | Feux actifs détectés par satellite (NASA FIRMS VIIRS), emprise France. |
+| `GET /api/environment/fires` | Détections satellite en France (NASA FIRMS : VIIRS et MODIS) regroupées en foyers, récurrentes à part, et météo des forêts par département. |
+| `GET /api/environment/vigilance` | Vigilance Météo-France par département et par phénomène, créneaux, bulletins, historique sur 30 jours. |
+| `GET /api/environment/floods` | Tronçons Vigicrues en vigilance et hauteurs des stations (Hub'Eau). |
 | `GET /api/threats` | Fuites de données et incidents cyber cartographiés en France. |
 
 Voir [`/openapi.json`](https://www.francemonitor.com/openapi.json) pour les schémas de réponse complets, champ par champ.
@@ -56,7 +58,7 @@ Chaque fonction positionne une directive de cache CDN (`s-maxage`) qui reflète 
 | `/api/threats` | ~10 min |
 | `/api/energy/ecowatt` | ~15 min |
 | `/api/energy/gas-pir` | ~30 min |
-| `/api/fires` | ~1 h (FIRMS se met à jour toutes les ~3 h) |
+| `/api/environment/fires`, `/api/environment/vigilance`, `/api/environment/floods` | 5 min (30 s pendant une collecte ou une lecture en cours) |
 | `/api/health-check`, `/api/situation-history` | jamais mis en cache (`no-store`) |
 
 > **Note :** en sortie de CDN, l'en‑tête `Cache-Control` renvoyé au client peut être normalisé par l'hébergeur (par ex. `public` ou `public, max-age=0, must-revalidate`). Fiez‑vous à la cadence documentée ci‑dessus plutôt qu'à la valeur brute de l'en‑tête. Merci de ne pas interroger un endpoint plus fréquemment que sa cadence : les valeurs n'évoluent pas entre‑temps.
