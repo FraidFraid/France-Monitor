@@ -2,9 +2,11 @@
 // (amendement 7, O14 et S1 ; arbitrage du contrôleur : route /api/sovereignty/vigipirate, forme VigipiratePageCheck). La saisie datée
 // (src/config/vigipirate.ts) reste la référence ; ce service lit la vérification du serveur (empreinte du texte utile de
 // https://www.sgdsn.gouv.fr/vigipirate, date de la lecture qui l'a vue changer) et rend les mentions de la ligne Vigipirate :
-// fin des 12 jours d'une « alerte attentat », « niveau à revérifier sur sgdsn.gouv.fr (page modifiée le JJ/MM) », rappel d'une saisie
-// de plus de 4 mois, vérification en panne (S3 : une panne se voit, jamais « inchangée »). Lue avec la relève de la couche Défense.
+// fin des 12 jours d'une « alerte attentat » (échéance passée : à revérifier), « niveau à revérifier sur sgdsn.gouv.fr (page modifiée
+// le JJ/MM) », rappel d'une saisie de plus de 4 mois, vérification en panne (S3 : une panne se voit, jamais « inchangée »). Lue avec la
+// relève de la couche Défense.
 import type { VigipirateEntry, VigipiratePageCheck } from '../types/index.ts';
+import { parisDayOf } from './environment-levels.ts';
 import { vigipirateAlertEnd, vigipiratePageChangedOn, vigipirateReminderDue } from './sovereignty-levels.ts';
 import {
   isDateOrNull, isStringList, loadSovereigntySlot, mergeSlot, nullable, record, shapeOf, value, type SourceSlot,
@@ -48,7 +50,10 @@ export function mergeVigipirateCheck(current: VigipirateCheckState | null, incom
 
 /** Mentions de la ligne Vigipirate, null quand elles n'ont pas lieu d'être. */
 export interface VigipirateNotices {
-  /** « jusqu’au 04/07, sauf renouvellement par le Premier ministre » : stade « alerte attentat » seulement. */
+  /**
+   * Stade « alerte attentat » seulement : « jusqu’au 04/07, sauf renouvellement par le Premier ministre » ; le jour de Paris passé,
+   * « échéance des 12 jours de l’alerte attentat passée le 04/07 · niveau à revérifier sur sgdsn.gouv.fr » (vigipirateAlertEndPassed).
+   */
   alertEnd: string | null;
   /** « niveau à revérifier sur sgdsn.gouv.fr (page modifiée le 05/10) » : page modifiée après le jour de la saisie. */
   recheck: string | null;
@@ -85,6 +90,15 @@ function checkFailureOf(slot: SourceSlot<VigipiratePageCheck>, now: number): str
 }
 
 /**
+ * Échéance des 12 jours d'une « alerte attentat » passée : le jour de Paris de `now` vient après le jour de fin (vigipirateAlertEnd,
+ * « jusqu’au JJ/MM » compris). Faux pour un autre stade ou un début illisible. La saisie n'est pas changée : le niveau est à revérifier.
+ */
+export function vigipirateAlertEndPassed(entry: Pick<VigipirateEntry, 'stade' | 'depuis'>, now: number): boolean {
+  const end = vigipirateAlertEnd(entry);
+  return end !== null && parisDayOf(now) > end;
+}
+
+/**
  * Mentions de la ligne Vigipirate (O14, S1) : la saisie reste affichée telle quelle ; ces mentions s'y ajoutent. La page modifiée
  * n'est dite que d'après une empreinte relue (jamais supposée) ; une vérification en panne ou en retard se dit, sans rien conclure du
  * niveau.
@@ -93,7 +107,10 @@ export function vigipirateNotices(entry: VigipirateEntry, check: SourceSlot<Vigi
   const end = vigipirateAlertEnd(entry);
   const changed = vigipiratePageChangedOn(entry, check.data);
   return {
-    alertEnd: end === null ? null : `jusqu’au ${dayMonth(end)}, sauf renouvellement par le Premier ministre`,
+    alertEnd: end === null ? null
+      : vigipirateAlertEndPassed(entry, now)
+        ? `échéance des 12\u00a0jours de l’alerte attentat passée le ${dayMonth(end)} · niveau à revérifier sur sgdsn.gouv.fr`
+        : `jusqu’au ${dayMonth(end)}, sauf renouvellement par le Premier ministre`,
     recheck: changed === null ? null : `niveau à revérifier sur sgdsn.gouv.fr (page modifiée le ${dayMonth(changed)})`,
     reminder: vigipirateReminderDue(entry, now) ? `saisie du ${fullDate(entry.saisiLe)}, de plus de 4\u00a0mois : à vérifier sur sgdsn.gouv.fr` : null,
     checkFailure: checkFailureOf(check, now),

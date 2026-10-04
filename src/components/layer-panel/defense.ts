@@ -12,7 +12,7 @@ import {
   MILITARY_FIGURE_LABEL, defenseLevel, isSovereigntyDataLate, militaryCounts, militaryEmergencyLevel, vigipirateAlertEnd,
 } from '../../services/sovereignty-levels.ts';
 import { emptySlot, type SourceSlot } from '../../services/sovereignty-source.ts';
-import { vigipirateNotices, type VigipirateNotices } from '../../services/sovereignty-vigipirate.ts';
+import { vigipirateAlertEndPassed, vigipirateNotices, type VigipirateNotices } from '../../services/sovereignty-vigipirate.ts';
 import { isEmergencyConfirmed, parisHour } from '../../services/traffic-levels.ts';
 import { escapeHtml } from '../france-intel-events.ts';
 import { absoluteTime, kvRow } from '../fiche/kit.ts';
@@ -73,6 +73,8 @@ const OVERSEAS_REGIONS: ReadonlySet<string> = new Set([
 /** Espace aérien national au-dessus de la mer (S5) : la mer territoriale, 12 milles marins (22 km) de la côte. */
 const TERRITORIAL_SEA = `au-dessus de la mer territoriale (moins de 12${NBSP}milles de la côte)`;
 const APPROACHES = `approches de la France (moins de 40${NBSP}km)`;
+/** Gris des données en retard, de « hors de France » et du « non évalué » (jeton --cat-mil-etranger, légende Défense). */
+const LATE_GREY = 'var(--cat-mil-etranger)';
 const MASKED_FRENCH = 'appareil d’État français';
 const MASKED_OTHER = 'appareil à identité protégée ou de nationalité inconnue';
 const V1_SENTENCE = 'Couverture communautaire : un appareil absent du flux n’est pas absent du ciel (transpondeur coupé, appareils d’État souvent masqués). '
@@ -104,11 +106,13 @@ function noticesOf(input: Pick<DefenseViewInput, 'vigipirate' | 'vigipirateCheck
 }
 
 /**
- * Mentions affichées sous l'insigne (O14) : fin des 12 jours d'une « alerte attentat » en note ; page officielle modifiée, saisie de
- * plus de 4 mois et vérification en panne ou en retard en encadré (une panne se voit, S3).
+ * Mentions affichées sous l'insigne (O14) : fin des 12 jours d'une « alerte attentat » en note, en encadré une fois l'échéance passée
+ * (niveau à revérifier) ; page officielle modifiée, saisie de plus de 4 mois et vérification en panne ou en retard en encadré (une panne
+ * se voit, S3).
  */
-function noticesHtml(n: VigipirateNotices): string {
-  return (n.alertEnd !== null ? note(`Alerte attentat ${n.alertEnd}.`) : '')
+function noticesHtml(n: VigipirateNotices, alertEndPassed: boolean): string {
+  const alertEnd = n.alertEnd === null ? '' : alertEndPassed ? callout(`${capitalize(n.alertEnd)}.`) : note(`Alerte attentat ${n.alertEnd}.`);
+  return alertEnd
     + [n.recheck, n.reminder, n.checkFailure].filter((t): t is string => t !== null).map((t) => callout(`${capitalize(t)}.`)).join('');
 }
 
@@ -181,10 +185,12 @@ function vigipirateSection(input: DefenseViewInput, notices: VigipirateNotices):
   const { vigipirate: entry, vigipirateCheck, now, open } = input;
   const label = lowerFirst(VIGIPIRATE_LABEL[entry.stade]);
   const end = vigipirateAlertEnd(entry);
+  const endPassed = vigipirateAlertEndPassed(entry, now);
   const checked = pageCheckText(vigipirateCheck, now);
   const html = kvRow('Stade', valueHtml(`${label} (${VIGIPIRATE_RANK_LABEL[entry.stade]})`))
     + kvRow('Depuis le', valueHtml(dateOf(entry.depuis)))
-    + (end !== null ? kvRow('Fin des 12 jours', valueHtml(`${dateOf(end)}, sauf renouvellement par le Premier ministre`)) : '')
+    + (end !== null ? kvRow(`Fin des 12${NBSP}jours`, valueHtml(endPassed ? `${dateOf(end)}, échéance passée · niveau à revérifier sur sgdsn.gouv.fr`
+      : `${dateOf(end)}, sauf renouvellement par le Premier ministre`)) : '')
     + kvRow('Posture', escapeHtml(entry.posture))
     + kvRow('Accents', escapeHtml(entry.accents.join(', ')))
     + kvRow('Saisie', valueHtml(dateOf(entry.saisiLe)))
@@ -193,7 +199,7 @@ function vigipirateSection(input: DefenseViewInput, notices: VigipirateNotices):
     + note(`${VIGIPIRATE_SOURCE_LABEL}. Niveau public du plan Vigipirate, repris de sgdsn.gouv.fr le ${dateOf(entry.saisiLe)} ; les mesures de la `
       + 'posture sont diffusées aux services par le SGDSN : la note de posture fait foi. Pas de flux public : la page est relue chaque jour par le '
       + 'serveur (empreinte du texte, sans le reprendre) et une modification fait revérifier le niveau. Hors score : une posture n’est pas un événement.');
-  const summary = notices.recheck !== null ? `${label} · à revérifier` : label;
+  const summary = notices.recheck !== null || endPassed ? `${label} · à revérifier` : label;
   return { id: 'vigipirate', title: 'Posture Vigipirate', collapsible: true, open: open('vigipirate', true), summary: escapeHtml(summary), html };
 }
 
@@ -234,8 +240,11 @@ function hourTick(ms: number): string {
   return `${day} ${String(parisHour(ms)).padStart(2, '0')}${NBSP}h`;
 }
 
-/** Aéronefs distincts par heure UTC (heure de Paris affichée), français et autres empilés ; une heure sans collecte reste vide. */
-function hourlyChart(m: MilitaryResponse, now: number): string {
+/**
+ * Aéronefs distincts par heure UTC (heure de Paris affichée), français et autres empilés ; une heure sans collecte reste vide. Relevé en
+ * retard : barres et légende en gris (« (en retard) » retire les couleurs), comme les lignes.
+ */
+function hourlyChart(m: MilitaryResponse, isLate: boolean, now: number): string {
   const byHour = new Map<number, { francais: number; autres: number }>();
   for (const h of m.hourly.hours) {
     const at = Date.parse(`${h.hour}:00:00Z`);
@@ -249,7 +258,10 @@ function hourlyChart(m: MilitaryResponse, now: number): string {
     const h = byHour.get(at);
     days.push({
       day: at,
-      parts: h ? [{ value: h.francais, color: FAMILY_COLOR.francais, label: 'français' }, { value: h.autres, color: FAMILY_COLOR.autres, label: 'autres' }] : [],
+      parts: h ? [
+        { value: h.francais, color: isLate ? LATE_GREY : FAMILY_COLOR.francais, label: 'français' },
+        { value: h.autres, color: isLate ? LATE_GREY : FAMILY_COLOR.autres, label: 'autres' },
+      ] : [],
     });
   }
   const chart = stackedDayBars(days, {
@@ -258,8 +270,10 @@ function hourlyChart(m: MilitaryResponse, now: number): string {
   if (!chart) return '';
   const since = dataMs(m.hourly.since === null ? null : `${m.hourly.since}:00:00Z`);
   const spanDays = since === null ? 7 : Math.max(1, Math.ceil((now - since) / DAY_MS));
-  return `<div class="lp-legend"><span class="lp-key"><i style="background:${FAMILY_COLOR.francais}"></i>français</span>`
-    + `<span class="lp-key"><i style="background:${FAMILY_COLOR.autres}"></i>autres</span></div>${chart}`
+  const legend = isLate ? `<span class="lp-key"><i style="background:${LATE_GREY}"></i>français et autres (en retard : couleurs retirées)</span>`
+    : `<span class="lp-key"><i style="background:${FAMILY_COLOR.francais}"></i>français</span>`
+      + `<span class="lp-key"><i style="background:${FAMILY_COLOR.autres}"></i>autres</span>`;
+  return `<div class="lp-legend">${legend}</div>${chart}`
     + (spanDays < 7 ? note(`Référence en construction (${spanDays} ${spanDays > 1 ? 'jours' : 'jour'} sur 7).`) : '');
 }
 
@@ -278,14 +292,19 @@ function aircraftSection(input: DefenseViewInput, m: MilitaryResponse | null): F
   const masked = m.maskedOthers > 0
     ? listRow({ text: 'Identité protégée ou nationalité inconnue (PIA, LADD, adresse non OACI) : comptés, jamais montrés', value: formatCount(m.maskedOthers), level: 'gris' })
     : '';
+  // V1 : relevé en retard sans appareil : non évalué, jamais « aucun » ni « 0 » (même règle que le résumé des urgences).
+  const muted = `non évalué · adsb.lol muet depuis ${clockOf(m.readAt, now)}`;
   const rows = counts.total > 0 ? french + others + masked
-    : emptyOrDown(m.errors, 'Aucun aéronef militaire ou d’État visible en ADS-B au-dessus de la métropole ; une absence du flux n’est pas une absence d’activité.', 'aéronefs adsb.lol');
+    : isLate ? emptyLine(`${capitalize(muted)}.`)
+      : emptyOrDown(m.errors, 'Aucun aéronef militaire ou d’État visible en ADS-B au-dessus de la métropole ; une absence du flux n’est pas une absence d’activité.', 'aéronefs adsb.lol');
+  const summary = isLate && counts.total === 0 ? muted
+    : `${frNumber(counts.total, 0)} en France · ${frNumber(m.abroadCount, 0)} hors de France${isLate ? ' (en retard)' : ''}`;
   return {
     ...base,
-    summary: escapeHtml(`${frNumber(counts.total, 0)} en France · ${frNumber(m.abroadCount, 0)} hors de France${isLate ? ' (en retard)' : ''}`),
+    summary: escapeHtml(summary),
     html: rows
       + listRow({ text: 'Hors de France (approches, mer, pays voisins), jamais comptés', value: formatCount(m.abroadCount), level: 'gris' })
-      + hourlyChart(m, now)
+      + hourlyChart(m, isLate, now)
       + note('Appareils français : un compte par département, sans indicatif, type ni position ; appareils à identité protégée : un compte seulement.')
       + note(V1_SENTENCE)
       + (canFocus && m.others.length > 0 ? note('Clic sur un aéronef d’une autre nation : sa position au relevé sur la carte.') : ''),
@@ -448,7 +467,7 @@ function methodSection(input: DefenseViewInput): FicheSection {
 export function buildDefenseView(input: DefenseViewInput): LayerView {
   const { military: m, militaryError, vigipirate, now } = input;
   const notices = noticesOf(input);
-  const underBadge = noticesHtml(notices);
+  const underBadge = noticesHtml(notices, vigipirateAlertEndPassed(vigipirate, now));
   if (m === null && militaryError === null) {
     return {
       head: { theme: SOVEREIGNTY_THEME, title: DEFENSE_TITLE, status: ['chargement…'], lead: vigipirateBadge(vigipirate) }, sections: [],

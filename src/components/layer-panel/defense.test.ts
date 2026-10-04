@@ -104,7 +104,7 @@ describe('posture Vigipirate (V4, O14, S1)', () => {
     expect(t).toContain('Source : site internet du SGDSN. Niveau public du plan Vigipirate, repris de sgdsn.gouv.fr le 04/10/2026');
     expect(t).toContain('la note de posture fait foi');
     expect(t).toContain('Hors score : une posture n’est pas un événement.');
-    expect(t).not.toContain('Fin des 12 jours');
+    expect(t).not.toContain('Fin des 12');
     expect(h).not.toMatch(/lp-lvl|fmk-dot--/);
   });
   it('aucune mention sous l’insigne quand la page relue n’a pas changé et que la saisie a moins de 4 mois', () => {
@@ -124,8 +124,24 @@ describe('posture Vigipirate (V4, O14, S1)', () => {
     expect(v.head.lead).toBe('Vigipirate : alerte attentat (niveau d’alerte sommital) depuis le 03/10/2026 · Source : site internet du SGDSN');
     expect(vigipirateBadge(entry)).toBe(v.head.lead);
     expect(v.bodyHtml).toBe('<p class="fmk-note">Alerte attentat jusqu’au 15/10, sauf renouvellement par le Premier ministre.</p>');
-    expect(visibleText(v.sections[0].html)).toContain('Fin des 12 jours15/10/2026, sauf renouvellement par le Premier ministre');
+    expect(visibleText(v.sections[0].html)).toContain(`Fin des 12${NBSP}jours15/10/2026, sauf renouvellement par le Premier ministre`);
     expect(visibleText(v.sections[0].html)).toContain('Stadealerte attentat (niveau d’alerte sommital)');
+  });
+  it('alerte attentat, échéance des 12 jours : dite jusqu’à minuit de Paris le 15/10, passée le 16/10 à 00:30 de Paris (encore le 15 en UTC)', () => {
+    const entry = { ...VIGIPIRATE_FIXTURE, stade: 'alerte-attentat' as const, depuis: '2026-10-03' };
+    const lastEvening = view({ vigipirate: entry, vigipirateCheck: null, now: Date.parse('2026-10-15T23:30:00+02:00') });
+    expect(lastEvening.bodyHtml).toBe('<p class="fmk-note">Alerte attentat jusqu’au 15/10, sauf renouvellement par le Premier ministre.</p>');
+    expect(lastEvening.sections[0].summary).toBe('alerte attentat');
+    const afterMs = Date.parse('2026-10-16T00:30:00+02:00');
+    expect(new Date(afterMs).toISOString().slice(0, 10)).toBe('2026-10-15');
+    const after = view({ vigipirate: entry, vigipirateCheck: null, now: afterMs });
+    expect(after.bodyHtml).toBe('<p class="fmk-callout lp-callout">'
+      + `Échéance des 12${NBSP}jours de l’alerte attentat passée le 15/10 · niveau à revérifier sur sgdsn.gouv.fr.</p>`);
+    expect(after.head.lead).toBe('Vigipirate : alerte attentat (niveau d’alerte sommital) depuis le 03/10/2026 · Source : site internet du SGDSN');
+    expect(after.sections[0].summary).toBe('alerte attentat · à revérifier');
+    const t = visibleText(after.sections[0].html);
+    expect(t).toContain(`Fin des 12${NBSP}jours15/10/2026, échéance passée · niveau à revérifier sur sgdsn.gouv.fr`);
+    expect(`${after.bodyHtml ?? ''} ${t}`).not.toMatch(/jusqu’au|sauf renouvellement/);
   });
   it('saisie de plus de 4 mois et vérification en panne : encadrés sous l’insigne, avant la panne adsb.lol nommée', () => {
     const later = Date.parse('2027-02-15T12:00:00+01:00');
@@ -191,6 +207,28 @@ describe('aéronefs au-dessus de la France (O10, S5)', () => {
     expect(visibleText(sectionOf('aeronefs', { military: none })?.html ?? '')).toContain('une absence du flux n’est pas une absence d’activité');
     const down = military((x) => { x.frenchByDept = []; x.others = []; x.errors = ['adsb.lol : HTTP 429']; });
     expect(visibleText(sectionOf('aeronefs', { military: down })?.html ?? '')).toContain('Source indisponible : aéronefs adsb.lol.');
+  });
+  it('aucun aéronef au dernier relevé, relevé en retard : non évalué, adsb.lol muet depuis l’heure du relevé, jamais « aucun » ni « 0 »', () => {
+    const none = military((x) => { x.frenchByDept = []; x.others = []; x.maskedOthers = 0; x.errors = ['adsb.lol : HTTP 429']; });
+    const s = sectionOf('aeronefs', { military: none, now: NOW + 12 * MIN });
+    expect(s?.summary).toBe('non évalué · adsb.lol muet depuis 16:48');
+    const t = visibleText(s?.html ?? '');
+    expect(t).toContain('Non évalué · adsb.lol muet depuis 16:48.');
+    expect(t).not.toMatch(/Aucun aéronef|Source indisponible/);
+    expect(sectionOf('aeronefs', { military: none })?.summary).toBe('0 en France · 3 hors de France');
+  });
+  it('courbe horaire en retard : barres et légende en gris (couleurs retirées), comme les lignes', () => {
+    const m = military((x) => {
+      x.hourly = { hours: [{ hour: '2026-10-04T12', francais: 3, autres: 4 }, { hour: '2026-10-04T14', francais: 4, autres: 5 }], since: '2026-10-04T12' };
+    });
+    const h = sectionOf('aeronefs', { military: m, now: NOW + 12 * MIN })?.html ?? '';
+    expect(h.match(/<rect [^>]*fill="var\(--cat-mil-etranger\)"/g)).toHaveLength(4);
+    expect(h).not.toMatch(/--cat-mil-francais|--cat-mil-autres/);
+    expect(visibleText(h)).toContain('français et autres (en retard : couleurs retirées)');
+    expect(h).toContain(`<title>04/10 16${NBSP}h · français : 4</title>`);
+    const fresh = sectionOf('aeronefs', { military: m })?.html ?? '';
+    expect(fresh).toContain('fill="var(--cat-mil-autres)"');
+    expect(fresh).not.toContain('--cat-mil-etranger');
   });
 });
 
@@ -315,8 +353,8 @@ describe('sites de défense (O13)', () => {
     expect(s?.html).toContain('<button type="button" class="lp-toggle" data-osm-works aria-pressed="false">Afficher les ouvrages OpenStreetMap</button>');
     const meta = { generatedAt: '2026-10-04T13:05:00Z', osmBase: '2026-10-04T12:40:00Z', licence: 'ODbL 1.0' as const, source: '© les contributeurs d’OpenStreetMap', count: 1301 };
     const shown = sectionOf('sites', { sites: { ...SITES, osm: { meta, error: null, shown: true } } });
-    expect(shown?.summary).toBe('112 sites · 1 301 ouvrages OpenStreetMap');
-    expect(visibleText(shown?.html ?? '')).toContain('Ouvrages OpenStreetMap : 1 301 points en France, fichier du 04/10/2026 (base OSM du 04/10 14:40), © les contributeurs d’OpenStreetMap, ODbL 1.0.');
+    expect(shown?.summary).toBe('112 sites · 1\u202F301 ouvrages OpenStreetMap');
+    expect(visibleText(shown?.html ?? '')).toContain('Ouvrages OpenStreetMap : 1\u202F301 points en France, fichier du 04/10/2026 (base OSM du 04/10 14:40), © les contributeurs d’OpenStreetMap, ODbL 1.0.');
     expect(shown?.html).toContain('data-osm-works aria-pressed="true">Masquer les ouvrages OpenStreetMap</button>');
     expect(visibleText(sectionOf('sites', { sites: { ...SITES, osm: { meta: null, error: 'HTTP 404', shown: true } } })?.html ?? ''))
       .toContain('Fichier des ouvrages OpenStreetMap illisible : HTTP 404.');
@@ -387,11 +425,13 @@ describe('hygiène du rendu', () => {
     { navy: { ...NAVY, lastMessageAt: SOV_FIXTURE_NOW - 6 * MIN }, aisRelay: { evaluated: false, lastMessageAt: null } },
     { vigipirate: { ...VIGIPIRATE_FIXTURE, stade: 'alerte-attentat', depuis: '2026-10-03' }, vigipirateCheck: slot(VIGIPIRATE_CHECK_CHANGED_FIXTURE()) },
     { now: Date.parse('2027-02-15T12:00:00+01:00'), vigipirateCheck: slot(VIGIPIRATE_CHECK_FIXTURE(), 'SGDSN, page Vigipirate : HTTP 503') },
+    { vigipirate: { ...VIGIPIRATE_FIXTURE, stade: 'alerte-attentat', depuis: '2026-10-03' }, now: Date.parse('2026-10-16T00:30:00+02:00') },
+    { military: military((x) => { x.frenchByDept = []; x.others = []; }), now: SOV_FIXTURE_NOW + 12 * MIN },
   ];
   it('aucun tiret cadratin, aucune police à chasse fixe, aucune couleur brute, jamais « temps réel », « LIVE » ni « Situation normale »', () => {
     for (const over of variants) {
       const h = html(over);
-      expect(h).not.toMatch(/—|&mdash;|monospace|#[0-9a-fA-F]{6}\b|rgba?\(/);
+      expect(h).not.toMatch(/\u2014|&mdash;|monospace|#[0-9a-fA-F]{6}\b|rgba?\(/);
       expect(visibleText(h)).not.toMatch(/temps réel|TEMPS RÉEL|\bLIVE\b|Situation normale|Aucune activité suspecte|stationn|détournement/i);
     }
   });

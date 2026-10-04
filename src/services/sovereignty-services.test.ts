@@ -26,7 +26,7 @@ import {
   CYBER_TTL_MS, CYBER_URL, RANSOMWARE_UNDATED_NOTE, cyberResponseProblems, cyberStatus, fetchCyber, isCyberResponse, mergeCyber,
 } from './sovereignty-cyber.ts';
 import {
-  VIGIPIRATE_CHECK_URL, fetchVigipirateCheck, isVigipiratePageCheck, vigipirateNotices,
+  VIGIPIRATE_CHECK_URL, fetchVigipirateCheck, isVigipiratePageCheck, vigipirateAlertEndPassed, vigipirateNotices,
 } from './sovereignty-vigipirate.ts';
 
 const NOW = SOV_FIXTURE_NOW;
@@ -337,6 +337,19 @@ describe('Vigipirate : vérification de la page officielle (O14, S1)', () => {
     expect(vigipirateNotices(alerte, slot(VIGIPIRATE_CHECK_FIXTURE()), NOW + 24 * HOUR).alertEnd).toBe('jusqu’au 17/10, sauf renouvellement par le Premier ministre');
     expect(vigipirateNotices(VIGIPIRATE_FIXTURE, slot(VIGIPIRATE_CHECK_FIXTURE()), Date.parse('2027-02-15T12:00:00+01:00')).reminder)
       .toBe('saisie du 04/10/2026, de plus de 4\u00a0mois : à vérifier sur sgdsn.gouv.fr');
+  });
+  it('« alerte attentat » : fin des 12 jours le 17/10 encore dite jusqu’à minuit de Paris, puis échéance passée à revérifier', () => {
+    const alerte = { ...VIGIPIRATE_FIXTURE, stade: 'alerte-attentat' as const, depuis: '2026-10-05', saisiLe: '2026-10-05' };
+    const lastEvening = Date.parse('2026-10-17T23:30:00+02:00');
+    const afterMidnight = Date.parse('2026-10-18T00:30:00+02:00');   // 17/10 22:30 UTC : jour UTC encore le 17, jour de Paris le 18
+    expect(new Date(afterMidnight).toISOString().slice(0, 10)).toBe('2026-10-17');
+    expect([vigipirateAlertEndPassed(alerte, lastEvening), vigipirateAlertEndPassed(alerte, afterMidnight)]).toEqual([false, true]);
+    expect(vigipirateNotices(alerte, slot(VIGIPIRATE_CHECK_FIXTURE()), lastEvening).alertEnd)
+      .toBe('jusqu’au 17/10, sauf renouvellement par le Premier ministre');
+    expect(vigipirateNotices(alerte, slot(VIGIPIRATE_CHECK_FIXTURE()), afterMidnight).alertEnd)
+      .toBe('échéance des 12\u00a0jours de l’alerte attentat passée le 17/10 · niveau à revérifier sur sgdsn.gouv.fr');
+    expect(vigipirateAlertEndPassed(VIGIPIRATE_FIXTURE, afterMidnight)).toBe(false);
+    expect(vigipirateNotices(VIGIPIRATE_FIXTURE, slot(VIGIPIRATE_CHECK_FIXTURE()), afterMidnight).alertEnd).toBeNull();
   });
   it('rappel de 4 mois (120 jours de Paris après la saisie) : pas le 01/02/2027 à 23 h 59, oui le 02/02/2027 à 0 h 01', () => {
     const check = slot(VIGIPIRATE_CHECK_FIXTURE());
