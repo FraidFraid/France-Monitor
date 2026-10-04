@@ -378,16 +378,13 @@ export type FloodVigilanceLevel = 'green' | 'yellow' | 'orange' | 'red';
 export type FloodDataSource = 'live' | 'mock';
 export type FloodGeometryFidelity = 'raw' | 'matched' | 'fallback';
 
-export interface FloodSegment {
-  id: string;
-  name: string;
-  level: FloodVigilanceLevel;
+/** Ancien tronçon de vigicrues.ts : mêmes champs vrais que FloodSectionRef, plus les champs de recalage inventés (retirés à la tâche 18). */
+export interface FloodSegment extends FloodSectionRef {
   dataSource: FloodDataSource;
   geometryFidelity: FloodGeometryFidelity;
   matchConfidence: number;
   rawVertexCount: number;
   displayVertexCount: number;
-  geometry: LineString | MultiLineString;
   rawGeometry: LineString | MultiLineString;
   displayGeometry: LineString | MultiLineString;
 }
@@ -2532,5 +2529,187 @@ export interface MaritimeSnapshot {
   signals: MaritimeSignal[];                                          // seulement les confirmés (T3)
   info: { restricted: number; draught: number; fishing: number };
   sensitive: { tankers: number; passenger: number; list: MaritimeSensitiveVessel[] };
+  errors: string[];
+}
+
+// ═══ Environnement, phase A (spec 2026-10-04 panneaux environnement § 2 ; contrats § 1.1) ═══
+
+// ─── Commun ───
+/** Couleur officielle Météo-France et niveau Vigicrues (NivInfViCr) : 1 vert, 2 jaune, 3 orange, 4 rouge. */
+export type OfficialColorId = 1 | 2 | 3 | 4;
+
+// ─── Vigilance météo : GET /api/environment/vigilance ───
+/** 1 vent violent, 2 pluie-inondation, 3 orages, 4 crues, 5 neige-verglas, 6 canicule, 7 grand froid, 8 avalanches, 9 vagues-submersion. */
+export type VigilancePhenomenonId = '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9';
+export type VigilanceEcheance = 'J' | 'J1';
+/** Créneau horaire publié (timelaps_items), bornes ISO UTC. */
+export interface VigilanceSlot { from: string; to: string; color: OfficialColorId }
+export interface VigilancePhenomenon {
+  id: VigilancePhenomenonId;
+  color: OfficialColorId;            // phenomenon_max_color_id
+  slots: VigilanceSlot[];            // [] quand Météo-France ne publie pas de créneau (phénomène 4 crues) : la frise prend toute l'échéance
+}
+export interface VigilanceDepartment {
+  code: string;                      // « 66 », « 2A »
+  name: string;                      // « Pyrénées-Orientales » (api/_shared/departments.js DEPT_NAMES)
+  color: OfficialColorId;            // max_color_id ; la liste ne garde que jaune et plus
+  phenomena: VigilancePhenomenon[];  // jaune et plus, du plus fort au plus faible, puis par id
+}
+/** Domaine littoral « XX10 » (phénomène 9 vagues-submersion), 25 domaines. */
+export interface VigilanceCoastDomain {
+  code: string;                      // « 6610 »
+  departement: string;               // « 66 » (deux premiers caractères)
+  name: string;                      // « Pyrénées-Orientales, littoral »
+  color: OfficialColorId;
+  slots: VigilanceSlot[];
+}
+export interface VigilanceColorCount { color: 2 | 3 | 4; count: number }
+export interface VigilancePhenomenonCount { id: VigilancePhenomenonId; anyColor: number; counts: VigilanceColorCount[] }
+export interface VigilancePeriod {
+  echeance: VigilanceEcheance;
+  begin: string; end: string;          // begin_validity_time, end_validity_time (UTC)
+  maxColor: OfficialColorId;           // max des départements et des domaines littoraux (domaine FRA exclu)
+  comment: string | null;              // text_items.text réunis ; null si vide (J1 souvent)
+  departments: VigilanceDepartment[];  // jaune et plus seulement ; tri : couleur décroissante puis nom
+  greenDepartments: number;            // départements verts (96 moins la liste)
+  coast: VigilanceCoastDomain[];       // les 25 domaines, toutes couleurs (affichés en phase B, § 3.4)
+  counts: VigilanceColorCount[];       // max_count_items (départements)
+  perPhenomenon: VigilancePhenomenonCount[];
+}
+export type VigilanceBulletinScope = 'national' | 'zonal' | 'departemental';
+/** Rubrique d'un texte : heading « Faits nouveaux » (deux-points finaux retirés) ; underline_text pris comme heading quand bold_text est vide. */
+export interface VigilanceBulletinParagraph { heading: string; text: string[] }
+export interface VigilanceBulletinItem {
+  kind: 'situation' | 'suivi';                 // type_group SITUATION / SUIVI
+  phenomenon: VigilancePhenomenonId | null;    // hazard_code ; null pour « tous aléas »
+  hazard: string;                              // hazard_name (« Pluie », « tous aléas »)
+  echeance: VigilanceEcheance;                 // term_names
+  color: OfficialColorId;                      // risk_code
+  paragraphs: VigilanceBulletinParagraph[];
+}
+export interface VigilanceBulletin {
+  scope: VigilanceBulletinScope;
+  domainId: string;                  // « FRA », « ZDF_SUD », « 66 »
+  domainName: string;                // « France », « Défense Sud », « Pyrénées-Orientales »
+  items: VigilanceBulletinItem[];    // [] : zone sans texte (6 zones sur 7 le 04/10)
+}
+/** Maximum du jour (jour de Paris) des départements par couleur, sur les publications de l'archive (échéance J). */
+export interface VigilanceDayCount { date: string; jaune: number; orange: number; rouge: number; publications: number }
+export interface VigilanceResponse {
+  updateTime: string | null;           // product.update_time de la carte ; null : carte jamais lue
+  textsUpdateTime: string | null;      // update_time des textes
+  periods: VigilancePeriod[];          // [J, J1] dans cet ordre ; [] sans carte
+  bulletins: VigilanceBulletin[];      // national, 7 zonaux (ZDF_NORD, ZDF_EST, ZDF_OUEST, ZDF_PARIS, ZDF_SUD, ZDF_SUD_EST, ZDF_SUD_OUEST), départementaux non vides
+  history: { days: VigilanceDayCount[]; since: string | null };  // 30 jours au plus, plus ancien d'abord ; since = premier jour gardé
+  readAt: string | null;               // dernière lecture réussie de la carte par le serveur
+  errors: string[];
+}
+
+// ─── Crues : GET /api/environment/floods ───
+export type FloodLevel = OfficialColorId;
+/** Point de série, valeur en unité SI (m ou m³/s). Aucun point inventé : un trou reste un trou. */
+export interface FloodSeriesPoint { at: string; value: number }
+export interface FloodStation {
+  code: string;                        // « Y046401001 » (10 caractères)
+  name: string;                        // « Vinca » (LbEntVigiCruInferieur)
+  lat: number | null; lon: number | null;   // coordonnées des observations Hub'Eau ; null sans observation
+  lastAt: string | null;               // dernière mesure de hauteur (UTC)
+  heightM: number | null;              // hauteur au repère de la station (Hub'Eau H en mm / 1000)
+  flowM3s: number | null;              // débit (Hub'Eau Q en L/s / 1000) ; null si la station ne publie pas Q
+  change1hM: number | null;            // dernière hauteur moins celle d'une heure avant (à 10 min près) ; null si absente
+  heightSeries: FloodSeriesPoint[];    // 48 h, un point par quart d'heure au plus
+  flowSeries: FloodSeriesPoint[];      // [] sans débit
+}
+export interface FloodTerritory { code: string; name: string | null; url: string }  // « 21 », « Méditerranée Ouest », https://www.vigicrues.gouv.fr/territoire/21
+export interface FloodSection {
+  id: string;                          // CdEntCru « MO12 »
+  name: string;                        // lbentcru « Têt »
+  level: FloodLevel;                   // NivInfViCr (2 à 4 dans la liste)
+  territory: FloodTerritory;
+  path: Array<Array<[number, number]>>;  // MultiLineString [lng, lat] tel que publié par Vigicrues (aucun recalage)
+  stations: FloodStation[];
+}
+export interface FloodsResponse {
+  readAt: string | null;               // relevé du serveur (InfoVigiCru n'a pas d'heure de bulletin) ; null : jamais lu
+  total: number;                       // tronçons surveillés (337 le 04/10)
+  counts: { vert: number; jaune: number; orange: number; rouge: number };
+  sections: FloodSection[];            // niveaux 2 à 4 seulement ; les verts sont comptés, pas listés
+  stationsReadAt: string | null;       // dernière lecture Hub'Eau réussie
+  stationsOmitted: number;             // stations au-delà du plafond de 60 (0 en temps ordinaire)
+  errors: string[];
+}
+/** Référence d'un tronçon pour le score, la note de situation, la file de travail, le stress hydro et le poste v2. */
+export interface FloodSectionRef { id: string; name: string; level: FloodVigilanceLevel; geometry: LineString | MultiLineString }
+
+// ─── Feux de forêt : GET /api/environment/fires ───
+export type FireSatellite = 'Suomi NPP' | 'NOAA-20' | 'NOAA-21' | 'Terra' | 'Aqua';
+export type FireSensor = 'VIIRS' | 'MODIS';
+/** VIIRS l, n, h ; MODIS 0 à 29 faible, 30 à 79 nominale, 80 à 100 haute (classes FIRMS). */
+export type FireConfidence = 'faible' | 'nominale' | 'haute';
+export type FirmsSourceId = 'VIIRS_SNPP_NRT' | 'VIIRS_NOAA20_NRT' | 'VIIRS_NOAA21_NRT' | 'MODIS_NRT' | 'VIIRS_SNPP_PUBLIC_24H';
+export interface FireDetection {
+  id: string;                          // `${lat.toFixed(4)}_${lon.toFixed(4)}_${acq_date}_${HHMM}_${satellite}`
+  lat: number; lon: number;
+  acquiredAt: string;                  // ISO UTC (acq_date + acq_time complété à 4 chiffres : « 137 » = 01:37)
+  satellite: FireSatellite;
+  sensor: FireSensor;
+  confidence: FireConfidence;
+  confidenceRaw: string;               // « l », « n », « h » ou « 0 » à « 100 », tel que publié
+  frpMw: number;
+  daynight: 'D' | 'N';
+  dept: string;                        // département (point dans polygone) ; la liste ne contient que la France
+  recurrent: boolean;                  // une détection à moins de 1 km au moins 5 des 10 derniers jours
+  foyerId: string;
+}
+export interface FireAbroadDetection { lat: number; lon: number; acquiredAt: string; frpMw: number; satellite: FireSatellite }
+export interface FireFoyer {
+  id: string;                          // id de sa première détection
+  dept: string;                        // département majoritaire
+  depts: string[];
+  lat: number; lon: number;            // centroïde pondéré par la FRP
+  detections: number;
+  passes: number;                      // passages distincts (satellite + heure d'acquisition)
+  confirmed: boolean;                  // passes >= 2
+  recurrent: boolean;                  // centroïde récurrent (règle de FireDetection.recurrent) : « à vérifier, probablement industriel »
+  frpTotalMw: number; frpMaxMw: number;
+  firstAt: string; lastAt: string;
+  satellites: FireSatellite[];
+  confidenceMax: FireConfidence;
+  nightDetections: number;
+}
+export type ForestDangerLevel = 1 | 2 | 3 | 4;   // 1 faible, 2 modéré, 3 élevé, 4 très élevé
+export interface ForestDangerDept { dept: string; name: string; j1: ForestDangerLevel; j2: ForestDangerLevel }
+/** Départements par niveau pour un jour J1 de la saison (CSV annuel). */
+export interface ForestDangerDay { date: string; n1: number; n2: number; n3: number; n4: number }
+export interface ForestDanger {
+  publishedAt: string;                 // colonne date du dernier jour publié (« 2026-10-03T14:50:06Z »)
+  j1Date: string; j2Date: string;      // jours de Paris couverts par J1 et J2 (publication + 1 et + 2 jours)
+  season: 'en-saison' | 'hors-saison'; // forestDangerSeason(publishedAt, readAt)
+  departments: ForestDangerDept[];     // 96
+  history: ForestDangerDay[];          // saison de l'année en cours, plus ancien d'abord (129 jours le 04/10)
+}
+export interface FiresResponse {
+  readAt: string | null;               // dernière collecte FIRMS réussie ; null : jamais
+  lastAcquisitionAt: string | null;    // acquisition la plus récente dans la boîte (France et marges)
+  sources: Array<{ id: FirmsSourceId; ok: boolean; lastAcquisitionAt: string | null }>;
+  detections: FireDetection[];         // France seulement, 24 h glissantes
+  abroadCount: number;                 // détections de la boîte hors de France, 24 h
+  abroad: FireAbroadDetection[];       // les mêmes, pour la carte (gris clair)
+  foyers: FireFoyer[];                 // France, 24 h ; tri : niveau (foyerLevel) puis FRP cumulée
+  daily: { days: Array<{ date: string; france: number; recurrent: number }>; since: string | null };  // 10 jours (jour UTC d'acquisition)
+  nextPasses: Array<{ satellite: FireSatellite; expectedAt: string }>;  // estimés : passages de la veille + 24 h encore à venir ; [] si inconnus
+  forestDanger: ForestDanger | null;   // null : CSV jamais lu
+  errors: string[];
+}
+
+// ─── Communes autour d'un foyer : GET /api/fires/impacts?lat=&lon= ───
+export interface FireImpactCommune { code: string; name: string; dept: string; population: number | null; distanceKm: number }
+export interface FireImpactsResponse {
+  lat: number; lon: number;
+  radiusKm: 10;
+  communes: FireImpactCommune[];       // centre de commune à moins de 10 km, du plus proche au plus lointain
+  nearest: FireImpactCommune | null;
+  georisquesUrl: string | null;        // zonage de la commune la plus proche (forme du lien : § 9, vérification 6)
+  readAt: string;
   errors: string[];
 }
