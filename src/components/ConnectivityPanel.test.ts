@@ -30,8 +30,11 @@ describe('ConnectivityPanel', () => {
     expect(c.querySelector('.lp.connectivity-panel-modal .lp-title')?.textContent).toBe('Connectivité');
     expect(c.textContent).toContain('Chargement des données…');
     p.update(state());
-    expect(c.querySelector('.lp-figure b')?.textContent).toBe('0');
-    expect(c.querySelector('.lp-figure b')?.classList.contains('lp-lvl--vert')).toBe(true);
+    // Phase B (B26) : le gros chiffre est « N / 6 » grands réseaux ; sans relevé RIPEstat (branché par B28) il reste « n.d. » sans
+    // couleur, et le compte des navires lents est passé en tête de la section des navires.
+    expect(c.querySelector('.lp-figure b')?.textContent).toBe('n.d.');
+    expect(c.querySelector('.lp-figure b')?.className ?? '').not.toMatch(/lp-lvl--/);
+    expect(c.textContent).toContain('Navires lents sur un tracé');
     // O18 : le Shom en référence, OpenStreetMap en complément ; une proximité n'est « jamais une menace ».
     expect(c.textContent).toContain('d’après le Shom et OpenStreetMap');
     expect((c.textContent ?? '').replace(/jamais une menace/g, '')).not.toMatch(/SubmarineCableMap|temps réel|menace/i);
