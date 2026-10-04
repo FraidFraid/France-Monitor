@@ -438,8 +438,7 @@ function sitesSection(input: DefenseViewInput): FicheSection {
     html: rows
       + note('Liste interne de sites publics (ministère des Armées, Wikipédia, OpenStreetMap), sans date par site. '
         + 'Chaque site : nom, catégorie et lien officiel s’il existe ; ni description, ni unités.')
-      + osmBlock(osm, now)
-      + note('Zones interdites : deux tracés approchés saisis à la main, non datés.'),
+      + osmBlock(osm, now),
   };
 }
 

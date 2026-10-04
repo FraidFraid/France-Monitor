@@ -351,7 +351,8 @@ describe('sites de défense (O13)', () => {
     expect(t).not.toContain('Fortifications');
     expect(t).toContain('Liste interne de sites publics (ministère des Armées, Wikipédia, OpenStreetMap), sans date par site.');
     expect(t).toContain('Chaque site : nom, catégorie et lien officiel s’il existe ; ni description, ni unités.');
-    expect(t).toContain('Zones interdites : deux tracés approchés saisis à la main, non datés.');
+    // Rectangles « ZIT » retirés par la tâche B27 (remplacés par les zones drones DGAC) : plus aucune note ne les décrit.
+    expect(t).not.toMatch(/Zones interdites|tracés approchés/);
     expect(s?.html).toContain('<button type="button" class="lp-toggle" data-osm-works aria-pressed="false">Afficher les ouvrages OpenStreetMap</button>');
     const meta = { generatedAt: '2026-10-04T13:05:00Z', osmBase: '2026-10-04T12:40:00Z', licence: 'ODbL 1.0' as const, source: '© les contributeurs d’OpenStreetMap', count: 1301 };
     const shown = sectionOf('sites', { sites: { ...SITES, osm: { meta, error: null, shown: true } } });
