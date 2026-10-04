@@ -350,12 +350,8 @@ export const ENV_LAYER_KEYS: Readonly<Record<EnvironmentMapLayer, readonly strin
 /** Météo des forêts : option de la couche Feux. */
 export const FOREST_DANGER_LAYERS: readonly string[] = [LYR_FOREST_DANGER_FILL, LYR_FOREST_DANGER_LINE];
 
-/**
- * Couche Environnement active. `floods` arrive dans MapLayers à la tâche 16 : sans la clé (état antérieur), les crues suivent la vigilance,
- * comme l'ancienne couche « Météo / crues ».
- */
+/** Couche Environnement active : chaque couche suit sa propre clé (un état ancien reçoit `floods` de migrateStoredLayers). */
 export function envLayerOn(layers: Partial<Record<EnvironmentMapLayer, boolean>>, key: EnvironmentMapLayer): boolean {
-  if (key === 'floods') return layers.floods ?? layers.environmental ?? false;
   return layers[key] ?? false;
 }
 

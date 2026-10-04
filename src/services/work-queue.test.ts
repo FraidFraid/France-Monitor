@@ -122,10 +122,10 @@ describe('buildWorkQueue — ce qui entre (spec §7.1)', () => {
     expect(keys(shown)).toEqual(['event:42']);
   });
 
-  it('alertes officielles orange ou rouges regroupées par source et niveau, violet compté rouge (Écowatt national : une seule entrée)', () => {
+  it('alertes officielles orange ou rouges regroupées par source et niveau (Écowatt national : une seule entrée)', () => {
     const groups = officialAlertGroups(
       ecowatt('red'),
-      [meteo('Var', 'violet', ['heat', 'thunderstorm']), meteo('Gard', 'red'), meteo('Isère', 'yellow')],
+      [meteo('Var', 'red', ['heat', 'thunderstorm']), meteo('Gard', 'red'), meteo('Isère', 'yellow')],
       [flood('Loire amont', 'orange')],
       NOW,
     );

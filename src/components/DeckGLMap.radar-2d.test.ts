@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DeckGLMap } from './DeckGLMap.ts';
 import { MapContainer } from './MapContainer.ts';
 import { RADAR_2D_LAYER_ID, RADAR_2D_SOURCE_ID } from './deckgl/format-utils.ts';
-import { getWeatherRadarLayerId, getWeatherRadarSourceId } from './deckgl/format-utils.ts';
 import { LYR_WEATHER_FILL } from './deckgl/constants.ts';
 import type { Radar2dManifest } from '../services/radar-2d.ts';
 
@@ -378,23 +377,18 @@ describe('DeckGLMap radar 2D atomic replacement', () => {
     expect(map.loadImage).not.toHaveBeenCalled();
   });
 
-  it('starts hidden below the vigilance fill, sharp pixels, and leaves the RainViewer layer untouched (removed at task 18)', async () => {
+  it('starts hidden below the vigilance fill, with sharp pixels ; shown by the Radar météo layer only (RainViewer removed)', async () => {
     const map = new RadarMap();
-    const rainSourceId = getWeatherRadarSourceId('france');
-    const rainLayerId = getWeatherRadarLayerId('france');
-    map.sources.set(rainSourceId, { type: 'raster', tiles: ['https://rain.example/{z}/{x}/{y}.png'] });
-    map.layers.set(rainLayerId, { id: rainLayerId, type: 'raster', source: rainSourceId });
     map.layers.set(LYR_WEATHER_FILL, { id: LYR_WEATHER_FILL, type: 'fill', source: 'weather' });
     map.loadImage.mockResolvedValue({ data: {} as ImageBitmap });
     const deckMap = createDeckMap(map);
 
-    await deckMap.setRadar2dOverlay(FIRST, false);
+    await deckMap.setRadar2dOverlay(FIRST, true);
 
     expect(map.layers.get(RADAR_2D_LAYER_ID)?.layout?.visibility).toBe('none');
     expect(map.beforeIds.get(RADAR_2D_LAYER_ID)).toBe(LYR_WEATHER_FILL);
     expect((map.layers.get(RADAR_2D_LAYER_ID) as { paint?: Record<string, unknown> } | undefined)?.paint?.['raster-resampling']).toBe('nearest');
-    expect(map.sources.get(rainSourceId)).toBeDefined();
-    expect(map.layers.get(rainLayerId)).toBeDefined();
+    expect([...map.layers.keys()].some((id) => id.startsWith('weather-radar-'))).toBe(false);
   });
 });
 

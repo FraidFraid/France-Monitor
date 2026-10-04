@@ -576,7 +576,6 @@ const SOURCE_NAME_TO_FLOATING_PANEL: Record<string, keyof MapLayers> = {
   'Réseau Gaz / EcoGaz': 'gasNetwork',
   'Pétrole SDES / INSEE': 'oilNetwork',
   'Vols Militaires ADS-B': 'military',
-  'Feux NASA FIRMS': 'fires',
   'Santé publique France': 'healthOscour',
   'Odissé alertes': 'health',
   'Sentinelles': 'health',
@@ -3065,7 +3064,7 @@ export class App {
       void this.ensureFloodsPanel().then(() => this.openEnvironmentPanel('floods'));
     } else if (name === 'Radar Météo-France') {
       void this.ensureWeatherRadarPanel().then(() => this.openEnvironmentPanel('weatherRadar'));
-    } else if (name === 'NASA FIRMS' || name === 'Feux NASA FIRMS' || name === 'Météo des forêts') {
+    } else if (name === 'NASA FIRMS' || name === 'Météo des forêts') {
       void this.ensureFiresPanel().then(() => this.openEnvironmentPanel('fires'));
     } else if (name === 'Éolien France') {
       this.eolienPanel?.show(this.currentEolienLive, this.currentEolienParks);

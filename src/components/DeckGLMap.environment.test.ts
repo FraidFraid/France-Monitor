@@ -67,7 +67,7 @@ describe('DeckGLMap : couches Environnement (méthodes neuves)', () => {
   });
   it('crues : tronçons et stations ; tronçon mis en avant et recentré', () => {
     const map = new FakeMap([LYR_FLOODS_HIGHLIGHT]);
-    const d = deck(map, { environmental: true });
+    const d = deck(map, { floods: true });
     d.updateFloodsLayer(FLOODS_FIXTURE(), NOW);
     expect([map.count(SRC_FLOODS), map.count(SRC_FLOOD_STATIONS)]).toEqual([4, 9]);
     d.focusFloodSection('MO12');
@@ -95,7 +95,7 @@ describe('DeckGLMap : couches Environnement (méthodes neuves)', () => {
   });
   it('crues : le tronçon mis en avant survit au rafraîchissement tant qu\u2019il existe, sinon est effacé', () => {
     const map = new FakeMap([LYR_FLOODS_HIGHLIGHT]);
-    const d = deck(map, { environmental: true });
+    const d = deck(map, { floods: true });
     d.updateFloodsLayer(FLOODS_FIXTURE(), NOW);
     d.highlightFloodSection('MO12');
     d.updateFloodsLayer(FLOODS_FIXTURE(), NOW);
@@ -109,7 +109,7 @@ describe('DeckGLMap : couches Environnement (méthodes neuves)', () => {
   it('réaffichage : vigilance, crues et feux recalculés avec l\u2019horloge courante (carte devenue en retard : gris)', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(GEO_TEXT, { status: 200 })));
     const map = new FakeMap([]);
-    const d = deck(map, { environmental: false, fires: false });
+    const d = deck(map, { environmental: false, floods: false, fires: false });
     await d.updateVigilanceLayer(VIGILANCE_FIXTURE(), 'J', NOW);
     d.updateFloodsLayer(FLOODS_FIXTURE(), NOW);
     d.updateFiresLayer(FIRES_FIXTURE(), NOW, { forestDangerFill: false });
@@ -117,7 +117,7 @@ describe('DeckGLMap : couches Environnement (méthodes neuves)', () => {
     vi.useFakeTimers();
     vi.setSystemTime(later);
     try {
-      d.setLayerVisibility({ environmental: true, fires: true } as MapLayers);
+      d.setLayerVisibility({ environmental: true, floods: true, fires: true } as MapLayers);
       await vi.advanceTimersByTimeAsync(0);
     } finally {
       vi.useRealTimers();

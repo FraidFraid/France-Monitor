@@ -49,11 +49,11 @@ jobs:
           routes=(
             "/api/news?limit=3;200"
             "/api/news/history;200"
-            "/api/weather/vigilance;200"
+            "/api/environment/vigilance;200"
             "/api/energy/ecowatt;200"
             "/api/energy/biogas-sites;200"
             "/api/traffic/air;200"
-            "/api/fires;200"
+            "/api/environment/fires;200"
             "/api/threats;200"
             "/api/exposure;200"
             "/api/finance/market;200"

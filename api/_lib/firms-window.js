@@ -1,9 +1,9 @@
 /**
  * api/_lib/firms-window.js — Fenêtre temporelle des détections FIRMS.
  *
- * Fonctions PURES du gestionnaire `api/_handlers/fires.js`, servi en production
- * comme en dev (routeur de secours `src/plugins/api-router-fallback.ts`) : un
- * seul code, aucune dérive possible.
+ * Fonctions PURES des collecteurs FIRMS (`api/_lib/fires-collect.js`, `api/_lib/firms.js`), servis par
+ * `/api/environment/fires` en production comme en dev (routeur de secours `src/plugins/api-router-fallback.ts`) :
+ * un seul code, aucune dérive possible.
  *
  * Pourquoi ce module existe : l'API FIRMS `area/csv` prend une plage en JOURS,
  * et `/1` signifie « depuis minuit UTC », pas « les 24 dernières heures ». À

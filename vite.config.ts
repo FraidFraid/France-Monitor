@@ -13,7 +13,6 @@ import { eolienProxyPlugin } from './src/plugins/eolien-proxy';
 import { financeProxyPlugin } from './src/plugins/finance-proxy';
 import { commoditiesProxyPlugin } from './src/plugins/commodities-proxy';
 import { trafficTileProxyPlugin } from './src/plugins/traffic-tile-proxy';
-import { weatherVigilanceProxyPlugin } from './src/plugins/weather-vigilance-proxy';
 import { militaryFlightsProxyPlugin } from './src/plugins/military-flights-proxy';
 import { oilProxyPlugin } from './src/plugins/oil-proxy';
 import { fuelPricesProxyPlugin } from './src/plugins/fuel-prices-proxy';
@@ -124,7 +123,6 @@ export default defineConfig(({ mode }) => {
       financeProxyPlugin(),
       commoditiesProxyPlugin(),
       trafficTileProxyPlugin(),
-      weatherVigilanceProxyPlugin(),
       militaryFlightsProxyPlugin(),
       oilProxyPlugin(),
       fuelPricesProxyPlugin(),

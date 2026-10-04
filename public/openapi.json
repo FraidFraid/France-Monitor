@@ -29,7 +29,7 @@
     { "name": "Actualités", "description": "Fil d'actualités ingéré (presse nationale + régionale) et son agrégation temporelle." },
     { "name": "Santé", "description": "Santé opérationnelle de la plateforme et historique de la situation." },
     { "name": "Énergie", "description": "Mix électrique régional/national et flux gaziers aux frontières." },
-    { "name": "Environnement", "description": "Détections de feux actifs (satellite)." },
+    { "name": "Environnement", "description": "Détections satellite de feux en France, foyers et météo des forêts." },
     { "name": "Cyber", "description": "Fuites de données et incidents cyber cartographiés." }
   ],
   "paths": {
@@ -302,15 +302,15 @@
         }
       }
     },
-    "/api/fires": {
+    "/api/environment/fires": {
       "get": {
         "tags": ["Environnement"],
-        "operationId": "getFires",
-        "summary": "Feux actifs détectés par satellite (NASA FIRMS VIIRS)",
-        "description": "Proxy NASA FIRMS (capteurs VIIRS SNPP, NOAA-20, NOAA-21) restreint à l'emprise France métropolitaine + Corse, sur les dernières 24 h. Contourne les restrictions CORS de FIRMS. Chaque détection est un point chaud (thermal anomaly) ; ce n'est pas nécessairement un incendie confirmé.\n\nCache CDN visé : `s-maxage=3600, stale-while-revalidate=600` (FIRMS se met à jour toutes les ~3 h).",
+        "operationId": "getEnvironmentFires",
+        "summary": "Feux de forêt : détections satellite en France, foyers, météo des forêts (NASA FIRMS, Météo-France)",
+        "description": "Dernière collecte FIRMS du serveur (VIIRS Suomi NPP, NOAA-20, NOAA-21 et MODIS, 24 h glissantes) : chaque détection est rattachée à un département par point dans polygone, celles de la boîte hors de France sont comptées à part. Détections regroupées en foyers (confirmés à partir de deux passages ; récurrents à part, probablement industriels), dix derniers jours, passages attendus et météo des forêts, chacun avec sa propre date. Une détection est une anomalie thermique, pas nécessairement un incendie confirmé.\n\nCache CDN visé : `s-maxage=300, stale-while-revalidate=900` (plus court si la réponse est partielle).",
         "responses": {
           "200": {
-            "description": "Détections dédoublonnées.",
+            "description": "Collecte FIRMS ou météo des forêts lue ; une partie en panne est nommée dans `errors`.",
             "content": {
               "application/json": {
                 "schema": { "$ref": "#/components/schemas/FiresResponse" }
@@ -318,8 +318,8 @@
             }
           },
           "502": {
-            "description": "Erreur du proxy amont FIRMS.",
-            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" }, "example": { "error": "Proxy error", "message": "NASA FIRMS public CSV HTTP 503" } } }
+            "description": "Ni collecte FIRMS ni météo des forêts (clé absente comprise) : même corps, pannes nommées dans `errors`, jamais mis en cache.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FiresResponse" } } }
           }
         }
       }
@@ -354,7 +354,7 @@
         "description": "Corps d'erreur standard.",
         "properties": {
           "error": { "type": "string", "description": "Message d'erreur lisible (en anglais côté serveur)." },
-          "message": { "type": "string", "description": "Détail complémentaire, présent sur certains proxies (ex. /api/fires)." }
+          "message": { "type": "string", "description": "Détail complémentaire, présent sur certains proxies." }
         },
         "required": ["error"]
       },
@@ -615,34 +615,41 @@
       },
       "FireDetection": {
         "type": "object",
-        "description": "Point chaud VIIRS (anomalie thermique). Champs issus du CSV NASA FIRMS.",
+        "description": "Détection satellite en France (anomalie thermique), rattachée à un département.",
         "properties": {
-          "id": { "type": "string", "description": "Identifiant déterministe `lat_lon_date_time` (dédoublonnage)." },
-          "latitude": { "type": "number", "description": "Latitude du pixel (WGS84)." },
-          "longitude": { "type": "number", "description": "Longitude du pixel (WGS84)." },
-          "bright_ti4": { "type": "number", "description": "Température de brillance canal I-4 (Kelvin)." },
-          "bright_ti5": { "type": "number", "description": "Température de brillance canal I-5 (Kelvin)." },
-          "scan": { "type": "number", "description": "Taille du pixel dans l'axe de balayage (km)." },
-          "track": { "type": "number", "description": "Taille du pixel dans l'axe de déplacement (km)." },
-          "frp": { "type": "number", "description": "Fire Radiative Power (MW), intensité radiative du feu." },
-          "acq_date": { "type": "string", "description": "Date d'acquisition (YYYY-MM-DD, UTC)." },
-          "acq_time": { "type": "string", "description": "Heure d'acquisition UTC (HHMM, sans zéro de tête ; ex. `122` = 01:22)." },
-          "confidence": { "type": "string", "description": "Confiance de détection, normalisée en mots : `low`, `nominal`, `high`." },
-          "daynight": { "type": "string", "description": "Passage de jour (`D`) ou de nuit (`N`)." },
-          "instrument": { "type": "string", "description": "Instrument, `VIIRS`." },
-          "satellite": { "type": "string", "description": "Satellite/capteur source (ex. `N` pour NOAA-20 ou libellé injecté SNPP/NOAA-20/NOAA-21)." },
-          "version": { "type": "string", "description": "Version du produit FIRMS (ex. `2.0NRT`)." }
-        }
+          "id": { "type": "string", "description": "Identifiant `lat_lon_date_HHMM_satellite` (dédoublonnage)." },
+          "lat": { "type": "number", "description": "Latitude du pixel (WGS84)." },
+          "lon": { "type": "number", "description": "Longitude du pixel (WGS84)." },
+          "acquiredAt": { "type": "string", "format": "date-time", "description": "Acquisition (ISO 8601 UTC)." },
+          "satellite": { "type": "string", "enum": ["Suomi NPP", "NOAA-20", "NOAA-21", "Terra", "Aqua"] },
+          "sensor": { "type": "string", "enum": ["VIIRS", "MODIS"] },
+          "confidence": { "type": "string", "enum": ["faible", "nominale", "haute"], "description": "Classes FIRMS : VIIRS `l`, `n`, `h` ; MODIS 0 à 29, 30 à 79, 80 à 100." },
+          "confidenceRaw": { "type": "string", "description": "Confiance telle que publiée (`l`, `n`, `h` ou `0` à `100`)." },
+          "frpMw": { "type": "number", "description": "Puissance radiative du feu (MW)." },
+          "daynight": { "type": "string", "enum": ["D", "N"], "description": "Passage de jour (`D`) ou de nuit (`N`)." },
+          "dept": { "type": "string", "description": "Département (point dans polygone)." },
+          "recurrent": { "type": "boolean", "description": "Détection à moins de 1 km au moins 5 des 10 derniers jours (probablement industrielle)." },
+          "foyerId": { "type": "string", "description": "Foyer de la détection." }
+        },
+        "required": ["id", "lat", "lon", "acquiredAt", "satellite", "sensor", "confidence", "confidenceRaw", "frpMw", "daynight", "dept", "recurrent", "foyerId"]
       },
       "FiresResponse": {
         "type": "object",
+        "description": "Feux de forêt, type `FiresResponse` de `src/types/index.ts`.",
         "properties": {
-          "detections": { "type": "array", "description": "Points chauds dédoublonnés sur l'emprise France (24 h).", "items": { "$ref": "#/components/schemas/FireDetection" } },
-          "sources": { "type": "array", "description": "Capteurs ayant répondu (ex. `SNPP`, `NOAA-20`, `NOAA-21`, ou `SNPP (public CSV)` en mode sans clé).", "items": { "type": "string" } },
-          "fetchedAt": { "type": "integer", "description": "Horodatage de récupération en millisecondes epoch." },
-          "apiKeyUsed": { "type": "boolean", "description": "`true` si les 3 capteurs via l'API à clé ont été utilisés, `false` en fallback CSV public." }
+          "readAt": { "type": ["string", "null"], "format": "date-time", "description": "Dernière collecte FIRMS réussie ; `null` : jamais." },
+          "lastAcquisitionAt": { "type": ["string", "null"], "format": "date-time", "description": "Acquisition la plus récente dans la boîte (France et marges)." },
+          "sources": { "type": "array", "description": "Produits FIRMS lus (`VIIRS_SNPP_NRT`, `VIIRS_NOAA20_NRT`, `VIIRS_NOAA21_NRT`, `MODIS_NRT`, ou `VIIRS_SNPP_PUBLIC_24H` sans clé), chacun avec `ok` et sa dernière acquisition.", "items": { "type": "object" } },
+          "detections": { "type": "array", "description": "Détections en France, 24 h glissantes.", "items": { "$ref": "#/components/schemas/FireDetection" } },
+          "abroadCount": { "type": "integer", "description": "Détections de la boîte hors de France, 24 h." },
+          "abroad": { "type": "array", "description": "Les mêmes, pour la carte (position, acquisition, FRP, satellite).", "items": { "type": "object" } },
+          "foyers": { "type": "array", "description": "Foyers en France, 24 h : départements, centroïde, détections, passages, confirmé, récurrent, FRP cumulée et maximale, première et dernière acquisition.", "items": { "type": "object" } },
+          "daily": { "type": "object", "description": "Détections par jour UTC d'acquisition sur 10 jours (France, dont récurrentes)." },
+          "nextPasses": { "type": "array", "description": "Passages estimés (passages de la veille + 24 h encore à venir) ; vide si inconnus.", "items": { "type": "object" } },
+          "forestDanger": { "type": ["object", "null"], "description": "Météo des forêts (Météo-France) : date de publication, jours couverts, saison, niveau J1 et J2 par département, historique de la saison ; `null` : jamais lue." },
+          "errors": { "type": "array", "description": "Pannes nommées (source et cause).", "items": { "type": "string" } }
         },
-        "required": ["detections", "sources", "fetchedAt"]
+        "required": ["readAt", "lastAcquisitionAt", "sources", "detections", "abroadCount", "abroad", "foyers", "daily", "nextPasses", "forestDanger", "errors"]
       },
       "ThreatSource": {
         "type": "object",

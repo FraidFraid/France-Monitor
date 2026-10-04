@@ -92,7 +92,7 @@ export const COLOR_LEVEL: Readonly<Record<OfficialColorId, VigilanceLevel>> = OF
 export const COLOR_WORD: Readonly<Record<OfficialColorId, string>> = { 1: 'vert', 2: 'jaune', 3: 'orange', 4: 'rouge' };
 /** Phénomènes de la vigilance : « vent violent », « pluie-inondation »… (mêmes mots que les raisons de pastille). */
 export const PHENOMENON_LABEL: Readonly<Record<VigilancePhenomenonId, string>> = PHENOMENON_WORD;
-/** Pictogrammes de la carte et du panneau, repris de RISK_PICTOGRAMS (src/services/vigilance-meteo.ts l. 149). */
+/** Pictogrammes de la carte et du panneau (ceux de l'ancien service de vigilance, repris tels quels). */
 export const PHENOMENON_ICON: Readonly<Record<VigilancePhenomenonId, IconName>> = {
   1: 'wind', 2: 'cloud-rain', 3: 'cloud-lightning', 4: 'waves', 5: 'snowflake', 6: 'thermometer', 7: 'thermometer-snowflake', 8: 'mountain-snow',
   9: 'waves',

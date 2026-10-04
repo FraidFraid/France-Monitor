@@ -43,7 +43,6 @@ const METEO_LEVEL_WEIGHTS: Record<string, number> = {
   orange: 60,
   yellow: 30,
   green: 0,
-  violet: 100,
 };
 
 const FLOOD_LEVEL_WEIGHTS: Record<string, number> = {

@@ -1,5 +1,5 @@
 // src/components/layer-panel/feux-dossier.ts : onglet « Dossier d'un feu » du panneau Feux de forêt (spec 2026-10-04 environnement
-// § 2.4 ; contrats § 4.1). Reprend le dossier OSINT d'un grand feu (WildfireDossierModal.ts, retiré à la tâche 18) dans le cadre des
+// § 2.4 ; contrats § 4.1). Reprend le dossier OSINT d'un grand feu (ancienne fenêtre « Dossier grand feu », retirée) dans le cadre des
 // panneaux de couches, règles inchangées (docs/design-alertes-grands-feux-2026-07.md § 6.2, § 12) : aucun chiffre sans provenance ni
 // sans ses deux notes, aucune valeur agrégée (séries), observé et déclaré côte à côte jamais fusionnés, échappement de tout texte
 // tiers, lien de source en http(s) seulement. Ajoute les communes à moins de 10 km du centre (geo.api.gouv.fr, /api/fires/impacts)
@@ -76,7 +76,7 @@ function factTime(iso: string): string {
 }
 
 /**
- * Une ligne de fait déclaré (repris de WildfireDossierModal.ts l. 123) : valeur et unité insécables (R1), source et son niveau,
+ * Une ligne de fait déclaré (reprise de l'ancienne fenêtre du dossier) : valeur et unité insécables (R1), source et son niveau,
  * note combinée « fiabilité de la source + crédibilité de l'information » (D4), provisoire, approximatif, phrase source verbatim.
  */
 export function renderFactRow(fact: ImpactFact): string {
@@ -114,7 +114,7 @@ function renderKnownFact(fact: ImpactFact): string | null {
 }
 
 /**
- * Bloc « déclaré » (repris de WildfireDossierModal.ts l. 253), trois états jamais confondus : aucun fait (« Impacts non
+ * Bloc « déclaré » (repris de l'ancienne fenêtre du dossier), trois états jamais confondus : aucun fait (« Impacts non
  * renseignés. », silence de la source) ; tous les faits rejetés (donnée reçue mais corrompue) ; certains rejetés (liste et mention).
  */
 export function renderDeclaredBlock(facts: ImpactFact[]): string {

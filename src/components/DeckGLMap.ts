@@ -5,15 +5,13 @@
  *           Traffic (axes routiers).
  */
 
-import type { WeatherRadarFrame, WeatherRadarStatus } from '../services/weather-radar.ts';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import { COORDINATE_SYSTEM } from '@deck.gl/core';
 import Supercluster from 'supercluster';
-import { DayNightLayer } from '../layers/DayNightLayer.ts';
-import type { MapViewState, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, NewsItem, MeteoAlert, FloodSegment, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, ActiveFire, TelecomOutage, PowerOutage, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, HydraulicBackboneAsset, ThreatEvent } from '../types/index.ts';
+import type { MapViewState, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, NewsItem, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, TelecomOutage, PowerOutage, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, HydraulicBackboneAsset, ThreatEvent } from '../types/index.ts';
 import type { FiresResponse, FloodSection, FloodsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
 import { ecowattToday, ecowattLevelLabel } from '../services/ecowatt-official.ts';
 import { DATA_FRESHNESS_LABELS } from '../types/index.ts';
@@ -73,9 +71,6 @@ export { ELECTRIC_FLOW_STYLE, setElectricFlowConfig, getElectricFlowConfig, GAS_
 import { emptyFC, generateArc, computeBearingDegrees } from './deckgl/geometry-utils.ts';
 import {
   escapeHtml,
-  getWeatherRadarSourceId,
-  getWeatherRadarLayerId,
-  getWeatherRiskIcon,
   scoreToISNRColor,
   scoreToISNRLineColor,
   deptCodeToId,
@@ -105,7 +100,6 @@ import {
   SRC_HEALTH_DEPTS,
   SRC_FLOODS,
   SRC_FLOODS_HIGHLIGHT,
-  SRC_TOPAGE_VIS,
   SRC_FIRES,
   SRC_INFRA,
   SRC_INFRA_HIGHLIGHT,
@@ -138,7 +132,6 @@ import {
   LYR_WEATHER_LINE_YELLOW,
   LYR_WEATHER_LINE_ORANGE,
   LYR_WEATHER_LINE_RED,
-  LYR_WEATHER_LINE_VIOLET,
   SRC_WEATHER_ICONS,
   LYR_WEATHER_ICONS,
   LYR_FOREST_DANGER_FILL,
@@ -151,8 +144,6 @@ import {
   SRC_ISNR,
   LYR_ISNR_FILL,
   LYR_ISNR_LINE,
-  LYR_TOPAGE_VIS,
-  LYR_FLOODS_RAW,
   LYR_FLOODS,
   LYR_FLOODS_HIGHLIGHT,
   LYR_FIRES_GLOW,
@@ -188,8 +179,6 @@ import {
   LYR_WIND_PARK_HALO,
   LYR_WIND_PARK_CIRCLE,
   LYR_WIND_PARK_LABEL,
-  WEATHER_RADAR_REGIONS,
-  WEATHER_RADAR_MAX_ZOOM,
   SRC_GAS_NETWORK_GRT,
   SRC_GAS_NETWORK_TEREGA,
   LYR_GAS_NETWORK_GRT,
@@ -285,8 +274,6 @@ import {
   SRC_IIP,
   LYR_IIP_GLOW,
   LYR_IIP_CORE,
-  SRC_TERMINATOR,
-  LYR_TERMINATOR,
   SRC_NET_ISP,
   SRC_NET_IODA,
   LYR_NET_ISP_GLOW,
@@ -326,13 +313,9 @@ import {
   REGION_BALANCE_COLORS,
   REGION_BALANCE_LINE_COLORS,
   regionEnergyBalance,
-  METEO_COLORS,
   WEATHER_HIGHLIGHT_STATE,
-  WEATHER_RISK_ICONS,
   AIS_DESTINATION_ALIASES,
   AIS_PORT_LOCODES,
-  WEATHER_DEPT_CENTROIDS,
-  FLOOD_COLORS,
   INFRA_COLORS,
   INFRA_VITAL_HALO_COLOR,
   INFRA_NUCLEAR_RING_COLOR,
@@ -448,7 +431,6 @@ export class DeckGLMap {
   private hoveredSubseaCableId: string | number | null = null;
   private hoveredSubseaLandingId: string | number | null = null;
   private aisHoverTooltip: maplibregl.Popup | null = null;
-  private floodHoverPopup: maplibregl.Popup | null = null;
   private healthHoverPopup: maplibregl.Popup | null = null;
   /** Trafics (spec 2026-10-03 trafics § 3) : survol, fiche d'un bouchon, icônes d'avions selon le zoom, retard SNCF du trajet tracé. */
   private trafficHoverPopup: maplibregl.Popup | null = null;
@@ -472,19 +454,10 @@ export class DeckGLMap {
   /** Trajet tracé : train choisi dans le panneau ; un train survolé le remplace le temps du survol. */
   private chosenTrain: RailTrain | null = null;
   private previewTrain: RailTrain | null = null;
-  private weatherHoverPopup: maplibregl.Popup | null = null;
   private dromEnergyHoverPopup: maplibregl.Popup | null = null;
-  private weatherRadarTileTemplate: string | null = null;
-  private weatherRadarFetchedAt = 0;
-  private weatherRadarFrame: WeatherRadarFrame | null = null;
-  private weatherRadarStatus: WeatherRadarStatus = 'loading';
-  private onWeatherRadarFrame: ((frame: WeatherRadarFrame | null, status: WeatherRadarStatus) => void) | null = null;
   private fuelTensionHoverPopup: maplibregl.Popup | null = null;
-  private firesHoverPopup: maplibregl.Popup | null = null;
   private _flightInterpolTick: ReturnType<typeof setInterval> | null = null;
   private _modisOverlayEnabled = false;
-  /** Marqueurs FIRMS visibles (toggle du panneau Feux, ANDé avec la couche fires). */
-  private _firePointsEnabled = true;
   private _modisTilesProbe: Promise<void> | null = null;
   private _mtgFrpEnabled = false;
   private mtgFrpObservedAt: string | null = null;
@@ -500,7 +473,6 @@ export class DeckGLMap {
   private _lastHoveredFuelDeptId: string | null = null;
   private _previewedWeatherDeptId: number | null = null;
   private _selectedWeatherDeptId: number | null = null;
-  private floodSegmentsById: Map<string, FloodSegment> = new Map();
   // Perf audit §5 item 4 / §6 item 7: kicked off in init() right after the map
   // is created, in parallel with map style/tile loading, instead of only
   // after map.on('load') fires — this fetch has no dependency on the map.
@@ -509,12 +481,11 @@ export class DeckGLMap {
   // fetched the first time the gas layer is switched on.
   private gasNetworkSourcesPromise: Promise<void> | null = null;
   // Perf audit §6 item 2: departements.geojson (3.3 MB) is memoized inside
-  // getDepartmentsGeojson(), but updateWeather/updateISNR/
-  // updateOutages used to trigger it unconditionally regardless of layer
-  // visibility. These three fields (the health layers use healthRegionsDirty/healthDeptsDirty) hold the most recent args passed while the
+  // getDepartmentsGeojson(), but updateISNR/updateOutages used to trigger it
+  // unconditionally regardless of layer visibility. These two fields (the health layers use healthRegionsDirty/healthDeptsDirty,
+  // the vigilance envVigilancePending) hold the most recent args passed while the
   // corresponding layer was inactive, so setLayerVisibility() can replay the
   // same call (cheap: memoized fetch, or first real one) once it's switched on.
-  private _pendingWeatherAlerts: MeteoAlert[] | null = null;
   private _pendingIsnrScores: import('../types/index.ts').ISNRScore[] | null = null;
   private _pendingOutagesArgs: { telecoms: TelecomOutage[]; powers: PowerOutage[] } | null = null;
   // Couches santé (spec 2026-10-03 § 3) : dernières données reçues, syndrome et profession choisis dans les panneaux.
@@ -617,13 +588,6 @@ export class DeckGLMap {
   private eventPointsVisible = false;
   private onEventPointClick: ((id: number) => void) | null = null;
   private airTrafficVisible = false;
-  private dayNightVisible = false;
-  private dayNightOptions = {
-    showNight: true,
-    showTwilight: true,
-    showSunIcon: true,
-    timestamp: 0, // 0 = utilise Date.now() à chaque rendu
-  };
   private civilAirTrafficFlights: AirTrafficFlight[] = [];  // Filtered: excludes military callsigns
   private legendHoverCategory: string | null = null;
 
@@ -784,8 +748,6 @@ export class DeckGLMap {
       promoteId: 'code'
     });
 
-    // Topage visual (réseau hydro décoratif, fond)
-    this.map.addSource(SRC_TOPAGE_VIS, { type: 'geojson', data: emptyFC() });
 
     // Flood segments
     this.map.addSource(SRC_FLOODS, { type: 'geojson', data: emptyFC() });
@@ -893,7 +855,6 @@ export class DeckGLMap {
     this.map.addSource(SRC_POWER, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_CITIZEN_ZONES, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_IIP, { type: 'geojson', data: emptyFC() });
-    this.map.addSource(SRC_TERMINATOR, { type: 'geojson', data: emptyFC() });
     // Internet/BGP outages (IODA + ISP BGP) — clustering activé pour éviter le chevauchement à faible zoom
     this.map.addSource(SRC_NET_ISP, {
       type: 'geojson', data: emptyFC(),
@@ -953,16 +914,6 @@ export class DeckGLMap {
     // LAYERS (order matters — bottom to top)
     // ═══════════════════════════════════════════════════════════════
 
-    // ─── Terminateur jour/nuit (premier layer — sous tout le reste) ───
-    this.map.addLayer({
-      id: LYR_TERMINATOR,
-      type: 'fill',
-      source: SRC_TERMINATOR,
-      paint: {
-        'fill-color': '#0a0e2a',
-        'fill-opacity': 0.45,
-      },
-    });
 
     // ─── Energy: region fill ───
     this.map.addLayer({
@@ -1100,14 +1051,13 @@ export class DeckGLMap {
       }
     });
 
-    // ─── Weather: department fill ───
-    await this.ensureWeatherRadarLayer();
+    // ─── Vigilance : remplissage départemental (deckgl/environment-map.ts : couleur portée par chaque département) ───
     this.map.addLayer({
       id: LYR_WEATHER_FILL,
       type: 'fill',
       source: SRC_WEATHER,
       paint: {
-        'fill-color': ['coalesce', ['get', 'color'], ['get', 'fillColor']],
+        'fill-color': ['get', 'fillColor'],
         'fill-opacity': [
           'case',
           ['boolean', ['get', 'hasAlert'], false],
@@ -1118,7 +1068,6 @@ export class DeckGLMap {
             [
               'match',
               ['get', 'level'],
-              'violet', 0.42,
               'red', 0.38,
               'orange', 0.30,
               'yellow', 0.16,
@@ -1151,7 +1100,7 @@ export class DeckGLMap {
       source: SRC_WEATHER,
       filter: ['all', ['boolean', ['get', 'hasAlert'], false], ['==', ['get', 'level'], 'yellow']],
       paint: {
-        'line-color': ['coalesce', ['get', 'color'], ['get', 'lineColor']],
+        'line-color': ['get', 'lineColor'],
         'line-width': ['case', WEATHER_HIGHLIGHT_STATE, 2.3, 1.2],
         'line-opacity': ['case', WEATHER_HIGHLIGHT_STATE, 1.0, 0.9],
       },
@@ -1162,7 +1111,7 @@ export class DeckGLMap {
       source: SRC_WEATHER,
       filter: ['all', ['boolean', ['get', 'hasAlert'], false], ['==', ['get', 'level'], 'orange']],
       paint: {
-        'line-color': ['coalesce', ['get', 'color'], ['get', 'lineColor']],
+        'line-color': ['get', 'lineColor'],
         'line-width': ['case', WEATHER_HIGHLIGHT_STATE, 3.2, 2.4],
         'line-opacity': ['case', WEATHER_HIGHLIGHT_STATE, 1.0, 0.98],
       },
@@ -1173,19 +1122,8 @@ export class DeckGLMap {
       source: SRC_WEATHER,
       filter: ['all', ['boolean', ['get', 'hasAlert'], false], ['==', ['get', 'level'], 'red']],
       paint: {
-        'line-color': ['coalesce', ['get', 'color'], ['get', 'lineColor']],
-        'line-width': ['case', WEATHER_HIGHLIGHT_STATE, 3.6, 2.8],
-        'line-opacity': 1,
-      },
-    });
-    this.map.addLayer({
-      id: LYR_WEATHER_LINE_VIOLET,
-      type: 'line',
-      source: SRC_WEATHER,
-      filter: ['all', ['boolean', ['get', 'hasAlert'], false], ['==', ['get', 'level'], 'violet']],
-      paint: {
         'line-color': ['get', 'lineColor'],
-        'line-width': ['case', WEATHER_HIGHLIGHT_STATE, 3.8, 3],
+        'line-width': ['case', WEATHER_HIGHLIGHT_STATE, 3.6, 2.8],
         'line-opacity': 1,
       },
     });
@@ -1297,8 +1235,8 @@ export class DeckGLMap {
       id: LYR_FIRES_GLOW,
       type: 'circle',
       source: SRC_FIRES,
-      // Halo : foyers orange ou rouges seulement (propriété `glow`) ; anciens points sans la propriété : halo gardé.
-      filter: ['coalesce', ['get', 'glow'], true],
+      // Halo : foyers orange ou rouges seulement (propriété `glow`, deckgl/environment-map.ts).
+      filter: ['==', ['get', 'glow'], true],
       paint: {
         'circle-radius': [
           'interpolate',
@@ -1307,7 +1245,7 @@ export class DeckGLMap {
           5, 10,
           10, 30
         ],
-        'circle-color': ['coalesce', ['get', 'color'], '#ff3b30'],
+        'circle-color': ['get', 'color'],
         'circle-opacity': 0.3,
         'circle-blur': 0.8
       }
@@ -1316,21 +1254,15 @@ export class DeckGLMap {
       id: LYR_FIRES_POINTS,
       type: 'circle',
       source: SRC_FIRES,
-      layout: { 'circle-sort-key': ['coalesce', ['get', 'sortKey'], 0] },
+      layout: { 'circle-sort-key': ['get', 'sortKey'] },
       paint: {
         'circle-radius': [
           'interpolate', ['linear'], ['zoom'],
-          5, ['coalesce', ['get', 'radius'], 3],
-          10, ['*', ['coalesce', ['get', 'radius'], 3], 1.6],
+          5, ['get', 'radius'],
+          10, ['*', ['get', 'radius'], 1.6],
         ],
-        // Couleur du foyer (deckgl/environment-map.ts) ; repli sur l'ancienne table jusqu'à la tâche 18.
-        'circle-color': ['coalesce', ['get', 'color'], [
-          'match', ['get', 'confidence'],
-          'high', '#ffd60a',
-          'nominal', '#ff9500',
-          'low', '#ff3b30',
-          '#ff9500'
-        ]],
+        // Couleur du foyer, portée par chaque détection (deckgl/environment-map.ts) : confiance faible jamais rouge.
+        'circle-color': ['get', 'color'],
         'circle-stroke-width': 1,
         'circle-stroke-color': 'rgba(0,0,0,0.5)',
         'circle-opacity': 0.9,
@@ -1420,40 +1352,12 @@ export class DeckGLMap {
       },
     });
 
-    // ─── Topage visual : réseau hydro de fond (bleu clair discret) ───
-    this.map.addLayer({
-      id: LYR_TOPAGE_VIS,
-      type: 'line',
-      source: SRC_TOPAGE_VIS,
-      paint: {
-        'line-color': '#4fc3f7',
-        'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.5, 10, 1.2, 14, 2],
-        'line-opacity': 0.45,
-      },
-      layout: { 'line-cap': 'round', 'line-join': 'round', 'visibility': 'none' },
-    });
 
-    // ─── Floods: tronçons raw (Topage indisponible) — pointillés discrets ───
-    this.map.addLayer({
-      id: LYR_FLOODS_RAW,
-      type: 'line',
-      source: SRC_FLOODS,
-      filter: ['==', ['get', 'geometryFidelity'], 'raw'],
-      paint: {
-        'line-color': ['get', 'color'],
-        'line-width': 2,
-        'line-opacity': 0.45,
-        'line-dasharray': [2, 4],
-      },
-      layout: { 'line-cap': 'butt' },
-    });
-
-    // ─── Floods: segment lines (matched + fallback uniquement) ───
+    // ─── Crues : tronçons jaunes, orange et rouges, tracé publié par Vigicrues ───
     this.map.addLayer({
       id: LYR_FLOODS,
       type: 'line',
       source: SRC_FLOODS,
-      filter: ['!=', ['get', 'geometryFidelity'], 'raw'],
       paint: {
         'line-color': [
           'case',
@@ -1468,7 +1372,6 @@ export class DeckGLMap {
         ],
         'line-opacity': ['case',
           ['boolean', ['feature-state', 'hover'], false], 1,
-          ['==', ['get', 'geometryFidelity'], 'fallback'], 0.88,
           0.92,
         ],
       },
@@ -3757,73 +3660,12 @@ export class DeckGLMap {
         .addTo(this.map);
     });
 
-    // ─── Fires (NASA FIRMS) Interactions ───
+    // ─── Feux : curseur sur une détection ; infobulle (satellite exact, confiance, FRP, âge) de initEnvironmentInteractions ───
     this.map.on('mouseenter', LYR_FIRES_POINTS, () => {
       if (this.map) this.map.getCanvas().style.cursor = 'pointer';
     });
     this.map.on('mouseleave', LYR_FIRES_POINTS, () => {
       if (this.map) this.map.getCanvas().style.cursor = '';
-      this.firesHoverPopup?.remove();
-    });
-    this.map.on('mousemove', LYR_FIRES_POINTS, (e) => {
-      if (!this.map || !e.features || e.features.length === 0) return;
-      const p = e.features[0].properties || {};
-      // Objets de la nouvelle couche (tâche 15) : infobulle de initEnvironmentInteractions ; bloc retiré à la tâche 18.
-      if (typeof p.body === 'string') return;
-      const frp = Number(p.frp ?? 0).toFixed(1);
-      const conf = String(p.confidence ?? '');
-      const confLabel = conf === 'high' ? `${fmStatusDot('high')} Haute` : conf === 'nominal' ? `${fmStatusDot('medium')} Nominale` : `${fmStatusDot('low')} Basse`;
-      const lat = Number(p.lat ?? 0).toFixed(4);
-      const lon = Number(p.lon ?? 0).toFixed(4);
-      const date = String(p.acq_date ?? '');
-      const rawTime = String(p.acq_time ?? '').padStart(4, '0');
-      const timeLabel = `${rawTime.slice(0, 2)}:${rawTime.slice(2)} UTC`;
-      const period = p.daynight === 'D' ? `${fmIcon('sun')} Jour` : `${fmIcon('moon')} Nuit`;
-      const temp = Number(p.bright_ti4 ?? 0);
-      const tempLabel = temp > 0 ? `${(temp - 273.15).toFixed(0)} °C` : 'n.d.';
-
-      const html = `
-        <div style="color:#e8e8ec; font-family:sans-serif; min-width:170px; padding:2px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-            <strong style="font-size:13px; color:#ff9500;">${fmIcon('flame')} Feu actif</strong>
-            <span style="font-size:11px; color:#9898a8;">${period}</span>
-          </div>
-          <div style="font-size:11px; display:flex; flex-direction:column; gap:3px;">
-            <div style="display:flex; justify-content:space-between;">
-              <span style="color:#9898a8;">Puissance (FRP)</span>
-              <strong style="color:#ff3b30;">${frp} MW</strong>
-            </div>
-            <div style="display:flex; justify-content:space-between;">
-              <span style="color:#9898a8;">Température</span>
-              <span style="color:#e8e8ec;">${tempLabel}</span>
-            </div>
-            <div style="display:flex; justify-content:space-between;">
-              <span style="color:#9898a8;">Confiance</span>
-              <span>${confLabel}</span>
-            </div>
-            <div style="display:flex; justify-content:space-between;">
-              <span style="color:#9898a8;">Détecté le</span>
-              <span style="color:#e8e8ec;">${date} ${timeLabel}</span>
-            </div>
-            <div style="display:flex; justify-content:space-between; padding-top:4px; border-top:1px solid rgba(255,255,255,0.08); margin-top:2px;">
-              <span style="color:#9898a8;">Coord.</span>
-              <span style="color:#e8e8ec; font-size:10px;">${lat}°N, ${lon}°E</span>
-            </div>
-          </div>
-          <div style="font-size:10px; color:#5c5c6b; margin-top:6px;">NASA FIRMS · VIIRS SNPP</div>
-        </div>
-      `;
-
-      if (!this.firesHoverPopup) {
-        this.firesHoverPopup = new maplibregl.Popup({
-          closeButton: false,
-          closeOnClick: false,
-          offset: 12,
-          maxWidth: '260px',
-          className: 'dark-popup',
-        });
-      }
-      this.firesHoverPopup.setLngLat(e.lngLat).setHTML(html).addTo(this.map);
     });
 
     // Couches santé : infobulle au survol et fiche de site au clic (initHealthInteractions).
@@ -4499,146 +4341,35 @@ export class DeckGLMap {
       hideEnrichedHover();
     });
 
-    // ─── Vigicrues Interactions ───
+    // ─── Crues : curseur sur un tronçon ; infobulle de initEnvironmentInteractions ; clic : images satellite avant / après (Sentinel-2) ───
     this.map.on('mouseenter', LYR_FLOODS, () => {
       if (this.map) this.map.getCanvas().style.cursor = 'pointer';
-      this.weatherHoverPopup?.remove();
-      this.previewWeatherDepartment(null);
-    });
-    this.map.on('mousemove', LYR_FLOODS, (e) => {
-      if (!this.map || !e.features?.length) return;
-      this.weatherHoverPopup?.remove();
-      this.previewWeatherDepartment(null);
-      const feature = e.features[0];
-      if (typeof feature.properties?.body === 'string') return; // nouvelle couche (tâche 15) ; bloc retiré à la tâche 18
-      const featureId = feature.id;
-      this.highlightFloodSegment(typeof featureId === 'string' ? featureId : null);
-
-      const p = feature.properties || {};
-      const level = String(p.level ?? 'green');
-      const name = String(p.name ?? 'Tronçon inconnu');
-      const confidence = typeof p.matchConfidence === 'number'
-        ? Math.round(p.matchConfidence * 100)
-        : Math.round(Number(p.matchConfidence ?? 0) * 100);
-      const displayVertices = Number(p.displayVertexCount ?? 0);
-
-      const levelColors: Record<string, string> = {
-        red: '#ff3b30',
-        orange: '#ff9500',
-        yellow: '#ffcc00',
-        green: '#34c759',
-      };
-      const levelLabels: Record<string, string> = {
-        red: 'Rouge',
-        orange: 'Orange',
-        yellow: 'Jaune',
-        green: 'Vert',
-      };
-      const levelColor = levelColors[level] ?? '#888';
-      const levelLabel = levelLabels[level] ?? 'Inconnu';
-      const traceText = p.geometryFidelity === 'matched'
-        ? 'Tracé hydrographique recalé'
-        : p.geometryFidelity === 'fallback'
-          ? 'Corridor hydrographique'
-          : 'Tracé brut Vigicrues';
-      const sourceText = p.dataSource === 'mock' ? 'mock' : 'live';
-
-      const html = `
-        <div style="color:#e8e8ec; font-family:sans-serif; min-width:170px; padding:4px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:6px;">
-            <strong style="font-size:14px; color:#fff;">${name}</strong>
-            <span style="font-size:11px; padding:2px 8px; border-radius:4px; font-weight:700; color:${level === 'yellow' || level === 'green' ? '#000' : '#fff'}; background:${levelColor};">${levelLabel}</span>
-          </div>
-          <div style="font-size:12px; color:#c8c8d0; margin-bottom:4px;">${traceText}</div>
-          <div style="font-size:11px; color:#9898a8;">Source ${sourceText} · confiance ${confidence}% · ${displayVertices} sommets</div>
-        </div>
-      `;
-
-      if (!this.floodHoverPopup) {
-        this.floodHoverPopup = new maplibregl.Popup({
-          closeButton: false,
-          closeOnClick: false,
-          offset: 16,
-          maxWidth: '320px',
-          className: 'dark-popup',
-        });
-      }
-      this.floodHoverPopup.setLngLat(e.lngLat).setHTML(html).addTo(this.map);
     });
     this.map.on('mouseleave', LYR_FLOODS, () => {
       if (this.map) this.map.getCanvas().style.cursor = '';
-      this.highlightFloodSegment(null);
-      this.floodHoverPopup?.remove();
     });
     this.map.on('click', LYR_FLOODS, (e) => {
       if (!this.map || !e.features || e.features.length === 0) return;
       const feat = e.features[0];
-      const p = feat.properties || {};
-      if (typeof p.body === 'string') return; // nouvelle couche (tâche 15) ; bloc retiré à la tâche 18
-
-      let levelText = 'Inconnu';
-      let levelColor = '#888';
-      if (p.level === 'red') { levelText = 'Rouge'; levelColor = '#ff3b30'; }
-      else if (p.level === 'orange') { levelText = 'Orange'; levelColor = '#ff9500'; }
-      else if (p.level === 'yellow') { levelText = 'Jaune'; levelColor = '#ffcc00'; }
-      else if (p.level === 'green') { levelText = 'Vert'; levelColor = '#34c759'; }
-
-      let traceText = 'Tracé brut Vigicrues';
-      if (p.geometryFidelity === 'matched') traceText = 'Tracé recalé sur hydrographie';
-      else if (p.geometryFidelity === 'fallback') traceText = 'Corridor hydrographique';
-
-      const dataSourceText = p.dataSource === 'mock' ? 'mock' : 'live';
-      const confidence = typeof p.matchConfidence === 'number'
-        ? Math.round(p.matchConfidence * 100)
-        : Math.round(Number(p.matchConfidence ?? 0) * 100);
-      const displayVertices = Number(p.displayVertexCount ?? 0);
-
-      // Compute bbox from actual geometry for EO Browser deep-link
+      const name = String(feat.properties?.name ?? 'Tronçon Vigicrues');
+      // Emprise du tracé publié par Vigicrues, pour le lien EO Browser et le panneau satellite.
       const geom = feat.geometry;
-      const hasLineGeom = geom !== null &&
-          (geom.type === 'LineString' || geom.type === 'MultiLineString');
+      const hasLineGeom = geom !== null && (geom.type === 'LineString' || geom.type === 'MultiLineString');
       const aoBbox: [number, number, number, number] = hasLineGeom
-          ? computeFloodSegmentBbox(geom as LineString | MultiLineString)
-          : [e.lngLat.lng - 0.05, e.lngLat.lat - 0.05, e.lngLat.lng + 0.05, e.lngLat.lat + 0.05];
+        ? computeFloodSegmentBbox(geom as LineString | MultiLineString)
+        : [e.lngLat.lng - 0.05, e.lngLat.lat - 0.05, e.lngLat.lng + 0.05, e.lngLat.lat + 0.05];
       const eoBrowserUrl = buildEoBrowserUrl(aoBbox, 'sentinel-2-l2a');
       const ctaHtml = this.onSatelliteView
-        ? `<button class="satellite-cta-btn" type="button" data-action="satellite-panel">Avant / apres</button>`
-        : `<a class="satellite-cta-btn" href="${eoBrowserUrl}" target="_blank" rel="noopener noreferrer">Avant / apres ${fmIcon('external-link')}</a>`;
-
-      this.floodHoverPopup?.remove();
+        ? `<button class="satellite-cta-btn" type="button" data-action="satellite-panel">Avant / après</button>`
+        : `<a class="satellite-cta-btn" href="${eoBrowserUrl}" target="_blank" rel="noopener noreferrer">Avant / après ${fmIcon('external-link')}</a>`;
+      this.hideEnvironmentHover();
       this.fitBounds(aoBbox, 80);
-
-      const html = `
-        <div style="color:#e8e8ec; font-family:sans-serif; min-width:180px;">
-          <h4 style="margin:0 0 4px; font-weight:700; font-size: 15px; color: #ffffff;">
-            Vigicrues
-          </h4>
-          <div style="margin:0 0 10px; font-size: 13px; font-weight: 600; color: #64d2ff;">
-            ${p.name || 'Tronçon inconnu'}
-          </div>
-          <div style="font-size:13px; margin-bottom: 2px;">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <span style="color:#9898a8">Niveau de vigilance :</span>
-              <span style="font-size:11px; padding:2px 6px; border-radius:4px; font-weight:700; color:${p.level === 'yellow' || p.level === 'green' ? '#000' : '#fff'}; background:${levelColor}">${levelText}</span>
-            </div>
-          </div>
-          <div style="font-size:12px; color:#c8c8d0; margin:8px 0 2px;">
-            ${traceText}
-          </div>
-          <div style="font-size:11px; color:#8f90a0; margin-bottom: 10px;">
-            Source ${dataSourceText} · confiance ${confidence}% · ${displayVertices} sommets
-          </div>
-          ${ctaHtml}
-        </div>
-      `;
-
       const popup = new maplibregl.Popup({
-          closeButton: true, closeOnClick: true, maxWidth: '300px', className: 'dark-popup',
+        closeButton: true, closeOnClick: true, maxWidth: '300px', className: 'dark-popup',
       })
-          .setLngLat(e.lngLat)
-          .setHTML(html)
-          .addTo(this.map);
-
+        .setLngLat(e.lngLat)
+        .setHTML(`<div class="hm-tip"><b>${escapeHtml(name)}</b><div class="hm-sub">Vigicrues · images satellite du tronçon</div>${ctaHtml}</div>`)
+        .addTo(this.map);
       if (this.onSatelliteView) {
         const button = popup.getElement().querySelector<HTMLElement>('[data-action="satellite-panel"]');
         button?.addEventListener('click', (event) => {
@@ -4647,7 +4378,7 @@ export class DeckGLMap {
           this.onSatelliteView?.({
             bbox: aoBbox,
             sourceType: 'flood',
-            title: String(p.name || 'Zone Vigicrues'),
+            title: name,
             geometry: hasLineGeom ? geom as LineString | MultiLineString : undefined,
             preferredCollection: 'sentinel-2-l2a',
           });
@@ -4656,99 +4387,16 @@ export class DeckGLMap {
       }
     });
 
-    // ─── Weather Department Interactions (tooltip on hover) ───
-    this.map.on('mouseenter', LYR_WEATHER_FILL, () => {
-      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
+    // ─── Vigilance : curseur sur un département en vigilance ; infobulle et mise en avant de initEnvironmentInteractions ───
+    this.map.on('mousemove', LYR_WEATHER_FILL, (e) => {
+      if (!this.map) return;
+      const hasAlert = e.features?.[0]?.properties?.hasAlert === true;
+      this.map.getCanvas().style.cursor = hasAlert ? 'pointer' : '';
+      if (!hasAlert) this.previewWeatherDepartment(null);
     });
     this.map.on('mouseleave', LYR_WEATHER_FILL, () => {
       if (this.map) this.map.getCanvas().style.cursor = '';
-      this.weatherHoverPopup?.remove();
       this.previewWeatherDepartment(null);
-    });
-    this.map.on('mousemove', LYR_WEATHER_FILL, (e) => {
-      if (!this.map || !e.features || e.features.length === 0) return;
-
-      const floodFeaturesAtCursor = this.map.queryRenderedFeatures(e.point, {
-        layers: [LYR_FLOODS, LYR_FLOODS_HIGHLIGHT, LYR_FLOODS_RAW],
-      });
-      if (floodFeaturesAtCursor.length > 0) {
-        this.weatherHoverPopup?.remove();
-        this.previewWeatherDepartment(null);
-        return;
-      }
-
-      const feat = e.features[0];
-      const p = feat.properties || {};
-      if (typeof p.body === 'string') return; // nouvelle couche (tâche 15) ; bloc retiré à la tâche 18
-      if (!p.hasAlert) {
-        this.map.getCanvas().style.cursor = '';
-        this.weatherHoverPopup?.remove();
-        this.previewWeatherDepartment(null);
-        return;
-      }
-      this.map.getCanvas().style.cursor = 'pointer';
-      const code = String(p.code ?? '');
-      const nom = String(p.nom ?? p.name ?? 'Département');
-      const level = String(p.level ?? 'green');
-      const risksStr = String(p.risks ?? '');
-
-      // Level display
-      const levelColors: Record<string, string> = {
-        red: '#ff3b30', orange: '#ff9500', yellow: '#ffcc00', green: '#34c759', violet: '#af52de'
-      };
-      const levelLabels: Record<string, string> = {
-        red: 'Rouge', orange: 'Orange', yellow: 'Jaune', green: 'Vert', violet: 'Violet'
-      };
-      const levelColor = levelColors[level] ?? '#888';
-      const levelLabel = levelLabels[level] ?? 'Inconnu';
-
-      // Risk labels
-      const riskLabels: Record<string, string> = {
-        'wind': 'Vent violent',
-        'rain-flood': 'Pluie-inondation',
-        'thunderstorm': 'Orages',
-        'flood': 'Crues',
-        'snow-ice': 'Neige-verglas',
-        'heat': 'Canicule',
-        'cold': 'Grand froid',
-        'avalanche': 'Avalanches',
-        'wave-surge': 'Vagues-submersion',
-      };
-
-      const risks = risksStr.split(',').map(r => r.trim()).filter(Boolean);
-      const risksHtml = risks.length > 0
-        ? `<div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:4px;">
-             ${risks.map(r => {
-          const icon = WEATHER_RISK_ICONS[r as import('../types/index.ts').MeteoRiskType] ?? 'triangle-alert';
-          const label = riskLabels[r] ?? r;
-          return `<span style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); padding:2px 6px; border-radius:4px; font-size:11px; display:inline-flex; align-items:center; gap:4px;">${fmIcon(icon)} ${label}</span>`;
-        }).join('')}
-           </div>`
-        : '';
-
-      const html = `
-        <div style="color:#e8e8ec; font-family:sans-serif; min-width:160px; padding:4px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:6px;">
-            <strong style="font-size:14px; color:#fff;">${nom}</strong>
-            <span style="font-size:11px; padding:2px 8px; border-radius:4px; font-weight:700; color:${level === 'yellow' || level === 'green' ? '#000' : '#fff'}; background:${levelColor};">${levelLabel}</span>
-          </div>
-          <div style="font-size:11px; color:#9898a8;">Dpt. ${code}</div>
-          ${risksHtml}
-        </div>
-      `;
-
-      if (!this.weatherHoverPopup) {
-        this.weatherHoverPopup = new maplibregl.Popup({
-          closeButton: false,
-          closeOnClick: false,
-          offset: 16,
-          maxWidth: '320px',
-          className: 'dark-popup'
-        });
-      }
-      this.weatherHoverPopup.setLngLat(e.lngLat).setHTML(html).addTo(this.map);
-
-      this.previewWeatherDepartment(code);
     });
 
     // ─── Fuel tension department interactions ───
@@ -5259,16 +4907,6 @@ export class DeckGLMap {
     const maritimeLabelData = this.getAisLabelData();
     const maritimeTrailData = this.getAisTrailData();
     return [
-      new DayNightLayer({
-        id: 'day-night',
-        timestamp: this.dayNightOptions.timestamp || Date.now(),
-        showNight: this.dayNightOptions.showNight,
-        showTwilight: this.dayNightOptions.showTwilight,
-        showSunIcon: this.dayNightOptions.showSunIcon,
-        resolution: 1,
-        visible: this.dayNightVisible,
-        opacity: 1,
-      }),
       new PathLayer<AisShipData>({
         id: 'deck-ais-trails',
         data: maritimeTrailData,
@@ -7274,17 +6912,6 @@ export class DeckGLMap {
   setOnRawMapClick(h: (lat: number, lon: number) => void): void { this.onRawMapClick = h; }
   setOnItemHover(h: (item: NewsItem | null, x: number, y: number) => void): void { this.onItemHover = h; }
   setOnViewChange(h: (vs: MapViewState) => void): void { this.onViewChange = h; }
-  /** Trame radar affichée (et état de chargement) ; rappelée aussitôt avec l'état courant. */
-  setOnWeatherRadarFrame(h: (frame: WeatherRadarFrame | null, status: WeatherRadarStatus) => void): void {
-    this.onWeatherRadarFrame = h;
-    h(this.weatherRadarFrame, this.weatherRadarStatus);
-  }
-  private publishWeatherRadar(frame: WeatherRadarFrame | null, status: WeatherRadarStatus): void {
-    this.weatherRadarFrame = frame;
-    this.weatherRadarStatus = status;
-    this.onWeatherRadarFrame?.(frame, status);
-  }
-
   /**
    * Set callback for cluster hover - receives list of items in the cluster.
    * Called when user hovers over a cluster with up to 20 preview items.
@@ -8409,7 +8036,7 @@ export class DeckGLMap {
    * Perf audit §6 item 8: sets the real odre.opendatasoft.com URLs on the gas
    * network sources the first time the gas layer is switched on. Memoized —
    * a no-op after the first successful call, matching getDepartmentsGeojson()'s
-   * pattern. Called from setLayerVisibility() (mirrors ensureWeatherRadarLayer()).
+   * pattern. Called from setLayerVisibility().
    */
   private ensureGasNetworkSources(): Promise<void> {
     if (!this.gasNetworkSourcesPromise) {
@@ -8445,104 +8072,6 @@ export class DeckGLMap {
         properties: { ...(feature.properties ?? {}) },
       })),
     };
-  }
-
-  async updateWeather(alerts: MeteoAlert[]): Promise<void> {
-    if (!this.map) return;
-
-    // Perf audit §6 item 2: skip the departments.geojson-backed choropleth
-    // (and the risk icons below, also gated by `environmental`) while the
-    // layer is hidden. setLayerVisibility() replays this call with the same
-    // alerts the moment the layer is switched on.
-    if (!this.currentLayers?.environmental) {
-      this._pendingWeatherAlerts = alerts;
-      return;
-    }
-    this._pendingWeatherAlerts = null;
-
-    const alertsByCode = new Map<string, MeteoAlert>();
-    for (const a of alerts) alertsByCode.set(a.departmentCode, a);
-
-    try {
-      const baseGeojson = await this.getDepartmentsGeojson();
-      if (!baseGeojson) return;
-      const geojson = this.cloneDepartmentsGeojson(baseGeojson);
-      for (let i = 0; i < geojson.features.length; i++) {
-        const feat = geojson.features[i];
-        const code = (feat.properties?.code as string) ?? '';
-        feat.id = deptCodeToId(code); // Strict numeric ID for MapLibre feature-state
-        const alert = alertsByCode.get(code);
-        const hasAlert = alert != null;
-        const level = alert?.level ?? 'green';
-        feat.properties = {
-          ...feat.properties,
-          fillColor: METEO_COLORS[level] ?? METEO_COLORS.green,
-          lineColor: level === 'violet' ? 'rgba(196,121,255,0.98)' :
-            level === 'red' ? 'rgba(255,82,82,0.98)' :
-              level === 'orange' ? 'rgba(255,150,36,0.99)' :
-                level === 'yellow' ? 'rgba(255,214,10,0.92)' :
-                  'rgba(52,199,89,0.5)',
-          hasAlert,
-          level,
-          risks: alert?.risks?.join(', ') ?? '',
-        };
-      }
-      const src = this.map.getSource(SRC_WEATHER) as maplibregl.GeoJSONSource;
-      src?.setData(geojson);
-
-      // Update weather icons (risk pictograms at centroids)
-      this.updateWeatherIcons(alerts);
-    } catch (e) {
-      console.warn('[DeckGLMap] Failed to load depts for weather layer', e);
-    }
-  }
-
-  /**
-   * Update weather risk icons at department centroids.
-   */
-  private updateWeatherIcons(alerts: MeteoAlert[]): void {
-    if (!this.map) return;
-
-    const iconFeatures: GeoJSON.Feature<GeoJSON.Point>[] = [];
-
-    for (const alert of alerts) {
-      const centroid = WEATHER_DEPT_CENTROIDS[alert.departmentCode];
-      if (!centroid) continue;
-
-      // Get primary risk icon (nom d'icône Lucide)
-      const icon = getWeatherRiskIcon(alert.risks);
-
-      // Priority for z-ordering (red = highest)
-      const priority = alert.level === 'red' ? 4 :
-        alert.level === 'orange' ? 3 :
-          alert.level === 'yellow' ? 2 : 1;
-
-      iconFeatures.push({
-        type: 'Feature',
-        geometry: {
-          type: 'Point',
-          coordinates: centroid,
-        },
-        properties: {
-          code: alert.departmentCode,
-          department: alert.department,
-          level: alert.level,
-          icon,
-          priority,
-          risks: alert.risks.join(', '),
-        },
-      });
-    }
-
-    const iconsSrc = this.map.getSource(SRC_WEATHER_ICONS) as maplibregl.GeoJSONSource;
-    iconsSrc?.setData({
-      type: 'FeatureCollection',
-      features: iconFeatures,
-    });
-  }
-
-  highlightWeatherDepartment(departmentCode: string | null): void {
-    this.selectWeatherDepartment(departmentCode);
   }
 
   previewWeatherDepartment(departmentCode: string | null): void {
@@ -9138,17 +8667,6 @@ export class DeckGLMap {
     }
   }
 
-  /** Met à jour le polygone jour/nuit sur la carte. */
-  updateTerminator(geojson: GeoJSON.FeatureCollection): void {
-    (this.map?.getSource(SRC_TERMINATOR) as maplibregl.GeoJSONSource)?.setData(geojson);
-  }
-
-  /** Met à jour les options du layer Deck.gl Jour/Nuit (showNight, showTwilight, showSunIcon, timestamp). */
-  updateDayNightOptions(opts: Partial<typeof this.dayNightOptions>): void {
-    Object.assign(this.dayNightOptions, opts);
-    this.refreshAisLayers();
-  }
-
   /** Highlight a specific department on the power outages layer. */
   highlightPowerDept(deptCode: string | null): void {
     if (!this.map) return;
@@ -9415,109 +8933,15 @@ export class DeckGLMap {
     return 'low';
   }
 
-  // ─── Topage visual Layer ───
 
-  /**
-   * Met à jour le réseau hydro décoratif (fond bleu clair).
-   * Appelé depuis App.ts après un fetch /api/environment/topage-hydro?bbox=vue courante.
-   * Les features passent directement : pas de matching, juste l'affichage brut.
-   */
-  updateTopageVisual(geojson: GeoJSON.FeatureCollection): void {
-    if (!this.map) return;
-    const src = this.map.getSource(SRC_TOPAGE_VIS) as maplibregl.GeoJSONSource;
-    src?.setData(geojson);
-  }
-
-  // ─── Floods Layer ───
-
-  updateFloods(segments: FloodSegment[]): void {
-    if (!this.map) return;
-    this.floodSegmentsById = new Map(segments.map((segment) => [segment.id, segment]));
-    this.highlightFloodSegment(null);
-    // Tous les segments vont dans la source ; les layers filtrent par geometryFidelity :
-    // LYR_FLOODS      → matched + fallback (lignes pleines, couleur vigilance)
-    // LYR_FLOODS_RAW  → raw (pointillés, opacité réduite — Topage indisponible)
-    const fc: GeoJSON.FeatureCollection = {
-      type: 'FeatureCollection',
-      features: segments.map((s) => ({
-        type: 'Feature' as const,
-        id: s.id,
-        geometry: s.displayGeometry,
-        properties: {
-          name: s.name,
-          color: FLOOD_COLORS[s.level] ?? FLOOD_COLORS.green,
-          level: s.level,
-          dataSource: s.dataSource,
-          geometryFidelity: s.geometryFidelity,
-          matchConfidence: s.matchConfidence,
-          rawVertexCount: s.rawVertexCount,
-          displayVertexCount: s.displayVertexCount,
-        },
-      })),
-    };
-    const src = this.map.getSource(SRC_FLOODS) as maplibregl.GeoJSONSource;
-    src?.setData(fc);
-    const highlightSrc = this.map.getSource(SRC_FLOODS_HIGHLIGHT) as maplibregl.GeoJSONSource;
-    highlightSrc?.setData(emptyFC());
-
-    const matchedCount = segments.filter((s) => s.geometryFidelity === 'matched').length;
-    const corridorCount = segments.filter((s) => s.geometryFidelity === 'fallback').length;
-    const rawCount = segments.filter((s) => s.geometryFidelity === 'raw').length;
-    const hydrated = segments.filter((s) => s.geometryFidelity !== 'raw');
-    const avgConf = hydrated.length > 0
-      ? (hydrated.reduce((sum, s) => sum + s.matchConfidence, 0) / hydrated.length).toFixed(2)
-      : 'n/a';
-    console.info(
-      `[DeckGLMap/Vigicrues] total:${segments.length} : ` +
-      `matched:${matchedCount} fallback:${corridorCount} raw(pointillés):${rawCount} | confiance moy:${avgConf}`,
-    );
-  }
-
-  highlightFloodSegment(segmentId: string | null): void {
-    if (!this.map) return;
-    const highlightSrc = this.map.getSource(SRC_FLOODS_HIGHLIGHT) as maplibregl.GeoJSONSource | undefined;
-
-    if (this._highlightedFloodSegmentId !== null) {
-      this.map.setFeatureState(
-        { source: SRC_FLOODS, id: this._highlightedFloodSegmentId },
-        { hover: false },
-      );
-    }
-
-    if (segmentId !== null) {
-      this.map.setFeatureState(
-        { source: SRC_FLOODS, id: segmentId },
-        { hover: true },
-      );
-      const segment = this.floodSegmentsById.get(segmentId);
-      if (segment && highlightSrc) {
-        highlightSrc.setData({
-          type: 'FeatureCollection',
-          features: [{
-            type: 'Feature',
-            geometry: segment.displayGeometry,
-            properties: { id: segment.id },
-          }],
-        });
-        this.setVis(LYR_FLOODS_HIGHLIGHT, 'visible');
-      }
-      this._highlightedFloodSegmentId = segmentId;
-    } else {
-      highlightSrc?.setData(emptyFC());
-      this.setVis(LYR_FLOODS_HIGHLIGHT, 'none');
-      this._highlightedFloodSegmentId = null;
-    }
-  }
 
   private _highlightedFloodSegmentId: string | null = null;
 
-  // ─── Environnement (spec 2026-10-04 environnement § 2 ; contrats § 5) : méthodes neuves, à côté des anciennes (retirées à la tâche 18) ───
+  // ─── Environnement (spec 2026-10-04 environnement § 2 ; contrats § 5) ───
 
   /** Vigilance de l'échéance choisie (J ou J+1), datée ; couche masquée : gardée, puis peinte à son réaffichage. */
   async updateVigilanceLayer(v: VigilanceResponse | null, echeance: VigilanceEcheance, now: number): Promise<void> {
     this.envVigilance = { v, echeance, now };
-    // L'ancienne relecture (updateWeather) ne repeint plus par-dessus la nouvelle couche.
-    this._pendingWeatherAlerts = null;
     if (!this.map) return;
     if (!this.currentLayers?.environmental) {
       this.envVigilancePending = true;
@@ -9651,9 +9075,13 @@ export class DeckGLMap {
     return ids.length > 0 && map.queryRenderedFeatures(point, { layers: ids }).length > 0;
   }
 
-  /** Image 2D Météo-France visible : couche Radar active, ou ancien interrupteur du panneau Feux (jusqu'à la tâche 16). */
+  /**
+   * Image 2D Météo-France visible : couche Radar météo active. L'argument `enabled` de setRadar2dOverlay ne commande plus
+   * l'affichage (l'interrupteur « Réflectivité radar 2D » du panneau Feux est remplacé par la couche Radar météo) ; il reste
+   * l'état restauré quand une image échoue.
+   */
   private radar2dShown(): boolean {
-    return this._radar2dEnabled || (this.currentLayers?.weatherRadar ?? false);
+    return this.currentLayers?.weatherRadar ?? false;
   }
 
   /** Sommets d'écho visibles : option cochée et couche Radar ou Feux active. */
@@ -9723,74 +9151,12 @@ export class DeckGLMap {
     });
   }
 
-  // ─── Fires Layer ───
-
-  updateFires(fires: ActiveFire[]): void {
-    if (!this.map) return;
-    const fc: GeoJSON.FeatureCollection = {
-      type: 'FeatureCollection',
-      features: fires.map((f) => ({
-        type: 'Feature' as const,
-        geometry: { type: 'Point', coordinates: [f.longitude, f.latitude] },
-        properties: {
-          frp: f.frp,
-          confidence: f.confidence,
-          acq_time: f.acq_time,
-          acq_date: f.acq_date,
-          daynight: f.daynight,
-          lat: f.latitude,
-          lon: f.longitude,
-          bright_ti4: f.bright_ti4,
-        }
-      }))
-    };
-    const src = this.map.getSource(SRC_FIRES) as maplibregl.GeoJSONSource;
-    src?.setData(fc);
-  }
-
-  highlightFire(lat: number, lon: number): void {
-    if (!this.map) return;
-    const src = this.map.getSource(SRC_FIRES_HIGHLIGHT) as maplibregl.GeoJSONSource;
-    src?.setData({
-      type: 'FeatureCollection',
-      features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [lon, lat] }, properties: {} }]
-    });
-  }
-
-  clearFireHighlight(): void {
-    if (!this.map) return;
-    const src = this.map.getSource(SRC_FIRES_HIGHLIGHT) as maplibregl.GeoJSONSource;
-    src?.setData({ type: 'FeatureCollection', features: [] });
-  }
-
-  /**
-   * Met en surbrillance TOUS les points d'un cluster d'incident (DBSCAN).
-   * Utilisé quand on survole une carte incident dans FiresPanel.
-   * Si points est vide, efface le highlight (comme clearFireHighlight).
-   */
-  highlightFireCluster(points: { lat: number; lon: number }[]): void {
-    if (!this.map) return;
-    const src = this.map.getSource(SRC_FIRES_HIGHLIGHT) as maplibregl.GeoJSONSource;
-    src?.setData({
-      type: 'FeatureCollection',
-      features: points.map(p => ({
-        type: 'Feature' as const,
-        geometry: { type: 'Point' as const, coordinates: [p.lon, p.lat] },
-        properties: {},
-      })),
-    });
-  }
+  // ─── Feux : imagerie satellite (GIBS) et MTG-FRP, options de la couche ───
 
   setModisOverlayVisible(enabled: boolean): void {
     this._modisOverlayEnabled = enabled;
     this.setVis(LYR_MODIS, enabled ? 'visible' : 'none');
     if (enabled) this._modisTilesProbe ??= this.swapModisTilesToLatest();
-  }
-
-  setFirePointsVisible(enabled: boolean): void {
-    this._firePointsEnabled = enabled;
-    const visibility = enabled ? 'visible' : 'none';
-    for (const id of ENV_LAYER_KEYS.fires) this.setVis(id, visibility);
   }
 
   private async swapModisTilesToLatest(): Promise<void> {
@@ -11103,20 +10469,13 @@ export class DeckGLMap {
     this.updatePulseMarkerPositions();
     if (!this.map) return;
 
-    if (layers.weatherRadar) {
-      void this.ensureWeatherRadarLayer();
-    }
     if (layers.gasNetwork) {
       void this.ensureGasNetworkSources();
     }
 
     // Perf audit §6 item 2: replay any department-choropleth update that was
-    // skipped (§ updateWeather/updateISNR/updateOutages above ; health layers through their dirty flags)
+    // skipped (vigilance, updateISNR/updateOutages below ; health layers through their dirty flags)
     // while its layer was hidden, now that it's visible again.
-    if (layers.environmental && this._pendingWeatherAlerts !== null) {
-      const alerts = this._pendingWeatherAlerts;
-      void this.updateWeather(alerts);
-    }
     if (layers.environmental && this.envVigilancePending && this.envVigilance) {
       // Rejeu à l'heure courante (S2) : une carte devenue en retard pendant que la couche était masquée repasse en gris.
       const { v, echeance } = this.envVigilance;
@@ -11153,12 +10512,8 @@ export class DeckGLMap {
     this.setVis(LYR_INTERCONN_CHEVRONS, vis(layers.powerGrid));
     this.setVis(LYR_INTERCONN_LINE, vis(layers.powerGrid));
     this.setVis(LYR_INTERCONN_LABEL, vis(layers.powerGrid));
-    for (const region of WEATHER_RADAR_REGIONS) {
-      this.setVis(getWeatherRadarLayerId(region.id), vis(layers.weatherRadar ?? false));
-    }
     // Environnement (spec 2026-10-04 § 2) : couches de deckgl/environment-map.ts, par couche.
     for (const id of ENV_LAYER_KEYS.environmental) this.setVis(id, vis(envLayerOn(layers, 'environmental')));
-    this.setVis(LYR_WEATHER_LINE_VIOLET, vis(layers.environmental));
     // Santé (spec 2026-10-03 § 3) : un jeu de couches par panneau.
     this.setVis(LYR_HEALTH_ALERT_FILL, vis(layers.health ?? false));
     this.setVis(LYR_HEALTH_ALERT_LINE, vis(layers.health ?? false));
@@ -11171,13 +10526,11 @@ export class DeckGLMap {
     this.hideHealthHover();
     if (!layers.hospitals) this.hospitalPopup?.remove();
     const floodsOn = envLayerOn(layers, 'floods');
-    this.setVis(LYR_TOPAGE_VIS, vis(floodsOn));
-    this.setVis(LYR_FLOODS_RAW, vis(floodsOn));
     for (const id of ENV_LAYER_KEYS.floods) this.setVis(id, vis(floodsOn));
     this.setVis(LYR_FLOODS_HIGHLIGHT, vis(floodsOn && this._highlightedFloodSegmentId !== null));
     const firesOn = envLayerOn(layers, 'fires');
     this.setVis(LYR_MODIS, vis(firesOn && this._modisOverlayEnabled));
-    for (const id of ENV_LAYER_KEYS.fires) this.setVis(id, vis(firesOn && this._firePointsEnabled));
+    for (const id of ENV_LAYER_KEYS.fires) this.setVis(id, vis(firesOn));
     for (const id of FOREST_DANGER_LAYERS) this.setVis(id, vis(firesOn && this._forestDangerFill));
     for (const id of ENV_LAYER_KEYS.weatherRadar) this.setVis(id, vis(envLayerOn(layers, 'weatherRadar') && this.radarPick !== null));
     this.setVis(RADAR_2D_LAYER_ID, vis(this.radar2dShown()));
@@ -11292,7 +10645,6 @@ export class DeckGLMap {
     this.globalTrafficVisible = layers.trafficMaritime;
     this.airTrafficVisible = layers.trafficAir;
     if (!this.airTrafficVisible) this.stopCivilAirTween();
-    this.dayNightVisible = layers.dayNight ?? false;
     this.refreshAisLayers();
     // Submarine cables
     this.setVis(LYR_SUBMARINE_CABLES, vis(layers.subseaCables));
@@ -11327,8 +10679,6 @@ export class DeckGLMap {
     this.setVis(LYR_DC_HIGHLIGHT, vis(layers.outagesCloud));
     this.setVis(LYR_IXP_CIRCLE, vis(layers.outagesCloud));
     this.setVis(LYR_IXP_HIGHLIGHT, vis(layers.outagesCloud));
-    // LYR_TERMINATOR masqué : le Deck.gl DayNightLayer gère toute la visualisation jour/nuit
-    this.setVis(LYR_TERMINATOR, 'none');
 
     // Threat map — couche Deck.gl ScatterplotLayer
     const threatMapEnabled = layers.threatMap ?? false;
@@ -11336,10 +10686,6 @@ export class DeckGLMap {
       this.threatEventsVisible = threatMapEnabled;
       this.scheduleOverlayUpdate();
     }
-  }
-
-  async refreshWeatherRadar(force = true): Promise<void> {
-    await this.ensureWeatherRadarLayer(force);
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -11355,117 +10701,6 @@ export class DeckGLMap {
       }
     } catch {
       // Silently ignore - layer may not exist yet during initialization
-    }
-  }
-
-  private async ensureWeatherRadarLayer(force = false): Promise<void> {
-    if (!this.map) return;
-    const now = Date.now();
-    if (!force && this.weatherRadarTileTemplate && (now - this.weatherRadarFetchedAt) < 10 * 60_000) {
-      for (const region of WEATHER_RADAR_REGIONS) {
-        const sourceId = getWeatherRadarSourceId(region.id);
-        const layerId = getWeatherRadarLayerId(region.id);
-        if (!this.map.getSource(sourceId)) {
-          this.map.addSource(sourceId, {
-            type: 'raster',
-            tiles: [this.weatherRadarTileTemplate],
-            tileSize: 256,
-            attribution: 'RainViewer',
-            bounds: region.bounds,
-            maxzoom: WEATHER_RADAR_MAX_ZOOM,
-          });
-        }
-        if (!this.map.getLayer(layerId)) {
-          this.map.addLayer({
-            id: layerId,
-            type: 'raster',
-            source: sourceId,
-            maxzoom: WEATHER_RADAR_MAX_ZOOM,
-            paint: {
-              'raster-opacity': 0.58,
-              'raster-resampling': 'linear',
-              'raster-fade-duration': 0,
-            },
-          }, this.map.getLayer(LYR_WEATHER_FILL) ? LYR_WEATHER_FILL : undefined);
-        }
-      }
-      return;
-    }
-
-    try {
-      const response = await fetch('https://api.rainviewer.com/public/weather-maps.json');
-      if (!response.ok) {
-        if (!this.weatherRadarFrame) this.publishWeatherRadar(null, 'error');
-        return;
-      }
-      const payload = await response.json() as {
-        host?: string;
-        radar?: { past?: Array<{ time?: number; path?: string }>; nowcast?: Array<{ time?: number; path?: string }> };
-      };
-      const host = typeof payload.host === 'string' && payload.host.length > 0
-        ? payload.host
-        : 'https://tilecache.rainviewer.com';
-      const tagged = (list: Array<{ time?: number; path?: string }> | undefined, kind: 'past' | 'nowcast') =>
-        (Array.isArray(list) ? list : []).map((frame) => ({ ...frame, kind }));
-      const frames = [
-        ...tagged(payload.radar?.past, 'past'),
-        ...tagged(payload.radar?.nowcast, 'nowcast'),
-      ].filter((frame): frame is { time?: number; path: string; kind: 'past' | 'nowcast' } =>
-        typeof frame?.path === 'string' && frame.path.length > 0);
-      const latest = frames.at(-1);
-      if (!latest) {
-        if (!this.weatherRadarFrame) this.publishWeatherRadar(null, 'error');
-        return;
-      }
-
-      const tileTemplate = `${host}${latest.path}/256/{z}/{x}/{y}/2/1_1.png`;
-      this.weatherRadarTileTemplate = tileTemplate;
-      this.weatherRadarFetchedAt = now;
-      this.publishWeatherRadar(
-        typeof latest.time === 'number' && Number.isFinite(latest.time)
-          ? { time: latest.time * 1000, kind: latest.kind }
-          : null,
-        typeof latest.time === 'number' && Number.isFinite(latest.time) ? 'ready' : 'error',
-      );
-
-      for (const region of WEATHER_RADAR_REGIONS) {
-        const sourceId = getWeatherRadarSourceId(region.id);
-        const layerId = getWeatherRadarLayerId(region.id);
-        const existingSource = this.map.getSource(sourceId) as maplibregl.RasterTileSource | undefined;
-        if (!existingSource) {
-          this.map.addSource(sourceId, {
-            type: 'raster',
-            tiles: [tileTemplate],
-            tileSize: 256,
-            attribution: 'RainViewer',
-            bounds: region.bounds,
-            maxzoom: WEATHER_RADAR_MAX_ZOOM,
-          });
-        } else {
-          (existingSource as { setTiles?: (tiles: string[]) => void }).setTiles?.([tileTemplate]);
-        }
-
-        if (!this.map.getLayer(layerId)) {
-          this.map.addLayer({
-            id: layerId,
-            type: 'raster',
-            source: sourceId,
-            maxzoom: WEATHER_RADAR_MAX_ZOOM,
-            paint: {
-              'raster-opacity': 0.58,
-              'raster-resampling': 'linear',
-              'raster-fade-duration': 0,
-            },
-          }, this.map.getLayer(LYR_WEATHER_FILL) ? LYR_WEATHER_FILL : undefined);
-        }
-      }
-
-      for (const region of WEATHER_RADAR_REGIONS) {
-        this.setVis(getWeatherRadarLayerId(region.id), this.currentLayers?.weatherRadar ? 'visible' : 'none');
-      }
-    } catch (error) {
-      console.warn('[DeckGLMap] Failed to refresh weather radar tiles', error);
-      if (!this.weatherRadarFrame) this.publishWeatherRadar(null, 'error');
     }
   }
 

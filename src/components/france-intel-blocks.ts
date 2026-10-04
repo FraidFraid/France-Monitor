@@ -27,22 +27,15 @@ function t(lang: Lang, fr: string, en: string): string {
   return lang === 'fr' ? fr : en;
 }
 
-/** Couleurs officielles de la vigilance (spec 2026-10-04 environnement E1). */
-type OfficialMeteoLevel = 'green' | 'yellow' | 'orange' | 'red';
-
-const VIGILANCE_LABELS: Record<OfficialMeteoLevel, string> = {
+/** Libellés des quatre couleurs officielles de la vigilance (spec 2026-10-04 environnement E1). */
+const VIGILANCE_LABELS: Record<MeteoVigilanceLevel, string> = {
   green: 'Vert',
   yellow: 'Jaune',
   orange: 'Orange',
   red: 'Rouge',
 };
 
-const METEO_RANK: Record<OfficialMeteoLevel, number> = { green: 0, yellow: 1, orange: 2, red: 3 };
-
-/** Couleur officielle d'une alerte (le type garde un cinquième niveau jamais publié jusqu'à la tâche 18 : lu comme rouge). */
-function officialMeteoLevel(level: MeteoVigilanceLevel): OfficialMeteoLevel {
-  return level === 'green' || level === 'yellow' || level === 'orange' ? level : 'red';
-}
+const METEO_RANK: Record<MeteoVigilanceLevel, number> = { green: 0, yellow: 1, orange: 2, red: 3 };
 
 const RISK_LABELS: Record<string, string> = {
   wind: 'Vent',
@@ -213,9 +206,9 @@ export interface DomainChip {
 /** Étiquettes sous les domaines : risques météo actifs, SNCF fortes, titres critiques. */
 export function domainChips(snapshot: Pick<FranceCountrySnapshot, 'signals' | 'meteo'>, lang: Lang): DomainChip[] {
   const s = snapshot.signals;
-  const riskMap = new Map<string, { level: OfficialMeteoLevel; count: number }>();
+  const riskMap = new Map<string, { level: MeteoVigilanceLevel; count: number }>();
   for (const alert of snapshot.meteo.filter((item) => item.level !== 'green')) {
-    const level = officialMeteoLevel(alert.level);
+    const level = alert.level;
     for (const risk of alert.risks) {
       const prev = riskMap.get(risk);
       riskMap.set(risk, {

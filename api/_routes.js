@@ -27,7 +27,6 @@ export const ROUTES = {
   '/api/fire-observations/radar-2d': () => import('./_handlers/fire-observations/radar-2d.js'),
   '/api/fire-observations/radar-column': () => import('./_handlers/fire-observations/radar-column.js'),
   '/api/fires/impacts': () => import('./_handlers/fires/impacts.js'),
-  '/api/fires': () => import('./_handlers/fires.js'),
   '/api/fuel-price-series': () => import('./_handlers/fuel-price-series.js'),
   '/api/fuel-prices-proxy': () => import('./_handlers/fuel-prices-proxy.js'),
   '/api/geo/communes': () => import('./_handlers/geo/communes.js'),
@@ -74,7 +73,6 @@ export const ROUTES = {
   '/api/traffic/tile': () => import('./_handlers/traffic/tile.js'),
   '/api/transport/rail-overview': () => import('./_handlers/transport/rail-overview.js'),
   '/api/transport/rail-situations': () => import('./_handlers/transport/rail-situations.js'),
-  '/api/weather/vigilance': () => import('./_handlers/weather/vigilance.js'),
 };
 
 /** @type {Record<string, string>} */

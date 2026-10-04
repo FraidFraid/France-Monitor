@@ -76,24 +76,3 @@ export const MOCK_NEWS_ITEMS: NewsItem[] = withIds([
   { source: 'France Bleu', title: 'Exercice militaire : survol de Mourmelon-le-Grand', link: '#', pubDate: new Date(Date.now() - 30000000), isAlert: false, tier: 4, threat: { level: 'info', category: 'general', confidence: 0.4, source: 'keyword' }, lat: 49.13, lon: 4.36, locationName: 'Mourmelon' },
   { source: '20 Minutes', title: 'Pollution sonore : plaintes autour de l\'aeroport de Toulouse-Blagnac', link: '#', pubDate: new Date(Date.now() - 40000000), isAlert: false, tier: 4, threat: { level: 'low', category: 'general', confidence: 0.45, source: 'keyword' }, lat: 43.6293, lon: 1.3640, locationName: 'Blagnac' },
 ]);
-
-// ═══ Mock Météo-France Alerts ═══
-
-import type { MeteoAlert } from '../types/index.ts';
-
-export const MOCK_METEO_ALERTS: MeteoAlert[] = [
-  { department: 'Nord', departmentCode: '59', level: 'orange', risks: ['wind'] },
-  { department: 'Pas-de-Calais', departmentCode: '62', level: 'orange', risks: ['wind'] },
-  { department: 'Somme', departmentCode: '80', level: 'yellow', risks: ['wind'] },
-  { department: 'Gard', departmentCode: '30', level: 'red', risks: ['rain-flood', 'thunderstorm'] },
-  { department: 'Hérault', departmentCode: '34', level: 'orange', risks: ['rain-flood'] },
-  { department: 'Bouches-du-Rhône', departmentCode: '13', level: 'yellow', risks: ['thunderstorm'] },
-  { department: 'Var', departmentCode: '83', level: 'yellow', risks: ['thunderstorm'] },
-  { department: 'Alpes-Maritimes', departmentCode: '06', level: 'yellow', risks: ['thunderstorm'] },
-  { department: 'Pyrénées-Atlantiques', departmentCode: '64', level: 'yellow', risks: ['snow-ice'] },
-  { department: 'Hautes-Pyrénées', departmentCode: '65', level: 'orange', risks: ['avalanche', 'snow-ice'] },
-  { department: 'Haute-Savoie', departmentCode: '74', level: 'yellow', risks: ['avalanche'] },
-  { department: 'Savoie', departmentCode: '73', level: 'yellow', risks: ['avalanche'] },
-  { department: 'Landes', departmentCode: '40', level: 'yellow', risks: ['heat'] },
-  { department: 'Finistère', departmentCode: '29', level: 'yellow', risks: ['wave-surge'] },
-];

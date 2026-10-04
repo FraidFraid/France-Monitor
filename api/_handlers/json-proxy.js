@@ -5,7 +5,7 @@
  *
  * Endpoint: GET /api/json-proxy?url=<api_url>
  * Response: Le JSON de l'API externe tel quel.
- * Domaines whitelistés : api.ransomware.live, data.ransomware.live, services.nvd.nist.gov, vigicrues.gouv.fr
+ * Domaines whitelistés : api.ransomware.live, data.ransomware.live, services.nvd.nist.gov
  *
  * Root cause du 502 sur ransomware.live (audit 2026-09) : data.ransomware.live/posts.json
  * pèse ~21 Mo côté amont (200 OK vérifié en direct), largement au-dessus du plafond
@@ -25,9 +25,6 @@ const ALLOWED_DOMAINS = [
   'ransomware.live',
   'services.nvd.nist.gov',
   'nvd.nist.gov',
-  // Vigicrues (crues) — l'API ne renvoie PAS de header CORS, le fetch navigateur
-  // direct est bloqué en prod → on passe par ce proxy serveur.
-  'vigicrues.gouv.fr',
 ];
 
 // posts.json grossit avec le temps (~21 Mo en 2026-09) : marge au-delà du plafond par défaut.
@@ -53,10 +50,6 @@ function isNvdHost(hostname) {
   return hostname === 'nvd.nist.gov' || hostname.endsWith('.nvd.nist.gov');
 }
 
-/** @param {string} hostname */
-function isVigicruesHost(hostname) {
-  return hostname === 'vigicrues.gouv.fr' || hostname.endsWith('.vigicrues.gouv.fr');
-}
 
 /** Plafond de taille de réponse par host (RESPONSE_TOO_LARGE). @param {string} hostname */
 function maxBytesForHost(hostname) {
@@ -67,7 +60,6 @@ function maxBytesForHost(hostname) {
 function cacheControlForHost(hostname) {
   if (isRansomwareHost(hostname)) return 'public, s-maxage=600, stale-while-revalidate=120';
   if (isNvdHost(hostname)) return 'public, s-maxage=3600, stale-while-revalidate=600';
-  if (isVigicruesHost(hostname)) return 'public, s-maxage=300, stale-while-revalidate=60';
   return 'public, s-maxage=300, stale-while-revalidate=60';
 }
 

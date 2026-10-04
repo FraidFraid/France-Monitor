@@ -171,7 +171,6 @@ export interface MapLayers {
   gasNetwork: boolean;
   oilNetwork: boolean;
   nuclearFleet: boolean;
-  dayNight?: boolean;
   elus?: boolean;
 }
 
@@ -339,7 +338,7 @@ export interface EnergyMix {
 
 // ═══ Weather (Météo-France) ═══
 
-export type MeteoVigilanceLevel = 'green' | 'yellow' | 'orange' | 'red' | 'violet';
+export type MeteoVigilanceLevel = 'green' | 'yellow' | 'orange' | 'red';
 
 export type MeteoRiskType =
   | 'wind'
@@ -377,19 +376,6 @@ export const RISK_LABELS: Record<string, string> = {
 // ═══ Floods (Vigicrues) ═══
 
 export type FloodVigilanceLevel = 'green' | 'yellow' | 'orange' | 'red';
-export type FloodDataSource = 'live' | 'mock';
-export type FloodGeometryFidelity = 'raw' | 'matched' | 'fallback';
-
-/** Ancien tronçon de vigicrues.ts : mêmes champs vrais que FloodSectionRef, plus les champs de recalage inventés (retirés à la tâche 18). */
-export interface FloodSegment extends FloodSectionRef {
-  dataSource: FloodDataSource;
-  geometryFidelity: FloodGeometryFidelity;
-  matchConfidence: number;
-  rawVertexCount: number;
-  displayVertexCount: number;
-  rawGeometry: LineString | MultiLineString;
-  displayGeometry: LineString | MultiLineString;
-}
 
 // ═══ Copernicus / Satellite ═══
 
@@ -462,11 +448,6 @@ export interface FireObservationFeedState {
   readonly fetchedAt: number | null;
   readonly source: string;
   readonly detail?: string;
-}
-
-export interface FireObservationRuntimeState {
-  readonly mtgFrp: FireObservationFeedState;
-  readonly radar2d: FireObservationFeedState;
 }
 
 export interface ActiveFire {

@@ -179,7 +179,7 @@ function officialEntries(
   return out;
 }
 
-/** Alertes officielles orange ou rouges, regroupées par source et par niveau ; violet Météo = rouge. */
+/** Alertes officielles orange ou rouges, regroupées par source et par niveau. */
 export function officialAlertGroups(
   ecowatt: EcowattResponse | null,
   meteo: readonly MeteoAlert[],

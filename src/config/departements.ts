@@ -20,9 +20,8 @@ export const DEPARTEMENT_NAMES: readonly string[] = [
 ];
 
 /**
- * Centroïdes des départements [lng, lat] (2 décimales), 96 de métropole (2A et 2B compris) et 5 DROM : repris de DEPT_CENTROIDS
- * (src/services/vigilance-meteo.ts), dont WEATHER_DEPT_CENTROIDS (deckgl/constants.ts) est une copie ; ces deux copies
- * disparaissent à la tâche 18 (spec 2026-10-04 environnement, contrats § 3.5).
+ * Centroïdes des départements [lng, lat] (2 décimales), 96 de métropole (2A et 2B compris) et 5 DROM : source unique, les deux
+ * copies de l'ancien service de vigilance et des constantes de la carte sont retirées (spec 2026-10-04 environnement, contrats § 3.5).
  */
 export const DEPARTEMENT_CENTROIDS: Readonly<Record<string, readonly [number, number]>> = {
   '01': [5.22, 46.00], '02': [3.62, 49.47], '03': [3.19, 46.39], '04': [6.24, 44.08],

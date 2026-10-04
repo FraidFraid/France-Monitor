@@ -9,15 +9,25 @@ const deck = read('src/components/DeckGLMap.ts');
 const container = read('src/components/MapContainer.ts');
 const constants = read('src/components/deckgl/constants.ts');
 
+/** Définition d'une couche MapLibre dans DeckGLMap.ts : de `id: X,` à la fermeture de son addLayer. */
+const layerBlock = (id: string): string => {
+  const start = deck.indexOf(`      id: ${id},\n`);
+  return start < 0 ? '' : deck.slice(start, deck.indexOf('\n    });', start));
+};
+
 describe('DeckGLMap : couches Environnement de deckgl/environment-map.ts', () => {
-  it('sources et couches nouvelles ; couches existantes lisant la couleur portée par l’objet', () => {
+  it('sources et couches nouvelles ; couches existantes lisant la couleur portée par l’objet, sans repli', () => {
     expect(deck).toContain('for (const id of ENV_SOURCE_IDS) this.map.addSource(id, envSourceSpec());');
     expect(deck).toContain('for (const layer of ENV_LAYERS) {');
     expect(deck).toContain("this.map.addLayer(layer, before && this.map.getLayer(before) ? before : undefined);");
-    expect(deck).toContain("'fill-color': ['coalesce', ['get', 'color'], ['get', 'fillColor']],");
-    expect(deck.split("'line-color': ['coalesce', ['get', 'color'], ['get', 'lineColor']],").length - 1).toBe(3);
-    expect(deck).toContain("filter: ['coalesce', ['get', 'glow'], true],");
-    expect(deck).toContain("'circle-color': ['coalesce', ['get', 'color'], [");
+    expect(layerBlock('LYR_WEATHER_FILL')).toContain("'fill-color': ['get', 'fillColor'],");
+    for (const id of ['LYR_WEATHER_LINE_YELLOW', 'LYR_WEATHER_LINE_ORANGE', 'LYR_WEATHER_LINE_RED']) {
+      expect(layerBlock(id), id).toContain("'line-color': ['get', 'lineColor'],");
+    }
+    expect(layerBlock('LYR_FIRES_GLOW')).toContain("filter: ['==', ['get', 'glow'], true],");
+    for (const id of ['LYR_FIRES_GLOW', 'LYR_FIRES_POINTS']) expect(layerBlock(id), id).toContain("'circle-color': ['get', 'color'],");
+    expect(layerBlock('LYR_FLOODS')).toContain("['get', 'color'],");
+    expect(layerBlock('LYR_FLOODS')).not.toMatch(/geometryFidelity|filter:/);
     for (const id of ['SRC_FLOOD_STATIONS', 'LYR_FLOOD_STATIONS', 'SRC_RADAR_PICK', 'LYR_RADAR_PICK', 'SRC_FIRES_ABROAD', 'LYR_FIRES_ABROAD', 'SRC_FOREST_DANGER',
       'LYR_FOREST_DANGER_FILL', 'LYR_FOREST_DANGER_LINE']) expect(constants).toContain(`export const ${id} = `);
   });
@@ -25,9 +35,10 @@ describe('DeckGLMap : couches Environnement de deckgl/environment-map.ts', () =>
     expect(deck).toContain("for (const id of ENV_LAYER_KEYS.environmental) this.setVis(id, vis(envLayerOn(layers, 'environmental')));");
     expect(deck).toContain("const floodsOn = envLayerOn(layers, 'floods');");
     expect(deck).toContain('for (const id of ENV_LAYER_KEYS.floods) this.setVis(id, vis(floodsOn));');
-    expect(deck).toContain('for (const id of ENV_LAYER_KEYS.fires) this.setVis(id, vis(firesOn && this._firePointsEnabled));');
+    expect(deck).toContain('for (const id of ENV_LAYER_KEYS.fires) this.setVis(id, vis(firesOn));');
     expect(deck).toContain('for (const id of FOREST_DANGER_LAYERS) this.setVis(id, vis(firesOn && this._forestDangerFill));');
     expect(deck).toContain('this.setVis(RADAR_2D_LAYER_ID, vis(this.radar2dShown()));');
+    expect(deck).toContain('return this.currentLayers?.weatherRadar ?? false;');
     expect(deck).toContain('this.setVis(ECHO_TOPS_LAYER_ID, vis(this.echoTopsShown(this._echoTopsEnabled)));');
     expect(deck).toContain("return enabled && ((this.currentLayers?.weatherRadar ?? false) || (this.currentLayers?.fires ?? false));");
   });
@@ -41,7 +52,7 @@ describe('DeckGLMap : couches Environnement de deckgl/environment-map.ts', () =>
     expect(deck).toContain('const html = hit ? envTooltipHtml(hit.layer.id, hit.properties ?? {}) : null;');
     expect(deck).toContain("if (!this.onRadarPointPick || !(this.currentLayers?.weatherRadar ?? false)) return;");
   });
-  it('méthodes neuves à côté des anciennes (retirées à la tâche 18), dans la carte et dans son conteneur', () => {
+  it('méthodes de la carte et de son conteneur ; anciennes méthodes retirées', () => {
     for (const sig of [
       'updateVigilanceLayer(v: VigilanceResponse | null, echeance: VigilanceEcheance, now: number): Promise<void>',
       'updateFloodsLayer(f: FloodsResponse | null, now: number): void', 'highlightFloodSection(id: string | null): void', 'focusFloodSection(id: string): void',
@@ -54,6 +65,10 @@ describe('DeckGLMap : couches Environnement de deckgl/environment-map.ts', () =>
     expect(container).toContain('if (this.onRadarPointPick) this.deckMap.setOnRadarPointPick(this.onRadarPointPick);');
     expect(container).toContain('if (this.radarPick) this.deckMap.setRadarPick(this.radarPick);');
     expect(container).toContain('this.radarPick = point;');
-    for (const old of ['updateWeather(alerts: MeteoAlert[])', 'updateFloods(segments: FloodSegment[])', 'updateFires(fires: ActiveFire[])']) expect(deck).toContain(old);
+    for (const old of ['updateWeather(', 'updateFloods(', 'updateFires(', 'highlightFloodSegment(', 'highlightFire(', 'setFirePointsVisible(',
+      'updateTerminator(', 'updateDayNightOptions(', 'refreshWeatherRadar(', 'setOnWeatherRadarFrame(', 'updateTopageVisual(']) {
+      expect(deck, old).not.toContain(old);
+      expect(container, old).not.toContain(old);
+    }
   });
 });

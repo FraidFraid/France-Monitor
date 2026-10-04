@@ -3,11 +3,9 @@
  * Expose toutes les méthodes de calques unifié.
  */
 
-import type { WeatherRadarFrame, WeatherRadarStatus } from '../services/weather-radar.ts';
 import type { DeckGLMap } from './DeckGLMap.ts';
 import type { Map as SVGMap } from './Map.ts';
-import type { FeatureCollection } from 'geojson';
-import type { NewsItem, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, EcowattResponse, FuelTensionDashboard, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MapViewState, RestrictedZone, MilitaryBase, MilitaryFlight, AirTrafficFlight, ActiveFire, TelecomOutage, PowerOutage, ISNRScore, AlertLevelsResponse, AplDataset, AplProfession, EmergencySite, HospitalsDataset, SyndromicResponse, GasNetworkState, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, HydraulicBackboneAsset, ThreatEvent } from '../types/index.ts';
+import type { NewsItem, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, EcowattResponse, FuelTensionDashboard, InfrastructurePoint, MapLayers, MapViewState, RestrictedZone, MilitaryBase, MilitaryFlight, AirTrafficFlight, TelecomOutage, PowerOutage, ISNRScore, AlertLevelsResponse, AplDataset, AplProfession, EmergencySite, HospitalsDataset, SyndromicResponse, GasNetworkState, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, HydraulicBackboneAsset, ThreatEvent } from '../types/index.ts';
 import type { MilitaryShip } from '../services/military-ships.ts';
 import type { RTEIIPIncident } from '../services/rte-iip.ts';
 import type { EventMapPoint } from '../services/v2-map.ts';
@@ -47,7 +45,6 @@ export class MapContainer {
   private onClusterHover: ((items: NewsItem[], x: number, y: number, totalCount: number) => void) | null = null;
   private onClusterClick: ((items: NewsItem[], center: [number, number]) => void) | null = null;
   private onViewChange: ((vs: MapViewState) => void) | null = null;
-  private onWeatherRadarFrame: ((frame: WeatherRadarFrame | null, status: WeatherRadarStatus) => void) | null = null;
   private onMilitaryFlightClick: ((flight: MilitaryFlight, x: number, y: number) => void) | null = null;
   private onMilitaryBaseClick: ((base: MilitaryBase, x: number, y: number) => void) | null = null;
   private onMilitaryShipClick: ((ship: { id: string; name: string; type: string; role: string; mmsi?: string; lat: number; lon: number; speed?: number; heading?: number; port?: string; isLive?: boolean }, x: number, y: number) => void) | null = null;
@@ -86,7 +83,6 @@ export class MapContainer {
     if (this.onItemClick) this.deckMap.setOnItemClick(this.onItemClick);
     if (this.onItemHover) this.deckMap.setOnItemHover(this.onItemHover);
     if (this.onViewChange) this.deckMap.setOnViewChange(this.onViewChange);
-    if (this.onWeatherRadarFrame) this.deckMap.setOnWeatherRadarFrame(this.onWeatherRadarFrame);
     if (this.onClusterHover) this.deckMap.setOnClusterHover(this.onClusterHover);
     if (this.onClusterClick) this.deckMap.setOnClusterClick(this.onClusterClick);
     if (this.onMilitaryFlightClick) this.deckMap.setOnMilitaryFlightClick(this.onMilitaryFlightClick);
@@ -163,23 +159,6 @@ export class MapContainer {
     await this.deckMap?.loadOilPipelines();
   }
 
-  // ─── Weather ───
-  async updateWeather(alerts: MeteoAlert[]): Promise<void> {
-    await this.deckMap?.updateWeather(alerts);
-  }
-
-  async refreshWeatherRadar(force = true): Promise<void> {
-    await this.deckMap?.refreshWeatherRadar(force);
-  }
-
-  // ─── Floods ───
-  updateFloods(segments: FloodSegment[]): void {
-    this.deckMap?.updateFloods(segments);
-  }
-
-  updateTopageVisual(geojson: FeatureCollection): void {
-    this.deckMap?.updateTopageVisual(geojson);
-  }
 
   /** [minLng, minLat, maxLng, maxLat] de la vue courante, ou null. */
   getBounds(): [number, number, number, number] | null {
@@ -190,31 +169,6 @@ export class MapContainer {
     return this.deckMap?.getViewState() ?? null;
   }
 
-  highlightFloodSegment(segmentId: string | null): void {
-    this.deckMap?.highlightFloodSegment(segmentId);
-  }
-
-  // ─── Fires ───
-  updateFires(fires: ActiveFire[]): void {
-    this.deckMap?.updateFires(fires);
-  }
-
-  highlightFire(lat: number, lon: number): void {
-    this.deckMap?.highlightFire(lat, lon);
-  }
-
-  clearFireHighlight(): void {
-    this.deckMap?.clearFireHighlight();
-  }
-
-  /** Highlight tous les points d'un cluster incident DBSCAN sur la carte. */
-  highlightFireCluster(points: { lat: number; lon: number }[]): void {
-    this.deckMap?.highlightFireCluster(points);
-  }
-
-  setFirePointsVisible(enabled: boolean): void {
-    this.deckMap?.setFirePointsVisible(enabled);
-  }
 
   setModisOverlayVisible(enabled: boolean): void {
     this.deckMap?.setModisOverlayVisible(enabled);
@@ -369,18 +323,6 @@ export class MapContainer {
     this.deckMap?.updateIIPIncidents(incidents);
   }
 
-  updateTerminator(geojson: GeoJSON.FeatureCollection): void {
-    this.deckMap?.updateTerminator(geojson);
-  }
-
-  updateDayNightOptions(opts: {
-    showNight?: boolean;
-    showTwilight?: boolean;
-    showSunIcon?: boolean;
-    timestamp?: number;
-  }): void {
-    this.deckMap?.updateDayNightOptions(opts);
-  }
 
   highlightPowerDept(deptCode: string | null): void {
     this.deckMap?.highlightPowerDept(deptCode);
@@ -497,10 +439,6 @@ export class MapContainer {
     this.svgMap?.setOnItemHover(handler);
   }
 
-  setOnWeatherRadarFrame(handler: (frame: WeatherRadarFrame | null, status: WeatherRadarStatus) => void): void {
-    this.onWeatherRadarFrame = handler;
-    this.deckMap?.setOnWeatherRadarFrame(handler);
-  }
 
   setOnViewChange(handler: (vs: MapViewState) => void): void {
     this.onViewChange = handler;
@@ -593,13 +531,6 @@ export class MapContainer {
     this.deckMap?.fitBounds(bounds, padding);
   }
 
-  highlightWeatherDepartment(departmentCode: string | null): void {
-    this.deckMap?.highlightWeatherDepartment(departmentCode);
-  }
-
-  previewWeatherDepartment(departmentCode: string | null): void {
-    this.deckMap?.previewWeatherDepartment(departmentCode);
-  }
 
   selectWeatherDepartment(departmentCode: string | null): void {
     this.deckMap?.selectWeatherDepartment(departmentCode);

@@ -62,7 +62,7 @@ type NumericFactKind = 'area_ha' | 'evacuated' | 'dwellings_destroyed' | 'injure
  * rigueur structurelle. Risque de dérive assumé : si Task 1 fait évoluer ses
  * motifs (nouveaux synonymes, structure resserrée), ce lexique ne suit pas
  * automatiquement — même limite déjà relevée pour `isSafeSourceUrl`
- * (WildfireDossierModal.ts) vis-à-vis d'`escapeHtml` (Finding 5, round 2).
+ * (layer-panel/feux-dossier.ts) vis-à-vis d'`escapeHtml` (Finding 5, round 2).
  *
  * Sert de second verrou (voir `isGroundedInQuote`) : un chiffre présent dans
  * une citation ne suffit pas, il faut que le genre revendiqué GAGNE la
@@ -265,7 +265,7 @@ function factsFromCandidates(candidates: unknown[], sourceFacts: ImpactFact[]): 
 /**
  * Reconstruit `series` après ajout de faits — même partition que
  * `buildDossier`, pour que la chronologie des révisions (§12.4) reste
- * cohérente avec `facts` dans le rendu (WildfireDossierModal).
+ * cohérente avec `facts` dans le rendu (onglet « Dossier d'un feu »).
  */
 function rebuildSeries(facts: ImpactFact[]): Record<ImpactFactKind, ImpactFact[]> {
   return Object.fromEntries(

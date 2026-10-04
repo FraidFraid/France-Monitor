@@ -545,15 +545,9 @@ export function buildFranceBriefContext(
     telecomOutageCount: raw.telecomOutages.length,
   }).score;
 
-  // Determine the max level among meteo alerts (violet > red > orange > yellow > green > null)
-  const meteoLevelOrder = ['violet', 'red', 'orange', 'yellow', 'green'];
-  let meteoMaxLevel: string | null = null;
-  for (const level of meteoLevelOrder) {
-    if (raw.meteoAlerts.some((a) => a.level === level)) {
-      meteoMaxLevel = level;
-      break;
-    }
-  }
+  // Niveau maximal parmi les alertes météo (rouge > orange > jaune > vert > aucun)
+  const meteoMaxLevel: string | null = (['red', 'orange', 'yellow', 'green'] as const)
+    .find((level) => raw.meteoAlerts.some((a) => a.level === level)) ?? null;
 
   const diverseTopNews = selectDiverseNews(raw.newsItems, 20, 2);
 

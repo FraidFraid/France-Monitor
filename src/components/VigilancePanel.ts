@@ -1,5 +1,5 @@
 // src/components/VigilancePanel.ts : panneau de couche « Vigilance météo » (spec 2026-10-04 environnement § 2.1). Remplace
-// EnvironmentPanel (Météo / crues en un panneau) avec FloodsPanel. Coquille DOM : contenu de buildVigilanceView (pur), cadre de
+// l'ancien panneau unique « Météo / crues » avec FloodsPanel. Coquille DOM : contenu de buildVigilanceView (pur), cadre de
 // createLayerPanelShell ; bascule Aujourd’hui / Demain (onglets, transmise à la carte) ; un département cliqué (ou Entrée) est choisi :
 // bulletin départemental et surbrillance de la carte ; un second clic le désélectionne. Aucun badge « LIVE » : la date est celle de
 // la carte Météo-France (S1).

@@ -9,7 +9,7 @@
  *  - Durée max pour cluster temporel : 48 h (même foyer sur 2 jours = même incident)
  *
  * On ne fait PAS de clustering temporel strict (trop complexe sans BDD) ;
- * la persistance est déjà capturée dans fires.ts via computePersistenceMap.
+ * la persistance est portée par chaque détection (`recurrent`, calculé par le serveur : api/_lib/fires-collect.js).
  * Ici on clusterise uniquement dans l'espace.
  */
 
@@ -21,7 +21,7 @@ import type { ActiveFire, FireIncident, FireIncidentScore } from '../types/index
 const EARTH_R_KM = 6371;
 
 /** Zones urbaines/industrielles françaises [lat, lon, rayon_km]
- *  Copiées et étendues depuis fires.ts pour la détection de proximité.
+ *  Reprises de l'ancien service des feux et étendues pour la détection de proximité.
  */
 const URBAN_ZONES_KM: [number, number, number][] = [
     [48.86,  2.35,  30], // Paris Île-de-France

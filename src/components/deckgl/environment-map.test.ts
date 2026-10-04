@@ -173,11 +173,11 @@ describe('sources, couches, survol', () => {
     expect(ENV_SOURCE_IDS).toHaveLength(4);
     expect(ENV_LAYER_BEFORE[LYR_FOREST_DANGER_FILL]).toBe(LYR_FIRES_GLOW);
   });
-  it('couches par clé ; crues avec la vigilance tant que la clé floods n’existe pas', () => {
+  it('couches par clé ; crues avec leur seule clé (plus de repli sur la vigilance)', () => {
     expect(ENV_LAYER_KEYS.floods).toEqual([LYR_FLOODS, LYR_FLOOD_STATIONS]);
     expect(ENV_LAYER_KEYS.weatherRadar).toEqual([LYR_RADAR_PICK]);
-    expect(envLayerOn({ environmental: true }, 'floods')).toBe(true);
-    expect(envLayerOn({ environmental: true, floods: false }, 'floods')).toBe(false);
+    expect(envLayerOn({ environmental: true }, 'floods')).toBe(false);
+    expect(envLayerOn({ environmental: false, floods: true }, 'floods')).toBe(true);
     expect(envLayerOn({ fires: true }, 'weatherRadar')).toBe(false);
   });
   it('survol : couche du dessus d’abord (points, tracés, surfaces) ; infobulle préparée ; rien sans corps', () => {
