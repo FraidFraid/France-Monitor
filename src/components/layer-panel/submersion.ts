@@ -70,11 +70,9 @@ function gaugeRow(g: TideGauge, domain: VigilanceCoastDomain | null, canFocus: b
   });
 }
 
-/** Graduation de la courbe : heure de Paris, précédée du jour (« 03/10 22:00 ») quand elle n'est pas du jour de la dernière mesure (E5). */
-function tickOf(ms: number, lastMs: number, now: number): string {
-  const day = (t: number): string => new Date(t).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Paris' });
-  const clock = clockOf(new Date(ms).toISOString(), now);
-  return day(ms) === day(lastMs) ? clock : `${day(ms)} ${clock}`;
+/** Graduation de la courbe : heure de Paris ; `clockOf` y ajoute déjà le jour (« 03/10 22:00 ») quand elle n'est pas d'aujourd'hui (E5). */
+function tickOf(ms: number, now: number): string {
+  return clockOf(new Date(ms).toISOString(), now);
 }
 
 function gaugeCurve(g: TideGauge, domainColor: OfficialColorId, now: number, open: OpenFn): string {
@@ -87,7 +85,7 @@ function gaugeCurve(g: TideGauge, domainColor: OfficialColorId, now: number, ope
   const late = gaugeLate(g, now);
   const chart = lineChart(points, {
     label: `Hauteur d’eau à ${g.name}, 24 dernières heures`, from: last - DAY_MS, to: last, stroke: late ? 'var(--text-primary)' : CAT_PORT, gapMs: GAP_MS,
-    value: (v) => formatHeightM(v), tick: (ms) => tickOf(ms, last, now), nowAt: null,
+    value: (v) => formatHeightM(v), tick: (ms) => tickOf(ms, now), nowAt: null,
   });
   if (chart === '') return '';
   const key = `maregraphe-${g.id}`;

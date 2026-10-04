@@ -100,6 +100,9 @@ describe('section Submersion marine (spec 2026-10-04 environnement § 3.4)', () 
     expect(visibleText(section({ period: p }).html)).not.toContain('20:00');
     expect(visibleText(section().html)).toMatch(/0[34]\/10 \d\d:\d\d/);
   });
+  it('graduation de la courbe : le jour n’est dit qu’une fois (jamais « 03/10 03/10 18:22 »)', () => {
+    expect(visibleText(section().html)).not.toMatch(/(\d\d\/\d\d)\s+\1/);
+  });
   it('pannes nommées : marégraphe sans mesure, tous en panne, chargement, carte de vigilance absente', () => {
     const one = section({ seaLevels: withSea((s) => { s.gauges[1] = { ...s.gauges[1], lastAt: null, heightM: null, change1hM: null, series: [] }; s.errors = ['Marégraphe Marseille : HTTP 503']; }) });
     expect(one.html).toMatch(/data-gauge="524"><span class="fmk-dot" aria-hidden="true"><\/span><span>Marseille<\/span><span class="lp-val fmk-num">n\.d\.<\/span><small>aucune mesure lue/);
