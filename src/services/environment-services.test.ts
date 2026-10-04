@@ -6,7 +6,9 @@ import {
   ENV_FIXTURE_NOW, FIRES_FIXTURE, FIRE_IMPACTS_FIXTURE, FLOODS_FIXTURE, RADAR_MANIFEST_FIXTURE, VIGILANCE_FIXTURE,
 } from '../components/layer-panel/environment.fixture.ts';
 import { resetTrafficSourceCache } from './traffic-source.ts';
-import { PROGRESS_NOTES, environmentSlotStatus, isColorId, isMultiPath, isOneOf, isProgressNote } from './environment-source.ts';
+import {
+  FIRMS_PENDING_NOTE, FIRMS_TOO_OLD_ERROR, PROGRESS_NOTES, environmentSlotStatus, isColorId, isMultiPath, isOneOf, isProgressNote,
+} from './environment-source.ts';
 import {
   VIGILANCE_TTL_MS, VIGILANCE_URL, bulletinOf, fetchVigilance, isVigilanceResponse, mergeVigilance, vigilanceStatus, vigilanceToMeteoAlerts,
 } from './environment-vigilance.ts';
@@ -202,6 +204,20 @@ describe('feux', () => {
     expect(FIRES_TTL_MS).toBeLessThan(15 * 60_000);
     expect(firesStatus(s, 'firms', NOW)).toMatchObject({ status: 'ok', period: '05:34', lastUpdate: new Date('2026-10-04T03:34:00.000Z') });
     expect(firesStatus(s, 'mdf', NOW)).toMatchObject({ status: 'ok', period: '03/10 16:50' });
+  });
+  it('cycle FIRMS en cours : jamais « stale » ni « error » (collecte servie : ok ; rien de gardé : chargement) ; plus de 2 jours : une panne', () => {
+    expect([isProgressNote(FIRMS_PENDING_NOTE), isProgressNote(FIRMS_TOO_OLD_ERROR)]).toEqual([true, false]);
+    const st = (data: FiresResponse, error: string | null = null) => firesStatus({ fires: { data, error, fetchedAt: NOW } }, 'firms', NOW);
+    expect(st({ ...FIRES_FIXTURE(), errors: [FIRMS_PENDING_NOTE] })).toMatchObject({ status: 'ok', error: undefined, period: `05:34 · ${FIRMS_PENDING_NOTE}` });
+    const empty = (errors: string[]): FiresResponse => ({
+      ...FIRES_FIXTURE(), readAt: null, lastAcquisitionAt: null, sources: [], detections: [], foyers: [], abroad: [], abroadCount: 0, nextPasses: [], errors,
+    });
+    expect(st(empty([FIRMS_PENDING_NOTE]))).toEqual({ status: 'loading', lastUpdate: null, error: undefined, period: FIRMS_PENDING_NOTE });
+    expect(firesStatus({ fires: { data: empty([FIRMS_PENDING_NOTE]), error: null, fetchedAt: NOW } }, 'mdf', NOW).status).toBe('ok');
+    // Lecture du client en échec, ou vraie panne à côté de la note : la ligne reste dégradée.
+    expect(st(empty([FIRMS_PENDING_NOTE]), 'HTTP 502').status).toBe('stale');
+    expect(st(empty([FIRMS_PENDING_NOTE, 'FIRMS, NOAA-20 : HTTP 503'])).status).toBe('stale');
+    expect(st(empty([FIRMS_TOO_OLD_ERROR]))).toMatchObject({ status: 'stale', error: FIRMS_TOO_OLD_ERROR });
   });
   it('panne de la météo des forêts : seule sa ligne en erreur, FIRMS reste à l’heure', () => {
     const data: FiresResponse = { ...FIRES_FIXTURE(), forestDanger: null, errors: ['Météo des forêts : HTTP 503'] };

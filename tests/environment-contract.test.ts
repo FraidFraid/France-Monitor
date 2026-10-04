@@ -12,6 +12,7 @@ import { CONSTITUTION_ERROR, DAILY_KEY, __resetVigilanceArchiveForTests } from '
 import { HUBEAU_OBSERVATIONS_URL } from '../api/_lib/hubeau-stations.js';
 import { INFOVIGICRU_URL, TERRITORIES_URL, loadFloods, sectionStationsUrl } from '../api/_lib/vigicrues.js';
 import { __resetForestDangerForTests, mdfUrl } from '../api/_lib/forest-danger.js';
+import { FIRMS_PENDING_ERROR, TOO_OLD_ERROR } from '../api/_lib/fires-collect.js';
 import vigilanceHandler from '../api/_handlers/environment/vigilance.js';
 import floodsHandler from '../api/_handlers/environment/floods.js';
 import firesHandler from '../api/_handlers/environment/fires.js';
@@ -20,6 +21,7 @@ import type { FireImpactsResponse, FiresResponse, FloodsResponse, VigilanceRespo
 import { isVigilanceResponse, vigilanceStatus, vigilanceToMeteoAlerts } from '../src/services/environment-vigilance.ts';
 import { floodsStatus, floodsToSectionRefs, isFloodsResponse } from '../src/services/environment-floods.ts';
 import { firesStatus, isFireImpactsResponse, isFiresResponse, scoreFireDetections, toActiveFire } from '../src/services/environment-fires.ts';
+import { FIRMS_PENDING_NOTE, FIRMS_TOO_OLD_ERROR, isProgressNote } from '../src/services/environment-source.ts';
 import { type FakeResponse, callHandler, respond, stubFetch } from './helpers/traffic-fixtures.ts';
 
 const fx = (name: string): string => readFileSync(new URL(`./fixtures/environment/${name}`, import.meta.url), 'utf8');
@@ -179,6 +181,16 @@ describe('contrat feux', () => {
     expect(scored.length).toBe(body.detections.filter((d) => !d.recurrent).length);
     const active = scored.map(toActiveFire);
     expect(active.every((a) => /^\d{4}$/.test(a.acq_time) && ['low', 'nominal', 'high'].includes(a.confidence))).toBe(true);
+  });
+  it('phrases FIRMS du serveur reprises à l’identique par le client ; cycle en cours : réponse acceptée, ligne FIRMS à l’heure', async () => {
+    expect([FIRMS_PENDING_NOTE, FIRMS_TOO_OLD_ERROR]).toEqual([FIRMS_PENDING_ERROR, TOO_OLD_ERROR]);
+    expect([isProgressNote(FIRMS_PENDING_ERROR), isProgressNote(TOO_OLD_ERROR)]).toEqual([true, false]);
+    sources();
+    const { body } = await callHandler<FiresResponse>(firesHandler);
+    // Échéance de la route atteinte pendant un cycle : collecte servie avec sa date et cette seule note (api/_lib/fires-collect.js).
+    const pending = wire({ ...body, errors: [FIRMS_PENDING_ERROR] }) as FiresResponse;
+    expect(isFiresResponse(pending)).toBe(true);
+    expect(firesStatus({ fires: { data: pending, error: null, fetchedAt: NOW } }, 'firms', NOW)).toMatchObject({ status: 'ok', error: undefined });
   });
   it('lignes FIRMS illisibles : nommées dans errors, réponse acceptée, ligne FIRMS dégradée', async () => {
     const bad = (sat: string): string => `${viirs(sat)}2026-10-04,ligne,tronquée\n`;

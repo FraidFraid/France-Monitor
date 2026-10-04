@@ -11,7 +11,7 @@ import { departementAeronauticalDay, aeronauticalLine } from '../../services/aer
 import {
   firesLevel, forestDangerCurrent, foyerLevel, isEnvironmentDataLate, maxForestDanger,
 } from '../../services/environment-levels.ts';
-import { MDF_ERROR_PREFIX, isProgressNote } from '../../services/environment-source.ts';
+import { FIRMS_PENDING_NOTE, FIRMS_TOO_OLD_ERROR, MDF_ERROR_PREFIX, isProgressNote } from '../../services/environment-source.ts';
 import { situationLevel } from '../../services/vigilance.ts';
 import { wildfireSeverity } from '../../services/wildfire-dossier.ts';
 import { escapeHtml } from '../france-intel-events.ts';
@@ -28,7 +28,7 @@ import {
   ENVIRONMENT_THEME, FOREST_DANGER_LEVEL, FOREST_DANGER_WORD, SATELLITE_WORD, dataMs, formatAge, formatFrp, glueEnvUnits, note, parisDayWord,
   plural, readErrors, sourceDown, stamp,
 } from './environment-format.ts';
-import { dossierSections, incidentPlace, SEVERITY_WORD, type FeuxDossierInput } from './feux-dossier.ts';
+import { dossierSections, incidentPlace, SEVERITY_WORD, type FeuxDossierInput, type OpenFn } from './feux-dossier.ts';
 
 export { dossierSections, renderDeclaredBlock, renderFactRow, type FeuxDossierInput } from './feux-dossier.ts';
 
@@ -36,8 +36,6 @@ export const FEUX_TITLE = 'Feux de forêt';
 export type FeuxTab = 'veille' | 'dossier';
 export const FEUX_TABS: readonly FeuxTab[] = ['veille', 'dossier'];
 const TAB_LABEL: Readonly<Record<FeuxTab, string>> = { veille: 'Veille', dossier: 'Dossier d’un feu' };
-
-type OpenFn = (sectionId: string, byDefault: boolean) => boolean;
 
 export interface FeuxViewInput {
   fires: FiresResponse | null;
@@ -80,21 +78,36 @@ const PYROCONVECTION = `Pyroconvection : un panache très développé (sommets d
 
 /** Erreur de la météo des forêts (le serveur les nomme « Météo des forêts : … »). */
 const isMdfError = (e: string): boolean => e.startsWith(MDF_ERROR_PREFIX);
-/**
- * Cycle FIRMS plus long que l'échéance de la route : collecte précédente servie avec sa date, ou rien de gardé (phrase exacte :
- * api/_lib/fires-collect.js, FIRMS_PENDING_ERROR). Une note, jamais une panne.
- */
-const FIRMS_PENDING = 'FIRMS : collecte en cours';
-/** Dernière collecte de plus de 2 jours, plus servie : panne prolongée (phrase exacte : api/_lib/fires-collect.js, TOO_OLD_ERROR). */
-const FIRMS_TOO_OLD = 'FIRMS : dernière collecte de plus de 2 jours';
-const isCollecting = (e: string): boolean => e === FIRMS_PENDING;
-/** Note d'avancement du serveur (isProgressNote) ou collecte en cours : dite comme note, jamais comme incident de lecture. */
-const isNote = (e: string): boolean => isProgressNote(e) || isCollecting(e);
-const isTooOld = (e: string): boolean => e === FIRMS_TOO_OLD;
+/** Cycle FIRMS en cours (FIRMS_PENDING_NOTE, phrase du serveur) : une note d'avancement, jamais une panne. */
+const isCollecting = (e: string): boolean => e === FIRMS_PENDING_NOTE;
+/** Dernière collecte de plus de 2 jours, plus servie (FIRMS_TOO_OLD_ERROR, phrase du serveur) : panne prolongée. */
+const isTooOld = (e: string): boolean => e === FIRMS_TOO_OLD_ERROR;
 
-/** Pannes FIRMS du dernier essai (ni note, ni erreur de la météo des forêts). */
+/** Pannes FIRMS du dernier essai (ni note d'avancement, ni erreur de la météo des forêts). */
 function firmsFailures(f: FiresResponse): string[] {
-  return f.errors.filter((e) => !isNote(e) && !isMdfError(e));
+  return f.errors.filter((e) => !isProgressNote(e) && !isMdfError(e));
+}
+
+/** Produits FIRMS non lus au dernier essai, en clair. */
+function productsDown(f: FiresResponse): string[] {
+  return f.sources.filter((x) => !x.ok).map((x) => FIRMS_PRODUCT[x.id]);
+}
+
+/** Aucun produit FIRMS lu au dernier essai : la collecte précédente est servie avec sa propre date. */
+function previousServed(f: FiresResponse): boolean {
+  return f.readAt !== null && f.sources.length > 0 && f.sources.every((x) => !x.ok);
+}
+
+/** Collecte servie mais lecture FIRMS incomplète au dernier essai (produit en panne, lignes écartées, collecte précédente servie). */
+function firmsIncomplete(f: FiresResponse): boolean {
+  return f.readAt !== null && (firmsFailures(f).length > 0 || f.sources.some((x) => !x.ok));
+}
+
+/** Mention courte de l'en-tête : « lecture FIRMS incomplète : NOAA-21 non lu » ; rien de lu : collecte précédente servie. */
+function incompleteWords(f: FiresResponse, now: number): string {
+  if (previousServed(f) && f.readAt !== null) return `dernier essai FIRMS en échec : collecte du ${dateAt(f.readAt, now)} servie`;
+  const down = productsDown(f);
+  return down.length > 0 ? `lecture FIRMS incomplète : ${down.join(', ')} non ${down.length > 1 ? 'lus' : 'lu'}` : 'lecture FIRMS incomplète';
 }
 
 /** Aucune collecte encore servie, première collecte en cours sans panne : dit comme tel, jamais « injoignable ». */
@@ -104,6 +117,11 @@ function firstCollecting(f: FiresResponse): boolean {
 
 function noteText(e: string): string {
   return isCollecting(e) ? `Note : ${e} (la nouvelle collecte sera servie à la prochaine lecture).` : `Note : ${e}.`;
+}
+
+/** Jour d'une barre des courbes (« 23/09 ») : date du jour, à midi UTC, sans fuseau. */
+function dayTick(ms: number): string {
+  return new Date(ms).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' });
 }
 
 function firmsLate(f: FiresResponse, now: number): boolean {
@@ -186,7 +204,11 @@ function headOf(input: FeuxViewInput, f: FiresResponse): LayerHeadModel {
   return {
     theme: ENVIRONMENT_THEME, title: FEUX_TITLE, figure: figureOf(f, now),
     level: late ? 'nd' : verdict.level,
-    status: [late ? 'niveau suspendu : détections FIRMS en retard' : glueEnvUnits(verdict.reason), stamps(f, now)],
+    // Lecture FIRMS incomplète : dite en tête, sans changer la couleur de la pastille.
+    status: [
+      late ? 'niveau suspendu : détections FIRMS en retard' : glueEnvUnits(verdict.reason), stamps(f, now),
+      ...(firmsIncomplete(f) ? [incompleteWords(f, now)] : []),
+    ],
     lead: late ? null : lead(f),
   };
 }
@@ -215,19 +237,19 @@ function seasonChart(fd: ForestDanger, colored: boolean): string {
   if (!colored || fd.history.length === 0) return '';
   const days: DayStack[] = fd.history.map((h) => ({
     day: Date.parse(`${h.date}T12:00:00Z`),
+    // Départements au niveau 2 ou plus (spec E5) : le niveau 1 « faible » n'est pas tracé.
     parts: [
       { value: h.n4, color: 'var(--sev-red)', label: 'très élevé' }, { value: h.n3, color: 'var(--sev-orange)', label: 'élevé' },
-      { value: h.n2, color: 'var(--sev-yellow)', label: 'modéré' }, { value: h.n1, color: 'var(--sev-green)', label: 'faible' },
+      { value: h.n2, color: 'var(--sev-yellow)', label: 'modéré' },
     ],
   }));
-  const tick = (ms: number): string => new Date(ms).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' });
   const chart = stackedDayBars(days, {
-    label: 'Départements par niveau de danger de la météo des forêts, par jour de la saison', value: (v) => frNumber(v, 0), tick,
+    label: 'Départements par niveau de danger de la météo des forêts, par jour de la saison', value: (v) => frNumber(v, 0), tick: dayTick,
     emptyNote: 'aucun département en danger sur la période',
   });
   const first = fd.history[0];
   const last = fd.history[fd.history.length - 1];
-  return chart + note(`Saison ${last.date.slice(0, 4)} : ${plural(fd.history.length, 'jour')} publiés, du ${tick(Date.parse(`${first.date}T12:00:00Z`))} au ${tick(Date.parse(`${last.date}T12:00:00Z`))} ; chaque barre est datée par le jour de validité J1 (une publication du 22/09 figure au 23/09).`);
+  return chart + note(`Saison ${last.date.slice(0, 4)} : ${plural(fd.history.length, 'jour')} publiés, du ${dayTick(Date.parse(`${first.date}T12:00:00Z`))} au ${dayTick(Date.parse(`${last.date}T12:00:00Z`))} ; chaque barre est datée par le jour de validité J1 (une publication du 22/09 figure au 23/09) ; danger modéré ou plus, le niveau faible n’est pas tracé.`);
 }
 
 /** Lignes de la météo des forêts écartées par le serveur (illisibles, en double) alors que le fichier est servi : nommées (S3). */
@@ -309,8 +331,7 @@ function dailyChart(f: FiresResponse): string {
       { value: d.recurrent, color: RECURRENT_FILL, label: 'récurrentes, à vérifier' },
     ],
   }));
-  const tick = (ms: number): string => new Date(ms).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', timeZone: 'UTC' });
-  const chart = stackedDayBars(stacks, { label: 'Détections en France par jour, récurrentes à part', value: (v) => frNumber(v, 0), tick });
+  const chart = stackedDayBars(stacks, { label: 'Détections en France par jour, récurrentes à part', value: (v) => frNumber(v, 0), tick: dayTick });
   const building = days.length < DAILY_DAYS ? note(`Référence en construction (${plural(days.length, 'jour')} sur ${DAILY_DAYS}).`) : '';
   return chart + building + note('Jour d’acquisition en temps universel ; récurrentes en gris, à part des autres détections.');
 }
@@ -344,21 +365,32 @@ export function mtgFrpState(feed: FireObservationFeedState | null, now: number):
 }
 
 /**
- * Lecture FIRMS du dernier essai, nommée là où elle compte (S3) : collecte de plus de 2 jours plus servie, collecte précédente servie
- * avec sa propre date (les règles du retard s'appliquent à sa dernière acquisition), produits en panne ou lignes illisibles écartées,
- * notes d'avancement dites comme notes.
+ * Panne FIRMS du dernier essai alors qu'une collecte est servie, AVANT la liste (S3 : jamais un calme lu d'abord) : produit et erreur
+ * nommés ; aucun produit lu : collecte précédente servie avec sa propre date (les règles du retard s'appliquent à sa dernière
+ * acquisition).
  */
-function firmsReadNotes(f: FiresResponse, now: number): string {
+function firmsOutageCallout(f: FiresResponse, now: number): string {
+  if (!firmsIncomplete(f) || f.readAt === null) return '';
+  const errors = firmsFailures(f).map(glueEnvUnits);
+  const down = productsDown(f);
+  const detail = errors.length > 0 ? errors.join(' ; ') : `${down.join(', ')} non ${down.length > 1 ? 'lus' : 'lu'}`;
+  const text = previousServed(f)
+    ? `Collecte du ${dateAt(f.readAt, now)} servie avec sa date : aucun produit FIRMS lu au dernier essai (${detail}).`
+    : `Lecture FIRMS incomplète : ${detail}.`;
+  return `<p class="fmk-callout lp-callout">${escapeHtml(text)}</p>`;
+}
+
+/** Aucune collecte servie : collecte de plus de 2 jours plus servie, cause de la panne. */
+function firmsDownNotes(f: FiresResponse): string {
   const failures = firmsFailures(f);
   const others = failures.filter((e) => !isTooOld(e)).map(glueEnvUnits);
-  const out: string[] = [];
-  if (failures.some(isTooOld)) out.push(note('Dernière collecte FIRMS de plus de 2 jours : plus servie, aucune détection comptée.'));
-  if (f.readAt !== null && f.sources.length > 0 && f.sources.every((x) => !x.ok)) {
-    out.push(note(`Collecte du ${dateAt(f.readAt, now)} servie avec sa date : aucun produit FIRMS lu au dernier essai.`));
-  }
-  if (others.length > 0) out.push(note(`${f.readAt === null ? 'Cause' : 'Lecture FIRMS incomplète'} : ${others.join(' ; ')}.`));
-  out.push(...f.errors.filter(isNote).map((e) => note(noteText(e))));
-  return out.join('');
+  return (failures.some(isTooOld) ? note('Dernière collecte FIRMS de plus de 2 jours : plus servie, aucune détection comptée.') : '')
+    + (others.length > 0 ? note(`Cause : ${others.join(' ; ')}.`) : '');
+}
+
+/** Notes d'avancement du serveur (cycle FIRMS en cours…), dites comme notes, jamais comme pannes. */
+function progressNotes(f: FiresResponse): string {
+  return f.errors.filter(isProgressNote).map((e) => note(noteText(e))).join('');
 }
 
 function detectionsSection(input: FeuxViewInput, f: FiresResponse | null): FicheSection {
@@ -368,7 +400,8 @@ function detectionsSection(input: FeuxViewInput, f: FiresResponse | null): Fiche
     // Première collecte en cours, sans panne : dite comme telle, jamais « source indisponible » ni « aucune détection ».
     const collecting = f !== null && firstCollecting(f);
     const head = collecting ? emptyLine('Collecte FIRMS en cours : détections à la prochaine lecture.') : sourceDown('détections NASA FIRMS');
-    return { ...base, summary: collecting ? 'collecte en cours' : 'n.d.', html: head + (f === null ? '' : firmsReadNotes(f, now)) + observationOptions(input) };
+    const notes = f === null ? '' : firmsDownNotes(f) + progressNotes(f);
+    return { ...base, summary: collecting ? 'collecte en cours' : 'n.d.', html: head + notes + observationOptions(input) };
   }
   const late = firmsLate(f, now);
   const confirmed = f.foyers.filter((x) => x.confirmed && !x.recurrent).length;
@@ -376,7 +409,10 @@ function detectionsSection(input: FeuxViewInput, f: FiresResponse | null): Fiche
   const recurrent = f.foyers.filter((x) => x.recurrent).length;
   const shown = f.foyers.slice(0, MAX_FOYERS).map((fo) => foyerRow(fo, late, input)).join('');
   const rest = f.foyers.length - MAX_FOYERS;
-  const list = f.foyers.length === 0 ? emptyLine('Aucune détection en France sur les 24 dernières heures.') : shown
+  const incomplete = firmsIncomplete(f);
+  // Lecture incomplète : jamais le calme « Aucune détection en France », seulement ce qui a été lu.
+  const none = incomplete ? 'Aucune détection lue en France sur les 24 dernières heures.' : 'Aucune détection en France sur les 24 dernières heures.';
+  const list = f.foyers.length === 0 ? emptyLine(none) : shown
     + (rest > 0 ? note(`${plural(rest, 'autre foyer', 'autres foyers')}, plus faibles.`) : '');
   const abroad = listRow({ text: 'Détections hors de France (non comptées)', value: frNumber(f.abroadCount, 0), level: 'gris' });
   const last = dataMs(f.lastAcquisitionAt);
@@ -384,8 +420,9 @@ function detectionsSection(input: FeuxViewInput, f: FiresResponse | null): Fiche
     : note(`Dernière acquisition sur la zone : ${absoluteTime(last, now, 'fr')} (${formatAge(last, now)})${late ? ' (en retard)' : ''}.`);
   return {
     ...base,
-    summary: escapeHtml(`${plural(confirmed, 'confirmé')} · ${plural(isolated, 'isolé')} · ${plural(recurrent, 'récurrent')}${late ? ' (en retard)' : ''}`),
-    html: list + abroad + lastLine + firmsReadNotes(f, now) + nextPassesNote(f, now) + dailyChart(f) + observationOptions(input)
+    summary: escapeHtml(`${plural(confirmed, 'confirmé')} · ${plural(isolated, 'isolé')} · ${plural(recurrent, 'récurrent')}${late ? ' (en retard)' : ''}`
+      + `${incomplete ? ' · lecture incomplète' : ''}`),
+    html: firmsOutageCallout(f, now) + list + abroad + lastLine + progressNotes(f) + nextPassesNote(f, now) + dailyChart(f) + observationOptions(input)
       + (input.canFocus ? note('Clic sur un foyer : le foyer sur la carte.') : ''),
   };
 }
@@ -437,7 +474,7 @@ function methodSection(input: FeuxViewInput, f: FiresResponse | null): FicheSect
     + note(`Pastille : rouge si un département est au danger très élevé ou si un foyer confirmé non récurrent cumule au moins 100${NBSP}MW ; orange si danger élevé ou foyer confirmé non récurrent d’au moins 10${NBSP}MW ; jaune si danger modéré, foyer confirmé plus petit ou détection isolée non récurrente ; n.d. si FIRMS et la météo des forêts sont en panne ; la panne d’une source est nommée dans la raison, même quand l’autre colore la pastille.`)
     + note(`Météo des forêts : niveau officiel de danger (1 faible à 4 très élevé), publié chaque jour vers 16${NBSP}h${NBSP}50 de juin à l’automne pour le lendemain et le surlendemain ; ce n’est pas une carte des incendies.`)
     + `<p class="fmk-note">${escapeHtml('Expertise sur les feux de forêt : ')}${sourceLinkHtml('CNRS, expertise scientifique collective', CNRS_URL)}.</p>`
-    + readErrors(errors.filter((e) => !isNote(e)).map(glueEnvUnits)) + errors.filter(isNote).map((e) => note(noteText(e))).join('');
+    + readErrors(errors.filter((e) => !isProgressNote(e)).map(glueEnvUnits)) + errors.filter(isProgressNote).map((e) => note(noteText(e))).join('');
   return { id: 'methode', title: 'Méthode et sources', collapsible: true, open: open('methode', false), tone: 'reference', html, summary: '4 sources' };
 }
 

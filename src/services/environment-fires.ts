@@ -5,7 +5,7 @@
 import type { ActiveFire, FireConfidence, FireDetection, FireImpactsResponse, FireSatellite, FiresResponse, FirmsSourceId } from '../types/index.ts';
 import { isRecord, isStringArray } from './health-surveillance.ts';
 import {
-  MDF_ERROR_PREFIX, environmentSlotStatus, isBool, isNum, isNumOrNull, isOneOf, isStr, isStrOrNull, listOf, loadSlot, mergeSlot, numbersIn,
+  FIRMS_PENDING_NOTE, MDF_ERROR_PREFIX, environmentSlotStatus, isBool, isProgressNote, isNum, isNumOrNull, isOneOf, isStr, isStrOrNull, listOf, loadSlot, mergeSlot, numbersIn,
   type EnvironmentStatus, type SourceSlot,
 } from './environment-source.ts';
 
@@ -63,13 +63,18 @@ const isMdfError = (e: string): boolean => e.startsWith(MDF_ERROR_PREFIX);
 /**
  * Deux lignes du panneau des sources : « NASA FIRMS » datée par la dernière acquisition sur la zone (E3), avec les seules erreurs
  * FIRMS ; « Météo des forêts » datée par sa publication (hors saison : dit, jamais « (en retard) »), avec ses seules erreurs ;
- * météo des forêts jamais lue alors que FIRMS répond : « error », sans heure inventée.
+ * météo des forêts jamais lue alors que FIRMS répond : « error », sans heure inventée. Cycle FIRMS en cours (FIRMS_PENDING_NOTE) :
+ * jamais « stale » ni « error » ; sans aucune collecte encore servie, « loading ».
  */
 export function firesStatus(state: FiresState, part: 'firms' | 'mdf', now: number): EnvironmentStatus {
   const slot = state.fires;
   const data = slot.data;
   if (part === 'firms') {
-    const firmsSlot: SourceSlot<{ errors: string[] }> = { ...slot, data: data === null ? null : { errors: data.errors.filter((e) => !isMdfError(e)) } };
+    const firmsErrors = data === null ? [] : data.errors.filter((e) => !isMdfError(e));
+    if (data !== null && slot.error === null && data.readAt === null && firmsErrors.includes(FIRMS_PENDING_NOTE) && firmsErrors.every(isProgressNote)) {
+      return { status: 'loading', lastUpdate: null, error: undefined, period: FIRMS_PENDING_NOTE };
+    }
+    const firmsSlot: SourceSlot<{ errors: string[] }> = { ...slot, data: data === null ? null : { errors: firmsErrors } };
     return environmentSlotStatus(firmsSlot, 'firms', data?.lastAcquisitionAt ?? null, now);
   }
   const mdfErrors = data === null ? [] : data.errors.filter(isMdfError);

@@ -370,17 +370,20 @@ describe('décisions du contrôleur postérieures à la brief', () => {
     expect(v.head.level).toBe('jaune');
     expect(v.head.status[1]).toBe(`FIRMS${NBSP}05:34 · météo des forêts${NBSP}03/10${NBSP}16:50`);
     const t = visibleText(v.sections.find((x) => x.id === 'detections')?.html ?? '');
-    expect(t).toContain('Collecte du 04/10 à 10:10 servie avec sa date : aucun produit FIRMS lu au dernier essai.');
-    expect(t).toContain('Lecture FIRMS incomplète : FIRMS, Suomi NPP : HTTP 503 ; FIRMS, NOAA-20 : HTTP 503 ; FIRMS, NOAA-21 : HTTP 503 ; FIRMS, MODIS : HTTP 503.');
+    // Panne nommée AVANT la liste (correction 1 de la revue), avec les erreurs du dernier essai.
+    expect(t.startsWith('Collecte du 04/10 à 10:10 servie avec sa date : aucun produit FIRMS lu au dernier essai '
+      + '(FIRMS, Suomi NPP : HTTP 503 ; FIRMS, NOAA-20 : HTTP 503 ; FIRMS, NOAA-21 : HTTP 503 ; FIRMS, MODIS : HTTP 503).')).toBe(true);
+    expect(v.head.status[2]).toBe('dernier essai FIRMS en échec : collecte du 04/10 à 10:10 servie');
     expect(visibleText(sectionOf('methode', { fires: f })?.html ?? '')).toContain('Suomi NPP en panne, NOAA-20 en panne, NOAA-21 en panne, MODIS (Terra, Aqua) en panne');
     const late = view({ fires: f, now: Date.parse('2026-10-04T17:35:00Z') });
     expect(late.head.level).toBe('nd');
     expect(late.head.status[0]).toBe('niveau suspendu : détections FIRMS en retard');
   });
 
-  it('courbe de la saison : titre « aucun département en danger sur la période » quand tous les jours sont à zéro', () => {
+  it('courbe de la saison : titre « aucun département en danger sur la période » quand aucun département n’est au niveau 2 ou plus', () => {
     const label = 'Départements par niveau de danger de la météo des forêts, par jour de la saison';
-    const zero = fires((x) => { if (x.forestDanger) x.forestDanger.history = x.forestDanger.history.map((h) => ({ ...h, n1: 0, n2: 0, n3: 0, n4: 0 })); });
+    // Tous les départements au niveau 1 (faible), non tracé : la courbe est vide et le dit.
+    const zero = fires((x) => { if (x.forestDanger) x.forestDanger.history = x.forestDanger.history.map((h) => ({ ...h, n1: 96, n2: 0, n3: 0, n4: 0 })); });
     expect(sectionOf('meteo-forets', { fires: zero })?.html).toContain(`aria-label="${label} : aucun département en danger sur la période"`);
     expect(sectionOf('meteo-forets')?.html).toContain(`aria-label="${label}"`);
   });
@@ -404,5 +407,61 @@ describe('décisions du contrôleur postérieures à la brief', () => {
     const s = sectionOf('jour-aeronautique', { fires: drom });
     expect(visibleText(s?.html ?? '')).not.toContain('(971)');
     expect(s?.summary).toBe('6 départements');
+  });
+});
+
+describe('correction 1 de la revue', () => {
+  const ILLE = '48.5627_-1.7717_2026-10-04_0300_Suomi NPP';
+  const noaa21Down = (x: FiresResponse): void => {
+    x.sources = x.sources.map((s) => (s.id === 'VIIRS_NOAA21_NRT' ? { ...s, ok: false } : s));
+    x.errors = ['FIRMS, NOAA-21 : HTTP 503'];
+  };
+
+  it('lecture FIRMS incomplète sans foyer : « Aucune détection lue », panne nommée (produit, erreur) AVANT la liste ; lecture complète : le calme', () => {
+    const rows = fires((x) => { x.foyers = []; x.errors = ['FIRMS, NOAA-20 : 3 lignes illisibles']; });
+    const h = sectionOf('detections', { fires: rows })?.html ?? '';
+    expect(h.startsWith('<p class="fmk-callout lp-callout">Lecture FIRMS incomplète : FIRMS, NOAA-20 : 3 lignes illisibles.</p>')).toBe(true);
+    const t = visibleText(h);
+    expect(t).toContain('Aucune détection lue en France sur les 24 dernières heures.');
+    expect(t).not.toContain('Aucune détection en France sur les 24 dernières heures.');
+    expect(t.indexOf('Lecture FIRMS incomplète')).toBeLessThan(t.indexOf('Aucune détection lue'));
+
+    const down = fires((x) => { noaa21Down(x); x.foyers = []; });
+    const d = visibleText(sectionOf('detections', { fires: down })?.html ?? '');
+    expect(d.startsWith('Lecture FIRMS incomplète : FIRMS, NOAA-21 : HTTP 503.Aucune détection lue en France')).toBe(true);
+    // Produit marqué en panne sans message : nommé par son produit.
+    const silent = fires((x) => { noaa21Down(x); x.errors = []; x.foyers = []; });
+    expect(visibleText(sectionOf('detections', { fires: silent })?.html ?? '')).toContain('Lecture FIRMS incomplète : NOAA-21 non lu.');
+
+    const calm = fires((x) => { x.foyers = []; });
+    const c = sectionOf('detections', { fires: calm })?.html ?? '';
+    expect(visibleText(c)).toContain('Aucune détection en France sur les 24 dernières heures.');
+    expect(c).not.toContain('fmk-callout');
+    expect(visibleText(c)).not.toContain('lecture incomplète');
+  });
+
+  it('panne partielle de FIRMS (1 produit sur 4) : nommée dans le résumé de la section et en tête, pastille inchangée', () => {
+    const f = fires(noaa21Down);
+    const v = view({ fires: f });
+    expect(v.head.level).toBe(view().head.level);
+    expect(v.head.status).toEqual([view().head.status[0], view().head.status[1], 'lecture FIRMS incomplète : NOAA-21 non lu']);
+    expect(v.sections.find((s) => s.id === 'detections')?.summary).toBe('3 confirmés · 5 isolés · 2 récurrents · lecture incomplète');
+    // Données servies : la liste des foyers reste, après la panne nommée.
+    const h = sectionOf('detections', { fires: f })?.html ?? '';
+    expect(h.indexOf('Lecture FIRMS incomplète')).toBeLessThan(h.indexOf(`data-foyer="${ILLE}"`));
+    // Lignes illisibles seules : tous les produits lus, mention sans produit.
+    const rows = view({ fires: fires((x) => { x.errors = ['FIRMS, NOAA-20 : 3 lignes illisibles']; }) });
+    expect(rows.head.status[2]).toBe('lecture FIRMS incomplète');
+    // Lecture complète : aucune mention ; note d'avancement : jamais « incomplète ».
+    expect(view().head.status).toHaveLength(2);
+    expect(view({ fires: fires((x) => { x.errors = ['FIRMS : collecte en cours']; }) }).head.status).toHaveLength(2);
+  });
+
+  it('courbe de la saison : niveaux 2 à 4 seulement, le niveau faible n’est pas tracé et la note le dit', () => {
+    const h = sectionOf('meteo-forets')?.html ?? '';
+    expect(h).toContain('<title>04/10 · modéré : 10</title>');
+    expect(h).not.toContain(' · faible : ');
+    expect(h).not.toMatch(/<rect[^>]*fill="var\(--sev-green\)"/);
+    expect(visibleText(h)).toContain('danger modéré ou plus, le niveau faible n’est pas tracé.');
   });
 });

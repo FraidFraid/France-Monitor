@@ -14,15 +14,27 @@ export type EnvironmentStatus = Pick<DataSourceStatus, 'status' | 'lastUpdate' |
 
 const PARIS = 'Europe/Paris';
 
-/**
- * Notes d'avancement du serveur : ce ne sont pas des pannes (la source se remplit), elles ne dégradent pas le statut.
- * Phrases exactes : api/_lib/vigicrues.js (HUBEAU_PENDING_ERROR) et api/_lib/vigilance-archive.js (CONSTITUTION_ERROR).
- */
 /** Note de l'archive de vigilance pendant sa constitution (api/_lib/vigilance-archive.js, CONSTITUTION_ERROR). */
 export const HISTORY_CONSTRUCTION_NOTE = 'historique de la vigilance en cours de constitution';
+/**
+ * Cycle FIRMS plus long que l'échéance de la route : collecte précédente servie avec sa date, ou rien de gardé
+ * (api/_lib/fires-collect.js, FIRMS_PENDING_ERROR). Une note d'avancement, jamais une panne.
+ */
+export const FIRMS_PENDING_NOTE = 'FIRMS : collecte en cours';
+/**
+ * Dernière collecte FIRMS de plus de 2 jours, plus servie (api/_lib/fires-collect.js, TOO_OLD_ERROR) : une panne prolongée,
+ * jamais une note d'avancement.
+ */
+export const FIRMS_TOO_OLD_ERROR = 'FIRMS : dernière collecte de plus de 2 jours';
+/**
+ * Notes d'avancement du serveur : ce ne sont pas des pannes (la source se remplit), elles ne dégradent pas le statut.
+ * Phrases exactes : api/_lib/vigicrues.js (HUBEAU_PENDING_ERROR), api/_lib/vigilance-archive.js (CONSTITUTION_ERROR) et
+ * api/_lib/fires-collect.js (FIRMS_PENDING_ERROR).
+ */
 export const PROGRESS_NOTES: readonly string[] = [
   "Hub'Eau : lecture en cours, hauteurs à la prochaine relève",
   HISTORY_CONSTRUCTION_NOTE,
+  FIRMS_PENDING_NOTE,
 ];
 /** Fin de « <libellé> : relevé précédent servi (lecture en cours) » (api/_lib/vigicrues.js) ; « (lecture en échec) » reste une panne. */
 const PROGRESS_SUFFIX = ' : relevé précédent servi (lecture en cours)';

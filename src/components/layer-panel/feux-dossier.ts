@@ -17,7 +17,8 @@ import { NBSP, frNumber } from './format.ts';
 import { emptyLine, listRow, sourceLinkHtml, valueHtml } from './frame.ts';
 import { formatAge, formatFrp, formatKm, note, plural, sourceDown } from './environment-format.ts';
 
-type OpenFn = (sectionId: string, byDefault: boolean) => boolean;
+/** Ouverture d'une section (état mémorisé, sinon `byDefault`), partagée par la vue Feux de forêt. */
+export type OpenFn = (sectionId: string, byDefault: boolean) => boolean;
 
 /** Incident DBSCAN ouvert dans l'onglet, son dossier assemblé (buildDossier) et les communes autour de son centre. */
 export interface FeuxDossierInput {
@@ -128,18 +129,29 @@ export function renderDeclaredBlock(facts: ImpactFact[]): string {
   return `<ul class="wf-facts">${rendered.join('')}</ul>${notice}`;
 }
 
+/** « 1 h 40 », « 25 min » : minutes totales arrondies avant d'être découpées (jamais « 1 h 60 »). */
 function duration(minutes: number): string {
-  const h = Math.floor(minutes / 60);
-  const m = Math.round(minutes % 60);
+  const total = Math.round(minutes);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
   return h > 0 ? `${h}${NBSP}h${NBSP}${String(m).padStart(2, '0')}` : `${m}${NBSP}min`;
+}
+
+/**
+ * Bornes d'un axe, chacune avec le sens tiré de son propre signe : « 44,85 à 44,90 N » quand elles sont du même côté, sinon
+ * « 0,10 O à 0,20 E » (emprise à cheval sur le méridien de Greenwich).
+ */
+function bounds(min: number, max: number, positive: string, negative: string): string {
+  const side = (v: number): string => (v >= 0 ? positive : negative);
+  const abs = (v: number): string => frNumber(Math.abs(v), 2);
+  return side(min) === side(max)
+    ? `${abs(min)} à ${abs(max)}${NBSP}${side(min)}`
+    : `${abs(min)}${NBSP}${side(min)} à ${abs(max)}${NBSP}${side(max)}`;
 }
 
 /** « 44,85 à 44,90 N · 1,15 à 1,05 O » (emprise de l'incident, jamais de tiret). */
 function extent(i: LocatedFireIncident): string {
-  const lat = (v: number): string => frNumber(Math.abs(v), 2);
-  const ns = i.bboxMinLat >= 0 ? 'N' : 'S';
-  const ew = i.bboxMinLon >= 0 ? 'E' : 'O';
-  return `${lat(i.bboxMinLat)} à ${lat(i.bboxMaxLat)}${NBSP}${ns} · ${lat(i.bboxMinLon)} à ${lat(i.bboxMaxLon)}${NBSP}${ew}`;
+  return `${bounds(i.bboxMinLat, i.bboxMaxLat, 'N', 'S')} · ${bounds(i.bboxMinLon, i.bboxMaxLon, 'E', 'O')}`;
 }
 
 /** Lieu d'un incident : départements nommés, puis communes résolues ; à défaut, ses coordonnées. */

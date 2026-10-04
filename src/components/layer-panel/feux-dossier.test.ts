@@ -164,3 +164,17 @@ describe('communes autour du feu : décisions du contrôleur postérieures à la
     }
   });
 });
+
+describe('correction 1 de la revue : emprise et persistance', () => {
+  it('emprise à cheval sur le méridien de Greenwich : sens de chaque borne tiré de son propre signe', () => {
+    const t = visibleText(sectionOf('dossier-observe', { incident: { ...PORGE, bboxMinLon: -0.1, bboxMaxLon: 0.2 } })?.html ?? '');
+    expect(t).toContain(`Emprise44,85 à 44,90${NBSP}N · 0,10${NBSP}O à 0,20${NBSP}E`);
+  });
+  it('persistance : minutes totales arrondies avant d’être découpées, jamais « 1 h 60 »', () => {
+    const at = (durationMinutes: number): string => visibleText(sectionOf('dossier-observe', { incident: { ...PORGE, durationMinutes } })?.html ?? '');
+    expect(at(119.6)).toContain(`Persistance2${NBSP}h${NBSP}00`);
+    expect(at(59.7)).toContain(`Persistance1${NBSP}h${NBSP}00`);
+    expect(at(25.4)).toContain(`Persistance25${NBSP}min`);
+    for (const m of [59.7, 119.6, 179.5]) expect(at(m)).not.toMatch(/h\u00a060/);
+  });
+});
