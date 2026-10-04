@@ -73,6 +73,34 @@ describe('plusieurs séries (départements par couleur sur 30 jours)', () => {
     expect(svg).toContain('>0<');
     expect(multiLineChart([serie('var(--sev-red)', 'rouge', [1])], { label: 'x', from: T0, to: T0 + D, value: String, tick: String })).toBe('');
   });
+  const withPartial = (values: number[], partialFrom: number[]) => ({
+    stroke: 'var(--sev-orange)', label: 'orange', partialWord: 'jour en cours',
+    points: values.map((value, i) => ({ at: T0 + i * D, value, ...(partialFrom.includes(i) ? { partial: true } : {}) })),
+  });
+  const base = { label: 'x', from: T0, to: T0 + 4 * D, value: String, tick: () => 'j' };
+  const count = (svg: string, re: RegExp): number => (svg.match(re) ?? []).length;
+  it('sans point partiel : même rendu qu’avant (aucun attribut de partiel)', () => {
+    const svg = multiLineChart([serie('var(--sev-orange)', 'orange', [1, 2, 3])], { ...base, to: T0 + 2 * D });
+    expect(svg).not.toContain('data-partial');
+    expect(svg).not.toContain('stroke-dasharray');
+  });
+  it('un jour partiel : plein jusqu’au dernier jour complet, tirets vers le point, point creux titré', () => {
+    const svg = multiLineChart([withPartial([1, 2, 3, 4], [3])], base);
+    expect(count(svg, /<polyline (?![^>]*data-partial)/g)).toBe(1);
+    expect(count(svg, /<polyline [^>]*data-partial/g)).toBe(1);
+    expect(count(svg, /<circle [^>]*fill="none"[^>]*data-partial/g)).toBe(1);
+    expect(svg).toContain('<title>orange, jour en cours</title>');
+  });
+  it('deux jours partiels adjacents : jamais de polyligne pleine entre eux, deux points creux', () => {
+    const svg = multiLineChart([withPartial([1, 2, 3, 4], [2, 3])], base);
+    expect(count(svg, /<polyline (?![^>]*data-partial)/g)).toBe(1);
+    expect(count(svg, /<polyline [^>]*data-partial/g)).toBe(1);
+    expect(count(svg, /<circle [^>]*data-partial/g)).toBe(2);
+    const only = multiLineChart([withPartial([1, 2, 3], [0, 1, 2])], { ...base, to: T0 + 2 * D });
+    expect(count(only, /<polyline (?![^>]*data-partial)/g)).toBe(0);
+    expect(count(only, /<polyline [^>]*data-partial/g)).toBe(1);
+    expect(count(only, /<circle [^>]*data-partial/g)).toBe(3);
+  });
 });
 
 describe('frise horaire (vigilance J)', () => {

@@ -226,13 +226,29 @@ describe('vigilance : décisions complémentaires', () => {
     }
     expect(visibleText(b)).toContain(`Cumuls < 5${NBSP}mm, jusqu'à > 10${NBSP}mm`);
   });
-  it('jour partiel : point creux et « jour en cours », jamais un fait plein', () => {
-    const vigilance = withVigilance((v) => { v.history.days[v.history.days.length - 1].partial = true; });
-    const h = sectionOf('phenomenes', { vigilance })?.html ?? '';
+  it('jour partiel : point creux, segment en tirets et « jour en cours » ; deux jours adjacents sans trait plein', () => {
+    const count = (h: string, re: RegExp): number => (h.match(re) ?? []).length;
+    const last = withVigilance((v) => { v.history.days[v.history.days.length - 1].partial = true; });
+    const h = sectionOf('phenomenes', { vigilance: last })?.html ?? '';
     expect(visibleText(h)).toContain('jour en cours');
-    expect(h).toMatch(/<circle [^>]*fill="none" stroke="var\(--sev-yellow\)"[^>]*><title>[^<]*jour en cours/);
-    expect((h.match(/<polyline /g) ?? []).length).toBe(3);
+    expect(count(h, /<circle [^>]*data-partial/g)).toBe(3);
+    expect(count(h, /<polyline [^>]*data-partial/g)).toBe(3);
+    expect(count(h, /<polyline (?![^>]*data-partial)/g)).toBe(3);
     expect(sectionOf('phenomenes')?.html).not.toContain('jour en cours');
+    const two = withVigilance((v) => { for (const d of v.history.days.slice(-2)) d.partial = true; });
+    const h2 = sectionOf('phenomenes', { vigilance: two })?.html ?? '';
+    expect(count(h2, /<circle [^>]*data-partial/g)).toBe(6);
+    expect(count(h2, /<polyline [^>]*data-partial/g)).toBe(3);
+    expect(count(h2, /<polyline (?![^>]*data-partial)/g)).toBe(3);
+  });
+  it('créneau vert : ni dessiné dans la frise ni écrit dans le texte', () => {
+    const vigilance = withVigilance((v) => {
+      const p = v.periods[0].departments[0].phenomena.find((x) => x.slots.length > 0);
+      if (p) p.slots.push({ from: '2026-10-04T20:00:00Z', to: '2026-10-04T22:00:00Z', color: 1 });
+    });
+    const dept = sectionOf('departements', { vigilance })?.html ?? '';
+    expect(dept).not.toContain('data-level="vert"');
+    expect(dept).toBe(sectionOf('departements')?.html);
   });
   it('prochaine carte à 06:00 et 16:00 toute l’année (heure de Paris)', () => {
     const night = Date.parse('2026-10-04T20:00:00Z');

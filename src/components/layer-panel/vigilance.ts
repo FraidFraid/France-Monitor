@@ -11,7 +11,7 @@ import { aeronauticalLine, departementAeronauticalDay } from '../../services/aer
 import {
   OFFICIAL_COLOR_LEVEL, isEnvironmentDataLate, nextVigilanceMap, parisDayOf, vigilanceLevel, vigilancePeriodOf,
 } from '../../services/environment-levels.ts';
-import { isProgressNote } from '../../services/environment-source.ts';
+import { HISTORY_CONSTRUCTION_NOTE, isProgressNote } from '../../services/environment-source.ts';
 import { bulletinOf } from '../../services/environment-vigilance.ts';
 import { levelColorVar, type VigilanceLevel } from '../../services/vigilance.ts';
 import { escapeHtml } from '../france-intel-events.ts';
@@ -161,9 +161,10 @@ function bandRows(phenomena: readonly VigilancePhenomenon[], period: VigilancePe
   const end = dataMs(period.end) ?? 0;
   return phenomena.map((p) => ({
     label: PHENOMENON_LABEL[p.id],
+    // Les créneaux verts ne sont pas dessinés, comme dans le texte (jaune et plus seulement).
     segments: p.slots.length === 0
       ? [{ from: begin, to: end, level: OFFICIAL_COLOR_LEVEL[p.color] }]
-      : p.slots.map((s) => ({ from: dataMs(s.from) ?? begin, to: dataMs(s.to) ?? end, level: OFFICIAL_COLOR_LEVEL[s.color] })),
+      : p.slots.filter((s) => s.color >= 2).map((s) => ({ from: dataMs(s.from) ?? begin, to: dataMs(s.to) ?? end, level: OFFICIAL_COLOR_LEVEL[s.color] })),
   }));
 }
 
@@ -220,24 +221,21 @@ function historyChart(v: VigilanceResponse): string {
   const days = v.history.days;
   if (days.length < 2) return note(`Départements en vigilance sur ${HISTORY_DAYS} jours : référence en construction (${days.length} jour${days.length > 1 ? 's' : ''}).`);
   const at = (date: string): number => Date.parse(`${date}T12:00:00Z`);
-  // Un jour partiel (jour en cours, cartes en partie illisibles) n'est jamais un fait plein : hors de la courbe, point creux à part.
-  const full = days.filter((d) => d.partial !== true);
+  // Un jour partiel (jour en cours, cartes en partie illisibles) n'est jamais un fait plein : point creux, segment en tirets.
   const partial = days.filter((d) => d.partial === true);
   const colors = ['jaune', 'orange', 'rouge'] as const;
-  const series: ChartSeries[] = [
-    ...colors.map((c) => ({ label: `départements en ${c}`, stroke: levelColorVar(c), points: full.map((d) => ({ at: at(d.date), value: d[c] })) })),
-    ...colors.map((c) => ({ label: `départements en ${c}, jour en cours`, stroke: levelColorVar(c), points: partial.map((d) => ({ at: at(d.date), value: d[c] })) })),
-  ];
-  const plotted = multiLineChart(series, {
+  const series: ChartSeries[] = colors.map((c) => ({
+    label: `départements en ${c}`, stroke: levelColorVar(c), partialWord: 'jour en cours',
+    points: days.map((d) => ({ at: at(d.date), value: d[c], partial: d.partial === true })),
+  }));
+  const svg = multiLineChart(series, {
     label: `Départements en vigilance jaune, orange et rouge, maximum par jour sur ${HISTORY_DAYS} jours`,
     from: at(days[0].date), to: at(days[days.length - 1].date), value: (x) => frNumber(x, 0), tick: (ms) => dayMonth(new Date(ms).toISOString().slice(0, 10)),
     gapMs: 1.5 * DAY_MS,
   });
-  // Point isolé d'un jour partiel : cercle creux (le titre dit « jour en cours »).
-  const svg = plotted.replace(/<circle ([^>]*?)fill="([^"]+)"([^>]*)>(<title>[^<]*jour en cours)/g, '<circle $1fill="none" stroke="$2" stroke-width="1.5"$3>$4');
   const peak = days.reduce((best, d) => (d.rouge * 10_000 + d.orange * 100 + d.jaune > best.rouge * 10_000 + best.orange * 100 + best.jaune ? d : best), days[0]);
   const legend = `<p class="fmk-note">${levelDot('jaune')} jaune · ${levelDot('orange')} orange · ${levelDot('rouge')} rouge · maximum de chaque jour de Paris sur les cartes publiées</p>`;
-  const partialNote = partial.length > 0 ? note(`Point creux : jour en cours (${partial.map((d) => dayMonth(d.date)).join(', ')}), maximum encore susceptible de monter ou cartes en partie illisibles.`) : '';
+  const partialNote = partial.length > 0 ? note(`Point creux et tirets : jour en cours (${partial.map((d) => dayMonth(d.date)).join(', ')}), maximum encore susceptible de monter ou cartes en partie illisibles.`) : '';
   const emptyNote = days.every((d) => d.jaune + d.orange + d.rouge === 0) ? note('Aucun département en vigilance sur la période.') : '';
   const building = days.length < HISTORY_DAYS ? note(`Référence en construction (${days.length} jours).`) : '';
   return svg + legend + emptyNote + partialNote + building
@@ -308,37 +306,45 @@ function bulletinSection(input: VigilanceViewInput, v: VigilanceResponse): Fiche
 
 /** Note d'avancement du serveur, dite comme telle (« historique en cours de constitution »), jamais comme un incident. */
 function progressText(text: string): string {
-  return text === 'historique de la vigilance en cours de constitution' ? 'Note : historique en cours de constitution.' : `${text}.`;
+  return text === HISTORY_CONSTRUCTION_NOTE ? 'Note : historique en cours de constitution.' : `${text}.`;
+}
+
+const DOWN_STATE = 'source indisponible';
+
+/** État de la carte pour « Méthode et sources » : chargement, panne ou date du produit. */
+function mapStateOf(v: VigilanceResponse | null, error: string | null, late: boolean, now: number): string {
+  if (v === null) return error !== null ? DOWN_STATE : 'chargement…';
+  if (mapDown(v)) return DOWN_STATE;
+  return `carte de ${clockOf(v.updateTime, now)}${late ? ' (en retard)' : ''}`;
 }
 
 function methodSection(input: VigilanceViewInput, v: VigilanceResponse | null): FicheSection {
   const { vigilanceError, now, open } = input;
   const late = v !== null && !mapDown(v) && lateOf(v, now);
-  const mapState = v === null || mapDown(v) ? (vigilanceError !== null || v !== null ? 'source indisponible' : 'chargement…')
-    : `carte de ${clockOf(v.updateTime, now)}${late ? ' (en retard)' : ''}`;
-  const textState = v === null ? (vigilanceError !== null ? 'source indisponible' : 'chargement…')
-    : textsDown(v) ? 'source indisponible' : `textes de ${clockOf(v.textsUpdateTime, now)}`;
+  const mapState = mapStateOf(v, vigilanceError, late, now);
+  const textState = v === null ? (vigilanceError !== null ? DOWN_STATE : 'chargement…')
+    : textsDown(v) ? DOWN_STATE : `textes de ${clockOf(v.textsUpdateTime, now)}`;
   const since = v?.history.since ?? null;
   const histState = v === null || v.history.days.length === 0 ? 'en construction' : `${v.history.days.length} jours depuis le ${since ? dayMonth(since) : 'n.d.'}`;
   const failures = (v?.errors ?? []).filter((e) => !isProgressNote(e));
   const progress = (v?.errors ?? []).filter(isProgressNote);
-  const rows = [
-    kvRow('Carte de vigilance', `${sourceLinkHtml('Météo-France, API DPVigilance', API_URL)} · ${escapeHtml(mapState)}`),
-    kvRow('Bulletin', `${sourceLinkHtml('Météo-France, textes de vigilance', API_URL)} · ${escapeHtml(textState)}`),
-    kvRow('Historique', `${sourceLinkHtml('Archive open data de la vigilance', ARCHIVE_URL)} · ${escapeHtml(histState)}`),
+  const sources = [
+    { name: 'Carte de vigilance', link: sourceLinkHtml('Météo-France, API DPVigilance', API_URL), state: mapState },
+    { name: 'Bulletin', link: sourceLinkHtml('Météo-France, textes de vigilance', API_URL), state: textState },
+    { name: 'Historique', link: sourceLinkHtml('Archive open data de la vigilance', ARCHIVE_URL), state: histState },
   ];
-  const down = [mapState, textState].filter((s) => s === 'source indisponible').length;
-  const html = rows.join('')
+  const down = sources.filter((x) => x.state === DOWN_STATE).length;
+  const html = sources.map((x) => kvRow(x.name, `${x.link} · ${escapeHtml(x.state)}`)).join('')
     + note(`Périmètre : ${PERIMETER}`)
     + note('Couleurs : celles de Météo-France, reprises telles quelles (vert, jaune, orange, rouge), par département et par phénomène ; jamais recalculées.')
     + note('Pastille : couleur la plus haute de l’échéance affichée, départements et domaines littoraux compris ; la raison nomme le phénomène qui atteint cette couleur dans le plus de départements.')
-    + note(`Retard : carte au-delà de 15${NBSP}h après sa production (cartes régulières à 06${NBSP}h et 16${NBSP}h, 05${NBSP}h et 15${NBSP}h en hiver, plus les mises à jour d’événement) ; une carte en retard perd ses couleurs et la pastille passe à n.d.`)
-    + note('Historique : maximum de chaque jour de Paris des départements par couleur sur les cartes publiées (échéance du jour), relu une fois par jour.')
+    + note(`Retard : carte au-delà de 15${NBSP}h après sa production (cartes régulières à 06${NBSP}h et 16${NBSP}h, heure de Paris, toute l’année, plus les mises à jour d’événement) ; une carte en retard perd ses couleurs et la pastille passe à n.d.`)
+    + note('Historique : maximum de chaque jour de Paris des départements par couleur sur les cartes publiées (échéance du jour) ; l’archive est lue une fois par jour, le jour en cours est tenu à jour par le maximum courant (point creux).')
     + note(`Jour aéronautique : lever et coucher du soleil au centre du département (formule NOAA), nuit aéronautique de 30${NBSP}min après le coucher à 30${NBSP}min avant le lever (règle française).`)
     + readErrors(failures) + progress.map((e) => note(progressText(e))).join('');
   return {
     id: 'methode', title: 'Méthode et sources', collapsible: true, open: open('methode', false), tone: 'reference', html,
-    summary: escapeHtml(`3 sources${down > 0 ? ` · ${down} indisponible${down > 1 ? 's' : ''}` : ''}`),
+    summary: escapeHtml(`${sources.length} sources${down > 0 ? ` · ${down} indisponible${down > 1 ? 's' : ''}` : ''}`),
   };
 }
 

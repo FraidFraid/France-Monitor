@@ -18,9 +18,11 @@ const PARIS = 'Europe/Paris';
  * Notes d'avancement du serveur : ce ne sont pas des pannes (la source se remplit), elles ne dégradent pas le statut.
  * Phrases exactes : api/_lib/vigicrues.js (HUBEAU_PENDING_ERROR) et api/_lib/vigilance-archive.js (CONSTITUTION_ERROR).
  */
+/** Note de l'archive de vigilance pendant sa constitution (api/_lib/vigilance-archive.js, CONSTITUTION_ERROR). */
+export const HISTORY_CONSTRUCTION_NOTE = 'historique de la vigilance en cours de constitution';
 export const PROGRESS_NOTES: readonly string[] = [
   "Hub'Eau : lecture en cours, hauteurs à la prochaine relève",
-  'historique de la vigilance en cours de constitution',
+  HISTORY_CONSTRUCTION_NOTE,
 ];
 /** Fin de « <libellé> : relevé précédent servi (lecture en cours) » (api/_lib/vigicrues.js) ; « (lecture en échec) » reste une panne. */
 const PROGRESS_SUFFIX = ' : relevé précédent servi (lecture en cours)';

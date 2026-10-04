@@ -6,7 +6,11 @@
 import { levelColorVar, type VigilanceLevel } from '../../services/vigilance.ts';
 import { escapeHtml } from '../france-intel-events.ts';
 
-export interface ChartPoint { at: number; value: number }
+export interface ChartPoint {
+  at: number; value: number;
+  /** Valeur incomplète (jour en cours) : point creux, segment qui le touche en tirets (multiLineChart). */
+  partial?: boolean;
+}
 export interface LineChartOptions {
   /** Libellé accessible, texte brut. */
   label: string;
@@ -100,7 +104,46 @@ export function lineChart(points: readonly ChartPoint[], o: LineChartOptions): s
 
 // ─── Plusieurs séries sur une échelle ───
 
-export interface ChartSeries { points: readonly ChartPoint[]; stroke: string; label: string }
+/**
+ * Morceau contenant des points partiels : segments pleins entre points complets, en tirets dès qu'un bout est partiel ;
+ * point creux pour chaque point partiel, point plein pour un point complet isolé.
+ */
+function partialRun(
+  run: readonly ChartPoint[], stroke: string, s: { label: string; partialWord?: string },
+  x: (at: number) => number, y: (v: number) => number,
+): string[] {
+  const xy = (p: ChartPoint): string => `${x(p.at).toFixed(1)},${y(p.value).toFixed(1)}`;
+  const word = s.partialWord ?? 'partiel';
+  const out: string[] = [];
+  let group: ChartPoint[] = [];
+  let dashed = false;
+  const flush = (): void => {
+    if (group.length >= 2) {
+      out.push(`<polyline points="${group.map(xy).join(' ')}" fill="none" stroke="${stroke}" stroke-width="2"${dashed ? ' stroke-dasharray="4 3" data-partial="true"' : ''}><title>${escapeHtml(dashed ? `${s.label}, ${word}` : s.label)}</title></polyline>`);
+    }
+    group = [];
+  };
+  run.forEach((p, i) => {
+    if (i > 0) {
+      const segDashed = p.partial === true || run[i - 1].partial === true;
+      if (segDashed !== dashed) { const last = group[group.length - 1]; flush(); dashed = segDashed; if (last) group = [last]; }
+    }
+    group.push(p);
+  });
+  flush();
+  for (const p of run) {
+    out.push(p.partial === true
+      ? `<circle cx="${x(p.at).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="2.5" fill="none" stroke="${stroke}" stroke-width="1.5" data-partial="true"><title>${escapeHtml(`${s.label}, ${word}`)}</title></circle>`
+      : run.length === 1 ? `<circle cx="${x(p.at).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="1.5" fill="${stroke}"><title>${escapeHtml(s.label)}</title></circle>` : '');
+  }
+  return out.filter((t) => t !== '');
+}
+
+export interface ChartSeries {
+  points: readonly ChartPoint[]; stroke: string; label: string;
+  /** Mot du titre d'un point partiel (« jour en cours ») ; défaut « partiel ». */
+  partialWord?: string;
+}
 
 /** Plusieurs séries sur une échelle commune partant de 0 (départements par couleur et par jour, sur 30 jours). */
 export function multiLineChart(
@@ -116,6 +159,10 @@ export function multiLineChart(
   for (const s of kept) {
     const stroke = escapeHtml(s.stroke);
     for (const run of runs(s.pts, o.gapMs)) {
+      if (run.some((p) => p.partial === true)) {
+        parts.push(...partialRun(run, stroke, s, x, y));
+        continue;
+      }
       parts.push(run.length >= 2
         ? `<polyline points="${run.map((p) => `${x(p.at).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ')}" fill="none" stroke="${stroke}" stroke-width="2"><title>${escapeHtml(s.label)}</title></polyline>`
         : `<circle cx="${x(run[0].at).toFixed(1)}" cy="${y(run[0].value).toFixed(1)}" r="1.5" fill="${stroke}"><title>${escapeHtml(s.label)}</title></circle>`);
