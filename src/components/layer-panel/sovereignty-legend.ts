@@ -111,15 +111,16 @@ const CONNECTIVITY_ITEMS: readonly LegendItem[] = [
   { id: 'vessel-once', label: 'Vu une fois', color: levelHex('jaune'), shape: 'circle' },
   { id: 'vessel-unevaluated', label: 'Non évalué (AIS muet ou veille en panne)', color: SOV_ABROAD_HEX, shape: 'circle' },
 ];
+const LICENCES_NOTE = 'Lien : fiche data.gouv.fr du Shom ; licences et lien OpenStreetMap (ODbL) : voir « Méthode et sources » du panneau.';
 const PROXIMITY_NOTE = `Une proximité (moins de 500${NBSP}m, moins de 2${NBSP}nœuds) est « à vérifier », jamais une menace.`;
 
 export const CONNECTIVITY_LEGEND: LegendCategory = {
   id: 'subseaCables',
   title: 'Connectivité',
   items: [...CONNECTIVITY_ITEMS],
-  source: { label: 'Câbles : Shom (CC BY-SA), © les contributeurs d’OpenStreetMap, ODbL 1.0 · AIS : aisstream.io via le relais', url: 'https://www.openstreetmap.org/copyright' },
+  source: { label: 'Câbles : Shom (CC BY-SA), © les contributeurs d’OpenStreetMap, ODbL 1.0 · AIS : aisstream.io via le relais', url: 'https://www.data.gouv.fr/datasets/conduites-et-cables-sous-marins-repertories-par-le-shom/' },
   refresh: { label: `Veille du serveur toutes les 5${NBSP}min` },
-  notes: ['Tracés du Shom (CC BY-SA) et d’OpenStreetMap, précision non garantie ; câbles électriques non retenus.', PROXIMITY_NOTE],
+  notes: ['Tracés du Shom (CC BY-SA) et d’OpenStreetMap, précision non garantie ; câbles électriques non retenus.', PROXIMITY_NOTE, LICENCES_NOTE],
 };
 
 /** Connectivité datée : « AIS à jour 16:47 », ou la cause d'une veille non évaluée (« AIS muet depuis hh:mm : alertes non évaluées ») ; fichier des câbles daté. */
@@ -128,15 +129,15 @@ export function connectivityLegend(file: SubseaCablesFile | null, watch: CablesW
   const fileNote = file !== null && generated !== null
     ? `Tracés du Shom (CC BY-SA) et d’OpenStreetMap (ODbL 1.0) du ${dayMonth(generated)}, précision non garantie.`
     : 'Fichier des câbles illisible : tracés absents.';
-  if (watch === null || watch.readAt === null) return copy(CONNECTIVITY_LEGEND, CONNECTIVITY_ITEMS, 'Veille des câbles indisponible', [fileNote, PROXIMITY_NOTE]);
+  if (watch === null || watch.readAt === null) return copy(CONNECTIVITY_LEGEND, CONNECTIVITY_ITEMS, 'Veille des câbles indisponible', [fileNote, PROXIMITY_NOTE, LICENCES_NOTE]);
   const ais = parse(watch.aisLastMessageAt);
   if (!watch.evaluated) {
     return copy(CONNECTIVITY_LEGEND, CONNECTIVITY_ITEMS, `${capitalize(cablesUnevaluatedWhy(watch, now))} : alertes non évaluées`,
-      [fileNote, PROXIMITY_NOTE, 'Veille non évaluée : navires signalés en gris, ni confirmés ni retirés.']);
+      [fileNote, PROXIMITY_NOTE, LICENCES_NOTE, 'Veille non évaluée : navires signalés en gris, ni confirmés ni retirés.']);
   }
   const late = isSovereigntyDataLate('ais-cables', watch.aisLastMessageAt, now);
   return copy(CONNECTIVITY_LEGEND, CONNECTIVITY_ITEMS, ais === null ? 'AIS : aucun message daté' : `AIS à jour ${clock(ais)}${late ? ' (en retard)' : ''}`,
-    [fileNote, PROXIMITY_NOTE, ...(late ? [COLORS_GONE] : [])]);
+    [fileNote, PROXIMITY_NOTE, LICENCES_NOTE, ...(late ? [COLORS_GONE] : [])]);
 }
 
 // ─── Vigilance cyber ───

@@ -185,6 +185,34 @@ describe('flux AIS muet, pannes, retards (T3, S1 à S3)', () => {
     expect(v.head.figure?.caption).toContain('(en retard)');
     expect(v.head.status[0]).toBe('niveau suspendu : relevé AIS en retard');
   });
+  it('réponse vieillie : les lignes de navires passent en gris, sans couleur de niveau', () => {
+    const h = view({ watch: { ...WATCH, alerts: [ALERT] }, file: SMALL, now: Date.parse('2026-10-04T15:03:00Z') }).sections.find((x) => x.id === 'navires')?.html ?? '';
+    expect(h).toContain('data-vessel="227123456:way/761201753"');
+    expect(h).toContain('<span class="fmk-dot" aria-hidden="true"></span>');
+    expect(h).not.toMatch(/fmk-dot--(?:orange|jaune|rouge)/);
+  });
+  it('flux figé et alerte de zone muette : non évalué, jamais coloré', () => {
+    const muted: CableAlert = { ...ALERT, zoneMuted: true };
+    const v = view({ watch: { ...WATCH, evaluated: false, slowVessels: null, alerts: [muted] }, file: SMALL });
+    expect(v.head.level).toBe('nd');
+    expect(v.head.figure).toMatchObject({ value: 'n.d.', level: null });
+    const s = v.sections.find((x) => x.id === 'navires');
+    expect(s?.summary).toBe('non évalué');
+    expect(s?.html).not.toMatch(/fmk-dot--(?:orange|jaune|rouge)/);
+    expect(s?.html).toContain('data-vessel="227123456:way/761201753"');
+  });
+  it('câble hors service : « hors service » avec sa propre source (Shom ou OpenStreetMap)', () => {
+    const osmOff: SubseaCablesFile = { ...SMALL, cables: SMALL.cables.map((c) => (c.id === 'way/761201702' ? { ...c, outOfService: true } : c)) };
+    const h = sectionOf('cables', { file: osmOff })?.html ?? '';
+    expect(h).toContain('<small>hors service (OpenStreetMap) · Marseille (13)</small>');
+    expect(h).toContain('<small>hors service (Shom) · Marseille (13)</small>');
+  });
+  it('R1 : « 5 minutes » et « 15 minutes » de la méthode sont insécables', () => {
+    const t = visibleText(sectionOf('methode', { watch: WATCH, file: SMALL })?.html ?? '');
+    expect(t).toContain(`5${NBSP}minutes`);
+    expect(t).toContain(`15${NBSP}minutes`);
+    expect(sovBreakable(t)).toBeNull();
+  });
   it('veille injoignable : n.d. nommé ; fichier des câbles illisible : section en panne, veille gardée ; chargement', () => {
     const v = view({ watch: null, watchError: 'HTTP 502' });
     expect(v.head).toMatchObject({ level: 'nd', status: ['veille des câbles injoignable'] });

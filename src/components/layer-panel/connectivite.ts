@@ -37,7 +37,7 @@ function counted(n: number, word: string): string {
   return glueSovUnits(plural(n, word));
 }
 const CABLE_COLOR = 'var(--cat-cable)';
-const NEVER_A_THREAT = `Navires à moins de 500${NBSP}m d’un tracé et à moins de 2${NBSP}nœuds, confirmés sur deux relevés espacés d’au moins 5 minutes : `
+const NEVER_A_THREAT = `Navires à moins de 500${NBSP}m d’un tracé et à moins de 2${NBSP}nœuds, confirmés sur deux relevés espacés d’au moins 5${NBSP}minutes : `
   + '« à vérifier », jamais une menace ; seule la préfecture maritime qualifie une infraction.';
 const MUTED_ZONE = 'non évaluée (flux de la zone muet)';
 const OFFSHORE = 'tronçon au large';
@@ -191,7 +191,7 @@ function cablesSection(input: ConnectiviteViewInput): FicheSection {
     ...(c.landings.length > 0 ? { value: counted(c.landings.length, 'atterrage') } : {}),
     note: [
       isShom(c) && c.name === null && c.landings.length === 0 ? 'câble télécom (Shom), sans atterrage en France' : null,
-      c.outOfService ? 'hors service (Shom)' : null, c.operator,
+      c.outOfService ? `hors service (${c.source})` : null, c.operator,
       [...new Set(c.landings.map(landingPlace))].join(', '),
     ].filter((x): x is string => x !== null && x !== '').join(' · '),
     ...(canFocus ? { data: { cable: c.id }, link: true } : {}),
@@ -275,9 +275,9 @@ function methodSection(input: ConnectiviteViewInput): FicheSection {
     + note('Limites maritimes approchées (Menton, Hendaye) : une alerte près d’une frontière se lit comme approchée.')
     + note(`${NEVER_A_THREAT} Écartés : vitesse inconnue, navires amarrés, bâtiments militaires français ; un navire au mouillage reste compté. `
       + 'Un navire dans une zone de mouillage du Shom qui ne recoupe pas une zone de câbles n’est pas signalé.')
-    + note('Veille non évaluée (flux AIS muet depuis plus de 5 minutes, relais injoignable ou fichier des câbles illisible) : alertes gardées, '
-      + 'ni confirmées ni retirées ; la pastille passe à n.d. Zone muette d’un seul lot amont : ses alertes gardées sont « non évaluées (flux de la zone muet) », sans couleur. '
-      + 'Dernier message AIS de plus de 15 minutes : en retard, couleurs retirées.')
+    + note(`Veille non évaluée (flux AIS muet depuis plus de 5${NBSP}minutes, relais injoignable ou fichier des câbles illisible) : alertes gardées, `
+      + `ni confirmées ni retirées ; la pastille passe à n.d. Zone muette d’un seul lot amont : ses alertes gardées sont « non évaluées (flux de la zone muet) », sans couleur. `
+      + `Dernier message AIS de plus de 15${NBSP}minutes : en retard, couleurs retirées.`)
     + readErrors(w !== null ? w.errors.map(glueSovUnits) : []);
   return { id: 'methode', title: 'Méthode et sources', collapsible: true, open: open('methode', false), tone: 'reference', html, summary: escapeHtml('4 sources') };
 }

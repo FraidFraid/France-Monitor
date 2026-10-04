@@ -112,7 +112,7 @@ export function cablesAisDown(w: Pick<CablesWatchResponse, 'evaluated' | 'errors
 // ─── R1 : unités et mots comptés de la souveraineté ───
 
 /** Unités ; l'unité s'arrête là où finit un mot (« 9 militaires » n'est pas « 9 m »). */
-const UNITS = String.raw`(?:nœuds|km|ft|min|m|h|j|%)(?![\p{L}\p{N}])`;
+const UNITS = String.raw`(?:nœuds|km|ft|minutes?|min|m|h|j|%)(?![\p{L}\p{N}])`;
 /** Mots comptés des raisons de pastille et des résumés : collés à leur nombre par glueSovUnits seulement. */
 const COUNTED = String.raw`(?:aéronefs?|urgences?|navires?|câbles?|atterrages?|alertes?|avis|vulnérabilités?|revendications?|fuites?|mailles?|réseaux?|semaines?|jours?)(?![\p{L}\p{N}])`;
 const SOV_BREAKABLE = new RegExp(String.raw`\d+(?:[,.]\d+)? ${UNITS}|Kp \d`, 'u');

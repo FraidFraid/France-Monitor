@@ -54,6 +54,8 @@ describe('légendes de base : sources réellement appelées, jamais « temps ré
     expect(DEFENSE_LEGEND.source?.label).toContain('AIS : aisstream.io via le relais');
     expect(CONNECTIVITY_LEGEND.source?.label).toContain('© les contributeurs d’OpenStreetMap, ODbL 1.0');
     expect(CONNECTIVITY_LEGEND.source?.label).toContain('Shom (CC BY-SA)');
+    expect(CONNECTIVITY_LEGEND.source?.url).toBe('https://www.data.gouv.fr/datasets/conduites-et-cables-sous-marins-repertories-par-le-shom/');
+    expect(CONNECTIVITY_LEGEND.notes?.join(' ')).toContain('Méthode et sources');
     expect(text(CYBER_LEGEND)).toContain('Pas de lieu publié : voir le panneau');
     for (const c of [DEFENSE_LEGEND, CONNECTIVITY_LEGEND, CYBER_LEGEND]) {
       expect(text(c)).not.toMatch(/temps réel|ADS-B Exchange|Marine ?Traffic|SubmarineCableMap|Shodan|Censys|~\s?5 min|OpenSky|adsb\.fi|\u2014/i);

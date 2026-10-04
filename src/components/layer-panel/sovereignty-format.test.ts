@@ -71,6 +71,8 @@ describe('formats Souveraineté (R1)', () => {
       `navire lent à 300${NBSP}m, 1,4${NBSP}nœuds, 7${NBSP}revendications sur 7${NBSP}jours, Kp${NBSP}5`,
     );
     expect(sovBreakable('à 500 m du câble')).toBe('500 m');
+    expect(sovBreakable('plus de 5 minutes')).toBe('5 minutes');
+    expect(sovBreakable('plus de 15\u00a0minutes')).toBeNull();
     expect(sovBreakable('38 000 ft')).toBe('000 ft');
     expect(sovBreakable('indice Kp 5 à 11 h')).toBe('Kp 5');
     expect(sovBreakable(glueSovUnits('à 500 m du câble, 38 000 ft, Kp 5'))).toBeNull();
