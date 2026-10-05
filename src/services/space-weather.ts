@@ -5,7 +5,7 @@
  *  - NOAA SWPC Kp index (1 min) : https://services.swpc.noaa.gov
  *
  * Exports :
- *  - fetchSpaceWeather()        → Kp courant + niveau d'alerte
+ *  - fetchSpaceWeather()        → Kp courant + niveau d'alerte ; null si jamais lu (V1 : une panne n'est jamais un « Calme »)
  */
 
 
@@ -67,7 +67,11 @@ function classifyKp(kp: number): Omit<SpaceWeatherData, 'kpIndex' | 'fetchedAt'>
 
 // ── Fetch NOAA SWPC ───────────────────────────────────────────────────────────
 
-export async function fetchSpaceWeather(): Promise<SpaceWeatherData> {
+/**
+ * Kp courant. En panne (réseau, HTTP, réponse vide ou sans Kp lisible) : la dernière lecture réussie, datée par son `fetchedAt`, sinon
+ * null ; jamais un Kp 0 « Calme » inventé (revue finale I5 : le panneau Énergie et le baromètre disent alors « n.d. », sans couleur).
+ */
+export async function fetchSpaceWeather(): Promise<SpaceWeatherData | null> {
     if (_cache && Date.now() - _cache.ts < CACHE_TTL_MS) return _cache.data;
 
     try {
@@ -77,15 +81,17 @@ export async function fetchSpaceWeather(): Promise<SpaceWeatherData> {
         );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-        const json = await res.json() as Array<{ time_tag: string; kp_index: number }>;
-        const last = json[json.length - 1];
-        const kp = Math.round(last?.kp_index ?? 0);
+        const json: unknown = await res.json();
+        const last: unknown = Array.isArray(json) ? json[json.length - 1] : undefined;
+        const raw = last && typeof last === 'object' ? (last as { kp_index?: unknown }).kp_index : undefined;
+        if (typeof raw !== 'number' || !Number.isFinite(raw)) throw new Error('Kp non publié');
+        const kp = Math.round(raw);
 
         const data: SpaceWeatherData = { kpIndex: kp, ...classifyKp(kp), fetchedAt: new Date() };
         _cache = { data, ts: Date.now() };
         return data;
 
     } catch {
-        return _cache?.data ?? { kpIndex: 0, ...classifyKp(0), fetchedAt: new Date() };
+        return _cache?.data ?? null;
     }
 }

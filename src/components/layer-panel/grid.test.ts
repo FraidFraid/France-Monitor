@@ -227,6 +227,13 @@ describe('vue Réseau électrique', () => {
     expect(s?.summary).toContain('<span class="lp-val fmk-num lp-lvl lp-lvl--orange">Kp 5</span>');
     expect(s?.html).toContain('lp-lvl--orange');
   });
+  it('météo spatiale jamais lue (NOAA en panne) : « n.d. » sans couleur, jamais « Calme »', () => {
+    const v = buildGridView({ data: data(), space: null, now: NOW, open });
+    const s = v.sections.find((x) => x.id === 'space');
+    expect(s?.summary).toBe('n.d.');
+    expect(s?.html).not.toContain('lp-lvl');
+    expect(renderLayerView('powerGrid', v)).not.toMatch(/calme/i);
+  });
   it('R1 : aucune valeur sécable dans tout le panneau', () => {
     const space = { kpIndex: 2.33, level: 'quiet', levelLabel: 'Calme', riskFrance: 'Aucun risque.', color: '#fff', fetchedAt: new Date(NOW) } as const;
     const text = visibleText(renderLayerView('powerGrid', buildGridView({ data: data(), space, now: NOW, open })));

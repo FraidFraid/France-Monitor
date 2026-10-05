@@ -88,7 +88,9 @@ function normalizeTelecom(outages: TelecomOutage[]): number {
   return Math.max(0, Math.round(100 - (hsSites / 50)));
 }
 
-function normalizeSpace(data: SpaceWeatherData): number {
+/** Santé « météo spatiale » ; null si NOAA n'a jamais été lu : composante indisponible, jamais un 100 « calme » par défaut. */
+export function normalizeSpace(data: SpaceWeatherData | null): number | null {
+  if (data === null) return null;
   // kp=0 → 100 (calme), kp=5 → 40 (tempête G1), kp≥9 → 0 (extrême)
   return Math.max(0, 100 - Math.min(data.kpIndex * 12, 100));
 }

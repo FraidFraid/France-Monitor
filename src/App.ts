@@ -7254,7 +7254,8 @@ export class App {
 
 
   private async loadSpaceWeather(): Promise<void> {
-    // Kp index NOAA (panneau Énergie seulement ; la ligne de la météo spatiale du panneau des sources vient de loadGnss).
+    // Kp index NOAA (panneau Énergie seulement ; la ligne de la météo spatiale du panneau des sources vient de loadGnss). null si
+    // jamais lu : « n.d. » sans couleur, jamais « Calme ».
     const data = await fetchSpaceWeather();
     this.energyPanel?.updateSpaceWeather(data);
 

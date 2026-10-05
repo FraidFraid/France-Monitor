@@ -42,7 +42,8 @@ export class EnergyPanel {
     if (this.isVisible()) this.render();
   }
 
-  updateSpaceWeather(data: SpaceWeatherData): void {
+  /** null : NOAA jamais lu, la section dit « n.d. » sans couleur. */
+  updateSpaceWeather(data: SpaceWeatherData | null): void {
     this.space = data;
     if (this.isVisible()) this.render();
   }
