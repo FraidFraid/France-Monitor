@@ -18,7 +18,8 @@
 // avec leur date, ni confirmées ni retirées, et aucun compte de navires n'est publié (`slowVessels: null`). États de confirmation
 // dans le stockage clé-valeur (1 h). Aucun texte d'interface ici : la qualification d'une infraction appartient aux vues (« seule la
 // préfecture maritime qualifie une infraction », A12).
-import { UPSTREAM_SILENT_MS, isFrenchFlag } from './ais-snapshot.js';
+import { UPSTREAM_SILENT_MS } from './ais-snapshot.js';
+import { isFrenchWarship } from './french-warship.js';
 import { kvGetJson, kvSetJson } from './kv-history.js';
 import { fetchStrictJson, sourceError } from './source-http.js';
 import { anchorageClearOfCablesAt, cableZoneAt, landingWithinKm, loadCablesFile, pointToPathM } from './subsea-cables.js';
@@ -36,9 +37,6 @@ const WATCH_TTL_SEC = 3_600;
 export const LANDING_APPROACH_KM = 2;
 const MOORED = 5;
 const AT_ANCHOR = 1;
-const MILITARY_TYPE = 35;
-/** Nom AIS des bâtiments de la Marine nationale sans message statique (FX2) ; retenu sous pavillon français seulement (isFrenchFlag). */
-const FRENCH_WARSHIP_NAME = 'FRENCH WARSHIP';
 /** Une relève d'une minute peut arriver quelques millisecondes avant l'échéance : tolérance de 5 s. */
 const TICK_TOLERANCE_MS = 5_000;
 /** Marge de la boîte d'un tracé (degrés, plus de 500 m sous 51° N) : seuls les tracés proches sont mesurés. */
@@ -68,16 +66,10 @@ function boxOf(cable) {
 }
 
 /**
- * Bâtiment militaire français, sous pavillon français (isFrenchFlag : métropole et outre-mer, MID 226 à 228, 329, 501, 540…) : type
- * AIS 35, ou nom AIS qui commence par « FRENCH WARSHIP » (espaces de tête et casse ignorés) ; la Marine nationale émet souvent ce nom
- * sans message statique, donc sans type (arbitrage FX2, deuxième tour : outre-mer compris).
- * @param {{ mmsi: string, name?: string | null, typeCode?: number | null }} v
+ * Bâtiment militaire français (type AIS 35 ou nom « FRENCH WARSHIP », sous pavillon français) : règle unique de french-warship.js,
+ * partagée avec la détection des anomalies AIS du navigateur ; reprise ici pour les importateurs existants.
  */
-export function isFrenchWarship(v) {
-  if (!isFrenchFlag(v.mmsi)) return false;
-  return v.typeCode === MILITARY_TYPE
-    || (typeof v.name === 'string' && v.name.trim().toUpperCase().startsWith(FRENCH_WARSHIP_NAME));
-}
+export { isFrenchWarship };
 
 /**
  * Navire retenu par la veille : message AIS daté (sans heure de message, aucune confirmation ne serait sûre), vitesse connue sous

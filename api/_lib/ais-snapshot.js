@@ -4,6 +4,7 @@
 // de Rouen exclus ; tracé simplifié à une dizaine de kilomètres près), mémoire MMSI des données statiques
 // (type, nom, dimensions, destination ; gardée 7 jours), comptes par zone, par port, par type et par statut,
 // signalements croisés et navires sensibles près des côtes.
+import { isFrenchFlag } from './french-warship.js';
 import { distanceToMetropoleKm, haversineKm, inPolygon } from './geo-fr.js';
 
 export const SEEN_WINDOW_MS = 10 * 60_000;
@@ -105,11 +106,8 @@ export function inHarbour(lat, lon) {
   return HARBOURS.some(([hlat, hlon]) => haversineKm(lat, lon, hlat, hlon) <= HARBOUR_RADIUS_KM);
 }
 
-/** Codes pays (MID) français : métropole et outre-mer. */
-const FRENCH_MIDS = new Set(['226', '227', '228', '329', '347', '361', '501', '540', '546', '578', '607', '618', '635', '660']);
-export function isFrenchFlag(mmsi) {
-  return FRENCH_MIDS.has(String(mmsi).slice(0, 3));
-}
+/** Pavillon français (métropole et outre-mer) : règle unique de french-warship.js, reprise ici pour les importateurs existants. */
+export { isFrenchFlag };
 
 /** Libellé d'un type AIS (code 0 à 99) ; null si inconnu. */
 export function typeLabel(code) {
