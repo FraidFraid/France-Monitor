@@ -231,27 +231,27 @@ describe('createApiServer', () => {
   });
 
   it('sert une vraie route de bout en bout (vercel-compat → dispatch → handler), sans appel réseau (fetch mocké)', async () => {
-    const upstreamPayload = { vulnerabilities: [] };
-    // On ne mocke QUE l'appel amont du handler (NVD, relayé par /api/json-proxy) : l'appel du test vers son
-    // propre serveur local (baseUrl, ci-dessous) doit passer par le vrai fetch réseau (loopback),
-    // sinon ce ne serait plus un test de bout en bout du serveur.
+    const upstreamXml = '<?xml version="1.0"?><rss version="2.0"><channel><title>essai</title></channel></rss>';
+    // On ne mocke QUE l'appel amont du handler (flux RSS d'un domaine de la liste blanche, relayé par /api/rss-proxy) : l'appel du
+    // test vers son propre serveur local (baseUrl, ci-dessous) doit passer par le vrai fetch réseau (loopback), sinon ce ne serait
+    // plus un test de bout en bout du serveur. (Route retirée : /api/json-proxy, revue finale I3.)
     const realFetch = globalThis.fetch;
     const fetchMock = vi.fn(async (input: unknown, init?: unknown) => {
       const href = typeof input === 'string' ? input : String((input as { url?: string })?.url ?? input);
-      if (href.startsWith('https://services.nvd.nist.gov/')) {
-        return new Response(JSON.stringify(upstreamPayload), { status: 200, headers: { 'content-type': 'application/json; charset=utf-8' } });
+      if (href.startsWith('https://www.lemonde.fr/')) {
+        return new Response(upstreamXml, { status: 200, headers: { 'content-type': 'application/rss+xml; charset=utf-8' } });
       }
       return realFetch(input as RequestInfo, init as RequestInit);
     });
     vi.stubGlobal('fetch', fetchMock);
 
-    const upstream = 'https://services.nvd.nist.gov/rest/json/cves/2.0?resultsPerPage=1';
-    const res = await fetch(`${baseUrl}/api/json-proxy?url=${encodeURIComponent(upstream)}`);
+    const upstream = 'https://www.lemonde.fr/rss/une.xml';
+    const res = await fetch(`${baseUrl}/api/rss-proxy?url=${encodeURIComponent(upstream)}`);
 
     expect(fetchMock).toHaveBeenCalledWith(upstream, expect.anything());
     expect(res.status).toBe(200);
     expect(res.headers.get('access-control-allow-origin')).toBe('*');
-    await expect(res.json()).resolves.toEqual(upstreamPayload);
+    await expect(res.text()).resolves.toBe(upstreamXml);
   });
 
   it('en-tête CORS présent même sur une réponse d’erreur /api', async () => {

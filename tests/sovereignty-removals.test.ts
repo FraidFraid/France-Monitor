@@ -19,6 +19,9 @@ const REMOVED_FILES = [
   'public/data/submarine-cables.json', 'src/services/military-osm.ts', 'src/config/osm-france-military.json', 'src/services/cyber.ts',
   'src/services/threat-map.ts', 'src/services/exposure.ts', 'api/_handlers/threats.js', 'api/_handlers/exposure.js', 'src/plugins/threats-proxy.ts',
   'src/plugins/exposure-proxy.ts', 'src/components/deckgl/types.ts',
+  // Relais JSON générique (revue finale I3) : plus aucun client depuis A17 ; il relayait les fichiers bruts de ransomware.live (noms de
+  // victimes) et la NVD. Aucun remplaçant : la Vigilance cyber lit ses sources côté serveur (api/_lib/ransomware-live.js, certfr.js).
+  'api/_handlers/json-proxy.js',
 ];
 
 /** Remplaçants nommés (contrats § 7 ; le fichier des câbles est surtout Shom depuis la tâche A5, d'où son nom sans « -osm »). */
@@ -105,7 +108,7 @@ describe('retraits Souveraineté (spec 2026-10-04 souveraineté § 2.5, contrats
 
   it('routes : anciennes retirées, les trois routes Souveraineté servies ; test de fumée, OpenAPI et documentation suivent', () => {
     const routes = read('api/_routes.js');
-    for (const r of ["'/api/threats'", "'/api/exposure'", "'/api/traffic/military'"]) expect(routes).not.toContain(r);
+    for (const r of ["'/api/threats'", "'/api/exposure'", "'/api/traffic/military'", "'/api/json-proxy'"]) expect(routes).not.toContain(r);
     for (const r of ['military', 'cables-watch', 'cyber']) expect(routes).toContain(`'/api/sovereignty/${r}'`);
     const smoke = read('.github/workflows/smoke.yml');
     expect(smoke).not.toMatch(/"\/api\/(threats|exposure|traffic\/military);/);
@@ -140,8 +143,7 @@ describe('retraits Souveraineté (spec 2026-10-04 souveraineté § 2.5, contrats
   });
 
   it('plus aucun nom de source retirée dans le code de l’application ; aucun badge ni « Situation normale » dans les panneaux Souveraineté', () => {
-    // json-proxy.js garde ses domaines tant que le test de bout en bout du serveur de production passe par lui (écart de la tâche A17).
-    for (const f of APP.filter((p) => p !== 'api/_handlers/json-proxy.js')) {
+    for (const f of APP) {
       // La méthode du panneau Vigilance cyber nomme une fois ce qui a été retiré.
       const text = code(f).replace('Retirés : exposition Shodan et Censys', '');
       expect(text.match(/Shodan|Censys|adsb\.fi|hexdb\.io|nvd\.nist/)?.[0] ?? null, f).toBeNull();

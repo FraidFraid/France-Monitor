@@ -106,11 +106,11 @@ describe('retraits Environnement (spec 2026-10-04 environnement § 2.6, contrats
     expect(read('.env.example')).not.toContain('/api/weather/vigilance');
   });
 
-  it('dev : plus de miroir de /api/weather/vigilance (le routeur de secours sert les handlers) ; json-proxy sans Vigicrues', () => {
+  it('dev : plus de miroir de /api/weather/vigilance (le routeur de secours sert les handlers) ; plus de relais json-proxy (revue finale I3)', () => {
     const vite = read('vite.config.ts');
     expect(vite).not.toContain('weather-vigilance-proxy');
     expect(vite).toContain('apiRouterFallbackPlugin()');
-    expect(read('api/_handlers/json-proxy.js')).not.toMatch(/vigicrues/i);
+    expect(existsSync(at('api/_handlers/json-proxy.js'))).toBe(false);
   });
 
   it('aucun importeur des modules retirés ne reste (src, api, server, scripts, tests, vite.config.ts)', () => {

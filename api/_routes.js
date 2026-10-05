@@ -49,7 +49,6 @@ export const ROUTES = {
   '/api/intelligence/v1/summarize': () => import('./_handlers/intelligence/v1/summarize.js'),
   '/api/intelligence/v1/synthesis': () => import('./_handlers/intelligence/v1/synthesis.js'),
   '/api/internet-outages': () => import('./_handlers/internet-outages.js'),
-  '/api/json-proxy': () => import('./_handlers/json-proxy.js'),
   '/api/ministers/agenda': () => import('./_handlers/ministers/agenda.js'),
   '/api/ministers/composition': () => import('./_handlers/ministers/composition.js'),
   '/api/ministers/opendata': () => import('./_handlers/ministers/opendata.js'),
