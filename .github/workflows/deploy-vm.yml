@@ -71,7 +71,7 @@ jobs:
           # Modules de src/ importés à l'exécution par api/ (garde-fou : tests/deploy-archive.test.ts).
           tar -czf "francemonitor-${{ github.sha }}.tar.gz" \
             dist api server services/radar-worker ais-relay.js package.json package-lock.json \
-            src/config/government-data.js src/services/drom-energy/static-runtime.js \
+            src/config/government-data.js src/services/drom-energy/static-runtime.js src/services/french-warship.js \
             public/data/regions.geojson public/data/departements.geojson public/data/subsea-cables.json
 
       - name: Préparer la clé SSH et known_hosts

@@ -18,7 +18,7 @@
  */
 
 import { NAVY_MMSI_SET, type MilitaryShip } from './military-ships.ts';
-import { isFrenchWarship } from '../../api/_lib/french-warship.js';
+import { isFrenchWarship } from './french-warship.js';
 import { FRENCH_PORTS } from '../config/french-ports.ts';
 import type { AisAnomaly } from '../types/index.ts';
 

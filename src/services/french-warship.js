@@ -1,6 +1,8 @@
-// api/_lib/french-warship.js : pavillon français et bâtiment militaire français, prédicat unique (arbitrage FX2). Module pur, sans
+// src/services/french-warship.js : pavillon français et bâtiment militaire français, prédicat unique (arbitrage FX2). Module pur, sans
 // dépendance Node : la veille des câbles (serveur, cable-watch.js), l'instantané AIS (ais-snapshot.js) et la détection des anomalies
-// AIS (navigateur, src/services/ais-anomalies.ts) lisent la même règle.
+// AIS (navigateur, src/services/ais-anomalies.ts) lisent la même règle. Placé sous src/ et non sous api/ : le serveur de dev
+// répond lui-même aux URL /api/*, un module du navigateur ne peut donc pas y être servi (écran noir du 05/10) ; le serveur l'importe
+// d'ici et l'archive de déploiement le porte (deploy-vm.yml).
 
 /** Codes pays (MID) français : métropole et outre-mer. */
 const FRENCH_MIDS = new Set(['226', '227', '228', '329', '347', '361', '501', '540', '546', '578', '607', '618', '635', '660']);

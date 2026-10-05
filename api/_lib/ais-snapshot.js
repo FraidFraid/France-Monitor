@@ -4,7 +4,7 @@
 // de Rouen exclus ; tracé simplifié à une dizaine de kilomètres près), mémoire MMSI des données statiques
 // (type, nom, dimensions, destination ; gardée 7 jours), comptes par zone, par port, par type et par statut,
 // signalements croisés et navires sensibles près des côtes.
-import { isFrenchFlag } from './french-warship.js';
+import { isFrenchFlag } from '../../src/services/french-warship.js';
 import { distanceToMetropoleKm, haversineKm, inPolygon } from './geo-fr.js';
 
 export const SEEN_WINDOW_MS = 10 * 60_000;

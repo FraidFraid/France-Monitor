@@ -19,7 +19,7 @@
 // dans le stockage clé-valeur (1 h). Aucun texte d'interface ici : la qualification d'une infraction appartient aux vues (« seule la
 // préfecture maritime qualifie une infraction », A12).
 import { UPSTREAM_SILENT_MS } from './ais-snapshot.js';
-import { isFrenchWarship } from './french-warship.js';
+import { isFrenchWarship } from '../../src/services/french-warship.js';
 import { kvGetJson, kvSetJson } from './kv-history.js';
 import { fetchStrictJson, sourceError } from './source-http.js';
 import { anchorageClearOfCablesAt, cableZoneAt, landingWithinKm, loadCablesFile, pointToPathM } from './subsea-cables.js';
