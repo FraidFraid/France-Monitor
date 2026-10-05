@@ -8,7 +8,7 @@ import type { GnssDegradedCounts, GnssResponse, MilitaryEmergency } from '../typ
 import {
   CABLES_WATCH_FIXTURE, CYBER_FIXTURE, GNSS_FIXTURE, GNSS_STORM_FIXTURE, MILITARY_EMERGENCY_FIXTURE, MILITARY_FIXTURE, SOV_FIXTURE_NOW,
 } from '../components/layer-panel/sovereignty.fixture.ts';
-import { buildFranceSignals, type FranceRawData } from './france-country-intel.ts';
+import { buildFranceSignals, computeFranceScoreBreakdown, type FranceRawData } from './france-country-intel.ts';
 import { detectSituations, militaryEmergencyAlerts } from './situation-engine.ts';
 import { buildWorkQueue } from './work-queue.ts';
 import { buildSovereigntyInputs } from './sovereignty-inputs.ts';
@@ -109,5 +109,25 @@ describe('« Précision GNSS dégradée » et signal du score, phase B', () => {
     const sov = withGnssInputs(buildSovereigntyInputs(MILITARY_FIXTURE(), CABLES_WATCH_FIXTURE(), CYBER_FIXTURE(), NOW), GNSS_FIXTURE(), MILITARY_FIXTURE(), NOW);
     const s = buildFranceSignals({ ...raw(null), ...sov }, NOW);
     expect(s).toMatchObject({ jammingSignals: 2, gnssUnavailable: false, defensePillLevel: 'jaune' });
+  });
+  it('fenêtre de moins de 23 h 50 (FX2, deuxième tour) : un compte positif entre au score, à la situation et au moniteur ; un compte nul n’entre nulle part', () => {
+    const partial = (rolling24h: number): GnssResponse => ({
+      ...counts(rolling24h, [3, 3]), windowStart: new Date(Date.parse(GNSS_FIXTURE().readAt ?? '') - 5 * 3_600_000).toISOString(),
+    });
+    const sovOf = (g: GnssResponse) => withGnssInputs(buildSovereigntyInputs(MILITARY_FIXTURE(), CABLES_WATCH_FIXTURE(), CYBER_FIXTURE(), NOW), g, MILITARY_FIXTURE(), NOW);
+    const defensePillar = (r: FranceRawData): number | undefined => computeFranceScoreBreakdown(r, buildFranceSignals(r, NOW), null, [], null, NOW)
+      .pillars.find((p) => p.key === 'defense')?.value;
+    // Positif : 3 mailles sur 5 h de mesure.
+    const three = { ...raw(null), ...sovOf(partial(3)) };
+    expect(buildFranceSignals(three, NOW)).toMatchObject({ jammingSignals: 3, gnssUnavailable: false, defensePillLevel: 'orange', defensePillFromGnss: true });
+    expect(defensePillar(three)).toBeGreaterThan(defensePillar({ ...raw(null), ...sovOf(partial(0)) }) ?? 0);
+    expect(defenseSignal(three)?.severity).toBe('high');                 // 3 sur la fenêtre partielle et sur les deux jours UTC complets
+    expect(gnssJammingSituations(partial(3), NOW).map((a) => [a.id, a.severity])).toEqual([['gnss-degraded-24h', 'high']]);
+    // Nul : non évalué (jamais un calme), aucune situation, aucune entrée du moniteur, pilier sans GNSS.
+    const zero = { ...raw(null), ...sovOf(partial(0)) };
+    expect(zero.gnssDegraded).toBeNull();
+    expect(buildFranceSignals(zero, NOW)).toMatchObject({ jammingSignals: 0, gnssUnavailable: true, defensePillLevel: 'vert' });
+    expect(defenseSignal(zero)).toBeUndefined();
+    expect(gnssJammingSituations(partial(0), NOW)).toEqual([]);
   });
 });

@@ -10,7 +10,7 @@
 import type { GnssResponse, KpPoint, NoaaAlert, NoaaScaleDay, SanctionsResponse } from '../../types/index.ts';
 import { DRONES_LEGEND, DRONES_POINTER, DRONES_POINTER_URL, DRONES_TITLE } from '../../services/sovereignty-drones.ts';
 import {
-  GNSS_ORANGE_PCT, GNSS_SITUATION_CELLS, GNSS_YELLOW_PCT, defenseLevel, gnssDegradedCount, gnssWindowSpanMs, isGnssWindowCovered,
+  GNSS_ORANGE_PCT, GNSS_SITUATION_CELLS, GNSS_YELLOW_PCT, defenseLevel, gnssDegradedCount, gnssWindowHours, isGnssWindowCovered,
   isSovereigntyDataLate,
 } from '../../services/sovereignty-levels.ts';
 import { GELS_REGISTRY_URL } from '../../services/sovereignty-sanctions.ts';
@@ -143,12 +143,15 @@ function gridPart(gn: GnssResponse, input: DefenseViewInput): { html: string; su
   const rolling = gn.degraded.rolling24h;
   // Fenêtre de moins de 23 h 50 (redémarrage du serveur) : « référence en construction (N h) ».
   const covered = isGnssWindowCovered(gn);
-  const hours = Math.floor(gnssWindowSpanMs(gn) / HOUR_MS);
+  const hours = gnssWindowHours(gn);
   const measured = `mesure de ${hours}${NBSP}h sur 24`;
+  const partial = `mesure partielle de ${hours}${NBSP}h`;
   // En dégradation générale le serveur sert 0 : un 0 aurait l'air d'un calme, la valeur est dite n.d. Fenêtre pas encore couverte
-  // (FX2) : n.d. sans couleur, jamais un « 0 » vert ; la pastille et le score ne la lisent pas non plus (gnssDegradedCounts).
+  // (FX2, deuxième tour) : un 0 est n.d. sans couleur, jamais un « 0 » vert, et la pastille et le score ne le lisent pas
+  // (gnssDegradedCounts) ; un compte positif compte, coloré comme la pastille qu'il relève, « N (mesure partielle de N h) ».
   const rollingValue = general ? valueHtml('n.d.')
-    : !covered ? valueHtml(`n.d. (${measured})`)
+    : !covered && rolling <= 0 ? valueHtml(`n.d. (${measured})`)
+    : !covered ? valueHtml(`${rolling} (${partial})`, late ? null : rollingLevel(rolling))
     : valueHtml(String(rolling), late ? null : rollingLevel(rolling));
   const head = kvRow(glue(`Mailles françaises à précision dégradée ${ORANGE_AT} sur 24 h glissantes`), rollingValue)
     // Une valeur insécable par jour : la ligne passe entre les deux, jamais au bord du panneau.
@@ -160,10 +163,11 @@ function gridPart(gn: GnssResponse, input: DefenseViewInput): { html: string; su
     : '';
   const building = !covered
     ? paragraph(`Référence en construction (${hours} h) : la mesure couvre ${hours} h sur les 24 h de la méthode (cumul repris au dernier redémarrage du serveur) ; `
-      + 'le compte glissant n’entre ni dans la pastille ni au score avant 23 h 50 de mesure.')
+      + 'avant 23 h 50 de mesure, un compte nul n’est pas un calme (ni pastille ni score), un compte positif compte déjà (mesure partielle).')
     : '';
   const summary = general ? 'dégradation générale (météo spatiale)'
-    : !covered ? `mailles n.d. (${measured})${late ? ' (en retard)' : ''}`
+    : !covered && rolling <= 0 ? `mailles n.d. (${measured})${late ? ' (en retard)' : ''}`
+    : !covered ? `${plural(rolling, 'maille', 'mailles')} ${ORANGE_AT} (${partial})${late ? ' (en retard)' : ''}`
     : `${plural(rolling, 'maille', 'mailles')} ${ORANGE_AT} sur 24 h${late ? ' (en retard)' : ''}`;
   return {
     summary,
@@ -375,7 +379,7 @@ export const DEFENSE_SOURCES_B: readonly string[] = ['NOAA SWPC', 'DGAC / IGN, G
 export function defenseMethodB(): string {
   return paragraph('Précision de position GNSS : cinq lectures adsb.lol (/v2/point, rayons de 80 à 200 milles) toutes les 10 min couvrent la métropole ; grille de 0,5° ; sur 24 h glissantes, un aéronef distinct par maille, avec sa pire précision déclarée : « bon » si nac_p vaut 8 ou plus (erreur de position sous 93 m), « dégradé » de 1 à 7 ; nac_p 0 ou absent compté à part, sauf chez un appareil qui avait déclaré une bonne précision le même jour UTC : il compte alors dégradé ; aéronefs au sol écartés. Part dégradée = 100 × (dégradés − 1) / (bons + dégradés), formule de gpsjam.org ; au moins 5 aéronefs au calcul, sinon « trop peu d’avions » (maille non dessinée). Jaune de 2 à 10 %, orange au-delà ; le seuil de précision et le minimum sont nos choix.')
     + paragraph('Seules la DGAC et l’ANFR qualifient un brouillage : cette mesure ne montre qu’une précision de position dégradée, à vérifier.')
-    + paragraph('Localisation : en direct, un compte de mailles sans lieu sur 24 h glissantes (pastille et score), dit n.d. tant que la fenêtre ne couvre pas 23 h 50 de mesure (après un redémarrage du serveur) : il n’entre alors ni dans la pastille ni au score ; les mailles ne sont localisées que pour le jour UTC précédent, publié seulement s’il est couvert en entier (aucune lecture manquante de plus de 30 min). Un redémarrage du serveur ou une lecture interrompue rend le jour « non couvert » : aucune maille publiée, jamais un calme. La mémoire « bonne précision » repart à chaque jour UTC.')
+    + paragraph('Localisation : en direct, un compte de mailles sans lieu sur 24 h glissantes (pastille et score), qui, tant que la fenêtre ne couvre pas 23 h 50 de mesure (après un redémarrage du serveur), est dit n.d. s’il est nul (ni pastille ni score) et « mesure partielle » s’il ne l’est pas (il compte alors) ; les mailles ne sont localisées que pour le jour UTC précédent, publié seulement s’il est couvert en entier (aucune lecture manquante de plus de 30 min). Un redémarrage du serveur ou une lecture interrompue rend le jour « non couvert » : aucune maille publiée, jamais un calme. La mémoire « bonne précision » repart à chaque jour UTC.')
     + paragraph('Dégradation générale : plus de 30 % des mailles françaises mesurées dégradées et un Kp de 5− ou plus sur la fenêtre ; ces mailles ne comptent alors ni dans la pastille ni au score ; les jours concernés sont grisés. Pastille : orange dès 3 mailles françaises au-delà de 10 % sur 24 h glissantes, jaune pour 1 ou 2. Grille en retard au-delà de 40 min après la dernière collecte complète.')
     + paragraph('Limite : certains équipements de l’aviation légère déclarent une précision moindre (nac_p 6) sans brouillage ; le 04/10/2026, deux mailles du sud de l’Angleterre étaient orange pour cette raison. Une maille orange est « à vérifier ».')
     + `<p class="fmk-note">${escapeHtml('Méthode de référence : ')}${sourceLinkHtml('gpsjam.org', GPSJAM_URL)}${escapeHtml(' ; données adsb.lol, ODbL 1.0.')}</p>`
@@ -393,18 +397,22 @@ export function defenseMethodB(): string {
 function headWithGnss(head: LayerHeadModel, input: DefenseViewInput): LayerHeadModel {
   const m = input.military;
   if (m === null) return head;
-  const count = gnssDegradedCount(input.gnss ?? null, input.now);
+  const gn = input.gnss ?? null;
+  const count = gnssDegradedCount(gn, input.now);
+  // Compte positif sur une fenêtre de moins de 23 h 50 (FX2, deuxième tour) : il relève la pastille, et sa raison le dit.
+  const partial = gn !== null && count > 0 && !isGnssWindowCovered(gn) ? ` (mesure partielle de ${gnssWindowHours(gn)}${NBSP}h)` : '';
   const before = defenseLevel(m, input.now);
   // Relevé adsb.lol en retard (niveau suspendu par defenseLevel) mais grille GNSS fraîche : la couleur du GNSS reste (source fraîche,
   // signal propre, décision du contrôleur). Sa raison vient de defenseLevel sur un relevé frais sans urgence (un seul texte), elle
   // passe en premier et le retard adsb.lol est dit ; l'estampille datée est gardée.
   if (before.level === 'nd' && m.readAt !== null && count > 0) {
     const gnssOnly = defenseLevel({ ...m, emergencies: [], readAt: new Date(input.now).toISOString() }, input.now, count);
-    return { ...head, level: gnssOnly.level, status: [`${glue(gnssOnly.reason)} · relevé adsb.lol en retard`, ...head.status.slice(1)] };
+    return { ...head, level: gnssOnly.level, status: [`${glue(gnssOnly.reason)}${partial} · relevé adsb.lol en retard`, ...head.status.slice(1)] };
   }
   const after = defenseLevel(m, input.now, count);
   if (before.level === after.level && before.reason === after.reason) return head;
-  const status = head.status.map((s) => (s === before.reason ? after.reason : s === glue(before.reason) ? glue(after.reason) : s));
+  const reason = `${after.reason}${partial}`;
+  const status = head.status.map((s) => (s === before.reason ? reason : s === glue(before.reason) ? glue(reason) : s));
   return { ...head, level: after.level, status };
 }
 

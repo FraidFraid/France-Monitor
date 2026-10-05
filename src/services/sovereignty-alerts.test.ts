@@ -65,6 +65,18 @@ describe('moniteur d’alertes : une entrée GNSS sans lieu (O17)', () => {
     expect(gnssJammingSituations(null, NOW)).toEqual([]);
     expect(gnssJammingSituations(counts(0, [2, 2]), NOW)).toEqual([]);
   });
+  it('fenêtre de moins de 23 h 50 (FX2, deuxième tour) : compte positif, une entrée « mesure partielle de N h » ; compte nul, aucune', () => {
+    const partial = (rolling24h: number): GnssResponse => ({
+      ...counts(rolling24h, [2, null]), windowStart: new Date(Date.parse(GNSS_FIXTURE().readAt ?? '') - 5 * 3_600_000).toISOString(),
+    });
+    const [a] = gnssJammingSituations(partial(2), NOW);
+    expect(a?.title).toBe(`Précision de position GNSS dégradée : 2${NBSP}mailles françaises au-delà de 10${NBSP}% (mesure partielle de 5${NBSP}h)`);
+    expect(a?.drivers.at(-1)).toBe(`Mesure partielle : 5${NBSP}h sur les 24${NBSP}h de la méthode (cumul repris au dernier redémarrage du serveur)`);
+    expect(a?.severity).toBe('medium');
+    expect(gnssJammingSituations(partial(0), NOW)).toEqual([]);
+    // Fenêtre couverte : titre et facteurs inchangés.
+    expect(gnssJammingSituations(GNSS_FIXTURE(), NOW)[0]?.drivers).toHaveLength(3);
+  });
 });
 
 describe('moniteur d’alertes : entrée GNSS retirée du cache dès qu’elle n’a plus lieu d’être (revue de B28, m1)', () => {

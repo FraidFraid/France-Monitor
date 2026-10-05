@@ -507,15 +507,21 @@ export function isGnssWindowCovered(g: Pick<GnssResponse, 'readAt' | 'windowStar
   return gnssWindowSpanMs(g) >= GNSS_COVERED_MS;
 }
 
+/** Heures entières de mesure de la fenêtre glissante (« mesure partielle de N h », « mesure de N h sur 24 »). */
+export function gnssWindowHours(g: Pick<GnssResponse, 'readAt' | 'windowStart'>): number {
+  return Math.floor(gnssWindowSpanMs(g) / 3_600_000);
+}
+
 /**
  * Comptes de mailles GNSS à précision dégradée du score et de la pastille Défense (O15 à O17), lus dans la réponse du serveur (jamais un
  * seuil recopié) et sans lieu : null si la grille n'a jamais été complète, si elle est en retard (40 min), en dégradation générale
- * (météo spatiale, pas une dégradation locale) ou si sa fenêtre ne couvre pas encore 23 h 50 (arbitrage FX2 : juste après un
- * redémarrage, « 0 » sur 0 h de mesure n'est pas un calme, et une part calculée sur quelques heures n'est pas celle de 24 h).
+ * (météo spatiale, pas une dégradation locale), ou si sa fenêtre ne couvre pas encore 23 h 50 et ne compte aucune maille (arbitrage
+ * FX2, deuxième tour : juste après un redémarrage, « 0 » sur quelques heures de mesure n'est pas un calme ; un compte positif sur une
+ * mesure partielle compte, pour la pastille, le score, le moniteur et la tuile, et le panneau le dit « mesure partielle »).
  */
 export function gnssDegradedCounts(g: GnssResponse | null, now: number): GnssDegradedCounts | null {
   if (g === null || g.readAt === null || g.generalDegradation || isSovereigntyDataLate('adsb-gnss', g.readAt, now)) return null;
-  if (!isGnssWindowCovered(g)) return null;
+  if (!isGnssWindowCovered(g) && g.degraded.rolling24h <= 0) return null;
   return g.degraded;
 }
 

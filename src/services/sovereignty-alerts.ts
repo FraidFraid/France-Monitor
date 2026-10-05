@@ -7,7 +7,7 @@
 // Texte prudent (O15) : une précision de position dégradée est à vérifier, seules la DGAC et l'ANFR qualifient un brouillage ; l'entrée
 // renvoie au panneau Défense (mailles localisées du jour UTC précédent). Valeurs insécables (R1).
 import type { DetectedSituation, GnssResponse } from '../types/index.ts';
-import { GNSS_ORANGE_PCT, gnssDegradedCounts, isGnssDegradationSustained } from './sovereignty-levels.ts';
+import { GNSS_ORANGE_PCT, gnssDegradedCounts, gnssWindowHours, isGnssDegradationSustained, isGnssWindowCovered } from './sovereignty-levels.ts';
 
 const NBSP = '\u00a0';
 const DAY_MS = 86_400_000;
@@ -30,25 +30,30 @@ function previousDayText(g: GnssResponse, readAt: string, back: 1 | 2): string {
 
 /**
  * Entrée du moniteur pour la grille GNSS : aucune si la grille manque, n'a jamais été complète, est en retard (40 min) ou en dégradation
- * générale, ou si aucune maille française n'a dépassé 10 % sur 24 h glissantes.
+ * générale, ou si aucune maille française n'a dépassé 10 % sur 24 h glissantes. Fenêtre de moins de 23 h 50 (redémarrage du serveur) :
+ * un compte positif donne l'entrée, titrée « mesure partielle de N h » (arbitrage FX2, deuxième tour) ; un compte nul n'en donne aucune.
  */
 export function gnssJammingSituations(g: GnssResponse | null, now: number): DetectedSituation[] {
   const counts = gnssDegradedCounts(g, now);
   if (g === null || g.readAt === null || counts === null || counts.rolling24h <= 0) return [];
   const n = counts.rolling24h;
   const cells = n > 1 ? `${n}${NBSP}mailles françaises` : `${n}${NBSP}maille française`;
+  const covered = isGnssWindowCovered(g);
+  const hours = gnssWindowHours(g);
+  const span = covered ? `sur 24${NBSP}h glissantes` : `(mesure partielle de ${hours}${NBSP}h)`;
   return [{
     id: GNSS_MONITOR_ID,
     type: 'GPS_JAMMING_ALERT',
     severity: isGnssDegradationSustained(counts) ? 'high' : 'medium',
     confidence: 0.6,
-    title: `Précision de position GNSS dégradée : ${cells} ${ORANGE_AT} sur 24${NBSP}h glissantes`,
+    title: `Précision de position GNSS dégradée : ${cells} ${ORANGE_AT} ${span}`,
     summary: 'À vérifier : seules la DGAC et l’ANFR qualifient un brouillage. Mailles localisées du jour UTC précédent dans le panneau Défense.',
     affectedZones: ['France'],
     drivers: [
       `Jours UTC complets (${ORANGE_AT}) : veille ${previousDayText(g, g.readAt, 1)}, avant-veille ${previousDayText(g, g.readAt, 2)}`,
       'Hors dégradation générale (météo spatiale)',
       'Compte sans lieu : aucune maille localisée en direct',
+      ...(covered ? [] : [`Mesure partielle : ${hours}${NBSP}h sur les 24${NBSP}h de la méthode (cumul repris au dernier redémarrage du serveur)`]),
     ],
     recommendedActions: [
       { label: 'Signaler à la DGAC et à l’ANFR, seules à qualifier un brouillage', ownerHint: 'Analyste défense', actionType: 'cross-check' },
