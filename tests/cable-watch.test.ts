@@ -6,19 +6,22 @@
 // navire dans une zone de mouillage du Shom qui ne recoupe aucune zone de câbles (écarté, S9), tronçon du Shom au large sans
 // atterrage (retenu, sans nom), câble du Shom hors service (jamais une alerte), relais muet depuis 6 min (non évalué, rien n'est
 // confirmé ni retiré, aucun compte de navires publié), lot amont d'une zone muet pendant que les autres parlent (alertes de la
-// zone gardées « non évalué (flux de la zone muet) », retirées quand le lot reparle).
+// zone gardées « non évalué (flux de la zone muet) », retirées quand le lot reparle). Arbitrage FX2 (relevé du 05/10 : navires au
+// port) : bâtiment de MID 226 à 228 nommé « FRENCH WARSHIP » sans type AIS (écarté), approches d'atterrage et ports (moins de 2 km
+// d'un atterrage : seul un navire déclaré au mouillage dans une zone de câbles du Shom est signalé), testés de part et d'autre des 2 km.
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { departementAt, departementsNear } from '../api/_lib/geo-fr.js';
 import { __resetKvForTests, __setKvClientForTests } from '../api/_lib/kv-history.js';
 import { osmComplement, shomToAnchorageZones, shomToCableZones, shomToCables } from '../api/_lib/shom-cables.js';
 import {
-  CABLES_FILE_PATH, __resetCablesFileForTests, anchorageClearOfCablesAt, loadCablesFile, overpassToCables,
+  CABLES_FILE_PATH, __resetCablesFileForTests, anchorageClearOfCablesAt, cableZoneAt, landingWithinKm, loadCablesFile, overpassToCables,
 } from '../api/_lib/subsea-cables.js';
 import {
-  CABLES_FILE_ERROR, CABLE_ALERT_M, CONFIRM_GAP_MS, WATCH_INTERVAL_MS, __resetCablesWatchForTests, cableHits, confirmAlerts,
-  ensureCablesWatchFresh, relayBaseUrl,
+  CABLES_FILE_ERROR, CABLE_ALERT_M, CONFIRM_GAP_MS, LANDING_APPROACH_KM, WATCH_INTERVAL_MS, __resetCablesWatchForTests, cableHits,
+  confirmAlerts, ensureCablesWatchFresh, isFrenchWarship, quietLandingApproach, relayBaseUrl,
 } from '../api/_lib/cable-watch.js';
+import { CABLE_APPROACH_KM } from '../src/components/layer-panel/connectivite.ts';
 import handler, { CACHE_CONTROL } from '../api/_handlers/sovereignty/cables-watch.js';
 import { SOURCE_USER_AGENT } from '../api/_lib/source-http.js';
 import { cablesFile } from '../scripts/fetch-subsea-cables.mjs';
@@ -37,6 +40,8 @@ const FILE = cablesFile({
   shomCables: SHOM_CABLES, osmCables: osmComplement(overpassToCables(OSM, GEO), SHOM_CABLES),
   cableZones: CABLE_ZONES, anchorageZones: shomToAnchorageZones(fixture('shom-achare-polygon.json'), CABLE_ZONES),
 }) as SubseaCablesFile;
+/** Câbles du fichier sans leurs atterrages : la règle des approches (FX2) n'y joue plus, pour tester les autres règles seules. */
+const withoutLandings = (f: SubseaCablesFile): SubseaCablesFile['cables'] => f.cables.map((c) => ({ ...c, landings: [] }));
 const RELAY = 'http://relais.test';
 const T0 = Date.parse('2026-10-04T16:36:00+02:00');
 const iso = (ms: number): string => new Date(ms).toISOString();
@@ -105,7 +110,8 @@ describe('cableHits (exclusions de l’arbitrage 8 et S9)', () => {
   it('S9 : au mouillage dans une zone du Shom qui ne recoupe aucune zone de câbles, non signalé ; sans cette zone, il le serait', () => {
     expect(anchorageClearOfCablesAt(anchoredClear.lat, anchoredClear.lon, FILE)?.id).toBe('shom/FR000051219500003');
     expect(cableHits([anchoredClear], FILE)).toEqual([]);
-    expect(cableHits([anchoredClear], { ...FILE, anchorageZones: [] }).map((h) => [h.cableId, h.distanceM])).toEqual([
+    // Sans la zone de mouillage, et hors approche d'atterrage (il est à 310 m d'un atterrage de la rade : atterrages retirés ici).
+    expect(cableHits([anchoredClear], { ...FILE, anchorageZones: [], cables: withoutLandings(FILE) }).map((h) => [h.cableId, h.distanceM])).toEqual([
       ['shom/FR000019846200003', 194],                         // shom/FR000008435100001 à 359 m : hors service, jamais compté
     ]);
   });
@@ -116,17 +122,104 @@ describe('cableHits (exclusions de l’arbitrage 8 et S9)', () => {
     const inService = { ...FILE, cables: FILE.cables.map((c) => (c.id === 'shom/FR000008435100001' ? { ...c, outOfService: false } : c)) };
     expect(cableHits([onDeadCable], inService).map((h) => [h.cableId, h.distanceM])).toEqual([['shom/FR000008435100001', 2]]);
   });
-  it('S9 : zone de mouillage qui recoupe une zone de câbles (Sainte-Marie) : signalé ; câble du Shom sans nom', () => {
+  it('S9 : zone de mouillage qui recoupe une zone de câbles (Sainte-Marie) : S9 ne l’écarte pas ; câble du Shom sans nom', () => {
     expect(anchorageClearOfCablesAt(anchoredOnCables.lat, anchoredOnCables.lon, FILE)).toBeNull();
-    expect(cableHits([anchoredOnCables], FILE).map((h) => [h.id, h.cableName, h.distanceM])).toEqual([
+    // Hors approche d'atterrage (atterrages retirés), il serait signalé.
+    expect(cableHits([anchoredOnCables], { ...FILE, cables: withoutLandings(FILE) }).map((h) => [h.id, h.cableName, h.distanceM])).toEqual([
       ['229000008:shom/FR000008474500001', null, 110],
     ]);
+  });
+  it('FX2 : Sainte-Marie est à 1,07 km d’un atterrage, au mouillage mais hors zone de câbles du Shom : port, non signalé', () => {
+    expect(landingWithinKm(anchoredOnCables.lat, anchoredOnCables.lon, FILE, LANDING_APPROACH_KM)).not.toBeNull();
+    expect(cableZoneAt(anchoredOnCables.lat, anchoredOnCables.lon, FILE)).toBeNull();
+    expect(quietLandingApproach(anchoredOnCables, FILE)).toBe(true);
+    expect(cableHits([anchoredOnCables], FILE)).toEqual([]);
+  });
+  it('FX2 : au mouillage dans la zone de câbles du Prado (Shom), à 1 km d’un atterrage : signalé, une alerte par câble proche', () => {
+    const prado: Vessel = { mmsi: '229000011', name: 'PRADO ESSAI', type: 'Cargo', typeCode: 70, status: 1, lat: 43.25, lon: 5.3575, sog: 0.2, lastAt: iso(T0 - 10_000) };
+    expect(cableZoneAt(prado.lat, prado.lon, FILE)?.id).toBe('shom/FR000009979300003');
+    expect(landingWithinKm(prado.lat, prado.lon, FILE, LANDING_APPROACH_KM)).not.toBeNull();
+    const hits = cableHits([prado], FILE);
+    expect(hits.length).toBeGreaterThan(1);
+    expect(hits[0]).toMatchObject({ mmsi: '229000011', cableId: 'shom/FR000019846100003', distanceM: 63, navStatus: 1 });
+    // Même place, statut absent ou en route : port, non signalé (un statut absent n'est pas un mouillage).
+    expect(cableHits([{ ...prado, status: null }], FILE)).toEqual([]);
+    expect(cableHits([{ ...prado, status: 0 }], FILE)).toEqual([]);
   });
   it('tronçon du Shom au large, sans atterrage : retenu sans erreur, câble sans nom', () => {
     expect(FILE.cables.find((c) => c.id === 'shom/FR000013709500001')?.landings).toEqual([]);
     expect(cableHits([offshore], FILE).map((h) => [h.id, h.cableName, h.distanceM, h.speedKn])).toEqual([
       ['229000009:shom/FR000013709500001', null, 115, 0.6],
     ]);
+  });
+  it('FX2 : « FRENCH WARSHIP » sous MID 226 à 228, sans type AIS (base navale de Toulon, 05/10) : écarté ; ailleurs, retenu', () => {
+    const at = { lat: 42.85, lon: 4.853, sog: 0, status: 0, type: null, typeCode: null, lastAt: iso(T0 - 10_000) };
+    const warship: Vessel = { ...at, mmsi: '228000012', name: 'FRENCH WARSHIP' };
+    const spaced: Vessel = { ...at, mmsi: '226000013', name: '  french warship 12' };
+    const foreign: Vessel = { ...at, mmsi: '235000014', name: 'FRENCH WARSHIP' };
+    const overseas: Vessel = { ...at, mmsi: '329000015', name: 'FRENCH WARSHIP' };
+    const other: Vessel = { ...at, mmsi: '227000016', name: 'EX FRENCH WARSHIP' };
+    expect([warship, spaced, foreign, overseas, other].map(isFrenchWarship)).toEqual([true, true, false, false, false]);
+    expect(isFrenchWarship(frenchNavy)).toBe(true);                    // type AIS 35 sous pavillon français, inchangé
+    expect(cableHits([warship, spaced, foreign, overseas, other], FILE).map((h) => h.mmsi).sort()).toEqual(['227000016', '235000014', '329000015']);
+  });
+});
+
+/**
+ * Fichier construit pour la règle des approches (FX2) : un câble du Shom sur le méridien 6° E, de son atterrage (43,1° N) vers le sud ;
+ * une zone de câbles du Shom de 43,0805° à 43,0835° N. Un navire posé sur le tracé à `km` de l'atterrage est à 0 m du câble.
+ */
+const APPROACH_FILE = {
+  generatedAt: '2026-10-05T00:00:00.000Z', osmBase: '2026-10-04T20:19:21Z', sources: [],
+  cables: [{
+    id: 'shom/FR000000000000099', name: null, operator: null, path: [[[6, 43.1], [6, 42.9]]],
+    landings: [{ commune: 'Essai', dept: '83', lat: 43.1, lon: 6 }], source: 'Shom', licence: 'CC BY-SA', outOfService: false,
+  }],
+  cableZones: [{
+    id: 'shom/FR000000000000098', name: null, info: null, cableCategory: 'telecom', source: 'Shom', licence: 'Licence ouverte 2.0',
+    polygons: [[[[5.99, 43.0805], [6.01, 43.0805], [6.01, 43.0835], [5.99, 43.0835], [5.99, 43.0805]]]],
+  }],
+  anchorageZones: [],
+} as unknown as SubseaCablesFile;
+const KM_PER_DEG = (6371 * Math.PI) / 180;
+const onTrack = (km: number, status: number | null, mmsi = '229000020'): Vessel => ({
+  mmsi, name: 'APPROCHE ESSAI', type: 'Pêche', typeCode: 30, status, lat: 43.1 - km / KM_PER_DEG, lon: 6, sog: 0.3, lastAt: iso(T0 - 10_000),
+});
+
+describe('approches d’atterrage et ports (FX2, moins de 2 km d’un atterrage)', () => {
+  it('constante unique de 2 km, même valeur côté panneau', () => {
+    expect(LANDING_APPROACH_KM).toBe(2);
+    expect(CABLE_APPROACH_KM).toBe(LANDING_APPROACH_KM);
+  });
+  it('en route ou statut absent : à 1,99 km de l’atterrage, non signalé ; à 2,01 km, signalé', () => {
+    for (const status of [0, null, 7]) {
+      expect(cableHits([onTrack(1.99, status)], APPROACH_FILE), `statut ${status}`).toEqual([]);
+      expect(cableHits([onTrack(2.01, status)], APPROACH_FILE).map((h) => [h.cableId, h.distanceM]), `statut ${status}`).toEqual([['shom/FR000000000000099', 0]]);
+    }
+  });
+  it('au mouillage (statut 1) dans la zone de câbles du Shom, à 1,99 km : signalé ; au mouillage hors zone de câbles, à 1 km : non signalé', () => {
+    expect(cableZoneAt(onTrack(1.99, 1).lat, 6, APPROACH_FILE)?.id).toBe('shom/FR000000000000098');
+    expect(cableHits([onTrack(1.99, 1)], APPROACH_FILE).map((h) => [h.id, h.navStatus])).toEqual([['229000020:shom/FR000000000000099', 1]]);
+    expect(cableZoneAt(onTrack(1, 1).lat, 6, APPROACH_FILE)).toBeNull();
+    expect(cableHits([onTrack(1, 1)], APPROACH_FILE)).toEqual([]);
+    expect(cableHits([onTrack(2.01, 1)], APPROACH_FILE)).toHaveLength(1);
+  });
+  it('landingWithinKm : distance strictement sous 2 km ; quietLandingApproach suit', () => {
+    expect(landingWithinKm(onTrack(1.99, 0).lat, 6, APPROACH_FILE, LANDING_APPROACH_KM)?.commune).toBe('Essai');
+    expect(landingWithinKm(onTrack(2.01, 0).lat, 6, APPROACH_FILE, LANDING_APPROACH_KM)).toBeNull();
+    expect([quietLandingApproach(onTrack(1.99, 0), APPROACH_FILE), quietLandingApproach(onTrack(2.01, 0), APPROACH_FILE)]).toEqual([true, false]);
+  });
+  it('atterrage d’un câble hors service : l’approche reste une approche (un port reste un port)', () => {
+    const [live] = APPROACH_FILE.cables;
+    const deadLanding = {
+      ...APPROACH_FILE,
+      cables: [
+        { ...live, landings: [] },
+        { ...live, id: 'shom/FR000000000000097', outOfService: true, path: [[[6, 43.1], [6.2, 43.1]]] },
+      ],
+    } as SubseaCablesFile;
+    expect(cableHits([onTrack(1.99, 0)], deadLanding)).toEqual([]);
+    expect(cableHits([onTrack(2.01, 0)], deadLanding).map((h) => h.cableId)).toEqual(['shom/FR000000000000099']);
   });
 });
 
@@ -278,7 +371,7 @@ describe('fichier public des câbles (public/data/subsea-cables.json)', () => {
     offshoreCables.forEach((c, i) => {
       const v = vessels[i];
       const own = hits.find((h) => h.id === `${v.mmsi}:${c.id}`);
-      if (anchorageClearOfCablesAt(v.lat, v.lon, file)) expect(own).toBeUndefined();
+      if (anchorageClearOfCablesAt(v.lat, v.lon, file) || quietLandingApproach(v, file)) expect(own).toBeUndefined();
       else expect([own?.cableName, own?.distanceM]).toEqual([null, 0]);
     });
   });

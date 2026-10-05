@@ -19,7 +19,7 @@
 //   anchorageZones: [{ id, name, info, anchoringProhibited, crossesCableZone, source: 'Shom', licence: 'Licence ouverte 2.0',
 //     polygons }] }
 import { readFileSync } from 'node:fs';
-import { inPolygon } from './geo-fr.js';
+import { haversineKm, inPolygon } from './geo-fr.js';
 import { cleanText } from './source-http.js';
 
 export const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
@@ -183,6 +183,53 @@ export function zoneContains(zone, lat, lon) {
 export function anchorageClearOfCablesAt(lat, lon, file) {
   const zones = Array.isArray(file?.anchorageZones) ? file.anchorageZones : [];
   return zones.find((z) => !z.anchoringProhibited && !z.crossesCableZone && zoneContains(z, lat, lon)) ?? null;
+}
+
+/**
+ * Zone de câbles du Shom contenant le point (le mouillage y est réglementé) ; null sinon (ou fichier sans zones de câbles).
+ * @param {number} lat
+ * @param {number} lon
+ * @param {{ cableZones?: Array<{ polygons: Array<Array<Array<[number, number]>>> }> }} file
+ */
+export function cableZoneAt(lat, lon, file) {
+  const zones = Array.isArray(file?.cableZones) ? file.cableZones : [];
+  return zones.find((z) => zoneContains(z, lat, lon)) ?? null;
+}
+
+const landingLists = new WeakMap();
+
+/** Atterrages de tous les câbles du fichier (en service ou non : un port reste un port), listés une fois par fichier. */
+function landingsOfFile(file) {
+  let list = landingLists.get(file);
+  if (!list) {
+    list = (Array.isArray(file?.cables) ? file.cables : [])
+      .flatMap((c) => (Array.isArray(c.landings) ? c.landings : []))
+      .filter((l) => Number.isFinite(l?.lat) && Number.isFinite(l?.lon));
+    landingLists.set(file, list);
+  }
+  return list;
+}
+
+/**
+ * Atterrage du fichier le plus proche du point s'il est à moins de `km` (distance orthodromique, strictement) ; null sinon. Filtre grossier en
+ * degrés avant le calcul (moins de 1 000 atterrages, un millier de navires lents par relevé).
+ * @param {number} lat
+ * @param {number} lon
+ * @param {{ cables: Array<{ landings?: Array<{ lat: number, lon: number }> }> }} file
+ * @param {number} km
+ */
+export function landingWithinKm(lat, lon, file, km) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon) || typeof file !== 'object' || file === null) return null;
+  const dLat = km / 111;
+  const dLon = km / (111 * Math.max(0.1, Math.cos((lat * Math.PI) / 180)));
+  let best = null;
+  let bestKm = Infinity;
+  for (const l of landingsOfFile(file)) {
+    if (Math.abs(l.lat - lat) > dLat || Math.abs(l.lon - lon) > dLon) continue;
+    const d = haversineKm(lat, lon, l.lat, l.lon);
+    if (d < km && d < bestKm) { best = l; bestKm = d; }
+  }
+  return best;
 }
 
 let fileCache = null;

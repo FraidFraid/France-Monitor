@@ -1,23 +1,27 @@
 // api/_lib/cable-watch.js : veille des câbles sous-marins (spec 2026-10-04 souveraineté § 2.2, V1 ; contrats § 2.3, arbitrage 8 ;
-// amendement 7, O18 et S9). Le serveur lit les navires lents du relais AIS (GET /slow-vessels, eaux françaises, moins de 2 nœuds,
-// vitesse connue) toutes les 5 min et les rapproche des tracés du fichier des câbles (public/data/subsea-cables.json : câbles
-// télécom du Shom en référence, compléments OpenStreetMap) : un navire à moins de 500 m d'un tracé est « à vérifier », jamais une
-// « menace ». Écartés : vitesse inconnue (une absence n'est jamais un arrêt), message sans heure lisible, statut AIS 5 « amarré »,
-// bâtiment de type AIS 35 sous pavillon français, navire dans une zone de mouillage du Shom où le mouillage est permis et qui ne
-// recoupe aucune zone de câbles (S9 : il est à sa place). Ailleurs, le mouillage (statut 1) reste compté : une ancre est le vrai
-// risque. Un câble du Shom hors service (STATUS S-57 4) reste dans le fichier mais ne donne jamais d'alerte. Un câble du Shom n'a
-// pas de nom (`cableName: null`) et un tronçon au large n'a pas d'atterrage : la veille les traite comme les autres. Une alerte est
-// confirmée quand le même navire est revu sur le même câble par deux messages AIS espacés d'au moins 5 min (le même message relu ne
-// confirme jamais) ; absente d'un relevé, elle est retirée, sauf si sa position n'est couverte que par des lots amont muets : elle
-// est alors gardée telle quelle, « non évaluée (flux de la zone muet) » (`zoneMuted`), jusqu'à ce que le lot reparle. Flux AIS
-// muet depuis plus de 5 min (T3) : rien n'est évalué, les alertes restent telles quelles avec leur date, ni confirmées ni retirées,
-// et aucun compte de navires n'est publié (`slowVessels: null`). États de confirmation dans le stockage clé-valeur (1 h). Aucun
-// texte d'interface ici : la qualification d'une infraction appartient aux vues (« seule la préfecture maritime qualifie une
-// infraction », A12).
+// amendement 7, O18 et S9 ; arbitrage FX2 du contrôleur). Le serveur lit les navires lents du relais AIS (GET /slow-vessels, eaux
+// françaises, moins de 2 nœuds, vitesse connue) toutes les 5 min et les rapproche des tracés du fichier des câbles
+// (public/data/subsea-cables.json : câbles télécom du Shom en référence, compléments OpenStreetMap) : un navire à moins de 500 m d'un
+// tracé est « à vérifier », jamais une « menace ». Écartés : vitesse inconnue (une absence n'est jamais un arrêt), message sans heure
+// lisible, statut AIS 5 « amarré », bâtiment militaire français (type AIS 35 sous pavillon français, ou MMSI de MID 226 à 228 dont le
+// nom AIS commence par « FRENCH WARSHIP », type souvent absent : relevé du 05/10 dans la base navale de Toulon), navire dans une zone
+// de mouillage du Shom où le mouillage est permis et qui ne recoupe aucune zone de câbles (S9 : il est à sa place). Approches
+// d'atterrage et ports (moins de 2 km d'un atterrage du fichier, FX2) : seul un navire déclaré au mouillage (statut 1) dans une zone
+// de câbles du Shom, où le mouillage est réglementé, y est retenu ; les autres sont à quai ou au port (relevé du 05/10 : 25 alertes
+// confirmées, toutes des bateaux de plaisance ou de pêche au port, ou un bâtiment de la Marine dans sa base). Au-delà, le mouillage
+// (statut 1) reste compté : une ancre est le vrai risque. Un câble du Shom hors service (STATUS S-57 4) reste dans le fichier mais ne
+// donne jamais d'alerte. Un câble du Shom n'a pas de nom (`cableName: null`) et un tronçon au large n'a pas d'atterrage : la veille
+// les traite comme les autres. Une alerte est confirmée quand le même navire est revu sur le même câble par deux messages AIS espacés
+// d'au moins 5 min (le même message relu ne confirme jamais) ; absente d'un relevé, elle est retirée, sauf si sa position n'est
+// couverte que par des lots amont muets : elle est alors gardée telle quelle, « non évaluée (flux de la zone muet) » (`zoneMuted`),
+// jusqu'à ce que le lot reparle. Flux AIS muet depuis plus de 5 min (T3) : rien n'est évalué, les alertes restent telles quelles
+// avec leur date, ni confirmées ni retirées, et aucun compte de navires n'est publié (`slowVessels: null`). États de confirmation
+// dans le stockage clé-valeur (1 h). Aucun texte d'interface ici : la qualification d'une infraction appartient aux vues (« seule la
+// préfecture maritime qualifie une infraction », A12).
 import { UPSTREAM_SILENT_MS, isFrenchFlag } from './ais-snapshot.js';
 import { kvGetJson, kvSetJson } from './kv-history.js';
 import { fetchStrictJson, sourceError } from './source-http.js';
-import { anchorageClearOfCablesAt, loadCablesFile, pointToPathM } from './subsea-cables.js';
+import { anchorageClearOfCablesAt, cableZoneAt, landingWithinKm, loadCablesFile, pointToPathM } from './subsea-cables.js';
 
 export const CABLE_ALERT_M = 500;
 export const CABLE_SLOW_KN = 2;
@@ -25,8 +29,17 @@ export const CONFIRM_GAP_MS = 5 * 60_000;
 export const WATCH_INTERVAL_MS = 5 * 60_000;
 export const WATCH_KEY = 'sov:cables:watch';
 const WATCH_TTL_SEC = 3_600;
+/**
+ * Approches d'atterrage et ports : moins de 2 km d'un atterrage du fichier des câbles (FX2). Seul un navire déclaré au mouillage dans
+ * une zone de câbles du Shom y est signalé ; même valeur côté panneau (CABLE_APPROACH_KM, connectivite.ts ; identité testée).
+ */
+export const LANDING_APPROACH_KM = 2;
 const MOORED = 5;
+const AT_ANCHOR = 1;
 const MILITARY_TYPE = 35;
+/** MID de la France métropolitaine : seul un MMSI de ces codes porte le nom « FRENCH WARSHIP » d'un bâtiment de la Marine (FX2). */
+const FRENCH_WARSHIP_MIDS = new Set(['226', '227', '228']);
+const FRENCH_WARSHIP_NAME = 'FRENCH WARSHIP';
 /** Une relève d'une minute peut arriver quelques millisecondes avant l'échéance : tolérance de 5 s. */
 const TICK_TOLERANCE_MS = 5_000;
 /** Marge de la boîte d'un tracé (degrés, plus de 500 m sous 51° N) : seuls les tracés proches sont mesurés. */
@@ -56,6 +69,17 @@ function boxOf(cable) {
 }
 
 /**
+ * Bâtiment militaire français : type AIS 35 sous pavillon français, ou MMSI de MID 226 à 228 dont le nom AIS commence par
+ * « FRENCH WARSHIP » (espaces de tête et casse ignorés) : la Marine nationale émet souvent ce nom sans message statique, donc sans type.
+ * @param {{ mmsi: string, name?: string | null, typeCode?: number | null }} v
+ */
+export function isFrenchWarship(v) {
+  if (v.typeCode === MILITARY_TYPE && isFrenchFlag(v.mmsi)) return true;
+  return FRENCH_WARSHIP_MIDS.has(String(v.mmsi).slice(0, 3))
+    && typeof v.name === 'string' && v.name.trim().toUpperCase().startsWith(FRENCH_WARSHIP_NAME);
+}
+
+/**
  * Navire retenu par la veille : message AIS daté (sans heure de message, aucune confirmation ne serait sûre), vitesse connue sous
  * 2 nœuds, non amarré, pas un bâtiment militaire français.
  */
@@ -64,20 +88,32 @@ function watched(v) {
   if (typeof v.lastAt !== 'string' || !Number.isFinite(Date.parse(v.lastAt))) return false;
   if (typeof v.sog !== 'number' || !Number.isFinite(v.sog) || v.sog >= CABLE_SLOW_KN) return false;
   if (v.status === MOORED) return false;
-  return !(v.typeCode === MILITARY_TYPE && isFrenchFlag(v.mmsi));
+  return !isFrenchWarship(v);
+}
+
+/**
+ * Vrai si le navire est dans une approche d'atterrage ou un port (moins de 2 km d'un atterrage du fichier) sans y être déclaré au
+ * mouillage (statut AIS 1) dans une zone de câbles du Shom : il n'est pas signalé (FX2). Un statut absent n'est pas un mouillage.
+ * @param {{ lat: number, lon: number, status: number | null }} v
+ * @param {import('../../src/types/index.ts').SubseaCablesFile} file
+ */
+export function quietLandingApproach(v, file) {
+  if (landingWithinKm(v.lat, v.lon, file, LANDING_APPROACH_KM) === null) return false;
+  return !(v.status === AT_ANCHOR && cableZoneAt(v.lat, v.lon, file) !== null);
 }
 
 /**
  * Navires lents à moins de 500 m d'un tracé en service : une entrée par navire et par câble (identifiant stable `${mmsi}:${cableId}`),
  * avec `seenAt`, l'heure du dernier message AIS du navire (base de la confirmation). Un navire dans une zone de mouillage permise du
- * Shom qui ne recoupe aucune zone de câbles n'est pas retenu (S9) ; un câble hors service n'est jamais mesuré. Tri : distance croissante.
+ * Shom qui ne recoupe aucune zone de câbles n'est pas retenu (S9), ni un navire d'une approche d'atterrage ou d'un port qui n'y est pas
+ * déclaré au mouillage dans une zone de câbles (quietLandingApproach) ; un câble hors service n'est jamais mesuré. Tri : distance croissante.
  * @param {Array<{ mmsi: string, name: string | null, type: string | null, typeCode: number | null, status: number | null, lat: number, lon: number, sog: number | null, lastAt: string }>} vessels
  * @param {import('../../src/types/index.ts').SubseaCablesFile} file
  */
 export function cableHits(vessels, file) {
   const out = [];
   for (const v of vessels) {
-    if (!watched(v) || anchorageClearOfCablesAt(v.lat, v.lon, file)) continue;
+    if (!watched(v) || anchorageClearOfCablesAt(v.lat, v.lon, file) || quietLandingApproach(v, file)) continue;
     for (const c of file.cables) {
       if (c.outOfService === true) continue;
       const box = boxOf(c);

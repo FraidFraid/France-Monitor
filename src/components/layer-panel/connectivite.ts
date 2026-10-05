@@ -42,6 +42,13 @@ function counted(n: number, word: string): string {
 const CABLE_COLOR = 'var(--cat-cable)';
 const NEVER_A_THREAT = `Navires à moins de 500${NBSP}m d’un tracé et à moins de 2${NBSP}nœuds, confirmés sur deux relevés espacés d’au moins 5${NBSP}minutes : `
   + '« à vérifier », jamais une menace ; seule la préfecture maritime qualifie une infraction.';
+/**
+ * Approches d'atterrage et ports (arbitrage FX2) : moins de 2 km d'un atterrage, seuls les navires déclarés au mouillage dans une zone
+ * de câbles du Shom sont signalés. Même valeur que LANDING_APPROACH_KM de la veille (api/_lib/cable-watch.js ; identité testée).
+ */
+export const CABLE_APPROACH_KM = 2;
+const APPROACH_RULE = `Approches d’atterrage et ports (moins de ${CABLE_APPROACH_KM}${NBSP}km d’un atterrage) : seuls les navires déclarés au mouillage `
+  + 'dans une zone de câbles du Shom sont signalés ; seule la préfecture maritime qualifie une infraction.';
 const MUTED_ZONE = 'non évaluée (flux de la zone muet)';
 const OFFSHORE = 'tronçon au large';
 
@@ -277,8 +284,10 @@ function methodSection(input: ConnectiviteViewInput): FicheSection {
       + 'un câble du Shom hors service est gardé en gris, jamais une alerte.')
     + note(`Atterrage : extrémité d’un tracé située dans un département français ou à moins de 2${NBSP}km de sa côte, nommée par la commune la plus proche.`)
     + note('Limites maritimes approchées (Menton, Hendaye) : une alerte près d’une frontière se lit comme approchée.')
-    + note(`${NEVER_A_THREAT} Écartés : vitesse inconnue, navires amarrés, bâtiments militaires français ; un navire au mouillage reste compté. `
+    + note(`${NEVER_A_THREAT} Écartés : vitesse inconnue, navires amarrés, bâtiments militaires français (type AIS 35, ou nom AIS « FRENCH WARSHIP » `
+      + 'sous MMSI français) ; hors des approches d’atterrage, un navire au mouillage reste compté. '
       + 'Un navire dans une zone de mouillage du Shom qui ne recoupe pas une zone de câbles n’est pas signalé.')
+    + note(APPROACH_RULE)
     + note(`Veille non évaluée (flux AIS muet depuis plus de 5${NBSP}minutes, relais injoignable ou fichier des câbles illisible) : alertes gardées, `
       + `ni confirmées ni retirées ; la pastille passe à n.d. Zone muette d’un seul lot amont : ses alertes gardées sont « non évaluées (flux de la zone muet) », sans couleur. `
       + `Dernier message AIS de plus de 15${NBSP}minutes : en retard, couleurs retirées.`)

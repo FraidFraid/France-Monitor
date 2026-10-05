@@ -168,6 +168,15 @@ describe('vue Connectivité (spec 2026-10-04 souveraineté § 2.2)', () => {
     expect(t).toContain('vitesse inconnue, navires amarrés, bâtiments militaires français');
     expect(t).toContain('TeleGeography');
   });
+  it('méthode (arbitrage FX2) : approches d’atterrage et ports dits, nom « FRENCH WARSHIP » écarté, S9 et « jamais une menace » gardés', () => {
+    const t = visibleText(sectionOf('methode', { watch: WATCH, file: SMALL })?.html ?? '');
+    expect(t).toContain(`Approches d’atterrage et ports (moins de 2${NBSP}km d’un atterrage) : seuls les navires déclarés au mouillage dans une zone de câbles `
+      + 'du Shom sont signalés ; seule la préfecture maritime qualifie une infraction.');
+    expect(t).toContain('bâtiments militaires français (type AIS 35, ou nom AIS « FRENCH WARSHIP » sous MMSI français)');
+    expect(t).toContain('hors des approches d’atterrage, un navire au mouillage reste compté');
+    expect(t).toContain('Un navire dans une zone de mouillage du Shom qui ne recoupe pas une zone de câbles n’est pas signalé.');
+    expect(t).toContain('« à vérifier », jamais une menace');
+  });
 });
 
 describe('flux AIS muet, pannes, retards (T3, S1 à S3)', () => {
