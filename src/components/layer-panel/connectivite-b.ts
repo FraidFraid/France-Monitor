@@ -87,6 +87,11 @@ function dropNote(t: PrefixTrend): string | null {
 
 // ─── Gros chiffre ───
 
+/** « 1 non lu », « 2 non lus » : insécable, jamais « non » et « lu » de part et d'autre d'un retour à la ligne (capture du 05/10). */
+function unreadWord(missing: number): string {
+  return `${missing}${NBSP}non${NBSP}lu${missing > 1 ? 's' : ''}`;
+}
+
 function unreadOf(c: ConnectivityResponse): UnreadNetwork[] {
   return c.unread ?? [];
 }
@@ -101,7 +106,7 @@ function networksFigure(c: ConnectivityResponse | null, error: string | null, no
   const missing = MAJOR_NETWORKS - c.networks.length;
   return {
     value: `${full}${NBSP}/${NBSP}${MAJOR_NETWORKS}`,
-    caption: glue(`${caption} · instantané RIPE de ${clockOf(c.snapshotAt, now)}${late ? ' (en retard)' : ''}${missing > 0 ? ` · ${missing}${NBSP}non lu${missing > 1 ? 's' : ''}` : ''}`),
+    caption: glue(`${caption} · instantané RIPE de ${clockOf(c.snapshotAt, now)}${late ? ' (en retard)' : ''}${missing > 0 ? ` · ${unreadWord(missing)}` : ''}`),
     level: late ? null : maxLevel(c.networks.map(networkVisibilityLevel)),
   };
 }
@@ -234,7 +239,7 @@ export function reseauxSection(input: ConnectiviteViewInput): FicheSection {
   const missing = MAJOR_NETWORKS - c.networks.length;
   return {
     ...base,
-    summary: escapeHtml(glue(`${full}${NBSP}/${NBSP}${MAJOR_NETWORKS} vus à au moins 99 % · instantané de ${clockOf(c.snapshotAt, now)}${late ? ' (en retard)' : ''}${missing > 0 ? ` · ${missing}${NBSP}non lu${missing > 1 ? 's' : ''}` : ''}`)),
+    summary: escapeHtml(glue(`${full}${NBSP}/${NBSP}${MAJOR_NETWORKS} vus à au moins 99 % · instantané de ${clockOf(c.snapshotAt, now)}${late ? ' (en retard)' : ''}${missing > 0 ? ` · ${unreadWord(missing)}` : ''}`)),
     html,
   };
 }

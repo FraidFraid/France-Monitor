@@ -150,8 +150,9 @@ describe('sections', () => {
     expect(sfr).not.toContain('<i style');
     const fig = buildConnectiviteView(i).head.figure;
     expect(fig?.value).toBe(`4${NBSP}/${NBSP}6`);
-    expect(fig?.caption).toContain(`2${NBSP}non lus`);
-    expect(section(i, 'reseaux')?.summary).toContain(`2${NBSP}non lus`);
+    // « 2 non lus » insécable (B29, capture du 05/10 au téléphone : « 1 non » puis « lu » à la ligne).
+    expect(fig?.caption).toContain(`2${NBSP}non${NBSP}lus`);
+    expect(section(i, 'reseaux')?.summary).toContain(`2${NBSP}non${NBSP}lus`);
     expect(t).not.toContain('Incidents de lecture');
   });
   it('courbe de la visibilité minimale sur 30 jours, référence en construction depuis 7 jours', () => {
