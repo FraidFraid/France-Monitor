@@ -225,6 +225,16 @@ function noaaAlertWord(a: NoaaAlert): string {
   return a.gScale !== null ? `${base} (${SCALE_WORD.G[a.gScale] ?? `G${a.gScale}`})` : base;
 }
 
+/**
+ * Valeur d'une échelle G (G du jour, Kp de la dernière tranche) : G1 à G5 en couleur de niveau, G0 au jeton « calme » comme la courbe
+ * Kp et les prévisions (contrats § 3.8), jamais le vert de niveau ; sans couleur en retard ou sans échelle.
+ */
+function gValueHtml(text: string, g: number | null, late: boolean): string {
+  if (late || g === null) return valueHtml(text);
+  const level = gScaleLevel(g);
+  return level !== null ? valueHtml(text, level) : `<span class="lp-val fmk-num" style="color:${CAT_KP_CALME}">${escapeHtml(text)}</span>`;
+}
+
 function kpColor(kp: number): string {
   const level = gScaleLevel(kpGScale(kp));
   return level === null ? CAT_KP_CALME : levelColorVar(level);
@@ -246,11 +256,11 @@ function spaceWeatherPart(gn: GnssResponse, now: number): string {
   const today = sw.today;
   const todayHtml = today === null ? escapeHtml('n.d.')
     : `${escapeHtml(`radio ${scaleText('R', today.r)} · radiations ${scaleText('S', today.s)} · géomagnétique `)}`
-      + valueHtml(scaleText('G', today.g), late || today.g === null ? null : gScaleLevel(today.g) ?? 'vert');
+      + gValueHtml(scaleText('G', today.g), today.g, late);
   const rows = [kvRow(`Échelles NOAA à ${clockOf(sw.scalesAt, now)}${late ? ' (en retard)' : ''}`, todayHtml), ...sw.forecast.map((d) => forecastRow(d, late))];
   const last = sw.kp.at(-1) ?? null;
   if (last) {
-    rows.push(kvRow('Indice Kp', `${valueHtml(formatKp(last.kp), late ? null : gScaleLevel(kpGScale(last.kp)) ?? 'vert')} ${escapeHtml(`tranche de ${clockOf(last.at, now)}`)}`));
+    rows.push(kvRow('Indice Kp', `${gValueHtml(formatKp(last.kp), kpGScale(last.kp), late)} ${escapeHtml(`tranche de ${clockOf(last.at, now)}`)}`));
   }
   if (sw.lastAlert) rows.push(kvRow('Dernière alerte NOAA', escapeHtml(glue(`${noaaAlertWord(sw.lastAlert)} · émise ${clockOf(sw.lastAlert.issuedAt, now)}`))));
   return rows.join('') + kpChart(sw.kp, late)

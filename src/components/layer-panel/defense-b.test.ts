@@ -280,6 +280,18 @@ describe('seuils et teintes (revue de B25, m1 et m2)', () => {
     expect(row).toContain('var(--cat-kp-calme)');
     expect(row).not.toContain('fmk-dot--vert');
   });
+  it('G0 du jour et Kp calme (B29, capture du 05/10) : jeton calme comme la courbe et les prévisions, jamais le vert de niveau ; sans couleur en retard', () => {
+    const calmKp = (g: GnssResponse): GnssResponse => ({ ...g, spaceWeather: { ...g.spaceWeather, kp: [...g.spaceWeather.kp, { at: '2026-10-04T14:00:00.000Z', kp: 2.33 }] } });
+    const h = section(input({ gnss: calmKp(GNSS_FIXTURE()) }), 'gnss')?.html ?? '';
+    const calm = `<span class="lp-val fmk-num" style="color:var(--cat-kp-calme)">`;
+    expect(h).toContain(`géomagnétique ${calm}G0${NBSP}aucun</span>`);
+    expect(h).toContain(`${calm}Kp${NBSP}2+</span>`);
+    expect(h).not.toContain('lp-lvl--vert');
+    // G1 garde la couleur de niveau (jaune) ; grille NOAA en retard : ni jeton ni niveau.
+    expect(section(input(), 'gnss')?.html ?? '').toContain(`<span class="lp-val fmk-num lp-lvl lp-lvl--jaune">Kp${NBSP}5</span>`);
+    const late = section(input({ gnss: calmKp(GNSS_FIXTURE()), now: NOW + 4 * H }), 'gnss')?.html ?? '';
+    expect(late.split('Échelles NOAA')[1] ?? '').not.toMatch(/var\(--cat-kp-calme\)|lp-lvl--/);
+  });
 });
 
 describe('section Sanctions et zones drones', () => {
