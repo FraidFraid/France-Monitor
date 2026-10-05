@@ -125,6 +125,14 @@ export function sovBreakable(text: string): string | null {
   return SOV_BREAKABLE.exec(text)?.[0] ?? null;
 }
 
+/**
+ * Résumé « 6 sources » d'une section « Méthode et sources », déduit de la liste de ses sources (phase A puis phase B), jamais tapé
+ * (arbitrage FX2 : les « 4 sources » ne comptaient pas la phase B). Nombre et mot insécables (R1).
+ */
+export function sourcesSummary(sources: readonly string[]): string {
+  return `${sources.length}${NBSP}${sources.length > 1 ? 'sources' : 'source'}`;
+}
+
 /** Phrases des niveaux (raisons de pastille, espaces ordinaires) : espace insécable entre un nombre et son unité ou son mot compté. */
 export function glueSovUnits(text: string): string {
   return text.replace(GLUE, `$1${NBSP}$2`).replace(GLUE_KP, `Kp${NBSP}$1`);

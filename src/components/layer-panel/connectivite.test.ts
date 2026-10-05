@@ -11,7 +11,7 @@ import { NBSP, breakableValue, visibleText } from './format.ts';
 import { renderLayerView, type LayerView } from './frame.ts';
 import { trafficBreakable } from './traffic-format.ts';
 import { CABLES_FILE_ERROR_TEXT, clockOf, glueSovUnits, sovBreakable } from './sovereignty-format.ts';
-import { CONNECTIVITE_TITLE, buildConnectiviteView, landingPlace, type ConnectiviteViewInput } from './connectivite.ts';
+import { CONNECTIVITE_SOURCES, CONNECTIVITE_TITLE, buildConnectiviteView, landingPlace, type ConnectiviteViewInput } from './connectivite.ts';
 
 const NOW = SOV_FIXTURE_NOW;
 const MIN = 60_000;
@@ -121,16 +121,44 @@ describe('vue Connectivité (spec 2026-10-04 souveraineté § 2.2)', () => {
     expect(visibleText(s?.html ?? '')).toContain('« à vérifier », jamais une menace');
     expect(visibleText(html({ watch: { ...WATCH, alerts: [ALERT] } })).replace(/jamais une menace/g, '')).not.toMatch(/menace/i);
   });
-  it('un navire près de deux câbles compte une fois dans le gros chiffre et la pastille (relevé du 05/10) ; une ligne par câble', () => {
-    const twin: CableAlert = { ...ALERT, id: '227123456:shom/FR000000000000001', cableId: 'shom/FR000000000000001', cableName: null };
+  it('un navire près de deux câbles compte une fois dans le gros chiffre, la pastille et la section ; une ligne par navire, ses câbles listés (FX2)', () => {
+    const twin: CableAlert = { ...ALERT, id: '227123456:shom/FR000000000000001', cableId: 'shom/FR000000000000001', cableName: null, distanceM: 113 };
     const other: CableAlert = { ...ALERT, id: '227654321:way/761201702', mmsi: '227654321', name: 'AUTRE ESSAI', cableId: 'way/761201702', cableName: 'BARMAR' };
     const w: CablesWatchResponse = { ...WATCH, alerts: [ALERT, twin, other] };
     const v = view({ watch: w, file: SMALL });
     expect(slow(v)).toMatchObject({ value: '2', caption: `navires lents à moins de 500${NBSP}m d’un câble · AIS à jour 16:47` });
     expect(v.head.status[0]).toBe(glueSovUnits(cablesLevel(w, NOW).reason));
     expect(v.head.status[0]).toContain(`2${NBSP}navires lents confirmés sur un câble`);
-    const h = v.sections.find((x) => x.id === 'navires')?.html ?? '';
-    for (const a of w.alerts) expect(h).toContain(`data-vessel="${a.id}"`);
+    const s = v.sections.find((x) => x.id === 'navires');
+    const h = s?.html ?? '';
+    expect(s?.summary).toBe('2 à vérifier');
+    // Une ligne par navire : le clic recentre sur l'alerte du câble le plus proche (113 m).
+    expect(h.match(/data-vessel="/g)).toHaveLength(2);
+    expect(h).toContain(`data-vessel="${twin.id}"`);
+    expect(h).toContain(`data-vessel="${other.id}"`);
+    expect(h).not.toContain(`data-vessel="${ALERT.id}"`);
+    const t = visibleText(h);
+    expect(t).toContain(`ESSAI MARINE · Cargo113${NBSP}m`);
+    expect(t).toContain('câble télécom (Shom), IMEWE Seg3.4 · ');            // câble le plus proche d’abord
+  });
+  it('relevé du 05/10 (KILREDENN 2 à 112 m de deux câbles du Shom sans nom) : une seule ligne « 2 câbles télécom (Shom) », jamais deux lignes jumelles', () => {
+    const k1: CableAlert = { ...ALERT, id: '227000051:shom/FR000000000000001', mmsi: '227000051', name: 'DEUX CABLES ESSAI', cableId: 'shom/FR000000000000001', cableName: null, distanceM: 112, navStatus: null };
+    const k2: CableAlert = { ...k1, id: '227000051:shom/FR000000000000002', cableId: 'shom/FR000000000000002' };
+    const h = sectionOf('navires', { watch: { ...WATCH, alerts: [k1, k2] }, file: SMALL })?.html ?? '';
+    expect(h.match(/data-vessel="/g)).toHaveLength(1);
+    const t = visibleText(h);
+    expect(t).toContain(`DEUX CABLES ESSAI · Cargo112${NBSP}m2${NBSP}câbles télécom (Shom) · `);
+    expect(t.match(/DEUX CABLES ESSAI/g)).toHaveLength(1);
+  });
+  it('navire confirmé sur un câble et vu une fois sur un autre : orange (la plus haute) ; toutes ses alertes en zone muette : gris, « non évaluée »', () => {
+    const once: CableAlert = { ...ALERT, id: '227123456:way/761201702', cableId: 'way/761201702', cableName: 'BARMAR', confirmed: false, distanceM: 90 };
+    const mixed = sectionOf('navires', { watch: { ...WATCH, alerts: [ALERT, once] }, file: SMALL })?.html ?? '';
+    expect(mixed).toContain('lp-lvl--orange');
+    expect(mixed).not.toContain('lp-lvl--jaune');
+    expect(visibleText(mixed)).toContain('confirmé sur deux relevés');
+    const mutedAll = sectionOf('navires', { watch: { ...WATCH, alerts: [{ ...ALERT, zoneMuted: true }, { ...once, zoneMuted: true }] }, file: SMALL })?.html ?? '';
+    expect(visibleText(mutedAll)).toContain('non évaluée (flux de la zone muet)');
+    expect(mutedAll).not.toContain('lp-lvl--orange');
   });
   it('navire près d’un câble du Shom sans nom : « câble télécom (Shom) »', () => {
     const a: CableAlert = { ...ALERT, id: '227123456:shom/FR000000000000001', cableId: 'shom/FR000000000000001', cableName: null };
@@ -167,6 +195,13 @@ describe('vue Connectivité (spec 2026-10-04 souveraineté § 2.2)', () => {
     expect(t).toContain(`moins de 2${NBSP}km de sa côte`);
     expect(t).toContain('vitesse inconnue, navires amarrés, bâtiments militaires français');
     expect(t).toContain('TeleGeography');
+  });
+  it('résumé « N sources » déduit de la liste, phase B comprise (FX2) ; chaque source de la liste est nommée dans la méthode', () => {
+    const s = sectionOf('methode', { watch: WATCH, file: SMALL });
+    const t = visibleText(s?.html ?? '');
+    expect(CONNECTIVITE_SOURCES).toHaveLength(6);
+    expect(s?.summary).toBe(`${CONNECTIVITE_SOURCES.length}${NBSP}sources`);
+    for (const name of CONNECTIVITE_SOURCES) expect(t, name).toContain(name);
   });
   it('méthode (arbitrage FX2) : approches d’atterrage et ports dits, nom « FRENCH WARSHIP » écarté, S9 et « jamais une menace » gardés', () => {
     const t = visibleText(sectionOf('methode', { watch: WATCH, file: SMALL })?.html ?? '');

@@ -360,6 +360,12 @@ export function droneZonesBlock(d: NonNullable<DefenseSitesSummary['drones']>): 
     + button;
 }
 
+/**
+ * Sources de la phase B nommées dans « Méthode et sources » (le résumé « N sources » en est déduit, defense.ts) : la grille GNSS lit
+ * adsb.lol, déjà comptée par la phase A ; gpsjam.org est une méthode de référence, pas une source de données.
+ */
+export const DEFENSE_SOURCES_B: readonly string[] = ['NOAA SWPC', 'DGAC / IGN, Géoplateforme', 'DG Trésor'];
+
 /** Notes de méthode de la phase B (ajoutées à la fin de « Méthode et sources »). */
 export function defenseMethodB(): string {
   return paragraph('Précision de position GNSS : cinq lectures adsb.lol (/v2/point, rayons de 80 à 200 milles) toutes les 10 min couvrent la métropole ; grille de 0,5° ; sur 24 h glissantes, un aéronef distinct par maille, avec sa pire précision déclarée : « bon » si nac_p vaut 8 ou plus (erreur de position sous 93 m), « dégradé » de 1 à 7 ; nac_p 0 ou absent compté à part, sauf chez un appareil qui avait déclaré une bonne précision le même jour UTC : il compte alors dégradé ; aéronefs au sol écartés. Part dégradée = 100 × (dégradés − 1) / (bons + dégradés), formule de gpsjam.org ; au moins 5 aéronefs au calcul, sinon « trop peu d’avions » (maille non dessinée). Jaune de 2 à 10 %, orange au-delà ; le seuil de précision et le minimum sont nos choix.')

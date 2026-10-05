@@ -4,17 +4,20 @@
 // jamais une menace. Flux AIS muet (T3) : « non évalué », alertes gardées en gris, jamais « aucun navire ». Chaque partie porte la date
 // de sa donnée (S1) ; une panne se voit (S3).
 import type { CableAlert, CableLanding, CablesWatchResponse, ConnectivityResponse, SubseaCable, SubseaCablesFile } from '../../types/index.ts';
-import { cableAlertLevel, cablesLevel, distinctVessels, isSovereigntyDataLate } from '../../services/sovereignty-levels.ts';
+import {
+  alertsByVessel, cableAlertLevel, cablesLevel, distinctVessels, isSovereigntyDataLate, type VesselCableAlerts,
+} from '../../services/sovereignty-levels.ts';
+import { LEVEL_RANK, type VigilanceLevel } from '../../services/vigilance.ts';
 import { escapeHtml } from '../france-intel-events.ts';
 import { absoluteTime, kvRow } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
 import { NBSP } from './format.ts';
 import { emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, type LayerHeadModel, type LayerView } from './frame.ts';
-import { withConnectiviteB } from './connectivite-b.ts';
+import { CONNECTIVITE_SOURCES_B, withConnectiviteB } from './connectivite-b.ts';
 import { departementName } from './health-format.ts';
 import {
   SOVEREIGNTY_THEME, cablesUnevaluatedWhy, capitalize, clockOf, dataMs, dateOf, formatCount, formatKnots, formatMeters, glueSovUnits, note, plural,
-  readErrors, shortDate, sourceDown, stamp,
+  readErrors, shortDate, sourceDown, sourcesSummary, stamp,
 } from './sovereignty-format.ts';
 
 export type OpenFn = (sectionId: string, byDefault: boolean) => boolean;
@@ -224,16 +227,38 @@ function alertCableLabel(a: CableAlert): string {
   return a.cableName ?? (a.cableId.startsWith('shom/') ? 'câble télécom (Shom)' : 'câble sans nom');
 }
 
-function vesselRow(a: CableAlert, evaluated: boolean, isLate: boolean, canFocus: boolean, now: number): string {
-  const muted = a.zoneMuted === true;
-  const seen = a.confirmed
-    ? `confirmé sur deux relevés, vu de ${clockOf(a.firstSeen, now)} à ${clockOf(a.lastSeen, now)}`
-    : `vu une fois à ${clockOf(a.firstSeen, now)}, à confirmer`;
-  const parts = [alertCableLabel(a), formatKnots(a.speedKn, 1), a.navStatus === 1 ? 'au mouillage' : null, seen, muted ? MUTED_ZONE : null];
+/** Câbles d'un navire, noms répétés comptés : « BARMAR, 2 câbles télécom (Shom) » (jamais deux lignes jumelles, FX2). */
+function vesselCables(alerts: readonly CableAlert[]): string {
+  const counts = new Map<string, number>();
+  for (const a of alerts) counts.set(alertCableLabel(a), (counts.get(alertCableLabel(a)) ?? 0) + 1);
+  return [...counts].map(([name, n]) => (n > 1 && name.startsWith('câble ') ? `${counted(n, 'câble')} ${name.slice('câble '.length)}` : name)).join(', ');
+}
+
+/** Couleur la plus haute des alertes d'un navire (gris sous toutes les autres). */
+function topLevel(levels: ReadonlyArray<VigilanceLevel | 'gris'>): VigilanceLevel | 'gris' {
+  return levels.reduce<VigilanceLevel | 'gris'>((top, l) => (l !== 'gris' && (top === 'gris' || LEVEL_RANK[l] > LEVEL_RANK[top]) ? l : top), 'gris');
+}
+
+/**
+ * Une ligne par navire (arbitrage FX2 : la veille fait une alerte par navire et par câble), ses câbles listés ; distance du câble le
+ * plus proche ; couleur la plus haute de ses alertes ; zone muette seulement si toutes ses alertes le sont. Clic : la position de
+ * l'alerte la plus proche.
+ */
+function vesselRow(g: VesselCableAlerts, evaluated: boolean, isLate: boolean, canFocus: boolean, now: number): string {
+  const nearest = g.alerts[0];
+  const muted = g.alerts.every((a) => a.zoneMuted === true);
+  const confirmed = g.alerts.filter((a) => a.confirmed);
+  const firstOf = (list: readonly CableAlert[]): string => list.map((a) => a.firstSeen).sort()[0] ?? nearest.firstSeen;
+  const lastOf = (list: readonly CableAlert[]): string => list.map((a) => a.lastSeen).sort().at(-1) ?? nearest.lastSeen;
+  const seen = confirmed.length > 0
+    ? `confirmé sur deux relevés, vu de ${clockOf(firstOf(confirmed), now)} à ${clockOf(lastOf(confirmed), now)}`
+    : `vu une fois à ${clockOf(firstOf(g.alerts), now)}, à confirmer`;
+  const level = isLate || muted ? 'gris' : topLevel(g.alerts.filter((a) => a.zoneMuted !== true).map((a) => cableAlertLevel(a, evaluated)));
+  const parts = [vesselCables(g.alerts), formatKnots(nearest.speedKn, 1), nearest.navStatus === 1 ? 'au mouillage' : null, seen, muted ? MUTED_ZONE : null];
   return listRow({
-    text: `${a.name ?? `MMSI ${a.mmsi}`} · ${a.vesselType ?? 'type n.d.'}`, value: formatMeters(a.distanceM),
-    level: isLate || muted ? 'gris' : cableAlertLevel(a, evaluated), note: parts.filter((p): p is string => p !== null).join(' · '),
-    ...(canFocus ? { data: { vessel: a.id }, link: true } : {}),
+    text: `${nearest.name ?? `MMSI ${g.mmsi}`} · ${nearest.vesselType ?? 'type n.d.'}`, value: formatMeters(nearest.distanceM),
+    level, note: parts.filter((p): p is string => p !== null).join(' · '),
+    ...(canFocus ? { data: { vessel: nearest.id }, link: true } : {}),
   });
 }
 
@@ -250,9 +275,10 @@ function vesselsSection(input: ConnectiviteViewInput): FicheSection {
   const empty = frozen ? emptyLine(`${why} : alertes non évaluées.`)
     : w.slowVessels === null ? emptyLine('Aucune alerte dans le relevé ; compte des navires lents non évalué.')
     : emptyLine(`Aucun navire lent à moins de 500${NBSP}m d’un câble parmi ${counted(w.slowVessels, 'navire')} de moins de 2${NBSP}nœuds du relevé AIS.`);
-  const rows = alerts.length > 0 ? alerts.map((a) => vesselRow(a, w.evaluated, isLate, canFocus, now)).join('') : empty;
+  const rows = alerts.length > 0 ? alertsByVessel(alerts).map((g) => vesselRow(g, w.evaluated, isLate, canFocus, now)).join('') : empty;
   const muted = alerts.filter((a) => a.zoneMuted === true).length;
-  const evaluatedCount = alerts.length - muted;
+  // Navires (une ligne chacun), pas des alertes ; les alertes de zone muette restent comptées comme alertes.
+  const evaluatedCount = distinctVessels(alerts.filter((a) => a.zoneMuted !== true));
   const mutedSummary = `${counted(muted, 'alerte')} ${MUTED_ZONE}`;
   const summary = frozen ? 'non évalué'
     : alerts.length === 0 ? (w.slowVessels === null ? 'non évalué' : 'aucun')
@@ -267,6 +293,11 @@ function vesselsSection(input: ConnectiviteViewInput): FicheSection {
 }
 
 // ─── Méthode et sources ───
+
+/** Sources de la phase A nommées dans « Méthode et sources », dans l'ordre des lignes (tracés, zones réglementées, navires). */
+export const CONNECTIVITE_SOURCES_A: readonly string[] = ['Shom', 'OpenStreetMap', 'Shom réglementation', 'aisstream.io'];
+/** Toutes les sources de la méthode (la phase B ajoute toujours ses notes, connectiviteMethodB) : le résumé « N sources » en est déduit. */
+export const CONNECTIVITE_SOURCES: readonly string[] = [...CONNECTIVITE_SOURCES_A, ...CONNECTIVITE_SOURCES_B];
 
 function methodSection(input: ConnectiviteViewInput): FicheSection {
   const { watch: w, watchError, file, fileError, now, open } = input;
@@ -292,7 +323,10 @@ function methodSection(input: ConnectiviteViewInput): FicheSection {
       + `ni confirmées ni retirées ; la pastille passe à n.d. Zone muette d’un seul lot amont : ses alertes gardées sont « non évaluées (flux de la zone muet) », sans couleur. `
       + `Dernier message AIS de plus de 15${NBSP}minutes : en retard, couleurs retirées.`)
     + readErrors(w !== null ? w.errors.map(glueSovUnits) : []);
-  return { id: 'methode', title: 'Méthode et sources', collapsible: true, open: open('methode', false), tone: 'reference', html, summary: escapeHtml('4 sources') };
+  return {
+    id: 'methode', title: 'Méthode et sources', collapsible: true, open: open('methode', false), tone: 'reference', html,
+    summary: escapeHtml(sourcesSummary(CONNECTIVITE_SOURCES)),
+  };
 }
 
 // ─── Assemblage ───

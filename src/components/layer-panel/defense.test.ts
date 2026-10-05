@@ -17,7 +17,9 @@ import { renderLayerView } from './frame.ts';
 import { trafficBreakable } from './traffic-format.ts';
 import { glueSovUnits, sovBreakable } from './sovereignty-format.ts';
 import { shipRow, type NavyLiveInput } from './navy.ts';
-import { DEFENSE_TITLE, buildDefenseView, summarizeCuratedSites, vigipirateBadge, type DefenseSitesSummary, type DefenseViewInput } from './defense.ts';
+import {
+  DEFENSE_SOURCES, DEFENSE_TITLE, buildDefenseView, summarizeCuratedSites, vigipirateBadge, type DefenseSitesSummary, type DefenseViewInput,
+} from './defense.ts';
 
 const NOW = SOV_FIXTURE_NOW;
 const MIN = 60_000;
@@ -365,6 +367,13 @@ describe('sites de défense (O13)', () => {
 });
 
 describe('méthode et sources (S4, S5, O9, O10)', () => {
+  it('résumé « N sources » déduit de la liste, phase B comprise (FX2) ; chaque source de la liste est nommée dans la méthode', () => {
+    const s = sectionOf('methode');
+    const t = visibleText(s?.html ?? '');
+    expect(DEFENSE_SOURCES).toHaveLength(8);
+    expect(s?.summary).toBe(`${DEFENSE_SOURCES.length}${NBSP}sources`);
+    for (const name of DEFENSE_SOURCES) expect(t, name).toContain(name);
+  });
   it('adsb.lol sous ODbL, appareils d’État, mer territoriale, bloc OACI, comptes des appareils français, réponse ministérielle du JO, retard', () => {
     const h = sectionOf('methode')?.html ?? '';
     const t = visibleText(h);

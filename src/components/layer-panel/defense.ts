@@ -23,12 +23,12 @@ import type { FicheSection } from '../fiche/parts.ts';
 import { stackedDayBars, type DayStack } from './chart.ts';
 import { NBSP, frNumber } from './format.ts';
 import { emptyLine, listRow, loadingBody, sourceLinkHtml, valueHtml, type LayerHeadModel, type LayerView } from './frame.ts';
-import { withDefenseB } from './defense-b.ts';
+import { DEFENSE_SOURCES_B, withDefenseB } from './defense-b.ts';
 import { departementName } from './health-format.ts';
 import { frozenWord, homonymKeys, navyLiveState, shipRow, splitNavy, type NavyLiveInput, type NavyLiveState } from './navy.ts';
 import {
   EMERGENCY_WORD, FAMILY_COLOR, SOVEREIGNTY_THEME, SQUAWK_CAVEAT, SQUAWK_WORD, aircraftLabel, capitalize, clockOf, dataMs, dateOf,
-  emptyOrDown, formatCount, formatFeet, formatKnots, glueSovUnits, note, plural, readErrors, sourceDown, stamp,
+  emptyOrDown, formatCount, formatFeet, formatKnots, glueSovUnits, note, plural, readErrors, sourceDown, sourcesSummary, stamp,
 } from './sovereignty-format.ts';
 
 export type OpenFn = (sectionId: string, byDefault: boolean) => boolean;
@@ -444,6 +444,11 @@ function sitesSection(input: DefenseViewInput): FicheSection {
 
 // ─── Méthode et sources (S4, S5) ───
 
+/** Sources de la phase A nommées dans « Méthode et sources », dans l'ordre des lignes (aéronefs, Marine, Vigipirate, sites). */
+export const DEFENSE_SOURCES_A: readonly string[] = ['adsb.lol', 'aisstream.io', 'site internet du SGDSN', 'liste interne de sites publics', 'ouvrages OpenStreetMap'];
+/** Toutes les sources de la méthode (la phase B ajoute toujours ses notes, defenseMethodB) : le résumé « N sources » en est déduit. */
+export const DEFENSE_SOURCES: readonly string[] = [...DEFENSE_SOURCES_A, ...DEFENSE_SOURCES_B];
+
 function methodSection(input: DefenseViewInput): FicheSection {
   const { military: m, militaryError, navy, vigipirate, now, open } = input;
   const read = m !== null && m.readAt !== null;
@@ -467,7 +472,10 @@ function methodSection(input: DefenseViewInput): FicheSection {
     + note(`Urgences : code 7500, 7600 ou 7700, ou champ « emergency » publié, confirmés sur deux lectures du serveur ; ${SQUAWK_CAVEAT}.`)
     + note(`Retard : relevé de plus de 10${NBSP}min ; la pastille passe à n.d. et les couleurs sont retirées.`)
     + readErrors(m !== null ? m.errors.map(glueSovUnits) : []);
-  return { id: 'methode', title: 'Méthode et sources', collapsible: true, open: open('methode', false), tone: 'reference', html, summary: escapeHtml('4 sources') };
+  return {
+    id: 'methode', title: 'Méthode et sources', collapsible: true, open: open('methode', false), tone: 'reference', html,
+    summary: escapeHtml(sourcesSummary(DEFENSE_SOURCES)),
+  };
 }
 
 // ─── Assemblage ───

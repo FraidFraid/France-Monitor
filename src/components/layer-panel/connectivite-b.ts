@@ -267,6 +267,9 @@ export function echangesSection(input: ConnectiviteViewInput): FicheSection {
   return { ...base, summary: escapeHtml(`${x.items.length} en France (PeeringDB)`), html };
 }
 
+/** Sources de la phase B nommées dans « Méthode et sources » (le résumé « N sources » en est déduit, connectivite.ts). */
+export const CONNECTIVITE_SOURCES_B: readonly string[] = ['RIPEstat', 'PeeringDB'];
+
 /** Notes de méthode de la phase B (ajoutées à la fin de « Méthode et sources »). */
 export function connectiviteMethodB(): string {
   return `<p class="fmk-note">${escapeHtml('Visibilité des réseaux : ')}${sourceLinkHtml('RIPEstat (RIPE NCC), routing-status', RIPESTAT_URL)}`
