@@ -74,7 +74,8 @@ const DEFENSE_ITEMS: readonly LegendItem[] = [
 ];
 const OSM_WORKS_ITEM: LegendItem = { id: 'osm-works', label: 'Ouvrage OpenStreetMap (ODbL 1.0)', color: BASE_TYPE_HEX.fortification, shape: 'circle' };
 const DEFENSE_NOTES: readonly string[] = [
-  `Au-dessus de la France : département métropolitain, ou moins de 22${NBSP}km de la côte en mer ; pays par bloc d’adresse OACI.`,
+  // S5 : la mer territoriale en milles, comme le panneau (jamais « 22 km »).
+  `Au-dessus de la France : département métropolitain, ou au-dessus de la mer territoriale (moins de 12${NBSP}milles de la côte) ; pays par bloc d’adresse OACI.`,
   'Un appareil absent du flux n’est pas absent du ciel.',
   'Sites : liste interne de sites publics, sans date par site.',
 ];

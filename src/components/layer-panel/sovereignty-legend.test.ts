@@ -10,6 +10,7 @@ import {
   BASE_TYPE_HEX, CABLE_HEX, CLAIMS_HEX, CONNECTIVITY_LEGEND, CYBER_LEGEND, DEFENSE_LEGEND, KEV_CITED_HEX, KEV_HEX, LANDING_HEX, MIL_AUTRES_HEX,
   MIL_FRANCAIS_HEX, NAVY_HEX, SOV_ABROAD_HEX, connectivityLegend, cyberLegend, defenseLegend,
 } from './sovereignty-legend.ts';
+import { NBSP } from './format.ts';
 import { sovBreakable } from './sovereignty-format.ts';
 
 const css = readFileSync(new URL('../../styles/main.css', import.meta.url), 'utf8');
@@ -69,6 +70,9 @@ describe('légendes de base : sources réellement appelées, jamais « temps ré
       'Urgence vue une fois', 'Bâtiment vu en AIS (heure en étiquette)', 'Port base : position de référence, pas une observation',
     ]) expect(t).toContain(label);
     expect(t).not.toContain('Zone interdite');
+    // S5 (FX2) : la mer territoriale en milles, comme le panneau ; plus jamais « 22 km ».
+    expect(t).toContain(`au-dessus de la mer territoriale (moins de 12${NBSP}milles de la côte)`);
+    expect(t).not.toMatch(/22.km/);
     const color = (id: string): string | undefined => DEFENSE_LEGEND.items.find((i) => i.id === id)?.color;
     expect(color('mil-francais')).toBeUndefined();
     expect([color('mil-autres'), color('mil-abroad'), color('mil-emergency-confirmed'), color('mil-emergency-once')])

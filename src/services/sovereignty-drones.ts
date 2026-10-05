@@ -1,8 +1,8 @@
 // src/services/sovereignty-drones.ts : fichier des zones drones DGAC (spec 2026-10-04 souveraineté § 3.2 ; contrats § 1.2, § 3.3 ;
 // amendement 7, S6 ; réexporté par sovereignty-military.ts). Fichier statique de l'application (pas une source tierce), hors du
-// précache : lu une fois par session, à la demande (option de la couche Défense ou ouverture du panneau), garde de forme exacte,
-// jamais de rejet ; un échec n'est pas gardé. Titre, légende et renvoi aux sources qui font foi (S6) recopiés de api/_lib/drone-zones.js
-// (un test du contrat vérifie l'identité des textes).
+// précache : lu une fois par session, à l'activation de l'option « Zones drones DGAC » de la couche Défense (jamais à l'ouverture du
+// panneau, câblage de B28), garde de forme exacte, jamais de rejet ; un échec n'est pas gardé. Titre, légende et renvoi aux sources
+// qui font foi (S6) recopiés de api/_lib/drone-zones.js (un test du contrat vérifie l'identité des textes).
 import type { DroneZonesFile } from '../types/index.ts';
 import {
   describeProblems, isCount, isNum, isStr, list, record, shapeOf, value,
