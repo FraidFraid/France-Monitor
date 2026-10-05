@@ -129,20 +129,23 @@ describe('fichier publié public/data/drone-restrictions.json (généré par le 
     expect(file.counts.agglomerations + file.counts.kept).toBeLessThanOrEqual(file.counts.volInterdit);
     // un fichier tronqué échoue : au plus 5 zones dégénérées écartées sur les hors-agglomération
     expect(file.counts.volInterdit - file.counts.agglomerations - file.counts.kept).toBeLessThanOrEqual(5);
+    // Défauts collectés puis une seule assertion : un expect par sommet (des centaines de milliers) dépassait le délai de 5 s quand la
+    // machine est chargée (suite entière, serveur de dev).
+    const defects: string[] = [];
     for (const z of file.zones) {
-      expect(z.id).toMatch(/^\d+$/);
-      expect(isAgglomeration(z.remarque)).toBe(false);
-      expect(z.polygons.length).toBeGreaterThan(0);
+      if (!/^\d+$/.test(z.id)) defects.push(`${z.id} : identifiant`);
+      if (isAgglomeration(z.remarque)) defects.push(`${z.id} : agglomération`);
+      if (z.polygons.length === 0) defects.push(`${z.id} : sans polygone`);
       for (const ring of z.polygons.flat()) {
-        expect(ring.length).toBeGreaterThanOrEqual(4);
-        expect(ring[0]).toEqual(ring[ring.length - 1]);
+        const first = ring[0];
+        const last = ring[ring.length - 1];
+        if (ring.length < 4) defects.push(`${z.id} : anneau de ${ring.length} points`);
+        if (!first || !last || first[0] !== last[0] || first[1] !== last[1]) defects.push(`${z.id} : anneau non fermé`);
         for (const [lon, lat] of ring) {
-          expect(lon).toBeGreaterThan(-6);
-          expect(lon).toBeLessThan(10.5);
-          expect(lat).toBeGreaterThan(40.5);
-          expect(lat).toBeLessThan(52);
+          if (!(lon > -6 && lon < 10.5 && lat > 40.5 && lat < 52)) defects.push(`${z.id} : sommet hors métropole ${lon},${lat}`);
         }
       }
     }
+    expect(defects.slice(0, 10)).toEqual([]);
   });
 });
