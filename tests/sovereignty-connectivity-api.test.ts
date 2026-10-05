@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __resetSwrCacheForTests } from '../api/_utils/swr-cache.js';
 import { __resetKvForTests, __setKvClientForTests, readSeries } from '../api/_lib/kv-history.js';
 import {
-  MAJOR_NETWORKS, RIPE_PENDING_NOTE, RIPE_SAMPLES_KEY, RIPE_SAMPLES_MAX_AGE_MS, __resetRipeForTests, ensureRipeFresh, parseRoutingStatus, routingStatusUrl,
+  MAJOR_NETWORKS, RIPE_PENDING_NOTE, RIPE_SAMPLES_KEY, RIPE_SAMPLES_MAX_AGE_MS, RIPE_TIMEOUT_MS, __resetRipeForTests, ensureRipeFresh, parseRoutingStatus,
+  routingStatusUrl,
 } from '../api/_lib/ripestat.js';
 import { PEERINGDB_IX_URL, parseIx } from '../api/_lib/peeringdb.js';
 import handler, { CACHE_CONTROL, PENDING_CACHE_CONTROL, loadConnectivity } from '../api/_handlers/sovereignty/connectivity.js';
@@ -106,6 +107,37 @@ describe('relève RIPEstat', () => {
     await ensureRipeFresh(NOW + 3 * H);
     expect((await readSeries(RIPE_SAMPLES_KEY, { maxAgeMs: RIPE_SAMPLES_MAX_AGE_MS, now: NOW + 3 * H })).map((s) => s.at))
       .toEqual(['2026-10-04T08:00:00.000Z', '2026-10-04T16:00:00.000Z']);
+  });
+  it('délai de 60 s (constante unique) ; Orange hors délai deux fois : relu une fois en fin de relève, panne nommée, aucun échantillon', async () => {
+    expect(RIPE_TIMEOUT_MS).toBe(60_000);
+    const log = sources('2026-10-04T08:00:00', (url) => {
+      if (url.includes('resource=AS3215&')) throw new DOMException('signal timed out', 'TimeoutError');
+      return null;
+    });
+    const r = await ensureRipeFresh(NOW);
+    expect(r.networks.map((n) => n.name)).toEqual(['SFR', 'Bouygues Telecom', 'Free', 'RENATER', 'OVHcloud']);
+    expect(r.errors).toEqual(['RIPEstat, AS3215 : délai dépassé (60000 ms)']);
+    expect(log.urls.filter((u) => u.includes('resource=AS3215&'))).toHaveLength(2);
+    expect(log.urls.at(-1)).toBe(routingStatusUrl(3215));
+    expect(await readSeries(RIPE_SAMPLES_KEY, { maxAgeMs: RIPE_SAMPLES_MAX_AGE_MS, now: NOW })).toEqual([]);
+  });
+  it('Orange hors délai à la première lecture, lu à la seconde : six réseaux, aucune panne, un échantillon', async () => {
+    let orangeCalls = 0;
+    const log = sources('2026-10-04T08:00:00', (url) => {
+      if (url.includes('resource=AS3215&') && orangeCalls++ === 0) throw new DOMException('signal timed out', 'TimeoutError');
+      return null;
+    });
+    const r = await ensureRipeFresh(NOW);
+    expect([r.networks.length, r.errors]).toEqual([6, []]);
+    expect(log.urls).toHaveLength(7);
+    expect(log.urls.at(-1)).toBe(routingStatusUrl(3215));
+    expect(await readSeries(RIPE_SAMPLES_KEY, { maxAgeMs: RIPE_SAMPLES_MAX_AGE_MS, now: NOW })).toEqual([{ at: '2026-10-04T08:00:00.000Z', minPct: 99.38 }]);
+  });
+  it('limite de débit (HTTP 429) : jamais de seconde tentative', async () => {
+    const log = sources('2026-10-04T08:00:00', (url) => (url.includes('resource=AS15557&') ? respond('trop de requêtes', 429) : null));
+    const r = await ensureRipeFresh(NOW);
+    expect(r.errors).toEqual(['RIPEstat, AS15557 : HTTP 429']);
+    expect(log.urls).toHaveLength(6);
   });
   it('aucun réseau lu : dernier relevé servi avec sa date, six pannes nommées', async () => {
     sources();

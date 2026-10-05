@@ -1,8 +1,9 @@
 // api/_lib/ripestat.js : visibilité Internet des six grands réseaux français (spec 2026-10-04 souveraineté § 3.3 ; contrats § 2.6,
 // arbitrage 31 ; faits § 5.4). RIPEstat « routing-status » (routeurs témoins RIS) : instantanés de 00 h, 08 h et 16 h UTC, jamais en
-// continu ; relevé toutes les heures (six appels, deux à la fois, sourceapp=francemonitor, délai de 30 s : la première requête est
-// lente). Visibilité = min(pairs qui voient le réseau en IPv4 / total, en IPv6 / total) × 100. L'échantillon de la visibilité minimale
-// n'entre dans la série de 30 jours que si les six réseaux sont lus, une fois par instantané. Dernier relevé gardé en KV, servi daté.
+// continu ; relevé toutes les heures (six appels, deux à la fois, sourceapp=francemonitor, délai de 60 s : une requête froide est
+// lente, 41 s mesurées pour Orange le 05/10 ; les réseaux non lus sont relus une fois en fin de relève, revue finale I2). Visibilité =
+// min(pairs qui voient le réseau en IPv4 / total, en IPv6 / total) × 100. L'échantillon de la visibilité minimale n'entre dans la
+// série de 30 jours que si les six réseaux sont lus, une fois par instantané. Dernier relevé gardé en KV, servi daté.
 import { appendSample, kvGetJson, kvSetJson } from './kv-history.js';
 import { mapLimit } from './map-limit.js';
 import { fetchStrictJson, sourceError } from './source-http.js';
@@ -12,7 +13,8 @@ export const MAJOR_NETWORKS = [
   { asn: 2200, name: 'RENATER' }, { asn: 16276, name: 'OVHcloud' },
 ];
 export const RIPE_INTERVAL_MS = 60 * 60_000;
-export const RIPE_TIMEOUT_MS = 30_000;
+/** Délai d'une lecture `routing-status` (constante unique) : une requête froide a pris 41 s pour Orange (AS3215) le 05/10. */
+export const RIPE_TIMEOUT_MS = 60_000;
 export const RIPE_LAST_KEY = 'sov:ripe:last';
 export const RIPE_SAMPLES_KEY = 'sov:ripe:samples';
 /** Préfixes annoncés par réseau (IPv4 + IPv6), 30 jours, mêmes instantanés complets : historique de la règle de baisse (S8, seuil posé par B26). */
@@ -77,16 +79,33 @@ function errorsOf(record) {
   return record && typeof record === 'object' && Array.isArray(record.errors) ? record.errors : [];
 }
 
+/** Lecture d'un réseau. */
+async function readNetwork(n) {
+  return parseRoutingStatus(await fetchStrictJson(routingStatusUrl(n.asn), { timeoutMs: RIPE_TIMEOUT_MS }), n.asn, n.name);
+}
+
+/** Seconde tentative permise, sauf sous une limite de débit (HTTP 429) ou une page anti-robot : jamais relancer un refus. */
+function retryable(err) {
+  const kind = err && typeof err === 'object' ? err.kind : undefined;
+  const status = err && typeof err === 'object' ? err.status : undefined;
+  return kind !== 'challenge' && status !== 429;
+}
+
 /**
- * Un relevé : six appels, deux à la fois ; au moins un réseau lu : nouveau relevé (pannes nommées) ; aucun : dernier relevé gardé.
+ * Un relevé : six appels, deux à la fois, puis une seconde tentative des seuls réseaux non lus (une fois son résultat calculé,
+ * RIPEstat répond vite) ; au moins un réseau lu : nouveau relevé (pannes nommées, celles de la seconde tentative) ; aucun : dernier
+ * relevé gardé.
  * @param {number} [now]
  */
 export async function collectRipe(now = Date.now()) {
   const attemptedAt = new Date(now).toISOString();
   const stored = await kvGetJson(RIPE_LAST_KEY, now);
-  const results = await mapLimit(MAJOR_NETWORKS, 2, async (n) => parseRoutingStatus(
-    await fetchStrictJson(routingStatusUrl(n.asn), { timeoutMs: RIPE_TIMEOUT_MS }), n.asn, n.name,
-  ));
+  const results = await mapLimit(MAJOR_NETWORKS, 2, readNetwork);
+  const unread = results.flatMap((r, i) => (!r.ok && retryable(r.error) ? [i] : []));
+  if (unread.length > 0) {
+    const again = await mapLimit(unread.map((i) => MAJOR_NETWORKS[i]), 2, readNetwork);
+    again.forEach((r, j) => { results[unread[j]] = r; });
+  }
   const errors = [];
   const read = [];
   results.forEach((r, i) => {
