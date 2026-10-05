@@ -316,7 +316,7 @@ function methodSection(input: ConnectiviteViewInput): FicheSection {
     + note(`Atterrage : extrémité d’un tracé située dans un département français ou à moins de 2${NBSP}km de sa côte, nommée par la commune la plus proche.`)
     + note('Limites maritimes approchées (Menton, Hendaye) : une alerte près d’une frontière se lit comme approchée.')
     + note(`${NEVER_A_THREAT} Écartés : vitesse inconnue, navires amarrés, bâtiments militaires français (type AIS 35, ou nom AIS « FRENCH WARSHIP » `
-      + 'sous MMSI français) ; hors des approches d’atterrage, un navire au mouillage reste compté. '
+      + 'sous pavillon français, outre-mer compris) ; hors des approches d’atterrage, un navire au mouillage reste compté. '
       + 'Un navire dans une zone de mouillage du Shom qui ne recoupe pas une zone de câbles n’est pas signalé.')
     + note(APPROACH_RULE)
     + note(`Veille non évaluée (flux AIS muet depuis plus de 5${NBSP}minutes, relais injoignable ou fichier des câbles illisible) : alertes gardées, `

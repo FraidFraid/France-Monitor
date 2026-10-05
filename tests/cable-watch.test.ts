@@ -152,16 +152,19 @@ describe('cableHits (exclusions de l’arbitrage 8 et S9)', () => {
       ['229000009:shom/FR000013709500001', null, 115, 0.6],
     ]);
   });
-  it('FX2 : « FRENCH WARSHIP » sous MID 226 à 228, sans type AIS (base navale de Toulon, 05/10) : écarté ; ailleurs, retenu', () => {
+  it('FX2 : « FRENCH WARSHIP » sous pavillon français, métropole ou outre-mer, sans type AIS (base navale de Toulon, 05/10) : écarté', () => {
     const at = { lat: 42.85, lon: 4.853, sog: 0, status: 0, type: null, typeCode: null, lastAt: iso(T0 - 10_000) };
     const warship: Vessel = { ...at, mmsi: '228000012', name: 'FRENCH WARSHIP' };
     const spaced: Vessel = { ...at, mmsi: '226000013', name: '  french warship 12' };
     const foreign: Vessel = { ...at, mmsi: '235000014', name: 'FRENCH WARSHIP' };
-    const overseas: Vessel = { ...at, mmsi: '329000015', name: 'FRENCH WARSHIP' };
+    const guadeloupe: Vessel = { ...at, mmsi: '329000015', name: 'FRENCH WARSHIP' };          // MID 329 : Guadeloupe
+    const reunion: Vessel = { ...at, mmsi: '660000017', name: 'French Warship' };             // MID 660 : La Réunion
     const other: Vessel = { ...at, mmsi: '227000016', name: 'EX FRENCH WARSHIP' };
-    expect([warship, spaced, foreign, overseas, other].map(isFrenchWarship)).toEqual([true, true, false, false, false]);
+    expect([warship, spaced, foreign, guadeloupe, reunion, other].map(isFrenchWarship)).toEqual([true, true, false, true, true, false]);
     expect(isFrenchWarship(frenchNavy)).toBe(true);                    // type AIS 35 sous pavillon français, inchangé
-    expect(cableHits([warship, spaced, foreign, overseas, other], FILE).map((h) => h.mmsi).sort()).toEqual(['227000016', '235000014', '329000015']);
+    expect(isFrenchWarship({ ...frenchNavy, mmsi: '540000018' })).toBe(true);   // type 35 sous MID 540 (Nouvelle-Calédonie)
+    expect(isFrenchWarship(foreignNavy)).toBe(false);                  // type 35 étranger : retenu, comme avant
+    expect(cableHits([warship, spaced, foreign, guadeloupe, reunion, other], FILE).map((h) => h.mmsi).sort()).toEqual(['227000016', '235000014']);
   });
 });
 

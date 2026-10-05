@@ -3,8 +3,8 @@
 // françaises, moins de 2 nœuds, vitesse connue) toutes les 5 min et les rapproche des tracés du fichier des câbles
 // (public/data/subsea-cables.json : câbles télécom du Shom en référence, compléments OpenStreetMap) : un navire à moins de 500 m d'un
 // tracé est « à vérifier », jamais une « menace ». Écartés : vitesse inconnue (une absence n'est jamais un arrêt), message sans heure
-// lisible, statut AIS 5 « amarré », bâtiment militaire français (type AIS 35 sous pavillon français, ou MMSI de MID 226 à 228 dont le
-// nom AIS commence par « FRENCH WARSHIP », type souvent absent : relevé du 05/10 dans la base navale de Toulon), navire dans une zone
+// lisible, statut AIS 5 « amarré », bâtiment militaire français (sous pavillon français, métropole ou outre-mer : type AIS 35, ou nom
+// AIS qui commence par « FRENCH WARSHIP », type souvent absent : relevé du 05/10 dans la base navale de Toulon), navire dans une zone
 // de mouillage du Shom où le mouillage est permis et qui ne recoupe aucune zone de câbles (S9 : il est à sa place). Approches
 // d'atterrage et ports (moins de 2 km d'un atterrage du fichier, FX2) : seul un navire déclaré au mouillage (statut 1) dans une zone
 // de câbles du Shom, où le mouillage est réglementé, y est retenu ; les autres sont à quai ou au port (relevé du 05/10 : 25 alertes
@@ -37,8 +37,7 @@ export const LANDING_APPROACH_KM = 2;
 const MOORED = 5;
 const AT_ANCHOR = 1;
 const MILITARY_TYPE = 35;
-/** MID de la France métropolitaine : seul un MMSI de ces codes porte le nom « FRENCH WARSHIP » d'un bâtiment de la Marine (FX2). */
-const FRENCH_WARSHIP_MIDS = new Set(['226', '227', '228']);
+/** Nom AIS des bâtiments de la Marine nationale sans message statique (FX2) ; retenu sous pavillon français seulement (isFrenchFlag). */
 const FRENCH_WARSHIP_NAME = 'FRENCH WARSHIP';
 /** Une relève d'une minute peut arriver quelques millisecondes avant l'échéance : tolérance de 5 s. */
 const TICK_TOLERANCE_MS = 5_000;
@@ -69,14 +68,15 @@ function boxOf(cable) {
 }
 
 /**
- * Bâtiment militaire français : type AIS 35 sous pavillon français, ou MMSI de MID 226 à 228 dont le nom AIS commence par
- * « FRENCH WARSHIP » (espaces de tête et casse ignorés) : la Marine nationale émet souvent ce nom sans message statique, donc sans type.
+ * Bâtiment militaire français, sous pavillon français (isFrenchFlag : métropole et outre-mer, MID 226 à 228, 329, 501, 540…) : type
+ * AIS 35, ou nom AIS qui commence par « FRENCH WARSHIP » (espaces de tête et casse ignorés) ; la Marine nationale émet souvent ce nom
+ * sans message statique, donc sans type (arbitrage FX2, deuxième tour : outre-mer compris).
  * @param {{ mmsi: string, name?: string | null, typeCode?: number | null }} v
  */
 export function isFrenchWarship(v) {
-  if (v.typeCode === MILITARY_TYPE && isFrenchFlag(v.mmsi)) return true;
-  return FRENCH_WARSHIP_MIDS.has(String(v.mmsi).slice(0, 3))
-    && typeof v.name === 'string' && v.name.trim().toUpperCase().startsWith(FRENCH_WARSHIP_NAME);
+  if (!isFrenchFlag(v.mmsi)) return false;
+  return v.typeCode === MILITARY_TYPE
+    || (typeof v.name === 'string' && v.name.trim().toUpperCase().startsWith(FRENCH_WARSHIP_NAME));
 }
 
 /**
