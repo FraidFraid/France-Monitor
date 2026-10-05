@@ -179,11 +179,11 @@ describe('sites de défense, ouvrages OpenStreetMap', () => {
 
 describe('Connectivité : câbles du Shom et d’OpenStreetMap avec leur source, atterrages par commune, navires signalés', () => {
   const file = CABLES_FILE_FIXTURE();
-  it('55 câbles en MultiLineString [lng, lat] : 19 du Shom (préfixe shom/), 36 d’OpenStreetMap ; atterrages par point', () => {
+  it('53 câbles en MultiLineString [lng, lat] : 19 du Shom (préfixe shom/), 34 d’OpenStreetMap ; atterrages par point', () => {
     const cables = cableFeatures(file);
-    expect(cables.features).toHaveLength(55);
+    expect(cables.features).toHaveLength(53);
     expect(cables.features.filter((f) => String(f.id).startsWith('shom/'))).toHaveLength(19);
-    expect(cables.features.filter((f) => String(f.id).startsWith('way/'))).toHaveLength(36);
+    expect(cables.features.filter((f) => String(f.id).startsWith('way/'))).toHaveLength(34);
     expect(cables.features.every((f) => f.geometry.type === 'MultiLineString')).toBe(true);
     expect(landingFeatures(file).features).toHaveLength(file.cables.reduce((n, c) => n + c.landings.length, 0));
     expect(cableFeatures(null).features).toHaveLength(0);

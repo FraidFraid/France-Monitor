@@ -143,8 +143,9 @@ const MILITARY_MASKED_EMERGENCY: MilitaryResponse = {
 };
 
 /**
- * 55 câbles télécom (19 du Shom, dont un hors service et un tronçon au large sans atterrage ; 36 compléments OpenStreetMap),
- * 69 atterrages, 2 zones de câbles et 10 zones de mouillage du Shom ; tracés éclaircis pour le jeu d'essai.
+ * 53 câbles télécom (19 du Shom, dont un hors service et un tronçon au large sans atterrage ; 34 compléments OpenStreetMap),
+ * 67 atterrages, 2 zones de câbles et 10 zones de mouillage du Shom ; tracés éclaircis pour le jeu d'essai. Liaisons électriques
+ * Normandie 1 et 2 retirées comme dans la sortie du script (revue finale M5).
  */
 const CABLES_FILE: SubseaCablesFile = {
   "generatedAt": "2026-10-04T14:48:00.000Z",
@@ -153,7 +154,7 @@ const CABLES_FILE: SubseaCablesFile = {
     {"source":"Shom","dataset":"Conduites et câbles sous-marins répertoriés par le Shom","layer":"CABLES_BDD_WFS:cblsub_lv","licence":"CC BY-SA","attribution":"Shom","edition":"2019-01-07","url":"https://www.data.gouv.fr/datasets/conduites-et-cables-sous-marins-repertories-par-le-shom/","count":19},
     {"source":"Shom","dataset":"Réglementation - Navigation","layer":"REGLEMENTATION_NAVIGATION_BDD_WFS:cblare_polygon","licence":"Licence ouverte 2.0","attribution":"Shom","edition":"2021-07","url":"https://www.data.gouv.fr/datasets/reglementation-navigation-1/","count":2},
     {"source":"Shom","dataset":"Réglementation - Navigation","layer":"REGLEMENTATION_NAVIGATION_BDD_WFS:achare_polygon","licence":"Licence ouverte 2.0","attribution":"Shom","edition":"2021-07","url":"https://www.data.gouv.fr/datasets/reglementation-navigation-1/","count":10},
-    {"source":"OpenStreetMap","dataset":"OpenStreetMap","layer":"Overpass","licence":"ODbL 1.0","attribution":"© les contributeurs d'OpenStreetMap","edition":"2026-10-04T14:47:16Z","url":"https://www.openstreetmap.org/copyright","count":36}
+    {"source":"OpenStreetMap","dataset":"OpenStreetMap","layer":"Overpass","licence":"ODbL 1.0","attribution":"© les contributeurs d'OpenStreetMap","edition":"2026-10-04T14:47:16Z","url":"https://www.openstreetmap.org/copyright","count":34}
   ],
   "cables": [
     {"id":"shom/FR000013709500001","name":null,"operator":null,"path":[[[4.4806,41.2395],[4.9774,41.4194],[6.1,41.825],[6.4667,41.95],[6.5792,41.975],[6.8333,42.0667],[6.9533,42.1608],[7.0833,42.2458],[7.45,42.55],[7.936,42.6333],[8.4833,43.1],[8.4915,43.2462]]],"landings":[],"source":"Shom","licence":"CC BY-SA","outOfService":false},
@@ -176,8 +177,6 @@ const CABLES_FILE: SubseaCablesFile = {
     {"id":"shom/FR000019846100003","name":null,"operator":null,"path":[[[5.3758,43.2583],[5.3611,43.2535],[5.3545,43.245],[5.3481,43.2417],[5.3392,43.24],[5.329,43.2358],[5.3162,43.2272],[5.3066,43.217],[5.3074,43.1995],[5.349,43.0881],[5.3648,43.0681]]],"landings":[{"commune":"Marseille","dept":"13","lat":43.25834,"lon":5.3758}],"source":"Shom","licence":"CC BY-SA","outOfService":false},
     {"id":"shom/FR000019846200003","name":null,"operator":null,"path":[[[5.3677,43.2449],[5.3658,43.2488],[5.3619,43.2489],[5.359,43.2483],[5.3567,43.247],[5.3546,43.2447],[5.3214,43.2155],[5.3209,43.206],[5.3605,43.0917]]],"landings":[{"commune":"Marseille","dept":"13","lat":43.24489,"lon":5.36774}],"source":"Shom","licence":"CC BY-SA","outOfService":false},
     {"id":"way/78424042","name":"Apollo South","operator":"Apollo","path":[[[-3.5472,48.7463],[-3.6906,48.7567],[-3.8015,48.8535],[-3.9473,48.9516],[-4.6833,48.9617],[-4.9332,49],[-5.3931,49.0833],[-5.8833,49.0843],[-6.1813,49.08],[-7.0318,49.0619],[-7.5521,48.8239],[-7.8814,48.6218]]],"landings":[{"commune":"Trébeurden","dept":"22","lat":48.7463,"lon":-3.54723}],"source":"OpenStreetMap","licence":"ODbL 1.0","outOfService":false},
-    {"id":"way/78427965","name":"Normandie 2","operator":"Channel Islands Electricity Grid","path":[[[-1.6838,49.2886],[-1.6906,49.2861],[-1.6975,49.2846],[-1.7136,49.2815],[-1.7196,49.2801],[-1.7305,49.2781],[-1.8457,49.2361],[-1.9211,49.2194],[-2.0115,49.2077],[-2.0222,49.2131],[-2.024,49.2141],[-2.0261,49.2122]]],"landings":[{"commune":"Bretteville-sur-Ay","dept":"50","lat":49.28859,"lon":-1.68382}],"source":"OpenStreetMap","licence":"ODbL 1.0","outOfService":false},
-    {"id":"way/78427970","name":"Normandie 1","operator":"Channel Islands Electricity Grid","path":[[[-1.6828,49.2892],[-1.7027,49.2833],[-1.7199,49.2828],[-1.7465,49.2757],[-1.7684,49.2631],[-1.7952,49.2557],[-1.8445,49.2408],[-1.8875,49.2317],[-1.9626,49.2165],[-2.0033,49.208],[-2.0149,49.2093],[-2.0261,49.2122]]],"landings":[{"commune":"Bretteville-sur-Ay","dept":"50","lat":49.28917,"lon":-1.68283}],"source":"OpenStreetMap","licence":"ODbL 1.0","outOfService":false},
     {"id":"way/78434985","name":"SEA-ME-WE3 SEG 10.1","operator":"BT","path":[[[-4.3444,47.8395],[-5.2393,47.9294],[-5.8106,48.3288],[-5.7044,48.5781],[-5.6185,48.7069],[-5.5575,48.7665],[-5.38,49.1243],[-5.3548,49.1906],[-5.311,49.3236],[-5.1734,49.7276],[-5.1181,49.9334],[-5.1635,50.0057]]],"landings":[{"commune":"Penmarch","dept":"29","lat":47.8395,"lon":-4.34437}],"source":"OpenStreetMap","licence":"ODbL 1.0","outOfService":false},
     {"id":"way/78444037","name":"Ulysses 1","operator":"Verizon Business","path":[[[1.3836,51.1501],[1.4677,51.1015],[1.5003,51.101],[1.7836,51.1012],[1.7843,51.1005],[1.8512,51.0838],[1.8675,51.0835],[1.8678,51.0677],[1.8681,51.0678],[1.8848,51.0341],[1.8848,51.0183],[1.8846,50.9674]]],"landings":[{"commune":"Calais","dept":"62","lat":50.96742,"lon":1.8846}],"source":"OpenStreetMap","licence":"ODbL 1.0","outOfService":false},
     {"id":"way/78444059","name":"UK-France 4 - Seg 3","operator":"BT","path":[[[1.7323,51.103],[1.811,51.1077],[1.8265,51.1115],[1.911,51.1182],[1.9267,51.1058],[1.9568,51.0858],[1.9637,51.0793],[1.9872,51.0592],[1.9907,51.0518],[2.0148,51.0288],[2.0175,51.0258],[2.0327,51.0043]]],"landings":[{"commune":"Oye-Plage","dept":"62","lat":51.00433,"lon":2.03265}],"source":"OpenStreetMap","licence":"ODbL 1.0","outOfService":false},
@@ -231,14 +230,14 @@ const CABLES_FILE: SubseaCablesFile = {
 };
 
 /** Relevé du relais de 16 h 47 : AIS à jour, deux navires lents loin des tracés ou amarrés, aucune alerte. */
-const CABLES_WATCH: CablesWatchResponse = {"readAt":"2026-10-04T14:47:00.000Z","aisLastMessageAt":"2026-10-04T14:46:58.000Z","evaluated":true,"cablesFile":{"generatedAt":"2026-10-04T14:48:00.000Z","osmBase":"2026-10-04T14:47:16Z","cables":55,"landings":69},"slowVessels":2,"alerts":[],"errors":[]};
+const CABLES_WATCH: CablesWatchResponse = {"readAt":"2026-10-04T14:47:00.000Z","aisLastMessageAt":"2026-10-04T14:46:58.000Z","evaluated":true,"cablesFile":{"generatedAt":"2026-10-04T14:48:00.000Z","osmBase":"2026-10-04T14:47:16Z","cables":53,"landings":67},"slowVessels":2,"alerts":[],"errors":[]};
 
 /** Relevés de 16 h 41 et 16 h 47 : cargo au mouillage à 304 m d'AMITIE revu 6 min plus tard (confirmé), bâtiment étranger à 117 m vu une fois. */
 const CABLES_WATCH_ALERTS: CablesWatchResponse = {
   "readAt": "2026-10-04T14:47:00.000Z",
   "aisLastMessageAt": "2026-10-04T14:46:58.000Z",
   "evaluated": true,
-  "cablesFile": {"generatedAt":"2026-10-04T14:48:00.000Z","osmBase":"2026-10-04T14:47:16Z","cables":55,"landings":69},
+  "cablesFile": {"generatedAt":"2026-10-04T14:48:00.000Z","osmBase":"2026-10-04T14:47:16Z","cables":53,"landings":67},
   "slowVessels": 4,
   "alerts": [
     {"id":"229000001:way/761201757","mmsi":"229000001","name":"CARGO ESSAI","vesselType":"Cargo","cableId":"way/761201757","cableName":"AMITIE","lat":42.85,"lon":4.8558,"distanceM":304,"speedKn":1,"navStatus":1,"firstSeen":"2026-10-04T14:40:50.000Z","lastSeen":"2026-10-04T14:46:50.000Z","confirmed":true,"zoneMuted":false},
@@ -252,7 +251,7 @@ const CABLES_WATCH_FROZEN: CablesWatchResponse = {
   "readAt": "2026-10-04T14:47:00.000Z",
   "aisLastMessageAt": "2026-10-04T14:41:00.000Z",
   "evaluated": false,
-  "cablesFile": {"generatedAt":"2026-10-04T14:48:00.000Z","osmBase":"2026-10-04T14:47:16Z","cables":55,"landings":69},
+  "cablesFile": {"generatedAt":"2026-10-04T14:48:00.000Z","osmBase":"2026-10-04T14:47:16Z","cables":53,"landings":67},
   "slowVessels": null,
   "alerts": [
     {"id":"229000001:way/761201757","mmsi":"229000001","name":"CARGO ESSAI","vesselType":"Cargo","cableId":"way/761201757","cableName":"AMITIE","lat":42.85,"lon":4.8558,"distanceM":304,"speedKn":1,"navStatus":1,"firstSeen":"2026-10-04T14:34:50.000Z","lastSeen":"2026-10-04T14:40:50.000Z","confirmed":true,"zoneMuted":false}
@@ -268,7 +267,7 @@ const CABLES_WATCH_ZONE_MUTED: CablesWatchResponse = {
   "readAt": "2026-10-04T14:47:00.000Z",
   "aisLastMessageAt": "2026-10-04T14:46:58.000Z",
   "evaluated": true,
-  "cablesFile": {"generatedAt":"2026-10-04T14:48:00.000Z","osmBase":"2026-10-04T14:47:16Z","cables":55,"landings":69},
+  "cablesFile": {"generatedAt":"2026-10-04T14:48:00.000Z","osmBase":"2026-10-04T14:47:16Z","cables":53,"landings":67},
   "slowVessels": 0,
   "alerts": [
     {"id":"229000001:way/761201757","mmsi":"229000001","name":"CARGO ESSAI","vesselType":"Cargo","cableId":"way/761201757","cableName":"AMITIE","lat":42.85,"lon":4.8558,"distanceM":304,"speedKn":1,"navStatus":1,"firstSeen":"2026-10-04T14:40:50.000Z","lastSeen":"2026-10-04T14:40:50.000Z","confirmed":false,"zoneMuted":true}
