@@ -115,12 +115,13 @@ export function cablesAisDown(w: Pick<CablesWatchResponse, 'evaluated' | 'errors
 /** Unités ; l'unité s'arrête là où finit un mot (« 9 militaires » n'est pas « 9 m »). */
 const UNITS = String.raw`(?:nœuds|milles|km|ft|minutes?|min|Mo|m|h|j|%)(?![\p{L}\p{N}])`;
 /** Mots comptés des raisons de pastille et des résumés : collés à leur nombre par glueSovUnits seulement. */
-const COUNTED = String.raw`(?:aéronefs?|urgences?|navires?|câbles?|atterrages?|alertes?|avis|vulnérabilités?|revendications?|fuites?|mailles?|réseaux?|semaines?|jours?|entrées?|zones?|publications?|routeurs?|lectures?|heures?)(?![\p{L}\p{N}])`;
-const SOV_BREAKABLE = new RegExp(String.raw`\d+(?:[,.]\d+)? ${UNITS}|Kp \d`, 'u');
+const COUNTED = String.raw`(?:aéronefs?|urgences?|navires?|câbles?|atterrages?|alertes?|avis|vulnérabilités?|revendications?|fuites?|mailles?|réseaux?|semaines?|jours?|entrées?|zones?|publications?|routeurs?|lectures?|heures?|sites?|rapports?|secteurs?|groupes?|sources?|appareils?|bâtiments?|préfixes?|points?|ouvrages?|mois|ans?)(?![\p{L}\p{N}])`;
+/** Contrôle R1 des tests : unités et mots comptés (revue finale M2 : « 7 jours », « 22 avis », « 112 sites » passaient le contrôle). */
+const SOV_BREAKABLE = new RegExp(String.raw`\d+(?:[,.]\d+)? (?:${UNITS}|${COUNTED})|Kp \d`, 'u');
 const GLUE = new RegExp(String.raw`(\d+(?:[,.]\d+)?) (${UNITS}|${COUNTED})`, 'gu');
 const GLUE_KP = /Kp (\d)/gu;
 
-/** Contrôle R1 : premier « nombre, espace sécable, unité » (ft, nœuds, km, m, %, min, h, j) ou « Kp, espace sécable, indice ». */
+/** Contrôle R1 : premier « nombre, espace sécable, unité ou mot compté » (ft, nœuds, km, m, %, min, h, j ; jours, avis, sites…) ou « Kp, espace sécable, indice ». */
 export function sovBreakable(text: string): string | null {
   return SOV_BREAKABLE.exec(text)?.[0] ?? null;
 }

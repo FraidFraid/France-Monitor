@@ -78,6 +78,15 @@ describe('formats Souveraineté (R1)', () => {
     expect(sovBreakable(glueSovUnits('à 500 m du câble, 38 000 ft, Kp 5'))).toBeNull();
     expect(sovBreakable('9 militaires')).toBeNull();
   });
+  it('R1 (revue finale M2) : le contrôle connaît les mots comptés (« 7 jours », « 22 avis », « 1 jour », « 112 sites »…)', () => {
+    expect(sovBreakable('22 avis sur 7 jours')).toBe('22 avis');
+    expect(sovBreakable('6 sur 7 jours')).toBe('7 jours');
+    expect(sovBreakable('Référence en construction (1 jour sur 7)')).toBe('1 jour');
+    expect(sovBreakable('112 sites')).toBe('112 sites');
+    expect(sovBreakable('34 rapports de plus')).toBe('34 rapports');
+    expect(sovBreakable('1 301 ouvrages OpenStreetMap')).toBe('301 ouvrages');
+    expect(sovBreakable(glueSovUnits('22 avis sur 7 jours · 112 sites · 34 rapports de plus · 1 jour sur 7'))).toBeNull();
+  });
   it('veille des câbles non évaluée : la cause est dite (AIS muet, fichier illisible, relais injoignable, relevé interrompu)', () => {
     const NOW = Date.parse('2026-10-04T16:48:30+02:00');
     const at = '2026-10-04T14:41:00Z';

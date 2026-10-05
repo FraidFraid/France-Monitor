@@ -19,12 +19,20 @@ import { escapeHtml } from '../france-intel-events.ts';
 import { kvRow } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
 import { lineChart, stackedDayBars, type ChartPoint, type DayStack } from './chart.ts';
-import { dayMonth, formatSignedPct, frNumber } from './format.ts';
-import { barRow, emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, valueHtml, type LayerHeadModel, type LayerView } from './frame.ts';
+import { NBSP, dayMonth, formatSignedPct, frNumber } from './format.ts';
 import {
-  SOVEREIGNTY_THEME, certfrProductText, clockOf, dataMs, dateOf, formatCount, glueSovUnits, note, plural, readErrors, sectorWord, shortDate,
-  sourceDown, stamp,
+  barRow, emptyLine as plainEmptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, valueHtml, type LayerHeadModel, type LayerView,
+} from './frame.ts';
+import {
+  SOVEREIGNTY_THEME, certfrProductText, clockOf, dataMs, dateOf, formatCount, glueSovUnits, note as plainNote, plural, readErrors, sectorWord,
+  shortDate, sourceDown, stamp,
 } from './sovereignty-format.ts';
+
+/** R1 (revue finale M2) : notes et lignes vides de la vue, nombre et unité ou mot compté insécables (« 7 jours », « 22 avis »). */
+const note = (text: string): string => plainNote(glueSovUnits(text));
+const emptyLine = (text: string): string => plainEmptyLine(glueSovUnits(text));
+/** Résumé de section, insécable puis échappé. */
+const summaryText = (text: string): string => escapeHtml(glueSovUnits(text));
 
 export type OpenFn = (sectionId: string, byDefault: boolean) => boolean;
 export interface CyberViewInput { cyber: CyberResponse | null; cyberError: string | null; now: number; open: OpenFn }
@@ -129,7 +137,7 @@ function figureCaption(c: CyberResponse, isLate: boolean, now: number): string {
       : `alerte CERT-FR en cours · ${certfrProductText(latest)}, publiée le ${shortDate(latest.firstVersion, now)}`;
   const unread = c.certfr.alerts.filter((a) => a.status === null).length;
   const unreadText = unread > 0 ? ` · ${plural(unread, 'alerte au statut non lu', 'alertes au statut non lu')}` : '';
-  return `${head} · ${avisWithin(c, now, 7).length} avis sur 7 jours${unreadText}${lateMark(isLate)}`;
+  return glueSovUnits(`${head} · ${avisWithin(c, now, 7).length} avis sur 7 jours${unreadText}${lateMark(isLate)}`);
 }
 
 /** Date de chaque source (S1) ; les revendications par la publication du fichier de ransomware.live, pas par la lecture. */
@@ -149,8 +157,8 @@ function leadOf(c: CyberResponse, now: number): string | null {
   const cited = week.filter((k) => k.certfrRefs.length > 0);
   const names = [...new Set(cited.map(kevName))];
   const late = isSovereigntyDataLate('kev', c.kev.readAt, now) ? ` (catalogue lu ${atText(c.kev.readAt, now) ?? 'à une heure n.d.'}, en retard)` : '';
-  return `${plural(week.length, 'vulnérabilité exploitée ajoutée', 'vulnérabilités exploitées ajoutées')} au catalogue KEV de la CISA en 7 jours, `
-    + `dont ${cited.length} ${cited.length > 1 ? 'citées' : 'citée'} par le CERT-FR${names.length > 0 ? ` : ${names.join(', ')}` : ''}${late}.`;
+  return glueSovUnits(`${plural(week.length, 'vulnérabilité exploitée ajoutée', 'vulnérabilités exploitées ajoutées')} au catalogue KEV de la CISA en 7 jours, `
+    + `dont ${cited.length} ${cited.length > 1 ? 'citées' : 'citée'} par le CERT-FR${names.length > 0 ? ` : ${names.join(', ')}` : ''}${late}.`);
 }
 
 /** Pastille et raison de `cyberLevel` (O2), jamais recalculées ; gros chiffre : alertes en cours, sans couleur à zéro ou en retard. */
@@ -246,14 +254,14 @@ function certfrSection(c: CyberResponse, now: number, open: OpenFn): FicheSectio
     + `${avisWithin(c, now, 7).length} avis sur 7 jours${lateMark(isLate)}`;
   return {
     ...base,
-    summary: escapeHtml(summary),
+    summary: summaryText(summary),
     // En retard : la lecture est dite dans le corps, au-dessus des statuts qu'elle date (puces grises), pas seulement dans le résumé.
     html: (isLate ? note(`Statuts et avis lus ${atText(c.certfr.readAt, now) ?? 'à une heure n.d.'} (en retard) : à revérifier sur le site du CERT-FR.`) : '')
       + (alerts || emptyLine('Aucune alerte CERT-FR depuis 90 jours.'))
       + note('Statut repris du CERT-FR : en cours, ou clôturée le JJ/MM. Une clôture « ne signifie pas la fin d’une menace » (CERT-FR).')
       + note('Avis des 30 derniers jours ; sans mention : non inscrite au catalogue KEV.')
       + (avis.length > 0 ? avis.slice(0, AVIS_SHOWN).join('') : emptyLine('Aucun avis CERT-FR depuis 30 jours.'))
-      + (more > 0 ? `<details class="lp-more"><summary>${escapeHtml(`${more} avis de plus`)}</summary>${avis.slice(AVIS_SHOWN).join('')}</details>` : '')
+      + (more > 0 ? `<details class="lp-more"><summary>${summaryText(`${more} avis de plus`)}</summary>${avis.slice(AVIS_SHOWN).join('')}</details>` : '')
       + note('Exploitation : « exploitation signalée par le CERT-FR » quand le texte de l’alerte le dit, phrase citée telle quelle ; l’inscription au '
         + 'catalogue KEV de la CISA vient en appui. Lire l’alerte officielle.')
       + incidentLine(),
@@ -304,11 +312,11 @@ function kevSection(c: CyberResponse, now: number, open: OpenFn): FicheSection {
     + `${c.kev.count === null ? 'n.d.' : formatCount(c.kev.count)} vulnérabilités`;
   return {
     ...base,
-    summary: escapeHtml(`${kevWithin(c, now, 7).length} sur 7 jours · ${c.kev.recent.length} sur 30 jours${lateMark(late)}`),
+    summary: summaryText(`${kevWithin(c, now, 7).length} sur 7 jours · ${c.kev.recent.length} sur 30 jours${lateMark(late)}`),
     html: (c.kev.recent.length > 0
       ? [...cited, ...others.slice(0, KEV_UNCITED_SHOWN)].map(kevRow).join('')
       : emptyLine('Aucune vulnérabilité ajoutée au catalogue KEV depuis 30 jours.'))
-      + (rest.length > 0 ? `<details class="lp-more"><summary>${escapeHtml(`${rest.length} vulnérabilités de plus`)}</summary>${rest.map(kevRow).join('')}</details>` : '')
+      + (rest.length > 0 ? `<details class="lp-more"><summary>${summaryText(`${rest.length} vulnérabilités de plus`)}</summary>${rest.map(kevRow).join('')}</details>` : '')
       + kevChart(c, now)
       + note(`Catalogue KEV de la CISA (domaine public), ${catalog}. « Citée par le CERT-FR » : CVE présente dans une alerte ou un avis du CERT-FR ; `
         + '« catalogue mondial » : vulnérabilité exploitée dans le monde, pas un événement en France.'),
@@ -324,12 +332,12 @@ function claimsChart(r: RansomwareSummary, now: number): string {
   });
   if (points.length < 2) return '';
   const chart = lineChart(points, {
-    label: 'Revendications de rançongiciels en France par semaine, sur 12 semaines ; moyenne des 90 jours précédents en tirets',
+    label: glueSovUnits('Revendications de rançongiciels en France par semaine, sur 12 semaines ; moyenne des 90 jours précédents en tirets'),
     from: points[0].at, to: points[points.length - 1].at, stroke: CLAIMS_COLOR, refValue: r.baselineWeekly, markPeak: true,
     value: (v) => frNumber(v, 0), tick: (ms) => shortDate(new Date(ms).toISOString(), now),
   });
   return `<div class="lp-legend"><span class="lp-key"><i style="background:${CLAIMS_COLOR}"></i>revendications par semaine</span>`
-    + '<span class="lp-key"><i class="lp-dash"></i>moyenne des 90 jours précédents</span></div>' + chart + constructionNote(points.length);
+    + `<span class="lp-key"><i class="lp-dash"></i>moyenne des 90${NBSP}jours précédents</span></div>` + chart + constructionNote(points.length);
 }
 
 function shareRows(shares: readonly RansomShare[], word: (label: string) => string): string {
@@ -365,7 +373,7 @@ function claimsSection(c: CyberResponse, now: number, open: OpenFn): FicheSectio
   const html = claimsFileLine(r, late, now)
     + claimsChart(r, now)
     + kvRow('Cette semaine', valueHtml(`${formatCount(r.weekCount)} · ${ratioText}`, ratioLevel))
-    + kvRow('Moyenne hebdomadaire (90 jours précédents)', valueHtml(r.baselineWeekly === null ? 'n.d.' : frNumber(r.baselineWeekly, 1)))
+    + kvRow(glueSovUnits('Moyenne hebdomadaire (90 jours précédents)'), valueHtml(r.baselineWeekly === null ? 'n.d.' : frNumber(r.baselineWeekly, 1)))
     + kvRow('30 derniers jours', valueHtml(`${formatCount(r.last30)} · ${gap}`))
     + note('Secteurs sur 30 jours')
     + (r.sectors30.length > 0 ? shareRows(r.sectors30, sectorWord) : emptyLine('Aucune revendication en France sur 30 jours.'))
@@ -377,7 +385,7 @@ function claimsSection(c: CyberResponse, now: number, open: OpenFn): FicheSectio
     + `${sourceLinkHtml('Source : Ransomware.live', RANSOMWARE_URL)}</p>`
     + note('Comptées par la date de découverte de ransomware.live ; semaine : 7 fois 24 heures jusqu’à la lecture.')
     + (r.baselineWeekly === null ? note('Moyenne n.d. : historique insuffisant.') : '');
-  return { ...base, summary: escapeHtml(`${formatCount(r.weekCount)} en 7 jours · ${formatCount(r.last30)} en 30 jours${lateMark(late)}`), html };
+  return { ...base, summary: summaryText(`${formatCount(r.weekCount)} en 7 jours · ${formatCount(r.last30)} en 30 jours${lateMark(late)}`), html };
 }
 
 // ─── Rapports Menaces et incidents de l'ANSSI (S12) ───
@@ -405,9 +413,9 @@ function reportsSection(c: CyberResponse, now: number, open: OpenFn): FicheSecti
   const more = rows.length - REPORTS_SHOWN;
   return {
     ...base,
-    summary: escapeHtml(`${plural(reports.length, 'rapport')} · dernier le ${shortDate(latest.date, now)}${lateMark(certfrLate(c, now))}`),
+    summary: summaryText(`${plural(reports.length, 'rapport')} · dernier le ${shortDate(latest.date, now)}${lateMark(certfrLate(c, now))}`),
     html: rows.slice(0, REPORTS_SHOWN).join('')
-      + (more > 0 ? `<details class="lp-more"><summary>${escapeHtml(`${more} rapports de plus`)}</summary>${rows.slice(REPORTS_SHOWN).join('')}</details>` : '')
+      + (more > 0 ? `<details class="lp-more"><summary>${summaryText(`${more} rapports de plus`)}</summary>${rows.slice(REPORTS_SHOWN).join('')}</details>` : '')
       + note('Flux « Menaces et incidents » du CERT-FR (ANSSI) : rapports d’analyse de la menace ; titre, date et lien seulement.'),
   };
 }
@@ -419,7 +427,7 @@ function leaksSection(c: CyberResponse, now: number, open: OpenFn): FicheSection
   const h = c.hibp;
   if (h === null) return { ...base, summary: 'n.d.', html: sourceDown('Have I Been Pwned') };
   const late = isSovereigntyDataLate('hibp', h.readAt, now);
-  const counted = kvRow('Fuites de domaines en .fr ajoutées depuis 30 jours', valueHtml(formatCount(h.count)))
+  const counted = kvRow(glueSovUnits('Fuites de domaines en .fr ajoutées depuis 30 jours'), valueHtml(formatCount(h.count)))
     + kvRow('Ajout le plus récent', valueHtml(shortDate(h.newestAddedDate, now)));
   // V1 : une liste en retard n'est jamais un calme ; « aucune fuite » n'est dit que sur une lecture à jour.
   const notEvaluated = `Non évalué · Have I Been Pwned non relu depuis ${sinceText(h.readAt, now)}`;
@@ -429,7 +437,7 @@ function leaksSection(c: CyberResponse, now: number, open: OpenFn): FicheSection
   const summary = h.count === 0 ? (late ? 'non évalué' : 'aucune en .fr sur 30 jours') : `${plural(h.count, 'fuite')} en .fr sur 30 jours`;
   return {
     ...base,
-    summary: escapeHtml(`${summary}${lateMark(late)}`),
+    summary: summaryText(`${summary}${lateMark(late)}`),
     html: counts
       + `<p class="fmk-note">${sourceLinkHtml('liste publique des fuites sur Have I Been Pwned', h.url)}</p>`
       + note('Compte et lien seulement, sans titre ni domaine : pour les violations de données des services de l’État, l’ANSSI centralise la '
@@ -466,7 +474,7 @@ function cybermalveillanceSection(c: CyberResponse, now: number, open: OpenFn): 
   const summary = latest === undefined ? 'aucune alerte' : `${plural(alerts.length, 'alerte')} · dernière le ${shortDate(entryDate(latest), now)}`;
   return {
     ...base,
-    summary: escapeHtml(`${summary}${lateMark(late)}`),
+    summary: summaryText(`${summary}${lateMark(late)}`),
     html: (alerts.length > 0 ? alerts.map((e) => entryRow(e, now)).join('') : emptyLine('Aucune alerte publiée par Cybermalveillance.gouv.fr.'))
       + (news.length > 0 ? `<details class="lp-more"><summary>Actualités</summary>${news.map((e) => entryRow(e, now)).join('')}</details>` : '')
       + note('Alertes grand public et petites entreprises du dispositif national d’assistance : titre, date et lien seulement.')
@@ -505,7 +513,7 @@ function methodSection(input: CyberViewInput): FicheSection {
     + note('Carte : aucune de ces sources ne publie de lieu ; la couche ne dessine rien (légende : « pas de lieu publié : voir le panneau »).')
     + note('Retirés : exposition Shodan et Censys, FrenchBreaches, fuites de plus de 30 jours, titres et domaines des fuites, CVE mondiales hors catalogue KEV.')
     + readErrors(c !== null ? c.errors.map(glueSovUnits) : []);
-  return { id: 'methode', title: 'Méthode et sources', collapsible: true, open: open('methode', false), tone: 'reference', html, summary: escapeHtml('5 sources') };
+  return { id: 'methode', title: 'Méthode et sources', collapsible: true, open: open('methode', false), tone: 'reference', html, summary: summaryText('5 sources') };
 }
 
 // ─── Assemblage ───

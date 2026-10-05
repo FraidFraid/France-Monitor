@@ -191,7 +191,7 @@ function prefixCharts(c: ConnectivityResponse, now: number): string {
     });
     return chart === '' ? '' : `${note(label)}${chart}`;
   }).join('');
-  return blocks === '' ? '' : `<details class="lp-more"><summary>${escapeHtml('Courbes des préfixes annoncés (30 jours)')}</summary>${blocks}</details>`;
+  return blocks === '' ? '' : `<details class="lp-more"><summary>${escapeHtml(glue('Courbes des préfixes annoncés (30 jours)'))}</summary>${blocks}</details>`;
 }
 
 /** État de la référence des préfixes : une seule ligne pour les six réseaux. */

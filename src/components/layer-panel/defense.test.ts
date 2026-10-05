@@ -203,7 +203,7 @@ describe('aéronefs au-dessus de la France (O10, S5)', () => {
     expect(h).toContain(`<title>04/10 16${NBSP}h · autres : 5</title>`);
     expect(h.match(/<rect /g)).toHaveLength(4);
     expect(h).toContain('fill="var(--cat-mil-francais)"');
-    expect(visibleText(h)).toContain('Référence en construction (1 jour sur 7).');
+    expect(visibleText(h)).toContain('Référence en construction (1\u00a0jour sur 7).');
     expect(sectionOf('aeronefs', { military: military((x) => { x.hourly = { hours: [], since: null }; }) })?.html).not.toContain('<svg');
   });
   it('aucun aéronef : absence dite sans calme inventé ; panne nommée par la réponse', () => {
@@ -244,7 +244,7 @@ describe('urgences (T3, O10, S3)', () => {
     expect(v.head.figure?.value).toBe('9');
     const s = v.sections.find((x) => x.id === 'urgences');
     expect(s?.open).toBe(true);
-    expect(s?.summary).toBe('2 urgences');
+    expect(s?.summary).toBe('2\u00a0urgences');
     const h = s?.html ?? '';
     expect(h.indexOf('ESSAI75')).toBeLessThan(h.indexOf('RCH161'));
     expect(h).toContain('data-emergency="4b1814:7500"><span class="fmk-dot fmk-dot--jaune" aria-hidden="true"></span><span>ESSAI75 · 7500 (intervention illicite)</span>'
@@ -269,7 +269,7 @@ describe('urgences (T3, O10, S3)', () => {
     expect(h.match(/data-emergency=/g)).toHaveLength(2);
     expect(h).toContain('fmk-dot--orange');
     expect(h).toContain('fmk-dot--jaune');
-    expect(visibleText(h)).not.toContain('Journal sur 7 jours');
+    expect(visibleText(h)).not.toContain('Journal sur 7\u00a0jours');
   });
   it('urgences masquées (O10) : « appareil d’État français · Dépt 69 », identité protégée ; ni adresse, ni indicatif, ni lien vers la carte', () => {
     const v = view({ military: MILITARY_MASKED_EMERGENCY_FIXTURE() });
@@ -277,7 +277,7 @@ describe('urgences (T3, O10, S3)', () => {
     expect(v.head.figure?.value).toBe('9');
     expect(v.head.status[0]).toContain(`appareil d’État français · Dépt${NBSP}69`);
     const s = v.sections.find((x) => x.id === 'urgences');
-    expect(s?.summary).toBe('2 urgences');
+    expect(s?.summary).toBe('2\u00a0urgences');
     const h = s?.html ?? '';
     expect(h).not.toContain('data-emergency');
     expect(h).not.toContain('is-link');
@@ -288,7 +288,7 @@ describe('urgences (T3, O10, S3)', () => {
     expect(t).toContain('Rhône (69) · confirmée sur deux lectures, vue de 16:46 à 16:48');
     expect(t).toContain('Pyrénées-Atlantiques (64) · vue une fois à 16:48, à confirmer · code affiché par le transpondeur, non confirmé par les autorités');
     expect(t).not.toMatch(/type n\.d\.|pays non identifié|adresse /);
-    expect(t).not.toContain('Journal sur 7 jours');
+    expect(t).not.toContain('Journal sur 7\u00a0jours');
     expect(visibleText(sectionOf('aeronefs', { military: MILITARY_MASKED_EMERGENCY_FIXTURE() })?.html ?? ''))
       .toContain('Identité protégée ou nationalité inconnue (PIA, LADD, adresse non OACI) : comptés, jamais montrés1');
   });
@@ -297,7 +297,7 @@ describe('urgences (T3, O10, S3)', () => {
       x.emergencyLog.push({ ...x.emergencyLog[0], dept: '13' });
     }, MILITARY_MASKED_EMERGENCY_FIXTURE);
     const h = sectionOf('urgences', { military: m })?.html ?? '';
-    expect(visibleText(h)).toContain('Journal sur 7 jours');
+    expect(visibleText(h)).toContain('Journal sur 7\u00a0jours');
     expect(h).toContain(`<span class="fmk-dot" aria-hidden="true"></span><span>appareil d’État français · Dépt${NBSP}13 · 7700 (urgence)</span>`);
     expect(h.match(/Dépt\u00a069/g)).toHaveLength(1);
   });
@@ -306,7 +306,7 @@ describe('urgences (T3, O10, S3)', () => {
     expect(visibleText(sectionOf('urgences')?.html ?? '')).toContain('Aucun code d’urgence (7500, 7600, 7700) dans le flux adsb.lol : un appareil qui n’émet pas n’en déclare pas.');
     const m = military((x) => { x.emergencyLog = [{ ...E7700, firstSeen: '2026-10-02T09:10:00Z', lastSeen: '2026-10-02T09:16:00Z' }]; });
     const h = sectionOf('urgences', { military: m })?.html ?? '';
-    expect(visibleText(h)).toContain('Journal sur 7 jours');
+    expect(visibleText(h)).toContain('Journal sur 7\u00a0jours');
     expect(h).toContain('<span class="fmk-dot" aria-hidden="true"></span><span>RCH161 · 7700 (urgence)</span><span class="lp-val fmk-num">02/10 11:16</span>');
     expect(sectionOf('urgences', { now: NOW + 12 * MIN })?.summary).toBe('non évalué · adsb.lol muet depuis 16:48');
   });
@@ -346,7 +346,7 @@ describe('sites de défense (O13)', () => {
       total: 112, byType: { air: 31, navy: 18, army: 34, joint: 29, fortification: 0, other: 0 }, overseas: 9, abroad: 4,
     });
     const s = sectionOf('sites');
-    expect(s?.summary).toBe('112 sites');
+    expect(s?.summary).toBe('112\u00a0sites');
     const t = visibleText(s?.html ?? '');
     for (const row of ['Bases aériennes31', 'Bases navales18', 'Sites de l’armée de terre34', 'Sites interarmées29', 'dont outre-mer9',
       'dont forces françaises à l’étranger4']) expect(t).toContain(row);
@@ -358,8 +358,8 @@ describe('sites de défense (O13)', () => {
     expect(s?.html).toContain('<button type="button" class="lp-toggle" data-osm-works aria-pressed="false">Afficher les ouvrages OpenStreetMap</button>');
     const meta = { generatedAt: '2026-10-04T13:05:00Z', osmBase: '2026-10-04T12:40:00Z', licence: 'ODbL 1.0' as const, source: '© les contributeurs d’OpenStreetMap', count: 1301 };
     const shown = sectionOf('sites', { sites: { ...SITES, osm: { meta, error: null, shown: true } } });
-    expect(shown?.summary).toBe('112 sites · 1\u202F301 ouvrages OpenStreetMap');
-    expect(visibleText(shown?.html ?? '')).toContain('Ouvrages OpenStreetMap : 1\u202F301 points en France, fichier du 04/10/2026 (base OSM du 04/10 14:40), © les contributeurs d’OpenStreetMap, ODbL 1.0.');
+    expect(shown?.summary).toBe('112\u00a0sites · 1\u202F301\u00a0ouvrages OpenStreetMap');
+    expect(visibleText(shown?.html ?? '')).toContain('Ouvrages OpenStreetMap : 1\u202F301\u00a0points en France, fichier du 04/10/2026 (base OSM du 04/10 14:40), © les contributeurs d’OpenStreetMap, ODbL 1.0.');
     expect(shown?.html).toContain('data-osm-works aria-pressed="true">Masquer les ouvrages OpenStreetMap</button>');
     expect(visibleText(sectionOf('sites', { sites: { ...SITES, osm: { meta: null, error: 'HTTP 404', shown: true } } })?.html ?? ''))
       .toContain('Fichier des ouvrages OpenStreetMap illisible : HTTP 404.');

@@ -283,7 +283,7 @@ function hourlyChart(m: MilitaryResponse, isLate: boolean, now: number): string 
     : `<span class="lp-key"><i style="background:${FAMILY_COLOR.francais}"></i>français</span>`
       + `<span class="lp-key"><i style="background:${FAMILY_COLOR.autres}"></i>autres</span>`;
   return `<div class="lp-legend">${legend}</div>${chart}`
-    + (spanDays < 7 ? note(`Référence en construction (${spanDays} ${spanDays > 1 ? 'jours' : 'jour'} sur 7).`) : '');
+    + (spanDays < 7 ? note(`Référence en construction (${spanDays}${NBSP}${spanDays > 1 ? 'jours' : 'jour'} sur 7).`) : '');
 }
 
 function aircraftSection(input: DefenseViewInput, m: MilitaryResponse | null): FicheSection {
@@ -376,12 +376,12 @@ function emergenciesSection(input: DefenseViewInput, m: MilitaryResponse | null)
   const html = (current.length > 0
     ? current.map((e) => emergencyRow(e, isLate, true, canFocus, now)).join('')
     : emptyLine('Aucun code d’urgence (7500, 7600, 7700) dans le flux adsb.lol : un appareil qui n’émet pas n’en déclare pas.'))
-    + (log.length > 0 ? note('Journal sur 7 jours') + log.map((e) => emergencyRow(e, isLate, false, false, now)).join('') : '')
+    + (log.length > 0 ? note(glueSovUnits('Journal sur 7 jours')) + log.map((e) => emergencyRow(e, isLate, false, false, now)).join('') : '')
     + note(`Une urgence ne colore qu’au-dessus de la France ou à moins de 40${NBSP}km, confirmée sur deux lectures (règle du Trafic aérien) ; `
       + 'vue une fois : jaune. Intervention illicite (7500) rouge ; urgence (7700) et panne radio (7600) orange. '
       + 'Chaque code est affiché par le transpondeur, non confirmé par les autorités. Appareil français ou à identité protégée : département '
       + 'seul, sans indicatif ni position.');
-  const summary = current.length > 0 ? `${plural(current.length, 'urgence')}${isLate ? ' (en retard)' : ''}`
+  const summary = current.length > 0 ? `${glueSovUnits(plural(current.length, 'urgence'))}${isLate ? ' (en retard)' : ''}`
     : isLate ? `non évalué · adsb.lol muet depuis ${clockOf(m.readAt, now)}` : 'aucune';
   return { ...base, summary: escapeHtml(summary), html };
 }
@@ -417,8 +417,8 @@ function osmBlock(osm: DefenseSitesSummary['osm'], now: number): string {
   if (osm.meta !== null) {
     const base = dataMs(osm.meta.osmBase);
     const baseText = base === null ? 'n.d.' : absoluteTime(base, now, 'fr', { withDate: true });
-    return button + note(`Ouvrages OpenStreetMap : ${formatCount(osm.meta.count)} points en France, fichier du ${dateOf(osm.meta.generatedAt)} `
-      + `(base OSM du ${baseText}), ${osm.meta.source}, ${osm.meta.licence}.`);
+    return button + note(glueSovUnits(`Ouvrages OpenStreetMap : ${formatCount(osm.meta.count)} points en France, fichier du ${dateOf(osm.meta.generatedAt)} `
+      + `(base OSM du ${baseText}), ${osm.meta.source}, ${osm.meta.licence}.`));
   }
   if (osm.error !== null) return button + emptyLine(`Fichier des ouvrages OpenStreetMap illisible : ${osm.error}.`);
   return button + (osm.shown ? emptyLine('Chargement des ouvrages OpenStreetMap…')
@@ -434,7 +434,7 @@ function sitesSection(input: DefenseViewInput): FicheSection {
   const osmShown = osm.shown && osm.meta !== null ? ` · ${formatCount(osm.meta.count)} ouvrages OpenStreetMap` : '';
   return {
     id: 'sites', title: 'Sites de défense', collapsible: true, open: open('sites', false),
-    summary: escapeHtml(`${plural(curated.total, 'site')}${osmShown}`),
+    summary: escapeHtml(glueSovUnits(`${plural(curated.total, 'site')}${osmShown}`)),
     html: rows
       + note('Liste interne de sites publics (ministère des Armées, Wikipédia, OpenStreetMap), sans date par site. '
         + 'Chaque site : nom, catégorie et lien officiel s’il existe ; ni description, ni unités.')

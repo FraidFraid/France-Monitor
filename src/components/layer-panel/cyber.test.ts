@@ -42,14 +42,14 @@ describe('vue Vigilance cyber (spec 2026-10-04 souveraineté § 2.3, amendement 
     const v = view();
     expect(v.head).toMatchObject({ theme: 'Souveraineté', title: CYBER_TITLE, level: 'orange' });
     expect(v.head.figure).toEqual({
-      value: '3', caption: 'alertes CERT-FR en cours · la plus récente : Citrix NetScaler ADC et Gateway, publiée le 28/09 · 24 avis sur 7 jours',
+      value: '3', caption: 'alertes CERT-FR en cours · la plus récente : Citrix NetScaler ADC et Gateway, publiée le 28/09 · 24\u00a0avis sur 7\u00a0jours',
     });
     expect(v.head.status[0]).toBe(glueSovUnits(cyberLevel(c, NOW).reason));
     expect(v.head.status[0]).toContain('CERTFR-2026-ALE-011 en cours, publiée le 28/09 : exploitation signalée par le CERT-FR');
     expect(v.head.status[1]).toMatch(/^CERT-FR\u00A0\d\d:\d\d · CISA KEV\u00A0\d\d:\d\d · Ransomware\.live\u00A0\d\d:\d\d$/);
     // Les chiffres des revendications sont datés par la publication du fichier (lastModified 14:30:09Z), pas par la lecture.
     expect(v.head.status[1]).toContain('Ransomware.live\u00A016:30');
-    expect(v.head.lead).toBe('5 vulnérabilités exploitées ajoutées au catalogue KEV de la CISA en 7 jours, dont 3 citées par le CERT-FR : '
+    expect(v.head.lead).toBe('5\u00a0vulnérabilités exploitées ajoutées au catalogue KEV de la CISA en 7\u00a0jours, dont 3 citées par le CERT-FR : '
       + 'Fortinet FortiMail, Cisco Catalyst SD-WAN Manager, Apple (plusieurs produits).');
     expect(html()).toContain('<b class="fmk-num lp-lvl lp-lvl--orange">3</b>');
   });
@@ -77,7 +77,7 @@ describe('vue Vigilance cyber (spec 2026-10-04 souveraineté § 2.3, amendement 
   });
   it('O1, O3 : alertes du plus récent au plus ancien (publication) ; statut officiel ; exploitation citée telle quelle ; KEV en appui ; puces des seuils de la pastille', () => {
     const s = sectionOf('certfr');
-    expect(s?.summary).toBe('6 alertes sur 90 jours, dont 3 en cours · 24 avis sur 7 jours');
+    expect(s?.summary).toBe('6\u00a0alertes sur 90\u00a0jours, dont 3 en cours · 24\u00a0avis sur 7\u00a0jours');
     const h = s?.html ?? '';
     const refs = [...h.matchAll(/CERTFR-2026-ALE-0(\d\d)/g)].map((m) => m[1]);
     expect([...new Set(refs)]).toEqual(['11', '10', '09', '08', '07', '06']);
@@ -117,7 +117,7 @@ describe('vue Vigilance cyber (spec 2026-10-04 souveraineté § 2.3, amendement 
     expect(v.head.level).toBe('nd');
     expect(v.head.status[0]).toBe('non évalué · statut de CERTFR-2026-ALE-011 non lu');
     expect(v.head.figure).toEqual({
-      value: '2', caption: 'alertes CERT-FR en cours · la plus récente : Metabase, publiée le 10/09 · 24 avis sur 7 jours · 1 alerte au statut non lu',
+      value: '2', caption: 'alertes CERT-FR en cours · la plus récente : Metabase, publiée le 10/09 · 24\u00a0avis sur 7\u00a0jours · 1\u00a0alerte au statut non lu',
     });
     expect(sectionOf('certfr', { cyber: c })?.html).toContain('<span class="fmk-dot" aria-hidden="true"></span><span>Alerte : Citrix NetScaler ADC et Gateway</span>'
       + '<span class="lp-val fmk-num">statut non lu</span>');
@@ -133,7 +133,7 @@ describe('vue Vigilance cyber (spec 2026-10-04 souveraineté § 2.3, amendement 
     expect(t).toContain('Avis des 30 derniers jours ; sans mention : non inscrite au catalogue KEV.');
     expect(t.match(/non inscrite au catalogue KEV/g)).toHaveLength(2);   // ALE-010 et la note des avis
     expect(t).not.toMatch(/pas d’exploitation connue|pas d'exploitation connue/);
-    expect(h).toContain('<details class="lp-more"><summary>26 avis de plus</summary>');
+    expect(h).toContain('<details class="lp-more"><summary>26\u00a0avis de plus</summary>');
     expect(h.match(/<span>Avis : /g)).toHaveLength(38);
   });
   it('S13 : contacts en cas d’incident, liés, même quand le CERT-FR est en panne', () => {
@@ -152,7 +152,7 @@ describe('vue Vigilance cyber (spec 2026-10-04 souveraineté § 2.3, amendement 
       'CVE-2026-102489', 'CVE-2026-102490', 'CVE-2026-104286', 'CVE-2026-76504', 'CVE-2026-86950',
     ]);
     const s = sectionOf('kev');
-    expect(s?.summary).toBe(`5 sur 7 jours · ${c.kev.recent.length} sur 30 jours`);
+    expect(s?.summary).toBe(`5 sur 7\u00a0jours · ${c.kev.recent.length} sur 30\u00a0jours`);
     const h = s?.html ?? '';
     expect(h).toMatch(/var\(--cat-kev-cite\)" aria-hidden="true"><\/span><span>Citrix NetScaler<\/span><span class="lp-val fmk-num">27\/09<\/span><small>CVE-2026-88771 · citée par le CERT-FR \([^)]*ALE-011[^)]*\)<\/small>/);
     expect(h).toMatch(/var\(--cat-kev\)" aria-hidden="true"><\/span><span>Zammad GmbH Zammad<\/span><span class="lp-val fmk-num">02\/10<\/span><small>CVE-2026-10248\d · catalogue mondial, non citée par le CERT-FR<\/small>/);
@@ -160,7 +160,7 @@ describe('vue Vigilance cyber (spec 2026-10-04 souveraineté § 2.3, amendement 
     expect(h.indexOf('citée par le CERT-FR (')).toBeLessThan(h.indexOf('catalogue mondial'));
     expect(h).toContain('aria-label="Vulnérabilités ajoutées au catalogue KEV de la CISA par semaine, sur 12 semaines, celles citées par le CERT-FR en couleur foncée"');
     expect(h).toContain('fill="var(--cat-kev-cite)"');
-    expect(visibleText(h)).toContain('version 2026.10.02 du 02/10/2026, 1\u202F733 vulnérabilités');
+    expect(visibleText(h)).toContain('version 2026.10.02 du 02/10/2026, 1\u202F733\u00a0vulnérabilités');
     const marked = cyber((x) => { x.kev.recent[0] = { ...x.kev.recent[0], ransomware: true }; });
     expect(visibleText(sectionOf('kev', { cyber: marked })?.html ?? '')).toContain('CVE-2026-104286 · citée par le CERT-FR (AVI-1257) · campagne de rançongiciel connue');
   });
@@ -172,20 +172,20 @@ describe('vue Vigilance cyber (spec 2026-10-04 souveraineté § 2.3, amendement 
   });
   it('S11, O4 : revendications en France : courbe, moyenne en tirets, rapport, écart des 30 jours, secteurs traduits, groupes cybercriminels, contexte de l’ANSSI, lien renommé et source liée', () => {
     const s = sectionOf('revendications');
-    expect(s?.summary).toBe('7 en 7 jours · 25 en 30 jours');
+    expect(s?.summary).toBe('7 en 7\u00a0jours · 25 en 30\u00a0jours');
     const h = s?.html ?? '';
     const t = visibleText(h);
-    expect(h).toContain('aria-label="Revendications de rançongiciels en France par semaine, sur 12 semaines ; moyenne des 90 jours précédents en tirets"');
+    expect(h).toContain('aria-label="Revendications de rançongiciels en France par semaine, sur 12\u00a0semaines ; moyenne des 90\u00a0jours précédents en tirets"');
     expect(h).toContain('stroke-dasharray="4 3"');
     expect(h).toContain('stroke="var(--cat-revendication)"');
     expect(t).toContain('Fichier publié par ransomware.live à 16:30, lu à 16:48 : comptes de ce fichier.');
     expect(t).toContain('Cette semaine7 · 1,29 fois la moyenne');
-    expect(t).toContain('Moyenne hebdomadaire (90 jours précédents)5,4');
+    expect(t).toContain('Moyenne hebdomadaire (90\u00a0jours précédents)5,4');
     expect(t).toContain(`30 derniers jours25 · +21${NBSP}% par rapport à la moyenne`);
     expect(t).toContain('autre secteur');
     expect(t).toContain('santé');
     expect(t).not.toMatch(/Healthcare|Technology|Not Found|\bOther\b/);
-    expect(t).toContain('Groupes cybercriminels sur 30 jours');
+    expect(t).toContain('Groupes cybercriminels sur 30\u00a0jours');
     expect(t).toContain('ZaWoo');
     expect(t).toContain('Annonces publiées par des groupes cybercriminels : revendiquées par le groupe, non confirmées.');
     expect(t).not.toMatch(/groupes? criminels?/);
@@ -201,7 +201,7 @@ describe('vue Vigilance cyber (spec 2026-10-04 souveraineté § 2.3, amendement 
   it('fichier de ransomware.live en retard (24 h après sa publication) : dit, sans couleur', () => {
     const late = cyber((x) => { if (x.ransomware) x.ransomware = { ...x.ransomware, lastModified: '2026-10-03T12:00:00Z', ratio: 2.1 }; });
     const s = sectionOf('revendications', { cyber: late });
-    expect(s?.summary).toBe('7 en 7 jours · 25 en 30 jours (en retard)');
+    expect(s?.summary).toBe('7 en 7\u00a0jours · 25 en 30\u00a0jours (en retard)');
     expect(visibleText(s?.html ?? '')).toContain('Fichier publié par ransomware.live le 03/10 à 14:00 (en retard), lu à 16:48 : comptes de ce fichier.');
     expect(s?.html).not.toMatch(/lp-lvl--/);
     // La pastille suit cyberLevel : l'alerte en cours garde l'orange ; seules, les revendications d'un fichier en retard ne colorent pas.
@@ -219,24 +219,24 @@ describe('vue Vigilance cyber (spec 2026-10-04 souveraineté § 2.3, amendement 
   });
   it('catalogue KEV en retard (26 h) : la phrase d’appui de l’en-tête est datée et dite en retard', () => {
     const late = cyber((x) => { x.kev.readAt = '2026-10-03T12:00:00Z'; });
-    expect(view({ cyber: late }).head.lead).toBe('5 vulnérabilités exploitées ajoutées au catalogue KEV de la CISA en 7 jours, dont 3 citées par le CERT-FR : '
+    expect(view({ cyber: late }).head.lead).toBe('5\u00a0vulnérabilités exploitées ajoutées au catalogue KEV de la CISA en 7\u00a0jours, dont 3 citées par le CERT-FR : '
       + 'Fortinet FortiMail, Cisco Catalyst SD-WAN Manager, Apple (plusieurs produits) (catalogue lu le 03/10 à 14:00, en retard).');
     expect(view().head.lead).not.toContain('en retard');
   });
   it('date d’ajout au catalogue dans le futur : âge négatif, jamais comptée « sur 7 jours »', () => {
     const future = cyber((x) => { x.kev.recent.push({ ...x.kev.recent[0], cve: 'CVE-2026-999999', dateAdded: '2026-10-06', certfrRefs: [] }); });
     expect(kevAgeDays({ dateAdded: '2026-10-06' }, NOW)).toBe(-2);
-    expect(sectionOf('kev', { cyber: future })?.summary).toBe(`5 sur 7 jours · ${future.kev.recent.length} sur 30 jours`);
-    expect(view({ cyber: future }).head.lead).toMatch(/^5 vulnérabilités exploitées ajoutées/);
+    expect(sectionOf('kev', { cyber: future })?.summary).toBe(`5 sur 7\u00a0jours · ${future.kev.recent.length} sur 30\u00a0jours`);
+    expect(view({ cyber: future }).head.lead).toMatch(/^5\u00a0vulnérabilités exploitées ajoutées/);
   });
   it('S12 : rapports Menaces et incidents de l’ANSSI : titre, date et lien ; 6 affichés, les autres repliés ; langue dite', () => {
     const s = sectionOf('rapports');
     expect(s?.title).toBe('Rapports Menaces et incidents (ANSSI)');
-    expect(s?.summary).toBe('40 rapports · dernier le 02/10');
+    expect(s?.summary).toBe('40\u00a0rapports · dernier le 02/10');
     const h = s?.html ?? '';
     expect(visibleText(h)).toContain('Vulnérabilités de produits du secteur santé : Retour d\'expérience du CERT Santé et du CERT-FR02/10CERTFR-2026-CTI-007 · lire le rapport');
     expect(h).toContain('href="https://www.cert.ssi.gouv.fr/cti/CERTFR-2026-CTI-007/"');
-    expect(h).toContain('<details class="lp-more"><summary>34 rapports de plus</summary>');
+    expect(h).toContain('<details class="lp-more"><summary>34\u00a0rapports de plus</summary>');
     expect(visibleText(h)).toContain('CERTFR-2026-CTI-003 · en anglais');
     expect(visibleText(h)).toContain('Panorama de la cybermenace 2025');
     const down = cyber((x) => { x.certfr = { ...x.certfr, reports: [] }; x.errors = ['CERT-FR, rapports Menaces et incidents : HTTP 503']; });
@@ -251,20 +251,20 @@ describe('vue Vigilance cyber (spec 2026-10-04 souveraineté § 2.3, amendement 
     expect(visibleText(none?.html ?? '')).toContain('Non évalué · Have I Been Pwned non relu depuis le 03/10 à 12:00.');
     expect(visibleText(none?.html ?? '')).not.toMatch(/Aucune fuite|aucune en \.fr/);
     const two = sectionOf('fuites', { cyber: hibp(2) });
-    expect(two?.summary).toBe('2 fuites en .fr sur 30 jours (en retard)');
+    expect(two?.summary).toBe('2\u00a0fuites en .fr sur 30\u00a0jours (en retard)');
     expect(visibleText(two?.html ?? '')).toContain('Non évalué · Have I Been Pwned non relu depuis le 03/10 à 12:00 : comptes de la dernière lecture.'
-      + 'Fuites de domaines en .fr ajoutées depuis 30 jours2');
+      + 'Fuites de domaines en .fr ajoutées depuis 30\u00a0jours2');
   });
   it('O5 : fuites publiées : un compte et un lien seulement, jamais un titre ni un domaine', () => {
-    expect(sectionOf('fuites')?.summary).toBe('aucune en .fr sur 30 jours');
+    expect(sectionOf('fuites')?.summary).toBe('aucune en .fr sur 30\u00a0jours');
     const empty = sectionOf('fuites')?.html ?? '';
-    expect(visibleText(empty)).toContain('Aucune fuite de domaine en .fr ajoutée à Have I Been Pwned depuis 30 jours.');
+    expect(visibleText(empty)).toContain('Aucune fuite de domaine en .fr ajoutée à Have I Been Pwned depuis 30\u00a0jours.');
     expect(empty).toContain('href="https://haveibeenpwned.com/PwnedWebsites"');
     const two = cyber((c) => { c.hibp = { readAt: '2026-10-04T14:48:14Z', count: 2, newestAddedDate: '2026-09-29T08:00:00Z', url: 'https://haveibeenpwned.com/PwnedWebsites' }; });
     const s = sectionOf('fuites', { cyber: two });
-    expect(s?.summary).toBe('2 fuites en .fr sur 30 jours');
+    expect(s?.summary).toBe('2\u00a0fuites en .fr sur 30\u00a0jours');
     const t = visibleText(s?.html ?? '');
-    expect(t).toContain('Fuites de domaines en .fr ajoutées depuis 30 jours2');
+    expect(t).toContain('Fuites de domaines en .fr ajoutées depuis 30\u00a0jours2');
     expect(t).toContain('Ajout le plus récent29/09');
     expect(t).toContain('liste publique des fuites sur Have I Been Pwned');
     expect(t).toContain('Compte et lien seulement, sans titre ni domaine');
@@ -274,13 +274,13 @@ describe('vue Vigilance cyber (spec 2026-10-04 souveraineté § 2.3, amendement 
   });
   it('Cybermalveillance.gouv.fr : alerte datée, titre et lien ; actualités repliées ; en retard d’après readAt', () => {
     const s = sectionOf('cybermalveillance');
-    expect(s?.summary).toBe('1 alerte · dernière le 30/09');
+    expect(s?.summary).toBe('1\u00a0alerte · dernière le 30/09');
     expect(s?.html).toContain('<span>Cybermois 2026</span><span class="lp-val fmk-num">30/09</span>');
     expect(s?.html).toContain('href="https://www.cybermalveillance.gouv.fr/tous-nos-contenus/alertes/le-cybermois-arrive-preparez-vous"');
     expect(visibleText(s?.html ?? '')).toContain('Flux lus à 16:48.');
     const late = cyber((x) => { if (x.cybermalveillance) x.cybermalveillance.readAt = '2026-10-04T08:00:00Z'; });
     const l = sectionOf('cybermalveillance', { cyber: late });
-    expect(l?.summary).toBe('1 alerte · dernière le 30/09 (en retard)');
+    expect(l?.summary).toBe('1\u00a0alerte · dernière le 30/09 (en retard)');
     expect(visibleText(l?.html ?? '')).toContain('Flux lus à 10:00 (en retard).');
   });
   it('méthode et sources : licences, définitions du CERT-FR, règles de la pastille (revendications jaune au plus), carte sans lieu, sources retirées', () => {
@@ -293,7 +293,7 @@ describe('vue Vigilance cyber (spec 2026-10-04 souveraineté § 2.3, amendement 
     expect(t).toContain('revendications de la semaine dépassent 1,5 fois la moyenne (jaune au plus');
     expect(t).not.toMatch(/3 fois la moyenne/);
     expect(t).toContain('pas de lieu publié : voir le panneau');
-    expect(t).toContain('Retirés : exposition Shodan et Censys, FrenchBreaches, fuites de plus de 30 jours, titres et domaines des fuites, CVE mondiales hors catalogue KEV.');
+    expect(t).toContain('Retirés : exposition Shodan et Censys, FrenchBreaches, fuites de plus de 30\u00a0jours, titres et domaines des fuites, CVE mondiales hors catalogue KEV.');
     expect(h).toContain('href="https://www.ransomware.live/t&amp;c"');
   });
 });
@@ -322,12 +322,12 @@ describe('variantes de la pastille, pannes et retards (S1 à S3)', () => {
   it('jaune : alertes en cours publiées depuis 7 jours ou plus ; jaune : un avis récent avec vulnérabilité KEV, aucune alerte en cours (zéro sans couleur)', () => {
     const older = view({ cyber: cyber((x) => { x.certfr.alerts = x.certfr.alerts.filter((a) => a.ref !== 'CERTFR-2026-ALE-011'); }) });
     expect(older.head.level).toBe('jaune');
-    expect(older.head.figure).toEqual({ value: '2', caption: 'alertes CERT-FR en cours · la plus récente : Metabase, publiée le 10/09 · 24 avis sur 7 jours' });
+    expect(older.head.figure).toEqual({ value: '2', caption: 'alertes CERT-FR en cours · la plus récente : Metabase, publiée le 10/09 · 24\u00a0avis sur 7\u00a0jours' });
     const yellow = cyber((x) => { x.certfr.alerts = x.certfr.alerts.filter((a) => a.status === 'cloturee'); });
     expect(yellow.certfr.alerts.filter((a) => certfrAgeDays(a, NOW) < 30)).toHaveLength(1);
     const v = view({ cyber: yellow });
     expect(v.head.level).toBe('jaune');
-    expect(v.head.figure).toEqual({ value: '0', caption: 'alerte CERT-FR en cours · 24 avis sur 7 jours', level: null });
+    expect(v.head.figure).toEqual({ value: '0', caption: 'alerte CERT-FR en cours · 24\u00a0avis sur 7\u00a0jours', level: null });
   });
   it('CERT-FR en panne : n.d., sections du CERT-FR nommées, autres sources gardées avec leur date', () => {
     const v = view({ cyber: cyber((x) => { x.certfr = { readAt: null, alerts: [], avis: [], reports: [] }; x.errors = ['CERT-FR, alerte : HTTP 503', 'CERT-FR, avis : HTTP 503']; }) });
@@ -336,7 +336,7 @@ describe('variantes de la pastille, pannes et retards (S1 à S3)', () => {
     expect(v.head.figure).toEqual({ value: 'n.d.', caption: 'alertes CERT-FR en cours : CERT-FR indisponible', level: null });
     expect(visibleText(v.sections.find((s) => s.id === 'certfr')?.html ?? '')).toMatch(/^Source indisponible : alertes et avis CERT-FR\.En cas d’incident/);
     expect(visibleText(v.sections.find((s) => s.id === 'rapports')?.html ?? '')).toBe('Source indisponible : rapports Menaces et incidents du CERT-FR.');
-    expect(v.sections.find((s) => s.id === 'revendications')?.summary).toBe('7 en 7 jours · 25 en 30 jours');
+    expect(v.sections.find((s) => s.id === 'revendications')?.summary).toBe('7 en 7\u00a0jours · 25 en 30\u00a0jours');
     expect(visibleText(v.sections.find((s) => s.id === 'methode')?.html ?? '')).toContain('Incidents de lecture : CERT-FR, alerte : HTTP 503 ; CERT-FR, avis : HTTP 503.');
   });
   it('lecture du CERT-FR en retard (6 h) : pastille n.d. de cyberLevel, gros chiffre gardé sans couleur, puces grises', () => {
