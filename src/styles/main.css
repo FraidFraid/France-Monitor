@@ -8068,6 +8068,9 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
    ligne chacun dans sa colonne, sans jamais se recouvrir ; une valeur courte reste calée à droite (captures du 05/10 : « Accents »
    recouvert par sa valeur). */
 #app :is(.defense-panel-modal, .connectivity-panel-modal, .cyber-panel-modal) .fmk .fmk-kv { grid-template-columns: auto auto; justify-content: space-between; }
+/* Légende de carte Défense : les notes (légende officielle des zones drones, renvoi au SIA) passent à la ligne dans la largeur des
+   éléments au lieu d'élargir la carte (capture du 05/10 : 2 172 px de large, colonnes de droite hors de l'écran). */
+.legend-card[data-category="military"] .legend-footer { width: 0; min-width: 100%; }
 
 /* ─── Panneaux Santé (spec 2026-10-03) : tableau de valeurs (Sentinelles, syndromes), série en pointillé ─── */
 .lp .lp-tbl { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
