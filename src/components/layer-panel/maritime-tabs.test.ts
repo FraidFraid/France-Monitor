@@ -72,7 +72,7 @@ describe('panneau Trafic maritime : onglets, Marine nationale, Alertes, fiche na
     expect(h).toContain('<button type="button" class="lp-toggle" data-mar-filter="alertes" aria-pressed="true">Alertes</button>');
     expect(h).toContain('<button type="button" class="lp-toggle" data-mar-filter="tous" aria-pressed="false">Tous les navires</button>');
     expect(h.indexOf('NORD EXPRESS')).toBeLessThan(h.indexOf('OCEAN STAR'));
-    expect(h).toContain(`<span class="fmk-dot fmk-dot--rouge" aria-hidden="true"></span><span>NORD EXPRESS</span><span class="lp-val fmk-num">14,0${NBSP}nœuds</span>`
+    expect(h).toContain(`<span class="fmk-dot fmk-dot--rouge" aria-hidden="true"></span><span>NORD EXPRESS</span><span class="lp-val fmk-num">14${NBSP}nœuds</span>`
       + '<small>Militaire · pavillon Russie · vu à 15:14 · Navire militaire étranger (Russie)</small>');
     expect(h).toMatch(/fmk-dot--orange[^]*OCEAN STAR[^]*pavillon Sierra Leone · France hexagonale · Le Havre à 38/);
     expect(visibleText(sectionOf('alerts', { live: live({ filter: 'risque-eleve' }) })?.html ?? '')).not.toContain('OCEAN STAR');

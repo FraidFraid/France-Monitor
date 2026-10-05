@@ -29,7 +29,17 @@ export function formatMinutes(v: number | null | undefined, opts: { signed?: boo
 export function formatKmh(v: number | null | undefined): string { return withUnit(v, 0, 'km/h'); }
 export function formatMeters(v: number | null | undefined): string { return withUnit(v, 0, 'm'); }
 export function formatNm(v: number | null | undefined, digits = 1): string { return withUnit(v, digits, 'milles'); }
-export function formatKnots(v: number | null | undefined, digits = 1): string { return withUnit(v, digits, 'nœuds'); }
+/**
+ * Vitesse : « 0 nœud », « 1,4 nœud », « 2 nœuds », « 14,2 nœuds » (revue finale M12) : singulier sous 2 (règle française), jamais
+ * de décimale inutile (« 3 nœuds », jamais « 0,0 nœuds » ni « 3,0 nœuds »).
+ */
+export function formatKnots(v: number | null | undefined, digits = 1): string {
+  if (!ok(v)) return ND;
+  const factor = 10 ** digits;
+  const rounded = Math.round(v * factor) / factor;
+  const text = frNumber(rounded, Number.isInteger(rounded) ? 0 : digits);
+  return `${text}${NBSP}${Math.abs(rounded) < 2 ? 'nœud' : 'nœuds'}`;
+}
 export function formatCount(v: number | null | undefined): string { return ok(v) ? frNumber(v, 0) : ND; }
 /**
  * Part en % : « < 0,1 % » sous 0,1 ; une décimale sous 1 (« 0,4 % ») ; entier dès 1 (« 7 % », « 12 % »). Une part arrondie à 1,0

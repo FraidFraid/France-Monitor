@@ -16,6 +16,7 @@ export {
   fetchStrictXml,
   fetchStrictHtml,
   sourceError,
+  formatTimeoutMs,
   cachedSource,
   cachedSourceReport,
   decodeEntities,

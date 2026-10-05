@@ -117,7 +117,7 @@ describe('vue Connectivité (spec 2026-10-04 souveraineté § 2.2)', () => {
     expect([s?.open, s?.summary]).toEqual([true, '1 à vérifier']);
     expect(s?.html).toContain('<div class="lp-row is-link" tabindex="0" role="button" data-vessel="227123456:way/761201753">'
       + '<span class="fmk-dot fmk-dot--orange" aria-hidden="true"></span><span>ESSAI MARINE · Cargo</span>'
-      + `<span class="lp-val fmk-num">312${NBSP}m</span><small>IMEWE Seg3.4 · 0,4${NBSP}nœuds · au mouillage · confirmé sur deux relevés, vu de 16:31 à 16:47</small></div>`);
+      + `<span class="lp-val fmk-num">312${NBSP}m</span><small>IMEWE Seg3.4 · 0,4${NBSP}nœud · au mouillage · confirmé sur deux relevés, vu de 16:31 à 16:47</small></div>`);
     expect(visibleText(s?.html ?? '')).toContain('« à vérifier », jamais une menace');
     expect(visibleText(html({ watch: { ...WATCH, alerts: [ALERT] } })).replace(/jamais une menace/g, '')).not.toMatch(/menace/i);
   });

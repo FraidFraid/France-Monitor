@@ -116,7 +116,8 @@ describe('relève RIPEstat', () => {
     });
     const r = await ensureRipeFresh(NOW);
     expect(r.networks.map((n) => n.name)).toEqual(['SFR', 'Bouygues Telecom', 'Free', 'RENATER', 'OVHcloud']);
-    expect(r.errors).toEqual(['RIPEstat, AS3215 : délai dépassé (60000 ms)']);
+    // Délai dit « 60 000 ms », séparateur de milliers et unité insécables (revue finale M12).
+    expect(r.errors).toEqual(['RIPEstat, AS3215 : délai dépassé (60\u202f000\u00a0ms)']);
     expect(log.urls.filter((u) => u.includes('resource=AS3215&'))).toHaveLength(2);
     expect(log.urls.at(-1)).toBe(routingStatusUrl(3215));
     expect(await readSeries(RIPE_SAMPLES_KEY, { maxAgeMs: RIPE_SAMPLES_MAX_AGE_MS, now: NOW })).toEqual([]);

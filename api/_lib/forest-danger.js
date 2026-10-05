@@ -6,7 +6,9 @@
 import { gunzipSync } from 'node:zlib';
 import { DEPT_NAMES } from '../_shared/departments.js';
 import { parisDay, parisParts } from './paris-time.js';
-import { DEFAULT_TIMEOUT_MS, SOURCE_USER_AGENT, SourceFetchError, cachedSourceReport, isChallengePage, looksLikeHtml, sourceError } from './source-http.js';
+import {
+  DEFAULT_TIMEOUT_MS, SOURCE_USER_AGENT, SourceFetchError, cachedSourceReport, formatTimeoutMs, isChallengePage, looksLikeHtml, sourceError,
+} from './source-http.js';
 
 export const MDF_BASE = 'https://meteofrance.s3.sbg.io.cloud.ovh.net/data/BULLETIN/MDF';
 /** Saison : juin à septembre (Paris), ou dernière publication de moins de 72 h (même règle que le client, tâche 1). */
@@ -49,7 +51,7 @@ export async function fetchStrictGzipText(url, { timeoutMs = DEFAULT_TIMEOUT_MS 
     resp = await fetch(url, { headers: { Accept: '*/*', 'User-Agent': SOURCE_USER_AGENT }, signal: AbortSignal.timeout(timeoutMs) });
   } catch (err) {
     const name = errorName(err);
-    if (name === 'TimeoutError' || name === 'AbortError') throw new SourceFetchError(`délai dépassé (${timeoutMs} ms)`, { url, kind: 'timeout' });
+    if (name === 'TimeoutError' || name === 'AbortError') throw new SourceFetchError(`délai dépassé (${formatTimeoutMs(timeoutMs)})`, { url, kind: 'timeout' });
     throw new SourceFetchError(`réseau : ${err instanceof Error ? err.message : String(err)}`, { url, kind: 'network' });
   }
   if (!resp.ok) throw new SourceFetchError(`HTTP ${resp.status}`, { url, status: resp.status, kind: 'http' });

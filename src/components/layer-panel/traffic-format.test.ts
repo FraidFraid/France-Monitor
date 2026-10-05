@@ -17,6 +17,9 @@ describe('formats des trafics (R1)', () => {
     expect(formatMeters(3000)).toBe(`3\u202F000${NBSP}m`);
     expect(formatNm(3.4)).toBe(`3,4${NBSP}milles`);
     expect(formatKnots(4.1)).toBe(`4,1${NBSP}nœuds`);
+    // Revue finale M12 : singulier sous 2, jamais de décimale inutile (« 0,0 nœuds », « 14,0 nœuds »).
+    expect([formatKnots(0), formatKnots(0.04), formatKnots(1.4), formatKnots(1.96), formatKnots(14), formatKnots(450, 0), formatKnots(null)])
+      .toEqual([`0${NBSP}nœud`, `0${NBSP}nœud`, `1,4${NBSP}nœud`, `2${NBSP}nœuds`, `14${NBSP}nœuds`, `450${NBSP}nœuds`, 'n.d.']);
     expect(formatCount(1196)).toBe('1\u202F196');
     expect(formatShare(0.4)).toBe(`0,4${NBSP}%`);
     expect(formatShare(7.07)).toBe(`7${NBSP}%`);

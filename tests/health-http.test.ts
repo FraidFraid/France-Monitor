@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __resetSwrCacheForTests } from '../api/_utils/swr-cache.js';
 import {
-  HEALTH_USER_AGENT, HealthFetchError, cachedSource, cleanText, fetchStrictHtml, fetchStrictJson, fetchStrictXml,
+  HEALTH_USER_AGENT, HealthFetchError, cachedSource, cleanText, fetchStrictHtml, fetchStrictJson, fetchStrictXml, formatTimeoutMs,
   handlePreflight, isChallengePage, sendHealthJson, sourceError,
 } from '../api/_lib/health-http.js';
 import { fakeRes, fixtureText, respond, stubFetch } from './helpers/health-fixtures.ts';
@@ -78,9 +78,14 @@ describe('lecture stricte', () => {
   it('délai dépassé ou coupure pendant la lecture du corps : erreur typée, message en français', async () => {
     const body = (err: Error) => vi.fn(async () => ({ ok: true, status: 200, text: async () => { throw err; } }));
     vi.stubGlobal('fetch', body(new DOMException('The operation was aborted due to timeout', 'TimeoutError')));
-    expect(await failure(fetchStrictJson(URL_ODISSE, { timeoutMs: 10 }))).toMatchObject({ kind: 'timeout', message: 'délai dépassé (10 ms)' });
+    expect(await failure(fetchStrictJson(URL_ODISSE, { timeoutMs: 10 }))).toMatchObject({ kind: 'timeout', message: 'délai dépassé (10\u00a0ms)' });
     vi.stubGlobal('fetch', body(new TypeError('terminated')));
     expect(await failure(fetchStrictJson(URL_ODISSE))).toMatchObject({ kind: 'network', message: 'réseau : lecture de la réponse interrompue' });
+  });
+  it('délai dit « 30 000 ms », jamais « 30000 ms » : séparateur de milliers et unité insécables (revue finale M12)', async () => {
+    expect([formatTimeoutMs(10), formatTimeoutMs(15_000), formatTimeoutMs(30_000)]).toEqual(['10\u00a0ms', '15\u202f000\u00a0ms', '30\u202f000\u00a0ms']);
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new DOMException('The operation was aborted due to timeout', 'TimeoutError'); }));
+    expect((await failure(fetchStrictJson(URL_ODISSE, { timeoutMs: 30_000 }))).message).toBe('délai dépassé (30\u202f000\u00a0ms)');
   });
   it('les pages réelles lues par les gestionnaires ne sont pas prises pour des défis', () => {
     for (const name of ['peps-actualites.html', 'spf-ocean-indien.html', 'spf-bulletin-reunion.html', 'ansm-disponibilites.html', 'sentiweb-rss.xml']) {

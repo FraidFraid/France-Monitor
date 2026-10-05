@@ -61,6 +61,11 @@ function looksLikeXml(text) {
   return /^\s*(?:<\?xml|<rss[\s>]|<feed[\s>])/i.test(String(text ?? '').replace(/^\uFEFF/, ''));
 }
 
+/** « 30 000 ms » : durée d'un délai, séparateur de milliers et unité insécables (revue finale M12 ; jamais « 30000 ms »). */
+export function formatTimeoutMs(ms) {
+  return `${new Intl.NumberFormat('fr-FR').format(ms)}\u00a0ms`;
+}
+
 function errorName(err) {
   return err && typeof err === 'object' && 'name' in err ? String(err.name) : '';
 }
@@ -72,7 +77,7 @@ async function readBody(resp, url, timeoutMs) {
   } catch (err) {
     const name = errorName(err);
     if (name === 'TimeoutError' || name === 'AbortError') {
-      throw new HealthFetchError(`délai dépassé (${timeoutMs} ms)`, { url, status: resp.status, kind: 'timeout' });
+      throw new HealthFetchError(`délai dépassé (${formatTimeoutMs(timeoutMs)})`, { url, status: resp.status, kind: 'timeout' });
     }
     throw new HealthFetchError('réseau : lecture de la réponse interrompue', { url, status: resp.status, kind: 'network' });
   }
@@ -118,7 +123,7 @@ async function readCappedBody(resp, url, timeoutMs, maxBytes) {
     if (err instanceof HealthFetchError) throw err;
     const name = errorName(err);
     if (name === 'TimeoutError' || name === 'AbortError') {
-      throw new HealthFetchError(`délai dépassé (${timeoutMs} ms)`, { url, status: resp.status, kind: 'timeout' });
+      throw new HealthFetchError(`délai dépassé (${formatTimeoutMs(timeoutMs)})`, { url, status: resp.status, kind: 'timeout' });
     }
     throw new HealthFetchError('réseau : lecture de la réponse interrompue', { url, status: resp.status, kind: 'network' });
   }
@@ -148,7 +153,7 @@ export async function fetchStrictResponse(url, { expect = 'text', timeoutMs = DE
   } catch (err) {
     const name = errorName(err);
     if (name === 'TimeoutError' || name === 'AbortError') {
-      throw new HealthFetchError(`délai dépassé (${timeoutMs} ms)`, { url, kind: 'timeout' });
+      throw new HealthFetchError(`délai dépassé (${formatTimeoutMs(timeoutMs)})`, { url, kind: 'timeout' });
     }
     throw new HealthFetchError(`réseau : ${err instanceof Error ? err.message : String(err)}`, { url, kind: 'network' });
   }
