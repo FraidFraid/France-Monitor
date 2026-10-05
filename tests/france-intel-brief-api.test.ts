@@ -61,6 +61,23 @@ describe('buildPrompt v14', () => {
     for (const m of en.matchAll(/\d+ military[^\n]*/g)) expect(m[0]).toContain('usual count, not an event');
     expect(en).not.toMatch(/military flights|GPS jamming|defense alerts|over France\b/);
   });
+  it('accords de l’invite (revue finale M3) : « 1 maille », « 1 titre critique », « 1 feu » ; anglais au pluriel à 0', () => {
+    const signals = { criticalNews: 1, highNews: 1, weatherAlerts: 1, floodAlerts: 2, fireDetections: 1, railDisruptions: 1, roadIncidents: 1, powerOutages: 1, telecomOutages: 1, cyberAlerts: 0, cyberOpenAlerts: 0, cyberKevAdvisories: 0, militaryFlights: 1, maritimeTrafficFrance: 0, defenseAlerts: 0, jammingSignals: 1, marketStress: 1 };
+    const axes = { continuity: 10, defense: 5, security: 10, signal: 10 };
+    const isnr = { social: 0, security: 0, infra: 0 };
+    const fr = buildPrompt(80, axes, isnr, 0, 1, [], signals, null, [], [], 'fr');
+    for (const text of [
+      'Signaux : 1 titre critique / 1 élevé, 1 rail, 1 route, 1 coupure élec, 1 télécom, 0 navire lent confirmé sur un câble, 1 maille à précision GNSS dégradée',
+      '1 feu, 1 ligne marché sous tension', '1 alerte météo sévère + 2 alertes crues actives', '1 coupure électrique, 1 incident télécom',
+      '1 détection de feu actif', '1 maille à précision GNSS dégradée\n',
+    ]) expect(fr).toContain(text);
+    expect(fr).not.toMatch(/\b1 (?:mailles|titres|feux|coupures|lignes|alertes|incidents|détections|perturbations)\b/);
+    const en = buildPrompt(80, axes, isnr, 0, 1, [], signals, null, [], [], 'en');
+    for (const text of [
+      '1 critical / 1 high headline, 1 rail, 1 road, 1 power outage, 1 telecom, 0 slow vessels confirmed on a cable, 1 cell with degraded GNSS accuracy',
+      '1 fire, 1 stressed market line', '1 severe weather alert + 2 active flood alerts', '1 active fire detection',
+    ]) expect(en).toContain(text);
+  });
   it('sources Souveraineté non lues (S3) : « non évalué », jamais « 0 » envoyé au modèle ; aucun mot calme permis', () => {
     const signals = { criticalNews: 0, highNews: 0, weatherAlerts: 0, floodAlerts: 0, fireDetections: 0, railDisruptions: 0, roadIncidents: 0, powerOutages: 0, telecomOutages: 0, cyberAlerts: 0, cyberOpenAlerts: 0, cyberKevAdvisories: 0, militaryFlights: 0, maritimeTrafficFrance: 0, defenseAlerts: 0, jammingSignals: 0, marketStress: 0, militaryUnavailable: true, cablesUnavailable: true, gnssUnavailable: true, cyberUnavailable: true, kevUnavailable: true };
     const axes = { continuity: 0, defense: 0, security: 0, signal: 0 };
@@ -85,7 +102,7 @@ describe('buildPrompt v14', () => {
     expect(gnssOnly).toContain('0 navire lent confirmé sur un câble, précision GNSS non évaluée, 0 aéronef militaire ou d’État visible en ADS-B au-dessus de la métropole (compte habituel, pas un événement)');
     expect(gnssOnly).toContain('Vocabulaire calme (stable/calme/normal/sous contrôle) : INTERDIT');
     const all = buildPrompt(95, axes, isnr, 0, 0, [], { ...read, gnssUnavailable: false }, null, [], [], 'fr');
-    expect(all).toContain('0 navire lent confirmé sur un câble, 0 mailles à précision GNSS dégradée');
+    expect(all).toContain('0 navire lent confirmé sur un câble, 0 maille à précision GNSS dégradée');
     expect(all).toContain('Vocabulaire calme (stable/calme/normal/sous contrôle) : autorisé');
   });
   it('signalCounts reçus : drapeaux de sources non lues et comptes cyber séparés repris, jamais inventés', async () => {

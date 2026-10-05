@@ -84,7 +84,7 @@ export function domainsSection(snapshot: Pick<FranceCountrySnapshot, 'signals' |
   const num = (v: number | null): string => `<b class="fmk-num">${v === null ? 'n.d.' : formatNumber(v, lang)}</b>`;
   const value = (tile: DomainTile): string => (tile.parts
     ? `<span class="fmk-domain-parts">${tile.parts.map((p) => `<span class="fmk-domain-part">${dot(p.level)}`
-      + `${escapeHtml(p.label)} ${num(p.value)}</span>`).join('')}</span>`
+      + `${escapeHtml(p.label)}\u00a0${num(p.value)}</span>`).join('')}</span>`
     : num(tile.value));
   const grid = tiles.map((tile) => `<div class="fmk-domain">`
     + `<span class="fmk-domain-name">${dot(tile.level)}${escapeHtml(tile.label)}</span>`

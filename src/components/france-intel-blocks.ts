@@ -223,8 +223,9 @@ function defenseTile(s: FranceCountrySignals, lang: Lang): DomainTile {
   const cableAlerts = cablesOff ? 0 : s.defenseAlerts;
   const cableHigh = cablesOff ? 0 : s.defenseHigh;
   const cells = gnssOff ? 0 : s.jammingSignals;
-  const cables = cablesOff ? t(lang, 'câbles non évalués', 'cables not assessed') : `${t(lang, 'câbles', 'cables')} ${s.defenseAlerts}`;
-  const gnss = gnssOff ? t(lang, 'GNSS non évalué', 'GNSS not assessed') : `GNSS ${s.jammingSignals}`;
+  // R1 (revue finale M3) : libellé et chiffre insécables (« câbles 1 · GNSS 0 »).
+  const cables = cablesOff ? t(lang, 'câbles non évalués', 'cables not assessed') : `${t(lang, 'câbles', 'cables')}\u00a0${s.defenseAlerts}`;
+  const gnss = gnssOff ? t(lang, 'GNSS non évalué', 'GNSS not assessed') : `GNSS\u00a0${s.jammingSignals}`;
   return {
     label: t(lang, 'Défense', 'Defense'),
     value: cablesOff && gnssOff ? null : cableAlerts + cells,
@@ -240,7 +241,7 @@ export function domainTiles(s: FranceCountrySignals, lang: Lang): DomainTile[] {
     cyberTile(s, lang),
     {
       label: 'Rail', value: s.railDisruptions,
-      meta: `${s.railSevere} ${t(lang, 'fortes', 'severe')}`,
+      meta: lang === 'fr' ? countWord(s.railSevere, 'forte', 'fortes') : `${s.railSevere}\u00a0severe`,
       level: s.railSevere > 0 ? 'high' : s.railDisruptions > 10 ? 'medium' : 'low',
     },
     militaryTile(s, lang),
@@ -251,7 +252,7 @@ export function domainTiles(s: FranceCountrySignals, lang: Lang): DomainTile[] {
     },
     {
       label: t(lang, 'Pannes', 'Outages'), value: outages,
-      meta: `${t(lang, 'élec', 'power')} ${s.powerOutages} · ${t(lang, 'télécom', 'telecom')} ${s.telecomOutages}`,
+      meta: `${t(lang, 'élec', 'power')}\u00a0${s.powerOutages} · ${t(lang, 'télécom', 'telecom')}\u00a0${s.telecomOutages}`,
       level: outages > 5 ? 'high' : outages > 0 ? 'medium' : 'low',
     },
     defenseTile(s, lang),
@@ -327,7 +328,7 @@ export function renderDomainsBlock(snapshot: Pick<FranceCountrySnapshot, 'signal
   const levelColor = (level: DomainLevel | null): string => (level === null ? 'var(--sev-grey)' : levelColorVar(DOMAIN_LEVEL[level]));
   const valueHtml = (tile: DomainTile): string => (tile.parts
     ? tile.parts.map((p) => `<span class="frintel-dom-part"><span class="frintel-dom-dot" style="background:${levelColor(p.level)};"></span>`
-      + `${escapeHtml(p.label)} ${p.value ?? 'n.d.'}</span>`).join('')
+      + `${escapeHtml(p.label)}\u00a0${p.value ?? 'n.d.'}</span>`).join('')
     : `${tile.value ?? 'n.d.'}`);
   const tilesHtml = tiles.map((tile) => `
     <div class="frintel-dom-tile">

@@ -136,9 +136,9 @@ describe('données partagées des blocs (spec 2026-10-01)', () => {
     expect(tile('Militaire', day)).toEqual({ label: 'Militaire', value: 9, meta: `${MILITARY_FIGURE_LABEL} · 4\u00a0français`, level: 'low' });
     expect(tile('Military', day, 'en')).toMatchObject({ meta: 'military or state aircraft visible on ADS-B over metropolitan France · 4\u00a0French' });
     // Phase A : aucune grille GNSS mesurée, « GNSS non évalué », jamais « GNSS 0 » ; le chiffre et le niveau ne lisent que les câbles.
-    expect(tile('Défense', day)).toEqual({ label: 'Défense', value: 0, meta: 'câbles 0 · GNSS non évalué', level: 'low' });
-    expect(tile('Defense', day, 'en')).toMatchObject({ meta: 'cables 0 · GNSS not assessed' });
-    expect(JSON.stringify(domainTiles(buildFranceSignals({ ...base, ...day }, SOV_FIXTURE_NOW), 'fr'))).not.toMatch(/au-dessus de la France|[Ff]aille|GPS|GNSS 0/);
+    expect(tile('Défense', day)).toEqual({ label: 'Défense', value: 0, meta: 'câbles\u00a00 · GNSS non évalué', level: 'low' });
+    expect(tile('Defense', day, 'en')).toMatchObject({ meta: 'cables\u00a00 · GNSS not assessed' });
+    expect(JSON.stringify(domainTiles(buildFranceSignals({ ...base, ...day }, SOV_FIXTURE_NOW), 'fr'))).not.toMatch(/au-dessus de la France|[Ff]aille|GPS|GNSS[ \u00a0]0/);
     // Sources indisponibles ou en retard (S3) : « n.d. », point gris, et aucun compte « 0 » dans la légende.
     const down = buildSovereigntyInputs(null, CABLES_WATCH_FROZEN_FIXTURE(), null, SOV_FIXTURE_NOW);
     expect(tile('Cyber', down)).toEqual({ label: 'Cyber', value: null, meta: 'alertes CERT-FR en cours', level: null });
@@ -147,17 +147,17 @@ describe('données partagées des blocs (spec 2026-10-01)', () => {
     // Phase B (tâche B28) : grille du 04/10 lue (2 mailles sur 24 h) ; niveau des mailles = pastille Défense (jaune), pastille de la tuile
     // « Militaire » aussi. Câbles en retard, grille lue : la part GNSS seule. Orage (dégradation générale) : « GNSS non évalué ».
     const withGnss = withGnssInputs(day, GNSS_FIXTURE(), MILITARY_FIXTURE(), SOV_FIXTURE_NOW);
-    expect(tile('Défense', withGnss)).toEqual({ label: 'Défense', value: 2, meta: 'câbles 0 · GNSS 2', level: 'medium' });
+    expect(tile('Défense', withGnss)).toEqual({ label: 'Défense', value: 2, meta: 'câbles\u00a00 · GNSS\u00a02', level: 'medium' });
     // Revue de B28 (m3) : la couleur vient de la seule grille, la tuile le dit ; sans grille ou en orage, rien n'est ajouté.
     expect(tile('Militaire', withGnss)).toEqual({ label: 'Militaire', value: 9, meta: `${MILITARY_FIGURE_LABEL} · 4\u00a0français · GNSS à vérifier`, level: 'medium' });
     expect(tile('Military', withGnss, 'en')?.meta).toBe('military or state aircraft visible on ADS-B over metropolitan France · 4\u00a0French · GNSS to be checked');
     expect(tile('Militaire', withGnssInputs(day, GNSS_STORM_FIXTURE(), MILITARY_FIXTURE(), SOV_FIXTURE_NOW))?.meta).toBe(`${MILITARY_FIGURE_LABEL} · 4\u00a0français`);
     const three = withGnssInputs(day, { ...GNSS_FIXTURE(), degraded: { rolling24h: 3, previousUtcDays: [3, null] } }, MILITARY_FIXTURE(), SOV_FIXTURE_NOW);
-    expect(tile('Défense', three)).toMatchObject({ value: 3, meta: 'câbles 0 · GNSS 3', level: 'high' });
+    expect(tile('Défense', three)).toMatchObject({ value: 3, meta: 'câbles\u00a00 · GNSS\u00a03', level: 'high' });
     const cablesLate = withGnssInputs(buildSovereigntyInputs(MILITARY_FIXTURE(), CABLES_WATCH_FROZEN_FIXTURE(), CYBER_FIXTURE(), SOV_FIXTURE_NOW), GNSS_FIXTURE(), MILITARY_FIXTURE(), SOV_FIXTURE_NOW);
-    expect(tile('Défense', cablesLate)).toEqual({ label: 'Défense', value: 2, meta: 'câbles non évalués · GNSS 2', level: 'medium' });
+    expect(tile('Défense', cablesLate)).toEqual({ label: 'Défense', value: 2, meta: 'câbles non évalués · GNSS\u00a02', level: 'medium' });
     expect(tile('Défense', withGnssInputs(day, GNSS_STORM_FIXTURE(), MILITARY_FIXTURE(), SOV_FIXTURE_NOW)))
-      .toEqual({ label: 'Défense', value: 0, meta: 'câbles 0 · GNSS non évalué', level: 'low' });
+      .toEqual({ label: 'Défense', value: 0, meta: 'câbles\u00a00 · GNSS non évalué', level: 'low' });
     // Catalogue KEV en retard, CERT-FR à l'heure : alertes comptées, vulnérabilités citées « non évaluées ».
     const kevLate = CYBER_FIXTURE();
     kevLate.kev.readAt = new Date(SOV_FIXTURE_NOW - 27 * 3_600_000).toISOString();
@@ -227,10 +227,10 @@ describe('données partagées des blocs (spec 2026-10-01)', () => {
     });
     const html = renderDomainsBlock({ signals: buildFranceSignals(raw), meteo: [] }, 'fr');
     for (const label of ['Vigilance', 'Crues', 'Feux']) {
-      expect(html).toContain(`<span class="frintel-dom-part"><span class="frintel-dom-dot" style="background:var(--sev-grey);"></span>${label} n.d.</span>`);
+      expect(html).toContain(`<span class="frintel-dom-part"><span class="frintel-dom-dot" style="background:var(--sev-grey);"></span>${label}\u00a0n.d.</span>`);
     }
     expect(html).toContain('<span class="frintel-dom-dot" style="background:var(--sev-grey);"></span>\n      <span class="frintel-dom-label">Météo</span>');
-    expect(html).not.toMatch(/(Vigilance|Crues|Feux) 0/);
+    expect(html).not.toMatch(/(Vigilance|Crues|Feux)[ \u00a0]0/);
   });
 
   it('part « Feux » : suit toute la pastille Feux (firesLevel), météo des forêts du jour comprise ; le chiffre reste celui des foyers confirmés', () => {
@@ -263,9 +263,9 @@ describe('données partagées des blocs (spec 2026-10-01)', () => {
 
   it('tuile « Météo » rendue : chaque part avec sa puce et son chiffre, aucune somme', () => {
     const html = renderDomainsBlock({ signals: signals({ meteoAlerts: 2, fireFoyersConfirmed: 3, fireDetections: 119 }), meteo: [] }, 'fr');
-    expect(html).toContain('<span class="frintel-dom-part"><span class="frintel-dom-dot" style="background:var(--sev-orange);"></span>Vigilance 2</span>');
-    expect(html).toContain('<span class="frintel-dom-part"><span class="frintel-dom-dot" style="background:var(--sev-green);"></span>Crues 0</span>');
-    expect(html).toContain('Feux 3</span>');
+    expect(html).toContain('<span class="frintel-dom-part"><span class="frintel-dom-dot" style="background:var(--sev-orange);"></span>Vigilance\u00a02</span>');
+    expect(html).toContain('<span class="frintel-dom-part"><span class="frintel-dom-dot" style="background:var(--sev-green);"></span>Crues\u00a00</span>');
+    expect(html).toContain('Feux\u00a03</span>');
     expect(html).not.toContain('124');
   });
 
