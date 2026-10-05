@@ -61,7 +61,7 @@ import {
 } from './parts.ts';
 import { renderNdPill } from '../layer-panel/frame.ts';
 import type { NationalHealthSummary } from '../layer-panel/veille.ts';
-import { MILITARY_FIGURE_LABEL } from '../../services/sovereignty-levels.ts';
+import { MILITARY_FIGURE_LABEL, gnssPartialText } from '../../services/sovereignty-levels.ts';
 
 function capitalize(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
@@ -137,7 +137,8 @@ function themeFigures(theme: SpecificThemeId, snapshot: ThemeFicheInput['snapsho
         },
         {
           label: t(lang, 'Mailles GNSS dégradées (24\u00a0h)', 'Degraded GNSS cells (24\u00a0h)'),
-          value: s.gnssUnavailable === true ? t(lang, 'non évalué', 'not assessed') : String(s.jammingSignals),
+          value: s.gnssUnavailable === true ? t(lang, 'non évalué', 'not assessed')
+            : `${s.jammingSignals}${s.gnssPartialHours !== undefined ? ` (${gnssPartialText(s.gnssPartialHours, lang)})` : ''}`,
         },
       ];
     case 'environment':

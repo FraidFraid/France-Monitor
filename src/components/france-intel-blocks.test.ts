@@ -154,6 +154,13 @@ describe('données partagées des blocs (spec 2026-10-01)', () => {
     expect(tile('Militaire', withGnssInputs(day, GNSS_STORM_FIXTURE(), MILITARY_FIXTURE(), SOV_FIXTURE_NOW))?.meta).toBe(`${MILITARY_FIGURE_LABEL} · 4\u00a0français`);
     const three = withGnssInputs(day, { ...GNSS_FIXTURE(), degraded: { rolling24h: 3, previousUtcDays: [3, null] } }, MILITARY_FIXTURE(), SOV_FIXTURE_NOW);
     expect(tile('Défense', three)).toMatchObject({ value: 3, meta: 'câbles\u00a00 · GNSS\u00a03', level: 'high' });
+    // Compte positif sur une mesure partielle de 5 h (report 10 de la revue finale) : la tuile le dit.
+    const gnssPartial = { ...GNSS_FIXTURE(), degraded: { rolling24h: 3, previousUtcDays: [3, null] as const } };
+    const windowStart = new Date(Date.parse(gnssPartial.readAt ?? '') - 5 * 3_600_000 - 60_000).toISOString();
+    const partial = withGnssInputs(day, { ...gnssPartial, windowStart }, MILITARY_FIXTURE(), SOV_FIXTURE_NOW);
+    expect(tile('Défense', partial)?.meta).toBe('câbles\u00a00 · GNSS\u00a03 (mesure partielle de 5\u00a0h)');
+    expect(tile('Defense', partial, 'en')?.meta).toBe('cables\u00a00 · GNSS\u00a03 (partial measurement, 5\u00a0h)');
+    expect(tile('Défense', three)?.meta).not.toContain('partielle');
     const cablesLate = withGnssInputs(buildSovereigntyInputs(MILITARY_FIXTURE(), CABLES_WATCH_FROZEN_FIXTURE(), CYBER_FIXTURE(), SOV_FIXTURE_NOW), GNSS_FIXTURE(), MILITARY_FIXTURE(), SOV_FIXTURE_NOW);
     expect(tile('Défense', cablesLate)).toEqual({ label: 'Défense', value: 2, meta: 'câbles non évalués · GNSS\u00a02', level: 'medium' });
     expect(tile('Défense', withGnssInputs(day, GNSS_STORM_FIXTURE(), MILITARY_FIXTURE(), SOV_FIXTURE_NOW)))

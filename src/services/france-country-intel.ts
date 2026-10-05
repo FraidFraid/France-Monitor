@@ -530,6 +530,7 @@ export function buildFranceSignals(raw: FranceRawData, nowMs: number = Date.now(
     cyberUnavailable: raw.sovereigntyAvailable?.cyber === false,
     // Aucune grille mesurée (phase A) ou grille inexploitable (phase B) : « non évalué », jamais « 0 » (S3).
     gnssUnavailable: raw.gnssDegraded === null,
+    ...(raw.gnssDegraded?.partialHours !== undefined ? { gnssPartialHours: raw.gnssDegraded.partialHours } : {}),
     kevUnavailable: raw.sovereigntyAvailable?.cyber === false || (raw.cyber !== null && isSovereigntyDataLate('kev', raw.cyber.kev.readAt, nowMs)),
     cyberOpenAlerts: cyberPressure.inputs.openAlerts,
     cyberKevAdvisories: cyberPressure.inputs.kevAdvisories7d,

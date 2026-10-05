@@ -79,6 +79,8 @@ export function briefSignalCounts(s: FranceCountrySignals): Record<string, numbe
     militaryUnavailable:   s.militaryUnavailable === true,
     cablesUnavailable:     s.cablesUnavailable === true,
     gnssUnavailable:       s.gnssUnavailable === true,
+    // Compte de mailles positif sur une mesure partielle : heures de mesure, dites au brief (absent sur 24 h).
+    ...(s.gnssPartialHours !== undefined ? { gnssPartialHours: s.gnssPartialHours } : {}),
     cyberUnavailable:      s.cyberUnavailable === true,
     kevUnavailable:        s.kevUnavailable === true,
   };

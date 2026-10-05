@@ -25,7 +25,7 @@ import { FRENCH_PORTS } from '../config/french-ports.ts';
 import type { FranceRawData } from './france-country-intel.ts';
 import {
   CERTFR_RECENT_DAYS, CLAIMS_RATIO_JAUNE, GNSS_SITUATION_CELLS, alertsByVessel, certfrDate, certfrExploitationText, certfrKevAdvisories,
-  claimsRatio, defenseSituationSeverity, distinctVessels, isCertFrAlertOpen, isCertFrPublishedRecently, isDefenseSituationEmergency,
+  claimsRatio, defenseSituationSeverity, distinctVessels, gnssPartialText, isCertFrAlertOpen, isCertFrPublishedRecently, isDefenseSituationEmergency,
   isSovereigntyDataLate,
 } from './sovereignty-levels.ts';
 import { isEmergencyConfirmed } from './traffic-levels.ts';
@@ -634,7 +634,9 @@ function detectDefenseSignal(raw: FranceRawData): DetectedSituation | null {
   const gnssCells = gnss !== null && gnss.rolling24h >= GNSS_SITUATION_CELLS ? gnss.rolling24h : 0;
   const lines = [
     ...hijacks.map((e) => `code 7500 affiché par le transpondeur, à confirmer par les autorités : ${emergencyAircraftLine(e)}`),
-    ...(gnssCells > 0 ? [`${countText(gnssCells, 'maille', 'mailles')} à précision GNSS dégradée sur 24${NBSP}h, à vérifier`] : []),
+    // Fenêtre partielle (report 10 de la revue finale) : « (mesure partielle de N h) » au lieu de « sur 24 h ».
+    ...(gnssCells > 0 ? [`${countText(gnssCells, 'maille', 'mailles')} à précision GNSS dégradée `
+      + `${gnss?.partialHours !== undefined ? `(${gnssPartialText(gnss.partialHours)})` : `sur 24${NBSP}h`}, à vérifier`] : []),
   ];
   const summary = lines.join(' ; ');
   const base = situation(

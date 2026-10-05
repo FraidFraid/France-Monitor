@@ -163,6 +163,11 @@ describe('fiche thème (spec 2026-10-01 fiches § 4.3)', () => {
     })).sections[0].html;
     expect(partial).toContain(row('Navires lents confirmés sur un câble', 'non évalué'));
     expect(partial).toContain(row('Mailles GNSS dégradées (24\u00a0h)', '2'));
+    // Compte positif sur une mesure partielle (report 10 de la revue finale) : dit.
+    const partialWindow = buildThemeFiche(themeInput({
+      theme: 'security', snapshot: { signals: signals({ jammingSignals: 3, gnssPartialHours: 5 }), energy: null },
+    })).sections[0].html;
+    expect(partialWindow).toContain(row('Mailles GNSS dégradées (24\u00a0h)', '3 (mesure partielle de 5\u00a0h)'));
     expect(down).not.toMatch(/fmk-num">0</);
   });
 

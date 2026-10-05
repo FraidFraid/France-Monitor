@@ -129,6 +129,33 @@ describe('buildPrompt v14', () => {
     expect(sent).toContain('3 alertes CERT-FR en cours ; 3 avis citant une vulnérabilité KEV ajoutée depuis moins de 7 jours');
     expect(sent).toContain('Pression cyber : non évaluée');
   });
+  it('mailles comptées sur une mesure partielle (report 10 de la revue finale) : « (mesure partielle de N h) », lu par le gestionnaire', async () => {
+    const signals = { criticalNews: 0, highNews: 0, weatherAlerts: 0, floodAlerts: 0, fireDetections: 0, railDisruptions: 0, roadIncidents: 0, powerOutages: 0, telecomOutages: 0, cyberAlerts: 0, militaryFlights: 0, maritimeTrafficFrance: 0, defenseAlerts: 0, jammingSignals: 3, marketStress: 0, gnssPartialHours: 5 };
+    const axes = { continuity: 0, defense: 0, security: 0, signal: 0 };
+    const isnr = { social: 0, security: 0, infra: 0 };
+    const fr = buildPrompt(80, axes, isnr, 0, 0, [], signals, null, [], [], 'fr');
+    expect(fr).toContain('0 navire lent confirmé sur un câble, 3 mailles à précision GNSS dégradée (mesure partielle de 5 h), ');
+    expect(fr).toContain('3 mailles à précision GNSS dégradée (mesure partielle de 5 h)\n');
+    expect(buildPrompt(80, axes, isnr, 0, 0, [], signals, null, [], [], 'en')).toContain('3 cells with degraded GNSS accuracy (partial measurement, 5 h)');
+    // Sur 24 h : aucune mention.
+    expect(buildPrompt(80, axes, isnr, 0, 0, [], { ...signals, gnssPartialHours: null }, null, [], [], 'fr')).not.toContain('mesure partielle');
+    vi.stubEnv('GROQ_API_KEY', 'test-key');
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ bluf: 'x', judgments: [], watch: [] }) } }] }), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const body = {
+      countryScore: 80, axes, isnrComponents: {}, cyberScore: 0, meteoAlertCount: 0, topHeadlines: [],
+      signalCounts: { jammingSignals: 3, gnssPartialHours: 5 }, situations: [], events: [], lang: 'fr',
+    };
+    let sent = '';
+    try {
+      await handler(new Request('http://localhost/api/intelligence/v1/france-intel-brief', { method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json' } }));
+      sent = String((JSON.parse(String((fetchMock.mock.calls[0] as unknown as [string, { body: string }])[1].body)) as { messages: Array<{ content: string }> }).messages[0]?.content);
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+    }
+    expect(sent).toContain('3 mailles à précision GNSS dégradée (mesure partielle de 5 h)');
+  });
   it('CERT-FR indisponible ou en retard : pression cyber « non évaluée », jamais « faible » (une absence n’est pas un calme)', () => {
     const signals = { criticalNews: 0, highNews: 0, weatherAlerts: 0, floodAlerts: 0, fireDetections: 0, railDisruptions: 0, roadIncidents: 0, powerOutages: 0, telecomOutages: 0, cyberAlerts: 0, militaryFlights: 0, maritimeTrafficFrance: 0, defenseAlerts: 0, jammingSignals: 0, marketStress: 0 };
     const axes = { continuity: 0, defense: 0, security: 0, signal: 0 };

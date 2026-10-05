@@ -530,8 +530,15 @@ export function gnssWindowHours(g: Pick<GnssResponse, 'readAt' | 'windowStart'>)
  */
 export function gnssDegradedCounts(g: GnssResponse | null, now: number): GnssDegradedCounts | null {
   if (g === null || g.readAt === null || g.generalDegradation || isSovereigntyDataLate('adsb-gnss', g.readAt, now)) return null;
-  if (!isGnssWindowCovered(g) && g.degraded.rolling24h <= 0) return null;
-  return g.degraded;
+  if (isGnssWindowCovered(g)) return g.degraded;
+  if (g.degraded.rolling24h <= 0) return null;
+  // Compte positif sur une mesure partielle : il compte, et la tuile, la fiche et le brief le disent (report 10 de la revue finale).
+  return { ...g.degraded, partialHours: gnssWindowHours(g) };
+}
+
+/** « mesure partielle de 5 h » (heure insécable) ; anglais : « partial measurement, 5 h ». */
+export function gnssPartialText(hours: number, lang: 'fr' | 'en' = 'fr'): string {
+  return lang === 'fr' ? `mesure partielle de ${hours}\u00a0h` : `partial measurement, ${hours}\u00a0h`;
 }
 
 /** Compte glissant de 24 h de mailles dégradées (troisième argument de defenseLevel) ; 0 si la grille n'est pas exploitable. */

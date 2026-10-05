@@ -112,6 +112,13 @@ function countIn(lang, n, one, many) {
   return lang === 'fr' ? plural(n, one, many) : `${n} ${n === 1 ? one : many}`;
 }
 
+/** « (mesure partielle de 5 h) » après un compte de mailles positif sur une fenêtre partielle (report 10 de la revue finale) ; '' sur 24 h. */
+function gnssPartial(signalCounts, lang) {
+  const h = signalCounts.gnssPartialHours;
+  if (typeof h !== 'number' || h < 0) return '';
+  return lang === 'fr' ? ` (mesure partielle de ${h} h)` : ` (partial measurement, ${h} h)`;
+}
+
 /** Résumé situationnel, défense : navires lents confirmés sur un câble, mailles à précision GNSS dégradée ; « non évalué » si non lus. */
 function defenseSummaryLines(signalCounts, lang) {
   const lines = [];
@@ -124,8 +131,8 @@ function defenseSummaryLines(signalCounts, lang) {
   if (signalCounts.gnssUnavailable) lines.push(NOT_ASSESSED.gnss[lang]);
   else if (signalCounts.jammingSignals > 0) {
     lines.push(lang === 'fr'
-      ? `${plural(signalCounts.jammingSignals, 'maille', 'mailles')} à précision GNSS dégradée`
-      : `${plural(signalCounts.jammingSignals, 'cell', 'cells')} with degraded GNSS accuracy`);
+      ? `${plural(signalCounts.jammingSignals, 'maille', 'mailles')} à précision GNSS dégradée${gnssPartial(signalCounts, 'fr')}`
+      : `${plural(signalCounts.jammingSignals, 'cell', 'cells')} with degraded GNSS accuracy${gnssPartial(signalCounts, 'en')}`);
   }
   return lines;
 }
@@ -172,8 +179,8 @@ function sovereigntySignals(signalCounts, lang) {
       : `${countIn('en', signalCounts.defenseAlerts, 'slow vessel', 'slow vessels')} confirmed on a cable`);
   const gnss = signalCounts.gnssUnavailable
     ? (fr ? 'précision GNSS non évaluée' : 'GNSS accuracy not assessed')
-    : (fr ? `${plural(signalCounts.jammingSignals, 'maille', 'mailles')} à précision GNSS dégradée`
-      : `${countIn('en', signalCounts.jammingSignals, 'cell', 'cells')} with degraded GNSS accuracy`);
+    : (fr ? `${plural(signalCounts.jammingSignals, 'maille', 'mailles')} à précision GNSS dégradée${gnssPartial(signalCounts, 'fr')}`
+      : `${countIn('en', signalCounts.jammingSignals, 'cell', 'cells')} with degraded GNSS accuracy${gnssPartial(signalCounts, 'en')}`);
   const military = signalCounts.militaryUnavailable
     ? (fr ? 'aéronefs militaires ou d’État visibles en ADS-B non évalués' : 'military or state aircraft visible on ADS-B not assessed')
     : `${militaryFigure(signalCounts.militaryFlights, lang)} (${MILITARY_COUNT_NOTE[lang]})`;
@@ -534,6 +541,9 @@ export default async function handler(request) {
     militaryUnavailable: body.signalCounts?.militaryUnavailable === true,
     cablesUnavailable: body.signalCounts?.cablesUnavailable === true,
     gnssUnavailable: body.signalCounts?.gnssUnavailable === true,
+    // Compte de mailles positif sur une mesure partielle (heures de mesure) ; null sur 24 h.
+    gnssPartialHours: typeof body.signalCounts?.gnssPartialHours === 'number' && body.signalCounts.gnssPartialHours >= 0
+      ? Math.floor(body.signalCounts.gnssPartialHours) : null,
     cyberUnavailable: body.signalCounts?.cyberUnavailable === true,
     kevUnavailable: body.signalCounts?.kevUnavailable === true,
   };

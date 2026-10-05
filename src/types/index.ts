@@ -1075,6 +1075,8 @@ export interface FranceCountrySignals {
    * dégradation générale) : « GNSS non évalué », jamais « GNSS 0 ».
    */
   gnssUnavailable?: boolean;
+  /** Compte de mailles positif sur une fenêtre partielle : heures de mesure (« mesure partielle de N h ») ; absent sur 24 h. */
+  gnssPartialHours?: number;
   /** Catalogue KEV de la CISA indisponible ou en retard (26 h) : vulnérabilités citées et avis KEV « non évalués », jamais « 0 ». */
   kevUnavailable?: boolean;
   /** Alertes CERT-FR au statut « en cours » repris du CERT-FR (O1 ; gros chiffre du panneau Vigilance cyber, tuile « Cyber », fiche). */
@@ -2699,6 +2701,11 @@ export type AircraftFamily = 'francais' | 'autres';
 export interface GnssDegradedCounts {
   rolling24h: number;                               // mailles à précision dégradée sur les 24 dernières heures (pastille, score)
   previousUtcDays: readonly [number | null, number | null];   // deux derniers jours UTC complets, veille d'abord ; null : jour non couvert
+  /**
+   * Côté navigateur seulement (gnssDegradedCounts, jamais dans la réponse du serveur) : heures entières de mesure quand un compte positif
+   * vient d'une fenêtre de moins de 23 h 50 (après un redémarrage du serveur) ; la tuile, la fiche et le brief disent « mesure partielle ».
+   */
+  partialHours?: number;
 }
 /** Sources Souveraineté lues pour le score et les tuiles (S3) : false si indisponible ; jamais lu par la formule. */
 export interface SovereigntyAvailability { military: boolean; cables: boolean; cyber: boolean }

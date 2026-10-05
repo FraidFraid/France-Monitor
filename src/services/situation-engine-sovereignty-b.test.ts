@@ -51,6 +51,10 @@ describe('« Précision GNSS dégradée » et signal du score, phase B', () => {
     expect([s?.affectedZones, s?.lat, s?.lon, s?.activateLayers]).toEqual([['France'], undefined, undefined, ['military']]);
     expect(JSON.stringify(s)).not.toMatch(/brouillage mesuré|Brouillage|navigation dégradée|\u2014/);
   });
+  it('mesure partielle (report 10 de la revue finale) : « (mesure partielle de N h) » au lieu de « sur 24 h »', () => {
+    const s = defenseSignal(raw({ rolling24h: 3, previousUtcDays: [null, null], partialHours: 5 }));
+    expect(s?.summary).toBe('3\u00a0mailles à précision GNSS dégradée (mesure partielle de 5\u00a0h), à vérifier.');
+  });
   it('O7 : élevée seulement sur deux jours UTC complets de suite à 3 mailles ou plus ; jamais critique', () => {
     expect(defenseSignal(raw(gnssDegradedCounts(counts(4, [3, 5]), NOW)))?.severity).toBe('high');
     expect(defenseSignal(raw(gnssDegradedCounts(counts(12, [12, 12]), NOW)))?.severity).toBe('high');

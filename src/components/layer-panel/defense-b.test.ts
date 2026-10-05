@@ -128,12 +128,12 @@ describe('section GNSS : compte sans lieu et mailles du jour complet (O17)', () 
     expect(rollingHtml(at(5, 1))).toContain('lp-lvl--jaune');
     expect(section(input({ gnss: at(5, 3) }), 'gnss')?.summary)
       .toMatch(new RegExp(`^3${NBSP}mailles au-delà de 10${NBSP}% \\(mesure partielle de 5${NBSP}h\\) · `));
-    expect(gnssDegradedCounts(at(5, 3), NOW)).toEqual({ rolling24h: 3, previousUtcDays: [3, 3] });
+    expect(gnssDegradedCounts(at(5, 3), NOW)).toEqual({ rolling24h: 3, previousUtcDays: [3, 3], partialHours: 5 });
     const v = buildDefenseView(input({ gnss: at(5, 3) }));
     expect(v.head.level).toBe('orange');
     expect(v.head.status[0]).toBe(glueSovUnits(`${defenseLevel(MILITARY_FIXTURE(), NOW, 3).reason} (mesure partielle de 5${NBSP}h)`));
     const inputs = withGnssInputs(buildSovereigntyInputs(MILITARY_FIXTURE(), null, null, NOW), at(5, 3), MILITARY_FIXTURE(), NOW);
-    expect([inputs.gnssDegraded, inputs.defensePillLevel, inputs.defensePillFromGnss]).toEqual([{ rolling24h: 3, previousUtcDays: [3, 3] }, 'orange', true]);
+    expect([inputs.gnssDegraded, inputs.defensePillLevel, inputs.defensePillFromGnss]).toEqual([{ rolling24h: 3, previousUtcDays: [3, 3], partialHours: 5 }, 'orange', true]);
     // Relevé adsb.lol en retard : le GNSS frais garde sa couleur (B25), raison « mesure partielle » comprise.
     const lateMil = { ...MILITARY_FIXTURE(), readAt: new Date(NOW - 11 * 60_000).toISOString() };
     const late = buildDefenseView(input({ military: lateMil, gnss: at(5, 3) }));

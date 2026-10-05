@@ -20,7 +20,7 @@ import {
 } from '../utils/fuelPriceChart.ts';
 import { fuelTensionLevel, levelColorVar, levelLabel, officialLevel, type VigilanceLevel } from '../services/vigilance.ts';
 import { renderVigilancePill } from './shared/vigilancePill.ts';
-import { GNSS_SITUATION_CELLS, MILITARY_FIGURE_LABEL } from '../services/sovereignty-levels.ts';
+import { GNSS_SITUATION_CELLS, MILITARY_FIGURE_LABEL, gnssPartialText } from '../services/sovereignty-levels.ts';
 
 type Lang = 'fr' | 'en';
 
@@ -225,7 +225,8 @@ function defenseTile(s: FranceCountrySignals, lang: Lang): DomainTile {
   const cells = gnssOff ? 0 : s.jammingSignals;
   // R1 (revue finale M3) : libellé et chiffre insécables (« câbles 1 · GNSS 0 »).
   const cables = cablesOff ? t(lang, 'câbles non évalués', 'cables not assessed') : `${t(lang, 'câbles', 'cables')}\u00a0${s.defenseAlerts}`;
-  const gnss = gnssOff ? t(lang, 'GNSS non évalué', 'GNSS not assessed') : `GNSS\u00a0${s.jammingSignals}`;
+  const partial = !gnssOff && s.gnssPartialHours !== undefined ? ` (${gnssPartialText(s.gnssPartialHours, lang)})` : '';
+  const gnss = gnssOff ? t(lang, 'GNSS non évalué', 'GNSS not assessed') : `GNSS\u00a0${s.jammingSignals}${partial}`;
   return {
     label: t(lang, 'Défense', 'Defense'),
     value: cablesOff && gnssOff ? null : cableAlerts + cells,

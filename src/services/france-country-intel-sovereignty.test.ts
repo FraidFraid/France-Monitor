@@ -123,6 +123,11 @@ describe('score France : entrées Souveraineté (formule inchangée)', () => {
       { ...MILITARY_FIXTURE(), readAt: '2026-10-04T14:30:00.000Z' }, CABLES_WATCH_FROZEN_FIXTURE(), null, NOW,
     )), NOW));
     expect(down).toMatchObject({ militaryUnavailable: true, cablesUnavailable: true, gnssUnavailable: true, cyberUnavailable: true, kevUnavailable: true });
+    // Mailles comptées sur une mesure partielle (report 10 de la revue finale) : heures de mesure transmises ; sur 24 h, rien.
+    const partialSignals = buildFranceSignals(raw({ ...sov04(), gnssDegraded: { rolling24h: 3, previousUtcDays: [null, null], partialHours: 5 } }), NOW);
+    expect(briefSignalCounts(partialSignals)).toMatchObject({ gnssUnavailable: false, jammingSignals: 3, gnssPartialHours: 5 });
+    expect(briefSignalCounts(buildFranceSignals(raw({ ...sov04(), gnssDegraded: { rolling24h: 3, previousUtcDays: [null, null] } }), NOW)))
+      .not.toHaveProperty('gnssPartialHours');
     const kevLate = CYBER_FIXTURE();
     kevLate.kev.readAt = new Date(NOW - 27 * 3_600_000).toISOString();
     expect(briefSignalCounts(buildFranceSignals(raw(buildSovereigntyInputs(null, null, kevLate, NOW)), NOW)))
