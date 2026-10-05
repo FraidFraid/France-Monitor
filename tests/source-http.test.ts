@@ -95,6 +95,25 @@ describe('pannes amont (S3)', () => {
     stubFetch(() => respond(fixtureText('challenge-captcha.html'), 403));
     expect((await failure(fetchStrictJson(TOMTOM))).message).toBe('page de contrôle anti-robot (HTTP 403)');
   });
+  it('plafond d’octets (revue finale M6) : Content-Length annoncé au-delà, flux qui le dépasse ou corps lu trop long : panne nommée', async () => {
+    const MB = 1024 * 1024;
+    // En-tête annoncé : arrêt avant toute lecture.
+    stubFetch(() => respond('[]', 200, { 'Content-Length': String(65 * MB) }));
+    const declared = await failure(fetchStrictResponse('https://data.ransomware.live/victims.json', { expect: 'json', maxBytes: 64 * MB }));
+    expect([declared.kind, declared.message]).toEqual(['too-large', 'réponse trop volumineuse (plus de 64\u00a0Mo)']);
+    // Corps en flux, sans Content-Length : lecture interrompue au dépassement.
+    const chunk = new TextEncoder().encode('x'.repeat(1024));
+    let sent = 0;
+    const stream = new ReadableStream<Uint8Array>({ pull(controller) { sent += 1; controller.enqueue(chunk); if (sent >= 1000) controller.close(); } });
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(stream, { status: 200 })));
+    expect((await failure(fetchStrictResponse('https://exemple.test/a', { maxBytes: 2 * 1024 }))).kind).toBe('too-large');
+    expect(sent).toBeLessThan(20);
+    // Corps sans flux (réponse simulée) : contrôlé après lecture ; sous le plafond, lu tel quel, en UTF-8.
+    stubFetch(() => respond('é'.repeat(6)));
+    expect((await failure(fetchStrictResponse('https://exemple.test/b', { maxBytes: 10 }))).kind).toBe('too-large');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(new TextEncoder().encode('{"a":"é"}'), { status: 200 })));
+    expect((await fetchStrictResponse('https://exemple.test/c', { expect: 'json', maxBytes: 64 })).text).toBe('{"a":"é"}');
+  });
   it('page HTML ordinaire à la place du XML DATEX : erreur', async () => {
     stubFetch(() => respond('<!DOCTYPE html><html><body>Maintenance</body></html>'));
     expect((await failure(fetchStrictXml('https://tipi.bison-fute.gouv.fr/x.xml'))).kind).toBe('html');

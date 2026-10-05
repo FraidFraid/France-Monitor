@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __resetKvForTests, __setKvClientForTests, kvGetJson } from '../api/_lib/kv-history.js';
 import {
-  RANSOM_FLOOR_MS, RANSOM_INTERVAL_MS, RANSOM_KEY, VICTIMS_URL, __resetRansomwareForTests, ensureRansomwareFresh, summarizeVictims,
+  RANSOM_FLOOR_MS, RANSOM_INTERVAL_MS, RANSOM_KEY, RANSOM_MAX_BYTES, VICTIMS_URL, __resetRansomwareForTests, ensureRansomwareFresh, summarizeVictims,
 } from '../api/_lib/ransomware-live.js';
 import { SOURCE_USER_AGENT } from '../api/_lib/source-http.js';
 import { respond, sentHeader, stubFetch } from './helpers/traffic-fixtures.ts';
@@ -90,6 +90,17 @@ describe('ensureRansomwareFresh', () => {
     expect(log.urls).toHaveLength(2);
     await ensureRansomwareFresh(NOW + RANSOM_INTERVAL_MS + RANSOM_FLOOR_MS);
     expect(log.urls).toHaveLength(3);
+  });
+  it('fichier au-delà de 64 Mo (revue finale M6) : panne nommée, résumé précédent gardé, jamais lu en entier', async () => {
+    expect(RANSOM_MAX_BYTES).toBe(64 * 1024 * 1024);
+    let calls = 0;
+    stubFetch(() => {
+      calls += 1;
+      return calls === 1 ? respond(TEXT, 200, { 'Last-Modified': LAST_MODIFIED }) : respond('[]', 200, { 'Content-Length': String(RANSOM_MAX_BYTES + 1) });
+    });
+    await ensureRansomwareFresh(NOW);
+    const big = await ensureRansomwareFresh(NOW + RANSOM_INTERVAL_MS);
+    expect([big.errors, big.summary?.checkedAt, big.summary?.ratio]).toEqual([['Ransomware.live : réponse trop volumineuse (plus de 64\u00a0Mo)'], CHECKED, 1.29]);
   });
   it('jamais lu et en panne : résumé null, panne nommée ; page HTML nommée', async () => {
     stubFetch(() => respond('<!DOCTYPE html><html><body>maintenance</body></html>'));

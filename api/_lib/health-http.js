@@ -19,7 +19,7 @@ const ACCEPT = {
   text: '*/*',
 };
 
-/** Erreur d'une source : kind ∈ 'http' | 'timeout' | 'network' | 'challenge' | 'html' | 'parse' | 'empty'. */
+/** Erreur d'une source : kind ∈ 'http' | 'timeout' | 'network' | 'challenge' | 'html' | 'parse' | 'empty' | 'too-large'. */
 export class HealthFetchError extends Error {
   /** @param {string} message @param {{ url?: string | null, status?: number | null, kind?: string }} [info] */
   constructor(message, { url = null, status = null, kind = 'network' } = {}) {
@@ -78,15 +78,65 @@ async function readBody(resp, url, timeoutMs) {
   }
 }
 
+/** « 64 Mo » : plafond d'octets en mégaoctets entiers, nombre et unité insécables. */
+function megabytes(bytes) {
+  return `${Math.round(bytes / (1024 * 1024))}\u00a0Mo`;
+}
+
+/**
+ * Corps plafonné à `maxBytes` octets (revue finale M6) : un Content-Length annoncé au-delà, ou une lecture qui le dépasse, s'arrête
+ * par une panne nommée (« réponse trop volumineuse (plus de 64 Mo) », kind 'too-large') sans garder le corps en mémoire ; lecture
+ * par morceaux quand le corps se lit en flux, sinon contrôle après lecture.
+ */
+async function readCappedBody(resp, url, timeoutMs, maxBytes) {
+  const tooLarge = () => new HealthFetchError(`réponse trop volumineuse (plus de ${megabytes(maxBytes)})`, { url, status: resp.status, kind: 'too-large' });
+  const declared = Number(resp.headers && typeof resp.headers.get === 'function' ? resp.headers.get('content-length') : Number.NaN);
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    await resp.body?.cancel?.().catch(() => undefined);
+    throw tooLarge();
+  }
+  const reader = resp.body && typeof resp.body.getReader === 'function' ? resp.body.getReader() : null;
+  if (reader === null) {
+    const text = await readBody(resp, url, timeoutMs);
+    if (new TextEncoder().encode(text).byteLength > maxBytes) throw tooLarge();
+    return text;
+  }
+  const chunks = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => undefined);
+        throw tooLarge();
+      }
+      chunks.push(value);
+    }
+  } catch (err) {
+    if (err instanceof HealthFetchError) throw err;
+    const name = errorName(err);
+    if (name === 'TimeoutError' || name === 'AbortError') {
+      throw new HealthFetchError(`délai dépassé (${timeoutMs} ms)`, { url, status: resp.status, kind: 'timeout' });
+    }
+    throw new HealthFetchError('réseau : lecture de la réponse interrompue', { url, status: resp.status, kind: 'network' });
+  }
+  const bytes = new Uint8Array(total);
+  let at = 0;
+  for (const c of chunks) { bytes.set(c, at); at += c.byteLength; }
+  return new TextDecoder('utf-8').decode(bytes);
+}
+
 /**
  * Réponse d'une URL, lue strictement : corps texte, statut et lecture d'en-tête (`header('x-rate-limit-remaining')`).
  * `headers` complète les en-têtes envoyés (Authorization, Content-Type…) ; le User-Agent reste fixe.
- * `contentMarker` : repère du contenu attendu (voir isChallengePage).
+ * `contentMarker` : repère du contenu attendu (voir isChallengePage). `maxBytes` : plafond du corps en octets (readCappedBody).
  * @param {string} url
- * @param {{ expect?: 'json' | 'xml' | 'html' | 'text', timeoutMs?: number, headers?: Record<string, string>, method?: string, body?: BodyInit, contentMarker?: string }} [options]
+ * @param {{ expect?: 'json' | 'xml' | 'html' | 'text', timeoutMs?: number, headers?: Record<string, string>, method?: string, body?: BodyInit, contentMarker?: string, maxBytes?: number }} [options]
  * @returns {Promise<{ text: string, status: number, header(name: string): string | null }>}
  */
-export async function fetchStrictResponse(url, { expect = 'text', timeoutMs = DEFAULT_TIMEOUT_MS, headers = {}, method = 'GET', body, contentMarker } = {}) {
+export async function fetchStrictResponse(url, { expect = 'text', timeoutMs = DEFAULT_TIMEOUT_MS, headers = {}, method = 'GET', body, contentMarker, maxBytes } = {}) {
   let resp;
   try {
     resp = await fetch(url, {
@@ -112,7 +162,7 @@ export async function fetchStrictResponse(url, { expect = 'text', timeoutMs = DE
     }
     throw new HealthFetchError(`HTTP ${resp.status}`, { url, status: resp.status, kind: 'http' });
   }
-  const text = await readBody(resp, url, timeoutMs);
+  const text = typeof maxBytes === 'number' && maxBytes > 0 ? await readCappedBody(resp, url, timeoutMs, maxBytes) : await readBody(resp, url, timeoutMs);
   if (isChallengePage(text, { contentMarker })) throw new HealthFetchError('page de contrôle anti-robot', { url, status: resp.status, kind: 'challenge' });
   if ((expect === 'json' || expect === 'xml') && looksLikeHtml(text)) {
     throw new HealthFetchError('page HTML reçue au lieu de données', { url, status: resp.status, kind: 'html' });

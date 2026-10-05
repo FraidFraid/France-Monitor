@@ -13,6 +13,11 @@ export const RANSOM_KEY = 'sov:ransom:summary';
 export const RANSOM_INTERVAL_MS = 6 * 3_600_000;
 export const RANSOM_FLOOR_MS = 30 * 60_000;
 export const RANSOM_TIMEOUT_MS = 60_000;
+/**
+ * Plafond de lecture de `victims.json` (revue finale M6) : 21 Mo le 04/10/2026, le fichier grossit chaque année ; au-delà de 64 Mo,
+ * panne nommée (« réponse trop volumineuse (plus de 64 Mo) ») et résumé précédent gardé, jamais un processus saturé.
+ */
+export const RANSOM_MAX_BYTES = 64 * 1024 * 1024;
 const RANSOM_KEEP_SEC = 7 * 86_400;
 const DAY_MS = 86_400_000;
 const WEEK_MS = 7 * DAY_MS;
@@ -92,7 +97,7 @@ async function refreshRansomware(now, record) {
   const prev = record?.summary ?? null;
   const headers = prev?.lastModified ? { 'If-Modified-Since': new Date(prev.lastModified).toUTCString() } : {};
   try {
-    const resp = await fetchStrictResponse(VICTIMS_URL, { expect: 'json', timeoutMs: RANSOM_TIMEOUT_MS, headers });
+    const resp = await fetchStrictResponse(VICTIMS_URL, { expect: 'json', timeoutMs: RANSOM_TIMEOUT_MS, headers, maxBytes: RANSOM_MAX_BYTES });
     let rows;
     try {
       rows = JSON.parse(resp.text);
