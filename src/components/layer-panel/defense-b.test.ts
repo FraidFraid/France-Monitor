@@ -405,7 +405,7 @@ describe('méthode et règles du cadre', () => {
         expect(sovBreakable(text), text.slice(0, 80)).toBeNull();
         expect(breakableValue(text), text.slice(0, 80)).toBeNull();
       }
-      expect(h).not.toContain('—');
+      expect(h).not.toContain('\u2014');
       expect(h).not.toMatch(/monospace|font-mono|<code/i);
       expect(visibleText(h).toLowerCase()).not.toContain('temps réel');
       expect(visibleText(h)).not.toMatch(/\bLIVE\b/);
