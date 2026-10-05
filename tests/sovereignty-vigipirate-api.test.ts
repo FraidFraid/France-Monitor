@@ -1,6 +1,7 @@
 // tests/sovereignty-vigipirate-api.test.ts : relecture quotidienne de la page Vigipirate du SGDSN (amendement 7, O14 ; arbitrage du
-// contrôleur : route /api/sovereignty/vigipirate, forme VigipiratePageCheck). Page réelle enregistrée le 04/10/2026
-// (tests/fixtures/sovereignty/sgdsn-vigipirate.html). L'empreinte porte sur le texte principal de la section Vigipirate, sans
+// contrôleur : route /api/sovereignty/vigipirate, forme VigipiratePageCheck). Extrait de la page réelle du 04/10/2026
+// (tests/fixtures/sovereignty/sgdsn-vigipirate.html : seul le texte principal est repris, revue finale M11 ; même empreinte que la
+// page entière). L'empreinte porte sur le texte principal de la section Vigipirate, sans
 // menus, scripts ni dates de mise à jour : un changement cosmétique ne compte pas, un changement de stade ou de date d'effet compte.
 // Le texte de la page n'est jamais gardé ni servi.
 import { readFileSync } from 'node:fs';
