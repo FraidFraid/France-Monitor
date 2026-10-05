@@ -280,6 +280,17 @@ describe('seuils et teintes (revue de B25, m1 et m2)', () => {
     expect(row).toContain('var(--cat-kp-calme)');
     expect(row).not.toContain('fmk-dot--vert');
   });
+  it('courbe des mailles par jour : pas de courbe sur un seul jour (B29, capture du 05/10 : un cadre vide pour 6 min de mesure), référence en construction dite', () => {
+    const one = gnss({ days: { since: '2026-10-04', days: [{ date: '2026-10-04', jaune: 0, orange: 0, general: false }] } });
+    const h = section(input({ gnss: one }), 'gnss')?.html ?? '';
+    expect(h).not.toContain('aria-label="Mailles françaises à précision dégradée, par jour UTC');
+    expect(visibleText(h)).toContain(`Courbe des mailles : référence en construction (1${NBSP}jour).`);
+    expect(visibleText(h)).not.toContain('Le dernier jour est partiel');
+    // Deux jours : la courbe revient, le dernier jour dit partiel.
+    const two = section(input(), 'gnss')?.html ?? '';
+    expect(two).toContain('aria-label="Mailles françaises à précision dégradée, par jour UTC"');
+    expect(visibleText(two)).toContain('Le dernier jour est partiel : cumul du jour UTC en cours.');
+  });
   it('G0 du jour et Kp calme (B29, capture du 05/10) : jeton calme comme la courbe et les prévisions, jamais le vert de niveau ; sans couleur en retard', () => {
     const calmKp = (g: GnssResponse): GnssResponse => ({ ...g, spaceWeather: { ...g.spaceWeather, kp: [...g.spaceWeather.kp, { at: '2026-10-04T14:00:00.000Z', kp: 2.33 }] } });
     const h = section(input({ gnss: calmKp(GNSS_FIXTURE()) }), 'gnss')?.html ?? '';

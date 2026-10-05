@@ -183,7 +183,9 @@ function daysChart(gn: GnssResponse, late: boolean): string {
   const generalNote = generalDays > 0 ? paragraph(`${plural(generalDays, 'jour')} de dégradation générale (météo spatiale) sur la période : leurs mailles, en gris, ne comptent pas.`) : '';
   const building = list.length < GNSS_DAYS_SPAN ? paragraph(`Courbe des mailles : référence en construction (${plural(list.length, 'jour')}).`) : '';
   const partial = paragraph('Le dernier jour est partiel : cumul du jour UTC en cours.');
-  if (late) return building + generalNote;
+  // Un seul jour (le jour UTC en cours, partiel) : pas de courbe, comme les autres courbes du lot sous deux points ; la référence en
+  // construction est dite (capture du 05/10 : un cadre vide pour quelques minutes de mesure).
+  if (late || list.length < 2) return building + generalNote;
   const stacks: DayStack[] = list.map((d) => ({
     day: Date.parse(`${d.date}T12:00:00Z`),
     parts: d.general
