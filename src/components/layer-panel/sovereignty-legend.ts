@@ -213,7 +213,11 @@ export function withDefensePhaseB(base: LegendCategory, input: DefenseLegendB, n
     notes.push('Précision de position, jamais un brouillage établi : seules la DGAC et l’ANFR qualifient un brouillage.');
   }
   if (input.dronesShown) {
-    items.push({ id: 'sov-drones', label: 'Zone drones DGAC : vol interdit, hors agglomérations', color: DRONE_ZONE_HEX, shape: 'zone' });
+    // Titre propre : sans lui, la zone drones se lit sous le titre des mailles GNSS (capture du 05/10).
+    items.push(
+      { id: 'sov-drones-header', label: 'Zones drones DGAC (option)', color: HEADER_HEX, isHeader: true },
+      { id: 'sov-drones', label: 'Zone drones DGAC : vol interdit, hors agglomérations', color: DRONE_ZONE_HEX, shape: 'zone' },
+    );
     const generated = input.drones ? Date.parse(input.drones.generatedAt) : Number.NaN;
     notes.push(input.drones !== null
       ? `Zones drones : ${input.drones.source}, à jour au ${editionB(input.drones.edition)} ; fichier du ${Number.isFinite(generated) ? fullDateB(generated) : 'n.d.'}.`

@@ -128,7 +128,9 @@ describe('légende Défense de la phase B', () => {
     expect(JSON.stringify(base(false))).not.toContain('Zone interdite');
     const legend = withDefensePhaseB(base(true), { gnss: GNSS_FIXTURE(), drones: DRONES(), dronesShown: true }, NOW);
     expect(JSON.stringify(legend)).not.toContain('Zone interdite');
-    expect(legend.items.slice(-5).map((i) => i.id)).toEqual(['sov-gnss-header', 'sov-gnss-orange', 'sov-gnss-jaune', 'sov-gnss-abroad', 'sov-drones']);
+    expect(legend.items.slice(-6).map((i) => i.id)).toEqual(['sov-gnss-header', 'sov-gnss-orange', 'sov-gnss-jaune', 'sov-gnss-abroad', 'sov-drones-header', 'sov-drones']);
+    // Zones drones sous leur propre titre, jamais sous celui des mailles GNSS (B29, capture du 05/10).
+    expect(legend.items.find((i) => i.id === 'sov-drones-header')).toMatchObject({ label: 'Zones drones DGAC (option)', isHeader: true });
     expect(legend.items.find((i) => i.id === 'sov-gnss-orange')?.color).toBe(levelHex('orange'));
     expect(legend.items.find((i) => i.id === 'sov-gnss-jaune')?.label).toBe(`De ${GNSS_YELLOW_PCT}${NBSP}% à ${GNSS_ORANGE_PCT}${NBSP}%`);
     expect(legend.notes?.some((n) => n.includes('la carte officielle fait foi'))).toBe(true);
@@ -140,10 +142,10 @@ describe('légende Défense de la phase B', () => {
     expect(legend.notes).toContain('Zones permanentes hors agglomérations seulement ; les interdictions temporaires (NOTAM) ne sont pas couvertes.');
     const text = JSON.stringify(legend);
     expect(text).not.toMatch(/\bhier\b|brouillage mesuré|navigation dégradée|16:40/i);
-    const added = [...legend.items.slice(-5).map((i) => i.label), ...(legend.notes ?? []).filter((n) => !(base(true).notes ?? []).includes(n))];
+    const added = [...legend.items.slice(-6).map((i) => i.label), ...(legend.notes ?? []).filter((n) => !(base(true).notes ?? []).includes(n))];
     for (const t of added) expect(sovBreakable(t), t).toBeNull();
     const off = withDefensePhaseB(base(false), { gnss: GNSS_FIXTURE(), drones: DRONES(), dronesShown: false }, NOW);
-    expect(off.items.some((i) => i.id === 'sov-drones')).toBe(false);
+    expect(off.items.some((i) => i.id === 'sov-drones' || i.id === 'sov-drones-header')).toBe(false);
     expect((off.notes ?? []).some((n) => n.includes('NOTAM'))).toBe(false);
   });
   it('dégradation générale du jour dite ; grille en retard : couleurs retirées ; veille non couverte ou fichier non lu : dit ; aucune mutation', () => {
