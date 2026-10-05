@@ -335,9 +335,7 @@ france-monitor/
 │   ├── _utils/dispatch.js        # Router: matches the URL, adapts Node vs. "Edge"-style handlers
 │   ├── _handlers/                # Every route lives here (ignored by Vercel — not counted as functions)
 │   │   ├── rss.js / rss-proxy.js     # RSS CORS bypass + JSON conversion
-│   │   ├── threats.js                # Cyber OSINT aggregation (Shodan/Censys/breaches)
-│   │   ├── exposure.js               # Technical exposure scoring
-│   │   ├── json-proxy.js             # Generic JSON proxy (Ransomware Live, etc.)
+│   │   ├── sovereignty/              # Défense, Connectivité, Vigilance cyber (adsb.lol, Shom, CERT-FR, RIPEstat…)
 │   │   ├── energy/                   # Ecowatt, Eco2mix, nuclear REMIT
 │   │   ├── health/                   # ISS, SOS Médecins, OSCOUR
 │   │   ├── finance/                  # Market data, commodities
