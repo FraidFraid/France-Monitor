@@ -475,8 +475,15 @@ describe('situation-engine · souveraineté (spec 2026-10-04 souveraineté § 2.
     const raw = { ...maritimeFixture(), cableAlerts: CABLES_WATCH_ALERTS_FIXTURE().alerts.filter((a) => a.confirmed) };
     const s = detectSituations(raw, SOV_FIXTURE_NOW).find((x) => x.type === 'MARITIME_ANOMALY');
     assert.ok(s?.sourceRefs.includes('Câbles (Shom, OpenStreetMap) et AIS'));
-    assert.match(s?.summary ?? '', /avec 1 alerte\(s\) câbles corrélée\(s\)/);
+    assert.match(s?.summary ?? '', /avec 1\u00a0navire lent sur un câble\.$/);
     assert.doesNotMatch(JSON.stringify(s), /Subsea cable alerts|haute sévérité/);
+    // FX2 : un navire près de deux câbles compte une fois.
+    const [one] = raw.cableAlerts;
+    assert.ok(one);
+    const twin = detectSituations({ ...raw, cableAlerts: [one, { ...one, id: `${one.mmsi}:shom/FR000008471400001`, cableId: 'shom/FR000008471400001', cableName: null }] }, SOV_FIXTURE_NOW)
+      .find((x) => x.type === 'MARITIME_ANOMALY');
+    assert.match(twin?.summary ?? '', /avec 1\u00a0navire lent sur un câble\.$/);
+    assert.ok(twin?.drivers.includes('1\u00a0navire lent confirmé sur un câble en appui, à vérifier'));
   });
   it('moniteur d’alertes : urgences montrées (critique 7500 affiché sur deux relevés, élevée 7700, moyenne vue une fois)', () => {
     const [e7700, e7500] = MILITARY_EMERGENCY_FIXTURE().emergencies;
@@ -511,7 +518,7 @@ describe('situation-engine · souveraineté (spec 2026-10-04 souveraineté § 2.
   it('moniteur d’alertes : navire lent confirmé sur un câble, à vérifier ; seule la préfecture maritime qualifie une infraction', () => {
     const cables = cableAlertSituations(CABLES_WATCH_ALERTS_FIXTURE().alerts.filter((a) => a.confirmed));
     assert.deepEqual(cables.map((c) => [c.id, c.type, c.severity, c.title]), [
-      ['defense-alert-229000001:way/761201757', 'DEFENSE_ALERT', 'high', 'Navire lent sur un câble : CARGO ESSAI (AMITIE)'],
+      ['defense-alert-229000001', 'DEFENSE_ALERT', 'high', 'Navire lent sur un câble : CARGO ESSAI (AMITIE)'],
     ]);
     assert.equal(cables[0]?.summary, 'À 304\u00a0m du tracé, 1\u00a0nœud, confirmé sur deux relevés AIS : à vérifier ; seule la préfecture maritime qualifie une infraction.');
     assert.deepEqual(cables[0]?.sourceRefs, ['Câbles (Shom, OpenStreetMap) et AIS']);
@@ -519,6 +526,25 @@ describe('situation-engine · souveraineté (spec 2026-10-04 souveraineté § 2.
     assert.ok(first);
     const shom = cableAlertSituations([{ ...first, cableId: 'shom/FR000008435600001', cableName: null }]);
     assert.equal(shom[0]?.title, 'Navire lent sur un câble : CARGO ESSAI (câble télécom du Shom)');
+  });
+  it('moniteur d’alertes (FX2) : une entrée par navire, ses câbles listés sans doublon ; position, distance et vitesse du câble le plus proche', () => {
+    const first = CABLES_WATCH_ALERTS_FIXTURE().alerts[0];
+    assert.ok(first);
+    // Relevé du 05/10 : un même navire à 112 m de deux câbles du Shom sans nom, un autre près d'un câble nommé.
+    const twinA = { ...first, id: '227000031:shom/FR000008471300001', mmsi: '227000031', name: 'DEUX CABLES ESSAI', cableId: 'shom/FR000008471300001', cableName: null, distanceM: 113, lastSeen: '2026-10-04T14:40:00Z' };
+    const twinB = { ...twinA, id: '227000031:shom/FR000008471400001', cableId: 'shom/FR000008471400001', distanceM: 112, lastSeen: '2026-10-04T14:46:00Z' };
+    const named = { ...twinA, id: '227000031:way/761201702', cableId: 'way/761201702', cableName: 'BARMAR', distanceM: 420 };
+    const cables = cableAlertSituations([first, twinA, twinB, named]);
+    assert.deepEqual(cables.map((c) => [c.id, c.title]), [
+      ['defense-alert-229000001', 'Navire lent sur un câble : CARGO ESSAI (AMITIE)'],
+      ['defense-alert-227000031', 'Navire lent près de 3\u00a0câbles : DEUX CABLES ESSAI (2\u00a0câbles télécom du Shom, BARMAR)'],
+    ]);
+    const twin = cables[1];
+    assert.equal(twin?.summary, 'À 112\u00a0m du tracé le plus proche, 1\u00a0nœud, confirmé sur deux relevés AIS : à vérifier ; seule la préfecture maritime qualifie une infraction.');
+    assert.deepEqual(twin?.affectedZones, ['2\u00a0câbles télécom du Shom', 'BARMAR']);
+    assert.ok(twin?.drivers.includes('Câbles : 2\u00a0câbles télécom du Shom, BARMAR'));
+    assert.equal(twin?.updatedAt.toISOString(), '2026-10-04T14:46:00.000Z');
+    assert.deepEqual([twin?.lat, twin?.lon], [twinB.lat, twinB.lon]);
   });
 });
 

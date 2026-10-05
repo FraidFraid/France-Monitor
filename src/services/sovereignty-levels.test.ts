@@ -9,7 +9,7 @@ import type {
 } from '../types/index.ts';
 import {
   CABLES_WATCH_STALE_MIN, MILITARY_FIGURE_LABEL, SOVEREIGNTY_LATE_AFTER_MIN, VIGIPIRATE_ALERTE_ATTENTAT_DAYS, VIGIPIRATE_REMINDER_DAYS,
-  cableAlertLevel, cablesLevel, certfrAgeDays, certfrDate, certfrExploitationText, certfrPublishedAgeDays, claimsRatio, cyberLevel,
+  alertsByVessel, cableAlertLevel, cablesLevel, certfrAgeDays, certfrDate, certfrExploitationText, certfrPublishedAgeDays, claimsRatio, cyberLevel,
   defenseLevel, defenseSituationSeverity, isCertFrAlertOpen, isDefenseSituationEmergency, isSovereigntyDataLate, militaryCounts,
   militaryEmergencyLevel, vigipirateAlertEnd, vigipiratePageChangedOn, vigipirateReminderDue,
 } from './sovereignty-levels.ts';
@@ -303,6 +303,16 @@ describe('cableAlertLevel et cablesLevel (pastille Connectivité, § 2.2)', () =
     expect(cablesLevel(watch({ alerts: [alert({ confirmed: false }), { ...twin, confirmed: false }] }), NOW)).toEqual({
       level: 'jaune', reason: `1${NBSP}navire lent vu une fois sur un câble, à vérifier : NAVIRE ESSAI (AMITIE)`,
     });
+  });
+  it('alertsByVessel (FX2) : un groupe par navire, dans l’ordre de la veille ; câble le plus proche d’abord', () => {
+    const far = alert({ id: '227000001:shom/FR000008471400001', cableId: 'shom/FR000008471400001', cableName: null, distanceM: 400 });
+    const near = alert({ id: '227000001:shom/FR000008471300001', cableId: 'shom/FR000008471300001', cableName: null, distanceM: 112 });
+    const other = alert({ id: '227000002:way/761201757', mmsi: '227000002', name: 'AUTRE NAVIRE', distanceM: 50 });
+    expect(alertsByVessel([far, other, near]).map((g) => [g.mmsi, g.alerts.map((a) => a.id)])).toEqual([
+      ['227000001', ['227000001:shom/FR000008471300001', '227000001:shom/FR000008471400001']],
+      ['227000002', ['227000002:way/761201757']],
+    ]);
+    expect(alertsByVessel([])).toEqual([]);
   });
   it('AIS muet depuis 6 min : n.d. « non évalué · AIS muet depuis 16:42 », alerte confirmée gardée mais sans couleur', () => {
     expect(cablesLevel(watch({ evaluated: false, aisLastMessageAt: '2026-10-04T14:42:00.000Z', alerts: [alert()] }), NOW)).toEqual({

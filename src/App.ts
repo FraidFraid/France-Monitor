@@ -142,6 +142,7 @@ import { fetchSanctions, gelsStatus, mergeSanctions, type SanctionsState } from 
 import { fetchDroneZones } from './services/sovereignty-drones.ts';
 import { withGnssInputs } from './services/sovereignty-inputs-b.ts';
 import { gnssJammingSituations, pruneStaleGnssAlert } from './services/sovereignty-alerts.ts';
+import { distinctVessels } from './services/sovereignty-levels.ts';
 import type { DroneZonesFile } from './types/index.ts';
 import {
   LYR_SOV_AIRCRAFT, LYR_SOV_AIRCRAFT_ABROAD, LYR_SOV_CABLE_VESSELS, LYR_SOV_EMERGENCIES, LYR_SOV_GNSS_FILL, LYR_SOV_NAVY_OBSERVED,
@@ -7307,8 +7308,9 @@ export class App {
     laneMap.weather.counts[todayIndex]   += env.floodSegments.filter((a) => a.level !== 'green').length;
     const traffic = this.trafficInputs();
     laneMap.transport.counts[todayIndex] += traffic.railTrains.length + traffic.roadEvents.length + traffic.urbanJamCount;
-    // File « sécurité » du jour : navires lents confirmés sur un câble (AIS frais) et mailles à précision GNSS dégradée sur 24 h (B28).
-    laneMap.security.counts[todayIndex]  += sov.cableAlerts.length + (sov.gnssDegraded?.rolling24h ?? 0);
+    // File « sécurité » du jour : navires lents confirmés sur un câble (AIS frais), comptés par navire (FX2 : une alerte par navire et
+    // par câble), et mailles à précision GNSS dégradée sur 24 h (B28).
+    laneMap.security.counts[todayIndex]  += distinctVessels(sov.cableAlerts) + (sov.gnssDegraded?.rolling24h ?? 0);
     // File « cyber » : chaque jour de Paris, les alertes du CERT-FR publiées ce jour-là et les avis publiés ce jour-là qui citent une
     // vulnérabilité du catalogue KEV (O6 : les autres avis, environ cinq par jour, sont un stock, pas un événement).
     const parisDays = days.map((d) => parisDayOf(d.getTime()));
@@ -7461,6 +7463,7 @@ export class App {
         };
       });
 
+    // Une entrée par navire, ses câbles listés (FX2).
     const defenseSituations = cableAlertSituations(sov.cableAlerts).slice(0, ALERT_MONITOR_LIMIT);
     // Phase B (tâche B28 ; O7, O17) : une seule entrée GNSS, sans lieu, tirée du compte des 24 h ; moyenne, élevée sur deux jours UTC
     // complets de suite, jamais critique ; aucune si la grille est en retard, en dégradation générale ou jamais lue.

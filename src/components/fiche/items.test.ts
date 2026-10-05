@@ -135,7 +135,7 @@ describe('fiche thème (spec 2026-10-01 fiches § 4.3)', () => {
   it('chiffres de la sécurité (souveraineté, O6, O9, S3) : une ligne par source ; CERT-FR indisponible « n.d. », part de la Défense non lue « non évalué », jamais « 0 »', () => {
     const row = (label: string, value: string): string => `<span class="fmk-kv-k">${label}</span><span class="fmk-kv-v fmk-num">${value}</span>`;
     const labels = [
-      'Alertes CERT-FR en cours', 'Aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole', 'Alertes câbles confirmées',
+      'Alertes CERT-FR en cours', 'Aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole', 'Navires lents confirmés sur un câble',
       'Mailles GNSS dégradées (24\u00a0h)',
     ];
     const read = buildThemeFiche(themeInput({
@@ -148,7 +148,7 @@ describe('fiche thème (spec 2026-10-01 fiches § 4.3)', () => {
     const phaseA = buildThemeFiche(themeInput({
       theme: 'security', snapshot: { signals: signals({ defenseAlerts: 0, gnssUnavailable: true }), energy: null },
     })).sections[0].html;
-    expect(phaseA).toContain(row('Alertes câbles confirmées', '0'));
+    expect(phaseA).toContain(row('Navires lents confirmés sur un câble', '0'));
     expect(phaseA).toContain(row('Mailles GNSS dégradées (24\u00a0h)', 'non évalué'));
     const down = buildThemeFiche(themeInput({
       theme: 'security',
@@ -161,7 +161,7 @@ describe('fiche thème (spec 2026-10-01 fiches § 4.3)', () => {
     const partial = buildThemeFiche(themeInput({
       theme: 'security', snapshot: { signals: signals({ cablesUnavailable: true, gnssUnavailable: false, jammingSignals: 2 }), energy: null },
     })).sections[0].html;
-    expect(partial).toContain(row('Alertes câbles confirmées', 'non évalué'));
+    expect(partial).toContain(row('Navires lents confirmés sur un câble', 'non évalué'));
     expect(partial).toContain(row('Mailles GNSS dégradées (24\u00a0h)', '2'));
     expect(down).not.toMatch(/fmk-num">0</);
   });

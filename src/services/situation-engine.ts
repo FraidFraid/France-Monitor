@@ -24,8 +24,9 @@ import type {
 import { FRENCH_PORTS } from '../config/french-ports.ts';
 import type { FranceRawData } from './france-country-intel.ts';
 import {
-  CERTFR_RECENT_DAYS, CLAIMS_RATIO_JAUNE, GNSS_SITUATION_CELLS, certfrDate, certfrExploitationText, certfrKevAdvisories, claimsRatio,
-  defenseSituationSeverity, isCertFrAlertOpen, isCertFrPublishedRecently, isDefenseSituationEmergency, isSovereigntyDataLate,
+  CERTFR_RECENT_DAYS, CLAIMS_RATIO_JAUNE, GNSS_SITUATION_CELLS, alertsByVessel, certfrDate, certfrExploitationText, certfrKevAdvisories,
+  claimsRatio, defenseSituationSeverity, distinctVessels, isCertFrAlertOpen, isCertFrPublishedRecently, isDefenseSituationEmergency,
+  isSovereigntyDataLate,
 } from './sovereignty-levels.ts';
 import { isEmergencyConfirmed } from './traffic-levels.ts';
 import { GNSS_MONITOR_ID } from './sovereignty-alerts.ts';
@@ -543,11 +544,12 @@ function detectMaritimeAnomaly(raw: FranceRawData): DetectedSituation | null {
   const radioSilence = anomalies.filter((a) => a.type === 'radio_silence');
   const rendezvous = anomalies.filter((a) => a.type === 'rendezvous');
   const highSeverity = anomalies.filter((a) => a.severity === 'high' || a.severity === 'critical');
-  // Navires lents confirmés sur un câble, AIS frais et veille évaluée (contrats § 6) : un AIS muet n'en donne aucun.
-  const defenseAlerts = raw.cableAlerts;
+  // Navires lents confirmés sur un câble, AIS frais et veille évaluée (contrats § 6) : un AIS muet n'en donne aucun. Comptés par navire
+  // (FX2 : la veille fait une alerte par navire et par câble).
+  const slowVessels = distinctVessels(raw.cableAlerts);
 
-  const severity: SituationSeverity = highSeverity.length >= 2 || (radioSilence.length >= 2 && defenseAlerts.length >= 1) ? 'critical'
-    : highSeverity.length >= 1 || rendezvous.length >= 2 || defenseAlerts.length >= 1 ? 'high'
+  const severity: SituationSeverity = highSeverity.length >= 2 || (radioSilence.length >= 2 && slowVessels >= 1) ? 'critical'
+    : highSeverity.length >= 1 || rendezvous.length >= 2 || slowVessels >= 1 ? 'high'
     : 'medium';
 
   const confidence = Math.min(
@@ -555,7 +557,7 @@ function detectMaritimeAnomaly(raw: FranceRawData): DetectedSituation | null {
     0.52 +
       highSeverity.length * 0.12 +
       rendezvous.length * 0.06 +
-      Math.min(defenseAlerts.length, 2) * 0.08,
+      Math.min(slowVessels, 2) * 0.08,
   );
 
   const affectedZones = [...new Set(anomalies.map((a) => nearestPortLabel(a.position)))].slice(0, 4);
@@ -567,19 +569,19 @@ function detectMaritimeAnomaly(raw: FranceRawData): DetectedSituation | null {
     severity,
     confidence,
     'Anomalie maritime AIS',
-    `${anomalies.length} anomalie(s) AIS détectée(s)${defenseAlerts.length > 0 ? ` avec ${defenseAlerts.length} alerte(s) câbles corrélée(s)` : ''}.`,
+    `${anomalies.length} anomalie(s) AIS détectée(s)${slowVessels > 0 ? ` avec ${countText(slowVessels, 'navire lent', 'navires lents')} sur un câble` : ''}.`,
     affectedZones.length > 0 ? affectedZones : ['Zone maritime française'],
     [
       ...(radioSilence.length > 0 ? [`${radioSilence.length} silence(s) radio détecté(s)`] : []),
       ...(rendezvous.length > 0 ? [`${rendezvous.length} rendez-vous(x) suspect(s)`] : []),
       ...(sampleDescriptions.length > 0 ? [`Exemples : ${sampleDescriptions.join(' ; ')}`] : []),
-      ...(defenseAlerts.length > 0 ? [`${countText(defenseAlerts.length, 'navire lent confirmé', 'navires lents confirmés')} sur un câble en appui, à vérifier`] : []),
+      ...(slowVessels > 0 ? [`${countText(slowVessels, 'navire lent confirmé', 'navires lents confirmés')} sur un câble en appui, à vérifier`] : []),
     ],
     [
       action('Vérifier l\'historique AIS et les pavillons des navires impliqués', 'Analyste maritime', 'investigate', true),
       action('Signaler à la préfecture maritime compétente si nécessaire', 'Analyste maritime', 'escalate'),
     ],
-    ['AIS relay', 'Ais anomaly detector', ...(defenseAlerts.length > 0 ? [CABLES_SOURCE] : [])],
+    ['AIS relay', 'Ais anomaly detector', ...(slowVessels > 0 ? [CABLES_SOURCE] : [])],
   );
 }
 
@@ -710,31 +712,52 @@ function cableWord(a: CableAlert): string {
   return a.cableId.startsWith('shom/') ? 'câble télécom du Shom' : 'câble sans nom';
 }
 
+/** Câbles d'un navire, noms répétés comptés : « BARMAR, 2 câbles télécom du Shom » (jamais deux fois le même mot). */
+function cableWords(alerts: readonly CableAlert[]): string[] {
+  const counts = new Map<string, number>();
+  for (const a of alerts) counts.set(cableWord(a), (counts.get(cableWord(a)) ?? 0) + 1);
+  return [...counts].map(([word, n]) => (n > 1 && word.startsWith('câble ') ? `${countText(n, 'câble', 'câbles')} ${word.slice('câble '.length)}` : word));
+}
+
 /**
- * Une alerte par navire lent confirmé sur un câble, AIS frais : élevée (pastille orange), « à vérifier » ; seule la préfecture maritime
- * qualifie une infraction (O18).
+ * Une entrée par navire lent confirmé sur un ou plusieurs câbles, AIS frais (arbitrage FX2 : la veille fait une alerte par navire et par
+ * câble ; le moniteur compte des navires, câbles listés) : élevée (pastille orange), « à vérifier » ; seule la préfecture maritime
+ * qualifie une infraction (O18). Position, distance et vitesse : celles du câble le plus proche.
  */
 export function cableAlertSituations(alerts: readonly CableAlert[]): DetectedSituation[] {
-  return alerts.map((a) => {
-    const ship = a.name ?? `MMSI ${a.mmsi}`;
-    const cable = cableWord(a);
-    const speed = `${a.speedKn.toLocaleString('fr-FR', { maximumFractionDigits: 1 })}${NBSP}${a.speedKn >= 2 ? 'nœuds' : 'nœud'}`;
+  return alertsByVessel(alerts).map(({ mmsi, alerts: own }) => {
+    const nearest = own[0];
+    const ship = nearest.name ?? `MMSI ${mmsi}`;
+    const words = cableWords(own);
+    const cables = words.join(', ');
+    const several = own.length > 1;
+    const speed = `${nearest.speedKn.toLocaleString('fr-FR', { maximumFractionDigits: 1 })}${NBSP}${nearest.speedKn >= 2 ? 'nœuds' : 'nœud'}`;
     const base = situation(
-      `defense-alert-${a.id}`,
+      `defense-alert-${mmsi}`,
       'DEFENSE_ALERT',
       'high',
       0.85,
-      `Navire lent sur un câble : ${ship} (${cable})`,
-      `À ${a.distanceM}${NBSP}m du tracé, ${speed}, confirmé sur deux relevés AIS : à vérifier ; seule la préfecture maritime qualifie une infraction.`,
-      [cable],
-      [`Navire : ${ship}${a.vesselType ? ` (${a.vesselType})` : ''}`, `Distance au tracé : ${a.distanceM}${NBSP}m`, `Vitesse : ${speed}`],
+      several ? `Navire lent près de ${countText(own.length, 'câble', 'câbles')} : ${ship} (${cables})` : `Navire lent sur un câble : ${ship} (${cables})`,
+      `À ${nearest.distanceM}${NBSP}m du ${several ? 'tracé le plus proche' : 'tracé'}, ${speed}, confirmé sur deux relevés AIS : à vérifier ; `
+        + 'seule la préfecture maritime qualifie une infraction.',
+      words,
+      [
+        `Navire : ${ship}${nearest.vesselType ? ` (${nearest.vesselType})` : ''}`,
+        ...(several ? [`Câbles : ${cables}`] : []),
+        `Distance au ${several ? 'tracé le plus proche' : 'tracé'} : ${nearest.distanceM}${NBSP}m`,
+        `Vitesse : ${speed}`,
+      ],
       [
         action('Vérifier l’identité et l’historique AIS du navire', 'Veille maritime', 'investigate'),
         action('Surveiller la zone du câble', 'Sûreté des infrastructures', 'monitor', true),
       ],
       [CABLES_SOURCE],
     );
-    return { ...base, lat: a.lat, lon: a.lon, activateLayers: ['subseaCables', 'trafficMaritime'], updatedAt: new Date(a.lastSeen) };
+    const lastSeen = Math.max(...own.map((a) => Date.parse(a.lastSeen)).filter(Number.isFinite));
+    return {
+      ...base, lat: nearest.lat, lon: nearest.lon, activateLayers: ['subseaCables', 'trafficMaritime'],
+      updatedAt: new Date(Number.isFinite(lastSeen) ? lastSeen : Date.parse(nearest.lastSeen)),
+    };
   });
 }
 

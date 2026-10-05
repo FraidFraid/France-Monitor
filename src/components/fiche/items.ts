@@ -131,7 +131,8 @@ function themeFigures(theme: SpecificThemeId, snapshot: ThemeFicheInput['snapsho
         // Deux sources, deux lignes : une part non lue ne se cache jamais dans une somme (grille GNSS absente, en retard ou en
         // dégradation générale : « non évalué »).
         {
-          label: t(lang, 'Alertes câbles confirmées', 'Confirmed cable alerts'),
+          // Navires distincts (FX2), pas des alertes : la veille en fait une par navire et par câble.
+          label: t(lang, 'Navires lents confirmés sur un câble', 'Slow vessels confirmed on a cable'),
           value: s.cablesUnavailable === true ? t(lang, 'non évalué', 'not assessed') : String(s.defenseAlerts),
         },
         {

@@ -1056,6 +1056,7 @@ export interface FranceCountrySignals {
   // Defense / intelligence
   militaryFlights: number;
   maritimeTrafficFrance: number;
+  /** Navires lents confirmés sur un câble, AIS frais : navires distincts, pas des alertes (arbitrage FX2). */
   defenseAlerts: number;
   defenseHigh: number;
   jammingSignals: number;

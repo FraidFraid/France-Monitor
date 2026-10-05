@@ -244,6 +244,22 @@ export function distinctVessels(alerts: readonly CableAlert[]): number {
   return new Set(alerts.map((a) => a.mmsi)).size;
 }
 
+/** Alertes d'un même navire (MMSI), le câble le plus proche d'abord. */
+export interface VesselCableAlerts { mmsi: string; alerts: CableAlert[] }
+
+/**
+ * Alertes regroupées par navire (arbitrage FX2 : score, frise, moniteur et panneau comptent des navires, pas des alertes) : un groupe
+ * par MMSI, dans l'ordre de la première alerte du navire (la veille trie les confirmées d'abord, puis par distance) ; dans un groupe,
+ * distance croissante puis identifiant.
+ */
+export function alertsByVessel(alerts: readonly CableAlert[]): VesselCableAlerts[] {
+  const groups = new Map<string, CableAlert[]>();
+  for (const a of alerts) groups.set(a.mmsi, [...(groups.get(a.mmsi) ?? []), a]);
+  return [...groups].map(([mmsi, list]) => ({
+    mmsi, alerts: [...list].sort((x, y) => x.distanceM - y.distanceM || x.id.localeCompare(y.id)),
+  }));
+}
+
 /** « NAVIRE (câble) » : un câble du Shom sans nom se dit « câble télécom du Shom », comme au moniteur d'alertes (pas de parenthèses imbriquées). */
 function vesselWord(a: CableAlert): string {
   const cable = a.cableName ?? (a.cableId.startsWith('shom/') ? 'câble télécom du Shom' : 'câble sans nom');

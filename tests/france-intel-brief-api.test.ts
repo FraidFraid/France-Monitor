@@ -46,7 +46,7 @@ describe('buildPrompt v14', () => {
     const signals = { criticalNews: 0, highNews: 0, weatherAlerts: 0, floodAlerts: 0, fireDetections: 0, railDisruptions: 0, roadIncidents: 0, powerOutages: 0, telecomOutages: 0, cyberAlerts: 6, cyberOpenAlerts: 3, cyberKevAdvisories: 3, militaryFlights: 9, maritimeTrafficFrance: 0, defenseAlerts: 1, jammingSignals: 2, marketStress: 0 };
     const fr = buildPrompt(72, { continuity: 30, defense: 5, security: 20, signal: 10 }, { social: 0, security: 0, infra: 0 }, 28, 0, [], signals, null, [], [], 'fr');
     expect(fr).toContain('9 aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole (adsb.lol) : compte habituel, pas un événement');
-    expect(fr).toContain('1 alertes câbles confirmées, 2 mailles à précision GNSS dégradée, 9 aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole (compte habituel, pas un événement)');
+    expect(fr).toContain('1 navire lent confirmé sur un câble, 2 mailles à précision GNSS dégradée, 9 aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole (compte habituel, pas un événement)');
     expect(fr).toContain('1 navire lent confirmé sur un câble\n2 mailles à précision GNSS dégradée');
     // m1 : alertes en cours et avis KEV dits à part, même chiffre que la tuile (3).
     expect(fr).toContain('3 alertes CERT-FR en cours ; 3 avis citant une vulnérabilité KEV ajoutée depuis moins de 7 jours');
@@ -67,7 +67,7 @@ describe('buildPrompt v14', () => {
     const isnr = { social: 0, security: 0, infra: 0 };
     const fr = buildPrompt(95, axes, isnr, null, 0, [], signals, null, [], [], 'fr');
     for (const text of [
-      'alertes câbles non évaluées, précision GNSS non évaluée, aéronefs militaires ou d’État visibles en ADS-B non évalués',
+      'navires lents sur un câble non évalués, précision GNSS non évaluée, aéronefs militaires ou d’État visibles en ADS-B non évalués',
       'navires lents sur les câbles : non évalué (veille AIS muette ou en retard)', 'précision GNSS : non évaluée (grille absente, en retard ou en dégradation générale)',
       'alertes CERT-FR : non évaluées (CERT-FR indisponible ou en retard)',
       'aéronefs militaires ou d’État visibles en ADS-B : non évalué (relevé adsb.lol indisponible ou en retard)',
@@ -75,17 +75,17 @@ describe('buildPrompt v14', () => {
     expect(fr).not.toMatch(/\b0 (?:alertes câbles|mailles?|aéronefs?|navires?)/);
     expect(fr).toContain('Vocabulaire calme (stable/calme/normal/sous contrôle) : INTERDIT');
     const en = buildPrompt(95, axes, isnr, null, 0, [], signals, null, [], [], 'en');
-    expect(en).toContain('cable alerts not assessed, GNSS accuracy not assessed, military or state aircraft visible on ADS-B not assessed');
+    expect(en).toContain('slow vessels on a cable not assessed, GNSS accuracy not assessed, military or state aircraft visible on ADS-B not assessed');
     expect(en).not.toMatch(/\b0 (?:confirmed cable|cells?|military)/);
     expect(en).toContain('Calm wording (stable/calm/normal/under control) is FORBIDDEN');
     // Phase B (tâche B28) : la grille GNSS branchée entre dans la règle ; seule non lue (absente, en retard, dégradation générale), elle
     // interdit aussi le calme ; lue et sans maille, le calme redevient permis.
     const read = { ...signals, militaryUnavailable: false, cablesUnavailable: false, cyberUnavailable: false, kevUnavailable: false };
     const gnssOnly = buildPrompt(95, axes, isnr, 0, 0, [], read, null, [], [], 'fr');
-    expect(gnssOnly).toContain('0 alertes câbles confirmées, précision GNSS non évaluée, 0 aéronef militaire ou d’État visible en ADS-B au-dessus de la métropole (compte habituel, pas un événement)');
+    expect(gnssOnly).toContain('0 navire lent confirmé sur un câble, précision GNSS non évaluée, 0 aéronef militaire ou d’État visible en ADS-B au-dessus de la métropole (compte habituel, pas un événement)');
     expect(gnssOnly).toContain('Vocabulaire calme (stable/calme/normal/sous contrôle) : INTERDIT');
     const all = buildPrompt(95, axes, isnr, 0, 0, [], { ...read, gnssUnavailable: false }, null, [], [], 'fr');
-    expect(all).toContain('0 alertes câbles confirmées, 0 mailles à précision GNSS dégradée');
+    expect(all).toContain('0 navire lent confirmé sur un câble, 0 mailles à précision GNSS dégradée');
     expect(all).toContain('Vocabulaire calme (stable/calme/normal/sous contrôle) : autorisé');
   });
   it('signalCounts reçus : drapeaux de sources non lues et comptes cyber séparés repris, jamais inventés', async () => {
@@ -108,7 +108,7 @@ describe('buildPrompt v14', () => {
     expect(sent).toContain('aéronefs militaires ou d’État visibles en ADS-B : non évalué');
     expect(sent).toContain('précision GNSS : non évaluée');
     // Un drapeau mal formé n'est jamais lu comme « non lu » : seul `true` compte.
-    expect(sent).toContain('0 alertes câbles confirmées');
+    expect(sent).toContain('0 navire lent confirmé sur un câble');
     expect(sent).toContain('3 alertes CERT-FR en cours ; 3 avis citant une vulnérabilité KEV ajoutée depuis moins de 7 jours');
     expect(sent).toContain('Pression cyber : non évaluée');
   });

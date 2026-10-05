@@ -68,6 +68,19 @@ describe('score France : entrées Souveraineté (formule inchangée)', () => {
     const fresh = buildFranceSignals(raw(buildSovereigntyInputs(MILITARY_FIXTURE(), CABLES_WATCH_ALERTS_FIXTURE(), CYBER_FIXTURE(), NOW)), NOW);
     expect(fresh).toMatchObject({ defenseAlerts: 1, defenseHigh: 1, cablesUnavailable: false });
   });
+  it('FX2 : navires comptés, pas des alertes ; un navire près de deux câbles pèse comme un seul au pilier Défense', () => {
+    const [one] = CABLES_WATCH_ALERTS_FIXTURE().alerts.filter((a) => a.confirmed);
+    if (!one) throw new Error('jeu d’essai sans alerte confirmée');
+    const twin = { ...one, id: `${one.mmsi}:shom/FR000008471400001`, cableId: 'shom/FR000008471400001', cableName: null };
+    const other = { ...one, id: '227000041:way/761201702', mmsi: '227000041', cableId: 'way/761201702', cableName: 'BARMAR' };
+    const defense = (data: FranceRawData): number | undefined => computeFranceScoreBreakdown(data, buildFranceSignals(data, NOW), null, [], null, NOW)
+      .pillars.find((p) => p.key === 'defense')?.value;
+    const single = raw({ cableAlerts: [one] });
+    const twins = raw({ cableAlerts: [one, twin] });
+    expect(buildFranceSignals(twins, NOW)).toMatchObject({ defenseAlerts: 1, defenseHigh: 1 });
+    expect(defense(twins)).toBe(defense(single));
+    expect(buildFranceSignals(raw({ cableAlerts: [one, twin, other] }), NOW)).toMatchObject({ defenseAlerts: 2, defenseHigh: 2 });
+  });
   it('O7 : 7700 affiché sur deux relevés au-dessus du Finistère : aucune situation (urgence aérienne, panneau et moniteur seulement)', () => {
     const snap = buildFranceCountrySnapshot(raw(buildSovereigntyInputs(MILITARY_EMERGENCY_FIXTURE(), CABLES_WATCH_FIXTURE(), CYBER_FIXTURE(), NOW)), { now: NOW });
     expect(snap.situations.some((x) => x.type === 'DEFENSE_SIGNAL_ELEVATED')).toBe(false);

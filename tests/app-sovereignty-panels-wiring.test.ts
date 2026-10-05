@@ -223,7 +223,7 @@ describe('panneaux Souveraineté : un panneau par couche (contrats § 4.2 à 4.4
     expect(monitor).toContain('militaryEmergencyAlerts(monitoredMilitaryEmergencies(this.currentMilitary?.military.data ?? null, nowMs))');
     expect(monitor).toContain('cableAlertSituations(sov.cableAlerts)');
     expect(monitor).not.toMatch(/currentMilitarySurges|currentDefenseAlerts|currentJammingSignals/);
-    expect(methodBody('buildFranceTimeline')).toContain('sov.cableAlerts.length + (sov.gnssDegraded?.rolling24h ?? 0)');
+    expect(methodBody('buildFranceTimeline')).toContain('distinctVessels(sov.cableAlerts) + (sov.gnssDegraded?.rolling24h ?? 0)');
     expect(methodBody('updateISNR')).not.toContain('currentThreatEvents');
     for (const name of ['loadMilitary', 'loadCables', 'loadCyber']) expect(methodBody(name)).toContain('this.refreshFranceIntelPanel();');
     expect(app).not.toMatch(/currentCyberData|currentThreatEvents|currentDefenseAlerts|currentJammingSignals|currentMilitarySurges|currentMilitaryFlights|submarineCablesData|loadDefenseAlerts|defenseSeverityToSituationSeverity/);

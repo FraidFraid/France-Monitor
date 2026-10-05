@@ -53,7 +53,7 @@ import type {
 import type { EolienLive } from '@/services/eolien/types.ts';
 import { detectSituations } from './situation-engine.ts';
 import { computeCyberPressureAssessment, type CyberPressureAssessment } from './cyber-threat-scoring.ts';
-import { MILITARY_FIGURE_LABEL, isSovereigntyDataLate } from './sovereignty-levels.ts';
+import { MILITARY_FIGURE_LABEL, distinctVessels, isSovereigntyDataLate } from './sovereignty-levels.ts';
 import { ecowattToday } from './ecowatt-official.ts';
 import { foyerLevel, isMajorFoyer } from './environment-levels.ts';
 
@@ -516,11 +516,12 @@ export function buildFranceSignals(raw: FranceRawData, nowMs: number = Date.now(
     cyberAlerts: cyberPressure.inputs.openAlerts + cyberPressure.inputs.kevAdvisories7d,
     cyberCritical: cyberPressure.inputs.kevCited30d,
     // Défense (§ 2.1, § 2.2) : aéronefs visibles en ADS-B au-dessus de la métropole ; navires lents confirmés sur un câble, AIS frais
-    // (une alerte vue une fois reste au panneau, en jaune) ; mailles à précision GNSS dégradée sur 24 h (phase B). Formules inchangées.
+    // (une alerte vue une fois reste au panneau, en jaune), comptés par navire et non par alerte (arbitrage FX2 : la veille fait une
+    // alerte par navire et par câble) ; mailles à précision GNSS dégradée sur 24 h (phase B). Formules inchangées.
     militaryFlights: raw.militaryFlightsCount,
     maritimeTrafficFrance: raw.maritimeCount,
-    defenseAlerts: raw.cableAlerts.length,
-    defenseHigh: raw.cableAlerts.length,
+    defenseAlerts: distinctVessels(raw.cableAlerts),
+    defenseHigh: distinctVessels(raw.cableAlerts),
     jammingSignals: raw.gnssDegraded?.rolling24h ?? 0,
     // Affichage seulement (S3) : tuiles et fiche ; la formule ne lit pas ces champs.
     militaryFrench: raw.militaryFrenchCount ?? 0,

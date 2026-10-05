@@ -160,8 +160,10 @@ function cyberMilitarySummaryLines(signalCounts, lang) {
 function sovereigntySignals(signalCounts, lang) {
   const fr = lang === 'fr';
   const cables = signalCounts.cablesUnavailable
-    ? (fr ? 'alertes câbles non évaluées' : 'cable alerts not assessed')
-    : (fr ? `${signalCounts.defenseAlerts} alertes câbles confirmées` : `${signalCounts.defenseAlerts} confirmed cable alerts`);
+    ? (fr ? 'navires lents sur un câble non évalués' : 'slow vessels on a cable not assessed')
+    // Compte par navire (arbitrage FX2 : la veille fait une alerte par navire et par câble).
+    : (fr ? `${plural(signalCounts.defenseAlerts, 'navire lent confirmé', 'navires lents confirmés')} sur un câble`
+      : `${plural(signalCounts.defenseAlerts, 'slow vessel', 'slow vessels')} confirmed on a cable`);
   const gnss = signalCounts.gnssUnavailable
     ? (fr ? 'précision GNSS non évaluée' : 'GNSS accuracy not assessed')
     : (fr ? `${signalCounts.jammingSignals} mailles à précision GNSS dégradée` : `${signalCounts.jammingSignals} cells with degraded GNSS accuracy`);
