@@ -19,7 +19,7 @@ describe('inFranceV2', () => {
   it('au large au-delà de 22 km : hors de France ; sur le territoire : en France', () => {
     expect(FRANCE_SEA_MARGIN_KM).toBe(22);
     expect(inFranceV2(42.9, 5.25)).toBe(false);
-    expect(inFranceV2(45.718826, 4.944384)).toBe(true);   // FICTIF04 au-dessus du Rhône
+    expect(inFranceV2(45.87, 4.64)).toBe(true);           // FICTIF04, département du Rhône (position du jeu d'essai, M10)
     expect(inFranceV2(43.381472, -0.468554)).toBe(true);  // A400 belge au-dessus des Pyrénées-Atlantiques
   });
   it('frontière franco-italienne de Menton : terre italienne hors de France ; baie de Menton en France (signalé par A3)', () => {

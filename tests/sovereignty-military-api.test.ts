@@ -103,7 +103,8 @@ describe('normalisation et territoire (V2)', () => {
     const got = normalizeMilAircraft(fixtureAc('3bf004'), SOURCE_NOW);
     expect(got).toEqual({
       hex: '3bf004', callsign: 'FICTIF04', type: 'EC45', country: 'France', family: 'francais', protectedIdentity: false, unknownNationality: false,
-      lat: 45.718826, lon: 4.944384, dept: '69', altitudeFt: 525, speedKt: 51.5, track: 352.18, seenAt: '2026-10-04T14:48:24.290Z',
+      // Position déplacée dans le même département (revue finale M10) : le jeu d'essai ne garde aucun point réel d'un appareil français.
+      lat: 45.87, lon: 4.64, dept: '69', altitudeFt: 525, speedKt: 51.5, track: 352.18, seenAt: '2026-10-04T14:48:24.290Z',
     });
     expect(got).not.toHaveProperty('registration');
   });
@@ -311,7 +312,7 @@ describe('/api/sovereignty/military', () => {
     expect([...body.emergencies, ...body.emergencyLog].every((e) => Object.keys(e).sort().join() === MASKED_EMERGENCY_KEYS.join())).toBe(true);
     expect(body.emergencyLog.map((e) => [e.squawk, e.firstSeen])).toEqual([['7700', '2026-10-04T14:48:24.501Z'], ['7500', '2026-10-04T14:50:24.501Z']]);
     const text = JSON.stringify(body);
-    for (const hidden of ['"3bf004"', '"FICTIF04"', '"44f684"', '"GRZLY21"', '"EC45"', '"A400"', '45.718826']) expect(text).not.toContain(hidden);
+    for (const hidden of ['"3bf004"', '"FICTIF04"', '"44f684"', '"GRZLY21"', '"EC45"', '"A400"', '45.87']) expect(text).not.toContain(hidden);
     // Journal du serveur : l'adresse sert seulement à fusionner les deux lectures ; ni indicatif, ni position, ni type.
     const stored = await readLog<Record<string, unknown>>(MIL_EMERGENCY_KEY, { dateOf: (e) => String(e.lastSeen), maxAgeMs: 7 * 86_400_000, now: T0 + MIL_INTERVAL_MS });
     expect(stored.map((e) => [e.icao24, e.masked, e.firstSeen])).toEqual([['3bf004', true, '2026-10-04T14:48:24.501Z'], ['44f684', true, '2026-10-04T14:50:24.501Z']]);

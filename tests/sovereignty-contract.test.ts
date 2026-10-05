@@ -137,7 +137,7 @@ describe('contrat Défense', () => {
     expect(isMilitaryResponse(wire(body))).toBe(true);
     expect(wire(body)).toEqual(MILITARY_MASKED_EMERGENCY_FIXTURE());
     expect(body.emergencies.every((e) => e.masked)).toBe(true);
-    for (const hidden of ['"3bf004"', '"FICTIF04"', '"44f684"', '"GRZLY21"', '45.718826']) expect(JSON.stringify(body)).not.toContain(hidden);
+    for (const hidden of ['"3bf004"', '"FICTIF04"', '"44f684"', '"GRZLY21"', '45.87']) expect(JSON.stringify(body)).not.toContain(hidden);
     expect(defenseLevel(body, NOW)).toEqual({ level: 'orange', reason: `7700${NBSP}(urgence) affiché sur deux relevés : appareil d’État français · Dépt${NBSP}69` });
   });
   it('429 : 502 de même forme, accepté par la garde ; servi au client, la ligne des sources nomme la panne ; pastille n.d.', async () => {
