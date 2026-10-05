@@ -3,7 +3,7 @@
 // de la France par famille, hors de France en gris, urgences cerclées par niveau, Marine nationale vue en AIS et ports d'attache de
 // référence, sites de la liste interne, câbles OpenStreetMap, navires lents signalés ; rien pour la Vigilance cyber (V5).
 import { describe, expect, it } from 'vitest';
-import type { DefenseOsmWorksFile, MilitaryResponse, ShownMilitaryEmergency } from '../../types/index.ts';
+import type { CableAlert, CablesWatchResponse, DefenseOsmWorksFile, MilitaryResponse, ShownMilitaryEmergency } from '../../types/index.ts';
 import { ACTIVE_INSTALLATIONS } from '../../config/military-bases-db.ts';
 import type { MilitaryShip } from '../../services/military-ships.ts';
 import { levelHex } from '../../services/vigilance.ts';
@@ -11,6 +11,7 @@ import {
   CABLES_FILE_FIXTURE, CABLES_WATCH_ALERTS_FIXTURE, CABLES_WATCH_FROZEN_FIXTURE, CABLES_WATCH_ZONE_MUTED_FIXTURE, MILITARY_FIXTURE,
   MILITARY_MASKED_EMERGENCY_FIXTURE, SOV_FIXTURE_NOW,
 } from '../layer-panel/sovereignty.fixture.ts';
+import { buildConnectiviteView } from '../layer-panel/connectivite.ts';
 import { NBSP } from '../layer-panel/format.ts';
 import { formatFeet } from '../layer-panel/sovereignty-format.ts';
 import { BASE_TYPE_HEX, CABLE_HEX, MIL_AUTRES_HEX, NAVY_HEX, SOV_ABROAD_HEX } from '../layer-panel/sovereignty-legend.ts';
@@ -242,6 +243,34 @@ describe('Connectivité : câbles du Shom et d’OpenStreetMap avec leur source,
     expect(String(props(frozen.features[0])['body'])).toContain('Veille non évaluée (AIS muet ou flux de la zone muet) : alerte gardée, ni confirmée ni retirée.');
     const muted = cableAlertFeatures(CABLES_WATCH_ZONE_MUTED_FIXTURE(), NOW);
     expect(muted.features.every((f) => props(f)['color'] === SOV_ABROAD_HEX)).toBe(true);
+  });
+  it('un point par navire (FX2) : ses câbles listés en infobulle, couleur la plus haute, identifiant = cible du clic de sa ligne au panneau', () => {
+    const w = CABLES_WATCH_ALERTS_FIXTURE();
+    const base = w.alerts.find((a) => a.confirmed);
+    if (!base) throw new Error('jeu d’essai sans alerte confirmée');
+    // Relevé du 05/10 : un même navire à 112 et 113 m de deux câbles du Shom sans nom, vu une fois sur un câble nommé à 420 m.
+    const shomA: CableAlert = { ...base, id: `${base.mmsi}:shom/FR000008471300001`, cableId: 'shom/FR000008471300001', cableName: null, distanceM: 113, lat: 47.1, lon: -4.1 };
+    const shomB: CableAlert = { ...shomA, id: `${base.mmsi}:shom/FR000008471400001`, cableId: 'shom/FR000008471400001', distanceM: 112, lat: 47.2, lon: -4.2 };
+    const named: CableAlert = { ...shomA, id: `${base.mmsi}:way/761201702`, cableId: 'way/761201702', cableName: 'BARMAR', distanceM: 420, confirmed: false };
+    const twins: CablesWatchResponse = { ...w, alerts: [shomA, named, shomB] };
+    const fc = cableAlertFeatures(twins, NOW);
+    expect(fc.features).toHaveLength(1);
+    const [f] = fc.features;
+    expect(props(f)['id']).toBe(shomB.id);
+    expect(f?.geometry.coordinates).toEqual([shomB.lon, shomB.lat]);
+    expect(props(f)['color']).toBe(levelHex('orange'));
+    const body = String(props(f)['body']);
+    expect(body).toContain(`2${NBSP}câbles télécom du Shom, sans nom, BARMAR`);
+    expect(body).toContain('Distance au tracé le plus proche');
+    expect(body).toContain('Navire lent confirmé sur deux relevés');
+    // Même identifiant que la ligne du navire au panneau Connectivité (clic : la même position).
+    const view = buildConnectiviteView({ watch: twins, watchError: null, file: CABLES_FILE_FIXTURE(), fileError: null, canFocus: true, now: NOW, open: () => true });
+    const rows = view.sections.find((s) => s.id === 'navires')?.html ?? '';
+    expect([...rows.matchAll(/data-vessel="([^"]+)"/g)].map((m) => m[1])).toEqual([shomB.id]);
+    // Un seul câble : infobulle au singulier, inchangée.
+    const single = cableAlertFeatures({ ...w, alerts: [base] }, NOW);
+    expect(String(props(single.features[0])['body'])).toContain('Distance au tracé');
+    expect(String(props(single.features[0])['body'])).not.toContain('le plus proche');
   });
 });
 

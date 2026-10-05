@@ -9,7 +9,7 @@ import type {
 } from '../types/index.ts';
 import {
   CABLES_WATCH_STALE_MIN, MILITARY_FIGURE_LABEL, SOVEREIGNTY_LATE_AFTER_MIN, VIGIPIRATE_ALERTE_ATTENTAT_DAYS, VIGIPIRATE_REMINDER_DAYS,
-  alertsByVessel, cableAlertLevel, cablesLevel, certfrAgeDays, certfrDate, certfrExploitationText, certfrPublishedAgeDays, claimsRatio, cyberLevel,
+  alertsByVessel, cableAlertLevel, cablesLevel, vesselAlertLevel, certfrAgeDays, certfrDate, certfrExploitationText, certfrPublishedAgeDays, claimsRatio, cyberLevel,
   defenseLevel, defenseSituationSeverity, isCertFrAlertOpen, isDefenseSituationEmergency, isSovereigntyDataLate, militaryCounts,
   militaryEmergencyLevel, vigipirateAlertEnd, vigipiratePageChangedOn, vigipirateReminderDue,
 } from './sovereignty-levels.ts';
@@ -313,6 +313,15 @@ describe('cableAlertLevel et cablesLevel (pastille Connectivité, § 2.2)', () =
       ['227000002', ['227000002:way/761201757']],
     ]);
     expect(alertsByVessel([])).toEqual([]);
+  });
+  it('vesselAlertLevel (FX2) : la plus haute couleur des alertes du navire hors zone muette ; gris si toutes muettes ou veille non évaluée', () => {
+    const confirmed = alert();
+    const once = alert({ id: '227000001:shom/FR000008471400001', cableId: 'shom/FR000008471400001', confirmed: false });
+    expect(vesselAlertLevel([once, confirmed], true)).toBe('orange');
+    expect(vesselAlertLevel([once], true)).toBe('jaune');
+    expect(vesselAlertLevel([{ ...confirmed, zoneMuted: true }, once], true)).toBe('jaune');
+    expect(vesselAlertLevel([{ ...confirmed, zoneMuted: true }], true)).toBe('gris');
+    expect(vesselAlertLevel([confirmed, once], false)).toBe('gris');
   });
   it('AIS muet depuis 6 min : n.d. « non évalué · AIS muet depuis 16:42 », alerte confirmée gardée mais sans couleur', () => {
     expect(cablesLevel(watch({ evaluated: false, aisLastMessageAt: '2026-10-04T14:42:00.000Z', alerts: [alert()] }), NOW)).toEqual({

@@ -244,6 +244,15 @@ export function distinctVessels(alerts: readonly CableAlert[]): number {
   return new Set(alerts.map((a) => a.mmsi)).size;
 }
 
+/**
+ * Couleur d'un navire de la veille (une ligne du panneau, un point de la carte) : la plus haute de ses alertes hors zone muette
+ * (cableAlertLevel) ; gris si toutes ses alertes sont en zone muette ou si la veille n'est pas évaluée.
+ */
+export function vesselAlertLevel(alerts: readonly CableAlert[], evaluated: boolean): VigilanceLevel | 'gris' {
+  return alerts.filter((a) => a.zoneMuted !== true).map((a) => cableAlertLevel(a, evaluated))
+    .reduce<VigilanceLevel | 'gris'>((top, l) => (l !== 'gris' && (top === 'gris' || LEVEL_RANK[l] > LEVEL_RANK[top]) ? l : top), 'gris');
+}
+
 /** Alertes d'un même navire (MMSI), le câble le plus proche d'abord. */
 export interface VesselCableAlerts { mmsi: string; alerts: CableAlert[] }
 

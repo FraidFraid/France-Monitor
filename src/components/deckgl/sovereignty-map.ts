@@ -9,7 +9,7 @@ import type {
   ShownMilitaryEmergency, SubseaCable, SubseaCablesFile,
 } from '../../types/index.ts';
 import type { MilitaryShip } from '../../services/military-ships.ts';
-import { cableAlertLevel, isSovereigntyDataLate, militaryEmergencyLevel } from '../../services/sovereignty-levels.ts';
+import { alertsByVessel, isSovereigntyDataLate, militaryEmergencyLevel, vesselAlertLevel } from '../../services/sovereignty-levels.ts';
 import { isEmergencyConfirmed } from '../../services/traffic-levels.ts';
 import { levelHex } from '../../services/vigilance.ts';
 import { departementName } from '../layer-panel/health-format.ts';
@@ -260,29 +260,47 @@ export function landingFeatures(file: SubseaCablesFile | null): Fc<GeoJSON.Point
   }))));
 }
 
-function alertBody(a: CableAlert, muted: boolean, now: number): string {
-  const cable = a.cableName ?? (isShomCable({ id: a.cableId }) ? 'câble télécom du Shom, sans nom' : 'câble sans nom');
-  return head(`${a.name ?? `MMSI ${a.mmsi}`} · ${a.vesselType ?? 'type n.d.'}`, a.confirmed ? 'Navire lent confirmé sur deux relevés' : 'Navire lent vu une fois, à confirmer')
-    + row('Câble', cable)
-    + row('Distance au tracé', formatMeters(a.distanceM))
+function alertCableWord(a: CableAlert): string {
+  return a.cableName ?? (isShomCable({ id: a.cableId }) ? 'câble télécom du Shom, sans nom' : 'câble sans nom');
+}
+
+/** Câbles d'un navire, le plus proche d'abord, noms répétés comptés : « 2 câbles télécom du Shom, sans nom, BARMAR » (FX2). */
+function vesselCablesText(alerts: readonly CableAlert[]): string {
+  const counts = new Map<string, number>();
+  for (const a of alerts) counts.set(alertCableWord(a), (counts.get(alertCableWord(a)) ?? 0) + 1);
+  return [...counts].map(([word, n]) => (n > 1 && word.startsWith('câble ') ? `${n}\u00a0câbles ${word.slice('câble '.length)}` : word)).join(', ');
+}
+
+/** Infobulle d'un navire : ses câbles listés, distance, vitesse et relevé du câble le plus proche (même ligne que le panneau, FX2). */
+function vesselBody(alerts: readonly CableAlert[], muted: boolean, now: number): string {
+  const [a] = alerts;
+  const several = alerts.length > 1;
+  const lastSeen = alerts.map((x) => x.lastSeen).sort().at(-1) ?? a.lastSeen;
+  return head(`${a.name ?? `MMSI ${a.mmsi}`} · ${a.vesselType ?? 'type n.d.'}`,
+    alerts.some((x) => x.confirmed) ? 'Navire lent confirmé sur deux relevés' : 'Navire lent vu une fois, à confirmer')
+    + row(several ? 'Câbles' : 'Câble', vesselCablesText(alerts))
+    + row(several ? 'Distance au tracé le plus proche' : 'Distance au tracé', formatMeters(a.distanceM))
     + row('Vitesse', formatKnots(a.speedKn, 1))
-    + row('Dernier relevé', clockOf(a.lastSeen, now))
+    + row('Dernier relevé', clockOf(lastSeen, now))
     + (muted ? note('Veille non évaluée (AIS muet ou flux de la zone muet) : alerte gardée, ni confirmée ni retirée.') : '')
     + note('« À vérifier », jamais une menace. Seule la préfecture maritime qualifie une infraction.');
 }
 
 /**
- * Navires lents signalés : confirmé orange, vu une fois jaune (cableAlertLevel) ; AIS muet, flux de la zone muet ou relevé en retard :
- * gris. Un câble du Shom hors service n'a jamais d'alerte (veille côté serveur).
+ * Navires lents signalés, un point par navire (arbitrage FX2 : la veille fait une alerte par navire et par câble), à la position de
+ * son câble le plus proche, ses câbles listés en infobulle : confirmé orange, vu une fois jaune (vesselAlertLevel, la plus haute de ses
+ * alertes) ; AIS muet, flux de la zone muet pour toutes ses alertes, ou relevé en retard : gris. Identifiant : celui de l'alerte la plus
+ * proche, la cible du clic de sa ligne au panneau Connectivité (`data-vessel`). Un câble du Shom hors service n'a jamais d'alerte.
  */
 export function cableAlertFeatures(w: CablesWatchResponse | null, now: number): Fc<GeoJSON.Point> {
   if (w === null || w.readAt === null) return fc([]);
   const late = w.evaluated && isSovereigntyDataLate('ais-cables', w.aisLastMessageAt, now);
-  return fc(w.alerts.map((a): GeoJSON.Feature<GeoJSON.Point> => {
-    const muted = !w.evaluated || a.zoneMuted === true;
+  return fc(alertsByVessel(w.alerts).map(({ alerts }): GeoJSON.Feature<GeoJSON.Point> => {
+    const [nearest] = alerts;
+    const muted = !w.evaluated || alerts.every((a) => a.zoneMuted === true);
     return {
-      type: 'Feature', geometry: point(a.lon, a.lat),
-      properties: { id: a.id, color: muted ? GREY : vigilanceHex(cableAlertLevel(a, w.evaluated), late), body: alertBody(a, muted, now) },
+      type: 'Feature', geometry: point(nearest.lon, nearest.lat),
+      properties: { id: nearest.id, color: muted ? GREY : vigilanceHex(vesselAlertLevel(alerts, w.evaluated), late), body: vesselBody(alerts, muted, now) },
     };
   }));
 }

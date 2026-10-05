@@ -5,9 +5,8 @@
 // de sa donnée (S1) ; une panne se voit (S3).
 import type { CableAlert, CableLanding, CablesWatchResponse, ConnectivityResponse, SubseaCable, SubseaCablesFile } from '../../types/index.ts';
 import {
-  alertsByVessel, cableAlertLevel, cablesLevel, distinctVessels, isSovereigntyDataLate, type VesselCableAlerts,
+  alertsByVessel, cablesLevel, distinctVessels, isSovereigntyDataLate, vesselAlertLevel, type VesselCableAlerts,
 } from '../../services/sovereignty-levels.ts';
-import { LEVEL_RANK, type VigilanceLevel } from '../../services/vigilance.ts';
 import { escapeHtml } from '../france-intel-events.ts';
 import { absoluteTime, kvRow } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
@@ -234,11 +233,6 @@ function vesselCables(alerts: readonly CableAlert[]): string {
   return [...counts].map(([name, n]) => (n > 1 && name.startsWith('câble ') ? `${counted(n, 'câble')} ${name.slice('câble '.length)}` : name)).join(', ');
 }
 
-/** Couleur la plus haute des alertes d'un navire (gris sous toutes les autres). */
-function topLevel(levels: ReadonlyArray<VigilanceLevel | 'gris'>): VigilanceLevel | 'gris' {
-  return levels.reduce<VigilanceLevel | 'gris'>((top, l) => (l !== 'gris' && (top === 'gris' || LEVEL_RANK[l] > LEVEL_RANK[top]) ? l : top), 'gris');
-}
-
 /**
  * Une ligne par navire (arbitrage FX2 : la veille fait une alerte par navire et par câble), ses câbles listés ; distance du câble le
  * plus proche ; couleur la plus haute de ses alertes ; zone muette seulement si toutes ses alertes le sont. Clic : la position de
@@ -253,7 +247,7 @@ function vesselRow(g: VesselCableAlerts, evaluated: boolean, isLate: boolean, ca
   const seen = confirmed.length > 0
     ? `confirmé sur deux relevés, vu de ${clockOf(firstOf(confirmed), now)} à ${clockOf(lastOf(confirmed), now)}`
     : `vu une fois à ${clockOf(firstOf(g.alerts), now)}, à confirmer`;
-  const level = isLate || muted ? 'gris' : topLevel(g.alerts.filter((a) => a.zoneMuted !== true).map((a) => cableAlertLevel(a, evaluated)));
+  const level = isLate || muted ? 'gris' : vesselAlertLevel(g.alerts, evaluated);
   const parts = [vesselCables(g.alerts), formatKnots(nearest.speedKn, 1), nearest.navStatus === 1 ? 'au mouillage' : null, seen, muted ? MUTED_ZONE : null];
   return listRow({
     text: `${nearest.name ?? `MMSI ${g.mmsi}`} · ${nearest.vesselType ?? 'type n.d.'}`, value: formatMeters(nearest.distanceM),
