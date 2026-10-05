@@ -358,13 +358,15 @@ export function buildWorkQueue(input: WorkQueueInput): WorkQueue {
   }
 
   const situationIds = new Set(input.situations.map((s) => s.id));
+  // Revue de B28 : une situation du moteur masque les entrées du moniteur qu'elle dit déjà (compte GNSS, urgence 7500).
+  const coveredAlertIds = new Set(input.situations.flatMap((s) => s.coveredAlertIds ?? []));
   // Relecture finale m3 (§14) : seulement les événements qui entrent dans la liste — un jumeau
   // absent de la liste ne doit pas faire disparaître l'alerte.
   const eventTitles = (input.events?.events ?? []).filter(eventEnters).map((e) => normalizeTitle(e.title));
   for (const a of input.alerts) {
     // Arbitrages A2 et A3 : la météo est couverte par les lignes officielles, un incendie par la
     // situation du moteur de même identifiant, une alerte presse par l'événement de même titre.
-    if (a.type === 'WEATHER_ALERT' || situationIds.has(a.id)) continue;
+    if (a.type === 'WEATHER_ALERT' || situationIds.has(a.id) || coveredAlertIds.has(a.id)) continue;
     if (a.type === 'NEWS_ALERT' && sameStory(a.title, eventTitles)) continue;
     const key = `alert:${a.id}`;
     const level = situationLevel(a.severity);

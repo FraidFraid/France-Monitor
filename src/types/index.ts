@@ -1083,6 +1083,8 @@ export interface FranceCountrySignals {
   /** Pastilles des panneaux Défense et Vigilance cyber, mêmes fonctions (defenseLevel, cyberLevel). */
   defensePillLevel?: 'vert' | 'jaune' | 'orange' | 'rouge' | 'nd';
   cyberPillLevel?: 'vert' | 'jaune' | 'orange' | 'rouge' | 'nd';
+  /** Pastille Défense relevée par la seule grille GNSS (mailles à précision dégradée) : la tuile « Militaire » le dit (« GNSS à vérifier »). */
+  defensePillFromGnss?: boolean;
   // Finance (weak signal)
   marketStress: number;
 }
@@ -2065,6 +2067,11 @@ export interface DetectedSituation {
   lat?: number;
   lon?: number;
   activateLayers?: string[];       // clés de layers MapLayers à activer (ex: ['subseaCables', 'trafficMaritime'])
+  /**
+   * Entrées du moniteur d'alertes que cette situation dit déjà (identifiants) : la liste « À traiter » ne les montre pas une seconde fois
+   * (« Précision GNSS dégradée » et l'entrée GNSS, 7500 confirmé et son urgence ; revue de B28). Le moniteur, lui, les garde.
+   */
+  coveredAlertIds?: string[];
 }
 
 // ─── Situation History ────────────────────────────────────────────────────────

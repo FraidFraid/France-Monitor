@@ -1,15 +1,19 @@
 // src/services/sovereignty-alerts.ts : moniteur d'alertes de la phase B (spec 2026-10-04 souveraineté § 3.1 ; contrats § 6 ; amendement 7,
 // O7, O15, O17, S15). Une seule entrée GNSS, sans lieu (O17 : aucune maille localisée en direct), tirée des comptes de la grille
 // (gnssDegradedCounts : grille fraîche, hors dégradation générale) : « N mailles françaises au-delà de 10 % sur 24 h glissantes ».
-// Gravité moyenne ; élevée seulement si les deux derniers jours UTC complets ont chacun au moins une maille (O7) ; jamais critique.
+// Gravité moyenne ; élevée par la même règle que la situation « Précision GNSS dégradée » (isGnssDegradationSustained, O7 : au moins
+// GNSS_SITUATION_CELLS mailles sur 24 h et sur chacun des deux derniers jours UTC complets) ; jamais critique. Une grille devenue
+// inexploitable retire aussitôt l'entrée du moniteur (pruneStaleGnssAlert), sans attendre sa durée de vie.
 // Texte prudent (O15) : une précision de position dégradée est à vérifier, seules la DGAC et l'ANFR qualifient un brouillage ; l'entrée
 // renvoie au panneau Défense (mailles localisées du jour UTC précédent). Valeurs insécables (R1).
 import type { DetectedSituation, GnssResponse } from '../types/index.ts';
-import { GNSS_ORANGE_PCT, gnssDegradedCounts } from './sovereignty-levels.ts';
+import { GNSS_ORANGE_PCT, gnssDegradedCounts, isGnssDegradationSustained } from './sovereignty-levels.ts';
 
-const NBSP = ' ';
+const NBSP = '\u00a0';
 const DAY_MS = 86_400_000;
 const ORANGE_AT = `au-delà de ${GNSS_ORANGE_PCT}${NBSP}%`;
+/** Identifiant de l'unique entrée GNSS du moniteur (le même d'une lecture à l'autre : une gravité qui change reste la même alerte). */
+export const GNSS_MONITOR_ID = 'gnss-degraded-24h';
 
 /** Jour UTC « AAAA-MM-JJ » de `iso` reculé de `back` jours. */
 function utcDayBack(iso: string, back: number): string {
@@ -32,13 +36,11 @@ export function gnssJammingSituations(g: GnssResponse | null, now: number): Dete
   const counts = gnssDegradedCounts(g, now);
   if (g === null || g.readAt === null || counts === null || counts.rolling24h <= 0) return [];
   const n = counts.rolling24h;
-  const [veille, avantVeille] = counts.previousUtcDays;
-  const twoDays = veille !== null && veille > 0 && avantVeille !== null && avantVeille > 0;
   const cells = n > 1 ? `${n}${NBSP}mailles françaises` : `${n}${NBSP}maille française`;
   return [{
-    id: 'gnss-degraded-24h',
+    id: GNSS_MONITOR_ID,
     type: 'GPS_JAMMING_ALERT',
-    severity: twoDays ? 'high' : 'medium',
+    severity: isGnssDegradationSustained(counts) ? 'high' : 'medium',
     confidence: 0.6,
     title: `Précision de position GNSS dégradée : ${cells} ${ORANGE_AT} sur 24${NBSP}h glissantes`,
     summary: 'À vérifier : seules la DGAC et l’ANFR qualifient un brouillage. Mailles localisées du jour UTC précédent dans le panneau Défense.',
@@ -56,4 +58,13 @@ export function gnssJammingSituations(g: GnssResponse | null, now: number): Dete
     updatedAt: new Date(g.readAt),
     activateLayers: ['military'],
   }];
+}
+
+/**
+ * Retire du cache du moniteur l'entrée GNSS quand la lecture courante n'en donne plus (grille en retard, en dégradation générale, jamais
+ * lue, ou aucune maille sur 24 h) : « aucune entrée » vaut tout de suite, jamais après la durée de vie du cache (modèle
+ * pruneStalePressAlerts).
+ */
+export function pruneStaleGnssAlert<T>(cache: Map<string, T>, current: readonly DetectedSituation[]): void {
+  if (!current.some((a) => a.id === GNSS_MONITOR_ID)) cache.delete(GNSS_MONITOR_ID);
 }

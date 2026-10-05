@@ -78,9 +78,12 @@ describe('App.ts, phase B', () => {
     expect(methodBody('connectivityPanelStateB')).toContain('connectivity: this.connectivityState');
     expect(methodBody('refreshSovereigntyLegend')).toContain('this.defenseLegendB(');
   });
-  it('moniteur d’alertes : une entrée GNSS sans lieu ; elle ouvre le panneau Défense', () => {
-    expect(methodBody('buildAlertMonitorSituations'))
-      .toContain('const jammingSituations = gnssJammingSituations(this.gnssState?.gnss.data ?? null, nowMs).slice(0, ALERT_MONITOR_LIMIT);');
+  it('moniteur d’alertes : une entrée GNSS sans lieu, retirée du cache dès qu’elle n’a plus lieu d’être ; elle ouvre le panneau Défense', () => {
+    const monitor = methodBody('buildAlertMonitorSituations');
+    expect(monitor).toContain('const jammingSituations = gnssJammingSituations(this.gnssState?.gnss.data ?? null, nowMs).slice(0, ALERT_MONITOR_LIMIT);');
+    // Revue de B28 (m1) : retirée avant l'écriture du cache, jamais laissée jusqu'à sa durée de vie.
+    expect(monitor).toContain('pruneStaleGnssAlert(this.alertMonitorCache, jammingSituations);');
+    expect(monitor.indexOf('pruneStaleGnssAlert(')).toBeLessThan(monitor.indexOf('for (const alert of freshAlerts)'));
     expect(methodBody('buildAlertMonitorSituations')).not.toContain('currentJammingSignals');
     expect(methodBody('openAlertDossier')).toContain("if (situation.type === 'GPS_JAMMING_ALERT') {");
     expect(methodBody('openAlertDossier')).toContain("this.showSovereigntyPanel('military');");
@@ -101,6 +104,21 @@ describe('App.ts, phase B', () => {
     const click = methodBody('handleSourcePanelClick');
     expect(click).toContain("} else if (name === 'Grille GNSS' || name === 'NOAA SWPC' || name === 'Registre des gels') {\n      void this.ensureDefensePanel().then(() => this.openSovereigntyPanel('military'));");
     expect(click).toContain("} else if (name === 'RIPEstat') {\n      void this.ensureConnectivityPanel().then(() => this.openSovereigntyPanel('subseaCables'));");
+  });
+  it('revue de B28 (I1) : la ligne « NOAA SWPC » n’est écrite que par loadGnss et markSovereigntyBFailed, jamais à l’heure du navigateur', () => {
+    // Mentions de la ligne : liste des lignes de la phase B, correspondance des panneaux, clic de la source, et les deux écritures de loadGnss.
+    expect(count(app, "'NOAA SWPC'")).toBe(5);
+    expect(app).toContain("const SOVEREIGNTY_B_SOURCE_NAMES: ReadonlySet<string> = new Set(['Grille GNSS', 'NOAA SWPC', 'RIPEstat', 'Registre des gels']);");
+    expect(app).toContain("  'NOAA SWPC': 'military',");
+    expect(methodBody('handleSourcePanelClick')).toContain("name === 'NOAA SWPC'");
+    expect([...app.matchAll(/updateSource\(\s*'NOAA SWPC'/g)]).toHaveLength(1);
+    const gnss = methodBody('loadGnss');
+    expect(gnss).toContain("this.statusPanel?.updateSource('NOAA SWPC', gnssStatus(this.gnssState, 'noaa', now));");
+    expect(gnss).toContain("this.markSovereigntyBFailed(['Grille GNSS', 'NOAA SWPC'], err);");
+    // L'ancien chargeur du panneau Énergie n'écrit plus la ligne ; un service de la phase A non plus (lignes de la phase B écartées).
+    expect(methodBody('loadSpaceWeather')).not.toMatch(/NOAA SWPC|updateSource/);
+    expect(methodBody('loadOptionalLayers')).not.toContain('NOAA SWPC');
+    expect(methodBody('markSovereigntySourcesFailed')).toContain('SOVEREIGNTY_LAYER_SOURCES[key].filter((n) => !SOVEREIGNTY_B_SOURCE_NAMES.has(n))');
   });
   it('O15 : aucun libellé « brouillage » affirmé ni « navigation dégradée » ajouté à App.ts', () => {
     expect(app).not.toMatch(/brouillage mesuré|[Nn]avigation (?:GNSS )?dégradée|Brouillage GNSS/);
@@ -132,6 +150,6 @@ describe('aide, test de fumée, API publique', () => {
     expect(openapi.tags.filter((t) => t.name === 'Souveraineté')).toHaveLength(1);
     // Lignes de la phase B seulement : des tirets anciens restent ailleurs dans docs/api.md (hors de cette tâche).
     const text = read('public/openapi.json') + docs.split('\n').filter((l) => B_ROUTES.some((r) => l.includes(r))).join('\n');
-    expect(text).not.toMatch(/—|brouillage mesuré|navigation dégradée|[Nn]avigation GNSS dégradée|pleinement visible/);
+    expect(text).not.toMatch(/\u2014|brouillage mesuré|navigation dégradée|[Nn]avigation GNSS dégradée|pleinement visible/);
   });
 });

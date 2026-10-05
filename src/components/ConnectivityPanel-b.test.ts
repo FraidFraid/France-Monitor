@@ -7,7 +7,7 @@ import { CABLES_FILE_FIXTURE, CABLES_WATCH_FIXTURE, SOV_FIXTURE_NOW, connectivit
 import { ConnectivityPanel, type ConnectivityPanelState } from './ConnectivityPanel.ts';
 
 const NOW = SOV_FIXTURE_NOW;
-const NBSP = ' ';
+const NBSP = '\u00a0';
 const cables = (): ConnectivityPanelState['cables'] => (
   { watch: { data: CABLES_WATCH_FIXTURE(), error: null, fetchedAt: NOW }, file: CABLES_FILE_FIXTURE(), fileError: null }
 );

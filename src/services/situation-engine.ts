@@ -28,6 +28,7 @@ import {
   defenseSituationSeverity, isCertFrAlertOpen, isCertFrPublishedRecently, isDefenseSituationEmergency, isSovereigntyDataLate,
 } from './sovereignty-levels.ts';
 import { isEmergencyConfirmed } from './traffic-levels.ts';
+import { GNSS_MONITOR_ID } from './sovereignty-alerts.ts';
 import { SOVEREIGNTY_SOURCE_DETAILS } from '../config/sovereignty-sources.ts';
 import { DEPARTMENTS } from './stability-index.ts';
 import { ecowattToday } from './ecowatt-official.ts';
@@ -654,7 +655,14 @@ function detectDefenseSignal(raw: FranceRawData): DetectedSituation | null {
   );
   // Position : seulement une urgence montrée (une urgence masquée n'en a pas, O10).
   const shown = hijacks.find((e) => !e.masked);
-  return { ...base, ...(shown && !shown.masked ? { lat: shown.lat, lon: shown.lon } : {}), activateLayers: ['military'] };
+  // Entrées du moniteur déjà dites ici (liste « À traiter » : pas de doublon) : l'urgence de chaque 7500, le compte GNSS.
+  const coveredAlertIds = [...hijacks.map(militaryEmergencyAlertId), ...(gnssCells > 0 ? [GNSS_MONITOR_ID] : [])];
+  return { ...base, ...(shown && !shown.masked ? { lat: shown.lat, lon: shown.lon } : {}), activateLayers: ['military'], coveredAlertIds };
+}
+
+/** Identifiant de l'entrée du moniteur d'une urgence, sans gravité : l'urgence qui se confirme reste la même alerte. */
+function militaryEmergencyAlertId(e: MilitaryEmergency): string {
+  return e.masked ? `military-emergency-masked-${e.squawk}-${e.firstSeen}-${e.dept ?? 'mer'}` : `military-emergency-${e.icao24}-${e.squawk}`;
 }
 
 // ─── Moniteur d'alertes : urgences militaires et navires lents sur un câble (souveraineté § 2.4 ; contrats § 6) ───
@@ -675,7 +683,7 @@ export function militaryEmergencyAlerts(emergencies: readonly MilitaryEmergency[
     const code = `${e.squawk} (${SQUAWK_TEXT[e.squawk]})`;
     const country = !e.masked && e.country ? ` ; pays du bloc OACI : ${e.country}` : '';
     const base = situation(
-      e.masked ? `military-emergency-masked-${e.squawk}-${e.firstSeen}-${e.dept ?? 'mer'}` : `military-emergency-${e.icao24}-${e.squawk}`,
+      militaryEmergencyAlertId(e),
       'MILITARY_SURGE_ALERT',
       severity,
       confirmed ? 0.9 : 0.6,

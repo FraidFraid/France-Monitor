@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import type { GnssResponse } from '../types/index.ts';
 import {
-  CABLES_WATCH_FIXTURE, CYBER_FIXTURE, GNSS_FIXTURE, GNSS_STORM_FIXTURE, MILITARY_FIXTURE, SOV_FIXTURE_NOW,
+  CABLES_WATCH_FIXTURE, CYBER_FIXTURE, GNSS_FIXTURE, GNSS_STORM_FIXTURE, MILITARY_EMERGENCY_FIXTURE, MILITARY_FIXTURE, SOV_FIXTURE_NOW,
 } from '../components/layer-panel/sovereignty.fixture.ts';
 import { buildSovereigntyInputs } from './sovereignty-inputs.ts';
 import { withGnssInputs } from './sovereignty-inputs-b.ts';
@@ -24,7 +24,18 @@ describe('entrées du score, phase B', () => {
     const b = withGnssInputs(base(), GNSS_FIXTURE(), MILITARY_FIXTURE(), NOW);
     expect(b.gnssDegraded).toEqual({ rolling24h: 2, previousUtcDays: [2, null] });
     expect(b.defensePillLevel).toBe('jaune');
-    expect({ ...b, gnssDegraded: null, defensePillLevel: 'vert' }).toEqual(base());
+    // La grille seule a relevé la pastille (vert sans elle) : la tuile « Militaire » le dira (revue de B28, m3).
+    expect(b.defensePillFromGnss).toBe(true);
+    const { defensePillFromGnss: _fromGnss, ...rest } = b;
+    expect({ ...rest, gnssDegraded: null, defensePillLevel: 'vert' }).toEqual(base());
+  });
+  it('urgence 7700 confirmée (orange) et 2 mailles (jaune) : la couleur vient de l’urgence, pas de la grille', () => {
+    const m = MILITARY_EMERGENCY_FIXTURE();
+    const b = withGnssInputs(buildSovereigntyInputs(m, CABLES_WATCH_FIXTURE(), CYBER_FIXTURE(), NOW), GNSS_FIXTURE(), m, NOW);
+    expect(b.defensePillLevel).toBe('orange');
+    expect(b.defensePillFromGnss).toBeUndefined();
+    // 3 mailles : orange aussi, déjà donné par l'urgence ; toujours pas « de la grille ».
+    expect(withGnssInputs(buildSovereigntyInputs(m, CABLES_WATCH_FIXTURE(), CYBER_FIXTURE(), NOW), counts(3, [3, 3]), m, NOW).defensePillFromGnss).toBeUndefined();
   });
   it('O17 : des comptes seulement, jamais une maille ni un lieu', () => {
     const b = withGnssInputs(base(), GNSS_FIXTURE(), MILITARY_FIXTURE(), NOW);
@@ -38,6 +49,7 @@ describe('entrées du score, phase B', () => {
     const b = withGnssInputs(base(), GNSS_STORM_FIXTURE(), MILITARY_FIXTURE(), NOW);
     expect(b.gnssDegraded).toBeNull();
     expect(b.defensePillLevel).toBe('vert');
+    expect(b.defensePillFromGnss).toBeUndefined();
   });
   it('grille en retard (40 min) ou jamais lue : non évalué ; adsb.lol indisponible : pastille de la phase A gardée (n.d.)', () => {
     expect(withGnssInputs(base(), { ...GNSS_FIXTURE(), readAt: '2026-10-04T14:05:00.000Z' }, MILITARY_FIXTURE(), NOW).gnssDegraded).toBeNull();

@@ -19,7 +19,7 @@ describe('tableau de qualité : sources de la phase B', () => {
     expect(byId.get('ripestat')?.limits).toContain('Hors score : visibilité d’un réseau, pas sa disponibilité');
     expect(byId.get('gels-avoirs')?.limits).toContain('Aucun nom affiché');
     const text = JSON.stringify(ids.map((id) => byId.get(id)));
-    expect(text).not.toMatch(/—|brouillage mesuré|navigation dégradée|pleinement visible/);
+    expect(text).not.toMatch(/\u2014|brouillage mesuré|navigation dégradée|pleinement visible/);
     // Un nombre et son unité tiennent sur une ligne (R1).
     expect(text).not.toMatch(/\d (?:heures|h|%|jours)\b/);
   });

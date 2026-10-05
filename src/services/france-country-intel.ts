@@ -91,6 +91,8 @@ export interface FranceRawData {
   /** Pastilles Défense et Vigilance cyber (tuiles ; jamais lues par la formule) ; absentes : anciens niveaux des tuiles. */
   defensePillLevel?: FranceCountrySignals['defensePillLevel'];
   cyberPillLevel?: FranceCountrySignals['cyberPillLevel'];
+  /** La grille GNSS seule a relevé la pastille Défense (tuile « Militaire » : « GNSS à vérifier » ; phase B, revue de B28). */
+  defensePillFromGnss?: boolean;
   maritimeCount: number;
   /** Détections en France non récurrentes (spec 2026-10-04 environnement § 2.7) : seule l'entrée change, la formule reste. */
   activeFires: ActiveFire[];
@@ -532,6 +534,7 @@ export function buildFranceSignals(raw: FranceRawData, nowMs: number = Date.now(
     cyberKevAdvisories: cyberPressure.inputs.kevAdvisories7d,
     defensePillLevel: raw.defensePillLevel,
     cyberPillLevel: raw.cyberPillLevel,
+    ...(raw.defensePillFromGnss === true ? { defensePillFromGnss: true } : {}),
     // Finance (weak signal)
     marketStress: raw.marketData.filter((m) => m.changePercent <= -1).length,
   };

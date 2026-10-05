@@ -148,7 +148,10 @@ describe('données partagées des blocs (spec 2026-10-01)', () => {
     // « Militaire » aussi. Câbles en retard, grille lue : la part GNSS seule. Orage (dégradation générale) : « GNSS non évalué ».
     const withGnss = withGnssInputs(day, GNSS_FIXTURE(), MILITARY_FIXTURE(), SOV_FIXTURE_NOW);
     expect(tile('Défense', withGnss)).toEqual({ label: 'Défense', value: 2, meta: 'câbles 0 · GNSS 2', level: 'medium' });
-    expect(tile('Militaire', withGnss)).toMatchObject({ value: 9, level: 'medium' });
+    // Revue de B28 (m3) : la couleur vient de la seule grille, la tuile le dit ; sans grille ou en orage, rien n'est ajouté.
+    expect(tile('Militaire', withGnss)).toEqual({ label: 'Militaire', value: 9, meta: `${MILITARY_FIGURE_LABEL} · 4\u00a0français · GNSS à vérifier`, level: 'medium' });
+    expect(tile('Military', withGnss, 'en')?.meta).toBe('military or state aircraft visible on ADS-B over metropolitan France · 4\u00a0French · GNSS to be checked');
+    expect(tile('Militaire', withGnssInputs(day, GNSS_STORM_FIXTURE(), MILITARY_FIXTURE(), SOV_FIXTURE_NOW))?.meta).toBe(`${MILITARY_FIGURE_LABEL} · 4\u00a0français`);
     const three = withGnssInputs(day, { ...GNSS_FIXTURE(), degraded: { rolling24h: 3, previousUtcDays: [3, null] } }, MILITARY_FIXTURE(), SOV_FIXTURE_NOW);
     expect(tile('Défense', three)).toMatchObject({ value: 3, meta: 'câbles 0 · GNSS 3', level: 'high' });
     const cablesLate = withGnssInputs(buildSovereigntyInputs(MILITARY_FIXTURE(), CABLES_WATCH_FROZEN_FIXTURE(), CYBER_FIXTURE(), SOV_FIXTURE_NOW), GNSS_FIXTURE(), MILITARY_FIXTURE(), SOV_FIXTURE_NOW);

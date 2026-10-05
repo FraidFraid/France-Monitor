@@ -110,6 +110,20 @@ describe('buildWorkQueue — ce qui entre (spec §7.1)', () => {
     expect(q.items.find((i) => i.key === 'alert:news-alert-2')?.theme).toBe('security');
   });
 
+  it('entrée du moniteur déjà dite par une situation (coveredAlertIds, revue de B28) : masquée ; les autres alertes restent', () => {
+    const q = buildWorkQueue(input({
+      situations: [situation({ id: 'defense-signal-elevated', type: 'DEFENSE_SIGNAL_ELEVATED', severity: 'medium', title: 'Précision GNSS dégradée', coveredAlertIds: ['gnss-degraded-24h'] })],
+      alerts: [
+        situation({ id: 'gnss-degraded-24h', type: 'GPS_JAMMING_ALERT', severity: 'medium', title: 'Précision de position GNSS dégradée' }),
+        situation({ id: 'defense-alert-1', type: 'DEFENSE_ALERT', severity: 'high', title: 'Navire près du câble' }),
+      ],
+    }));
+    expect(keys(q)).toEqual(['alert:defense-alert-1', 'situation:defense-signal-elevated']);
+    // Sans situation qui la couvre, l'entrée entre.
+    expect(keys(buildWorkQueue(input({ alerts: [situation({ id: 'gnss-degraded-24h', type: 'GPS_JAMMING_ALERT', severity: 'medium' })] }))))
+      .toEqual(['alert:gnss-degraded-24h']);
+  });
+
   it('alerte presse : dédoublonnée seulement contre un événement affiché dans la liste (relecture finale m3, §14)', () => {
     const alert = situation({ id: 'news-alert-1', type: 'NEWS_ALERT', severity: 'critical', title: 'Explosion dans une usine chimique de Seine-Mar...', category: 'security' });
     // Jumeau non corroboré (jaune, source unique) ou clos : il n'entre pas, l'alerte reste.

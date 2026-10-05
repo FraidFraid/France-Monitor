@@ -209,15 +209,25 @@ export function isDefenseSituationEmergency(e: MilitaryEmergency): boolean {
 }
 
 /**
+ * Précision GNSS dégradée soutenue (O7) : au moins GNSS_SITUATION_CELLS mailles sur 24 h glissantes et sur chacun des deux derniers jours
+ * UTC complets (un jour non couvert, null, ne compte jamais). Règle unique de la gravité élevée, pour la situation et pour l'entrée du
+ * moniteur d'alertes (arbitrage du contrôleur, revue de B28).
+ */
+export function isGnssDegradationSustained(gnss: GnssDegradedCounts): boolean {
+  return gnss.rolling24h >= GNSS_SITUATION_CELLS && gnss.previousUtcDays.every((n) => n !== null && n >= GNSS_SITUATION_CELLS);
+}
+
+/**
  * Gravité de « Signal défense » (O7) : moyenne pour un 7500 affiché sur deux relevés (« code 7500 affiché par le transpondeur, à
  * confirmer par les autorités ») ou pour 3 mailles GNSS dégradées sur 24 h ; élevée seulement si ces 3 mailles s'ajoutent à deux jours
- * UTC complets de suite à 3 mailles ou plus ; null sinon. Jamais un nombre d'aéronefs : un aéronef observé n'est pas un événement.
+ * UTC complets de suite à 3 mailles ou plus (isGnssDegradationSustained) ; null sinon. Jamais un nombre d'aéronefs : un aéronef observé
+ * n'est pas un événement.
  */
 export function defenseSituationSeverity(
   emergencies: readonly MilitaryEmergency[], gnss: GnssDegradedCounts | null,
 ): Extract<SituationSeverity, 'medium' | 'high'> | null {
+  if (gnss !== null && isGnssDegradationSustained(gnss)) return 'high';
   const gnssNow = gnss !== null && gnss.rolling24h >= GNSS_SITUATION_CELLS;
-  if (gnssNow && gnss.previousUtcDays.every((n) => n !== null && n >= GNSS_SITUATION_CELLS)) return 'high';
   return gnssNow || emergencies.some(isDefenseSituationEmergency) ? 'medium' : null;
 }
 

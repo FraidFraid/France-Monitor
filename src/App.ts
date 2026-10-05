@@ -141,7 +141,7 @@ import { fetchConnectivity, mergeConnectivity, ripeStatus, type ConnectivityStat
 import { fetchSanctions, gelsStatus, mergeSanctions, type SanctionsState } from './services/sovereignty-sanctions.ts';
 import { fetchDroneZones } from './services/sovereignty-drones.ts';
 import { withGnssInputs } from './services/sovereignty-inputs-b.ts';
-import { gnssJammingSituations } from './services/sovereignty-alerts.ts';
+import { gnssJammingSituations, pruneStaleGnssAlert } from './services/sovereignty-alerts.ts';
 import type { DroneZonesFile } from './types/index.ts';
 import {
   LYR_SOV_AIRCRAFT, LYR_SOV_AIRCRAFT_ABROAD, LYR_SOV_CABLE_VESSELS, LYR_SOV_EMERGENCIES, LYR_SOV_GNSS_FILL, LYR_SOV_NAVY_OBSERVED,
@@ -589,6 +589,9 @@ const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
     layerKeys: ['outagesElec', 'outagesTelecom', 'outagesInternet', 'outagesCloud'],
   },
 ];
+
+/** Lignes Souveraineté de la phase B : chacune n'est écrite que par son lecteur (tâche B28), jamais par un service de la phase A. */
+const SOVEREIGNTY_B_SOURCE_NAMES: ReadonlySet<string> = new Set(['Grille GNSS', 'NOAA SWPC', 'RIPEstat', 'Registre des gels']);
 
 /**
  * handleSourcePanelClick()'s source names → their FLOATING_PANEL_DEFS id
@@ -4554,10 +4557,13 @@ export class App {
     }));
   }
 
-  /** Lignes d'une couche Souveraineté quand son service ne se charge pas : une ligne datée garde sa date (« stale »), sinon « error ». */
+  /**
+   * Lignes d'une couche Souveraineté quand son service ne se charge pas : une ligne datée garde sa date (« stale »), sinon « error ». Les
+   * lignes de la phase B ont chacune leur lecteur (loadGnss, loadConnectivity, loadSanctions) : seul celui-ci les écrit.
+   */
   private markSovereigntySourcesFailed(key: SovereigntyLayerKey, err: unknown): void {
     const error = err instanceof Error ? err.message : 'service de la source introuvable';
-    for (const name of SOVEREIGNTY_LAYER_SOURCES[key]) {
+    for (const name of SOVEREIGNTY_LAYER_SOURCES[key].filter((n) => !SOVEREIGNTY_B_SOURCE_NAMES.has(n))) {
       const dated = this.statusPanel?.getSources().find((s) => s.name === name)?.lastUpdate ?? null;
       this.statusPanel?.updateSource(name, dated !== null ? { status: 'stale', error } : { status: 'error', lastUpdate: null, period: undefined, error });
     }
@@ -7231,9 +7237,9 @@ export class App {
         name: 'cyber', task: this.loadCyber().catch((err) => console.error('[App] Vigilance cyber indisponible', err))
       },
       {
-        name: 'space-weather', task: this.loadSpaceWeather().catch(() => {
-          this.statusPanel?.updateSource('NOAA SWPC', { status: 'error', lastUpdate: new Date() });
-        })
+        // Indice Kp du panneau Énergie. La ligne de la météo spatiale du panneau des sources n'est jamais écrite ici : elle est celle de la
+        // grille GNSS (loadGnss), datée par l'heure des échelles du serveur, jamais par l'horloge du navigateur (S1, revue de B28).
+        name: 'space-weather', task: this.loadSpaceWeather().catch((err) => console.error('[App] Météo spatiale du panneau Énergie indisponible', err))
       },
     ];
 
@@ -7247,12 +7253,9 @@ export class App {
 
 
   private async loadSpaceWeather(): Promise<void> {
-    this.statusPanel?.updateSource('NOAA SWPC', { status: 'loading', lastUpdate: null });
-
-    // Kp index NOAA
+    // Kp index NOAA (panneau Énergie seulement ; la ligne de la météo spatiale du panneau des sources vient de loadGnss).
     const data = await fetchSpaceWeather();
     this.energyPanel?.updateSpaceWeather(data);
-    this.statusPanel?.updateSource('NOAA SWPC', { status: 'ok', lastUpdate: data.fetchedAt });
 
     // Refresh Kp toutes les 15 min
     if (this._intervalSpaceWeatherRefresh !== null) {
@@ -7462,6 +7465,8 @@ export class App {
     // Phase B (tâche B28 ; O7, O17) : une seule entrée GNSS, sans lieu, tirée du compte des 24 h ; moyenne, élevée sur deux jours UTC
     // complets de suite, jamais critique ; aucune si la grille est en retard, en dégradation générale ou jamais lue.
     const jammingSituations = gnssJammingSituations(this.gnssState?.gnss.data ?? null, nowMs).slice(0, ALERT_MONITOR_LIMIT);
+    // Grille devenue inexploitable ou sans maille : l'entrée gardée en cache part tout de suite, jamais après sa durée de vie.
+    pruneStaleGnssAlert(this.alertMonitorCache, jammingSituations);
 
     const aisSituations = [...this.currentAisAnomalies]
       .sort((a, b) => b.timestamp - a.timestamp)

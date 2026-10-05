@@ -9,10 +9,12 @@ import {
   CABLES_WATCH_FIXTURE, CYBER_FIXTURE, GNSS_FIXTURE, GNSS_STORM_FIXTURE, MILITARY_EMERGENCY_FIXTURE, MILITARY_FIXTURE, SOV_FIXTURE_NOW,
 } from '../components/layer-panel/sovereignty.fixture.ts';
 import { buildFranceSignals, type FranceRawData } from './france-country-intel.ts';
-import { detectSituations } from './situation-engine.ts';
+import { detectSituations, militaryEmergencyAlerts } from './situation-engine.ts';
+import { buildWorkQueue } from './work-queue.ts';
 import { buildSovereigntyInputs } from './sovereignty-inputs.ts';
+import { gnssJammingSituations } from './sovereignty-alerts.ts';
 import { withGnssInputs } from './sovereignty-inputs-b.ts';
-import { gnssDegradedCounts } from './sovereignty-levels.ts';
+import { GNSS_SITUATION_CELLS, gnssDegradedCounts, isGnssDegradationSustained } from './sovereignty-levels.ts';
 
 const NOW = SOV_FIXTURE_NOW;
 
@@ -43,11 +45,11 @@ describe('« Précision GNSS dégradée » et signal du score, phase B', () => {
   it('3 mailles sur 24 h : « Précision GNSS dégradée » moyenne, sans lieu ; DGAC et ANFR (S15)', () => {
     const s = defenseSignal(raw(gnssDegradedCounts(counts(3, [3, null]), NOW)));
     expect([s?.title, s?.severity]).toEqual(['Précision GNSS dégradée', 'medium']);
-    expect(s?.summary).toBe('3 mailles à précision GNSS dégradée sur 24 h, à vérifier.');
+    expect(s?.summary).toBe('3\u00a0mailles à précision GNSS dégradée sur 24\u00a0h, à vérifier.');
     expect(s?.recommendedActions.map((a) => a.label)).toEqual(['Signaler à la DGAC et à l’ANFR, seules à qualifier un brouillage']);
     expect(s?.sourceRefs).toEqual(['Grille GNSS (adsb.lol)', 'NOAA SWPC']);
     expect([s?.affectedZones, s?.lat, s?.lon, s?.activateLayers]).toEqual([['France'], undefined, undefined, ['military']]);
-    expect(JSON.stringify(s)).not.toMatch(/brouillage mesuré|Brouillage|navigation dégradée|—/);
+    expect(JSON.stringify(s)).not.toMatch(/brouillage mesuré|Brouillage|navigation dégradée|\u2014/);
   });
   it('O7 : élevée seulement sur deux jours UTC complets de suite à 3 mailles ou plus ; jamais critique', () => {
     expect(defenseSignal(raw(gnssDegradedCounts(counts(4, [3, 5]), NOW)))?.severity).toBe('high');
@@ -55,11 +57,47 @@ describe('« Précision GNSS dégradée » et signal du score, phase B', () => {
     expect(defenseSignal(raw(gnssDegradedCounts(counts(4, [3, 2]), NOW)))?.severity).toBe('medium');
     expect(defenseSignal(raw(gnssDegradedCounts(counts(4, [null, 5]), NOW)))?.severity).toBe('medium');
   });
+  it('une seule règle « élevée » (arbitrage du contrôleur) : la situation et l’entrée du moniteur montent ensemble, par isGnssDegradationSustained', () => {
+    const n = GNSS_SITUATION_CELLS;
+    const cases: Array<[number, [number | null, number | null]]> = [
+      [n, [n, n]], [12, [9, 12]], [1, [1, 1]], [n - 1, [n, n]], [n, [n, n - 1]], [n, [null, n]], [n, [n, null]], [n, [0, 0]],
+    ];
+    for (const [rolling, days] of cases) {
+      const g = counts(rolling, days);
+      const c = gnssDegradedCounts(g, NOW);
+      expect(c).not.toBeNull();
+      const sustained = c !== null && isGnssDegradationSustained(c);
+      const situation = defenseSignal(raw(c))?.severity;
+      const monitor = gnssJammingSituations(g, NOW)[0]?.severity;
+      expect([situation === 'high', monitor === 'high'], `${rolling} ${String(days)}`).toEqual([sustained, sustained]);
+      expect([situation, monitor]).not.toContain('critical');
+    }
+  });
   it('7500 confirmé et 3 mailles : « Signal défense », moyen (O7), les deux lignes et les deux actions', () => {
     const s = defenseSignal(raw(gnssDegradedCounts(counts(3, [1, null]), NOW), hijack()));
     expect([s?.title, s?.severity]).toEqual(['Signal défense', 'medium']);
     expect(s?.drivers).toHaveLength(2);
     expect(s?.recommendedActions.map((a) => a.label)).toContain('Signaler à la DGAC et à l’ANFR, seules à qualifier un brouillage');
+  });
+  it('liste « À traiter » (revue de B28, m2) : la situation masque l’entrée GNSS et l’urgence 7500 qu’elle dit déjà ; le moniteur les garde', () => {
+    const g = counts(3, [1, null]);
+    const emergencies = hijack();
+    const situations = detectSituations(raw(gnssDegradedCounts(g, NOW), emergencies), NOW).filter((x) => x.type === 'DEFENSE_SIGNAL_ELEVATED');
+    const alerts = [...gnssJammingSituations(g, NOW), ...militaryEmergencyAlerts(emergencies)];
+    expect(alerts.map((a) => a.id)).toEqual(['gnss-degraded-24h', expect.stringMatching(/^military-emergency-.+-7500$/)]);
+    expect(situations[0]?.coveredAlertIds).toEqual([alerts[1]?.id, 'gnss-degraded-24h']);
+    const q = buildWorkQueue({
+      situations, alerts, events: null, ecowatt: null, meteo: [], floods: [], markets: [], baseline: null, firstSeen: new Map(), lang: 'fr', now: NOW,
+    });
+    expect(q.items.map((i) => i.key)).toEqual(['situation:defense-signal-elevated']);
+    // Sous le seuil de la situation (2 mailles) : rien ne masque l'entrée GNSS, elle reste dans la liste.
+    const few = counts(2, [2, null]);
+    const none = detectSituations(raw(gnssDegradedCounts(few, NOW)), NOW).filter((x) => x.type === 'DEFENSE_SIGNAL_ELEVATED');
+    const q2 = buildWorkQueue({
+      situations: none, alerts: gnssJammingSituations(few, NOW), events: null, ecowatt: null, meteo: [], floods: [], markets: [], baseline: null,
+      firstSeen: new Map(), lang: 'fr', now: NOW,
+    });
+    expect(q2.items.map((i) => i.key)).toEqual(['alert:gnss-degraded-24h']);
   });
   it('Review Focus 3 : orage Kp 5+ : aucun compte (GNSS non évalué), aucune situation, signal du score à 0', () => {
     const cells = gnssDegradedCounts(GNSS_STORM_FIXTURE(), NOW);

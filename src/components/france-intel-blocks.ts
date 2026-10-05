@@ -196,15 +196,17 @@ function cyberTile(s: FranceCountrySignals, lang: Lang): DomainTile {
 }
 
 /**
- * Tuile « Militaire » : gros chiffre Défense (O9) et appareils français ; niveau = pastille Défense (urgences affichées sur deux relevés),
- * jamais le nombre d'aéronefs. adsb.lol indisponible ou en retard : « n.d. », sans compte de français.
+ * Tuile « Militaire » : gros chiffre Défense (O9) et appareils français ; niveau = pastille Défense (urgences affichées sur deux relevés,
+ * mailles GNSS à précision dégradée), jamais le nombre d'aéronefs. Couleur relevée par la seule grille GNSS : « GNSS à vérifier » dit
+ * pourquoi (revue de B28). adsb.lol indisponible ou en retard : « n.d. », sans compte de français.
  */
 function militaryTile(s: FranceCountrySignals, lang: Lang): DomainTile {
   const label = t(lang, MILITARY_FIGURE_LABEL, MILITARY_FIGURE_LABEL_EN);
+  const gnss = s.defensePillFromGnss === true ? ` · ${t(lang, 'GNSS à vérifier', 'GNSS to be checked')}` : '';
   return {
     label: t(lang, 'Militaire', 'Military'),
     value: s.militaryUnavailable === true ? null : s.militaryFlights,
-    meta: s.militaryUnavailable === true ? label : `${label} · ${s.militaryFrench ?? 0}\u00a0${t(lang, 'français', 'French')}`,
+    meta: s.militaryUnavailable === true ? label : `${label} · ${s.militaryFrench ?? 0}\u00a0${t(lang, 'français', 'French')}${gnss}`,
     level: pillTileLevel(s.defensePillLevel, s.militaryUnavailable, s.militaryFlights > 10 ? 'medium' : 'low'),
   };
 }

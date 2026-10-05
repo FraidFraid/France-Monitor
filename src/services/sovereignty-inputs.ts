@@ -29,6 +29,8 @@ export interface SovereigntyInputs {
   /** Pastilles des panneaux Défense et Vigilance cyber, mêmes fonctions (tuiles « Militaire » et « Cyber », jamais lues par la formule). */
   defensePillLevel: LayerLevel;
   cyberPillLevel: LayerLevel;
+  /** Phase B (withGnssInputs, tâche B28) : la grille GNSS seule a relevé la pastille Défense ; absent en phase A. */
+  defensePillFromGnss?: boolean;
 }
 
 /** Relevé adsb.lol lu et à l'heure (10 min) : sinon aucun aéronef ni urgence n'entre au score. */
