@@ -7,6 +7,8 @@
 // moins entre deux lectures : GetCapabilities (éditions), fiches data.gouv.fr (licences vérifiées, mise à jour des câbles),
 // une lecture GetFeature par couche, une requête Overpass, puis une lecture geo.api.gouv.fr par département d'atterrage.
 // Overpass en 429 ou 504 : relancer à la main après une minute, trois essais au plus. Usage : node scripts/fetch-subsea-cables.mjs
+// Liaisons électriques (power=cable, line ou minor_line) écartées des compléments OpenStreetMap même avec une fibre (revue finale M5,
+// Normandie 1 et 2) ; leurs noms sont imprimés. Un nom OSM non vérifié reste tel quel (AMITIE, chemin 761201757 : dit à l'utilisateur).
 import { writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { departementAt, departementsNear } from '../api/_lib/geo-fr.js';
@@ -17,7 +19,7 @@ import {
 } from '../api/_lib/shom-cables.js';
 import { fetchStrictJson, fetchStrictXml } from '../api/_lib/source-http.js';
 import {
-  CABLES_FILE_PATH, CABLES_OVERPASS_QUERY, OSM_LICENCE, OSM_SOURCE, OVERPASS_URL, SHOM_SOURCE, nameLandings, overpassToCables,
+  CABLES_FILE_PATH, CABLES_OVERPASS_QUERY, OSM_LICENCE, OSM_SOURCE, OVERPASS_URL, SHOM_SOURCE, isPowerLink, nameLandings, overpassToCables,
 } from '../api/_lib/subsea-cables.js';
 
 const OVERPASS_TIMEOUT_MS = 200_000;
@@ -117,6 +119,8 @@ async function main() {
     + `${Math.round(Buffer.byteLength(text) / 1024)} Ko`);
   console.log(shomExclusionsText(shomCableCounts(shomCablesJson)));
   console.log(`compléments OpenStreetMap : ${osmCables.map((c) => c.name ?? c.id).join(', ')}`);
+  const power = overpass.elements.filter((el) => el?.type === 'way' && isPowerLink(el.tags)).map((el) => el.tags?.name ?? `way/${el.id}`);
+  console.log(`liaisons électriques écartées (power) : ${power.length > 0 ? power.join(', ') : 'aucune'}`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

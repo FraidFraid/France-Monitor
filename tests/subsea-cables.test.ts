@@ -10,7 +10,7 @@ import { departementAt, departementsNear, metropoleDepartements } from '../api/_
 import { APPROACHES_BBOX, osmComplement } from '../api/_lib/shom-cables.js';
 import {
   CABLES_FILE_PATH, CABLES_OVERPASS_QUERY, LANDING_KM, OSM_LICENCE, OSM_SOURCE, SHOM_CABLES_LICENCE, SHOM_REGULATION_LICENCE, SHOM_SOURCE,
-  __resetCablesFileForTests, anchorageClearOfCablesAt, isTelecomSubseaCable, loadCablesFile, nameLandings, overpassToCables, pointToPathM,
+  __resetCablesFileForTests, anchorageClearOfCablesAt, isPowerLink, isTelecomSubseaCable, loadCablesFile, nameLandings, overpassToCables, pointToPathM,
   zoneContains,
 } from '../api/_lib/subsea-cables.js';
 
@@ -35,7 +35,12 @@ describe('isTelecomSubseaCable (arbitrage 9)', () => {
   it('télécom sous l’eau retenu ; électrique seul et sans nature écartés', () => {
     expect(isTelecomSubseaCable(tagsOf('Apollo South'))).toBe(true);           // communication=line, seamark:type=cable_submarine
     expect(isTelecomSubseaCable(tagsOf('AMITIE'))).toBe(true);                 // communication=line, location=underwater
-    expect(isTelecomSubseaCable(tagsOf('Normandie 1'))).toBe(true);            // électrique ET télécom
+    // Revue finale M5 : une liaison électrique (power=cable) qui porte aussi une fibre n'est pas un câble télécom de la veille.
+    expect(isTelecomSubseaCable(tagsOf('Normandie 1'))).toBe(false);           // électrique ET télécom : liaison électrique
+    expect(isTelecomSubseaCable(tagsOf('Normandie 2'))).toBe(false);
+    expect([isPowerLink(tagsOf('Normandie 1')), isPowerLink(tagsOf('AMITIE')), isPowerLink({ power: 'line' }), isPowerLink({ power: 'minor_line' })])
+      .toEqual([true, false, true, true]);
+    expect(isTelecomSubseaCable({ communication: 'line', submarine: 'yes', power: 'cable' })).toBe(false);
     expect(isTelecomSubseaCable(tagsOf('IFA 2000'))).toBe(false);              // power=cable seul
     expect(isTelecomSubseaCable(tagsOf('Quiberon-Belle-Ile III'))).toBe(false);
     expect(isTelecomSubseaCable({ 'seamark:type': 'cable_submarine' })).toBe(false);
@@ -51,9 +56,10 @@ describe('isTelecomSubseaCable (arbitrage 9)', () => {
 
 describe('overpassToCables', () => {
   const cables = overpassToCables(OSM(), GEO);
-  it('39 tracés gardés sur 57, 50 atterrages, ordre de la réponse', () => {
+  it('37 tracés gardés sur 57, 48 atterrages, ordre de la réponse ; liaisons électriques écartées (Normandie 1 et 2, revue finale M5)', () => {
     expect(OSM().elements).toHaveLength(57);
-    expect([cables.length, cables.reduce((n, c) => n + c.landings.length, 0)]).toEqual([39, 50]);
+    expect([cables.length, cables.reduce((n, c) => n + c.landings.length, 0)]).toEqual([37, 48]);
+    expect(cables.some((c) => c.name?.startsWith('Normandie'))).toBe(false);
     expect([cables[0].id, cables.at(-1)?.id]).toEqual(['way/78424042', 'way/761201757']);
     expect(cables.some((c) => c.name === 'IFA 2000')).toBe(false);
   });

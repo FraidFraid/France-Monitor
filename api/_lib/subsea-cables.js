@@ -45,9 +45,20 @@ export const SHOM_REGULATION_LICENCE = 'Licence ouverte 2.0';
 export const SHOM_SOURCE = 'Shom';
 const EARTH_M = 6_371_000;
 
-/** Vrai pour un câble télécom posé sous l'eau (arbitrage 9). */
+/** Valeurs `power` d'une liaison électrique (revue finale M5). */
+const POWER_LINK_VALUES = new Set(['cable', 'line', 'minor_line']);
+
+/**
+ * Liaison électrique : `power=cable`, `power=line` ou `power=minor_line`, même si elle porte aussi une fibre (`communication=line`) ;
+ * relevé du 05/10 : Normandie 1 et 2, liaisons électriques Jersey-France, lues comme câbles télécom à Bretteville-sur-Ay (revue finale M5).
+ */
+export function isPowerLink(tags) {
+  return Boolean(tags) && typeof tags === 'object' && POWER_LINK_VALUES.has(tags.power);
+}
+
+/** Vrai pour un câble télécom posé sous l'eau (arbitrage 9) ; une liaison électrique n'en est jamais un (isPowerLink). */
 export function isTelecomSubseaCable(tags) {
-  if (!tags || typeof tags !== 'object') return false;
+  if (!tags || typeof tags !== 'object' || isPowerLink(tags)) return false;
   const telecom = tags.communication === 'line' || tags.telecom === 'line';
   const underwater = tags.location === 'underwater' || tags.submarine === 'yes' || tags['seamark:type'] === 'cable_submarine';
   return telecom && underwater;

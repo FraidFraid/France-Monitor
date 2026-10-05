@@ -260,7 +260,8 @@ describe('/api/sovereignty/cables-watch', () => {
     const { status, body, cache } = await callHandler<CablesWatchResponse>(handler);
     expect([status, cache, body.errors]).toEqual([200, CACHE_CONTROL, []]);
     expect([body.readAt, body.aisLastMessageAt, body.evaluated, body.slowVessels]).toEqual([iso(T0), iso(T0 - 2_000), true, 6]);
-    expect(body.cablesFile).toEqual({ generatedAt: '2026-10-04T19:48:00.000Z', osmBase: '2026-10-04T14:47:16Z', cables: 55, landings: 69 });
+    // Liaisons électriques Normandie 1 et 2 écartées des compléments OpenStreetMap (revue finale M5) : 53 câbles, 67 atterrages.
+    expect(body.cablesFile).toEqual({ generatedAt: '2026-10-04T19:48:00.000Z', osmBase: '2026-10-04T14:47:16Z', cables: 53, landings: 67 });
     expect(body.alerts.map((a) => [a.id, a.distanceM, a.confirmed])).toEqual([['229000001:way/761201757', 304, false]]);
     expect(log.urls).toEqual([`${RELAY}/slow-vessels`]);
     expect(sentHeader(log.inits[0], 'User-Agent')).toBe(SOURCE_USER_AGENT);
