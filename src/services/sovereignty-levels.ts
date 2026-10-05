@@ -487,13 +487,35 @@ export function connectivityLevel(c: CablesWatchResponse | null, n: Connectivity
   return { level: top.level, reason: `${top.reason} · ${other.reason}` };
 }
 
+/** Fenêtre glissante de la grille GNSS (24 h, api/_lib/gnss-grid.js). */
+export const GNSS_WINDOW_MS = 24 * 3_600_000;
+/**
+ * Couverture minimale de la fenêtre : 23 h 50, soit la fenêtre moins une collecte de 10 min (même règle que le drapeau « référence en
+ * construction » du serveur, api/_lib/gnss-collect.js ; identité testée). En deçà, le compte glissant n'est pas un compte de 24 h.
+ */
+export const GNSS_COVERED_MS = GNSS_WINDOW_MS - 10 * 60_000;
+
+/** Durée mesurée de la fenêtre glissante (ms) : de `windowStart` à `readAt` (cumul repris au dernier redémarrage du serveur) ; 0 sans date. */
+export function gnssWindowSpanMs(g: Pick<GnssResponse, 'readAt' | 'windowStart'>): number {
+  if (g.readAt === null || g.windowStart === null) return 0;
+  const span = Date.parse(g.readAt) - Date.parse(g.windowStart);
+  return Number.isFinite(span) ? Math.max(0, span) : 0;
+}
+
+/** Vrai si la fenêtre glissante couvre au moins 23 h 50 de mesure (arbitrage FX2). */
+export function isGnssWindowCovered(g: Pick<GnssResponse, 'readAt' | 'windowStart'>): boolean {
+  return gnssWindowSpanMs(g) >= GNSS_COVERED_MS;
+}
+
 /**
  * Comptes de mailles GNSS à précision dégradée du score et de la pastille Défense (O15 à O17), lus dans la réponse du serveur (jamais un
- * seuil recopié) et sans lieu : null si la grille n'a jamais été complète, si elle est en retard (40 min) ou en dégradation générale
- * (météo spatiale, pas une dégradation locale).
+ * seuil recopié) et sans lieu : null si la grille n'a jamais été complète, si elle est en retard (40 min), en dégradation générale
+ * (météo spatiale, pas une dégradation locale) ou si sa fenêtre ne couvre pas encore 23 h 50 (arbitrage FX2 : juste après un
+ * redémarrage, « 0 » sur 0 h de mesure n'est pas un calme, et une part calculée sur quelques heures n'est pas celle de 24 h).
  */
 export function gnssDegradedCounts(g: GnssResponse | null, now: number): GnssDegradedCounts | null {
   if (g === null || g.readAt === null || g.generalDegradation || isSovereigntyDataLate('adsb-gnss', g.readAt, now)) return null;
+  if (!isGnssWindowCovered(g)) return null;
   return g.degraded;
 }
 

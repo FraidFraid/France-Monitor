@@ -91,8 +91,8 @@ function militaryFigure(count, lang) {
 const NOT_ASSESSED = {
   cables: { fr: 'navires lents sur les câbles : non évalué (veille AIS muette ou en retard)', en: 'slow vessels on cables: not assessed (AIS watch mute or late)' },
   gnss: {
-    fr: 'précision GNSS : non évaluée (grille absente, en retard ou en dégradation générale)',
-    en: 'GNSS accuracy: not assessed (grid missing, late or under general degradation)',
+    fr: 'précision GNSS : non évaluée (grille absente, en retard, en dégradation générale ou mesurée depuis moins de 24 h)',
+    en: 'GNSS accuracy: not assessed (grid missing, late, under general degradation or measured for less than 24 h)',
   },
   military: {
     fr: 'aéronefs militaires ou d’État visibles en ADS-B : non évalué (relevé adsb.lol indisponible ou en retard)',

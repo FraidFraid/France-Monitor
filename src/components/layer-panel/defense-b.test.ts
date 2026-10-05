@@ -5,7 +5,11 @@
 import { describe, expect, it } from 'vitest';
 import type { GnssResponse } from '../../types/index.ts';
 import { DRONES_LEGEND, DRONES_POINTER, DRONES_POINTER_URL, DRONES_TITLE } from '../../services/sovereignty-drones.ts';
-import { GNSS_YELLOW_PCT, defenseLevel, gnssDegradedCount } from '../../services/sovereignty-levels.ts';
+import {
+  GNSS_COVERED_MS, GNSS_WINDOW_MS, GNSS_YELLOW_PCT, defenseLevel, gnssDegradedCount, gnssDegradedCounts, isGnssWindowCovered,
+} from '../../services/sovereignty-levels.ts';
+import { withGnssInputs } from '../../services/sovereignty-inputs-b.ts';
+import { buildSovereigntyInputs } from '../../services/sovereignty-inputs.ts';
 import { GELS_REGISTRY_URL } from '../../services/sovereignty-sanctions.ts';
 import {
   DRONE_ZONES_META_FIXTURE, GNSS_FIXTURE, GNSS_STORM_FIXTURE, MILITARY_FIXTURE, SANCTIONS_FIXTURE, SOV_FIXTURE_NOW, VIGIPIRATE_FIXTURE,
@@ -88,6 +92,36 @@ describe('section GNSS : compte sans lieu et mailles du jour complet (O17)', () 
     expect(val(2)).toBe('lp-lvl lp-lvl--jaune');
     expect(val(3)).toBe('lp-lvl lp-lvl--orange');
     expect(val(0)).toBe('lp-lvl lp-lvl--vert');
+  });
+  it('fenêtre pas encore couverte (FX2) : « n.d. (mesure de N h sur 24) » sans couleur, jamais un « 0 » vert ; ni pastille ni score', () => {
+    const readAt = '2026-10-04T14:45:24.000Z';
+    const at = (hoursBack: number, rolling24h: number): GnssResponse => gnss({
+      readAt, windowStart: new Date(Date.parse(readAt) - hoursBack * H).toISOString(), degraded: { rolling24h, previousUtcDays: [3, 3] },
+    });
+    const rollingHtml = (g: GnssResponse): string => (section(input({ gnss: g }), 'gnss')?.html ?? '')
+      .match(/glissantes<\/span>.*?(<span class="lp-val fmk-num[^"]*">[^<]*<\/span>)/s)?.[1] ?? '';
+    // Juste après un redémarrage : 0 h de mesure, compte 0.
+    expect(rollingHtml(at(0, 0))).toBe(`<span class="lp-val fmk-num">n.d. (mesure de 0${NBSP}h sur 24)</span>`);
+    expect(rollingHtml(at(5, 0))).toBe(`<span class="lp-val fmk-num">n.d. (mesure de 5${NBSP}h sur 24)</span>`);
+    expect(section(input({ gnss: at(5, 0) }), 'gnss')?.summary).toMatch(new RegExp(`^mailles n\\.d\\. \\(mesure de 5${NBSP}h sur 24\\) · `));
+    expect(gnssText(input({ gnss: at(5, 0) }))).toContain(`Référence en construction (5${NBSP}h)`);
+    // Trois mailles sur 5 h : ni pastille orange, ni compte au score ou au moniteur (une part sur 5 h n'est pas celle de 24 h).
+    expect(rollingHtml(at(5, 3))).not.toContain('lp-lvl');
+    expect(buildDefenseView(input({ gnss: at(5, 3) })).head.level).toBe('vert');
+    expect(gnssDegradedCounts(at(5, 3), NOW)).toBeNull();
+    const inputs = withGnssInputs(buildSovereigntyInputs(MILITARY_FIXTURE(), null, null, NOW), at(5, 3), MILITARY_FIXTURE(), NOW);
+    expect([inputs.gnssDegraded, inputs.defensePillLevel, inputs.defensePillFromGnss]).toEqual([null, 'vert', undefined]);
+    // Relevé adsb.lol en retard : la grille non couverte ne colore pas la pastille (n.d.), alors qu'une grille couverte le ferait.
+    const lateMil = { ...MILITARY_FIXTURE(), readAt: new Date(NOW - 11 * 60_000).toISOString() };
+    expect(buildDefenseView(input({ military: lateMil, gnss: at(5, 3) })).head.level).toBe('nd');
+    expect(buildDefenseView(input({ military: lateMil, gnss: at(24, 3) })).head.level).toBe('orange');
+    // 23 h 50 de mesure : couverte, compte coloré et lu par la pastille.
+    const covered = gnss({ readAt, windowStart: new Date(Date.parse(readAt) - (23 * H + 50 * 60_000)).toISOString(), degraded: { rolling24h: 3, previousUtcDays: [null, null] } });
+    expect(rollingHtml(covered)).toContain('lp-lvl--orange');
+    expect(buildDefenseView(input({ gnss: covered })).head.level).toBe('orange');
+    const justShort = { ...covered, windowStart: new Date(Date.parse(readAt) - (23 * H + 49 * 60_000)).toISOString() };
+    expect(rollingHtml(justShort)).toBe(`<span class="lp-val fmk-num">n.d. (mesure de 23${NBSP}h sur 24)</span>`);
+    expect(buildDefenseView(input({ gnss: justShort })).head.level).toBe('vert');
   });
   it('lignes par maille seulement pour cellsDay, de la plus forte à la plus faible, cliquables ; jamais la maille anglaise ni « hier »', () => {
     const h = html(input());
@@ -205,6 +239,16 @@ describe('seuils et teintes (revue de B25, m1 et m2)', () => {
     const server = await import('../../../api/_lib/gnss-grid.js');
     const s = server as { GNSS_ORANGE_PCT: number; GNSS_YELLOW_PCT: number };
     expect([GNSS_YELLOW_PCT, GNSS_ORANGE_PCT]).toEqual([s.GNSS_YELLOW_PCT, s.GNSS_ORANGE_PCT]);
+  });
+  it('couverture de la fenêtre (FX2) : 23 h 50, la règle du drapeau « référence en construction » du serveur', async () => {
+    const grid = await import('../../../api/_lib/gnss-grid.js') as { GNSS_WINDOW_MS: number };
+    const collect = await import('../../../api/_lib/gnss-collect.js') as { GNSS_INTERVAL_MS: number };
+    expect(GNSS_WINDOW_MS).toBe(grid.GNSS_WINDOW_MS);
+    expect(GNSS_COVERED_MS).toBe(grid.GNSS_WINDOW_MS - collect.GNSS_INTERVAL_MS);
+    const readAt = '2026-10-04T14:45:24.000Z';
+    const back = (ms: number) => ({ readAt, windowStart: new Date(Date.parse(readAt) - ms).toISOString() });
+    expect([isGnssWindowCovered(back(GNSS_COVERED_MS - 1)), isGnssWindowCovered(back(GNSS_COVERED_MS))]).toEqual([false, true]);
+    expect(isGnssWindowCovered({ readAt, windowStart: null })).toBe(false);
   });
   it('le titre des mailles du jour dit ce qu’il compte et combien dépassent le seuil', () => {
     const t = gnssText(input());

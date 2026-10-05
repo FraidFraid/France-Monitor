@@ -10,7 +10,8 @@
 import type { GnssResponse, KpPoint, NoaaAlert, NoaaScaleDay, SanctionsResponse } from '../../types/index.ts';
 import { DRONES_LEGEND, DRONES_POINTER, DRONES_POINTER_URL, DRONES_TITLE } from '../../services/sovereignty-drones.ts';
 import {
-  GNSS_ORANGE_PCT, GNSS_SITUATION_CELLS, GNSS_YELLOW_PCT, defenseLevel, gnssDegradedCount, isSovereigntyDataLate,
+  GNSS_ORANGE_PCT, GNSS_SITUATION_CELLS, GNSS_YELLOW_PCT, defenseLevel, gnssDegradedCount, gnssWindowSpanMs, isGnssWindowCovered,
+  isSovereigntyDataLate,
 } from '../../services/sovereignty-levels.ts';
 import { GELS_REGISTRY_URL } from '../../services/sovereignty-sanctions.ts';
 import { levelColorVar, type VigilanceLevel } from '../../services/vigilance.ts';
@@ -31,9 +32,6 @@ const DRONES_MAP_URL = 'https://www.geoportail.gouv.fr/donnees/restrictions-pour
 const PARIS = 'Europe/Paris';
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
-/** Fenêtre de la grille ; moins de 23 h 50 de cumul : « référence en construction ». */
-const GNSS_WINDOW_MS = DAY_MS;
-const BUILDING_MARGIN_MS = 10 * 60_000;
 const GNSS_DAYS_SPAN = 14;
 const KP_SLOT_MS = 3 * HOUR_MS;
 const CELL_HALF = 0.25;
@@ -143,8 +141,15 @@ function gridPart(gn: GnssResponse, input: DefenseViewInput): { html: string; su
   const late = isSovereigntyDataLate('adsb-gnss', gn.readAt, now);
   const general = gn.generalDegradation;
   const rolling = gn.degraded.rolling24h;
-  // En dégradation générale le serveur sert 0 : un 0 aurait l'air d'un calme, la valeur est dite n.d.
-  const rollingValue = general ? valueHtml('n.d.') : valueHtml(String(rolling), late ? null : rollingLevel(rolling));
+  // Fenêtre de moins de 23 h 50 (redémarrage du serveur) : « référence en construction (N h) ».
+  const covered = isGnssWindowCovered(gn);
+  const hours = Math.floor(gnssWindowSpanMs(gn) / HOUR_MS);
+  const measured = `mesure de ${hours}${NBSP}h sur 24`;
+  // En dégradation générale le serveur sert 0 : un 0 aurait l'air d'un calme, la valeur est dite n.d. Fenêtre pas encore couverte
+  // (FX2) : n.d. sans couleur, jamais un « 0 » vert ; la pastille et le score ne la lisent pas non plus (gnssDegradedCounts).
+  const rollingValue = general ? valueHtml('n.d.')
+    : !covered ? valueHtml(`n.d. (${measured})`)
+    : valueHtml(String(rolling), late ? null : rollingLevel(rolling));
   const head = kvRow(glue(`Mailles françaises à précision dégradée ${ORANGE_AT} sur 24 h glissantes`), rollingValue)
     // Une valeur insécable par jour : la ligne passe entre les deux, jamais au bord du panneau.
     + kvRow(`Jours UTC complets (${ORANGE_AT})`, `${valueHtml(`veille ${previousDayText(gn, 1)}`)}, ${valueHtml(`avant-veille ${previousDayText(gn, 2)}`)}`)
@@ -153,12 +158,12 @@ function gridPart(gn: GnssResponse, input: DefenseViewInput): { html: string; su
   const generalBox = general
     ? `<p class="fmk-callout lp-callout">${escapeHtml(glue(`Dégradation générale, probablement météo spatiale : plus de 30 % des mailles françaises mesurées à précision dégradée et ${kp === null ? 'Kp n.d.' : formatKp(kp)} sur la fenêtre. Ces mailles ne comptent ni dans la pastille ni au score.`))}</p>`
     : '';
-  const spanMs = gn.windowStart === null ? 0 : Date.parse(gn.readAt) - Date.parse(gn.windowStart);
-  const hours = Math.max(0, Math.floor(spanMs / HOUR_MS));
-  const building = spanMs < GNSS_WINDOW_MS - BUILDING_MARGIN_MS
-    ? paragraph(`Référence en construction (${hours} h) : la mesure couvre ${hours} h sur les 24 h de la méthode (cumul repris au dernier redémarrage du serveur).`)
+  const building = !covered
+    ? paragraph(`Référence en construction (${hours} h) : la mesure couvre ${hours} h sur les 24 h de la méthode (cumul repris au dernier redémarrage du serveur) ; `
+      + 'le compte glissant n’entre ni dans la pastille ni au score avant 23 h 50 de mesure.')
     : '';
   const summary = general ? 'dégradation générale (météo spatiale)'
+    : !covered ? `mailles n.d. (${measured})${late ? ' (en retard)' : ''}`
     : `${plural(rolling, 'maille', 'mailles')} ${ORANGE_AT} sur 24 h${late ? ' (en retard)' : ''}`;
   return {
     summary,
@@ -370,7 +375,7 @@ export const DEFENSE_SOURCES_B: readonly string[] = ['NOAA SWPC', 'DGAC / IGN, G
 export function defenseMethodB(): string {
   return paragraph('Précision de position GNSS : cinq lectures adsb.lol (/v2/point, rayons de 80 à 200 milles) toutes les 10 min couvrent la métropole ; grille de 0,5° ; sur 24 h glissantes, un aéronef distinct par maille, avec sa pire précision déclarée : « bon » si nac_p vaut 8 ou plus (erreur de position sous 93 m), « dégradé » de 1 à 7 ; nac_p 0 ou absent compté à part, sauf chez un appareil qui avait déclaré une bonne précision le même jour UTC : il compte alors dégradé ; aéronefs au sol écartés. Part dégradée = 100 × (dégradés − 1) / (bons + dégradés), formule de gpsjam.org ; au moins 5 aéronefs au calcul, sinon « trop peu d’avions » (maille non dessinée). Jaune de 2 à 10 %, orange au-delà ; le seuil de précision et le minimum sont nos choix.')
     + paragraph('Seules la DGAC et l’ANFR qualifient un brouillage : cette mesure ne montre qu’une précision de position dégradée, à vérifier.')
-    + paragraph('Localisation : en direct, un compte de mailles sans lieu sur 24 h glissantes (pastille et score) ; les mailles ne sont localisées que pour le jour UTC précédent, publié seulement s’il est couvert en entier (aucune lecture manquante de plus de 30 min). Un redémarrage du serveur ou une lecture interrompue rend le jour « non couvert » : aucune maille publiée, jamais un calme. La mémoire « bonne précision » repart à chaque jour UTC.')
+    + paragraph('Localisation : en direct, un compte de mailles sans lieu sur 24 h glissantes (pastille et score), dit n.d. tant que la fenêtre ne couvre pas 23 h 50 de mesure (après un redémarrage du serveur) : il n’entre alors ni dans la pastille ni au score ; les mailles ne sont localisées que pour le jour UTC précédent, publié seulement s’il est couvert en entier (aucune lecture manquante de plus de 30 min). Un redémarrage du serveur ou une lecture interrompue rend le jour « non couvert » : aucune maille publiée, jamais un calme. La mémoire « bonne précision » repart à chaque jour UTC.')
     + paragraph('Dégradation générale : plus de 30 % des mailles françaises mesurées dégradées et un Kp de 5− ou plus sur la fenêtre ; ces mailles ne comptent alors ni dans la pastille ni au score ; les jours concernés sont grisés. Pastille : orange dès 3 mailles françaises au-delà de 10 % sur 24 h glissantes, jaune pour 1 ou 2. Grille en retard au-delà de 40 min après la dernière collecte complète.')
     + paragraph('Limite : certains équipements de l’aviation légère déclarent une précision moindre (nac_p 6) sans brouillage ; le 04/10/2026, deux mailles du sud de l’Angleterre étaient orange pour cette raison. Une maille orange est « à vérifier ».')
     + `<p class="fmk-note">${escapeHtml('Méthode de référence : ')}${sourceLinkHtml('gpsjam.org', GPSJAM_URL)}${escapeHtml(' ; données adsb.lol, ODbL 1.0.')}</p>`

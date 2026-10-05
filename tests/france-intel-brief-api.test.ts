@@ -68,7 +68,7 @@ describe('buildPrompt v14', () => {
     const fr = buildPrompt(95, axes, isnr, null, 0, [], signals, null, [], [], 'fr');
     for (const text of [
       'navires lents sur un câble non évalués, précision GNSS non évaluée, aéronefs militaires ou d’État visibles en ADS-B non évalués',
-      'navires lents sur les câbles : non évalué (veille AIS muette ou en retard)', 'précision GNSS : non évaluée (grille absente, en retard ou en dégradation générale)',
+      'navires lents sur les câbles : non évalué (veille AIS muette ou en retard)', 'précision GNSS : non évaluée (grille absente, en retard, en dégradation générale ou mesurée depuis moins de 24 h)',
       'alertes CERT-FR : non évaluées (CERT-FR indisponible ou en retard)',
       'aéronefs militaires ou d’État visibles en ADS-B : non évalué (relevé adsb.lol indisponible ou en retard)',
     ]) expect(fr).toContain(text);
