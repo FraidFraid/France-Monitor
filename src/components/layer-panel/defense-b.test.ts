@@ -242,15 +242,33 @@ describe('pastille : fraîcheur croisée adsb.lol et GNSS (revue de B25, I1)', (
     expect(v.head.status.some((s) => s.includes('(en retard)'))).toBe(true);
     expect(v.head.figure?.level).toBeNull();
   });
-  it('relevé adsb.lol en retard, sans compte GNSS : niveau suspendu, n.d.', () => {
+  it('relevé adsb.lol en retard, sans compte GNSS : niveau suspendu, n.d. ; la part GNSS est dite non évaluée', () => {
     const v = buildDefenseView(input({ now: NOW + 12 * 60_000, gnss: GNSS_STORM_FIXTURE() }));
     expect(v.head.level).toBe('nd');
-    expect(v.head.status[0]).toBe('niveau suspendu : relevé adsb.lol en retard');
+    expect(v.head.status[0]).toBe('niveau suspendu : relevé adsb.lol en retard · GNSS non évalué (dégradation générale)');
   });
-  it('grille GNSS en retard, relevé militaire frais : la pastille vient du militaire seul', () => {
+  it('grille GNSS en retard, relevé militaire frais : la pastille vient du militaire seul, la grille muette est dite', () => {
     const v = buildDefenseView(input({ gnss: gnss({ readAt: '2026-10-04T13:50:00.000Z', windowStart: '2026-10-03T13:50:00.000Z' }) }));
     expect(v.head.level).toBe('vert');
-    expect(v.head.status[0]).toBe(glueSovUnits(defenseLevel(MILITARY_FIXTURE(), NOW).reason));
+    expect(v.head.status[0]).toBe(`${glueSovUnits(defenseLevel(MILITARY_FIXTURE(), NOW).reason)} · GNSS non évalué · grille muette depuis 15:50`);
+  });
+});
+
+describe('pastille verte, part GNSS non évaluée (revue finale M1) : la raison le dit, la couleur garde sa règle', () => {
+  const green = glueSovUnits(defenseLevel(MILITARY_FIXTURE(), NOW).reason);
+  it('juste après un redémarrage (5 h de mesure, aucune maille) : « GNSS non évalué (mesure de 5 h sur 24) »', () => {
+    const g = gnss({ windowStart: new Date(NOW - 5 * H - 60_000).toISOString(), readAt: new Date(NOW - 60_000).toISOString(), degraded: { rolling24h: 0, previousUtcDays: [null, null] } });
+    const v = buildDefenseView(input({ gnss: g }));
+    expect(v.head.level).toBe('vert');
+    expect(v.head.status[0]).toBe(`${green} · GNSS non évalué (mesure de 5${NBSP}h sur 24)`);
+  });
+  it('grille jamais lue (null) : « GNSS non évalué » ; grille non fournie (vue de la phase A) : raison inchangée', () => {
+    expect(buildDefenseView(input({ gnss: null })).head.status[0]).toBe(`${green} · GNSS non évalué`);
+    expect(buildDefenseView(input({ gnss: undefined })).head.status[0]).toBe(green);
+  });
+  it('compte lu sur 24 h, nul : aucune mention', () => {
+    const v = buildDefenseView(input({ gnss: gnss({ degraded: { rolling24h: 0, previousUtcDays: [0, 0] } }) }));
+    expect(v.head.status[0]).toBe(green);
   });
 });
 

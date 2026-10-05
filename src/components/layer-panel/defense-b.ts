@@ -10,8 +10,8 @@
 import type { GnssResponse, KpPoint, NoaaAlert, NoaaScaleDay, SanctionsResponse } from '../../types/index.ts';
 import { DRONES_LEGEND, DRONES_POINTER, DRONES_POINTER_URL, DRONES_TITLE } from '../../services/sovereignty-drones.ts';
 import {
-  GNSS_ORANGE_PCT, GNSS_SITUATION_CELLS, GNSS_YELLOW_PCT, defenseLevel, gnssDegradedCount, gnssWindowHours, isGnssWindowCovered,
-  isSovereigntyDataLate,
+  GNSS_ORANGE_PCT, GNSS_SITUATION_CELLS, GNSS_YELLOW_PCT, defenseLevel, gnssDegradedCount, gnssNotEvaluatedReason, gnssWindowHours,
+  isGnssWindowCovered, isSovereigntyDataLate,
 } from '../../services/sovereignty-levels.ts';
 import { GELS_REGISTRY_URL } from '../../services/sovereignty-sanctions.ts';
 import { levelColorVar, type VigilanceLevel } from '../../services/vigilance.ts';
@@ -409,6 +409,10 @@ export function defenseMethodB(): string {
 function headWithGnss(head: LayerHeadModel, input: DefenseViewInput): LayerHeadModel {
   const m = input.military;
   if (m === null) return head;
+  // Grille fournie (null avant la première lecture) mais compte non lu : la couleur garde sa règle, la raison dit « GNSS non évalué »
+  // (revue finale M1 : une pastille verte sans la part GNSS n'est pas un calme). Grille non fournie (vue de la phase A) : rien.
+  const off = input.gnss === undefined ? null : gnssNotEvaluatedReason(input.gnss, input.now);
+  if (off !== null && head.status.length > 0) return { ...head, status: [`${head.status[0]} · ${off}`, ...head.status.slice(1)] };
   const gn = input.gnss ?? null;
   const count = gnssDegradedCount(gn, input.now);
   // Compte positif sur une fenêtre de moins de 23 h 50 (FX2, deuxième tour) : il relève la pastille, et sa raison le dit.

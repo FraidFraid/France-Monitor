@@ -538,3 +538,16 @@ export function gnssDegradedCounts(g: GnssResponse | null, now: number): GnssDeg
 export function gnssDegradedCount(g: GnssResponse | null, now: number): number {
   return gnssDegradedCounts(g, now)?.rolling24h ?? 0;
 }
+
+/**
+ * Part GNSS de la pastille Défense non évaluée (revue finale M1) : la pastille garde sa règle, mais sa raison le dit, car une absence
+ * n'est pas un calme. null si le compte est lu (gnssDegradedCounts) ; sinon « GNSS non évalué », avec la cause quand la grille en
+ * donne une (grille muette, dégradation générale, mesure de N h sur 24 juste après un redémarrage du serveur).
+ */
+export function gnssNotEvaluatedReason(g: GnssResponse | null, now: number): string | null {
+  if (gnssDegradedCounts(g, now) !== null) return null;
+  if (g === null || g.readAt === null) return 'GNSS non évalué';
+  if (isSovereigntyDataLate('adsb-gnss', g.readAt, now)) return `GNSS non évalué · grille muette depuis ${clockOf(g.readAt)}`;
+  if (g.generalDegradation) return 'GNSS non évalué (dégradation générale)';
+  return `GNSS non évalué (mesure de ${gnssWindowHours(g)}\u00a0h sur 24)`;
+}
