@@ -273,10 +273,10 @@ export const CONNECTIVITE_SOURCES_B: readonly string[] = ['RIPEstat', 'PeeringDB
 /** Notes de méthode de la phase B (ajoutées à la fin de « Méthode et sources »). */
 export function connectiviteMethodB(): string {
   return `<p class="fmk-note">${escapeHtml('Visibilité des réseaux : ')}${sourceLinkHtml('RIPEstat (RIPE NCC), routing-status', RIPESTAT_URL)}`
-    + `${escapeHtml(glue(' : routeurs témoins RIS qui voient chacun des six grands réseaux (Orange AS3215, SFR AS15557, Bouygues Telecom AS5410, Free AS12322, RENATER AS2200, OVHcloud AS16276) en IPv4 et en IPv6, préfixes annoncés ; relevé toutes les heures, instantanés de 8 h ; en retard au-delà de 10 h après l’instantané.'))}</p>`
+    + `${escapeHtml(glue(' : routeurs témoins RIS qui voient chacun des six grands réseaux (Orange AS3215, SFR AS15557, Bouygues Telecom AS5410, Free AS12322, RENATER AS2200, OVHcloud AS16276) en IPv4 et en IPv6, préfixes annoncés ; relevé toutes les heures, un instantané toutes les 8 h (00 h, 08 h et 16 h UTC) ; en retard au-delà de 10 h après l’instantané.'))}</p>`
     + `<p class="fmk-note">${escapeHtml('Points d’échange : ')}${sourceLinkHtml('PeeringDB', PEERINGDB_URL)}`
     + `${escapeHtml(' : annuaire public des points d’échange en France (nom, ville, date de mise à jour), sans état en direct.')}</p>`
-    + paragraph('Pastille : le plus haut niveau des câbles (navire lent confirmé sur un tracé : orange) et des grands réseaux (orange sous 90 % de visibilité, rouge sous 50 %) ; vus par au moins 99 % des routeurs témoins RIPE en IPv4 et en IPv6 ; n.d. seulement si la veille des câbles et RIPEstat manquent tous deux. Un instantané en retard (plus de 10 h) retire les couleurs.')
+    + paragraph('Pastille : le plus haut niveau des câbles (navire lent confirmé sur un tracé : orange ; vu une fois : jaune) et des grands réseaux (orange sous 90 % de visibilité, rouge sous 50 %) ; vus par au moins 99 % des routeurs témoins RIPE en IPv4 et en IPv6 ; n.d. seulement si la veille des câbles et RIPEstat manquent tous deux. Un instantané en retard (plus de 10 h) retire les couleurs.')
     + paragraph('Préfixes annoncés : une baisse de 10 % ou plus sous la médiane des instantanés de 30 jours se lit « à vérifier », jamais une panne ni une couleur ; la référence demande 7 jours d’échantillons.')
     + paragraph('Hors score : un instantané toutes les 8 h n’est pas un signal de crise.');
 }

@@ -196,6 +196,12 @@ describe('sections', () => {
     const t = text(input(), 'methode');
     for (const x of ['RIPEstat', 'PeeringDB', `au moins 99${NBSP}%`, 'Hors score', `10${NBSP}% ou plus sous la médiane`]) expect(t).toContain(x);
   });
+  it('méthode (B29, capture du 05/10) : la pastille jaune d’un navire vu une fois est dite ; un instantané toutes les 8 h, jamais « instantanés de 8 h »', () => {
+    const t = visibleText(connectiviteMethodB());
+    expect(t).toContain('Pastille : le plus haut niveau des câbles (navire lent confirmé sur un tracé : orange ; vu une fois : jaune)');
+    expect(t).toContain(`relevé toutes les heures, un instantané toutes les 8${NBSP}h (00${NBSP}h, 08${NBSP}h et 16${NBSP}h UTC)`);
+    expect(t).not.toContain('instantanés de 8');
+  });
 });
 
 describe('règle de baisse des préfixes annoncés (S8)', () => {
