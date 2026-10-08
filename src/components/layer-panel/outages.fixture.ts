@@ -44,5 +44,5 @@ export function powerFixtureResponse(): PowerOutagesResponse {
     edf: mergeUnits(edf, iip), iip: { transmission }, sei: islands,
     history: [{ day: '2026-10-03', unplannedMw: 6340 }, { day: '2026-10-08', unplannedMw: 2985 }], errors: [],
   }, now) as PowerOutagesResponse;
-  return { ...built, edfUpdatedAt: '2026-10-08T19:00:00.000Z', edfReadAt: '2026-10-08T19:40:00.000Z', iipPublishedAt: '2026-10-08T19:24:36.000Z' };
+  return { ...built, edfUpdatedAt: '2026-10-08T19:00:00.000Z', edfReadAt: '2026-10-08T19:40:00.000Z', iipPublishedAt: '2026-10-08T19:24:36.000Z', iipReadAt: '2026-10-08T19:50:00.000Z' };
 }

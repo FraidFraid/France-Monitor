@@ -36,6 +36,10 @@ export function parisClock(ms: number): string {
   const [h, m] = localClock(ms, PARIS).split(':');
   return `${Number(h)}${NBSP}h${NBSP}${m}`;
 }
+/** « et 12 autres. » quand une liste est coupée : rien n'est tronqué en silence. */
+export function moreNote(total: number, shown: number): string {
+  return total > shown ? note(`et ${countText(total - shown, 'autre', 'autres')}.`) : '';
+}
 /** « depuis 6 h », « depuis 3 j » ; « date n.d. » sans date. */
 export function sinceText(iso: string | null, now: number): string {
   const t = iso === null ? Number.NaN : Date.parse(iso);

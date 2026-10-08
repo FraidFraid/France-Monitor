@@ -20,7 +20,7 @@ function unit(lostMw: number, kind: PowerUnitOutage['kind'] = 'imprevue'): Power
 }
 
 function power(units: PowerUnitOutage[]): PowerOutagesResponse {
-  return { readAt: 'x', edfUpdatedAt: null, edfReadAt: null, iipPublishedAt: null, unplanned: units, planned: [], upcoming: [], transmission: null, islands: [], history: [], errors: [] };
+  return { readAt: 'x', edfUpdatedAt: null, edfReadAt: null, iipPublishedAt: null, iipReadAt: null, unplanned: units, planned: [], upcoming: [], transmission: null, islands: [], history: [], errors: [] };
 }
 
 describe('niveaux et retards des pannes réseau', () => {

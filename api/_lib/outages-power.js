@@ -114,13 +114,32 @@ function unavailableAt(m, nowMs) {
   return cur ? cur.unavailable : null;
 }
 
-/** Unités de production de l'IIP (statut Active) ; MW perdus de l'intervalle en cours, sinon capacité installée. */
+/**
+ * MW publiés pour une unité de production : l'intervalle qui contient l'instant ; pour un arrêt annoncé (début à venir), le premier
+ * intervalle à venir. Sinon null : jamais la puissance installée ni 0, qui ne sont pas des MW perdus publiés (aucune valeur fabriquée).
+ */
+function publishedLostMw(m, nowMs) {
+  const cur = unavailableAt(m, nowMs);
+  if (cur !== null) return cur;
+  if (Date.parse(m.start) <= nowMs) return null;
+  const next = m.intervals.filter((i) => i.start && i.unavailable !== null && Date.parse(i.start) > nowMs).sort((a, b) => a.start.localeCompare(b.start))[0];
+  return next ? next.unavailable : null;
+}
+
+/**
+ * Unités de production de l'IIP (statut Active) avec leurs MW perdus publiés (voir publishedLostMw). Une unité sans MW publié pour
+ * l'instant ou pour sa prochaine fenêtre est écartée : elle ne peut pas entrer dans un total sans valeur.
+ */
 export function iipUnits(messages, nowMs) {
-  return messages.filter((m) => m.status === 'Active').map((m) => ({
-    id: m.base, name: m.asset, sector: FUEL_FR[m.fuel] ?? m.fuel ?? 'Filière non précisée', nuclear: m.fuel === 'Nuclear',
-    kind: m.type === 'Unplanned' ? 'imprevue' : 'planifiee', lostMw: unavailableAt(m, nowMs) ?? m.installed ?? 0, maxMw: m.installed,
-    start: m.start, end: m.stop, publishedAt: m.publishedAt, cause: REASON_FR[m.reason] ?? m.reason, source: 'rte',
-  }));
+  return messages.filter((m) => m.status === 'Active').flatMap((m) => {
+    const lostMw = publishedLostMw(m, nowMs);
+    if (lostMw === null) return [];
+    return [{
+      id: m.base, name: m.asset, sector: FUEL_FR[m.fuel] ?? m.fuel ?? 'Filière non précisée', nuclear: m.fuel === 'Nuclear',
+      kind: m.type === 'Unplanned' ? 'imprevue' : 'planifiee', lostMw, maxMw: m.installed,
+      start: m.start, end: m.stop, publishedAt: m.publishedAt, cause: REASON_FR[m.reason] ?? m.reason, source: 'rte',
+    }];
+  });
 }
 
 /** « Indispo_FR_UK_90259_00000_076 » → { from: 'FR', to: 'UK', key: '90259' } ; null sinon. */
@@ -162,10 +181,13 @@ function sameOutage(a, b) {
 /**
  * Un arrêt compté une fois (P3) : EDF publie parfois la même unité en plusieurs lignes (REVIN 2 en deux fenêtres, COCHE POMPE en mode
  * turbine et en mode pompe). Les lignes de même unité et même genre dont les fenêtres se recouvrent sont fusionnées en gardant la plus
- * perdante (à égalité, la plus récemment commencée). Un début identique suffit donc, sans être exigé. Ordre d'entrée conservé.
+ * perdante (à égalité, la fin la plus tardive, une fin inconnue comptant pour la plus tardive, puis la plus récemment commencée). Un début
+ * identique suffit donc, sans être exigé. Ordre d'entrée conservé.
  */
 export function dedupeUnits(units) {
-  const ranked = units.map((u, i) => ({ u, i })).sort((a, b) => b.u.lostMw - a.u.lostMw || b.u.start.localeCompare(a.u.start) || a.i - b.i);
+  const endMs = (u) => (u.end === null ? Number.POSITIVE_INFINITY : Date.parse(u.end));
+  const laterEnd = (a, b) => (endMs(b) === endMs(a) ? 0 : endMs(b) > endMs(a) ? 1 : -1);
+  const ranked = units.map((u, i) => ({ u, i })).sort((a, b) => b.u.lostMw - a.u.lostMw || laterEnd(a.u, b.u) || b.u.start.localeCompare(a.u.start) || a.i - b.i);
   const kept = [];
   for (const entry of ranked) {
     if (!kept.some((k) => sameOutage(k.u, entry.u))) kept.push(entry);
@@ -210,13 +232,13 @@ const byMw = (a, b) => b.lostMw - a.lostMw || a.name.localeCompare(b.name, 'fr')
 
 /**
  * Réponse à partir des parties lues ; `iip` : { transmission } ou null (transport illisible). `edfReadAt` : dernière lecture réussie du
- * jeu EDF (horloge du serveur), sur laquelle se mesure le retard EDF (R20).
+ * jeu EDF (horloge du serveur), sur laquelle se mesure le retard EDF (R20) ; `iipReadAt` : dernière lecture réussie de l'IIP, idem pour le retard IIP.
  */
-export function buildPower({ edf, iip, sei, history, edfUpdatedAt = null, edfReadAt = null, iipPublishedAt = null, errors = [] }, nowMs) {
+export function buildPower({ edf, iip, sei, history, edfUpdatedAt = null, edfReadAt = null, iipPublishedAt = null, iipReadAt = null, errors = [] }, nowMs) {
   const live = (u) => Date.parse(u.start) <= nowMs && (u.end === null || Date.parse(u.end) > nowMs);
   const soon = (u) => Date.parse(u.start) > nowMs && Date.parse(u.start) <= nowMs + 7 * DAY_MS;
   return {
-    readAt: new Date(nowMs).toISOString(), edfUpdatedAt, edfReadAt, iipPublishedAt,
+    readAt: new Date(nowMs).toISOString(), edfUpdatedAt, edfReadAt, iipPublishedAt, iipReadAt,
     unplanned: dedupeUnits(edf.filter((u) => u.kind === 'imprevue' && live(u))).sort(byMw),
     planned: dedupeUnits(edf.filter((u) => u.kind === 'planifiee' && live(u))).sort(byMw),
     upcoming: dedupeUnits(edf.filter(soon)).sort((a, b) => a.start.localeCompare(b.start) || byMw(a, b)),
@@ -227,7 +249,7 @@ export function buildPower({ edf, iip, sei, history, edfUpdatedAt = null, edfRea
 
 /** Réponse vide (jamais lu) : listes vides, dates null, jamais « aucun arrêt ». */
 export function emptyPower(errors = []) {
-  return { readAt: null, edfUpdatedAt: null, edfReadAt: null, iipPublishedAt: null, unplanned: [], planned: [], upcoming: [], transmission: null, islands: [], history: [], errors };
+  return { readAt: null, edfUpdatedAt: null, edfReadAt: null, iipPublishedAt: null, iipReadAt: null, unplanned: [], planned: [], upcoming: [], transmission: null, islands: [], history: [], errors };
 }
 
 /**
@@ -283,7 +305,9 @@ async function readSei(now, previous) {
     try {
       const json = await fetchStrictJson(`${EDF_BASE}/${d.id}/lines?size=3&sort=dateheure&dateheure_gte=${encodeURIComponent(hour)}`, { timeoutMs: 15_000 });
       const s = seiSignal(json, d.zone, now);
-      if (s) signals.push(s);
+      // Une île sans ligne pour l'heure en cours est une source muette, jamais une île « sans signal » passée sous silence.
+      if (!s) throw new Error('signal de l’heure absent');
+      signals.push(s);
     } catch (err) {
       errors.push(sourceError(`EDF SEI, ${zoneLabel(d.zone)}`, err));
       const kept = (previous?.signals ?? []).find((s) => s.zone === d.zone);
@@ -336,7 +360,7 @@ export async function collectPower(now = Date.now()) {
     ? buildPower({
       edf: mergeUnits(parts.edf?.units ?? [], parts.iip?.units ?? []), iip: parts.iip?.transmission ? { transmission: parts.iip.transmission } : null, sei: islands,
       history: parts.edf?.history ?? [], edfUpdatedAt: parts.edf?.updatedAt ?? null, edfReadAt: parts.edf?.readAt ?? null,
-      iipPublishedAt: parts.iip?.publishedAt ?? null, errors,
+      iipPublishedAt: parts.iip?.publishedAt ?? null, iipReadAt: parts.iip?.readAt ?? null, errors,
     }, now)
     : { ...emptyPower(errors), islands };
   await kvSetJson(POWER_LAST_KEY, { attemptedAt, parts, body }, LAST_TTL_SEC, now);
@@ -347,7 +371,8 @@ export async function collectPower(now = Date.now()) {
 export function ensurePowerFresh(now = Date.now()) {
   const turn = queue.then(async () => {
     const last = await kvGetJson(POWER_LAST_KEY, now);
-    if (last?.body && last.parts && !anyDue(last.parts, now)) return last.body;
+    // Un relevé écrit avant `iipReadAt` n'a pas la forme du contrat : relu tout de suite.
+    if (last?.body && 'iipReadAt' in last.body && last.parts && !anyDue(last.parts, now)) return last.body;
     return collectPower(now);
   });
   queue = turn.then(() => undefined, () => undefined);

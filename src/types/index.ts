@@ -3081,7 +3081,8 @@ export interface PowerOutagesResponse {
   readAt: string | null;
   edfUpdatedAt: string | null;      // `dataUpdatedAt` du jeu EDF
   edfReadAt: string | null;         // dernière lecture réussie du jeu EDF (horloge du serveur) : le retard EDF se mesure dessus
-  iipPublishedAt: string | null;    // `lastBuildDate` du flux production (ISO UTC)
+  iipPublishedAt: string | null;    // `lastBuildDate` du flux production (ISO UTC), affiché comme date de la donnée
+  iipReadAt: string | null;         // dernière lecture réussie de l'IIP (horloge du serveur) : le retard IIP se mesure dessus
   unplanned: PowerUnitOutage[];     // en cours, MW décroissants
   planned: PowerUnitOutage[];       // en cours, MW décroissants
   upcoming: PowerUnitOutage[];      // début dans les 7 jours, plus proche d'abord

@@ -96,6 +96,18 @@ describe('contrat Électricité', () => {
     expect(edfStatus(state, NOW + 2 * 3_600_000 + 60_000).period).toMatch(/\(en retard\)$/);   // lecture vieille de plus de 2 h
     expect(iipStatus(state, NOW).status).toBe('ok');
   });
+  it('I1 : contrat iipReadAt, retard IIP mesuré sur la dernière lecture réussie, date du flux affichée', async () => {
+    stubFetch(upstream);
+    const { status, body } = await callHandler<PowerOutagesResponse>(powerHandler);
+    expect(body.iipReadAt).toBe('2026-10-08T20:00:00.000Z');
+    expect(body.iipPublishedAt).toMatch(/^2026-10-08T19:24:37/);
+    serveToClient({ [POWER_URL]: { status, body } });
+    const state = await fetchPower(null, NOW);
+    expect(iipStatus(state, NOW).lastUpdate?.toISOString()).toBe(body.iipPublishedAt);
+    // Le flux est publié depuis plus d'une heure, mais le serveur l'a lu il y a 30 min : pas en retard.
+    expect(iipStatus(state, NOW + 30 * 60_000).period).not.toMatch(/\(en retard\)/);
+    expect(iipStatus(state, NOW + 61 * 60_000).period).toMatch(/\(en retard\)$/);
+  });
   it('un champ en trop ou manquant est refusé et nommé par son chemin', async () => {
     stubFetch(upstream);
     const { body } = await callHandler<PowerOutagesResponse>(powerHandler);
@@ -104,6 +116,8 @@ describe('contrat Électricité', () => {
     expect(powerResponseProblems(bad)[0]).toMatch(/^unplanned\[.*\]\.operator \(en trop\)/);
     const { edfReadAt: _omitted, ...missing } = wire(body) as Record<string, unknown>;
     expect(powerResponseProblems(missing)).toEqual(['edfReadAt (absent)']);
+    const { iipReadAt: _omittedIip, ...missingIip } = wire(body) as Record<string, unknown>;
+    expect(powerResponseProblems(missingIip)).toEqual(['iipReadAt (absent)']);
   });
   it('502 du serveur : panne nommée par le serveur, jamais « HTTP 502 » ni « aucun arrêt »', async () => {
     stubFetch(() => respond('panne', 503));

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __resetKvForTests, __setKvClientForTests } from '../api/_lib/kv-history.js';
 import {
   EDF_BELGIAN_UNITS, IIP_PRODUCTION_URL, IIP_TRANSMISSION_URL, SEI_DATASETS, __resetPowerForTests, buildPower, edfLinesUrl, ensurePowerFresh,
-  historyFromEdf, iipTransmission, iipUnits, latestVersions, mergeUnits, normalizeEdfLine, parseIipFeed, seiSignal,
+  dedupeUnits, emptyPower, historyFromEdf, iipTransmission, iipUnits, latestVersions, mergeUnits, normalizeEdfLine, parseIipFeed, seiSignal,
 } from '../api/_lib/outages-power.js';
 import { iipCa, iipDispatcher, iipIntermediatePem } from '../api/_lib/rte-iip-agent.js';
 import { respond, sentHeader, stubFetch } from './helpers/traffic-fixtures.ts';
@@ -225,3 +225,85 @@ describe('cadence et échecs par partie (R28)', () => {
   });
 });
 
+
+describe('RTE IIP : dernière lecture réussie (I1)', () => {
+  it('iipReadAt = lecture réussie du serveur, distincte de la date du flux ; un échec la laisse inchangée', async () => {
+    stubFetch(route);
+    const first = await ensurePowerFresh(NOW);
+    expect(first.iipReadAt).toBe(new Date(NOW).toISOString());
+    expect(first.iipReadAt).not.toBe(first.iipPublishedAt);
+    stubFetch((url) => (url.startsWith('https://iip.') ? respond('panne', 503) : route(url)));
+    const failed = await ensurePowerFresh(NOW + 11 * 60_000);
+    expect(failed.iipReadAt).toBe(new Date(NOW).toISOString());
+    expect(failed.errors.some((e) => e.startsWith('RTE IIP'))).toBe(true);
+  });
+  it('IIP jamais lue : iipReadAt null ; réponse vide : null aussi', async () => {
+    stubFetch((url) => (url.startsWith('https://iip.') ? respond('panne', 503) : route(url)));
+    const body = await ensurePowerFresh(NOW);
+    expect(body.iipReadAt).toBeNull();
+    expect(body.edfReadAt).not.toBeNull();
+    expect(emptyPower().iipReadAt).toBeNull();
+  });
+  it('flux lu sans lastBuildDate : iipReadAt posé, iipPublishedAt null', async () => {
+    stubFetch((url) => (url === IIP_PRODUCTION_URL ? respond(fx('iip-production-2026-10-08.xml').replace(/<lastBuildDate>.*?<\/lastBuildDate>/, ''), 200, { 'content-type': 'application/xml' }) : route(url)));
+    const body = await ensurePowerFresh(NOW);
+    expect(body.iipPublishedAt).toBeNull();
+    expect(body.iipReadAt).toBe(new Date(NOW).toISOString());
+  });
+});
+
+describe('MW de l’IIP : jamais fabriqués (I3)', () => {
+  const msg = (over: Record<string, unknown>) => ({
+    messageId: 'X_001', base: 'X', version: 1, status: 'Active', type: 'Unplanned', start: '2026-10-08T19:00:00.000Z', stop: '2026-10-12T00:00:00.000Z',
+    publishedAt: '2026-10-08T18:00:00.000Z', reason: 'Failure', fuel: 'Nuclear', asset: 'TEST 1', installed: 1335, intervals: [], ...over,
+  });
+  const interval = (start: string, stop: string, unavailable: number | null) => ({ start, stop, unavailable });
+  it('arrêt annoncé : MW du premier intervalle à venir, jamais la puissance installée', () => {
+    const m = msg({ type: 'Planned', start: '2026-10-10T00:00:00.000Z', intervals: [interval('2026-10-11T00:00:00.000Z', '2026-10-12T00:00:00.000Z', 300), interval('2026-10-10T00:00:00.000Z', '2026-10-11T00:00:00.000Z', 667)] });
+    expect(iipUnits([m] as never, NOW).map((u) => [u.name, u.lostMw, u.maxMw])).toEqual([['TEST 1', 667, 1335]]);
+  });
+  it('sans intervalle exploitable : unité écartée (ni installée, ni 0)', () => {
+    const futureNoInterval = msg({ base: 'A', asset: 'A 1', start: '2026-10-10T00:00:00.000Z', intervals: [] });
+    const futureNoValue = msg({ base: 'B', asset: 'B 1', start: '2026-10-10T00:00:00.000Z', intervals: [interval('2026-10-10T00:00:00.000Z', '2026-10-12T00:00:00.000Z', null)] });
+    const liveGap = msg({ base: 'C', asset: 'C 1', intervals: [interval('2026-10-08T19:00:00.000Z', '2026-10-08T19:30:00.000Z', 900)] });
+    expect(iipUnits([futureNoInterval, futureNoValue, liveGap] as never, NOW)).toEqual([]);
+  });
+  it('en cours : MW de l’intervalle qui contient l’instant', () => {
+    const m = msg({ intervals: [interval('2026-10-08T19:00:00.000Z', '2026-10-09T00:00:00.000Z', 450)] });
+    expect(iipUnits([m] as never, NOW).map((u) => u.lostMw)).toEqual([450]);
+  });
+  it('une unité à 0 MW publié reste une valeur publiée (0 écrit par RTE), pas une valeur fabriquée', () => {
+    const m = msg({ intervals: [interval('2026-10-08T19:00:00.000Z', '2026-10-09T00:00:00.000Z', 0)] });
+    expect(iipUnits([m] as never, NOW).map((u) => u.lostMw)).toEqual([0]);
+  });
+});
+
+describe('SEI : île sans signal de l’heure (I5)', () => {
+  it('ligne de l’heure absente pour une île : erreur nommée, l’autre île servie, nouvel essai après 5 min', async () => {
+    const log = stubFetch((url) => (url.includes('/datasets/ecorsicawatt/') ? respond({ results: [] }) : route(url)));
+    const body = await ensurePowerFresh(NOW);
+    expect(body.islands.map((i) => i.zone)).toEqual(['reunion']);
+    expect(body.errors).toContain('EDF SEI, Corse : signal de l’heure absent');
+    const seiCalls = () => log.urls.filter((u) => u.includes('ecorsicawatt')).length;
+    const before = seiCalls();
+    await ensurePowerFresh(NOW + 3 * 60_000);
+    expect(seiCalls()).toBe(before);
+    await ensurePowerFresh(NOW + 5 * 60_000);
+    expect(seiCalls()).toBe(before + 1);
+  });
+});
+
+describe('égalité de dedupeUnits : fin la plus tardive (REVIN 2)', () => {
+  it('jeu d’essai : REVIN 2 annoncé jusqu’à 12 h (10:00Z), pas 10 h', () => {
+    const edf = EDF().results.map((l) => normalizeEdfLine(l)).filter((u) => u !== null);
+    const revin = buildPower({ edf, iip: null, sei: [], history: [] }, NOW).upcoming.filter((u) => u.name === 'REVIN 2');
+    expect(revin.map((u) => u.end)).toEqual(['2026-10-09T10:00:00.000Z']);
+  });
+  it('à MW égaux, une fin inconnue prime sur une fin connue, quel que soit l’ordre d’entrée', () => {
+    const base = { sector: 'Nucléaire', nuclear: true, kind: 'planifiee', maxMw: 900, lostMw: 900, publishedAt: null, cause: null, source: 'edf', start: '2026-10-09T00:00:00.000Z' };
+    const known = { ...base, id: 'a', name: 'Z 1', end: '2026-10-09T05:00:00.000Z' };
+    const open = { ...base, id: 'b', name: 'Z 1', end: null };
+    expect(dedupeUnits([known, open] as never).map((u) => u.id)).toEqual(['b']);
+    expect(dedupeUnits([open, known] as never).map((u) => u.id)).toEqual(['b']);
+  });
+});

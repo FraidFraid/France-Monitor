@@ -17,6 +17,6 @@ export async function loadPower(now = Date.now(), { budgetMs = ROUTE_BUDGET_MS }
 export default async function handler(req, res) {
   if (handlePreflight(req, res)) return;
   const body = await loadPower(Date.now());
-  const ok = body.edfUpdatedAt !== null || body.iipPublishedAt !== null;
+  const ok = body.edfReadAt !== null || body.iipReadAt !== null;
   sendSourceJson(res, body, { ok, cacheControl: body.errors.includes(POWER_PENDING_NOTE) ? PENDING_CACHE_CONTROL : CACHE_CONTROL });
 }

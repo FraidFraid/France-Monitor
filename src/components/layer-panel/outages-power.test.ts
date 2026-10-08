@@ -69,6 +69,33 @@ describe('vue Électricité (jeu d’essai du 08/10)', () => {
     expect(t).toContain('10/10');
     expect(visibleText(section({ ecowatt: null }, 'ecowatt'))).toContain('Signal Écowatt n.d. (RTE)');
   });
+  it('Écowatt : « (aujourd’hui) » seulement si la ligne est le jour courant ; sans la ligne du jour, la 1re ligne est datée sans le mot', () => {
+    const noToday: EcowattOfficial = { ...official('green'), days: official('green').days.filter((d) => d.date !== '2026-10-08') };
+    const t = visibleText(section({ ecowatt: noToday }, 'ecowatt'));
+    expect(t).toContain('09/10');
+    expect(t).not.toContain('aujourd’hui)');
+  });
+  it('I2 : Mandarins-Sellindge (un sens à 0 MW sur 2 000, l’autre coupé) est « réduite », jamais « hors service » ; titre et ligne vide nuancés', () => {
+    const v = view();
+    const h = visibleText(section({}, 'transport'));
+    expect(h).toMatch(/Mandarins-Sellindge 1 · réduite/);
+    expect(h).not.toContain('hors service');
+    expect(v.sections.find((s) => s.id === 'transport')?.title).toBe('Lignes haute tension indisponibles ou réduites, non planifiées');
+    expect(visibleText(section(withPower({ transmission: { unplanned: [], planned: [] } }), 'transport'))).toContain('Aucune ligne haute tension indisponible ou réduite non planifiée');
+    expect(text()).not.toContain('Lignes haute tension hors service');
+  });
+  it('I2 : « hors service » seulement quand chaque sens lu est entièrement indisponible', () => {
+    const p = powerFixtureResponse();
+    const tr = p.transmission;
+    const line = tr?.unplanned[0];
+    if (!line || !tr) throw new Error('jeu d’essai sans ligne');
+    const out = (dirs: Array<[number | null, number | null]>) => withPower({
+      transmission: { planned: tr.planned, unplanned: [{ ...line, directions: dirs.map(([u, i], n) => ({ label: `A → B${n}`, unavailableMw: u, installedMw: i })) }] },
+    });
+    expect(visibleText(section(out([[2000, 2000], [1000, 1000]]), 'transport'))).toContain('Mandarins-Sellindge 1 · hors service');
+    expect(visibleText(section(out([[2000, 2000], [50, 1000]]), 'transport'))).toContain('Mandarins-Sellindge 1 · réduite');
+    expect(visibleText(section(out([[2000, 2000], [null, 1000]]), 'transport'))).toContain('Mandarins-Sellindge 1 · réduite');
+  });
   it('un arrêt imprévu compte une fois : la somme des lignes servies égale le gros chiffre', () => {
     const p = powerFixtureResponse();
     expect(p.unplanned.reduce((s, u) => s + u.lostMw, 0)).toBe(2834);
@@ -138,18 +165,33 @@ describe('fraîcheur d’EDF', () => {
     expect(view(withPower({ edfReadAt: '2026-10-08T18:01:00.000Z' })).head.figure?.value).toBe(`2,8${NBSP}GW`);
   });
   it('seul RTE IIP en échec : EDF garde sa couleur, lignes du transport n.d.', () => {
-    const over = withPower({ transmission: null, iipPublishedAt: null, errors: ['RTE IIP : HTTP 503'] });
+    const over = withPower({ transmission: null, iipPublishedAt: null, iipReadAt: null, errors: ['RTE IIP : HTTP 503'] });
     const v = view(over);
     expect(v.head.figure?.value).toBe(`2,8${NBSP}GW`);
     expect(v.head.level).toBe('jaune');
     expect(v.head.status[1]).toBe('RTE IIP n.d.');
     expect(visibleText(section(over, 'transport'))).toContain('RTE IIP injoignable : lignes du transport n.d.');
   });
-  it('IIP en retard (publié à 17 h UTC) : « (en retard) » sur sa ligne d’état, lignes du transport sans couleur de catégorie', () => {
-    const over = withPower({ iipPublishedAt: '2026-10-08T17:00:00.000Z' });
+  it('IIP en retard (dernière lecture réussie à 17 h UTC, il est 20 h) : « (en retard) » sur sa ligne d’état, lignes du transport sans couleur de catégorie', () => {
+    const over = withPower({ iipReadAt: '2026-10-08T17:00:00.000Z' });
     expect(view(over).head.status[1]).toContain('(en retard)');
     expect(section(over, 'transport')).not.toContain('var(--cat-out-');
     expect(view(over).head.level).toBe('jaune');
+  });
+  it('I1 : flux IIP publié il y a 3 h (RTE n’a rien publié) mais lu il y a 10 min : pas en retard, date du flux affichée, lignes en couleur', () => {
+    const over = withPower({ iipPublishedAt: '2026-10-08T17:00:00.000Z', iipReadAt: '2026-10-08T19:50:00.000Z' });
+    const v = view(over);
+    expect(v.head.status[1]).not.toContain('(en retard)');
+    expect(v.head.status[1]).toContain('RTE IIP 19:00');
+    expect(section(over, 'transport')).toContain('var(--cat-out-recent)');
+  });
+  it('I1 : flux lu sans lastBuildDate : « RTE IIP n.d. », mais le panneau n’est pas « injoignable » et les lignes IIP gardent leur couleur', () => {
+    const over = withPower({ edfReadAt: null, iipPublishedAt: null, iipReadAt: '2026-10-08T19:50:00.000Z' });
+    const v = view(over);
+    expect(v.head.status[0]).toContain('EDF injoignable');
+    expect(v.head.status[1]).toBe('RTE IIP n.d.');
+    expect(v.sections.length).toBeGreaterThan(0);
+    expect(view(withPower({ iipPublishedAt: null, iipReadAt: '2026-10-08T19:50:00.000Z' })).head.status[1]).toBe('RTE IIP n.d.');
   });
   it('jamais lu : n.d., panne nommée', () => {
     const v = view({ power: null, error: 'Électricité : HTTP 502', ecowatt: null });
@@ -160,7 +202,7 @@ describe('fraîcheur d’EDF', () => {
   });
   it('réponse vide du serveur (ni EDF ni IIP lus) : n.d. et erreurs du serveur nommées', () => {
     const empty: PowerOutagesResponse = {
-      readAt: null, edfUpdatedAt: null, edfReadAt: null, iipPublishedAt: null, unplanned: [], planned: [], upcoming: [], transmission: null,
+      readAt: null, edfUpdatedAt: null, edfReadAt: null, iipPublishedAt: null, iipReadAt: null, unplanned: [], planned: [], upcoming: [], transmission: null,
       islands: [], history: [], errors: ['EDF OpenData : HTTP 503', 'RTE IIP : HTTP 503'],
     };
     const v = view({ power: empty });
@@ -210,9 +252,19 @@ describe('signaux des îles (R14, R32)', () => {
     expect(visibleText(h)).toContain('(en retard)');
     expect(h).not.toMatch(/fmk-dot--/);
   });
-  it('cyclone en cours nommé ; aucune île : n.d.', () => {
+  it('cyclone en cours nommé', () => {
     expect(visibleText(section(withPower({ islands: [{ ...island('reunion', 'rouge', 'Alerte'), cyclone: true }] }), 'iles'))).toContain('cyclone en cours');
-    expect(visibleText(section(withPower({ islands: [] }), 'iles'))).toContain('Signaux des îles n.d.');
+  });
+  it('I5 : une île sans signal de l’heure reste nommée avec « n.d. », sans pastille ; l’autre garde son signal', () => {
+    const h = section(withPower({ islands: [island('reunion', 'vert', 'Optimal')] }), 'iles');
+    const t = visibleText(h);
+    expect(t).toContain('La Réunion');
+    expect(t).toContain('Optimal');
+    expect(t).toMatch(/Corse\s*n\.d\./);
+    expect(h.match(/fmk-dot--/g)).toHaveLength(1);
+    const none = visibleText(section(withPower({ islands: [] }), 'iles'));
+    expect(none).toMatch(/La Réunion\s*n\.d\./);
+    expect(none).toMatch(/Corse\s*n\.d\./);
   });
 });
 
@@ -228,7 +280,7 @@ describe('hygiène du rendu', () => {
   const variants: Array<Partial<PowerViewInput>> = [
     {}, { canFocus: false }, { ecowatt: null }, { ecowatt: official('red') }, { error: 'Électricité : HTTP 502' }, { power: null, error: 'Électricité : HTTP 502' },
     { power: null }, withPower({ edfReadAt: '2026-10-08T10:00:17.798Z' }), { power: edfNeverRead() }, withPower({ errors: ['EDF OpenData : HTTP 503'] }),
-    withPower({ transmission: null, iipPublishedAt: null }), withPower({ iipPublishedAt: '2026-10-08T17:00:00.000Z' }),
+    withPower({ transmission: null, iipPublishedAt: null, iipReadAt: null }), withPower({ iipReadAt: '2026-10-08T17:00:00.000Z' }),
     { power: hostile() }, { power: oneDay() }, withPower({ islands: [] }),
   ];
   it('aucun tiret cadratin, aucune couleur brute, jamais « temps réel » ni « LIVE »', () => {

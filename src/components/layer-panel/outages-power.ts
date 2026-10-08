@@ -1,6 +1,6 @@
 // src/components/layer-panel/outages-power.ts : vue pure du panneau Électricité (spec 2026-10-08 panneaux pannes § 2.2) ; aucun accès réseau
 // ni DOM. MW de production perdus en arrêts imprévus en gros chiffre (paliers du parc nucléaire, relevés par Écowatt) ; lignes haute tension
-// hors service non planifiées ; maintenances ; annonces à 7 jours ; Écowatt ; îles ; ligne fixe sur les coupures chez les particuliers.
+// indisponibles ou réduites non planifiées ; maintenances ; annonces à 7 jours ; Écowatt ; îles ; ligne fixe sur les coupures chez les particuliers.
 // EDF muet (jamais lu, ou en échec : R32) : gros chiffre et pastille n.d., jamais le total partiel des seules lignes IIP. EDF en retard
 // (dernière lecture réussie + 2 h, R20) : « (en retard) », plus aucune couleur de niveau ni de catégorie.
 import type { EcowattOfficial, EcowattSignal, PowerOutagesResponse, PowerUnitOutage, TransmissionOutage } from '../../types/index.ts';
@@ -15,7 +15,7 @@ import { lineChart } from './chart.ts';
 import { NBSP, formatGw, formatMw, frNumber } from './format.ts';
 import { emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, valueHtml, type LayerView } from './frame.ts';
 import {
-  OUTAGES_THEME, OUT_LATE_VAR, OUT_MAINT_VAR, OUT_RECENT_VAR, countText, dayMonth, note, parisClock, sinceText,
+  OUTAGES_THEME, OUT_LATE_VAR, OUT_MAINT_VAR, OUT_RECENT_VAR, countText, dayMonth, moreNote, note, parisClock, sinceText,
 } from './outages-format.ts';
 
 export const POWER_TITLE = 'Électricité : production et transport';
@@ -57,17 +57,18 @@ function unitRow(u: PowerUnitOutage, now: number, canFocus: boolean, color: stri
   });
 }
 
+/** « hors service » seulement si chaque sens est lu et entièrement indisponible ; sinon de la capacité reste, la ligne est « réduite ». */
+function lineState(l: TransmissionOutage): string {
+  const allOut = l.directions.length > 0 && l.directions.every((d) => d.unavailableMw !== null && d.installedMw !== null && d.unavailableMw >= d.installedMw);
+  return allOut ? 'hors service' : 'réduite';
+}
+
 function lineRow(l: TransmissionOutage, color: string): string {
   const dirs = l.directions.map((d) => `${d.label}${NBSP}: ${d.unavailableMw === null ? 'n.d.' : formatMw(d.unavailableMw)} indisponibles sur ${d.installedMw === null ? 'n.d.' : formatMw(d.installedMw)}`).join(' · ');
   return listRow({
-    text: l.asset, value: l.end === null ? 'fin n.d.' : `jusqu’au ${when(l.end)}`, color,
+    text: `${l.asset} · ${lineState(l)}`, value: l.end === null ? 'fin n.d.' : `jusqu’au ${when(l.end)}`, color,
     note: [dirs, l.reason, `publié le ${when(l.publishedAt)}`].filter((x): x is string => x !== null && x.length > 0).join(' · '),
   });
-}
-
-/** « et 12 autres. » quand une liste est coupée : rien n'est tronqué en silence. */
-function moreNote(total: number, shown: number): string {
-  return total > shown ? note(`et ${countText(total - shown, 'autre', 'autres')}.`) : '';
 }
 
 function islandRow(i: PowerOutagesResponse['islands'][number], now: number): string {
@@ -90,7 +91,7 @@ function sections(p: PowerOutagesResponse, input: PowerViewInput, f: Freshness):
   const lineColor = (category: string): string => (f.iipGrey ? OUT_LATE_VAR : category);
   const lines = p.transmission === null
     ? emptyLine('RTE IIP injoignable : lignes du transport n.d.')
-    : p.transmission.unplanned.map((l) => lineRow(l, lineColor(OUT_RECENT_VAR))).join('') || emptyLine('Aucune ligne haute tension hors service non planifiée déclarée à RTE.');
+    : p.transmission.unplanned.map((l) => lineRow(l, lineColor(OUT_RECENT_VAR))).join('') || emptyLine('Aucune ligne haute tension indisponible ou réduite non planifiée déclarée à RTE.');
   const plannedMw = p.planned.reduce((s, u) => s + u.lostMw, 0);
   const maint = f.edfNever ? edfGone('maintenances')
     : p.planned.slice(0, MAINTENANCE_ROWS).map((u) => unitRow(u, now, canFocus, colorOf(u, OUT_MAINT_VAR, f))).join('')
@@ -104,8 +105,12 @@ function sections(p: PowerOutagesResponse, input: PowerViewInput, f: Freshness):
   const days = ecowattUpcoming(ecowatt, now);
   const eco = days.length === 0
     ? emptyLine('Signal Écowatt n.d. (RTE)')
-    : days.map((d, i) => kvRow(`${dayMonth(d.date)}${i === 0 ? ' (aujourd’hui)' : ''}`, valueHtml(ECOWATT_WORD[d.level], ECOWATT_LEVEL[d.level]))).join('');
-  const islands = p.islands.map((i) => islandRow(i, now)).join('') || emptyLine('Signaux des îles n.d.');
+    : days.map((d) => kvRow(`${dayMonth(d.date)}${d.date === parisDayOf(now) ? ' (aujourd’hui)' : ''}`, valueHtml(ECOWATT_WORD[d.level], ECOWATT_LEVEL[d.level]))).join('');
+  // Chaque île est toujours rendue : sans signal de l'heure, « n.d. » nommé (jamais une île qui disparaît).
+  const islands = (['reunion', 'corse'] as const).map((zone) => {
+    const signal = p.islands.find((i) => i.zone === zone);
+    return signal ? islandRow(signal, now) : listRow({ text: ISLAND_WORD[zone], value: 'n.d.', level: null, note: 'signal de l’heure n.d.' });
+  }).join('');
   const points = p.history.map((h) => ({ at: Date.parse(`${h.day}T10:00:00Z`), value: h.unplannedMw })).filter((x) => Number.isFinite(x.at));
   const first = points[0];
   const last = points[points.length - 1];
@@ -120,7 +125,7 @@ function sections(p: PowerOutagesResponse, input: PowerViewInput, f: Freshness):
     + `<p class="fmk-note">${sourceLinkHtml('EDF OpenData (Licence Ouverte 2.0)', EDF_URL)} · ${sourceLinkHtml('RTE, plateforme IIP', IIP_URL)}</p>`;
   return [
     { id: 'imprevus', title: 'Arrêts imprévus en cours', collapsible: true, open: open('imprevus', true), summary: f.edfNever ? 'n.d.' : escapeHtml(frNumber(p.unplanned.length, 0)), html: unplanned || emptyLine('Aucun arrêt imprévu en cours publié par EDF.') },
-    { id: 'transport', title: 'Lignes haute tension hors service non planifiées', collapsible: true, open: open('transport', true), html: lines },
+    { id: 'transport', title: 'Lignes haute tension indisponibles ou réduites, non planifiées', collapsible: true, open: open('transport', true), html: lines },
     { id: 'maintenances', title: 'Maintenances en cours', collapsible: true, open: open('maintenances', false), summary: f.edfNever ? 'n.d.' : escapeHtml(`${countText(p.planned.length, 'unité', 'unités')} · ${formatGw(plannedMw)}`), html: maint || emptyLine('Aucune maintenance en cours.') },
     { id: 'annonces', title: 'Annoncés dans les 7 prochains jours', collapsible: true, open: open('annonces', false), summary: f.edfNever ? 'n.d.' : escapeHtml(frNumber(p.upcoming.length, 0)), html: upcoming || emptyLine('Aucun arrêt annoncé.') },
     { id: 'ecowatt', title: 'Écowatt, aujourd’hui et les trois jours suivants', collapsible: true, open: open('ecowatt', true), html: eco },
@@ -136,7 +141,7 @@ export function buildPowerView(input: PowerViewInput): LayerView {
   if (p === null && error === null) {
     return { head: { theme: OUTAGES_THEME, title: POWER_TITLE, status: ['chargement…'] }, sections: [], bodyHtml: loadingBody() };
   }
-  if (p === null || (p.edfReadAt === null && p.iipPublishedAt === null)) {
+  if (p === null || (p.edfReadAt === null && p.iipReadAt === null)) {
     const reasons = [error, ...(p?.errors ?? [])].filter((x): x is string => x !== null && x.length > 0);
     return {
       head: { theme: OUTAGES_THEME, title: POWER_TITLE, level: 'nd', figure: { value: 'n.d.', caption: FIGURE_CAPTION, level: null }, status: ['EDF et RTE injoignables'] },
@@ -146,7 +151,8 @@ export function buildPowerView(input: PowerViewInput): LayerView {
   const edfNever = p.edfReadAt === null;
   const edfLate = !edfNever && isOutagesDataLate('edf', p.edfReadAt, now);
   const edfMute = edfNever || edfLate;
-  const iipLate = p.iipPublishedAt !== null && isOutagesDataLate('iip', p.iipPublishedAt, now);
+  // Retard IIP sur la dernière lecture réussie (RTE ne publie parfois rien pendant des heures) ; la date affichée reste celle du flux.
+  const iipLate = p.iipReadAt !== null && isOutagesDataLate('iip', p.iipReadAt, now);
   const f: Freshness = { edfMute, edfNever, edfGrey: edfMute, iipGrey: iipLate };
   const updated = p.edfUpdatedAt === null ? null : Date.parse(p.edfUpdatedAt);
   const edfAt = updated !== null && Number.isFinite(updated) ? absoluteTime(updated, now, 'fr') : null;

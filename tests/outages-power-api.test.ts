@@ -32,14 +32,14 @@ describe('/api/outages/power', () => {
     const { status, body, cache } = await callHandler<PowerOutagesResponse>(handler);
     expect([status, cache]).toEqual([200, CACHE_CONTROL]);
     expect(CACHE_CONTROL).toBe('s-maxage=300, stale-while-revalidate=900');
-    expect(Object.keys(body).sort()).toEqual(['edfReadAt', 'edfUpdatedAt', 'errors', 'history', 'iipPublishedAt', 'islands', 'planned', 'readAt', 'transmission', 'unplanned', 'upcoming']);
+    expect(Object.keys(body).sort()).toEqual(['edfReadAt', 'edfUpdatedAt', 'errors', 'history', 'iipPublishedAt', 'iipReadAt', 'islands', 'planned', 'readAt', 'transmission', 'unplanned', 'upcoming']);
   });
   it('toutes les sources en panne, jamais lues : 502 de même forme, sans cache CDN', async () => {
     stubFetch(() => respond('panne', 503));
     const { status, body, cache } = await callHandler<PowerOutagesResponse>(handler);
     expect(status).toBe(502);
     expect(cache).toBe('no-store');
-    expect(Object.keys(body).sort()).toEqual(['edfReadAt', 'edfUpdatedAt', 'errors', 'history', 'iipPublishedAt', 'islands', 'planned', 'readAt', 'transmission', 'unplanned', 'upcoming']);
+    expect(Object.keys(body).sort()).toEqual(['edfReadAt', 'edfUpdatedAt', 'errors', 'history', 'iipPublishedAt', 'iipReadAt', 'islands', 'planned', 'readAt', 'transmission', 'unplanned', 'upcoming']);
     expect(body.unplanned).toEqual([]);
     expect(body.errors.length).toBeGreaterThanOrEqual(2);
   });

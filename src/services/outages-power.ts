@@ -29,7 +29,7 @@ const line = record({
 });
 
 const SHAPE = shapeOf<PowerOutagesResponse>(record({
-  readAt: dateOrNull, edfUpdatedAt: dateOrNull, edfReadAt: dateOrNull, iipPublishedAt: dateOrNull,
+  readAt: dateOrNull, edfUpdatedAt: dateOrNull, edfReadAt: dateOrNull, iipPublishedAt: dateOrNull, iipReadAt: dateOrNull,
   unplanned: list(unit), planned: list(unit), upcoming: list(unit),
   transmission: nullable(record({ unplanned: list(line), planned: list(line) })),
   islands: list(record({ zone: value((v) => v === 'reunion' || v === 'corse'), at: date, color: str, text: str, cyclone: value(isBool) })),
@@ -58,8 +58,10 @@ export function edfStatus(state: PowerState, now: number): OutagesStatus {
   const d = state.power.data;
   return outagesSlotStatus(only(state, 'EDF OpenData').power, 'edf', d?.edfUpdatedAt ?? null, now, d?.edfReadAt ?? null);
 }
+/** Daté par le flux (`lastBuildDate`) ; en retard selon la dernière lecture réussie du serveur, car RTE ne publie parfois rien pendant des heures. */
 export function iipStatus(state: PowerState, now: number): OutagesStatus {
-  return outagesSlotStatus(only(state, 'RTE IIP').power, 'iip', state.power.data?.iipPublishedAt ?? null, now);
+  const d = state.power.data;
+  return outagesSlotStatus(only(state, 'RTE IIP').power, 'iip', d?.iipPublishedAt ?? null, now, d?.iipReadAt ?? null);
 }
 export function seiStatus(state: PowerState, now: number): OutagesStatus {
   const at = state.power.data?.islands.map((i) => i.at).sort().at(-1) ?? null;
