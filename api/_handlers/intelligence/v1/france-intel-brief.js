@@ -197,6 +197,7 @@ function hasLowImmediateSignals(signalCounts) {
     && !signalCounts.militaryUnavailable
     && !signalCounts.gnssUnavailable
     && !signalCounts.cyberUnavailable
+    && !signalCounts.telecomUnavailable
     && signalCounts.criticalNews === 0
     && signalCounts.highNews === 0
     && signalCounts.weatherAlerts === 0
@@ -336,7 +337,7 @@ function buildSituationSummary(signalCounts, energy, lang) {
       lines.push(`mobilité sous bruit de fond: ${plural(signalCounts.railDisruptions, 'perturbation ferroviaire', 'perturbations ferroviaires')}, `
         + `${plural(signalCounts.roadIncidents, 'incident routier', 'incidents routiers')}`);
     }
-    if (signalCounts.telecomOutages > 0) {
+    if (!signalCounts.telecomUnavailable && signalCounts.telecomOutages > 0) {
       lines.push(plural(signalCounts.telecomOutages, 'incident télécom récent', 'incidents télécom récents'));
     }
     lines.push(...defenseSummaryLines(signalCounts, 'fr'));
@@ -364,7 +365,7 @@ function buildSituationSummary(signalCounts, energy, lang) {
       lines.push(`mobility background friction: ${countIn('en', signalCounts.railDisruptions, 'rail disruption', 'rail disruptions')}, `
         + `${countIn('en', signalCounts.roadIncidents, 'road incident', 'road incidents')}`);
     }
-    if (signalCounts.telecomOutages > 0) {
+    if (!signalCounts.telecomUnavailable && signalCounts.telecomOutages > 0) {
       lines.push(countIn('en', signalCounts.telecomOutages, 'recent telecom incident', 'recent telecom incidents'));
     }
     lines.push(...defenseSummaryLines(signalCounts, 'en'));
@@ -427,7 +428,7 @@ ${eventsBlock}
 [CONTEXT DATA]
 Posture: ${stabilityLabel} | Pillars: continuity=${axes.continuity} defense=${axes.defense} security=${axes.security} signal=${axes.signal} (0–100, higher = more pressure)
 Cyber pressure: ${cyberLabel} | Severe weather alerts: ${meteoAlertCount}
-Signals: ${signalCounts.criticalNews} critical / ${countIn('en', signalCounts.highNews, 'high headline', 'high headlines')}, ${signalCounts.railDisruptions} rail, ${signalCounts.roadIncidents} road, ${signalCounts.telecomOutages} telecom, ${sovereigntySignals(signalCounts, 'en')}, ${countIn('en', signalCounts.fireDetections, 'fire', 'fires')}, ${countIn('en', signalCounts.marketStress, 'stressed market line', 'stressed market lines')}
+Signals: ${signalCounts.criticalNews} critical / ${countIn('en', signalCounts.highNews, 'high headline', 'high headlines')}, ${signalCounts.railDisruptions} rail, ${signalCounts.roadIncidents} road, ${signalCounts.telecomUnavailable ? 'telecom not assessed' : `${signalCounts.telecomOutages} telecom`}, ${sovereigntySignals(signalCounts, 'en')}, ${countIn('en', signalCounts.fireDetections, 'fire', 'fires')}, ${countIn('en', signalCounts.marketStress, 'stressed market line', 'stressed market lines')}
 Situation summary:
 ${situationSummary}
 Recent headlines (context only, NOT citable):
@@ -458,7 +459,7 @@ ${eventsBlock}
 [DONNÉES DE CONTEXTE]
 Posture : ${stabilityLabel} | Piliers : continuité=${axes.continuity} défense=${axes.defense} sécurité=${axes.security} signal=${axes.signal} (0–100, plus haut = plus de pression)
 Pression cyber : ${cyberLabel} | Alertes météo sévères : ${meteoAlertCount}
-Signaux : ${plural(signalCounts.criticalNews, 'titre critique', 'titres critiques')} / ${plural(signalCounts.highNews, 'élevé', 'élevés')}, ${signalCounts.railDisruptions} rail, ${signalCounts.roadIncidents} route, ${signalCounts.telecomOutages} télécom, ${sovereigntySignals(signalCounts, 'fr')}, ${plural(signalCounts.fireDetections, 'feu', 'feux')}, ${plural(signalCounts.marketStress, 'ligne marché sous tension', 'lignes marché sous tension')}
+Signaux : ${plural(signalCounts.criticalNews, 'titre critique', 'titres critiques')} / ${plural(signalCounts.highNews, 'élevé', 'élevés')}, ${signalCounts.railDisruptions} rail, ${signalCounts.roadIncidents} route, ${signalCounts.telecomUnavailable ? 'télécom non évalué' : `${signalCounts.telecomOutages} télécom`}, ${sovereigntySignals(signalCounts, 'fr')}, ${plural(signalCounts.fireDetections, 'feu', 'feux')}, ${plural(signalCounts.marketStress, 'ligne marché sous tension', 'lignes marché sous tension')}
 Résumé situationnel :
 ${situationSummary}
 Actualités récentes (contexte seulement, NON citables) :
@@ -545,6 +546,7 @@ export default async function handler(request) {
       ? Math.floor(body.signalCounts.gnssPartialHours) : null,
     cyberUnavailable: body.signalCounts?.cyberUnavailable === true,
     kevUnavailable: body.signalCounts?.kevUnavailable === true,
+    telecomUnavailable: body.signalCounts?.telecomUnavailable === true,
   };
   const energy = body.energy ? {
     ecowattSignal: typeof body.energy.ecowattSignal === 'string' ? body.energy.ecowattSignal : null,

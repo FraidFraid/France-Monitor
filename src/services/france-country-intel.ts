@@ -229,7 +229,7 @@ function transportPressure(signals: FranceCountrySignals): number {
   );
 }
 
-/** Pannes télécom imprévues récentes (< 24 h) ; source muette (null) : aucune entrée. */
+/** Pannes télécom imprévues récentes (< 24 h) ; source muette (null) : pression 0 par construction (formule inchangée). */
 function telecomPressure(signals: FranceCountrySignals): number {
   return clamp(scaleCount(signals.telecomOutages ?? 0, 50_000, 75));
 }

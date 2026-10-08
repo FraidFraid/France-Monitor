@@ -169,6 +169,23 @@ describe('buildPrompt v14', () => {
       expect(en).not.toMatch(/power outage/);
     }
   });
+  it('télécom non lu (S3) : « télécom non évalué » / « telecom not assessed », jamais « 0 télécom », et pas un signal calme', () => {
+    const signals = { criticalNews: 0, highNews: 0, weatherAlerts: 0, floodAlerts: 0, fireDetections: 0, railDisruptions: 0, roadIncidents: 0, telecomOutages: 0, telecomUnavailable: true, cyberAlerts: 0, militaryFlights: 0, maritimeTrafficFrance: 0, defenseAlerts: 0, jammingSignals: 0, marketStress: 0 };
+    const axes = { continuity: 10, defense: 5, security: 10, signal: 10 };
+    const isnr = { social: 0, security: 0, infra: 0 };
+    const fr = buildPrompt(80, axes, isnr, 0, 0, [], signals, null, [], [], 'fr');
+    expect(fr).toContain('télécom non évalué');
+    expect(fr).not.toContain('0 télécom');
+    const en = buildPrompt(80, axes, isnr, 0, 0, [], signals, null, [], [], 'en');
+    expect(en).toContain('telecom not assessed');
+    expect(en).not.toMatch(/0 telecom/);
+    // Lu à 0 : « 0 télécom » reste dit.
+    expect(buildPrompt(80, axes, isnr, 0, 0, [], { ...signals, telecomUnavailable: false }, null, [], [], 'fr')).toContain('0 télécom');
+    // Le vocabulaire calme n'est autorisé que si le télécom a été lu à 0.
+    const calmAxes = { continuity: 0, defense: 0, security: 0, signal: 0 };
+    expect(buildPrompt(95, calmAxes, isnr, 0, 0, [], { ...signals, telecomUnavailable: false }, null, [], [], 'fr')).toContain('autorisé');
+    expect(buildPrompt(95, calmAxes, isnr, 0, 0, [], signals, null, [], [], 'fr')).toContain('INTERDIT');
+  });
   it('CERT-FR indisponible ou en retard : pression cyber « non évaluée », jamais « faible » (une absence n’est pas un calme)', () => {
     const signals = { criticalNews: 0, highNews: 0, weatherAlerts: 0, floodAlerts: 0, fireDetections: 0, railDisruptions: 0, roadIncidents: 0, telecomOutages: 0, cyberAlerts: 0, militaryFlights: 0, maritimeTrafficFrance: 0, defenseAlerts: 0, jammingSignals: 0, marketStress: 0 };
     const axes = { continuity: 0, defense: 0, security: 0, signal: 0 };

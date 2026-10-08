@@ -3,6 +3,7 @@
 // la télécom devient le nombre de pannes imprévues récentes (< 24 h). Aucune cible de france-country-intel.test.ts n'est touchée.
 import { describe, expect, it } from 'vitest';
 import { telecomFixtureResponse } from '../components/layer-panel/outages.fixture.ts';
+import { briefSignalCounts } from './france-intel-brief.ts';
 import { buildFranceSignals, computeFranceScoreBreakdown, type FranceRawData } from './france-country-intel.ts';
 import type { TelecomOutagesResponse } from '../types/index.ts';
 
@@ -48,5 +49,13 @@ describe('score France : entrées des pannes', () => {
     expect(components(withRecent(0))['Télécom'] ?? 0).toBe(0);
     expect(components(withRecent(264))['Télécom'] ?? 0).toBeGreaterThan(0);
     expect(components(withRecent(264))['Pression électrique'] ?? 0).toBe(0);
+  });
+
+  it('brief : le drapeau telecomUnavailable suit la source (null = non lu, 0 lu = lu), comme les autres sources non lues', () => {
+    expect(briefSignalCounts(buildFranceSignals(raw({ telecomOutages: null })))).toMatchObject({ telecomUnavailable: true });
+    expect(briefSignalCounts(buildFranceSignals(raw({ telecomOutages: { ...withRecent(0), summary: null } })))).toMatchObject({ telecomUnavailable: true });
+    expect(briefSignalCounts(buildFranceSignals(raw({ telecomOutages: withRecent(0) })))).toMatchObject({ telecomUnavailable: false, telecomOutages: 0 });
+    expect(briefSignalCounts(buildFranceSignals(raw({ telecomOutages: withRecent(18) })))).toMatchObject({ telecomUnavailable: false, telecomOutages: 18 });
+    expect(briefSignalCounts(buildFranceSignals(raw({ telecomOutages: withRecent(18) })))).not.toHaveProperty('powerOutages');
   });
 });
