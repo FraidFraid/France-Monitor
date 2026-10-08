@@ -9,7 +9,7 @@ function nuclear(over: Partial<NuclearState> = {}, stress: Partial<NonNullable<N
     unavailabilities: [], remitSignals: [], unconfirmedSignals: [], rteAvailable: true, remitAvailable: true,
     remitStatus: 'ok', fetchedAt: new Date(0),
     stress: {
-      installedCapacityMW: 61_370, availableCapacityMW: 51_550, stressRatio: 0.16, level: 'TENSION',
+      installedCapacityMW: 61_370, availableCapacityMW: 51_550, unplannedLostMW: 0, stressRatio: 0, level: 'NORMAL',
       gridTensionRisk: false, updatedAt: new Date(0), freshness: 'quasi-realtime', ...stress,
     },
     ...over,
@@ -49,9 +49,10 @@ function unconfirmedSignal(): UnconfirmedRemitSignal {
 
 describe("baromètre des infrastructures (spec 2026-10-01 § 3.2)", () => {
   it("score nucléaire = disponible / installé, note REMIT ou tension", () => {
-    expect(nuclearInfraScore(nuclear())).toEqual({ score: 84, note: null });
-    expect(nuclearInfraScore(nuclear({}, { gridTensionRisk: true }))).toEqual({ score: 84, note: 'sous tension' });
-    expect(nuclearInfraScore(nuclear({ rteAvailable: false }))).toEqual({ score: null, note: 'Indisponible' });
+    expect(nuclearInfraScore(nuclear({}, { availableCapacityMW: 55_000 }))).toEqual({ score: 90, note: null, level: 'vert' });
+    expect(nuclearInfraScore(nuclear({}, { gridTensionRisk: true, unplannedLostMW: 3500, level: 'TENSION' })))
+      .toEqual({ score: 84, note: 'sous tension', level: 'orange' });
+    expect(nuclearInfraScore(nuclear({ rteAvailable: false }))).toEqual({ score: null, note: 'Indisponible', level: null });
     expect(nuclearInfraScore(nuclear({ stress: null }))).toBeNull();
     expect(nuclearInfraScore(null)).toBeNull();
   });
@@ -65,7 +66,19 @@ describe("baromètre des infrastructures (spec 2026-10-01 § 3.2)", () => {
           { gridTensionRisk: true }
         )
       )
-    ).toEqual({ score: 84, note: 'écart REMIT' });
+    ).toEqual({ score: 84, note: 'écart REMIT', level: 'vert' });
+  });
+
+  it("niveau nucléaire = arrêts imprévus seuls (décision du 08/10/2026) : la maintenance programmée n'alerte pas", () => {
+    // Moitié du parc en maintenance, aucun arrêt imprévu : valeur basse, mais vert et expliqué.
+    expect(nuclearInfraScore(nuclear({}, { availableCapacityMW: 30_000 })))
+      .toEqual({ score: 49, note: 'maintenance programmée', level: 'vert' });
+    // 6,5 GW perdus en arrêts imprévus : rouge même si la disponibilité reste haute.
+    expect(nuclearInfraScore(nuclear({}, { availableCapacityMW: 55_000, unplannedLostMW: 6_500, level: 'CRITIQUE' })))
+      .toEqual({ score: 90, note: null, level: 'rouge' });
+    const rows = infraRows({ result: result({}), nuclear: nuclear({}, { availableCapacityMW: 30_000 }), eolien: null }, 'fr');
+    expect(rows.find((r) => r.key === 'nuclear')?.level).toBe('vert');
+    expect(rows.find((r) => r.key === 'bgp')?.level).toBeNull();
   });
 
   it("score éolien : alerte en direct, sinon valeur du baromètre", () => {

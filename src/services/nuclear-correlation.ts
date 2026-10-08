@@ -16,7 +16,8 @@ import type {
   EnergyMix,
 } from '../types/index.ts';
 import type { RTEIIPState } from './rte-iip.ts';
-import { NUCLEAR_PLANTS } from '../config/infrastructure.ts';
+import { NUCLEAR_PLANTS, NUCLEAR_UNITS } from '../config/infrastructure.ts';
+import { activeOutages, fleetLevel, fleetSummary } from './nuclear-fleet.ts';
 import { extractNuclearRemitSignals } from './nuclear-remit.ts';
 import { invalidateNuclearRTECache } from './nuclear-rte.ts';
 import type { NuclearRTEResult } from './nuclear-rte.ts';
@@ -156,18 +157,22 @@ function buildStressScore(
     .reduce((sum, u) => sum + Math.max(0, u.nominalPowerMW - u.availablePowerMW), 0);
 
   const availableCapacityMW = Math.max(0, installedCapacityMW - indispoMW);
-  const stressRatio = installedCapacityMW > 0
-    ? (installedCapacityMW - availableCapacityMW) / installedCapacityMW
-    : 0;
 
+  // Tension = puissance perdue en arrêts IMPRÉVUS seuls, par tranche (même calcul et mêmes paliers
+  // que le panneau Parc nucléaire). La maintenance programmée reste dans la puissance disponible
+  // mais n'alerte pas : chaque automne, la moitié du parc peut être à l'arrêt sans crise (08/10/2026).
+  const unplannedLostMW = fleetSummary(NUCLEAR_UNITS, activeOutages(unavailabilities, NUCLEAR_UNITS, now)).byKind.fortuit.lostMw;
+  const stressRatio = installedCapacityMW > 0 ? unplannedLostMW / installedCapacityMW : 0;
+
+  const fleet = fleetLevel(unplannedLostMW);
   const level: NuclearStressScore['level'] =
-    stressRatio > 0.25 ? 'CRITIQUE'
-    : stressRatio > 0.10 ? 'TENSION'
+    fleet === 'rouge' ? 'CRITIQUE'
+    : fleet === 'orange' ? 'TENSION'
     : 'NORMAL';
 
   // heuristique produit v1 : nucléaire < 35% du mix national
   const gridTensionRisk =
-    stressRatio > 0.10 &&
+    level !== 'NORMAL' &&
     nationalMix != null &&
     nationalMix.total > 0 &&
     nationalMix.nuclear < nationalMix.total * 0.35;
@@ -182,6 +187,7 @@ function buildStressScore(
   return {
     installedCapacityMW,
     availableCapacityMW,
+    unplannedLostMW,
     stressRatio,
     level,
     gridTensionRisk,

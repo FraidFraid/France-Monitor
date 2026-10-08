@@ -102,6 +102,11 @@ function action(
 
 // ─── Règle 1 : ENERGY_STRESS ─────────────────────────────────────────────────
 
+/** « 3,6 GW » : puissance perdue en arrêts imprévus, valeur et unité insécables. */
+function unplannedGw(mw: number): string {
+  return `${(mw / 1000).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}\u00a0GW`;
+}
+
 function detectEnergyStress(raw: FranceRawData, nowMs: number = Date.now()): DetectedSituation | null {
   const nuclear = raw.nuclearState?.stress;
   // Écowatt est un signal NATIONAL (RTE) : le niveau du jour s'applique à toute la France, il
@@ -129,7 +134,7 @@ function detectEnergyStress(raw: FranceRawData, nowMs: number = Date.now()): Det
   const drivers: string[] = [];
   if (level === 'red') drivers.push('Écowatt rouge : signal national RTE');
   else drivers.push('Écowatt orange : signal national RTE');
-  if (confirmedByNuclear) drivers.push(`Parc nucléaire dégradé (stress ${nuclear?.level}${nuclear ? ` · ratio ${Math.round(nuclear.stressRatio * 100)}%` : ''})`);
+  if (confirmedByNuclear && nuclear) drivers.push(`Parc nucléaire dégradé : ${unplannedGw(nuclear.unplannedLostMW)} perdus en arrêts imprévus`);
   if (confirmedByOutages) drivers.push(`${raw.powerOutages.length} pannes électriques signalées`);
   if (confirmedByEolien)  drivers.push(`Production éolienne très faible (< 500 MW)`);
 
@@ -190,7 +195,7 @@ function detectImportDependency(raw: FranceRawData): DetectedSituation | null {
     [
       `Import net actuel : +${Math.round(netImport)} MW`,
       `Principales sources : ${topImporters.join(', ')}`,
-      ...(raw.nuclearState?.stress ? [`Stress nucléaire : ${raw.nuclearState.stress.level}`] : []),
+      ...(raw.nuclearState?.stress ? [`Arrêts imprévus du parc nucléaire : ${unplannedGw(raw.nuclearState.stress.unplannedLostMW)}`] : []),
     ],
     [
       action('Vérifier la disponibilité du parc nucléaire (REMIT RTE)', 'Analyste énergie', 'investigate'),

@@ -338,7 +338,8 @@ export class BarometerWidget {
       this.currentNuclear = { label: 'Indisponible', score: null, color: 'var(--text-muted)' };
     } else {
       const score = nuclear.score;
-      const color = score >= 85 ? '#34c759' : score >= 60 ? '#ffcc00' : '#ff2d55';
+      // Couleur des arrêts imprévus seuls : la maintenance programmée n'alerte pas (08/10/2026).
+      const color = nuclear.level ? levelHex(nuclear.level) : 'var(--text-muted)';
       const label = nuclear.note ? `${score} / 100 · ${nuclear.note}` : `${score} / 100`;
       this.currentNuclear = { label, score, color };
     }

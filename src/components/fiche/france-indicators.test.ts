@@ -43,7 +43,7 @@ describe('Infrastructures (spec 2026-10-01 § 3.2)', () => {
       nuclear: {
         unavailabilities: [], remitSignals: [], unconfirmedSignals: [{ remitSignal: { id: 'x', plantName: 'Test', unitName: null, classifiedAs: 'OTHER', capacityMW: null, publishedAt: new Date(0), title: 't', link: '', confirmedByRTE: false, matchConfidence: 0.5 }, reason: 'test', confidence: 0.5 }], rteAvailable: true, remitAvailable: true,
         remitStatus: 'ok', fetchedAt: new Date(0),
-        stress: { installedCapacityMW: 100, availableCapacityMW: 84, stressRatio: 0.16, level: 'TENSION', gridTensionRisk: false, updatedAt: new Date(0), freshness: 'quasi-realtime' },
+        stress: { installedCapacityMW: 100, availableCapacityMW: 84, unplannedLostMW: 3500, stressRatio: 0.16, level: 'TENSION', gridTensionRisk: false, updatedAt: new Date(0), freshness: 'quasi-realtime' },
       },
     }, 'fr');
     expect(s.html).toContain('>84 / 100</span>');

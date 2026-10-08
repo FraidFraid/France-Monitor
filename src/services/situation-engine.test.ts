@@ -92,7 +92,7 @@ function energyStressFixture(): FranceRawData {
       interconnections: [],
     }),
     nuclearState: typed<FranceRawData['nuclearState']>({
-      stress: { level: 'TENSION', stressRatio: 0.62 },
+      stress: { level: 'TENSION', stressRatio: 0.06, unplannedLostMW: 3_600 },
     }),
   });
 }

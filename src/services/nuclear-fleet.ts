@@ -1,5 +1,5 @@
 // src/services/nuclear-fleet.ts : parc nucléaire vu par tranche (spec 2026-10-02 § 6.1). Fonctions pures,
-// « maintenant » injecté. N'affecte pas le score de tension (NuclearStressScore), dont la calibration est verrouillée.
+// « maintenant » injecté. Depuis le 08/10/2026, le score de tension (NuclearStressScore) reprend fleetLevel et les arrêts imprévus.
 
 import type { NuclearUnavailability, NuclearUnitReference } from '../types/index.ts';
 import type { VigilanceLevel } from './vigilance.ts';

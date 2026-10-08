@@ -150,7 +150,7 @@ describe('vue Parc nucléaire', () => {
   });
   it('aucun code anglais, aucun tiret cadratin', () => {
     const all = (['overview', 'calendar', 'remit'] as const).map((t) => renderLayerView('nuclearFleet', view(state({
-      stress: { installedCapacityMW: 61000, availableCapacityMW: 20000, stressRatio: 0.67, level: 'CRITIQUE', gridTensionRisk: true, updatedAt: new Date(NOW), freshness: 'quasi-realtime' },
+      stress: { installedCapacityMW: 61000, availableCapacityMW: 20000, unplannedLostMW: 41000, stressRatio: 0.67, level: 'CRITIQUE', gridTensionRisk: true, updatedAt: new Date(NOW), freshness: 'quasi-realtime' },
     }), t))).join('');
     expect(all).not.toMatch(/GRID_TENSION_RISK|UNPLANNED|OUTAGE|STATUS|TIMELINE|—|&mdash;|monospace/);
     expect(all).toContain('Le nucléaire fournit moins de 35 % de la production nationale.');

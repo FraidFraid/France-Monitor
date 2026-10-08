@@ -733,9 +733,14 @@ export interface UnconfirmedRemitSignal {
 /** Score de tension nucléaire (Layer 3) */
 export interface NuclearStressScore {
   installedCapacityMW: number;
+  /** Toutes indisponibilités comprises, maintenance programmée incluse. */
   availableCapacityMW: number;
-  stressRatio: number;  // (installed - available) / installed
-  level: 'NORMAL' | 'TENSION' | 'CRITIQUE'; // <10% / 10–25% / >25%
+  /** Puissance perdue en arrêts imprévus seuls (fortuits, force majeure), une fois par tranche. */
+  unplannedLostMW: number;
+  /** unplannedLostMW / installé : la maintenance programmée n'y entre pas. */
+  stressRatio: number;
+  /** Paliers du panneau Parc nucléaire : TENSION dès 3 GW perdus en arrêts imprévus, CRITIQUE dès 6 GW. */
+  level: 'NORMAL' | 'TENSION' | 'CRITIQUE';
   gridTensionRisk: boolean;
   updatedAt: Date;
   freshness: 'quasi-realtime' | 'stale' | 'unavailable';

@@ -58,14 +58,15 @@ export function infraSection(infra: InfraInput | null, lang: Lang): IndicatorSec
     };
   }
   const rows = infraRows(infra, lang);
-  const watched = rows.filter((r) => r.value !== null && r.value < 85).length;
+  const rowLevel = (r: (typeof rows)[number]) => r.level ?? infraValueLevel(r.value);
+  const watched = rows.filter((r) => r.value !== null && rowLevel(r) !== 'vert').length;
   const summary = `${levelDot(infraStatusLevel(result.status))}<span class="fmk-num">${result.score}/100</span>`
     + (watched > 0 ? escapeHtml(t(lang, ` · ${watched} à surveiller`, ` · ${watched} to watch`)) : '');
   const cyberNational = result.details.cyberNational ?? null;
   const meters = rows.map((r) => meterRow({
     label: r.label,
     value: r.value,
-    level: infraValueLevel(r.value),
+    level: r.value === null ? null : rowLevel(r),
     display: r.value === null ? (r.note ?? 'n.d.') : `${r.value} / 100`,
     noteHtml: r.key === 'cyber' && cyberNational !== null
       ? `<button type="button" class="fmk-link" data-action="open-cyber">${t(lang, `National ${cyberNational}/100`, `National ${cyberNational}/100`)}</button>`
