@@ -1,18 +1,15 @@
 /**
  * OutagesPanel.ts — Panneau flottant « Pannes Réseau »
  *
- * Onglet 1 : incidents ORE (pannes Enedis/électricité)
- * Onglet 2 : pannes Internet/BGP (IODA + ISP BGP status)
+ * Onglet 1 : pannes Internet/BGP (IODA + ISP BGP status)
+ * Onglet 2 : datacenters et points d'échange (Cloud)
+ * Électricité et Télécoms ont leurs panneaux (OutagesPowerPanel, OutagesTelecomPanel) ; celui-ci disparaît à la tâche B10.
  */
 
 import { Panel } from './Panel.ts';
 import { fmLoaderHTML } from './shared/loader.ts';
 import { fmIcon, fmStatusDot } from './shared/icons.ts';
-import type { EcowattSignal, PowerOutage, TelecomOutage, NetworkOutageState, InfraNetworkState, OutageZoneCollection, OutageZone } from '../types/index.ts';
-import type { RTEIIPState } from '../services/rte-iip.ts';
-import type { OutagesMeta } from '../services/outages.ts';
-import { getFreshnessState } from '../services/outages.ts';
-import { ecowattLevelLabel } from '../services/ecowatt-official.ts';
+import type { NetworkOutageState, InfraNetworkState } from '../types/index.ts';
 import { iodaScoreColor, iodaScoreLabel, ispStatusColor, ispStatusLabel } from '../services/internet-outages.ts';
 import { dcStatusColor, dcStatusLabel, ixpStatusColor } from '../services/infra-network.ts';
 import { getDatacenterVisualMeta } from '../utils/infra-network-visuals.js';
@@ -26,36 +23,21 @@ function formatDurationSec(seconds: number): string {
   return m > 0 ? `${h}h${String(m).padStart(2, '0')}` : `${h}h`;
 }
 
-type ActiveTab = 'electric' | 'telecom' | 'internet' | 'cloud';
+type ActiveTab = 'internet' | 'cloud';
 
 export class OutagesPanel extends Panel {
   private contentEl: HTMLElement | null = null;
   private headerCountEl: HTMLElement | null = null;
   private modalEl!: HTMLElement;
-  private activeTab: ActiveTab = 'electric';
+  private activeTab: ActiveTab = 'internet';
   private onCloseCallback?: () => void;
   private onTabChangeCallback?: (tab: ActiveTab | null) => void;
 
   // latest data
-  private lastPower: PowerOutage[] = [];
-  private lastTelecom: TelecomOutage[] = [];
   private lastNetwork: NetworkOutageState | null = null;
   private lastInfra: InfraNetworkState | null = null;
-  private lastZones: OutageZone[] = [];
-  private lastRTEIIP: RTEIIPState | null = null;
-  // Signal Écowatt NATIONAL du jour (RTE) — l'accordéon « Tension réseau » n'a plus de
-  // déclinaison par département, Écowatt n'ayant jamais été un signal régional.
-  private lastEcowattLevel: EcowattSignal | null = null;
-
-  // ARCEP fetch date (J ou J-1) — utilisé pour le badge UI
-  private arcepFetchedDate: Date | null = null;
-
-  // Freshness meta for Enedis power outage data
-  private _outagesMeta: OutagesMeta | null = null;
 
   // hover callbacks
-  private onDeptHoverCb?: (deptCode: string | null) => void;
-  private onZoneHoverCb?: (clusterId: number | null) => void;
   private onIspHoverCb?: (data: { asn: string; coordinates: [number, number] } | null) => void;
   private onIodaHoverCb?: (data: { id: string; coordinates: [number, number] } | null) => void;
   private onDcHoverCb?: (data: { id: string; coordinates: [number, number] } | null) => void;
@@ -69,46 +51,6 @@ export class OutagesPanel extends Panel {
 
   constructor(container: HTMLElement) {
     super(container, { title: 'Pannes Réseau', collapsible: false });
-  }
-
-  setOnDeptHover(cb: (deptCode: string | null) => void): void {
-    this.onDeptHoverCb = cb;
-  }
-
-  /** Met à jour les métadonnées de fraîcheur des données Enedis. */
-  setOutagesMeta(meta: OutagesMeta): void {
-    this._outagesMeta = meta;
-    if (this.headerCountEl) this._updateHeaderCount();
-  }
-
-  /** Injecte les données IIP RTE (incidents HTB/production) dans le panneau. */
-  setRTEIIP(state: RTEIIPState | null): void {
-    this.lastRTEIIP = state;
-    // Refresh le contenu si l'onglet électrique est actif
-    if (this.activeTab === 'electric' && this.modalEl.style.display !== 'none') {
-      this._renderContent();
-    }
-  }
-
-  /**
-   * Signal Écowatt NATIONAL du jour (RTE), à appeler par l'orchestrateur (App.ts) à chaque
-   * rafraîchissement Écowatt. L'accordéon « Tension réseau (Écowatt) » n'apparaît que si le
-   * niveau du jour est 'orange' ou 'red'.
-   */
-  setEcowattNational(level: EcowattSignal | null): void {
-    this.lastEcowattLevel = level;
-    if (this.activeTab === 'electric' && this.modalEl.style.display !== 'none') {
-      this._renderContent();
-    }
-  }
-
-  /** Met à jour la date de fetch ARCEP pour affichage J/J-1 dans l'UI. */
-  setArcepFetchedDate(date: Date | null): void {
-    this.arcepFetchedDate = date;
-  }
-
-  setOnZoneHover(cb: (clusterId: number | null) => void): void {
-    this.onZoneHoverCb = cb;
   }
 
   setOnIspHover(cb: (data: { asn: string; coordinates: [number, number] } | null) => void): void {
@@ -211,16 +153,6 @@ export class OutagesPanel extends Panel {
         </div>
       </div>
       <div style="display:flex;gap:0;border-top:1px solid rgba(255,255,255,0.06);">
-        <button id="tab-electric" style="flex:1;padding:8px 0;background:none;border:none;
-          font-size:10px;font-weight:600;color:var(--text-muted);cursor:pointer;
-          border-bottom:2px solid transparent;transition:all 0.2s;">
-          ${fmIcon('zap', { size: 12 })} Élec.
-        </button>
-        <button id="tab-telecom" style="flex:1;padding:8px 0;background:none;border:none;
-          font-size:10px;font-weight:600;color:var(--text-muted);cursor:pointer;
-          border-bottom:2px solid transparent;transition:all 0.2s;">
-          ${fmIcon('satellite-dish', { size: 12 })} Télécoms
-        </button>
         <button id="tab-internet" style="flex:1;padding:8px 0;background:none;border:none;
           font-size:10px;font-weight:600;color:var(--text-muted);cursor:pointer;
           border-bottom:2px solid transparent;transition:all 0.2s;">
@@ -244,12 +176,8 @@ export class OutagesPanel extends Panel {
     this.headerCountEl = this.modalEl.querySelector('#outages-header-count');
 
     // ─── Tab click handlers ───
-    const tabElectric = this.modalEl.querySelector<HTMLButtonElement>('#tab-electric')!;
-    const tabTelecom  = this.modalEl.querySelector<HTMLButtonElement>('#tab-telecom')!;
     const tabInternet = this.modalEl.querySelector<HTMLButtonElement>('#tab-internet')!;
     const tabCloud    = this.modalEl.querySelector<HTMLButtonElement>('#tab-cloud')!;
-    tabElectric.onclick = (e) => { e.stopPropagation(); this.activeTab = 'electric'; this._applyTabs(); this._renderContent(); this.onTabChangeCallback?.(this.activeTab); };
-    tabTelecom.onclick  = (e) => { e.stopPropagation(); this.activeTab = 'telecom';  this._applyTabs(); this._renderContent(); this.onTabChangeCallback?.(this.activeTab); };
     tabInternet.onclick = (e) => { e.stopPropagation(); this.activeTab = 'internet'; this._applyTabs(); this._renderContent(); this.onTabChangeCallback?.(this.activeTab); };
     tabCloud.onclick    = (e) => { e.stopPropagation(); this.activeTab = 'cloud';    this._applyTabs(); this._renderContent(); this.onTabChangeCallback?.(this.activeTab); };
 
@@ -302,14 +230,11 @@ export class OutagesPanel extends Panel {
 
   protected render(): void {}
 
-  show(power: PowerOutage[] = [], telecom: TelecomOutage[] = [], network: NetworkOutageState | null = null, infra: InfraNetworkState | null = null, zones?: OutageZoneCollection, tab?: ActiveTab): void {
+  show(network: NetworkOutageState | null = null, infra: InfraNetworkState | null = null, tab?: ActiveTab): void {
     if (!this.contentEl) return;
     if (tab) this.activeTab = tab;
-    this.lastPower   = power;
-    this.lastTelecom = telecom;
     this.lastNetwork   = network;
     this.lastInfra     = infra;
-    if (zones) this.lastZones = zones.features as OutageZone[];
     this.modalEl.style.display = 'flex';
     this._updateHeaderCount();
     this._applyTabs();
@@ -326,9 +251,6 @@ export class OutagesPanel extends Panel {
     this.onTabChangeCallback?.(null);
     // Masquage « silencieux » (bascule entre panneaux) : ne désactive pas la couche.
     if (!opts.silent) this.onCloseCallback?.();
-    // Clear highlights on close
-    this.onDeptHoverCb?.(null);
-    this.onZoneHoverCb?.(null);
   }
 
   isVisible(): boolean {
@@ -338,24 +260,18 @@ export class OutagesPanel extends Panel {
   // ─── Private ──────────────────────────────────────────────────────────────
 
   private _applyTabs(): void {
-    const tabElectric = this.modalEl.querySelector<HTMLButtonElement>('#tab-electric');
-    const tabTelecom  = this.modalEl.querySelector<HTMLButtonElement>('#tab-telecom');
     const tabInternet = this.modalEl.querySelector<HTMLButtonElement>('#tab-internet');
     const tabCloud    = this.modalEl.querySelector<HTMLButtonElement>('#tab-cloud');
-    if (!tabElectric || !tabTelecom || !tabInternet || !tabCloud) return;
+    if (!tabInternet || !tabCloud) return;
 
     // Couleur d'accentuation par onglet pour renforcer la sémio
     const tabAccents: Record<ActiveTab, string> = {
-      electric: '#F59E0B',  // ambre — électricité
-      telecom:  '#3B82F6',  // bleu — télécom
       internet: '#10B981',  // vert emerald — internet
       cloud:    '#60A5FA',  // bleu acier — cloud / IXP
     };
     const accent = tabAccents[this.activeTab];
     const inactiveStyle = 'color:var(--text-muted);border-bottom:2px solid transparent;';
 
-    tabElectric.style.cssText += this.activeTab === 'electric' ? `color:var(--text-primary);border-bottom:2px solid ${tabAccents.electric};` : inactiveStyle;
-    tabTelecom.style.cssText  += this.activeTab === 'telecom'  ? `color:var(--text-primary);border-bottom:2px solid ${tabAccents.telecom};`  : inactiveStyle;
     tabInternet.style.cssText += this.activeTab === 'internet' ? `color:var(--text-primary);border-bottom:2px solid ${tabAccents.internet};` : inactiveStyle;
     tabCloud.style.cssText    += this.activeTab === 'cloud'    ? `color:var(--text-primary);border-bottom:2px solid ${tabAccents.cloud};`    : inactiveStyle;
     // Mettre à jour la couleur de l'icône en header selon l'onglet actif
@@ -366,533 +282,23 @@ export class OutagesPanel extends Panel {
 
   private _updateHeaderCount(): void {
     if (!this.headerCountEl) return;
-    const powerProblems = this.lastPower.filter(p => p.offGridCount >= 1000).length;
-    // Count unique affected departments for telecom (not individual antenna sites)
-    const telecomDepts  = new Set(this.lastTelecom.filter(t => t.voiceStatus === 'HS' || t.dataStatus === 'HS').map(t => t.department)).size;
     const iodaCount     = this.lastNetwork?.iodaEvents.filter(e => e.isOngoing).length ?? 0;
     const ispProblems   = this.lastNetwork?.ispStatus.filter(i => i.status !== 'normal').length ?? 0;
     const dcProblems    = this.lastInfra?.datacenters.filter(d => d.status !== 'operational' && d.status !== 'unknown').length ?? 0;
-    const total = powerProblems + telecomDepts + iodaCount + ispProblems + dcProblems;
-
-    // ── Stale badge ──────────────────────────────────────────────────────────
-    const freshness = this._outagesMeta ? getFreshnessState(this._outagesMeta) : null;
-    const staleNote = (() => {
-      if (!freshness || freshness === 'fresh') return '';
-      if (freshness === 'degraded') return ' · Enedis indisponible';
-      if (freshness === 'stale') {
-        const ageMin = this._outagesMeta?.fetchedAt
-          ? Math.round((Date.now() - this._outagesMeta.fetchedAt) / 60_000)
-          : null;
-        return ageMin !== null ? ` · données périmées (${ageMin}min)` : ' · données périmées';
-      }
-      return ' · données vieillissantes';
-    })();
+    const total = iodaCount + ispProblems + dcProblems;
 
     const countText = total > 0
       ? `${total} incident${total > 1 ? 's' : ''} détecté${total > 1 ? 's' : ''}`
       : 'Réseau nominal';
 
-    this.headerCountEl.textContent = countText + staleNote;
-    this.headerCountEl.style.color = freshness === 'degraded' || freshness === 'stale'
-      ? '#F97316'
-      : total > 0 ? '#F97316' : 'var(--text-muted)';
+    this.headerCountEl.textContent = countText;
+    this.headerCountEl.style.color = total > 0 ? '#F97316' : 'var(--text-muted)';
   }
 
   private _renderContent(): void {
     if (!this.contentEl) return;
-    if      (this.activeTab === 'electric') this._renderElectric();
-    else if (this.activeTab === 'telecom')  this._renderTelecom();
-    else if (this.activeTab === 'internet') this._renderInternet();
-    else                                    this._renderCloud();
-  }
-
-  private _renderElectric(): void {
-    const powers = this.lastPower;
-    const zones  = this.lastZones;
-
-    // PDL hors réseau : mesurés par Enedis. Le signal Écowatt est NATIONAL (RTE) — plus de
-    // déclinaison "tension" par département.
-    const actualOutages = powers.filter(p => p.offGridCount > 0);
-    const nationalTension: EcowattSignal | null =
-      this.lastEcowattLevel === 'orange' || this.lastEcowattLevel === 'red' ? this.lastEcowattLevel : null;
-
-    if (powers.length === 0 && zones.length === 0 && !nationalTension) {
-      this.contentEl!.innerHTML = `
-        <div style="text-align:center;color:var(--text-muted);padding:24px 0;">
-          <div style="margin-bottom:12px;opacity:0.4;">${fmIcon('check', { size: 32 })}</div>
-          <div>Aucune panne électrique détectée.</div>
-          <div style="font-size:11px;margin-top:8px;opacity:0.6;">Indicateurs Historiques DataFair · Ecowatt RTE</div>
-        </div>`;
-      return;
-    }
-
-    const frag = document.createDocumentFragment();
-
-    // ── Résumé badges ──
-    const mkBadge = (count: number, label: string, color: string) => {
-      const d = document.createElement('div');
-      d.style.cssText = `flex:1;text-align:center;background:${color}18;border:1px solid ${color}40;border-radius:8px;padding:7px 2px;`;
-      d.innerHTML = `<div style="font-size:16px;font-weight:800;color:${color};">${count}</div><div style="font-size:9px;color:var(--text-muted);line-height:1.2;">${label}</div>`;
-      return d;
-    };
-    const summary = document.createElement('div');
-    summary.style.cssText = 'display:flex;gap:6px;margin-bottom:14px;';
-    summary.appendChild(mkBadge(actualOutages.length, 'PDL hors réseau', '#F59E0B'));
-    summary.appendChild(mkBadge(nationalTension ? 1 : 0, 'Tension réseau',  '#F97316'));
-    summary.appendChild(mkBadge(zones.length,          'Zones signalées', '#A855F7'));
-    frag.appendChild(summary);
-
-    // ── Accordion : PDL hors réseau (mesurés Enedis) ──
-    frag.appendChild(this._buildDeptsAccordion(
-      actualOutages,
-      `${fmIcon('zap', { size: 12 })} PDL hors réseau`,
-      '#F59E0B',
-      actualOutages.length === 0 ? 'Aucune panne mesurée' : undefined,
-    ));
-
-    // ── Accordion : Tension réseau (signal Écowatt NATIONAL, RTE) ──
-    if (nationalTension) {
-      frag.appendChild(this._buildTensionAccordion(nationalTension));
-    }
-
-    // ── Accordion : Zones signalées par les citoyens ──
-    if (zones.length > 0) {
-      frag.appendChild(this._buildZonesAccordion(zones));
-    }
-
-    // ── Incidents HTB / Production RTE (IIP) ──
-    if (this.lastRTEIIP && (this.lastRTEIIP.productionCount + this.lastRTEIIP.transmissionCount) > 0) {
-      frag.appendChild(this._buildIIPAccordion(this.lastRTEIIP));
-    }
-
-    // ── Sources ──
-    const footer = document.createElement('div');
-    footer.style.cssText = `margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06);font-size:10px;color:var(--text-muted);`;
-    footer.innerHTML = `${fmIcon('zap', { size: 10 })} Indicateurs Historiques DataFair · Ecowatt RTE · Signalements citoyens · IIP RTE (HTB)`;
-    frag.appendChild(footer);
-
-    this.contentEl!.innerHTML = '';
-    this.contentEl!.appendChild(frag);
-  }
-
-  private _buildDeptsAccordion(powers: PowerOutage[], title: string, accentColor: string, emptyMsg?: string): HTMLElement {
-    let expanded = false;
-
-    const hex = accentColor.replace('#', '');
-    const r = parseInt(hex.slice(0, 2), 16);
-    const g = parseInt(hex.slice(2, 4), 16);
-    const b = parseInt(hex.slice(4, 6), 16);
-
-    const wrapper = document.createElement('div');
-    wrapper.style.cssText = `
-      border:1px solid rgba(${r},${g},${b},0.25);border-radius:10px;
-      overflow:hidden;margin-bottom:12px;
-    `;
-
-    // Header accordéon
-    const header = document.createElement('div');
-    header.style.cssText = `
-      display:flex;align-items:center;justify-content:space-between;
-      padding:10px 12px;background:rgba(${r},${g},${b},0.08);
-      cursor:pointer;user-select:none;
-    `;
-    const chevron = document.createElement('span');
-    chevron.textContent = '▸';
-    chevron.style.cssText = 'font-size:10px;color:var(--text-muted);transition:transform 0.2s;flex-shrink:0;';
-    header.innerHTML = `
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span style="font-size:12px;font-weight:700;color:${accentColor};">${title}</span>
-        <span style="font-size:10px;font-weight:700;color:${accentColor};background:rgba(${r},${g},${b},0.15);
-          padding:1px 7px;border-radius:10px;">${powers.length}</span>
-      </div>
-    `;
-    header.appendChild(chevron);
-    wrapper.appendChild(header);
-
-    // Body accordéon (initially collapsed)
-    const body = document.createElement('div');
-    body.style.cssText = `max-height:0;overflow:hidden;transition:max-height 0.3s ease;`;
-    const inner = document.createElement('div');
-    inner.style.cssText = `padding:8px;display:flex;flex-direction:column;gap:6px;`;
-
-    // Note DataFair — uniquement dans la section PDL hors réseau
-    if (title.includes('PDL hors réseau')) {
-      const note = document.createElement('div');
-      note.style.cssText = 'font-size:10px;color:var(--text-muted);background:rgba(255,255,255,0.03);border:1px solid var(--border-color);border-left:2px solid #F59E0B;border-radius:4px;padding:5px 8px;margin-bottom:4px;line-height:1.4;';
-      note.textContent = "Attention : seul l'indicateur 'PDL hors réseau' repose sur des données historiques Enedis (DataFair) : il est affiché à titre d'information (HISTORIQUE). Les zones signalées sont bien en TEMPS RÉEL/prévisionnel. La tension réseau (signal national Écowatt, RTE) est un indicateur distinct, sans lien avec les PDL mesurés.";
-      inner.appendChild(note);
-    }
-
-    if (powers.length === 0 && emptyMsg) {
-      const empty = document.createElement('div');
-      empty.style.cssText = 'text-align:center;color:var(--text-muted);padding:12px 0;font-size:12px;';
-      empty.textContent = emptyMsg;
-      inner.appendChild(empty);
-    }
-
-    for (const p of powers) {
-      const count = p.offGridCount;
-      const col = count >= 10000 ? '#EF4444' : count >= 5000 ? '#F97316' : count >= 1000 ? '#F59E0B' : '#EAB308';
-      const sev = count >= 10000 ? 'Critique' : count >= 5000 ? 'Élevé' : count >= 1000 ? 'Modéré' : 'Faible';
-      const trendIcon = p.trend === 'worsening' ? fmIcon('trending-up', { size: 10 }) : p.trend === 'improving' ? fmIcon('trending-down', { size: 10 }) : '→';
-
-      const row = document.createElement('div');
-      row.style.cssText = `
-        background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);
-        border-left:3px solid ${col};border-radius:8px;padding:9px 11px;
-        cursor:pointer;transition:background 0.15s;
-      `;
-      row.innerHTML = `
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-          <span style="font-size:12px;font-weight:700;color:var(--text-primary);">
-            ${p.departmentName}
-            <span style="color:var(--text-muted);font-weight:400;font-size:10px;"> (${p.departmentCode})</span>
-          </span>
-          <span style="font-size:10px;font-weight:700;color:${col};background:${col}20;padding:2px 7px;border-radius:10px;">${sev}</span>
-        </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;">
-          <span style="font-size:10px;color:var(--text-muted);">${fmIcon('zap', { size: 10 })} ~${count.toLocaleString('fr-FR')} PDL hors réseau</span>
-          <span style="font-size:10px;color:var(--text-muted);">${trendIcon} ${p.trend === 'worsening' ? 'En hausse' : p.trend === 'improving' ? 'En baisse' : 'Stable'}</span>
-        </div>
-      `;
-      row.addEventListener('mouseenter', () => {
-        this.elevateHoveredCard(row);
-        row.style.background = `rgba(255,255,255,0.08)`;
-        this.onDeptHoverCb?.(p.departmentCode);
-      });
-      row.addEventListener('mouseleave', () => {
-        this.resetHoveredCard(row);
-        row.style.background = `rgba(255,255,255,0.04)`;
-        this.onDeptHoverCb?.(null);
-      });
-      inner.appendChild(row);
-    }
-    body.appendChild(inner);
-    wrapper.appendChild(body);
-
-    // Toggle
-    header.addEventListener('click', () => {
-      expanded = !expanded;
-      body.style.maxHeight = expanded ? `${inner.scrollHeight + 20}px` : '0';
-      chevron.style.transform = expanded ? 'rotate(90deg)' : '';
-    });
-
-    return wrapper;
-  }
-
-  /** Écowatt est un signal NATIONAL (RTE) : une seule ligne « France », jamais par département. */
-  private _buildTensionAccordion(level: EcowattSignal): HTMLElement {
-    let expanded = false;
-    const col = level === 'red' ? '#EF4444' : '#F97316';
-    const dotLevel = level === 'red' ? 'critical' : 'high';
-    const wrapper = document.createElement('div');
-    wrapper.style.cssText = `border:1px solid ${col}40;border-radius:10px;overflow:hidden;margin-bottom:12px;`;
-    const header = document.createElement('div');
-    header.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:${col}14;cursor:pointer;user-select:none;`;
-    const chevron = document.createElement('span');
-    chevron.textContent = '▸';
-    chevron.style.cssText = 'font-size:10px;color:var(--text-muted);transition:transform 0.2s;flex-shrink:0;';
-    header.innerHTML = `
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span style="font-size:12px;font-weight:700;color:${col};">${fmStatusDot(dotLevel)} Tension réseau (Écowatt)</span>
-      </div>
-    `;
-    header.appendChild(chevron);
-    wrapper.appendChild(header);
-
-    const body = document.createElement('div');
-    body.style.cssText = `max-height:0;overflow:hidden;transition:max-height 0.3s ease;`;
-    const inner = document.createElement('div');
-    inner.style.cssText = `padding:8px;display:flex;flex-direction:column;gap:6px;`;
-
-    const note = document.createElement('div');
-    note.style.cssText = `font-size:10px;color:var(--text-muted);background:${col}0d;border-left:2px solid ${col};padding:5px 8px;border-radius:4px;margin-bottom:4px;line-height:1.4;`;
-    note.textContent = 'Signal Écowatt RTE : national, indique une tension sur l\'équilibre offre/demande du réseau électrique. Orange : consommation élevée, appel à la sobriété. Rouge : risque de coupures tournantes.';
-    inner.appendChild(note);
-
-    const row = document.createElement('div');
-    row.style.cssText = `background:${col}0f;border:1px solid ${col}26;border-left:3px solid ${col};border-radius:8px;padding:9px 11px;`;
-    row.innerHTML = `
-      <div style="display:flex;align-items:center;justify-content:space-between;">
-        <span style="font-size:12px;font-weight:700;color:var(--text-primary);">France</span>
-        <span style="font-size:10px;font-weight:700;color:${col};">${ecowattLevelLabel(level)}</span>
-      </div>
-      <div style="font-size:10px;color:var(--text-muted);">Signal national RTE Écowatt</div>
-    `;
-    inner.appendChild(row);
-
-    body.appendChild(inner);
-    wrapper.appendChild(body);
-    header.addEventListener('click', () => {
-      expanded = !expanded;
-      body.style.maxHeight = expanded ? `${inner.scrollHeight + 20}px` : '0';
-      chevron.style.transform = expanded ? 'rotate(90deg)' : '';
-    });
-    return wrapper;
-  }
-
-  private _buildZonesAccordion(zones: OutageZone[]): HTMLElement {
-    let expanded = false;
-
-    const wrapper = document.createElement('div');
-    wrapper.style.cssText = `
-      border:1px solid rgba(168,85,247,0.25);border-radius:10px;
-      overflow:hidden;margin-bottom:12px;
-    `;
-
-    const header = document.createElement('div');
-    header.style.cssText = `
-      display:flex;align-items:center;justify-content:space-between;
-      padding:10px 12px;background:rgba(168,85,247,0.08);
-      cursor:pointer;user-select:none;
-    `;
-    const chevron = document.createElement('span');
-    chevron.textContent = '▸';
-    chevron.style.cssText = 'font-size:10px;color:var(--text-muted);transition:transform 0.2s;';
-    header.innerHTML = `
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span style="font-size:13px;">${fmIcon('map-pin', { size: 13 })}</span>
-        <span style="font-size:12px;font-weight:700;color:#A855F7;">Zones signalées</span>
-        <span style="font-size:10px;font-weight:700;color:#A855F7;background:rgba(168,85,247,0.15);
-          padding:1px 7px;border-radius:10px;">${zones.length}</span>
-      </div>
-    `;
-    header.appendChild(chevron);
-    wrapper.appendChild(header);
-
-    const body = document.createElement('div');
-    body.style.cssText = `max-height:0;overflow:hidden;transition:max-height 0.3s ease;`;
-    const inner = document.createElement('div');
-    inner.style.cssText = `padding:8px;display:flex;flex-direction:column;gap:6px;`;
-
-    const note = document.createElement('div');
-    note.style.cssText = 'font-size:10px;color:var(--text-muted);background:rgba(168,85,247,0.05);border-left:2px solid #A855F7;padding:5px 8px;border-radius:4px;margin-bottom:4px;line-height:1.4;';
-    note.textContent = 'Zones géographiques reconstituées à partir de signalements citoyens (coupure-elec.fr, InfoCoupure.fr). Données participatives : non validées par Enedis. La taille de la zone reflète la densité de signalements, pas le périmètre réel de la coupure.';
-    inner.appendChild(note);
-
-    // Palette violet uniquement pour les zones (cohérence avec la légende)
-    const sevColor: Record<string, string> = { critical: '#C026D3', high: '#9333EA', medium: '#A855F7', low: '#C084FC' };
-    const sevLabel: Record<string, string> = { critical: 'Critique', high: 'Élevé', medium: 'Modéré', low: 'Signalé' };
-
-    for (const zone of zones) {
-      const p = zone.properties;
-      const col = sevColor[p.severity] ?? '#A855F7';
-      const lbl = sevLabel[p.severity] ?? 'Signalé';
-      const [lng, lat] = p.center;
-      const ts = new Date(p.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-      const areaKm2 = Math.round(Math.PI * p.radiusKm * p.radiusKm * 10) / 10;
-
-      const row = document.createElement('div');
-      row.style.cssText = `
-        background:rgba(168,85,247,0.06);border:1px solid rgba(168,85,247,0.15);
-        border-left:3px solid ${col};border-radius:8px;padding:9px 11px;
-        cursor:pointer;transition:background 0.15s;
-      `;
-
-      const locationSpan = document.createElement('span');
-      locationSpan.style.cssText = 'font-size:11px;font-weight:700;color:var(--text-primary);';
-      locationSpan.textContent = '…';
-
-      const topRow = document.createElement('div');
-      topRow.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;';
-      topRow.appendChild(locationSpan);
-      const badge = document.createElement('span');
-      badge.style.cssText = `font-size:10px;font-weight:700;color:${col};background:${col}20;padding:2px 7px;border-radius:10px;`;
-      badge.textContent = lbl;
-      topRow.appendChild(badge);
-
-      const metaRow = document.createElement('div');
-      metaRow.style.cssText = 'display:flex;gap:10px;font-size:10px;color:var(--text-muted);';
-      metaRow.innerHTML = `
-        <span>${fmIcon('bar-chart-3', { size: 10 })} ${p.totalReports} signalement${p.totalReports > 1 ? 's' : ''}</span>
-        <span>r=${p.radiusKm.toFixed(1)} km · ${areaKm2} km²</span>
-        <span>${fmIcon('timer', { size: 10 })} ${ts}</span>
-      `;
-
-      row.appendChild(topRow);
-      row.appendChild(metaRow);
-
-      // Reverse geocoding async — remplace "…" par le nom de la ville.
-      // Passe par /api/opendata-proxy (cache CDN, conformité « tout passe
-      // par /api/* », §2.4 de l'audit) au lieu d'un appel direct au navigateur.
-      const reverseGeocodeUpstream = `https://api-adresse.data.gouv.fr/reverse/?lon=${lng}&lat=${lat}&limit=1`;
-      fetch(`/api/opendata-proxy?url=${encodeURIComponent(reverseGeocodeUpstream)}`)
-        .then(r => r.json())
-        .then((data: { features?: Array<{ properties?: { city?: string; postcode?: string } }> }) => {
-          const props = data.features?.[0]?.properties;
-          if (props?.city) {
-            locationSpan.textContent = `${props.city}${props.postcode ? ` (${props.postcode.slice(0, 2)})` : ''}`;
-          } else {
-            locationSpan.textContent = `${lat.toFixed(2)}°N, ${lng.toFixed(2)}°E`;
-          }
-        })
-        .catch(() => {
-          locationSpan.textContent = `${lat.toFixed(2)}°N, ${lng.toFixed(2)}°E`;
-        });
-
-      row.addEventListener('mouseenter', () => {
-        this.elevateHoveredCard(row);
-        row.style.background = `rgba(168,85,247,0.12)`;
-        this.onZoneHoverCb?.(p.clusterId);
-      });
-      row.addEventListener('mouseleave', () => {
-        this.resetHoveredCard(row);
-        row.style.background = `rgba(168,85,247,0.06)`;
-        this.onZoneHoverCb?.(null);
-      });
-      inner.appendChild(row);
-    }
-    body.appendChild(inner);
-    wrapper.appendChild(body);
-
-    header.addEventListener('click', () => {
-      expanded = !expanded;
-      body.style.maxHeight = expanded ? `${inner.scrollHeight + 20}px` : '0';
-      chevron.style.transform = expanded ? 'rotate(90deg)' : '';
-    });
-
-    return wrapper;
-  }
-
-  private _renderTelecom(): void {
-    const telecoms = this.lastTelecom;
-
-    if (telecoms.length === 0) {
-      this.contentEl!.innerHTML = `
-        <div style="text-align:center;color:var(--text-muted);padding:24px 0;">
-          <div style="margin-bottom:12px;opacity:0.4;">${fmIcon('satellite-dish', { size: 32 })}</div>
-          <div>Aucune panne télécom signalée.</div>
-          <div style="font-size:11px;margin-top:8px;opacity:0.6;">Source ARCEP : mise à jour quotidienne (J-1)</div>
-        </div>`;
-      return;
-    }
-
-    const hsItems  = telecoms.filter(t => t.voiceStatus === 'HS' || t.dataStatus === 'HS');
-    const degItems = telecoms.filter(t => (t.voiceStatus === 'Degraded' || t.dataStatus === 'Degraded') && t.voiceStatus !== 'HS' && t.dataStatus !== 'HS');
-
-    const frag = document.createDocumentFragment();
-
-    // ── Résumé ──
-    const summary = document.createElement('div');
-    summary.style.cssText = 'display:flex;gap:8px;margin-bottom:14px;';
-    const mkBadge = (count: number, label: string, color: string) => {
-      const d = document.createElement('div');
-      d.style.cssText = `flex:1;text-align:center;background:${color}18;border:1px solid ${color}40;border-radius:8px;padding:8px 4px;`;
-      d.innerHTML = `<div style="font-size:18px;font-weight:800;color:${color};">${count}</div><div style="font-size:10px;color:var(--text-muted);">${label}</div>`;
-      return d;
-    };
-    summary.appendChild(mkBadge(hsItems.length,  'Hors service', '#EF4444'));
-    summary.appendChild(mkBadge(degItems.length, 'Dégradées',    '#FF8C00'));
-    summary.appendChild(mkBadge(new Set(telecoms.map(t => t.operator)).size, 'Opérateurs', '#6B7280'));
-    frag.appendChild(summary);
-
-    // ── Accordéons par opérateur ──
-    const allProblem = [...hsItems, ...degItems];
-    const byOperator = new Map<string, typeof allProblem>();
-    for (const t of allProblem) {
-      if (!byOperator.has(t.operator)) byOperator.set(t.operator, []);
-      byOperator.get(t.operator)!.push(t);
-    }
-    // Trier par nombre de sites HS desc
-    const sorted = [...byOperator.entries()].sort((a, b) => {
-      const hsA = a[1].filter(t => t.voiceStatus === 'HS' || t.dataStatus === 'HS').length;
-      const hsB = b[1].filter(t => t.voiceStatus === 'HS' || t.dataStatus === 'HS').length;
-      return hsB - hsA;
-    });
-
-    for (const [operator, sites] of sorted) {
-      const opHs  = sites.filter(t => t.voiceStatus === 'HS' || t.dataStatus === 'HS').length;
-      const opDeg = sites.length - opHs;
-      const accentCol = opHs > 0 ? '#EF4444' : '#FF8C00';
-      let expanded = false;
-
-      const acc = document.createElement('div');
-      acc.style.cssText = `border:1px solid rgba(239,68,68,0.2);border-radius:10px;overflow:hidden;margin-bottom:8px;`;
-
-      const accHeader = document.createElement('div');
-      accHeader.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:rgba(239,68,68,0.07);cursor:pointer;user-select:none;`;
-      const chevron = document.createElement('span');
-      chevron.textContent = '▸';
-      chevron.style.cssText = 'font-size:10px;color:var(--text-muted);transition:transform 0.2s;flex-shrink:0;';
-
-      const hsBadge = opHs > 0  ? `<span style="font-size:10px;font-weight:700;color:#EF4444;background:rgba(239,68,68,0.15);padding:1px 6px;border-radius:8px;">${opHs} HS</span>` : '';
-      const dgBadge = opDeg > 0 ? `<span style="font-size:10px;font-weight:700;color:#FF8C00;background:rgba(255,140,0,0.15);padding:1px 6px;border-radius:8px;">${opDeg} dég.</span>` : '';
-      accHeader.innerHTML = `
-        <div style="display:flex;align-items:center;gap:7px;">
-          <span style="font-size:12px;font-weight:700;color:${accentCol};">${fmIcon('satellite-dish', { size: 12 })} ${operator}</span>
-          ${hsBadge}${dgBadge}
-        </div>
-      `;
-      accHeader.appendChild(chevron);
-      acc.appendChild(accHeader);
-
-      const accBody = document.createElement('div');
-      accBody.style.cssText = 'max-height:0;overflow:hidden;transition:max-height 0.3s ease;';
-      const accInner = document.createElement('div');
-      accInner.style.cssText = 'padding:8px;display:flex;flex-direction:column;gap:5px;';
-
-      for (const t of sites) {
-        const isHS = t.voiceStatus === 'HS' || t.dataStatus === 'HS';
-        const col  = isHS ? '#EF4444' : '#FF8C00';
-        const voiceIcon = t.voiceStatus === 'Degraded' ? fmIcon('signal', { size: 10 }) : fmIcon('phone', { size: 10 });
-        const dataLevel = t.dataStatus === 'HS' ? 'critical' : t.dataStatus === 'Degraded' ? 'medium' : 'stable';
-        const dataIcon  = fmStatusDot(dataLevel);
-        const card = document.createElement('div');
-        card.style.cssText = `background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-left:3px solid ${col};border-radius:8px;padding:8px 10px;`;
-        card.innerHTML = `
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px;">
-            <span style="font-size:12px;font-weight:600;color:var(--text-primary);">${t.city} <span style="color:var(--text-muted);font-weight:400;font-size:10px;">(${t.department})</span></span>
-            <span style="font-size:10px;font-weight:700;color:${col};">${isHS ? 'HS' : 'Dég.'}</span>
-          </div>
-          <div style="font-size:10px;color:var(--text-muted);display:flex;gap:10px;">
-            <span>${voiceIcon} ${t.voiceStatus}</span>
-            <span>${dataIcon} ${t.dataStatus}</span>
-          </div>
-          ${t.reason ? `<div style="font-size:10px;color:#FF8C00;margin-top:2px;">${t.reason}</div>` : ''}
-        `;
-        accInner.appendChild(card);
-      }
-      accBody.appendChild(accInner);
-      acc.appendChild(accBody);
-
-      accHeader.addEventListener('click', () => {
-        expanded = !expanded;
-        accBody.style.maxHeight = expanded ? `${accInner.scrollHeight + 20}px` : '0';
-        chevron.style.transform = expanded ? 'rotate(90deg)' : '';
-      });
-
-      frag.appendChild(acc);
-    }
-
-    // ── Sources ──
-    const footer = document.createElement('div');
-    footer.style.cssText = 'margin-top:8px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.06);font-size:10px;color:var(--text-muted);';
-
-    // Badge J / J-1 selon la date de fetch ARCEP
-    const now = new Date();
-    let arcepDateLabel = 'J-1';
-    if (this.arcepFetchedDate) {
-      const d = this.arcepFetchedDate;
-      const isToday = d.getFullYear() === now.getFullYear()
-        && d.getMonth() === now.getMonth()
-        && d.getDate() === now.getDate();
-      arcepDateLabel = isToday ? 'J' : 'J-1';
-    }
-    const arcepDateStr = this.arcepFetchedDate
-      ? ` (${this.arcepFetchedDate.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })})`
-      : '';
-    footer.innerHTML = `
-      ${fmStatusDot('stable')} ARCEP : Observatoire qualité mobile
-      <span style="display:inline-block;margin-left:4px;padding:1px 6px;background:rgba(59,130,246,0.15);
-        border:1px solid rgba(59,130,246,0.3);border-radius:8px;font-size:9px;font-weight:700;
-        color:#60A5FA;">${arcepDateLabel}${arcepDateStr}</span>
-      <span style="display:block;margin-top:4px;opacity:0.6;font-style:italic;"
-        >Données jour J ou J-1 : pas de mise à jour infra-journalière</span>
-    `;
-    frag.appendChild(footer);
-
-    this.contentEl!.innerHTML = '';
-    this.contentEl!.appendChild(frag);
+    if (this.activeTab === 'internet') this._renderInternet();
+    else                               this._renderCloud();
   }
 
   private _renderInternet(): void {
@@ -1266,104 +672,5 @@ export class OutagesPanel extends Panel {
 
     this.contentEl!.innerHTML = '';
     this.contentEl!.appendChild(frag);
-  }
-
-  private _buildIIPAccordion(iip: RTEIIPState): HTMLElement {
-    let expanded = false;
-    const total = iip.productionCount + iip.transmissionCount;
-    const hasCapacity = iip.totalCapacityMW > 0;
-
-    const wrapper = document.createElement('div');
-    wrapper.style.cssText = `border:1px solid rgba(99,102,241,0.25);border-radius:10px;overflow:hidden;margin-bottom:12px;`;
-
-    const header = document.createElement('div');
-    header.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:rgba(99,102,241,0.08);cursor:pointer;user-select:none;`;
-    const chevron = document.createElement('span');
-    chevron.textContent = '▸';
-    chevron.style.cssText = 'font-size:10px;color:var(--text-muted);transition:transform 0.2s;flex-shrink:0;';
-
-    const capacityStr = hasCapacity ? ` · ${iip.totalCapacityMW.toLocaleString('fr-FR')} MW` : '';
-    header.innerHTML = `
-      <div style="display:flex;align-items:center;gap:8px;">
-        <span style="font-size:12px;font-weight:700;color:#818CF8;">${fmIcon('zap', { size: 12 })} Incidents HTB RTE (IIP)</span>
-        <span style="font-size:10px;font-weight:700;color:#818CF8;background:rgba(99,102,241,0.15);padding:1px 7px;border-radius:10px;">${total}${capacityStr}</span>
-        <span style="display:inline-flex;align-items:center;justify-content:center;padding:2px 8px;border-radius:999px;background:#10B98122;border:1px solid #10B98133;color:#10B981;font-size:9px;font-weight:700;letter-spacing:0.06em;">TEMPS RÉEL</span>
-      </div>
-    `;
-    header.appendChild(chevron);
-    wrapper.appendChild(header);
-
-    const body = document.createElement('div');
-    body.style.cssText = `max-height:0;overflow:hidden;transition:max-height 0.3s ease;`;
-    const inner = document.createElement('div');
-    inner.style.cssText = `padding:8px;display:flex;flex-direction:column;gap:6px;`;
-
-    const note = document.createElement('div');
-    note.style.cssText = 'font-size:10px;color:var(--text-muted);background:rgba(99,102,241,0.05);border-left:2px solid #818CF8;padding:5px 8px;border-radius:4px;margin-bottom:4px;line-height:1.4;';
-    note.textContent = 'Indisponibilités REMIT déclarées sur la plateforme IIP de RTE : publiées au fil des déclarations. Peuvent être des maintenances programmées ou des incidents en cours, pas nécessairement des coupures pour les foyers.';
-    inner.appendChild(note);
-
-    const fmtDate = (d: Date | null) => d
-      ? d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })
-      : '?';
-
-    const buildCard = (inc: import('../services/rte-iip.ts').RTEIIPIncident): HTMLElement => {
-      const isProduction = inc.type === 'production';
-      const col = isProduction ? '#F59E0B' : '#818CF8';
-      const typeLabel = isProduction ? `${fmIcon('factory', { size: 10 })} Production` : `${fmIcon('plug-zap', { size: 10 })} Transport HTB`;
-      const statusBg = inc.status === 'active' ? '#EF444420' : '#6B728020';
-      const statusCol = inc.status === 'active' ? '#EF4444' : '#9CA3AF';
-      const statusLabel = inc.status === 'active' ? 'Actif' : inc.status === 'inactive' ? 'Terminé' : 'Retiré';
-      const mwStr = inc.capacityMW ? `${inc.capacityMW.toLocaleString('fr-FR')} MW` : '';
-      const period = `${fmtDate(inc.startDate)} → ${fmtDate(inc.endDate)}`;
-      const causeStr = inc.cause ? ` · ${inc.cause}` : '';
-      const periodMw = [period, mwStr].filter(Boolean).join(' · ');
-
-      const card = document.createElement('div');
-      card.style.cssText = `background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.07);border-left:3px solid ${col};border-radius:8px;padding:9px 11px;cursor:default;`;
-      card.innerHTML = `
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:4px;">
-          <span style="font-size:11px;font-weight:600;color:var(--text-primary);flex:1;min-width:0;line-height:1.3;">${inc.assetLabel}</span>
-          <span style="font-size:9px;font-weight:700;background:${statusBg};color:${statusCol};padding:2px 6px;border-radius:8px;flex-shrink:0;">${statusLabel}</span>
-        </div>
-        <div style="font-size:10px;color:var(--text-muted);margin-bottom:3px;">${periodMw}</div>
-        <div style="font-size:10px;color:var(--text-muted);">${typeLabel}${causeStr}</div>
-      `;
-      return card;
-    };
-
-    const PAGE = 10;
-    iip.incidents.slice(0, PAGE).forEach(inc => inner.appendChild(buildCard(inc)));
-
-    if (iip.incidents.length > PAGE) {
-      const remaining = iip.incidents.slice(PAGE);
-      const loadBtn = document.createElement('button');
-      loadBtn.style.cssText = `
-        width:100%;margin-top:4px;padding:7px;
-        background:rgba(129,140,248,0.08);border:1px solid rgba(129,140,248,0.2);
-        border-radius:8px;color:#818CF8;font-size:11px;font-weight:600;
-        cursor:pointer;transition:background 0.15s;
-      `;
-      loadBtn.textContent = `Charger ${remaining.length} incident${remaining.length > 1 ? 's' : ''} supplémentaire${remaining.length > 1 ? 's' : ''}`;
-      loadBtn.addEventListener('mouseenter', () => { loadBtn.style.background = 'rgba(129,140,248,0.15)'; });
-      loadBtn.addEventListener('mouseleave', () => { loadBtn.style.background = 'rgba(129,140,248,0.08)'; });
-      loadBtn.addEventListener('click', () => {
-        remaining.forEach(inc => inner.insertBefore(buildCard(inc), loadBtn));
-        loadBtn.remove();
-        body.style.maxHeight = `${inner.scrollHeight + 20}px`;
-      });
-      inner.appendChild(loadBtn);
-    }
-
-    body.appendChild(inner);
-    wrapper.appendChild(body);
-
-    header.addEventListener('click', () => {
-      expanded = !expanded;
-      body.style.maxHeight = expanded ? `${inner.scrollHeight + 20}px` : '0';
-      chevron.style.transform = expanded ? 'rotate(90deg)' : '';
-    });
-
-    return wrapper;
   }
 }

@@ -621,6 +621,11 @@ export class MapContainer {
     this.deckMap?.setTelecomMaintenanceVisible(on);
   }
 
+  /** Recentre la carte sur une unité de production par son nom (emplacement connu seulement). */
+  flyToAsset(label: string): void {
+    this.deckMap?.flyToAsset(label);
+  }
+
   setOsmWorksVisible(on: boolean): void {
     this.deckMap?.setOsmWorksVisible(on);
   }

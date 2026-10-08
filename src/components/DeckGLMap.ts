@@ -78,7 +78,7 @@ import { loadDepartementsGeojson } from '../services/departements-geojson.ts';
 
 
 // ─── Extracted deckgl modules (constants & pure helpers) ───
-import { resolveIIPCoords } from './deckgl/iip-geocoding.ts';
+import { resolveAssetCoords, resolveIIPCoords } from './deckgl/iip-geocoding.ts';
 import { LYR_SATELLITE, getFrenchStyle } from './deckgl/base-style.ts';
 import { ELECTRIC_FLOW_STYLE, getElectricFlowConfig, GAS_FLOW_STYLE, OIL_FLOW_STYLE } from './deckgl/flow-styles.ts';
 export { ELECTRIC_FLOW_STYLE, setElectricFlowConfig, getElectricFlowConfig, GAS_FLOW_STYLE, OIL_FLOW_STYLE } from './deckgl/flow-styles.ts';
@@ -9595,6 +9595,12 @@ export class DeckGLMap {
   setTelecomMaintenanceVisible(on: boolean): void {
     this.telecomMaintenanceOn = on;
     this.setVis(OUT_MAINTENANCE_LAYER, on && (this.currentLayers?.outagesTelecom ?? false) ? 'visible' : 'none');
+  }
+
+  /** Unité de production cliquée dans le panneau Électricité : la carte se centre sur son emplacement connu, sinon rien (jamais une position inventée). */
+  flyToAsset(label: string): void {
+    const coords = resolveAssetCoords(label);
+    if (coords) this.flyTo(coords[0], coords[1], 9);
   }
 
   private hideOutagesHover(): void {

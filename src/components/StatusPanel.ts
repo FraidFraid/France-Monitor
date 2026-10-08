@@ -6,6 +6,7 @@
 
 import type { DataSourceStatus } from '../types/index.ts';
 import { sovereigntySourceDetail } from '../config/sovereignty-sources.ts';
+import { outagesSourceDetail } from '../config/outages-sources.ts';
 import { t } from '../services/i18n.ts';
 import { fmIcon, fmStatusDot } from './shared/icons.ts';
 import type { IconName } from './shared/icons.ts';
@@ -189,6 +190,9 @@ export class StatusPanel {
             { name: 'Trafic aérien', lastUpdate: null, status: 'loading', detail: 'OpenSky (ADS-B), collecte du serveur' },
             { name: 'Santé publique France', lastUpdate: null, status: 'loading' },
             { name: 'SNCF', lastUpdate: null, status: 'loading' },
+            // Pannes réseau (spec 2026-10-08 panneaux pannes § 4) : Télécoms lu au démarrage (score) ; les trois lignes Électricité s'ajoutent à la
+            // première lecture de la couche. Détail et lien lus dans OUTAGES_SOURCE_DETAILS au rendu.
+            { name: 'ARCEP sites mobiles', lastUpdate: null, status: 'loading' },
         ]);
     }
 
@@ -265,6 +269,9 @@ export class StatusPanel {
             { name: 'Trafic aérien', lastUpdate: null, status: 'loading', detail: 'OpenSky (ADS-B), collecte du serveur' },
             { name: 'Santé publique France', lastUpdate: null, status: 'loading' },
             { name: 'SNCF', lastUpdate: null, status: 'loading' },
+            // Pannes réseau (spec 2026-10-08 panneaux pannes § 4) : Télécoms lu au démarrage (score) ; les trois lignes Électricité s'ajoutent à la
+            // première lecture de la couche. Détail et lien lus dans OUTAGES_SOURCE_DETAILS au rendu.
+            { name: 'ARCEP sites mobiles', lastUpdate: null, status: 'loading' },
         ]);
     }
 
@@ -410,8 +417,8 @@ export class StatusPanel {
             nameEl.textContent = translateSourceName(src.name);
             textWrap.appendChild(nameEl);
 
-            // ── Détail statique (provenance, licence…) ; lignes Souveraineté : la source nommée avec son lien (attributions de la spec) ──
-            const sovereign = sovereigntySourceDetail(src.name);
+            // ── Détail statique (provenance, licence…) ; lignes Souveraineté et Pannes réseau : la source nommée avec son lien (attributions de la spec) ──
+            const sovereign = sovereigntySourceDetail(src.name) ?? outagesSourceDetail(src.name);
             const detail = src.detail !== undefined ? translateDetail(src.detail) : sovereign?.detail ?? null;
             if (detail) {
                 const link = sovereign?.link ?? null;

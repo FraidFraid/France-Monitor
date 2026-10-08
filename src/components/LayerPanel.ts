@@ -53,7 +53,7 @@ const LAYER_DEFS: LayerDef[] = [
   { key: 'cyber', label: 'VIGILANCE CYBER', icon: fmIcon('lock-keyhole'), sublayerOf: 'sovereignty' },
   { key: 'outages', label: 'PANNES RÉSEAU', icon: fmIcon('satellite-dish') },
   { key: 'outagesElec',     label: 'ÉLECTRICITÉ',   icon: fmIcon('zap'),   sublayerOf: 'outages' },
-  { key: 'outagesTelecom',  label: 'TÉLÉCOM 4G·5G', icon: fmIcon('satellite-dish'), sublayerOf: 'outages' },
+  { key: 'outagesTelecom',  label: 'TÉLÉCOMS MOBILES', icon: fmIcon('satellite-dish'), sublayerOf: 'outages' },
   { key: 'outagesInternet', label: 'INTERNET / BGP', icon: fmIcon('globe'), sublayerOf: 'outages' },
   { key: 'outagesCloud',    label: 'CLOUD / IXP',   icon: fmIcon('cloud'),   sublayerOf: 'outages' },
 ];
@@ -662,8 +662,9 @@ export class LayerPanel {
         this.helpItem(fmIcon('lock-keyhole'), 'Vigilance cyber', 'Alertes CERT-FR en cours (statut officiel), avis, catalogue KEV de la CISA, revendications de rançongiciels (Ransomware.live, comptes agrégés), fuites récentes (Have I Been Pwned, compte et lien), alertes Cybermalveillance.'),
       ]),
       this.helpSection(fmIcon('satellite-dish'), 'Pannes réseau', [
-        this.helpItem(fmIcon('zap'), 'Électricité', 'Pannes Enedis (DataFair + zones citoyennes).', 'live'),
-        this.helpItem(fmIcon('satellite-dish'), 'Télécom 4G·5G', 'Antennes dégradées ou hors service (données ARCEP).', 'live'),
+        // Sans badge (spec 2026-10-08 panneaux pannes, R24) : chaque panneau date sa donnée.
+        this.helpItem(fmIcon('zap'), 'Électricité', 'Production et transport : mégawatts perdus en arrêts imprévus des unités de production (EDF OpenData), maintenances annoncées, messages de transport de RTE (IIP), îles (EDF SEI) et tension du réseau (Écowatt RTE) ; les coupures chez les particuliers n’ont pas de source ouverte.'),
+        this.helpItem(fmIcon('satellite-dish'), 'Télécoms mobiles', 'Sites mobiles indisponibles déclarés par les opérateurs (fichier ARCEP quotidien) : pannes imprévues récentes et plus anciennes, par opérateur et par département, maintenances en option sur la carte.'),
         this.helpItem(fmIcon('globe'), 'Internet / BGP', 'Anomalies IODA et état des opérateurs (BGPView).', 'live'),
         this.helpItem(fmIcon('cloud'), 'Cloud / IXP', 'Pannes datacenters et points d\'échange Internet (IXP) en France.', 'live'),
       ]),
