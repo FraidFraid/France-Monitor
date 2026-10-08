@@ -1,10 +1,12 @@
 // src/components/EarthquakesPanel.test.ts
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import { quakesStateFixture } from './layer-panel/environment.fixture.ts';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ENV_FIXTURE_NOW, quakesStateFixture } from './layer-panel/environment.fixture.ts';
 import { EarthquakesPanel } from './EarthquakesPanel.ts';
 
-afterEach(() => { document.body.innerHTML = ''; localStorage.clear(); });
+// Horloge figée à la date du jeu d'essai : la vue ne liste que les séismes des 7 derniers jours.
+beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(ENV_FIXTURE_NOW); });
+afterEach(() => { vi.useRealTimers(); document.body.innerHTML = ''; localStorage.clear(); });
 
 describe('EarthquakesPanel', () => {
   it('classe quakes-panel-modal ; clic ou Entrée sur un séisme : recentrage sur son épicentre ; sans gestionnaire : lignes non cliquables', () => {
