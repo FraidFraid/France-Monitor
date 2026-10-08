@@ -8,7 +8,7 @@
 import type {
   NewsItem,
   MeteoAlert,
-  FloodSegment,
+  FloodSectionRef,
   EcowattResponse,
   TimeRange,
   ThreatLevel,
@@ -17,7 +17,6 @@ import type {
   ISNRScore,
   TelecomOutage,
   PowerOutage,
-  ThreatEvent,
 } from '../types/index.ts';
 import { ecowattToday } from './ecowatt-official.ts';
 
@@ -43,7 +42,6 @@ const METEO_LEVEL_WEIGHTS: Record<string, number> = {
   orange: 60,
   yellow: 30,
   green: 0,
-  violet: 100,
 };
 
 const FLOOD_LEVEL_WEIGHTS: Record<string, number> = {
@@ -68,7 +66,9 @@ const TIME_RANGE_MS: Record<TimeRange, number> = {
   'all': 365 * 24 * 60 * 60 * 1000, // 1 an
 };
 
-// ═══ Départements (code → nom) ═══
+// ═══ Départements (code → nom officiel accentué, Corse comprise) ═══
+// Noms affichés (score, pannes, situations) ; les recherches par nom passent par normalizeDepartmentName (accents, tirets et
+// apostrophes neutralisés).
 
 export const DEPARTMENTS: Record<string, { name: string; regionCode: string }> = {
   '01': { name: 'Ain', regionCode: '84' },
@@ -77,37 +77,39 @@ export const DEPARTMENTS: Record<string, { name: string; regionCode: string }> =
   '04': { name: 'Alpes-de-Haute-Provence', regionCode: '93' },
   '05': { name: 'Hautes-Alpes', regionCode: '93' },
   '06': { name: 'Alpes-Maritimes', regionCode: '93' },
-  '07': { name: 'Ardeche', regionCode: '84' },
+  '07': { name: 'Ardèche', regionCode: '84' },
   '08': { name: 'Ardennes', regionCode: '44' },
-  '09': { name: 'Ariege', regionCode: '76' },
+  '09': { name: 'Ariège', regionCode: '76' },
   '10': { name: 'Aube', regionCode: '44' },
   '11': { name: 'Aude', regionCode: '76' },
   '12': { name: 'Aveyron', regionCode: '76' },
-  '13': { name: 'Bouches-du-Rhone', regionCode: '93' },
+  '13': { name: 'Bouches-du-Rhône', regionCode: '93' },
   '14': { name: 'Calvados', regionCode: '28' },
   '15': { name: 'Cantal', regionCode: '84' },
   '16': { name: 'Charente', regionCode: '75' },
   '17': { name: 'Charente-Maritime', regionCode: '75' },
   '18': { name: 'Cher', regionCode: '24' },
-  '19': { name: 'Correze', regionCode: '75' },
-  '21': { name: 'Cote-d\'Or', regionCode: '27' },
-  '22': { name: 'Cotes-d\'Armor', regionCode: '53' },
+  '19': { name: 'Corrèze', regionCode: '75' },
+  '2A': { name: 'Corse-du-Sud', regionCode: '94' },
+  '2B': { name: 'Haute-Corse', regionCode: '94' },
+  '21': { name: 'Côte-d\'Or', regionCode: '27' },
+  '22': { name: 'Côtes-d\'Armor', regionCode: '53' },
   '23': { name: 'Creuse', regionCode: '75' },
   '24': { name: 'Dordogne', regionCode: '75' },
   '25': { name: 'Doubs', regionCode: '27' },
-  '26': { name: 'Drome', regionCode: '84' },
+  '26': { name: 'Drôme', regionCode: '84' },
   '27': { name: 'Eure', regionCode: '28' },
   '28': { name: 'Eure-et-Loir', regionCode: '24' },
-  '29': { name: 'Finistere', regionCode: '53' },
+  '29': { name: 'Finistère', regionCode: '53' },
   '30': { name: 'Gard', regionCode: '76' },
   '31': { name: 'Haute-Garonne', regionCode: '76' },
   '32': { name: 'Gers', regionCode: '76' },
   '33': { name: 'Gironde', regionCode: '75' },
-  '34': { name: 'Herault', regionCode: '76' },
+  '34': { name: 'Hérault', regionCode: '76' },
   '35': { name: 'Ille-et-Vilaine', regionCode: '53' },
   '36': { name: 'Indre', regionCode: '24' },
   '37': { name: 'Indre-et-Loire', regionCode: '24' },
-  '38': { name: 'Isere', regionCode: '84' },
+  '38': { name: 'Isère', regionCode: '84' },
   '39': { name: 'Jura', regionCode: '27' },
   '40': { name: 'Landes', regionCode: '75' },
   '41': { name: 'Loir-et-Cher', regionCode: '24' },
@@ -117,7 +119,7 @@ export const DEPARTMENTS: Record<string, { name: string; regionCode: string }> =
   '45': { name: 'Loiret', regionCode: '24' },
   '46': { name: 'Lot', regionCode: '76' },
   '47': { name: 'Lot-et-Garonne', regionCode: '75' },
-  '48': { name: 'Lozere', regionCode: '76' },
+  '48': { name: 'Lozère', regionCode: '76' },
   '49': { name: 'Maine-et-Loire', regionCode: '52' },
   '50': { name: 'Manche', regionCode: '28' },
   '51': { name: 'Marne', regionCode: '44' },
@@ -127,20 +129,20 @@ export const DEPARTMENTS: Record<string, { name: string; regionCode: string }> =
   '55': { name: 'Meuse', regionCode: '44' },
   '56': { name: 'Morbihan', regionCode: '53' },
   '57': { name: 'Moselle', regionCode: '44' },
-  '58': { name: 'Nievre', regionCode: '27' },
+  '58': { name: 'Nièvre', regionCode: '27' },
   '59': { name: 'Nord', regionCode: '32' },
   '60': { name: 'Oise', regionCode: '32' },
   '61': { name: 'Orne', regionCode: '28' },
   '62': { name: 'Pas-de-Calais', regionCode: '32' },
-  '63': { name: 'Puy-de-Dome', regionCode: '84' },
-  '64': { name: 'Pyrenees-Atlantiques', regionCode: '75' },
-  '65': { name: 'Hautes-Pyrenees', regionCode: '76' },
-  '66': { name: 'Pyrenees-Orientales', regionCode: '76' },
+  '63': { name: 'Puy-de-Dôme', regionCode: '84' },
+  '64': { name: 'Pyrénées-Atlantiques', regionCode: '75' },
+  '65': { name: 'Hautes-Pyrénées', regionCode: '76' },
+  '66': { name: 'Pyrénées-Orientales', regionCode: '76' },
   '67': { name: 'Bas-Rhin', regionCode: '44' },
   '68': { name: 'Haut-Rhin', regionCode: '44' },
-  '69': { name: 'Rhone', regionCode: '84' },
-  '70': { name: 'Haute-Saone', regionCode: '27' },
-  '71': { name: 'Saone-et-Loire', regionCode: '27' },
+  '69': { name: 'Rhône', regionCode: '84' },
+  '70': { name: 'Haute-Saône', regionCode: '27' },
+  '71': { name: 'Saône-et-Loire', regionCode: '27' },
   '72': { name: 'Sarthe', regionCode: '52' },
   '73': { name: 'Savoie', regionCode: '84' },
   '74': { name: 'Haute-Savoie', regionCode: '84' },
@@ -148,13 +150,13 @@ export const DEPARTMENTS: Record<string, { name: string; regionCode: string }> =
   '76': { name: 'Seine-Maritime', regionCode: '28' },
   '77': { name: 'Seine-et-Marne', regionCode: '11' },
   '78': { name: 'Yvelines', regionCode: '11' },
-  '79': { name: 'Deux-Sevres', regionCode: '75' },
+  '79': { name: 'Deux-Sèvres', regionCode: '75' },
   '80': { name: 'Somme', regionCode: '32' },
   '81': { name: 'Tarn', regionCode: '76' },
   '82': { name: 'Tarn-et-Garonne', regionCode: '76' },
   '83': { name: 'Var', regionCode: '93' },
   '84': { name: 'Vaucluse', regionCode: '93' },
-  '85': { name: 'Vendee', regionCode: '52' },
+  '85': { name: 'Vendée', regionCode: '52' },
   '86': { name: 'Vienne', regionCode: '75' },
   '87': { name: 'Haute-Vienne', regionCode: '75' },
   '88': { name: 'Vosges', regionCode: '44' },
@@ -168,7 +170,7 @@ export const DEPARTMENTS: Record<string, { name: string; regionCode: string }> =
   '971': { name: 'Guadeloupe', regionCode: '01' },
   '972': { name: 'Martinique', regionCode: '02' },
   '973': { name: 'Guyane', regionCode: '03' },
-  '974': { name: 'La Reunion', regionCode: '04' },
+  '974': { name: 'La Réunion', regionCode: '04' },
   '976': { name: 'Mayotte', regionCode: '06' },
 };
 
@@ -231,23 +233,6 @@ export function scoreToLevel(score: number): 'critical' | 'high' | 'medium' | 'l
   if (score >= 40) return 'medium';
   if (score >= 20) return 'low';
   return 'stable';
-}
-
-function describeSecurityDriver(family: 'leaks' | 'ransomware' | 'vulnerabilities' | 'exposure' | 'correlation' | null): string | undefined {
-  switch (family) {
-    case 'leaks':
-      return 'Fuites récentes plafonnées, pondérées par fraîcheur et secteur.';
-    case 'ransomware':
-      return 'Victimes ransomware 30j bornées pour éviter une saturation instantanée.';
-    case 'vulnerabilities':
-      return 'CERT-FR / NVD critiques pondérés par sévérité et ancienneté.';
-    case 'exposure':
-      return 'Exposition passive Shodan/Censys visible mais non saturante seule.';
-    case 'correlation':
-      return 'Bonus borné pour zones et secteurs où plusieurs signaux convergent.';
-    default:
-      return undefined;
-  }
 }
 
 function computeTrend(code: string, currentScore: number): 'up' | 'down' | 'stable' {
@@ -325,148 +310,6 @@ function computeDimensionScore(
   return Math.min(maxScore, (total / 1200) * maxScore);
 }
 
-function threatSeverityWeight(severity: ThreatEvent['severity']): number {
-  if (severity === 'critical') return 1.35;
-  if (severity === 'high') return 1;
-  if (severity === 'medium') return 0.72;
-  return 0.45;
-}
-
-function normalizeThreatText(value: string | undefined): string {
-  return (value || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .trim();
-}
-
-function isCriticalThreatSector(sector: string | undefined): boolean {
-  const normalized = normalizeThreatText(sector);
-  return ['sante', 'health', 'energie', 'energy', 'transport', 'collectivite', 'mairie', 'prefecture', 'gouvernement']
-    .some((keyword) => normalized.includes(keyword));
-}
-
-function computeThreatFreshnessWeight(eventDate: string): number {
-  const ts = new Date(eventDate).getTime();
-  if (!Number.isFinite(ts)) return 0;
-
-  const daysOld = Math.max(0, (Date.now() - ts) / (24 * 60 * 60 * 1000));
-  if (daysOld <= 2) return 1;
-  if (daysOld <= 7) return 0.88;
-  if (daysOld <= 21) return 0.68;
-  if (daysOld <= 45) return 0.42;
-  if (daysOld <= 90) return 0.22;
-  return 0.1;
-}
-
-function threatCoverageFactor(event: ThreatEvent, deptCode: string): number {
-  const [lon, lat] = event.location.coordinates;
-  const exactDept = findDepartmentByCoords(lon, lat);
-  if (exactDept === deptCode) return 1;
-  if (exactDept !== null) return 0;
-
-  switch (event.location.precision) {
-    case 'region':
-      return 0.18;
-    case 'hq':
-      return 0.16;
-    case 'country':
-      return 0.12;
-    case 'unknown':
-      return 0.1;
-    default:
-      return 0;
-  }
-}
-
-function computeSecurityFromThreatEvents(
-  threatEvents: ThreatEvent[],
-  deptCode: string,
-  cutoff: number,
-): { score: number; dominantFamily: 'leaks' | 'ransomware' | 'vulnerabilities' | 'exposure' | 'correlation' | null } {
-  const familyCaps = {
-    leaks: 18,
-    ransomware: 22,
-    vulnerabilities: 18,
-    exposure: 16,
-    correlation: 11,
-  } as const;
-
-  const familyScores = {
-    leaks: 0,
-    ransomware: 0,
-    vulnerabilities: 0,
-    exposure: 0,
-  };
-
-  const familyPresence = new Set<keyof typeof familyScores>();
-  let criticalSectorHits = 0;
-
-  for (const event of threatEvents) {
-    const eventTime = new Date(event.date).getTime();
-    if (!Number.isFinite(eventTime) || eventTime < cutoff) continue;
-
-    const coverage = threatCoverageFactor(event, deptCode);
-    if (coverage <= 0) continue;
-
-    const freshness = computeThreatFreshnessWeight(event.date);
-    if (freshness <= 0) continue;
-
-    const baseWeight = event.type === 'ransomware' ? 11
-      : event.type === 'leak' ? 8
-      : event.type === 'vulnerability' ? 9
-      : 7;
-    const sectorBoost = isCriticalThreatSector(event.sector) ? 1.15 : 1;
-    const contribution = baseWeight * threatSeverityWeight(event.severity) * freshness * coverage * sectorBoost;
-
-    if (event.type === 'ransomware') {
-      familyScores.ransomware += contribution;
-      familyPresence.add('ransomware');
-    } else if (event.type === 'leak') {
-      familyScores.leaks += contribution;
-      familyPresence.add('leaks');
-    } else if (event.type === 'vulnerability') {
-      familyScores.vulnerabilities += contribution;
-      familyPresence.add('vulnerabilities');
-    } else {
-      familyScores.exposure += contribution;
-      familyPresence.add('exposure');
-    }
-
-    if (isCriticalThreatSector(event.sector)) criticalSectorHits += coverage >= 0.5 ? 1 : 0.5;
-  }
-
-  const capped = {
-    leaks: Math.min(familyCaps.leaks, familyScores.leaks),
-    ransomware: Math.min(familyCaps.ransomware, familyScores.ransomware),
-    vulnerabilities: Math.min(familyCaps.vulnerabilities, familyScores.vulnerabilities),
-    exposure: Math.min(familyCaps.exposure, familyScores.exposure),
-  };
-
-  const correlation = Math.min(
-    familyCaps.correlation,
-    (familyPresence.size >= 2 ? 4 + Math.max(0, familyPresence.size - 2) * 2 : 0) + Math.min(5, criticalSectorHits * 1.5),
-  );
-
-  const total = Math.min(
-    85,
-    Math.round(capped.leaks + capped.ransomware + capped.vulnerabilities + capped.exposure + correlation),
-  );
-
-  const rankedFamilies: Array<{ family: 'leaks' | 'ransomware' | 'vulnerabilities' | 'exposure' | 'correlation'; score: number }> = [
-    { family: 'leaks' as const, score: capped.leaks },
-    { family: 'ransomware' as const, score: capped.ransomware },
-    { family: 'vulnerabilities' as const, score: capped.vulnerabilities },
-    { family: 'exposure' as const, score: capped.exposure },
-    { family: 'correlation' as const, score: correlation },
-  ].sort((a, b) => b.score - a.score);
-
-  return {
-    score: total,
-    dominantFamily: rankedFamilies[0]?.score ? rankedFamilies[0].family : null,
-  };
-}
-
 function computeVelocityScore(items: NewsItem[], _timeRangeMs: number): number {
   const now = Date.now();
   const oneHourAgo = now - 60 * 60 * 1000;
@@ -484,7 +327,7 @@ function computeInfraFromMeteo(alerts: MeteoAlert[], deptCode: string): number {
   return METEO_LEVEL_WEIGHTS[alert.level] ?? 0;
 }
 
-function computeInfraFromFloods(segments: FloodSegment[]): number {
+function computeInfraFromFloods(segments: FloodSectionRef[]): number {
   // Prendre le niveau max des tronçons
   let maxScore = 0;
   for (const seg of segments) {
@@ -590,12 +433,11 @@ export function computeInfraFromOutages(
 export function computeISNR(
   newsItems: NewsItem[],
   meteoAlerts: MeteoAlert[],
-  floodSegments: FloodSegment[],
+  floodSegments: FloodSectionRef[],
   ecowatt: EcowattResponse | null,
   timeRange: TimeRange,
   telecomOutages: TelecomOutage[],
   powerOutages: PowerOutage[],
-  threatEvents: ThreatEvent[] = [],
   nowMs: number = Date.now(),
 ): ISNRData {
   const now = new Date(nowMs);
@@ -621,10 +463,8 @@ export function computeISNR(
 
     // Calculer chaque dimension
     const social = Math.round(computeDimensionScore(items, SOCIAL_CATEGORIES));
-    const securityFromEvents = Math.round(computeDimensionScore(items, SECURITY_CATEGORIES));
-    const securityThreats = computeSecurityFromThreatEvents(threatEvents, code, cutoff);
-    const securityFromThreats = securityThreats.score;
-    const security = Math.round(Math.max(securityFromEvents, securityFromThreats));
+    // Sécurité : événements de presse seulement ; plus aucun lieu de victime publié (spec souveraineté V3, V5 ; arbitrage 26).
+    const security = Math.round(computeDimensionScore(items, SECURITY_CATEGORIES));
 
     // Infra = max(météo, crues, ecowatt, pannes) + events infra
     const infraFromEvents = computeDimensionScore(items, INFRA_CATEGORIES);
@@ -658,22 +498,7 @@ export function computeISNR(
         else if (infra === infraFromEvents) { source = 'Signal Réseau'; label = 'Incidents Infra'; }
         topDriver = { dimension: 'infra', label, score: infra, source };
       } else if (maxDimScore === security) {
-        const dominantFamilyLabels = {
-          leaks: 'Leaks récents',
-          ransomware: 'Ransomware 30j',
-          vulnerabilities: 'CERT/NVD critiques',
-          exposure: 'Exposition passive',
-          correlation: 'Corrélation cyber infra',
-        } as const;
-        topDriver = securityFromThreats >= securityFromEvents
-          ? {
-            dimension: 'security',
-            label: securityThreats.dominantFamily ? dominantFamilyLabels[securityThreats.dominantFamily] : 'Pression cyber multi-source',
-            score: security,
-            source: 'FrenchBreaches / CERT-FR / NVD / Shodan / Censys',
-            detail: describeSecurityDriver(securityThreats.dominantFamily),
-          }
-          : { dimension: 'security', label: 'Événements Sécurité', score: security, source: 'Signal Réseau' };
+        topDriver = { dimension: 'security', label: 'Événements Sécurité', score: security, source: 'Signal Réseau' };
       } else if (maxDimScore === social) {
         topDriver = { dimension: 'social', label: 'Tension Sociale', score: social, source: 'Signal Réseau' };
       } else if (maxDimScore === velocity) {

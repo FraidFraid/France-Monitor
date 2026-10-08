@@ -82,7 +82,7 @@ function shortDate(date: string): string {
 /** État du signal en une phrase (légende de la couche, sources) : jamais un jour passé présenté comme celui du jour. */
 export function ecowattStatusNote(official: EcowattOfficial | null | undefined, nowMs: number): string {
   const today = ecowattToday(official, nowMs);
-  if (today) return `Écowatt (RTE, signal national) : ${ecowattLevelLabel(today)} — TEMPS RÉEL`;
+  if (today) return `Écowatt (RTE, signal national) : ${ecowattLevelLabel(today)} · TEMPS RÉEL`;
   const last = ecowattLastPublished(official, nowMs);
   if (last) return `Écowatt : signal du jour INDISPONIBLE · dernier publié le ${shortDate(last.date)} : ${ecowattLevelLabel(last.level)} (open data RTE)`;
   return 'Écowatt (RTE) : signal officiel INDISPONIBLE';

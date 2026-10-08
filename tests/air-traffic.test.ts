@@ -1,0 +1,409 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { __resetKvForTests, __setKvClientForTests, readLog, readSeries } from '../api/_lib/kv-history.js';
+import {
+  CREDIT_FLOOR, DEPARTURES_KEY, DEPARTURE_AIRPORTS, DEV_STATES_INTERVAL_MS, EMERGENCY_EPISODE_GAP_MS, EMERGENCY_LOG_KEY, VOLUME_KEY, __airJobsForTests, __resetAirStateForTests,
+  boardCounts, departuresUrl, emergenciesFrom, ensureAirFresh, fetchAirTrafficSnapshot, normalizeOpenSkyState, parseBeauvaisDirectory, parseBordeauxDirectory,
+  recordEmergencies, statesUrl, toMapFlight, volumeSample,
+} from '../api/_shared/air-traffic.js';
+import { type FakeResponse, fixtureJson, fixtureText, respond, sentHeader, stubFetch } from './helpers/traffic-fixtures.ts';
+
+type Raw = { time: number; states: unknown[][] };
+type Override = (url: string) => FakeResponse | Promise<FakeResponse> | null;
+const STATES = fixtureJson<Raw>('opensky-states.json');
+const T0 = STATES.time * 1000 + 20_000; // 13 h 09 min 59 s UTC, 15 h 09 à Paris
+const TOKEN_URL = 'https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token';
+const BVA = 'https://www.aeroportparisbeauvais.com/en/flights/live-flight-information/find-your-flight';
+const NO_DEPARTURES = Object.fromEntries(DEPARTURE_AIRPORTS.map((icao) => [icao, 0]));
+
+/** États réels de 15 h 09 dont certains codes transpondeur sont remplacés pour simuler une urgence. */
+function statesWith(squawks: Record<string, string> = {}): Raw {
+  return { time: STATES.time, states: STATES.states.map((s) => (squawks[String(s[0])] ? [...s.slice(0, 14), squawks[String(s[0])], ...s.slice(15)] : s)) };
+}
+
+/** Même réponse, `sec` secondes plus tard (heure de la réponse et derniers contacts décalés : aucun état écarté comme ancien). */
+function later(raw: Raw, sec: number): Raw {
+  return { time: raw.time + sec, states: raw.states.map((s) => s.map((v, i) => ((i === 3 || i === 4) && typeof v === 'number' ? v + sec : v))) };
+}
+
+/** OpenSky et annuaires simulés ; `remaining: null` : réponse des états sans en-tête de crédits. */
+function stubOpenSky({ states = STATES, remaining = '3619', override = () => null }: { states?: Raw; remaining?: string | null; override?: Override } = {}) {
+  return stubFetch((url) => {
+    const forced = override(url);
+    if (forced) return forced;
+    if (url === TOKEN_URL) return respond({ access_token: 'jeton-de-test', expires_in: 1800 });
+    if (url === statesUrl()) return respond(states, 200, remaining === null ? {} : { 'X-Rate-Limit-Remaining': remaining });
+    if (url.startsWith('https://opensky-network.org/api/flights/departure?airport=LFPG')) return respond(fixtureText('opensky-departures-lfpg.json'));
+    if (url.startsWith('https://opensky-network.org/api/flights/departure')) return respond('', 404);
+    if (url === BVA) return respond(fixtureText('board-bva.html'));
+    if (url.endsWith('?w=out')) return respond(fixtureText('board-bod-departures.html'));
+    if (url.includes('bordeaux.aeroport.fr')) return respond(fixtureText('board-bod-arrivals.html'));
+    return respond('introuvable', 404);
+  });
+}
+
+/** Collecte, fin des tâches de fond (annuaires, départs), puis vue servie (sans nouvelle lecture). */
+async function collectAll(now: number) {
+  await ensureAirFresh(now);
+  await __airJobsForTests();
+  return ensureAirFresh(now);
+}
+
+function departureCalls(log: { urls: string[] }): number {
+  return log.urls.filter((u) => u.includes('/flights/departure')).length;
+}
+
+/** Fake Redis partagé (survit à un redémarrage simulé du processus). */
+function fakeRedis(failing: (key: string) => boolean = () => false) {
+  const store = new Map<string, string>();
+  const writes: string[] = [];
+  const client = {
+    get: async (k: string) => { if (failing(k)) throw new Error('Upstash injoignable'); return store.get(k) ?? null; },
+    set: async (k: string, v: string) => { writes.push(k); store.set(k, v); },
+  };
+  return { store, writes, client };
+}
+
+beforeEach(() => {
+  __resetAirStateForTests();
+  __resetKvForTests();
+  __setKvClientForTests({ get: async () => null, set: async () => {} });
+  vi.stubEnv('OPENSKY_CLIENT_ID', 'client-de-test');
+  vi.stubEnv('OPENSKY_CLIENT_SECRET', 'secret-de-test');
+});
+afterEach(async () => {
+  await __airJobsForTests();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+  __setKvClientForTests(null);
+  __resetKvForTests();
+});
+
+describe('états OpenSky (réponse réelle de 15 h 09, extended=1)', () => {
+  it('normalisation : position, altitudes, squawk et catégorie gardés ; état vu il y a plus de 5 min écarté', () => {
+    expect(normalizeOpenSkyState(STATES.states[0], STATES.time)).toEqual({
+      icao24: '51117e', callsign: 'ESZPI', originCountry: 'Estonia', lastContact: 1791032979, lat: 43.9501, lon: 6.9187, baroAltitudeM: 2628.9,
+      onGround: false, velocityMs: 56.67, heading: 86.88, verticalRate: 0, geoAltitudeM: 2880.36, squawk: '7021', category: 0,
+    });
+    expect(STATES.states.map((s) => normalizeOpenSkyState(s, STATES.time)).filter(Boolean)).toHaveLength(203);
+  });
+  it('vol pour la carte : pieds, nœuds, squawk', () => {
+    const state = normalizeOpenSkyState(STATES.states[0], STATES.time);
+    expect(state && toMapFlight(state)).toMatchObject({ id: '51117e', altitude: 8625, speed: 110, heading: 87, squawk: '7021', category: '0', source: 'opensky' });
+  });
+  it('volume : en vol dans la zone suivie et au-dessus du territoire', () => {
+    const states = STATES.states.map((s) => normalizeOpenSkyState(s, STATES.time)).filter((s): s is NonNullable<typeof s> => s !== null);
+    expect(volumeSample(states, '2026-10-03T13:09:39.000Z')).toEqual({ at: '2026-10-03T13:09:39.000Z', airborneZone: 166, airborneFrance: 114 });
+  });
+  it('urgences « en vol » : un aéronef au sol (posé avec son code) n’est jamais une urgence (T3)', () => {
+    const raw = statesWith({ '440202': '7700', '3c5ee2': '7600' });
+    const grounded = { ...raw, states: raw.states.map((s) => (s[0] === '440202' ? [...s.slice(0, 8), true, ...s.slice(9)] : s)) };
+    const states = grounded.states.map((s) => normalizeOpenSkyState(s, grounded.time)).filter((s): s is NonNullable<typeof s> => s !== null);
+    expect(states.find((s) => s.icao24 === '440202')?.onGround).toBe(true);
+    expect(emergenciesFrom(states, '2026-10-03T13:09:39.000Z').map((e) => e.icao24)).toEqual(['3c5ee2']);
+  });
+  it('urgences : 7700 au-dessus de l’Aube compté, 7700 au-dessus de l’Allemagne non, 7600 à 24 km de la côte compté (approches)', () => {
+    const raw = statesWith({ '440202': '7700', '3ffc67': '7700', '3c5ee2': '7600' });
+    const states = raw.states.map((s) => normalizeOpenSkyState(s, raw.time)).filter((s): s is NonNullable<typeof s> => s !== null);
+    expect(emergenciesFrom(states, '2026-10-03T13:09:39.000Z').map((e) => [e.icao24, e.callsign, e.squawk, e.overFrance])).toEqual([
+      ['3c5ee2', 'EWG02JB', '7600', true], ['3ffc67', 'DMLJS', '7700', false], ['440202', 'TAY4RQ', '7700', true],
+    ]);
+  });
+});
+
+describe('annuaires officiels (pages réelles du 03/10/2026)', () => {
+  it('Beauvais : 3 vols retardés ; Bordeaux : 2 retardés, 3 annulés', () => {
+    expect(boardCounts(parseBeauvaisDirectory(fixtureText('board-bva.html'), '03/10/2026'))).toEqual({ delayed: 3, cancelled: 0 });
+    const bod = [...parseBordeauxDirectory(fixtureText('board-bod-arrivals.html'), 'arrival'), ...parseBordeauxDirectory(fixtureText('board-bod-departures.html'), 'departure')];
+    expect(boardCounts(bod)).toEqual({ delayed: 2, cancelled: 3 });
+  });
+  it('vols d’un autre jour écartés ; page sans tableau : erreur', () => {
+    expect(parseBeauvaisDirectory(fixtureText('board-bva.html'), '04/10/2026')).toEqual([]);
+    expect(() => parseBordeauxDirectory('<html><body>Maintenance</body></html>', 'arrival')).toThrow(SyntaxError);
+  });
+});
+
+describe('collecte serveur unique (2 min)', () => {
+  it('jeton, états identifiés et authentifiés, annuaires, départs des 8 aéroports ; aucune requête dans les 2 min', async () => {
+    const log = stubOpenSky();
+    const c = await collectAll(T0);
+    expect(c.at).toBe('2026-10-03T13:09:39.000Z');
+    expect(c.errors).toEqual([]);
+    expect(c.credits).toBe(3619);
+    const states = log.inits[log.urls.indexOf(statesUrl())];
+    expect(sentHeader(states, 'Authorization')).toBe('Bearer jeton-de-test');
+    expect(sentHeader(states, 'User-Agent')).toBe('FranceMonitor/1.0 (+https://www.francemonitor.com)');
+    expect(departureCalls(log)).toBe(DEPARTURE_AIRPORTS.length);
+    expect(c.departures?.counts).toEqual({ LFPG: 25, LFPO: 0, LFMN: 0, LFLL: 0, LFML: 0, LFBO: 0, LFBD: 0, LFRS: 0 });
+    expect(c.boards).toEqual({ BVA: { delayed: 3, cancelled: 0, at: new Date(T0).toISOString() }, BOD: { delayed: 2, cancelled: 3, at: new Date(T0).toISOString() } });
+    const before = log.urls.length;
+    await collectAll(T0 + 60_000);
+    expect(log.urls.length).toBe(before);
+    await collectAll(T0 + 120_000);
+    expect(log.urls.slice(before)).toEqual([statesUrl()]);
+  });
+  it('cycle de départs lent (20 s par aéroport) : la carte reçoit les nouveaux états sans l’attendre', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    let states = STATES;
+    const log = stubOpenSky({
+      override: (url) => {
+        if (url === statesUrl()) return respond(states, 200, { 'X-Rate-Limit-Remaining': '3619' });
+        if (url.includes('/flights/departure')) return new Promise<FakeResponse>((resolve) => { setTimeout(() => resolve(respond('', 404)), 20_000); });
+        return null;
+      },
+    });
+    await ensureAirFresh(T0);
+    await new Promise((resolve) => { setImmediate(resolve); });
+    expect(departureCalls(log)).toBe(1);
+    states = { ...STATES, time: STATES.time + 120 };
+    // Résolue sans faire avancer le temps simulé : la requête n'attend pas les 8 × 20 s des départs.
+    const pending = Symbol('en attente');
+    const sentinel = new Promise<typeof pending>((resolve) => {
+      let turns = 0;
+      const spin = () => { turns += 1; if (turns >= 20) resolve(pending); else setImmediate(spin); };
+      setImmediate(spin);
+    });
+    const snap = await Promise.race([fetchAirTrafficSnapshot(T0 + 2 * 60_000), sentinel]);
+    expect(snap).not.toBe(pending);
+    expect(snap !== pending && snap.fetchedAt).toBe((STATES.time + 120) * 1000);
+    expect(departureCalls(log)).toBe(1);
+    await vi.advanceTimersByTimeAsync(DEPARTURE_AIRPORTS.length * 20_000);
+    await __airJobsForTests();
+    expect(departureCalls(log)).toBe(DEPARTURE_AIRPORTS.length);
+    expect((await ensureAirFresh(T0 + 2 * 60_000)).departures?.counts).toEqual(NO_DEPARTURES);
+  });
+  it('fenêtre des départs : les 2 heures précédant la collecte', async () => {
+    const log = stubOpenSky();
+    await collectAll(T0);
+    const end = Math.floor(T0 / 1000);
+    expect(log.urls).toContain(departuresUrl('LFPG', end - 7200, end));
+  });
+  it('départs relus toutes les 4 h, pas avant', async () => {
+    let log = stubOpenSky();
+    await collectAll(T0);
+    expect(departureCalls(log)).toBe(DEPARTURE_AIRPORTS.length);
+    log = stubOpenSky();
+    await collectAll(T0 + 4 * 3_600_000 - 60_000);
+    expect(departureCalls(log)).toBe(0);
+    log = stubOpenSky();
+    await collectAll(T0 + 4 * 3_600_000 + 60_000);
+    expect(departureCalls(log)).toBe(DEPARTURE_AIRPORTS.length);
+  });
+  it(`moins de ${CREDIT_FLOOR} crédits restants : départs suspendus avant les états, erreur nommée`, async () => {
+    const log = stubOpenSky({ remaining: '420' });
+    const c = await collectAll(T0);
+    expect(departureCalls(log)).toBe(0);
+    expect(c.errors).toEqual(['OpenSky : départs suspendus (420 crédits restants, seuil 500)']);
+    expect(c.at).toBe('2026-10-03T13:09:39.000Z');
+  });
+  it('sans en-tête de crédits : départs jamais lancés sans garde, erreur nommée', async () => {
+    const log = stubOpenSky({ remaining: null });
+    const c = await collectAll(T0);
+    expect(departureCalls(log)).toBe(0);
+    expect([c.credits, c.errors]).toEqual([null, ['OpenSky : départs suspendus (crédits OpenSky illisibles)']]);
+    expect(c.at).toBe('2026-10-03T13:09:39.000Z');
+  });
+  it('HTTP 429 sur les états : erreur nommée, pause de 10 min sans relancer OpenSky', async () => {
+    const log = stubOpenSky({ override: (url) => (url === statesUrl() ? respond('Too many requests', 429) : null) });
+    const c = await ensureAirFresh(T0);
+    expect([c.at, c.errors]).toEqual([null, ['OpenSky : HTTP 429']]);
+    await ensureAirFresh(T0 + 2 * 60_000);
+    expect(log.urls.filter((u) => u === statesUrl())).toHaveLength(1);
+  });
+  it('panne après une collecte réussie : dernière collecte gardée avec sa date, erreur nommée', async () => {
+    stubOpenSky();
+    await collectAll(T0);
+    stubOpenSky({ override: (url) => (url === statesUrl() ? respond(fixtureText('challenge-captcha.html'), 403) : null) });
+    const c = await ensureAirFresh(T0 + 2 * 60_000);
+    expect(c.at).toBe('2026-10-03T13:09:39.000Z');
+    expect(c.errors).toEqual(['OpenSky : page de contrôle anti-robot (HTTP 403)']);
+  });
+  it('annuaire de Bordeaux en HTTP 503 : erreur nommée, Beauvais gardé ; pas de nouvel essai avant 10 min', async () => {
+    const log = stubOpenSky({ override: (url) => (url.includes('bordeaux.aeroport.fr') ? respond('indisponible', 503) : null) });
+    const c = await collectAll(T0);
+    expect(c.errors).toEqual(['Annuaire Bordeaux Mérignac : HTTP 503']);
+    expect(c.boards).toMatchObject({ BOD: null, BVA: { delayed: 3, cancelled: 0 } });
+    await collectAll(T0 + 2 * 60_000);
+    expect(log.urls.filter((u) => u.includes('bordeaux.aeroport.fr'))).toHaveLength(1);
+  });
+  it('annuaire de Bordeaux réel avec son formulaire reCAPTCHA : lu, jamais pris pour une page anti-robot', async () => {
+    // Pied de page de la vraie page (03/10/2026, 17 h 43), valeurs remplacées : les pages enregistrées étaient réduites.
+    const form = '<script src="https://www.google.com/recaptcha/api.js?hl=fr&amp;render=explicit" async defer></script>'
+      + '<form><div data-drupal-selector="edit-captcha" class="captcha captcha-type-challenge--recaptcha"><input type="hidden" name="captcha_token" value="x" />'
+      + '<div class="g-recaptcha" data-theme="light" data-type="image"></div></div></form>';
+    const page = (name: string) => respond(fixtureText(name).replace('</body>', `${form}</body>`));
+    stubOpenSky({ override: (url) => (url.includes('bordeaux.aeroport.fr') ? page(url.endsWith('?w=out') ? 'board-bod-departures.html' : 'board-bod-arrivals.html') : null) });
+    const c = await collectAll(T0);
+    expect(c.errors).toEqual([]);
+    expect(c.boards.BOD).toEqual({ delayed: 2, cancelled: 3, at: new Date(T0).toISOString() });
+  });
+  it('identifiants absents : aucune requête OpenSky, erreur nommée', async () => {
+    vi.stubEnv('OPENSKY_CLIENT_ID', '');
+    const log = stubOpenSky();
+    const c = await collectAll(T0);
+    expect(log.urls).toEqual([]);
+    expect(c.errors).toEqual(['OpenSky : identifiants OpenSky absents (OPENSKY_CLIENT_ID, OPENSKY_CLIENT_SECRET)']);
+  });
+  it('journal des urgences : première vue gardée d’une collecte à l’autre', async () => {
+    stubOpenSky({ states: statesWith({ '440202': '7700' }) });
+    await ensureAirFresh(T0);
+    stubOpenSky({ states: { ...statesWith({ '440202': '7700' }), time: STATES.time + 120 } });
+    await ensureAirFresh(T0 + 120_000);
+    const entries = await readLog<{ icao24: string; firstSeen: string; lastSeen: string }>(EMERGENCY_LOG_KEY, { dateOf: (e) => e.lastSeen, maxAgeMs: 7 * 86_400_000, now: T0 + 120_000 });
+    expect(entries.map((e) => [e.icao24, e.firstSeen, e.lastSeen])).toEqual([['440202', '2026-10-03T13:09:39.000Z', '2026-10-03T13:11:39.000Z']]);
+  });
+  it('journal des urgences : dernière vue mise à jour à chaque lecture ; revu plus de 15 min après, nouvel épisode (à confirmer), l’ancien gardé', async () => {
+    const raw = statesWith({ '440202': '7700' });
+    stubOpenSky({ states: raw });
+    await ensureAirFresh(T0);
+    stubOpenSky({ states: later(raw, 120) });
+    await ensureAirFresh(T0 + 120_000);
+    stubOpenSky({ states: later(raw, 240) });
+    await ensureAirFresh(T0 + 240_000);
+    const read = (now: number) => readLog<{ icao24: string; firstSeen: string; lastSeen: string }>(EMERGENCY_LOG_KEY, { dateOf: (e) => e.lastSeen, maxAgeMs: 7 * 86_400_000, now });
+    expect((await read(T0 + 240_000)).map((e) => [e.firstSeen, e.lastSeen])).toEqual([['2026-10-03T13:09:39.000Z', '2026-10-03T13:13:39.000Z']]);
+    expect(EMERGENCY_EPISODE_GAP_MS).toBe(15 * 60_000);
+    // Silence de 30 min puis le même code : vu une fois, nouvel épisode ; l'épisode précédent reste dans le journal.
+    stubOpenSky({ states: later(raw, 240 + 1800) });
+    await ensureAirFresh(T0 + (240 + 1800) * 1000);
+    expect((await read(T0 + (240 + 1800) * 1000)).map((e) => [e.icao24, e.firstSeen, e.lastSeen])).toEqual([
+      ['440202', '2026-10-03T13:43:39.000Z', '2026-10-03T13:43:39.000Z'], ['440202', '2026-10-03T13:09:39.000Z', '2026-10-03T13:13:39.000Z'],
+    ]);
+  });
+  it('journal des urgences illisible dans le stockage clé-valeur : positions servies quand même, erreur nommée', async () => {
+    __setKvClientForTests({ get: async (k: string) => (k === EMERGENCY_LOG_KEY ? '[null]' : null), set: async () => {} });
+    stubOpenSky({ states: statesWith({ '440202': '7700' }) });
+    const c = await collectAll(T0);
+    expect(c.at).toBe('2026-10-03T13:09:39.000Z');
+    expect(c.flights).toHaveLength(166);
+    expect(c.errors).toHaveLength(1);
+    expect(c.errors[0]).toMatch(/^Journal des urgences : /);
+  });
+  it('volume : un échantillon par 10 minutes au plus', async () => {
+    stubOpenSky();
+    await ensureAirFresh(T0);
+    await ensureAirFresh(T0 + 2 * 60_000);
+    expect(await readSeries(VOLUME_KEY, { maxAgeMs: 8 * 86_400_000, now: T0 + 2 * 60_000 })).toHaveLength(1);
+    stubOpenSky({ states: { ...STATES, time: STATES.time + 600 } });
+    await ensureAirFresh(T0 + 10 * 60_000);
+    expect(await readSeries(VOLUME_KEY, { maxAgeMs: 8 * 86_400_000, now: T0 + 10 * 60_000 })).toHaveLength(2);
+  });
+  it('appels simultanés (relève, carte, panneau) : une seule collecte, un seul écrivain du journal, du volume et des départs', async () => {
+    const redis = fakeRedis();
+    __setKvClientForTests(redis.client);
+    const log = stubOpenSky({ states: statesWith({ '440202': '7700', '3c5ee2': '7600' }) });
+    const [a, b, snap] = await Promise.all([ensureAirFresh(T0), ensureAirFresh(T0 + 1_000), fetchAirTrafficSnapshot(T0 + 2_000)]);
+    await __airJobsForTests();
+    expect(b.at).toBe(a.at);
+    expect(snap.fetchedAt).toBe(STATES.time * 1000);
+    expect(log.urls.filter((u) => u === TOKEN_URL)).toHaveLength(1);
+    expect(log.urls.filter((u) => u === statesUrl())).toHaveLength(1);
+    expect(departureCalls(log)).toBe(DEPARTURE_AIRPORTS.length);
+    expect(redis.writes.filter((k) => k === DEPARTURES_KEY)).toHaveLength(1);
+    expect(redis.writes.filter((k) => k === VOLUME_KEY)).toHaveLength(1);
+    expect(redis.writes.filter((k) => k === EMERGENCY_LOG_KEY)).toHaveLength(1);
+    __resetKvForTests();
+    const entries = await readLog<{ icao24: string; lastSeen: string }>(EMERGENCY_LOG_KEY, { dateOf: (e) => e.lastSeen, maxAgeMs: 86_400_000, now: T0 });
+    expect(entries.map((e) => e.icao24).sort()).toEqual(['3c5ee2', '440202']);
+    expect(await readSeries(VOLUME_KEY, { maxAgeMs: 86_400_000, now: T0 })).toHaveLength(1);
+  });
+  it('redémarrage : départs relus dans Redis, aucun nouveau cycle (240 crédits)', async () => {
+    const redis = fakeRedis();
+    __setKvClientForTests(redis.client);
+    stubOpenSky();
+    await collectAll(T0);
+    expect(redis.store.has(DEPARTURES_KEY)).toBe(true);
+    __resetKvForTests();
+    __resetAirStateForTests();
+    const log = stubOpenSky({ states: { ...STATES, time: STATES.time + 600 } });
+    const c = await collectAll(T0 + 10 * 60_000);
+    expect(departureCalls(log)).toBe(0);
+    expect(c.departures?.counts.LFPG).toBe(25);
+    expect(c.errors).toEqual([]);
+  });
+  it('Redis en panne à la lecture des départs : aucun cycle anticipé, erreur nommée ; cycle lancé quand Redis répond', async () => {
+    let down = true;
+    __setKvClientForTests(fakeRedis((k) => down && k === DEPARTURES_KEY).client);
+    let log = stubOpenSky();
+    const c = await collectAll(T0);
+    expect(departureCalls(log)).toBe(0);
+    expect(c.errors).toEqual(['OpenSky : départs non relancés (stockage clé-valeur illisible)']);
+    down = false;
+    log = stubOpenSky({ states: { ...STATES, time: STATES.time + 120 } });
+    await collectAll(T0 + 2 * 60_000);
+    expect(departureCalls(log)).toBe(DEPARTURE_AIRPORTS.length);
+  });
+  it('Redis en panne passagère au redémarrage, départs gardés de moins de 4 h : erreur effacée dès qu’ils sont relus, aucun cycle', async () => {
+    const redis = fakeRedis();
+    __setKvClientForTests(redis.client);
+    stubOpenSky();
+    await collectAll(T0);
+    // Redémarrage : Redis illisible à la première lecture des départs.
+    __resetKvForTests();
+    __resetAirStateForTests();
+    let down = true;
+    __setKvClientForTests({ ...redis.client, get: async (k: string) => { if (down && k === DEPARTURES_KEY) throw new Error('Upstash injoignable'); return redis.store.get(k) ?? null; } });
+    let log = stubOpenSky({ states: later(STATES, 120) });
+    const failed = await collectAll(T0 + 2 * 60_000);
+    expect(failed.errors).toEqual(['OpenSky : départs non relancés (stockage clé-valeur illisible)']);
+    down = false;
+    log = stubOpenSky({ states: later(STATES, 240) });
+    const back = await collectAll(T0 + 4 * 60_000);
+    expect(departureCalls(log)).toBe(0);
+    expect(back.departures?.counts.LFPG).toBe(25);
+    expect(back.errors).toEqual([]);
+  });
+  it('serveur de dev (même compte OpenSky) : états toutes les 5 min au plus, départs coupés sauf AIR_DEV_DEPARTURES=1', async () => {
+    vi.stubEnv('NODE_ENV', 'development');
+    let log = stubOpenSky();
+    const c = await collectAll(T0);
+    expect(departureCalls(log)).toBe(0);
+    expect(c.errors).toEqual(['OpenSky : départs non lus sur le serveur de dev (AIR_DEV_DEPARTURES=1 pour les lire)']);
+    await collectAll(T0 + 4 * 60_000);
+    expect(log.urls.filter((u) => u === statesUrl())).toHaveLength(1);
+    await collectAll(T0 + DEV_STATES_INTERVAL_MS);
+    expect(log.urls.filter((u) => u === statesUrl())).toHaveLength(2);
+    expect(DEV_STATES_INTERVAL_MS).toBe(5 * 60_000);
+    vi.stubEnv('AIR_DEV_DEPARTURES', '1');
+    __resetAirStateForTests();
+    log = stubOpenSky();
+    await collectAll(T0 + 10 * 60_000);
+    expect(departureCalls(log)).toBe(DEPARTURE_AIRPORTS.length);
+  });
+  it('erreur imprévue pendant la collecte : journalisée sur le serveur, tentative datée, pas de nouvel appel OpenSky avant 2 min', async () => {
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const log = stubOpenSky({ states: { time: 1e15, states: [] } });
+    const c = await ensureAirFresh(T0);
+    expect(c.at).toBeNull();
+    expect(c.errors).toHaveLength(1);
+    expect(c.errors[0]).toMatch(/^Collecte aérienne interrompue : /);
+    expect(logged).toHaveBeenCalledWith('[collecte opensky] collecte interrompue', expect.any(RangeError));
+    await ensureAirFresh(T0 + 60_000);
+    expect(log.urls.filter((u) => u === statesUrl())).toHaveLength(1);
+  });
+  it('carte : instantané daté de la donnée, vols en vol seulement, erreurs au format historique', async () => {
+    stubOpenSky();
+    const snap = await fetchAirTrafficSnapshot(T0);
+    expect(snap.fetchedAt).toBe(STATES.time * 1000);
+    expect(snap.source).toBe('opensky');
+    expect(snap.flights).toHaveLength(166);
+    expect(snap.flights.every((f) => f.onGround === false)).toBe(true);
+    expect(snap).not.toHaveProperty('topAirports');
+  });
+});
+
+describe('journal des urgences : clé choisie par l’appelant (souveraineté, arbitrage 6)', () => {
+  it('même règle T3, écrit dans la clé demandée ; le journal du Trafic aérien n’est pas touché', async () => {
+    const e = {
+      icao24: 'ae0805', callsign: 'RCH161', squawk: '7700', lat: 48.2, lon: -4.1, altitudeM: 11887,
+      firstSeen: '2026-10-04T14:48:24.501Z', lastSeen: '2026-10-04T14:48:24.501Z', overFrance: true,
+    };
+    const now = Date.parse('2026-10-04T14:48:30Z');
+    await recordEmergencies([e], now, 'sov:mil:emergencies');
+    await recordEmergencies([{ ...e, lastSeen: '2026-10-04T14:50:24.501Z' }], now + 120_000, 'sov:mil:emergencies');
+    const read = (key: string) => readLog<typeof e>(key, { dateOf: (x) => x.lastSeen, maxAgeMs: 7 * 86_400_000, now: now + 120_000 });
+    expect((await read('sov:mil:emergencies')).map((x) => [x.firstSeen, x.lastSeen])).toEqual([['2026-10-04T14:48:24.501Z', '2026-10-04T14:50:24.501Z']]);
+    expect(await read(EMERGENCY_LOG_KEY)).toEqual([]);
+  });
+});

@@ -4,12 +4,12 @@
 // les fiches. Spec : docs/superpowers/specs/2026-09-24-refonte-ui-poste-de-situation-design.md §4.
 //
 // Les couches officielles de la carte ne passent PAS par ici : elles gardent leurs couleurs
-// d'origine, violet Météo compris.
+// d'origine.
 
 import type { BriefConfidence, FuelTensionLevel, SituationSeverity, ThreatLevel } from '../types/index.ts';
 
 export type VigilanceLevel = 'vert' | 'jaune' | 'orange' | 'rouge';
-export type OfficialColor = 'green' | 'yellow' | 'orange' | 'red' | 'violet';
+export type OfficialColor = 'green' | 'yellow' | 'orange' | 'red';
 type Lang = 'fr' | 'en';
 
 export const LEVEL_RANK: Record<VigilanceLevel, number> = { vert: 0, jaune: 1, orange: 2, rouge: 3 };
@@ -54,7 +54,7 @@ export function eventDisplayLevel(severity: ThreatLevel, peak: ThreatLevel | und
 }
 
 export function officialLevel(color: OfficialColor): VigilanceLevel {
-  if (color === 'red' || color === 'violet') return 'rouge';
+  if (color === 'red') return 'rouge';
   if (color === 'orange') return 'orange';
   if (color === 'yellow') return 'jaune';
   return 'vert';

@@ -57,12 +57,11 @@ describe('conversions', () => {
     expect(eventLevel('info')).toBe('vert');
   });
 
-  it('signaux officiels, violet Météo compris', () => {
+  it('signaux officiels : les quatre couleurs publiées', () => {
     expect(officialLevel('green')).toBe('vert');
     expect(officialLevel('yellow')).toBe('jaune');
     expect(officialLevel('orange')).toBe('orange');
     expect(officialLevel('red')).toBe('rouge');
-    expect(officialLevel('violet')).toBe('rouge');
   });
 
   it('baromètre des infrastructures', () => {

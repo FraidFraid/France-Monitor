@@ -1,15 +1,14 @@
-import { describe, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import assert from 'node:assert/strict';
 
 import type {
-  ActiveFire,
+  FireDetection,
   DetectedSituation,
   MeteoAlert,
   NewsItem,
   PowerOutage,
   TelecomOutage,
 } from '../types/index.ts';
-import type { TrafficIncident } from './traffic.ts';
 import {
   buildExportFilename,
   collectExportableLayers,
@@ -20,12 +19,14 @@ import {
   serializeNews,
   serializeOutages,
   serializeSituations,
-  serializeTrafficIncidents,
+  serializeRoadEvents,
+  serializeUrbanJams,
   toCsv,
   toGeoJson,
   type ExportableLayer,
   type ExportContext,
 } from './data-export.ts';
+import { roadNationalFixture, roadUrbanFixture } from '../components/layer-panel/traffic.fixture.ts';
 
 // ─── Fixtures typées ──────────────────────────────────────────────────────────
 
@@ -58,22 +59,21 @@ function situation(overrides: Partial<DetectedSituation> = {}): DetectedSituatio
   };
 }
 
-function fire(overrides: Partial<ActiveFire> = {}): ActiveFire {
+function fire(overrides: Partial<FireDetection> = {}): FireDetection {
   return {
-    id: 'f1',
-    latitude: 43.5,
-    longitude: 6.1,
-    bright_ti4: 340.2,
-    scan: 0.4,
-    track: 0.4,
-    acq_date: '2026-07-05',
-    acq_time: '1348',
-    satellite: 'NOAA-20',
-    confidence: 'nominal',
-    version: '2.0',
-    bright_ti5: 300,
-    frp: 12.5,
+    id: '47.6096_4.0124_2026-10-03_1227_NOAA-21',
+    lat: 47.6096,
+    lon: 4.0124,
+    acquiredAt: '2026-10-03T12:27:00.000Z',
+    satellite: 'NOAA-21',
+    sensor: 'VIIRS',
+    confidence: 'nominale',
+    confidenceRaw: 'n',
+    frpMw: 11.67,
     daynight: 'D',
+    dept: '89',
+    recurrent: false,
+    foyerId: '47.6096_4.0124_2026-10-03_1227_NOAA-21',
     ...overrides,
   };
 }
@@ -189,14 +189,20 @@ describe('serializeSituations', () => {
 });
 
 describe('serializeFires', () => {
-  it('compose une date ISO depuis acq_date + acq_time et géolocalise tout', () => {
-    const { rows, features } = serializeFires([fire(), fire({ id: 'f2', acq_time: '905' })]);
+  it('détections du serveur : satellite exact, capteur, confiance publiée, FRP, département et récurrence ; géolocalisées', () => {
+    const { rows, columns, features } = serializeFires([fire(), fire({ id: 'fos', lat: 43.4301, lon: 4.9691, dept: '13', recurrent: true, satellite: 'Suomi NPP' })]);
     assert.equal(rows.length, 2);
-    assert.equal(rows[0].date, '2026-07-05T13:48:00Z');
-    assert.equal(rows[1].date, '2026-07-05T09:05:00Z', 'heure sur 3 chiffres complétée');
+    assert.deepEqual(rows[0], {
+      date: '2026-10-03T12:27:00.000Z', satellite: 'NOAA-21', capteur: 'VIIRS', confiance: 'nominale', confianceBrute: 'n', frp: 11.67, jourNuit: 'D',
+      departement: '89', recurrent: 'non', lat: 47.6096, lon: 4.0124,
+    });
+    assert.equal(rows[1].recurrent, 'oui');
+    assert.deepEqual(columns.map((c) => c.label), [
+      'date_iso', 'satellite', 'capteur', 'confiance', 'confiance_publiée', 'puissance_radiative_mw', 'jour_nuit', 'département', 'récurrent', 'latitude', 'longitude',
+    ]);
     assert.equal(features.length, 2);
-    assert.deepEqual([features[0].lon, features[0].lat], [6.1, 43.5]);
-    assert.equal(rows[0].frp, 12.5);
+    assert.deepEqual([features[1].lon, features[1].lat], [4.9691, 43.4301]);
+    assert.equal(features[1].properties.departement, '13');
   });
 });
 
@@ -253,25 +259,46 @@ describe('serializeOutages', () => {
   });
 });
 
-describe('serializeTrafficIncidents', () => {
-  it('joint les numéros de route et géolocalise', () => {
-    const incidents: TrafficIncident[] = [
-      {
-        id: 'i1',
-        lon: 4.83,
-        lat: 45.75,
-        type: 'Accident',
-        severity: 'high',
-        delay: 600,
-        length: 1200,
-        description: 'Accident A7',
-        roadNumbers: ['A7', 'A47'],
-      },
-    ];
-    const { rows, features } = serializeTrafficIncidents(incidents);
-    assert.equal(rows[0].routes, 'A7, A47');
-    assert.equal(features.length, 1);
-    assert.deepEqual([features[0].lon, features[0].lat], [4.83, 45.75]);
+describe('serializeRoadEvents', () => {
+  it('événements DIR : nature, route, lieu, sens, DIR, début ; géolocalise seulement ceux qui ont des coordonnées', () => {
+    const events = roadNationalFixture().events;
+    const { rows, columns, features } = serializeRoadEvents(events);
+    expect(columns.map((c) => c.key)).toEqual(['type', 'nature', 'route', 'lieu', 'sens', 'dir', 'debut', 'fin', 'gravite', 'securite', 'detail', 'lat', 'lon']);
+    expect(rows).toHaveLength(65);
+    assert.equal(rows[0].type, 'Accident');
+    // Nature et gravité en français, jamais les clés anglaises du contrat (accident, closure, highest…).
+    assert.equal(rows[0].nature, 'accident');
+    assert.equal(rows[0].gravite, 'moyenne');
+    expect(new Set(rows.map((r) => r.nature))).not.toContain('closure');
+    expect(rows.find((r) => r.route === 'A63')?.nature).toBe('coupure');
+    assert.equal(rows[0].route, 'A55');
+    assert.equal(rows[0].dir, 'DIR Méditerranée');
+    assert.equal(rows[0].securite, 'oui');
+    assert.equal(features.length, 7);
+    assert.deepEqual([features[0].lon, features[0].lat], [5.321, 43.371]);
+  });
+});
+
+describe('serializeUrbanJams', () => {
+  it('bouchons TomTom des agglomérations : route, tronçon, retard et longueur, intensité en français, date du relevé, géolocalisés', () => {
+    const { rows, columns, features } = serializeUrbanJams(roadUrbanFixture());
+    expect(columns.map((c) => [c.key, c.label])).toEqual([
+      ['route', 'route'], ['de', 'de'], ['vers', 'vers'], ['retard', 'retard (min)'], ['longueur', 'longueur (km)'], ['intensite', 'intensité'],
+      ['debut', 'début'], ['releve', 'relevé TomTom'], ['lat', 'latitude'], ['lon', 'longitude'],
+    ]);
+    expect(rows).toHaveLength(4);
+    expect(rows[0]).toEqual({
+      route: 'A86', de: 'Rueil-Malmaison', vers: 'Colombes', retard: 24.3, longueur: 3.6, intensite: 'bouchon', debut: '2026-10-03T12:42:00+02:00',
+      releve: '2026-10-03T15:00:00+02:00', lat: 48.905, lon: 2.205,
+    });
+    expect(rows.map((r) => r.intensite)).toEqual(['bouchon', 'bouchon', 'à-coups', 'ralenti']);
+    expect(features).toHaveLength(4);
+    expect(features[0]).toEqual({ lat: 48.905, lon: 2.205, properties: { route: 'A86', de: 'Rueil-Malmaison', vers: 'Colombes', retard: 24.3, longueur: 3.6, intensite: 'bouchon' } });
+    expect(serializeUrbanJams(null).rows).toEqual([]);
+  });
+  it('couche exportable à côté des événements DIR (rien ne disparaît sans remplaçant)', () => {
+    const layers = collectExportableLayers({ ...emptyContext(), roadEvents: roadNationalFixture().events, roadUrban: roadUrbanFixture() });
+    expect(layers.map((l) => [l.key, l.label, l.count])).toEqual([['trafic', 'Événements routiers (DIR)', 65], ['bouchons', 'Bouchons des agglomérations (TomTom)', 4]]);
   });
 });
 
@@ -295,7 +322,8 @@ function emptyContext(): ExportContext {
     fires: [],
     powerOutages: [],
     telecomOutages: [],
-    trafficIncidents: [],
+    roadEvents: [],
+    roadUrban: null,
   };
 }
 

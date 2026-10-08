@@ -1,0 +1,175 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "properties": {
+    "CdTCC": "TCC21",
+    "id": "805",
+    "CdEntCru": "MO12",
+    "typentcru": "8",
+    "lbentcru": "Têt",
+    "acroentcru": "MO12",
+    "cddient_1": "EU35",
+    "dhcentcru": "2013/11/26 15:00:00.000",
+    "dhmentcru": "2013/11/26 15:00:00.000",
+    "stentcru": "Validé",
+    "cdensup_1": "21",
+    "typensup_1": "5",
+    "cdint": "1521",
+    "NivInfViCr": 2
+   },
+   "geometry": {
+    "type": "MultiLineString",
+    "coordinates": [
+     [
+      [
+       2.369602999999433,
+       42.58782099999868
+      ],
+      [
+       2.374479999998804,
+       42.595693999995774
+      ],
+      [
+       2.377472000004463,
+       42.597535999998115
+      ]
+     ]
+    ]
+   },
+   "id": "805"
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "CdTCC": "TCC21",
+    "id": "809",
+    "CdEntCru": "MO11",
+    "typentcru": "8",
+    "lbentcru": "Agly",
+    "acroentcru": "MO11",
+    "cddient_1": "EU35",
+    "dhcentcru": "2020/12/17 15:00:00.000",
+    "dhmentcru": "2020/12/17 15:00:00.000",
+    "stentcru": "Validé",
+    "cdensup_1": "21",
+    "typensup_1": "5",
+    "cdint": "1521",
+    "NivInfViCr": 2
+   },
+   "geometry": {
+    "type": "MultiLineString",
+    "coordinates": [
+     [
+      [
+       2.498566419805307,
+       42.81398009129761
+      ],
+      [
+       2.500576024093696,
+       42.812899668215124
+      ],
+      [
+       2.501548008470165,
+       42.81164072924995
+      ]
+     ],
+     [
+      [
+       2.719000696767996,
+       42.77885390772763
+      ],
+      [
+       2.724199309082157,
+       42.77955343673931
+      ],
+      [
+       2.732666725721409,
+       42.776737699180906
+      ]
+     ]
+    ]
+   },
+   "id": "809"
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "CdTCC": "TCC22",
+    "id": "764",
+    "CdEntCru": "CO1",
+    "typentcru": "8",
+    "lbentcru": "Golo aval",
+    "acroentcru": "CO1",
+    "cddient_1": "FRL",
+    "dhcentcru": "2020/09/15 09:00:00.000",
+    "dhmentcru": "2020/09/15 09:00:00.000",
+    "stentcru": "Validé",
+    "cdensup_1": "26",
+    "typensup_1": "5",
+    "cdint": "1522",
+    "NivInfViCr": 1
+   },
+   "geometry": {
+    "type": "MultiLineString",
+    "coordinates": [
+     [
+      [
+       9.195253781951747,
+       42.482751355105236
+      ],
+      [
+       9.200078270069335,
+       42.48173561790857
+      ],
+      [
+       9.203845524213296,
+       42.475912156343874
+      ]
+     ]
+    ]
+   },
+   "id": "764"
+  },
+  {
+   "type": "Feature",
+   "properties": {
+    "CdTCC": "TCC4",
+    "id": "588",
+    "CdEntCru": "NO50",
+    "typentcru": "8",
+    "lbentcru": "Eure moyenne et aval",
+    "acroentcru": "NO50",
+    "cddient_1": "EU31",
+    "dhcentcru": "2017/02/28 15:00:00.000",
+    "dhmentcru": "2025/10/21 15:00:00.000",
+    "stentcru": "Validé",
+    "cdensup_1": "4",
+    "typensup_1": "5",
+    "cdint": "1518",
+    "NivInfViCr": 1
+   },
+   "geometry": {
+    "type": "MultiLineString",
+    "coordinates": [
+     [
+      [
+       1.585501910385094,
+       48.56871733354391
+      ],
+      [
+       1.586044836307197,
+       48.57080126814141
+      ],
+      [
+       1.583740576105096,
+       48.57635459621418
+      ]
+     ]
+    ]
+   },
+   "id": "588"
+  }
+ ]
+}

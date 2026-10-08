@@ -1,0 +1,53 @@
+[
+ {
+  "code": "01",
+  "nom": "Ain",
+  "region": "Auvergne-Rhône-Alpes",
+  "niveauGraviteMax": "crise",
+  "niveauGraviteSupMax": "crise",
+  "niveauGraviteSouMax": "crise",
+  "niveauGraviteAepMax": "crise",
+  "availability": {
+   "AEP": {
+    "status": "available",
+    "asOf": "2026-10-04T00:43:59.771Z",
+    "sourceRevision": "168999",
+    "officialUrl": null
+   }
+  }
+ },
+ {
+  "code": "02",
+  "nom": "Aisne",
+  "region": "Hauts-de-France",
+  "niveauGraviteMax": "alerte_renforcee",
+  "niveauGraviteSupMax": "alerte_renforcee",
+  "niveauGraviteSouMax": "alerte_renforcee",
+  "niveauGraviteAepMax": "alerte_renforcee",
+  "availability": {
+   "AEP": {
+    "status": "available",
+    "asOf": "2026-10-04T00:43:59.771Z",
+    "sourceRevision": "168999",
+    "officialUrl": null
+   }
+  }
+ },
+ {
+  "code": "03",
+  "nom": "Allier",
+  "region": "Auvergne-Rhône-Alpes",
+  "niveauGraviteMax": "crise",
+  "niveauGraviteSupMax": "crise",
+  "niveauGraviteSouMax": "crise",
+  "niveauGraviteAepMax": "crise",
+  "availability": {
+   "AEP": {
+    "status": "available",
+    "asOf": "2026-10-04T00:43:59.771Z",
+    "sourceRevision": "168999",
+    "officialUrl": null
+   }
+  }
+ }
+]

@@ -1,0 +1,26 @@
+{
+"Scenario": {"Flux": {"Version": "1", "DateRevision": "2019-07-02T11:00:00"}, "CodeScenario": "VIC", "VersionScenario": "1.1", "NomScenario": "Référentiels et données de la vigilance crues métropolitaine", "DateHeureCreationFichier": "2026-10-04T08:08:23+00:00", "Emetteur": "1524"},
+"count": 20,
+"ListEntVigiCru": [
+  {"CdEntVigiCru": "2", "TypEntVigiCru": "5", "LbEntVigiCru": "Meuse-Moselle"},
+  {"CdEntVigiCru": "3", "TypEntVigiCru": "5", "LbEntVigiCru": "Rhin-Sarre"},
+  {"CdEntVigiCru": "4", "TypEntVigiCru": "5", "LbEntVigiCru": "Seine aval-Côtiers Normands"},
+  {"CdEntVigiCru": "6", "TypEntVigiCru": "5", "LbEntVigiCru": "Seine amont-Marne amont"},
+  {"CdEntVigiCru": "7", "TypEntVigiCru": "5", "LbEntVigiCru": "Seine moyenne-Yonne-Loing"},
+  {"CdEntVigiCru": "8", "TypEntVigiCru": "5", "LbEntVigiCru": "Vilaine-Côtiers Bretons"},
+  {"CdEntVigiCru": "9", "TypEntVigiCru": "5", "LbEntVigiCru": "Maine-Loire aval"},
+  {"CdEntVigiCru": "18", "TypEntVigiCru": "5", "LbEntVigiCru": "Rhône amont-Saône"},
+  {"CdEntVigiCru": "19", "TypEntVigiCru": "5", "LbEntVigiCru": "Alpes du Nord"},
+  {"CdEntVigiCru": "20", "TypEntVigiCru": "5", "LbEntVigiCru": "Grand Delta"},
+  {"CdEntVigiCru": "21", "TypEntVigiCru": "5", "LbEntVigiCru": "Méditerranée Ouest"},
+  {"CdEntVigiCru": "22", "TypEntVigiCru": "5", "LbEntVigiCru": "Méditerranée Est (bassin continental)"},
+  {"CdEntVigiCru": "25", "TypEntVigiCru": "5", "LbEntVigiCru": "Garonne-Tarn-Lot"},
+  {"CdEntVigiCru": "26", "TypEntVigiCru": "5", "LbEntVigiCru": "Méditerranée Est (bassin Corse)"},
+  {"CdEntVigiCru": "29", "TypEntVigiCru": "5", "LbEntVigiCru": "Bassins du Nord"},
+  {"CdEntVigiCru": "30", "TypEntVigiCru": "5", "LbEntVigiCru": "Loire-Allier-Cher-Indre"},
+  {"CdEntVigiCru": "31", "TypEntVigiCru": "5", "LbEntVigiCru": "Vienne-Charente-Atlantique"},
+  {"CdEntVigiCru": "32", "TypEntVigiCru": "5", "LbEntVigiCru": "Gironde-Adour-Dordogne"},
+  {"CdEntVigiCru": "973", "TypEntVigiCru": "5", "LbEntVigiCru": "Guyane"},
+  {"CdEntVigiCru": "999", "TypEntVigiCru": "5", "LbEntVigiCru": "National"}
+]
+}

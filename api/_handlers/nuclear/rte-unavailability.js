@@ -10,13 +10,18 @@
  * Source : https://digital.iservices.rte-france.com/open_api/unavailability_additional_information/
  */
 
+import { fetchAllUnavailabilities } from '../../_lib/rte-unavailability-query.js';
+
 const RTE_TOKEN_URL = 'https://digital.iservices.rte-france.com/token/oauth/token';
 const API_VERSION   = process.env.RTE_API_VERSION ?? 'v7';
 const RTE_UNAV_URL  =
   `https://digital.iservices.rte-france.com/open_api/unavailability_additional_information/${API_VERSION}/generation_unavailabilities`;
 
-const CACHE_TTL_MS = 15 * 60 * 1000; // 15 min
+const CACHE_TTL_MS = 10 * 60 * 1000; // 10 min (l'heure de lecture est affichée côté client, seuil « en retard » 30 min)
+const EDGE_MAX_AGE_S = 300;
 let _cache = null; // { data, fetchedAt }
+
+export function __resetRteUnavailabilityForTests() { _cache = null; }
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -36,7 +41,7 @@ export default async function handler(req, res) {
 
   // Serve from cache if fresh
   if (_cache && Date.now() - _cache.fetchedAt < CACHE_TTL_MS) {
-    res.setHeader('Cache-Control', `s-maxage=${Math.floor(CACHE_TTL_MS / 1000)}, stale-while-revalidate`);
+    res.setHeader('Cache-Control', `s-maxage=${EDGE_MAX_AGE_S}, stale-while-revalidate=60`);
     res.status(200).json(_cache.data);
     return;
   }
@@ -62,34 +67,19 @@ export default async function handler(req, res) {
 
     const { access_token } = await tokenResp.json();
 
-    // ── Step 2: Fetch unavailabilities ────────────────────────────────────
-    const params = new URLSearchParams({
-      resource_type: 'NUCLEAR',
-      status: 'ACTIVE',
-    });
-
-    const unavResp = await fetch(`${RTE_UNAV_URL}?${params}`, {
-      headers: { Authorization: `Bearer ${access_token}` },
-      signal: AbortSignal.timeout(15_000),
-    });
-
-    if (!unavResp.ok) {
-      console.error('[nuclear-rte] Unavailability API error:', unavResp.status);
-      res.status(502).json({ error: `RTE API error: ${unavResp.status}`, available: false });
+    // ── Step 2: Fetch unavailabilities (voir api/_lib/rte-unavailability-query.js) ──
+    const result = await fetchAllUnavailabilities(RTE_UNAV_URL, access_token);
+    if (!result.ok) {
+      console.error('[nuclear-rte]', result.error);
+      res.status(502).json({ error: result.error, available: false });
       return;
     }
-
-    const raw = await unavResp.json();
-
-    // Normaliser la réponse vers un tableau plat
-    const items = Array.isArray(raw)
-      ? raw
-      : (raw.generation_unavailabilities ?? raw.unavailabilities ?? []);
+    const items = result.items;
 
     const payload = { items, available: true, fetchedAt: new Date().toISOString() };
     _cache = { data: payload, fetchedAt: Date.now() };
 
-    res.setHeader('Cache-Control', `s-maxage=${Math.floor(CACHE_TTL_MS / 1000)}, stale-while-revalidate`);
+    res.setHeader('Cache-Control', `s-maxage=${EDGE_MAX_AGE_S}, stale-while-revalidate=60`);
     res.status(200).json(payload);
   } catch (err) {
     console.error('[nuclear-rte] Unexpected error:', err);

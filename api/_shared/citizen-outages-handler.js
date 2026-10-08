@@ -322,7 +322,7 @@ function parseDeptArticles(html, deptCode) {
 
   if (!IS_WORDPRESS) {
     console.warn(
-      `[infocoupure] /departement-${deptCode}/ : structure HTML inattendue — ` +
+      `[infocoupure] /departement-${deptCode}/ : structure HTML inattendue ; ` +
       'marqueurs WordPress absents. Le scraper est peut-\u00eatre cass\u00e9.'
     );
     return [];
@@ -547,9 +547,9 @@ async function scrapeCoupureElec() {
       const html = await resp.text();
       const { results, stats } = parseCoupureElecDept(cheerio, html, dept);
       if (stats.total === 0) {
-        console.warn(`[coupure-elec] /departement/${dept.slug} — aucun lien /ville/ trouvé (structure HTML changée ?)`);
+        console.warn(`[coupure-elec] /departement/${dept.slug} : aucun lien /ville/ trouvé (structure HTML changée ?)`);
       } else if (stats.active === 0) {
-        console.info(`[coupure-elec] /departement/${dept.slug} — ${stats.total} panne(s) trouvée(s), toutes filtrées. Statuts: [${stats.statuses.join(', ')}]`);
+        console.info(`[coupure-elec] /departement/${dept.slug} : ${stats.total} panne(s) trouvée(s), toutes filtrées. Statuts: [${stats.statuses.join(', ')}]`);
       }
       raw.push(...results);
     } catch (err) {
@@ -558,7 +558,7 @@ async function scrapeCoupureElec() {
   }
 
   if (raw.length === 0) {
-    console.info('[coupure-elec] aucune panne active sur les 5 départements — réseau stable ou tous statuts filtrés');
+    console.info('[coupure-elec] aucune panne active sur les 5 départements : réseau stable ou tous statuts filtrés');
     return [];
   }
 
@@ -627,7 +627,7 @@ function parseCoupureElecDept(cheerio, html, dept) {
 
   if (!cityLinkSelector && !hasPContainer) {
     console.warn(
-      `[coupure-elec] /departement/${dept.slug} : structure HTML inattendue — ` +
+      `[coupure-elec] /departement/${dept.slug} : structure HTML inattendue ; ` +
       'aucun lien ville ni conteneur .p-6 trouvé. Scraper peut-être cassé.'
     );
     return { results: [], stats: { total: 0, active: 0, statuses: [], structureValid: false } };

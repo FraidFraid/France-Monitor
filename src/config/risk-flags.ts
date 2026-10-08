@@ -46,3 +46,12 @@ export function getFlagRisk(countryIso2: string | undefined): FlagRisk {
   if (GREY_LIST_FLAGS.has(countryIso2)) return 'greylist';
   return 'none';
 }
+
+/**
+ * Millésimes affichés dans le panneau Trafic maritime (spec 2026-10-03 trafics § 2.5) : listes noire et grise du rapport
+ * annuel Paris MOU 2024 ; registres sous sanctions (OFAC) saisis le 27/03/2026 (date du fichier).
+ */
+export const RISK_FLAGS_VINTAGE = {
+  parisMou: 'rapport annuel Paris MOU 2024',
+  sanctions: 'OFAC, liste saisie le 27/03/2026',
+} as const;

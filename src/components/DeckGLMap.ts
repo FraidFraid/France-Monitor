@@ -5,25 +5,57 @@
  *           Traffic (axes routiers).
  */
 
-import type { WeatherRadarFrame, WeatherRadarStatus } from '../services/weather-radar.ts';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import { COORDINATE_SYSTEM } from '@deck.gl/core';
-import Supercluster from 'supercluster';
-import { DayNightLayer } from '../layers/DayNightLayer.ts';
-import type { MapViewState, NewsItem, MeteoAlert, FloodSegment, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, RestrictedZone, MilitaryFlight, AirTrafficFlight, EcowattResponse, ActiveFire, TelecomOutage, PowerOutage, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption, HydraulicBackboneAsset, ThreatEvent } from '../types/index.ts';
+import type { MapViewState, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, NewsItem, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, AirTrafficFlight, EcowattResponse, TelecomOutage, PowerOutage, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, HydraulicBackboneAsset } from '../types/index.ts';
+import type { AirQualityResponse, DroughtResponse, EarthquakesResponse, FiresResponse, FloodSection, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
 import { ecowattToday, ecowattLevelLabel } from '../services/ecowatt-official.ts';
-import { APL_LEVELS, OSCOUR_LEVELS, DATA_FRESHNESS_LABELS } from '../types/index.ts';
+import { DATA_FRESHNESS_LABELS } from '../types/index.ts';
+import type { AlertLevelsResponse, AplDataset, AplProfession, EmergencySite, HospitalsDataset, SyndromicResponse } from '../types/index.ts';
+import type { UrgencesSyndrome } from './layer-panel/health-format.ts';
+import {
+  HEALTH_HOVER_LAYERS, HEALTH_LAYER_ORDER, HOSPITAL_COLOR, HOSPITAL_RADIUS, aplProp, colorFromProp,
+  departmentHealthFeatures, healthTooltipHtml, hospitalFeatures, hospitalPopupHtml, regionAlertFeatures, topHealthHit,
+  urgencesProp, type HealthMapData,
+} from './deckgl/health-map.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
 import type { DromEnergyAsset, DromEnergyAssetType, DromEnergyDashboard } from '../services/drom-energy/index.ts';
 import { classifyMetropoles } from '../utils/metropolesElectric.ts';
 import type { EventMapPoint } from '../services/v2-map.ts';
-import { fetchTrafficFlowSegment, type TrafficFlowSegment, type TrafficIncident } from '../services/traffic.ts';
+import { fetchTrafficFlowSegment } from '../services/traffic-road.ts';
+import {
+  AIR_TWEEN_MIN_ZOOM, TRAFFIC_COLOR, TRAFFIC_HOVER_LAYERS, TRAFFIC_JAM_LAYERS, TRAFFIC_LAYERS, TRAFFIC_LAYER_KEYS, TRAFFIC_SOURCE_IDS,
+  TRAFFIC_STROKE_DIM_LAYERS, shouldTweenAirPositions,
+  airEmergencyFeatures, airFlightTooltipHtml, airportFeatures, anchorageFeatures, jamPopupHtml, maritimeSignalFeatures, railOverviewLate,
+  railStationFeatures, roadEventFeatures, topTrafficHit, trafficSourceSpec, trafficTooltipHtml, traficolorFeatures, trainRouteFeatures,
+  urbanJamFeatures,
+} from './deckgl/traffic-map.ts';
+import {
+  ENV_HOVER_LAYERS, ENV_ICON_GLYPH, ENV_ICON_MARGIN, ENV_ICON_NAMES, ENV_ICON_SIZE, ENV_LAYERS, ENV_LAYER_BEFORE, ENV_LAYER_KEYS, ENV_SOURCE_IDS, FOREST_DANGER_LAYERS, alphaToSdf, envIconImage, envLayerOn,
+  envSourceSpec, envTooltipHtml, fireAbroadFeatures, fireDetectionFeatures, floodSectionFeatures, floodStationFeatures, forestDangerFeatures,
+  radarPickFeature, topEnvHit, vigilanceDeptFeatures, vigilanceIconFeatures, airDeptFeatures, droughtDeptFeatures, quakeFeatures, tideGaugeFeatures, envBReshowPaints, placeEnvBPoints,
+  type EnvBData, type EnvBLayerState,
+} from './deckgl/environment-map.ts';
+import {
+  SOV_HOVER_LAYERS, SOV_LAYERS, SOV_LAYER_KEYS, SOV_OPTION_LAYERS, SOV_SOURCE_IDS, abroadAircraftFeatures, aircraftFeatures, cableAlertFeatures,
+  cableFeatures, defenseSiteFeatures, landingFeatures, militaryEmergencyFeatures, navyFeatures, osmWorksFeatures, sovCableColor, sovSourceSpec,
+  sovTooltipHtml, topSovHit,
+} from './deckgl/sovereignty-map.ts';
+import { SOV_B_LAYERS, SOV_B_SOURCE_IDS, droneZoneFeatures, gnssCellFeatures, sovBSourceSpec } from './deckgl/sovereignty-map-b.ts';
+import {
+  SRC_SOV_AIRCRAFT, SRC_SOV_AIRCRAFT_ABROAD, SRC_SOV_CABLE_VESSELS, SRC_SOV_DRONES, SRC_SOV_EMERGENCIES, SRC_SOV_GNSS, SRC_SOV_NAVY, SRC_SOV_OSM_WORKS,
+} from './deckgl/constants.ts';
+import { NAVY_HEX, SOV_ABROAD_HEX } from './layer-panel/sovereignty-legend.ts';
+import type { CablesWatchResponse, DefenseOsmWorksFile, DroneZonesFile, GnssResponse, MilitaryResponse, SubseaCablesFile } from '../types/index.ts';
+import {
+  VESSEL_TYPE_HEX, type VesselCategory, airAltitudeHex, vesselCategory, vesselHex, vesselTypeLabel,
+} from './layer-panel/traffic-legend.ts';
 import { identifyFrenchCallsign, identifyAlliedCallsign } from '../config/military.ts';
-import { interpolateFlightPosition } from '../services/military-flights.ts';
-import { getAllLiveTraffic, getMilitaryShips, type MilitaryShip } from '../services/military-ships.ts';
+import { getAllLiveTraffic, type MilitaryShip } from '../services/military-ships.ts';
+import { findShipByKey, isSubmarine } from './layer-panel/navy.ts';
 import { OIL_PIPELINE_COLORS } from '../config/oil-infrastructure.ts';
 import type { RTEIIPIncident } from '../services/rte-iip.ts';
 import { resolveFlowDirection, resolveGasFlowDirection } from '../utils/flow-direction.ts';
@@ -42,22 +74,13 @@ import { loadDepartementsGeojson } from '../services/departements-geojson.ts';
 
 
 // ─── Extracted deckgl modules (constants & pure helpers) ───
-import type { ThreatMapDatum } from './deckgl/types.ts';
 import { resolveIIPCoords } from './deckgl/iip-geocoding.ts';
 import { LYR_SATELLITE, getFrenchStyle } from './deckgl/base-style.ts';
 import { ELECTRIC_FLOW_STYLE, getElectricFlowConfig, GAS_FLOW_STYLE, OIL_FLOW_STYLE } from './deckgl/flow-styles.ts';
 export { ELECTRIC_FLOW_STYLE, setElectricFlowConfig, getElectricFlowConfig, GAS_FLOW_STYLE, OIL_FLOW_STYLE } from './deckgl/flow-styles.ts';
-import { emptyFC, getFeatureCenter, generateArc, computeBearingDegrees } from './deckgl/geometry-utils.ts';
+import { emptyFC, generateArc, computeBearingDegrees } from './deckgl/geometry-utils.ts';
 import {
   escapeHtml,
-  getWeatherRadarSourceId,
-  getWeatherRadarLayerId,
-  getWeatherRiskIcon,
-  issToFillColor,
-  issToLineColor,
-  issToColor,
-  getISSSemio,
-  getHealthSourceLabel,
   scoreToISNRColor,
   scoreToISNRLineColor,
   deptCodeToId,
@@ -69,12 +92,10 @@ import {
   ECHO_TOPS_LAYER_ID,
   ECHO_TOPS_SOURCE_ID,
 } from './deckgl/format-utils.ts';
-import { fmIcon, fmStatusDot, type FmDotLevel } from './shared/icons.ts';
+import { fmIcon, fmStatusDot, type FmDotLevel, type IconName } from './shared/icons.ts';
 import {
-  buildSubmarineLandingPoints,
   dromEnergyAssetFromProperties,
   renderDromEnergyTooltipHtml,
-  buildSubseaCableTooltip,
 } from './deckgl/popup-templates.ts';
 import {
   SRC,
@@ -83,11 +104,10 @@ import {
   SRC_POWER_REGIONS,
   SRC_INTERCONN,
   SRC_WEATHER,
-  SRC_HEALTH,
-  SRC_HEALTH_MARKERS,
+  SRC_HEALTH_REGIONS,
+  SRC_HEALTH_DEPTS,
   SRC_FLOODS,
   SRC_FLOODS_HIGHLIGHT,
-  SRC_TOPAGE_VIS,
   SRC_FIRES,
   SRC_INFRA,
   SRC_INFRA_HIGHLIGHT,
@@ -98,7 +118,6 @@ import {
   SRC_WIND_TURBINES,
   SRC_WIND_PARKS,
   SRC_TRAFFIC,
-  SRC_TRAFFIC_INCIDENTS,
   SRC_TRAIN_ROUTE,
   LYR_GLOW,
   LYR_POINTS,
@@ -121,26 +140,34 @@ import {
   LYR_WEATHER_LINE_YELLOW,
   LYR_WEATHER_LINE_ORANGE,
   LYR_WEATHER_LINE_RED,
-  LYR_WEATHER_LINE_VIOLET,
   SRC_WEATHER_ICONS,
   LYR_WEATHER_ICONS,
-  LYR_HEALTH_FILL,
-  LYR_HEALTH_LINE,
-  LYR_HEALTH_MARKERS,
+  LYR_FOREST_DANGER_FILL,
+  LYR_HEALTH_ALERT_FILL,
+  LYR_HEALTH_ALERT_LINE,
+  LYR_HEALTH_URG_FILL,
+  LYR_HEALTH_URG_LINE,
   LYR_HEALTH_APL_FILL,
   LYR_HEALTH_APL_LINE,
-  LYR_HEALTH_OSCOUR_CIRCLES,
   SRC_ISNR,
   LYR_ISNR_FILL,
   LYR_ISNR_LINE,
-  LYR_TOPAGE_VIS,
-  LYR_FLOODS_RAW,
   LYR_FLOODS,
   LYR_FLOODS_HIGHLIGHT,
   LYR_FIRES_GLOW,
   LYR_FIRES_POINTS,
   SRC_FIRES_HIGHLIGHT,
   LYR_FIRES_HIGHLIGHT,
+  SRC_FIRES_ABROAD,
+  SRC_FLOOD_STATIONS,
+  SRC_DROUGHT,
+  SRC_AIR_QUALITY,
+  SRC_QUAKES,
+  SRC_TIDE_GAUGES,
+  LYR_DROUGHT_FILL,
+  LYR_AIR_FILL,
+  SRC_RADAR_PICK,
+  SRC_FOREST_DANGER,
   SRC_MODIS,
   LYR_MODIS,
   SRC_SENTINEL_SCENE,
@@ -166,8 +193,6 @@ import {
   LYR_WIND_PARK_HALO,
   LYR_WIND_PARK_CIRCLE,
   LYR_WIND_PARK_LABEL,
-  WEATHER_RADAR_REGIONS,
-  WEATHER_RADAR_MAX_ZOOM,
   SRC_GAS_NETWORK_GRT,
   SRC_GAS_NETWORK_TEREGA,
   LYR_GAS_NETWORK_GRT,
@@ -219,9 +244,6 @@ import {
   LYR_OIL_FLOW_ARC_HIT,
   LYR_OIL_FLOW_MARKER_HIT,
   LYR_TRAFFIC,
-  LYR_TRAFFIC_CLUSTER,
-  LYR_TRAFFIC_CLUSTER_COUNT,
-  LYR_TRAFFIC_INCIDENTS,
   LYR_TRAIN_ROUTE,
   LYR_TRAIN_STATIONS,
   LYR_TRAIN_STATION_LABELS,
@@ -229,12 +251,7 @@ import {
   LYR_METRO_LOAD_GLOW,
   LYR_METRO_LOAD_CIRCLE,
   LYR_METRO_LOAD_LABEL,
-  SRC_MILITARY_ZONES,
   SRC_MILITARY_BASES,
-  SRC_MILITARY_FLIGHTS,
-  SRC_MILITARY_FLIGHT_TRAILS,
-  SRC_AIR_TRAFFIC,
-  SRC_MILITARY_SHIPS,
   SRC_MILITARY_SHIPS_HIGHLIGHT,
   SRC_MILITARY_SHIPS_SELECTED,
   SRC_GLOBAL_TRAFFIC,
@@ -243,15 +260,8 @@ import {
   SRC_TELECOM,
   SRC_POWER,
   SRC_HOSPITALS,
-  LYR_MILITARY_ZONES_FILL,
-  LYR_MILITARY_ZONES_LINE,
   LYR_MILITARY_BASES_CIRCLE,
   LYR_MILITARY_BASES_LABEL,
-  LYR_MILITARY_FLIGHT_TRAILS,
-  LYR_MILITARY_FLIGHTS,
-  LYR_MILITARY_FLIGHTS_LABEL,
-  LYR_AIR_TRAFFIC_LABEL,
-  LYR_MILITARY_SHIPS,
   LYR_MILITARY_SHIPS_HIGHLIGHT,
   LYR_MILITARY_SHIPS_SELECTED,
   LYR_SUBMARINE_CABLES,
@@ -268,8 +278,6 @@ import {
   SRC_IIP,
   LYR_IIP_GLOW,
   LYR_IIP_CORE,
-  SRC_TERMINATOR,
-  LYR_TERMINATOR,
   SRC_NET_ISP,
   SRC_NET_IODA,
   LYR_NET_ISP_GLOW,
@@ -294,33 +302,24 @@ import {
   LYR_IXP_CLUSTER_COUNT,
   LYR_IXP_CIRCLE,
   LYR_IXP_HIGHLIGHT,
-  LYR_HOSPITALS_CHU,
-  LYR_HOSPITALS_CH,
-  LYR_HOSPITALS_LABEL,
+  LYR_HOSPITALS,
   SRC_MAIRES_POL,
   LYR_MAIRES_POL,
   LYR_MAIRES_POL_LABEL,
-  SRC_RAIL_ARCS,
   SRC_RAIL_STATIONS,
-  LYR_RAIL_ARC_GLOW,
-  LYR_RAIL_ARC,
-  LYR_RAIL_ARC_HIT,
-  LYR_RAIL_STATION_GLOW,
-  LYR_RAIL_STATION,
-  LYR_RAIL_STATION_LABEL,
-  RAIL_SEVERITY_COLOR,
-  RAIL_SEVERITY_HEX,
-  RAIL_SEVERITY_TINT,
+  SRC_ROAD_SECTIONS,
+  SRC_ROAD_JAMS,
+  SRC_ROAD_EVENTS,
+  SRC_AIRPORTS,
+  SRC_AIR_EMERGENCIES,
+  SRC_ANCHORAGES,
+  SRC_AIS_SIGNALS,
   REGION_BALANCE_COLORS,
   REGION_BALANCE_LINE_COLORS,
   regionEnergyBalance,
-  METEO_COLORS,
   WEATHER_HIGHLIGHT_STATE,
-  WEATHER_RISK_ICONS,
   AIS_DESTINATION_ALIASES,
   AIS_PORT_LOCODES,
-  WEATHER_DEPT_CENTROIDS,
-  FLOOD_COLORS,
   INFRA_COLORS,
   INFRA_VITAL_HALO_COLOR,
   INFRA_NUCLEAR_RING_COLOR,
@@ -414,43 +413,60 @@ export class DeckGLMap {
     | ((items: NewsItem[], center: [number, number]) => void)
     | null = null;
   private onViewChange: ((vs: MapViewState) => void) | null = null;
-  private onMilitaryFlightClick: ((flight: MilitaryFlight, x: number, y: number) => void) | null = null;
   private onMilitaryBaseClick: ((base: MilitaryBase, x: number, y: number) => void) | null = null;
-  private onMilitaryShipClick: ((ship: ReturnType<typeof import('../services/military-ships.ts').getMilitaryShips>[0], x: number, y: number) => void) | null = null;
-  private _onMaritimeShipClick: ((ship: MilitaryShip, x: number, y: number) => void) | null = null;
   private onSatelliteView: ((request: SatelliteViewRequest) => void) | null = null;
-  private onThreatEventClick: ((event: ThreatEvent, x: number, y: number) => void) | null = null;
   private _highlightedMmsi: string | null = null;
   private _selectedShipMmsi: string | null = null;
   private _satelliteMode = false;
   private _basemapLayerVisibility: Map<string, 'visible' | 'none'> = new Map();
   private _sentinelBlinkInterval: ReturnType<typeof setInterval> | null = null;
   // In-memory lookup tables for military data (populated by updateMilitary*)
-  private militaryFlightsById: Map<string, MilitaryFlight> = new Map();
   private airTrafficFlightsById: Map<string, AirTrafficFlight> = new Map();
   private militaryBasesById: Map<string, MilitaryBase> = new Map();
   private militaryShipsById: Map<string, { id: string; name: string; type: string; role: string; mmsi?: string; lat: number; lon: number; speed?: number; heading?: number; port?: string; isLive?: boolean }> = new Map();
   private aisIconDefs: Record<string, { url: string; width: number; height: number; anchorX: number; anchorY: number; mask: boolean }> = {};
   // Lightweight hover tooltip (uses maplibregl.Popup)
   private militaryTooltip: maplibregl.Popup | null = null;
-  private hoveredSubseaCableId: string | number | null = null;
-  private hoveredSubseaLandingId: string | number | null = null;
   private aisHoverTooltip: maplibregl.Popup | null = null;
-  private floodHoverPopup: maplibregl.Popup | null = null;
   private healthHoverPopup: maplibregl.Popup | null = null;
-  private weatherHoverPopup: maplibregl.Popup | null = null;
+  /** Trafics (spec 2026-10-03 trafics § 3) : survol, fiche d'un bouchon, icônes d'avions selon le zoom, retard SNCF du trajet tracé. */
+  private trafficHoverPopup: maplibregl.Popup | null = null;
+  // Environnement (spec 2026-10-04 environnement § 2) : dernières données reçues (rejeu au réaffichage, surbrillances), options, survol.
+  private envVigilance: { v: VigilanceResponse | null; echeance: VigilanceEcheance; now: number } | null = null;
+  private envVigilancePending = false;
+  private envFloodSections: Map<string, FloodSection> = new Map();
+  private envFires: FiresResponse | null = null;
+  private envFiresNow = 0;
+  private envFloods: FloodsResponse | null = null;
+  /** Dernières réponses de la phase B, gardées couche masquée pour le repeint à l'heure courante (S2). */
+  private envB: EnvBData = { drought: null, air: null, quakes: null, seaLevels: null, vigilance: null };
+  private _forestDangerFill = false;
+  private _echoTopsEnabled = false;
+  private radarPick: { lat: number; lon: number } | null = null;
+  private onRadarPointPick: ((lat: number, lon: number) => void) | null = null;
+  private envHoverPopup: maplibregl.Popup | null = null;
+  private envHoverShown = false;
+  // Souveraineté (spec 2026-10-04 souveraineté § 2 ; contrats § 5) : infobulle, option des ouvrages OSM, clic transmis à App.ts, dernières
+  // données (rejeu à l'heure courante au réaffichage, S2), câbles OSM et Shom (cadrage d'un câble choisi).
+  private sovHoverPopup: maplibregl.Popup | null = null;
+  private sovHoverShown = false;
+  private osmWorksVisible = false;
+  private droneZonesVisible = false;
+  private onSovereigntyFeatureClick: ((layerId: string, props: Record<string, unknown>) => void) | null = null;
+  private sovCables: SubseaCablesFile | null = null;
+  private sovCableWatch: CablesWatchResponse | null = null;
+  private sovMilitary: MilitaryResponse | null = null;
+  private sovNavy: { ships: readonly MilitaryShip[]; frozen: boolean } | null = null;
+  private trafficHoverShown = false;
+  private trafficPointer = false;
+  private trafficJamPopup: maplibregl.Popup | null = null;
+  private railTrafficLate = false;
+  /** Trajet tracé : train choisi dans le panneau ; un train survolé le remplace le temps du survol. */
+  private chosenTrain: RailTrain | null = null;
+  private previewTrain: RailTrain | null = null;
   private dromEnergyHoverPopup: maplibregl.Popup | null = null;
-  private weatherRadarTileTemplate: string | null = null;
-  private weatherRadarFetchedAt = 0;
-  private weatherRadarFrame: WeatherRadarFrame | null = null;
-  private weatherRadarStatus: WeatherRadarStatus = 'loading';
-  private onWeatherRadarFrame: ((frame: WeatherRadarFrame | null, status: WeatherRadarStatus) => void) | null = null;
   private fuelTensionHoverPopup: maplibregl.Popup | null = null;
-  private firesHoverPopup: maplibregl.Popup | null = null;
-  private _flightInterpolTick: ReturnType<typeof setInterval> | null = null;
   private _modisOverlayEnabled = false;
-  /** Marqueurs FIRMS visibles (toggle du panneau Feux, ANDé avec la couche fires). */
-  private _firePointsEnabled = true;
   private _modisTilesProbe: Promise<void> | null = null;
   private _mtgFrpEnabled = false;
   private mtgFrpObservedAt: string | null = null;
@@ -462,21 +478,10 @@ export class DeckGLMap {
   private radar2dDestroyed = false;
   private _latestEolienLive: EolienLive | null = null;
   private _mairesPolitiqueData: Array<{c:string;lat:number;lon:number;n:string;nom:string}> | null = null;
-  private trafficIncidentPopup: maplibregl.Popup | null = null;
   private enrichedHoverPopup: maplibregl.Popup | null = null;
-  private railStationPanel: HTMLElement | null = null;
-  private trafficIncidentHoverTimer: ReturnType<typeof setTimeout> | null = null;
-  private _lastHoveredHealthId: number | null = null;
   private _lastHoveredFuelDeptId: string | null = null;
   private _previewedWeatherDeptId: number | null = null;
   private _selectedWeatherDeptId: number | null = null;
-  private latestHealthFeatures: HealthFeatures | null = null;
-  // APL (déserts médicaux) vient de DEUX sources : le fichier statique
-  // /data/apl-departements.json (loadAplData) ET l'API santé /api/health/apl.
-  // En prod l'API peut renvoyer une liste vide → on PERSISTE les valeurs APL
-  // non-nulles pour qu'un refresh santé ultérieur n'efface jamais la couche.
-  private aplByDept = new Map<string, { aplIndex: number | null; aplCategory: string }>();
-  private floodSegmentsById: Map<string, FloodSegment> = new Map();
   // Perf audit §5 item 4 / §6 item 7: kicked off in init() right after the map
   // is created, in parallel with map style/tile loading, instead of only
   // after map.on('load') fires — this fetch has no dependency on the map.
@@ -485,36 +490,40 @@ export class DeckGLMap {
   // fetched the first time the gas layer is switched on.
   private gasNetworkSourcesPromise: Promise<void> | null = null;
   // Perf audit §6 item 2: departements.geojson (3.3 MB) is memoized inside
-  // getDepartmentsGeojson(), but updateWeather/updateHealth/updateISNR/
-  // updateOutages used to trigger it unconditionally regardless of layer
-  // visibility. These four fields hold the most recent args passed while the
+  // getDepartmentsGeojson(), but updateISNR/updateOutages used to trigger it
+  // unconditionally regardless of layer visibility. These two fields (the health layers use healthRegionsDirty/healthDeptsDirty,
+  // the vigilance envVigilancePending) hold the most recent args passed while the
   // corresponding layer was inactive, so setLayerVisibility() can replay the
   // same call (cheap: memoized fetch, or first real one) once it's switched on.
-  private _pendingWeatherAlerts: MeteoAlert[] | null = null;
-  private _pendingHealthArgs: { regions: HealthRegionMetric[]; healthFeatures?: HealthFeatures; departments?: HealthDepartmentMetric[] } | null = null;
   private _pendingIsnrScores: import('../types/index.ts').ISNRScore[] | null = null;
   private _pendingOutagesArgs: { telecoms: TelecomOutage[]; powers: PowerOutage[] } | null = null;
-
-  public getHealthFeatures(): HealthFeatures | null {
-    return this.latestHealthFeatures;
-  }
+  // Couches santé (spec 2026-10-03 § 3) : dernières données reçues, syndrome et profession choisis dans les panneaux.
+  private healthAlerts: AlertLevelsResponse | null = null;
+  /** Instant de la dernière relève : règle « en saison » des alertes et retard des urgences (S2). */
+  private healthNow = 0;
+  private healthSyndromic: SyndromicResponse | null = null;
+  private healthApl: AplDataset | null = null;
+  private hospitalSites: ReadonlyMap<string, EmergencySite> = new Map();
+  private hospitalsVintage: number | null = null;
+  private healthUrgencesSyndrome: UrgencesSyndrome = 'ira';
+  private healthAplProfession: AplProfession = 'mg';
+  // Perf : regions.geojson et departements.geojson ne sont lus qu'avec la couche visible ; setLayerVisibility rejoue.
+  private healthRegionsDirty = false;
+  private healthDeptsDirty = false;
+  private regionsGeojsonPromise: Promise<GeoJSON.FeatureCollection | null> | null = null;
+  private hospitalPopup: maplibregl.Popup | null = null;
+  /** N° FINESS du site dont la fiche est ouverte : pas d'infobulle de survol par-dessus. */
+  private hospitalPopupFiness: string | null = null;
+  // Infobulle de survol santé affichée, curseur main posé par les couches santé (et par elles seules).
+  private healthHoverShown = false;
+  private healthPointer = false;
 
   // Cluster hover state
   private hoveredClusterId: number | null = null;
   private lastClusterItems: NewsItem[] = [];
-  // Département santé actuellement ouvert au clic (évite de ré-afficher le hover dessus)
-  private _activeHealthClickId: number | null = null;
   
-  private threatEvents: ThreatEvent[] = [];
-  private threatEventsVisible: boolean = true;
-  private threatClusterIndex: Supercluster<Supercluster.AnyProps, Supercluster.AnyProps> | null = null;
   private lastClusterCount: number = 0;
   private clusterHideTimeout: ReturnType<typeof setTimeout> | null = null;
-  // Memoization of getThreatMapData() (invalidated on events change / zoom / bounds change)
-  private threatMapDataCache: ThreatMapDatum[] | null = null;
-  private threatMapDataCacheKey: string | null = null;
-  // Hash of the last threat events set — skips Supercluster rebuild when unchanged
-  private threatEventsHash: string | null = null;
   // Batching of deckOverlay.setProps + triggerRepaint via requestAnimationFrame
   private pendingOverlayUpdate = false;
   // Throttle for cluster hover leaves fetching (~100ms)
@@ -570,21 +579,16 @@ export class DeckGLMap {
   private deckOverlay: MapboxOverlay | null = null;
   private globalTrafficVisible = true;  // Controlled by military layer toggle
   private globalTrafficData: AisShipData[] = [];
-  private roadTrafficVisible = false;
+  /** Sillages et noms des navires mémorisés (getAisTrailData, getAisLabelData). */
+  private aisTrailCache: { source: AisShipData[]; data: AisShipData[] } | null = null;
+  private aisLabelCache: {
+    source: AisShipData[]; highlighted: string | null; selected: string | null; all: boolean; data: AisShipData[];
+  } | null = null;
   /** Événements consolidés de la v2 (spec 2026-09-29 § 5), déjà filtrés par App (v2-map.ts). */
   private eventPoints: EventMapPoint[] = [];
   private eventPointsVisible = false;
   private onEventPointClick: ((id: number) => void) | null = null;
   private airTrafficVisible = false;
-  private dayNightVisible = false;
-  private dayNightOptions = {
-    showNight: true,
-    showTwilight: true,
-    showSunIcon: true,
-    timestamp: 0, // 0 = utilise Date.now() à chaque rendu
-  };
-  private roadTrafficIncidents: TrafficIncident[] = [];
-  private trafficClusterIndex: Supercluster<Supercluster.AnyProps, Supercluster.AnyProps> | null = null;
   private civilAirTrafficFlights: AirTrafficFlight[] = [];  // Filtered: excludes military callsigns
   private legendHoverCategory: string | null = null;
 
@@ -660,6 +664,7 @@ export class DeckGLMap {
 
     await new Promise<void>((r) => this.map!.on('load', r));
     await this.loadIconAtlas();
+    this.registerEnvironmentIcons();
 
     // ═══════════════════════════════════════════════════════════════
     // ANTI-FLASH: Force all custom layers to start HIDDEN
@@ -733,16 +738,9 @@ export class DeckGLMap {
       data: emptyFC(),
     });
 
-    // Health regions
-    this.map.addSource(SRC_HEALTH, {
-      type: 'geojson',
-      data: emptyFC(),
-      promoteId: 'code'
-    });
-    this.map.addSource(SRC_HEALTH_MARKERS, {
-      type: 'geojson',
-      data: emptyFC(),
-    });
+    // Santé (spec 2026-10-03 § 3) : régions (alertes Odissé), départements (urgences et APL).
+    this.map.addSource(SRC_HEALTH_REGIONS, { type: 'geojson', data: emptyFC() });
+    this.map.addSource(SRC_HEALTH_DEPTS, { type: 'geojson', data: emptyFC() });
 
     // ISNR stability departments
     this.map.addSource(SRC_ISNR, {
@@ -751,8 +749,6 @@ export class DeckGLMap {
       promoteId: 'code'
     });
 
-    // Topage visual (réseau hydro décoratif, fond)
-    this.map.addSource(SRC_TOPAGE_VIS, { type: 'geojson', data: emptyFC() });
 
     // Flood segments
     this.map.addSource(SRC_FLOODS, { type: 'geojson', data: emptyFC() });
@@ -761,6 +757,8 @@ export class DeckGLMap {
     // NASA FIRMS Fires
     this.map.addSource(SRC_FIRES, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_FIRES_HIGHLIGHT, { type: 'geojson', data: emptyFC() });
+    // Environnement (spec 2026-10-04 § 2) : météo des forêts, détections hors de France, stations des tronçons, point du profil radar.
+    for (const id of ENV_SOURCE_IDS) this.map.addSource(id, envSourceSpec());
 
     // NASA GIBS — dernière image VIIRS publiée (fumée / cicatrices)
     this.map.addSource(SRC_MODIS, {
@@ -844,12 +842,8 @@ export class DeckGLMap {
       bounds: [-5.2, 41.3, 9.6, 51.1] // Tighter bounding box for France métropolitaine
     });
 
-    // Traffic Incidents (TomTom temps réel) — source alimentée par un index supercluster JS
-    this.map.addSource(SRC_TRAFFIC_INCIDENTS, { type: 'geojson', data: emptyFC() });
-
-    // Rail disruptions network (arcs + stations, updated from SNCF data)
-    this.map.addSource(SRC_RAIL_ARCS, { type: 'geojson', data: emptyFC(), promoteId: 'id' });
-    this.map.addSource(SRC_RAIL_STATIONS, { type: 'geojson', data: emptyFC() });
+    // Trafics (spec 2026-10-03 trafics § 3) : sections, bouchons, événements, aéroports, urgences, gares, mouillages, signalements.
+    for (const id of TRAFFIC_SOURCE_IDS) this.map.addSource(id, trafficSourceSpec());
 
     // Train route highlight
     this.map.addSource(SRC_TRAIN_ROUTE, { type: 'geojson', data: emptyFC() });
@@ -862,7 +856,6 @@ export class DeckGLMap {
     this.map.addSource(SRC_POWER, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_CITIZEN_ZONES, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_IIP, { type: 'geojson', data: emptyFC() });
-    this.map.addSource(SRC_TERMINATOR, { type: 'geojson', data: emptyFC() });
     // Internet/BGP outages (IODA + ISP BGP) — clustering activé pour éviter le chevauchement à faible zoom
     this.map.addSource(SRC_NET_ISP, {
       type: 'geojson', data: emptyFC(),
@@ -885,54 +878,30 @@ export class DeckGLMap {
     this.map.addSource(SRC_IXP_HIGHLIGHT, { type: 'geojson', data: emptyFC() });
 
     // Military
-    this.map.addSource(SRC_MILITARY_ZONES, { type: 'geojson', data: emptyFC() });
+    // Souveraineté, phase B (tâche B27) : mailles GNSS et zones drones DGAC, à la place des rectangles « ZIT ».
+    for (const id of SOV_B_SOURCE_IDS) this.map.addSource(id, sovBSourceSpec());
     this.map.addSource(SRC_MILITARY_BASES, { type: 'geojson', data: emptyFC() });
-    this.map.addSource(SRC_MILITARY_FLIGHTS, { type: 'geojson', data: emptyFC() });
-    this.map.addSource(SRC_MILITARY_FLIGHT_TRAILS, { type: 'geojson', data: emptyFC() });
-    this.map.addSource(SRC_AIR_TRAFFIC, { type: 'geojson', data: emptyFC() });
-    this.map.addSource(SRC_MILITARY_SHIPS, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_MILITARY_SHIPS_HIGHLIGHT, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_MILITARY_SHIPS_SELECTED, { type: 'geojson', data: emptyFC() });
+    // Souveraineté (spec 2026-10-04 souveraineté § 2) : aéronefs, urgences, Marine nationale, ouvrages OSM, navires près d'un câble.
+    for (const id of SOV_SOURCE_IDS) this.map.addSource(id, sovSourceSpec());
     this.map.addSource(SRC_GLOBAL_TRAFFIC, { type: 'geojson', data: emptyFC() });
 
-    let submarineCablesData = emptyFC() as GeoJSON.FeatureCollection<GeoJSON.LineString>;
-    try {
-      const submarineCablesResponse = await fetch('/data/submarine-cables.json');
-      if (submarineCablesResponse.ok) {
-        submarineCablesData = await submarineCablesResponse.json() as GeoJSON.FeatureCollection<GeoJSON.LineString>;
-      }
-    } catch (err) {
-      console.warn('[DeckGLMap] Failed to load submarine cables data:', err);
-    }
-
-    // Submarine cables
+    // Câbles (Connectivité) : vides jusqu'à updateCablesLayer (fichier du Shom et d'OpenStreetMap), l'ancien fichier dessiné à la main n'est plus lu.
     this.map.addSource(SRC_SUBMARINE_CABLES, {
       type: 'geojson',
-      data: submarineCablesData,
+      data: emptyFC(),
       promoteId: 'id',
     });
-    this.map.addSource(SRC_SUBMARINE_CABLES_LANDINGS, {
-      type: 'geojson',
-      data: buildSubmarineLandingPoints(submarineCablesData),
-    });
+    this.map.addSource(SRC_SUBMARINE_CABLES_LANDINGS, { type: 'geojson', data: emptyFC() });
 
-    // Hospitals (FINESS)
+    // Sites d'urgences autorisés (SAE 2025, FINESS)
     this.map.addSource(SRC_HOSPITALS, { type: 'geojson', data: emptyFC() });
 
     // ═══════════════════════════════════════════════════════════════
     // LAYERS (order matters — bottom to top)
     // ═══════════════════════════════════════════════════════════════
 
-    // ─── Terminateur jour/nuit (premier layer — sous tout le reste) ───
-    this.map.addLayer({
-      id: LYR_TERMINATOR,
-      type: 'fill',
-      source: SRC_TERMINATOR,
-      paint: {
-        'fill-color': '#0a0e2a',
-        'fill-opacity': 0.45,
-      },
-    });
 
     // ─── Energy: region fill ───
     this.map.addLayer({
@@ -1070,8 +1039,7 @@ export class DeckGLMap {
       }
     });
 
-    // ─── Weather: department fill ───
-    await this.ensureWeatherRadarLayer();
+    // ─── Vigilance : remplissage départemental (deckgl/environment-map.ts : couleur portée par chaque département) ───
     this.map.addLayer({
       id: LYR_WEATHER_FILL,
       type: 'fill',
@@ -1088,7 +1056,6 @@ export class DeckGLMap {
             [
               'match',
               ['get', 'level'],
-              'violet', 0.42,
               'red', 0.38,
               'orange', 0.30,
               'yellow', 0.16,
@@ -1148,140 +1115,50 @@ export class DeckGLMap {
         'line-opacity': 1,
       },
     });
-    this.map.addLayer({
-      id: LYR_WEATHER_LINE_VIOLET,
-      type: 'line',
-      source: SRC_WEATHER,
-      filter: ['all', ['boolean', ['get', 'hasAlert'], false], ['==', ['get', 'level'], 'violet']],
-      paint: {
-        'line-color': ['get', 'lineColor'],
-        'line-width': ['case', WEATHER_HIGHLIGHT_STATE, 3.8, 3],
-        'line-opacity': 1,
-      },
-    });
 
 
     // NOTE: Weather icons layer is added later (after all fill layers) to ensure visibility
 
-    // ─── Health: regional epidemiology fill ───
+    // ─── Santé (spec 2026-10-03 § 3) : un jeu de couches par panneau ───
+    // Veille sanitaire : régions par le plus haut niveau d'alerte en saison, gris clair hors saison.
     this.map.addLayer({
-      id: LYR_HEALTH_FILL,
+      id: LYR_HEALTH_ALERT_FILL,
       type: 'fill',
-      source: SRC_HEALTH,
-      paint: {
-        'fill-color': ['get', 'fillColor'],
-        'fill-opacity': [
-          'case',
-          ['boolean', ['feature-state', 'hover'], false],
-          0.85,
-          [
-            'interpolate',
-            ['linear'],
-            ['coalesce', ['get', 'healthStressIndex'], 0],
-            0, 0.35,
-            100, 0.7
-          ]
-        ],
-      },
+      source: SRC_HEALTH_REGIONS,
+      paint: { 'fill-color': colorFromProp('hmColor'), 'fill-opacity': 0.45 },
     });
-
+    this.map.addLayer({
+      id: LYR_HEALTH_ALERT_LINE,
+      type: 'line',
+      source: SRC_HEALTH_REGIONS,
+      paint: { 'line-color': 'rgba(255, 255, 255, 0.35)', 'line-width': 1 },
+    });
+    // Urgences : départements par le niveau saisonnier du syndrome choisi dans le panneau.
+    this.map.addLayer({
+      id: LYR_HEALTH_URG_FILL,
+      type: 'fill',
+      source: SRC_HEALTH_DEPTS,
+      paint: { 'fill-color': colorFromProp(urgencesProp(this.healthUrgencesSyndrome)), 'fill-opacity': 0.5 },
+    });
+    this.map.addLayer({
+      id: LYR_HEALTH_URG_LINE,
+      type: 'line',
+      source: SRC_HEALTH_DEPTS,
+      paint: { 'line-color': 'rgba(255, 255, 255, 0.25)', 'line-width': 0.6 },
+    });
+    // Accès aux soins : départements par l'APL de la profession choisie dans le panneau.
     this.map.addLayer({
       id: LYR_HEALTH_APL_FILL,
       type: 'fill',
-      source: SRC_HEALTH,
-      paint: {
-        'fill-color': [
-          'match',
-          ['get', 'aplCategory'],
-          ...APL_LEVELS.flatMap(lvl => [lvl.category, lvl.color]),
-          'transparent'
-        ] as unknown as maplibregl.ExpressionSpecification,
-        'fill-opacity': [
-          'case',
-          ['boolean', ['feature-state', 'hover'], false],
-          0.30,
-          0.15
-        ],
-      },
+      source: SRC_HEALTH_DEPTS,
+      paint: { 'fill-color': colorFromProp(aplProp(this.healthAplProfession)), 'fill-opacity': 0.5 },
     });
-
     this.map.addLayer({
       id: LYR_HEALTH_APL_LINE,
       type: 'line',
-      source: SRC_HEALTH,
-      paint: {
-        'line-color': [
-          'match',
-          ['get', 'aplCategory'],
-          ...APL_LEVELS.flatMap(lvl => [lvl.category, lvl.color]),
-          'transparent'
-        ] as unknown as maplibregl.ExpressionSpecification,
-        'line-width': 2,
-        'line-opacity': 0.6
-      },
+      source: SRC_HEALTH_DEPTS,
+      paint: { 'line-color': 'rgba(255, 255, 255, 0.25)', 'line-width': 0.6 },
     });
-
-    this.map.addLayer({
-      id: LYR_HEALTH_OSCOUR_CIRCLES,
-      type: 'circle',
-      source: SRC_HEALTH_MARKERS,
-      filter: ['==', ['get', 'isDepartmental'], 1],
-      paint: {
-        'circle-color': [
-          'step',
-          ['get', 'oscourMaxTrend'],
-          OSCOUR_LEVELS[0].color,
-          OSCOUR_LEVELS[1].threshold, OSCOUR_LEVELS[1].color,
-          OSCOUR_LEVELS[2].threshold, OSCOUR_LEVELS[2].color,
-          OSCOUR_LEVELS[3].threshold, OSCOUR_LEVELS[3].color
-        ] as unknown as maplibregl.ExpressionSpecification,
-        'circle-radius': [
-          'interpolate', ['linear'], ['get', 'oscourMaxTrend'],
-          OSCOUR_LEVELS[0].threshold, OSCOUR_LEVELS[0].radius,
-          OSCOUR_LEVELS[1].threshold, OSCOUR_LEVELS[1].radius,
-          OSCOUR_LEVELS[2].threshold, OSCOUR_LEVELS[2].radius,
-          OSCOUR_LEVELS[3].threshold, OSCOUR_LEVELS[3].radius
-        ] as unknown as maplibregl.ExpressionSpecification,
-        'circle-stroke-color': '#000000',
-        'circle-stroke-width': 1.5,
-      },
-    });
-
-    this.map.addLayer({
-      id: LYR_HEALTH_LINE,
-      type: 'line',
-      source: SRC_HEALTH,
-      paint: {
-        'line-color': ['get', 'lineColor'],
-        'line-width': [
-          'case',
-          ['boolean', ['feature-state', 'hover'], false],
-          2.2,
-          1
-        ],
-        'line-opacity': [
-          'case',
-          ['boolean', ['feature-state', 'hover'], false],
-          1.0,
-          0.85
-        ],
-      },
-    });
-    this.map.addLayer({
-      id: LYR_HEALTH_MARKERS,
-      type: 'circle',
-      source: SRC_HEALTH_MARKERS,
-      filter: ['!=', ['get', 'isDepartmental'], 1],
-      minzoom: 4.8,
-      paint: {
-        'circle-color': ['coalesce', ['get', 'healthIconColor'], '#34c759'],
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4.8, 4, 7, 6, 10, 8],
-        'circle-opacity': 0.95,
-        'circle-stroke-width': 0,
-        'circle-stroke-opacity': 0,
-      },
-    });
-
     // ─── ISNR: stability department fill ───
     this.map.addLayer({
       id: LYR_ISNR_FILL,
@@ -1346,6 +1223,8 @@ export class DeckGLMap {
       id: LYR_FIRES_GLOW,
       type: 'circle',
       source: SRC_FIRES,
+      // Halo : foyers orange ou rouges seulement (propriété `glow`, deckgl/environment-map.ts).
+      filter: ['==', ['get', 'glow'], true],
       paint: {
         'circle-radius': [
           'interpolate',
@@ -1354,7 +1233,7 @@ export class DeckGLMap {
           5, 10,
           10, 30
         ],
-        'circle-color': '#ff3b30',
+        'circle-color': ['get', 'color'],
         'circle-opacity': 0.3,
         'circle-blur': 0.8
       }
@@ -1363,19 +1242,15 @@ export class DeckGLMap {
       id: LYR_FIRES_POINTS,
       type: 'circle',
       source: SRC_FIRES,
+      layout: { 'circle-sort-key': ['get', 'sortKey'] },
       paint: {
         'circle-radius': [
           'interpolate', ['linear'], ['zoom'],
-          5, 3,
-          10, 5
+          5, ['get', 'radius'],
+          10, ['*', ['get', 'radius'], 1.6],
         ],
-        'circle-color': [
-          'match', ['get', 'confidence'],
-          'high', '#ffd60a',
-          'nominal', '#ff9500',
-          'low', '#ff3b30',
-          '#ff9500'
-        ],
+        // Couleur du foyer, portée par chaque détection (deckgl/environment-map.ts) : confiance faible jamais rouge.
+        'circle-color': ['get', 'color'],
         'circle-stroke-width': 1,
         'circle-stroke-color': 'rgba(0,0,0,0.5)',
         'circle-opacity': 0.9,
@@ -1408,169 +1283,8 @@ export class DeckGLMap {
       }
     });
 
-    // ─── Traffic Incident Clusters (TomTom / Supercluster JS) ───
-    this.map.addLayer({
-      id: LYR_TRAFFIC_CLUSTER,
-      type: 'circle',
-      source: SRC_TRAFFIC_INCIDENTS,
-      filter: ['has', 'point_count'],
-      paint: {
-        'circle-color': ['case',
-          ['>=', ['get', 'maxSeverity'], 2], 'rgba(255,59,48,0.92)',
-          ['>=', ['get', 'maxSeverity'], 1], 'rgba(255,149,0,0.92)',
-          'rgba(255,204,0,0.88)',
-        ],
-        'circle-radius': [
-          'step', ['get', 'point_count'],
-          20,
-          5, 28,
-          15, 36,
-          50, 46,
-        ],
-        'circle-stroke-width': 2,
-        'circle-stroke-color': 'rgba(255,255,255,0.85)',
-        'circle-opacity': 0.95,
-      },
-    });
-
-    this.map.addLayer({
-      id: LYR_TRAFFIC_CLUSTER_COUNT,
-      type: 'symbol',
-      source: SRC_TRAFFIC_INCIDENTS,
-      filter: ['has', 'point_count'],
-      layout: {
-        'text-field': '{point_count_abbreviated}',
-        'text-size': 12,
-        'text-font': ['Open Sans Bold'],
-      },
-      paint: {
-        'text-color': '#ffffff',
-      },
-    });
-
-    // ─── Traffic Incidents (TomTom) ───
-    this.map.addLayer({
-      id: LYR_TRAFFIC_INCIDENTS,
-      type: 'circle',
-      source: SRC_TRAFFIC_INCIDENTS,
-      filter: ['!', ['has', 'point_count']],
-      paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 2, 6, 3, 8, 5, 10, 8, 12, 10],
-        'circle-color': [
-          'match',
-          ['get', 'severity'],
-          'high', '#ff3b30',
-          'medium', '#ff9500',
-          '#ffcc00'
-        ],
-        'circle-stroke-width': 1.5,
-        'circle-stroke-color': '#111',
-        'circle-opacity': ['interpolate', ['linear'], ['zoom'], 4, 0.45, 6, 0.6, 8, 0.75, 10, 0.88, 12, 0.92],
-      }
-    });
-
-    // ─── Rail disruptions network (persistent layer, toggle via trafficRail) ───
-    // Glow halo: fat semi-transparent line — brightens on hover via feature-state
-    this.map.addLayer({
-      id: LYR_RAIL_ARC_GLOW,
-      type: 'line',
-      source: SRC_RAIL_ARCS,
-      paint: {
-        'line-color': RAIL_SEVERITY_COLOR,
-        'line-width': ['interpolate', ['linear'], ['zoom'],
-          4, ['case', ['boolean', ['feature-state', 'hover'], false], 14, ['case', ['==', ['get', 'geometryFidelity'], 'fallback'], 5, 8]],
-          8, ['case', ['boolean', ['feature-state', 'hover'], false], 22, ['case', ['==', ['get', 'geometryFidelity'], 'fallback'], 9, 14]],
-          12, ['case', ['boolean', ['feature-state', 'hover'], false], 32, ['case', ['==', ['get', 'geometryFidelity'], 'fallback'], 13, 20]],
-        ],
-        'line-opacity': ['case',
-          ['boolean', ['feature-state', 'hover'], false], 0.35,
-          ['==', ['get', 'geometryFidelity'], 'fallback'], 0.10,
-          0.18,
-        ],
-        'line-blur': ['case', ['boolean', ['feature-state', 'hover'], false], 6, 4],
-      },
-      layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
-    });
-    // Main arc — thicker + fully opaque on hover
-    this.map.addLayer({
-      id: LYR_RAIL_ARC,
-      type: 'line',
-      source: SRC_RAIL_ARCS,
-      paint: {
-        'line-color': RAIL_SEVERITY_COLOR,
-        'line-width': ['interpolate', ['linear'], ['zoom'],
-          4, ['case', ['boolean', ['feature-state', 'hover'], false], 4, ['case', ['==', ['get', 'geometryFidelity'], 'fallback'], 1.3, 2.2]],
-          8, ['case', ['boolean', ['feature-state', 'hover'], false], 6, ['case', ['==', ['get', 'geometryFidelity'], 'fallback'], 2.1, 3.6]],
-          12, ['case', ['boolean', ['feature-state', 'hover'], false], 9, ['case', ['==', ['get', 'geometryFidelity'], 'fallback'], 3.2, 5.6]],
-        ],
-        'line-opacity': ['case',
-          ['boolean', ['feature-state', 'hover'], false], 1.0,
-          ['==', ['get', 'geometryFidelity'], 'fallback'], 0.68,
-          0.92,
-        ],
-      },
-      layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
-    });
-    // Invisible wide hit zone — makes rail arcs easier to hover
-    this.map.addLayer({
-      id: LYR_RAIL_ARC_HIT,
-      type: 'line',
-      source: SRC_RAIL_ARCS,
-      paint: {
-        'line-color': 'rgba(0,0,0,0)',
-        'line-width': 20,
-      },
-      layout: { 'line-cap': 'round', 'line-join': 'round', visibility: 'none' },
-    });
-    // Station glow halo
-    this.map.addLayer({
-      id: LYR_RAIL_STATION_GLOW,
-      type: 'circle',
-      source: SRC_RAIL_STATIONS,
-      paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 10, 8, 14, 12, 20],
-        'circle-color': RAIL_SEVERITY_COLOR,
-        'circle-opacity': 0.20,
-        'circle-blur': 1,
-        'circle-stroke-width': 0,
-      },
-      layout: { visibility: 'none' },
-    });
-    // Station circle
-    this.map.addLayer({
-      id: LYR_RAIL_STATION,
-      type: 'circle',
-      source: SRC_RAIL_STATIONS,
-      paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 4, 8, 7, 12, 10],
-        'circle-color': RAIL_SEVERITY_COLOR,
-        'circle-stroke-width': 2,
-        'circle-stroke-color': '#1a1a2e',
-        'circle-opacity': 0.95,
-      },
-      layout: { visibility: 'none' },
-    });
-    // Station label (appears from zoom 8)
-    this.map.addLayer({
-      id: LYR_RAIL_STATION_LABEL,
-      type: 'symbol',
-      source: SRC_RAIL_STATIONS,
-      minzoom: 8,
-      layout: {
-        'text-field': ['get', 'name'],
-        'text-size': 11,
-        'text-offset': [0, -1.4],
-        'text-anchor': 'bottom',
-        'text-font': ['Noto Sans Regular'],
-        visibility: 'none',
-      },
-      paint: {
-        'text-color': '#f0f0f0',
-        'text-halo-color': '#1a1a2e',
-        'text-halo-width': 1.5,
-        'text-opacity': 0.9,
-      },
-    });
+    // ─── Trafics (spec 2026-10-03 trafics § 3) : couches de deckgl/traffic-map.ts, masquées jusqu'à setLayerVisibility ───
+    for (const layer of TRAFFIC_LAYERS) this.map.addLayer(layer);
 
     // ─── Train route highlight ───
     this.map.addLayer({
@@ -1579,7 +1293,7 @@ export class DeckGLMap {
       source: SRC_TRAIN_ROUTE,
       filter: ['==', ['geometry-type'], 'LineString'],
       paint: {
-        'line-color': RAIL_SEVERITY_COLOR,
+        'line-color': TRAFFIC_COLOR,
         'line-width': ['interpolate', ['linear'], ['zoom'], 4, 4, 8, 6, 12, 8],
         'line-opacity': 0.96,
       },
@@ -1596,7 +1310,7 @@ export class DeckGLMap {
       filter: ['==', ['geometry-type'], 'Point'],
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 10, 8, 15, 12, 20],
-        'circle-color': RAIL_SEVERITY_COLOR,
+        'circle-color': TRAFFIC_COLOR,
         'circle-stroke-width': 4,
         'circle-stroke-color': '#ffffff',
         'circle-opacity': 1,
@@ -1626,40 +1340,12 @@ export class DeckGLMap {
       },
     });
 
-    // ─── Topage visual : réseau hydro de fond (bleu clair discret) ───
-    this.map.addLayer({
-      id: LYR_TOPAGE_VIS,
-      type: 'line',
-      source: SRC_TOPAGE_VIS,
-      paint: {
-        'line-color': '#4fc3f7',
-        'line-width': ['interpolate', ['linear'], ['zoom'], 6, 0.5, 10, 1.2, 14, 2],
-        'line-opacity': 0.45,
-      },
-      layout: { 'line-cap': 'round', 'line-join': 'round', 'visibility': 'none' },
-    });
 
-    // ─── Floods: tronçons raw (Topage indisponible) — pointillés discrets ───
-    this.map.addLayer({
-      id: LYR_FLOODS_RAW,
-      type: 'line',
-      source: SRC_FLOODS,
-      filter: ['==', ['get', 'geometryFidelity'], 'raw'],
-      paint: {
-        'line-color': ['get', 'color'],
-        'line-width': 2,
-        'line-opacity': 0.45,
-        'line-dasharray': [2, 4],
-      },
-      layout: { 'line-cap': 'butt' },
-    });
-
-    // ─── Floods: segment lines (matched + fallback uniquement) ───
+    // ─── Crues : tronçons jaunes, orange et rouges, tracé publié par Vigicrues ───
     this.map.addLayer({
       id: LYR_FLOODS,
       type: 'line',
       source: SRC_FLOODS,
-      filter: ['!=', ['get', 'geometryFidelity'], 'raw'],
       paint: {
         'line-color': [
           'case',
@@ -1674,7 +1360,6 @@ export class DeckGLMap {
         ],
         'line-opacity': ['case',
           ['boolean', ['feature-state', 'hover'], false], 1,
-          ['==', ['get', 'geometryFidelity'], 'fallback'], 0.88,
           0.92,
         ],
       },
@@ -1698,6 +1383,12 @@ export class DeckGLMap {
         'visibility': 'none',
       },
     });
+    // ─── Environnement (spec 2026-10-04 § 2) : couches nouvelles de deckgl/environment-map.ts, masquées jusqu'à setLayerVisibility ───
+    for (const layer of ENV_LAYERS) {
+      const before = ENV_LAYER_BEFORE[layer.id];
+      this.map.addLayer(layer, before && this.map.getLayer(before) ? before : undefined);
+    }
+
     // ─── L1: News glow (critical/high only) ───
     this.map.addLayer({
       id: LYR_GLOW,
@@ -2846,70 +2537,20 @@ export class DeckGLMap {
     });
 
     // ─── Military ───
-    this.map.addLayer({
-      id: LYR_MILITARY_ZONES_FILL,
-      type: 'fill',
-      source: SRC_MILITARY_ZONES,
-      paint: {
-        'fill-color': '#ff2d55',
-        'fill-opacity': 0.15,
-      },
-    });
-    this.map.addLayer({
-      id: LYR_MILITARY_ZONES_LINE,
-      type: 'line',
-      source: SRC_MILITARY_ZONES,
-      paint: {
-        'line-color': '#ff2d55',
-        'line-width': 2,
-        'line-opacity': 0.8,
-        'line-dasharray': [4, 4]
-      },
-    });
+    // Souveraineté, phase B (tâche B27) : zones drones DGAC (option) puis mailles GNSS, surfaces sous les points.
+    for (const layer of SOV_B_LAYERS) this.map.addLayer(layer);
 
-    // CHU : jaune #F4D03F (pour représenter la centralisation et la tension)
+    // Sites d'urgences (spec § 3.4) : couleur = catégorie, surface = passages annuels.
     this.map.addLayer({
-      id: LYR_HOSPITALS_CHU,
+      id: LYR_HOSPITALS,
       type: 'circle',
       source: SRC_HOSPITALS,
-      filter: ['==', ['get', 'type'], 'CHU'],
       paint: {
-        'circle-color': '#F4D03F',
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 7, 8, 11, 12, 16],
-        'circle-opacity': 0.92,
-      },
-    });
-    // CH / Clinique Privée : bleu/cyan #1ABC9C (capacité normale)
-    this.map.addLayer({
-      id: LYR_HOSPITALS_CH,
-      type: 'circle',
-      source: SRC_HOSPITALS,
-      filter: ['!=', ['get', 'type'], 'CHU'],
-      paint: {
-        'circle-color': '#1ABC9C',
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 4, 8, 7, 12, 10],
-        'circle-opacity': 0.95,
-      },
-    });
-    // Label hôpitaux au zoom 10+
-    this.map.addLayer({
-      id: LYR_HOSPITALS_LABEL,
-      type: 'symbol',
-      source: SRC_HOSPITALS,
-      minzoom: 10,
-      layout: {
-        'text-field': ['get', 'name'],
-        'text-size': 10,
-        'text-offset': [0, 1.2],
-        'text-anchor': 'top',
-        'text-allow-overlap': false,
-        'text-font': ['Open Sans Regular'],
-      },
-      paint: {
-        'text-color': '#ffffff',
-        'text-halo-color': '#0a0a0f',
-        'text-halo-width': 1.5,
-        'text-opacity': 0.85,
+        'circle-color': HOSPITAL_COLOR,
+        'circle-radius': HOSPITAL_RADIUS,
+        'circle-opacity': 0.9,
+        'circle-stroke-color': '#0a0a0f',
+        'circle-stroke-width': 1,
       },
     });
 
@@ -2963,127 +2604,6 @@ export class DeckGLMap {
       },
     });
 
-    // ─── Military Flight Trails — lignes de trajectoire ───
-    this.map.addLayer({
-      id: LYR_MILITARY_FLIGHT_TRAILS,
-      type: 'line',
-      source: SRC_MILITARY_FLIGHT_TRAILS,
-      layout: {
-        'line-join': 'round',
-        'line-cap': 'round',
-      },
-      paint: {
-        'line-color': [
-          'match', ['get', 'aircraftType'],
-          'fighter', '#ff3b30',
-          'transport', '#4a9eff',
-          'tanker', '#ff9500',
-          'awacs', '#a855f7',
-          'patrol', '#00d4c8',
-          'helicopter', '#22c55e',
-          'drone', '#ff6b9d',
-          'trainer', '#ffcc00',
-          'liaison', '#9898a8',
-          '#9898a8'  // unknown
-        ],
-        'line-width': 2,
-        'line-opacity': 0.6,
-      },
-    });
-
-    // ─── Military Flights — icône par TYPE d'avion, orientée par cap ───
-    this.map.addLayer({
-      id: LYR_MILITARY_FLIGHTS,
-      type: 'symbol',
-      source: SRC_MILITARY_FLIGHTS,
-      layout: {
-        'icon-image': [
-          'case',
-          // Emergency squawk → red pulsing icon
-          ['==', ['get', 'squawkSeverity'], 'critical'], 'mil-emergency',
-          // Otherwise, match by aircraft type
-          ['match', ['get', 'aircraftType'],
-            'fighter', 'mil-type-fighter',
-            'transport', 'mil-type-transport',
-            'tanker', 'mil-type-tanker',
-            'awacs', 'mil-type-awacs',
-            'patrol', 'mil-type-patrol',
-            'helicopter', 'mil-type-helicopter',
-            'drone', 'mil-type-drone',
-            'trainer', 'mil-type-trainer',
-            'liaison', 'mil-type-liaison',
-            'mil-type-unknown'
-          ]
-        ],
-        'icon-size': ['interpolate', ['linear'], ['zoom'], 4, 0.30, 8, 0.40, 12, 0.55],
-        'icon-rotate': ['get', 'heading'],
-        'icon-rotation-alignment': 'map',
-        'icon-allow-overlap': true,
-        'icon-ignore-placement': true,
-      },
-      paint: {},
-    });
-    this.map.addLayer({
-      id: LYR_MILITARY_FLIGHTS_LABEL,
-      type: 'symbol',
-      source: SRC_MILITARY_FLIGHTS,
-      minzoom: 7,
-      layout: {
-        'text-field': ['concat',
-          ['get', 'callsign'],
-          '\n',
-          ['case', ['>', ['get', 'altitude'], 0],
-            ['concat', 'FL', ['to-string', ['round', ['/', ['get', 'altitude'], 100]]]],
-            'Sol'
-          ]
-        ],
-        'text-size': 10,
-        'text-offset': [0, 2.0],
-        'text-anchor': 'top',
-        'text-allow-overlap': false,
-        'text-font': ['Open Sans Semibold'],
-      },
-      paint: {
-        'text-color': [
-          'match', ['get', 'operator'],
-          'armee-air', '#4a9eff',
-          'marine', '#00d4c8',
-          'gendarmerie', '#a855f7',
-          'alat', '#22c55e',
-          'securite-civile', '#ff6b35',
-          'douanes', '#eab308',
-          '#ffcc00'
-        ],
-        'text-halo-color': '#000000',
-        'text-halo-width': 1.5,
-      },
-    });
-
-    // ─── Civil Air Traffic (free airplanes.live sampling) ───
-    // Icon rendering is now handled by DeckGL (IconLayer 'deck-air-traffic')
-    // MapLibre is only responsible for rendering the text labels.
-    this.map.addLayer({
-      id: LYR_AIR_TRAFFIC_LABEL,
-      type: 'symbol',
-      source: SRC_AIR_TRAFFIC,
-      minzoom: 6,
-      layout: {
-        'text-field': ['get', 'callsign'],
-        'text-size': 10,
-        'text-offset': [0, 1.6],
-        'text-anchor': 'top',
-        'text-allow-overlap': false,
-        'text-font': ['Open Sans Semibold'],
-      },
-      paint: {
-        'text-color': '#7dd3fc',
-        'text-halo-color': '#0a0a0f',
-        'text-halo-width': 2,
-        'text-opacity': 0.85,
-      },
-    });
-
-
     // ─── Global AIS Traffic (civils/étrangers) ───
     // NOW RENDERED VIA DECK.GL TextLayer (see getDeckLayers())
     // Commented out MapLibre symbol layer:
@@ -3116,20 +2636,8 @@ export class DeckGLMap {
     });
     */
 
-    // ─── Military Ships (Marine Nationale) — ⚓ SVG ───
-    this.map.addLayer({
-      id: LYR_MILITARY_SHIPS,
-      type: 'symbol',
-      source: SRC_MILITARY_SHIPS,
-      layout: {
-        'icon-image': 'mil-ship',
-        'icon-size': ['interpolate', ['linear'], ['zoom'], 4, 0.28, 8, 0.38, 12, 0.5],
-        'icon-allow-overlap': true,
-        'icon-ignore-placement': true,
-      },
-      paint: {},
-    });
-
+    // Marine nationale : dessinée par la couche Souveraineté (SRC_SOV_NAVY, updateNavyLayer) ; restent la sélection et la surbrillance
+    // d'un bâtiment, partagées avec le Trafic maritime.
     this.map.addLayer({
       id: LYR_MILITARY_SHIPS_SELECTED,
       type: 'circle',
@@ -3155,27 +2663,6 @@ export class DeckGLMap {
       },
     });
 
-    // ─── Military Ships label ───
-    this.map.addLayer({
-      id: `${LYR_MILITARY_SHIPS}-label`,
-      type: 'symbol',
-      source: SRC_MILITARY_SHIPS,
-      minzoom: 8,
-      layout: {
-        'text-field': ['concat', ['get', 'name'], ['case', ['has', 'type'], ['concat', '\n', ['get', 'type']], '']],
-        'text-size': 10,
-        'text-offset': [0, 2.0],
-        'text-anchor': 'top',
-        'text-allow-overlap': false,
-        'text-font': ['Open Sans Semibold'],
-      },
-      paint: {
-        'text-color': '#00d4c8',
-        'text-halo-color': '#000000',
-        'text-halo-width': 2,
-      },
-    });
-
     // ─── Submarine Cables (Defense Infrastructure) ───
     // Glow effect layer (below main line)
     this.map.addLayer({
@@ -3183,7 +2670,7 @@ export class DeckGLMap {
       type: 'line',
       source: SRC_SUBMARINE_CABLES,
       paint: {
-        'line-color': '#5fdcff',
+        'line-color': sovCableColor('#5fdcff'),
         'line-width': [
           'interpolate', ['linear'], ['zoom'],
           3, 10,
@@ -3222,7 +2709,7 @@ export class DeckGLMap {
       type: 'line',
       source: SRC_SUBMARINE_CABLES,
       paint: {
-        'line-color': '#22c7ff',
+        'line-color': sovCableColor('#22c7ff'),
         'line-width': ['interpolate', ['linear'], ['zoom'], 3, 2.8, 8, 4.2, 12, 5.8],
         'line-opacity': 0.96,
       },
@@ -3238,7 +2725,7 @@ export class DeckGLMap {
       type: 'line',
       source: SRC_SUBMARINE_CABLES,
       paint: {
-        'line-color': '#f4fdff',
+        'line-color': sovCableColor('#f4fdff'),
         'line-width': ['interpolate', ['linear'], ['zoom'], 3, 1.4, 8, 2.1, 12, 2.8],
         'line-opacity': 0.98,
       },
@@ -3262,6 +2749,8 @@ export class DeckGLMap {
         ],
         'circle-color': [
           'case',
+          ['==', ['get', 'outOfService'], true],
+          SOV_ABROAD_HEX,
           ['>=', ['coalesce', ['to-number', ['get', 'capacity_tbps']], 0], 100],
           '#b9ecff',
           '#7dd3fc'
@@ -3279,6 +2768,9 @@ export class DeckGLMap {
     this.map.moveLayer(LYR_SUBMARINE_CABLES_CORE, undefined);
     this.map.moveLayer(LYR_SUBMARINE_CABLES_LANDING, undefined);
     this.map.moveLayer(LYR_SUBMARINE_CABLES_HITAREA, undefined);
+
+    // ─── Souveraineté (contrats § 5) : couches de deckgl/sovereignty-map.ts, au-dessus des câbles, masquées jusqu'à setLayerVisibility ───
+    for (const layer of SOV_LAYERS) this.map.addLayer(layer);
 
     // ─── Citizen Outage Zones (crowd-sourced clusters) ───
     // Toujours violet (matching légende) — l'intensité varie selon severity
@@ -3345,6 +2837,8 @@ export class DeckGLMap {
         'circle-stroke-color': '#0a0a0f',
       },
     });
+    // Séismes et marégraphes (phase B) au-dessus de toutes les surfaces : ajoutés ici, sous la première couche de points qui suit la dernière surface.
+    placeEnvBPoints(this.map);
 
     // ─── Internet / BGP outages ───
     // Glow ring for IODA outage events — couleur teal (cyan) pour distinguer d'internet
@@ -4014,307 +3508,24 @@ export class DeckGLMap {
         .addTo(this.map);
     });
 
-    // ─── Fires (NASA FIRMS) Interactions ───
+    // ─── Feux : curseur sur une détection ; infobulle (satellite exact, confiance, FRP, âge) de initEnvironmentInteractions ───
     this.map.on('mouseenter', LYR_FIRES_POINTS, () => {
       if (this.map) this.map.getCanvas().style.cursor = 'pointer';
     });
     this.map.on('mouseleave', LYR_FIRES_POINTS, () => {
       if (this.map) this.map.getCanvas().style.cursor = '';
-      this.firesHoverPopup?.remove();
-    });
-    this.map.on('mousemove', LYR_FIRES_POINTS, (e) => {
-      if (!this.map || !e.features || e.features.length === 0) return;
-      const p = e.features[0].properties || {};
-      const frp = Number(p.frp ?? 0).toFixed(1);
-      const conf = String(p.confidence ?? '');
-      const confLabel = conf === 'high' ? `${fmStatusDot('high')} Haute` : conf === 'nominal' ? `${fmStatusDot('medium')} Nominale` : `${fmStatusDot('low')} Basse`;
-      const lat = Number(p.lat ?? 0).toFixed(4);
-      const lon = Number(p.lon ?? 0).toFixed(4);
-      const date = String(p.acq_date ?? '');
-      const rawTime = String(p.acq_time ?? '').padStart(4, '0');
-      const timeLabel = `${rawTime.slice(0, 2)}:${rawTime.slice(2)} UTC`;
-      const period = p.daynight === 'D' ? `${fmIcon('sun')} Jour` : `${fmIcon('moon')} Nuit`;
-      const temp = Number(p.bright_ti4 ?? 0);
-      const tempLabel = temp > 0 ? `${(temp - 273.15).toFixed(0)} °C` : '—';
-
-      const html = `
-        <div style="color:#e8e8ec; font-family:sans-serif; min-width:170px; padding:2px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-            <strong style="font-size:13px; color:#ff9500;">${fmIcon('flame')} Feu actif</strong>
-            <span style="font-size:11px; color:#9898a8;">${period}</span>
-          </div>
-          <div style="font-size:11px; display:flex; flex-direction:column; gap:3px;">
-            <div style="display:flex; justify-content:space-between;">
-              <span style="color:#9898a8;">Puissance (FRP)</span>
-              <strong style="color:#ff3b30;">${frp} MW</strong>
-            </div>
-            <div style="display:flex; justify-content:space-between;">
-              <span style="color:#9898a8;">Température</span>
-              <span style="color:#e8e8ec;">${tempLabel}</span>
-            </div>
-            <div style="display:flex; justify-content:space-between;">
-              <span style="color:#9898a8;">Confiance</span>
-              <span>${confLabel}</span>
-            </div>
-            <div style="display:flex; justify-content:space-between;">
-              <span style="color:#9898a8;">Détecté le</span>
-              <span style="color:#e8e8ec;">${date} ${timeLabel}</span>
-            </div>
-            <div style="display:flex; justify-content:space-between; padding-top:4px; border-top:1px solid rgba(255,255,255,0.08); margin-top:2px;">
-              <span style="color:#9898a8;">Coord.</span>
-              <span style="color:#e8e8ec; font-size:10px;">${lat}°N, ${lon}°E</span>
-            </div>
-          </div>
-          <div style="font-size:10px; color:#5c5c6b; margin-top:6px;">NASA FIRMS · VIIRS SNPP</div>
-        </div>
-      `;
-
-      if (!this.firesHoverPopup) {
-        this.firesHoverPopup = new maplibregl.Popup({
-          closeButton: false,
-          closeOnClick: false,
-          offset: 12,
-          maxWidth: '260px',
-          className: 'dark-popup',
-        });
-      }
-      this.firesHoverPopup.setLngLat(e.lngLat).setHTML(html).addTo(this.map);
     });
 
-    // ─── Health Interactions (ISS) ───
-    const handleHealthMove = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
-      if (!this.map || !e.features || e.features.length === 0) return;
+    // Couches santé : infobulle au survol et fiche de site au clic (initHealthInteractions).
+    this.initHealthInteractions();
 
-      // Zone d'exclusion : si un point hôpital est sous la souris, on laisse son handler s'exprimer
-      const hospitalFeatures = this.map.queryRenderedFeatures(e.point, {
-        layers: [LYR_HOSPITALS_CHU, LYR_HOSPITALS_CH]
-      });
-      if (hospitalFeatures.length > 0) {
-        if (this._lastHoveredHealthId !== null) {
-          this.map.setFeatureState({ source: SRC_HEALTH, id: this._lastHoveredHealthId }, { hover: false });
-          this._lastHoveredHealthId = null;
-        }
-        this.healthHoverPopup?.remove();
-        return;
-      }
+    // Couches Trafics : infobulle au survol, vitesse du tronçon au clic sur un bouchon (initTrafficInteractions).
+    this.initTrafficInteractions();
 
-      const feat = e.features[0];
-      const p = feat.properties || {};
-      const featureId = typeof feat.id === 'number' ? feat.id : Number.parseInt(String(p.code ?? ''), 10);
-
-      if (this._lastHoveredHealthId !== null && this._lastHoveredHealthId !== featureId) {
-        this.map.setFeatureState({ source: SRC_HEALTH, id: this._lastHoveredHealthId }, { hover: false });
-      }
-      if (Number.isFinite(featureId)) {
-        this.map.setFeatureState({ source: SRC_HEALTH, id: featureId }, { hover: true });
-        this._lastHoveredHealthId = featureId;
-      }
-
-      this.map.getCanvas().style.cursor = 'pointer';
-
-      // -- Fix: Si on bouge la souris sur le département DÉJÀ cliqué, on ne ré-affiche pas le hover
-      if (this._activeHealthClickId === featureId) {
-        this.healthHoverPopup?.remove();
-        return;
-      }
-
-      const isDept = Number.parseInt(String(p.isDepartmental ?? '0')) === 1;
-      const geoName = String(p.nom ?? p.name ?? (isDept ? 'Département' : 'Région'));
-      const iss = Number.parseFloat(String(p.iss ?? p.healthStressIndex ?? '0'));
-      const semio = getISSSemio(Number.isFinite(iss) ? iss : 0);
-      const isOscourMarker = feat.layer.id === LYR_HEALTH_OSCOUR_CIRCLES;
-
-      let topMotifs: Array<{
-        code?: string;
-        label?: string;
-        trendPct?: number;
-        trend_pct?: number;
-        trendLabel?: string;
-        trend?: string;
-      }> = [];
-      try {
-        const topMotifsJson = String(p.topMotifsJson ?? '[]');
-        const parsed = JSON.parse(topMotifsJson);
-        if (Array.isArray(parsed)) {
-          topMotifs = parsed.slice(0, 4);
-        }
-      } catch {
-        // Ignore malformed optional motif payloads.
-      }
-
-      const motifsHtml = topMotifs.length > 0
-        ? `<div style="font-size:11px; margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.08);">
-            <div style="color:#d8d8df; margin-bottom:4px; font-weight:600;">${fmIcon('triangle-alert')} Hausse des ${isOscourMarker ? 'passages' : 'Urgences/SOS'}:</div>
-            ${topMotifs.map((m) => {
-          const code = m.label || m.code || '';
-          const tp = Number(m.trendPct) || (m.trend_pct ? Number(m.trend_pct) : 0);
-          const tLabel = m.trendLabel || m.trend || (tp ? `+${Math.round(tp * 100)}%` : 'n/d');
-          return `<div style="display:flex; justify-content:space-between; gap:10px; margin:2px 0;">
-                 <span style="color:#9898a8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${code}</span>
-                 <strong style="color:${tp >= 0.5 ? '#FF1744' : tp >= 0.2 ? '#E91E63' : '#F39C12'};">${tLabel}</strong>
-               </div>`;
-        }).join('')}
-          </div>`
-        : '';
-
-      const html = `
-        <div style="color:#e8e8ec; font-family:sans-serif; min-width:140px; padding:2px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px;">
-            <strong style="font-size:13px; color:#fff;">${geoName}</strong>
-            <span style="font-size:12px; font-weight:700; color:${semio.color};">${fmStatusDot(semio.dotLevel)} ${semio.name}</span>
-          </div>
-          <div style="font-size:11px; color:#9898a8; margin-top:4px;">ISS : <strong style="color:${semio.color}">${Number.isFinite(iss) ? Math.round(iss) : 0}</strong>/100</div>
-          ${motifsHtml}
-          <div style="font-size:10px; color:#6b6b76; margin-top:6px;">${fmIcon('mouse-pointer-click')} Cliquez pour plus de détails</div>
-        </div>
-      `;
-
-      if (!this.healthHoverPopup) {
-        this.healthHoverPopup = new maplibregl.Popup({
-          closeButton: false,
-          closeOnClick: false,
-          offset: 16,
-          maxWidth: '360px',
-          className: 'dark-popup'
-        });
-      }
-      this.healthHoverPopup.setLngLat(e.lngLat).setHTML(html).addTo(this.map);
-    };
-
-    const handleHealthLeave = () => {
-      if (!this.map) return;
-      this.map.getCanvas().style.cursor = '';
-      if (this._lastHoveredHealthId !== null) {
-        this.map.setFeatureState({ source: SRC_HEALTH, id: this._lastHoveredHealthId }, { hover: false });
-      }
-      this._lastHoveredHealthId = null;
-      this.healthHoverPopup?.remove();
-    };
-
-    const handleHealthClick = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
-      if (!this.map || !e.features || e.features.length === 0) return;
-      const feat = e.features[0];
-      const p = feat.properties || {};
-      const isDept = Number.parseInt(String(p.isDepartmental ?? '0')) === 1;
-      const geoName = String(p.nom ?? p.name ?? (isDept ? 'Département' : 'Région'));
-      const iss = Number.parseFloat(String(p.iss ?? p.healthStressIndex ?? '0'));
-      const incidence = Number.parseFloat(String(p.incidenceRate ?? '0'));
-      const spfIncidence = Number.parseFloat(String(p.spfIncidenceRate ?? '0'));
-      const hosp = Number.parseFloat(String(p.hospitalizations ?? '0'));
-      const spfHosp = Number.parseFloat(String(p.spfHospitalizations ?? '0'));
-      const rea = Number.parseFloat(String(p.reanimation ?? '0'));
-      const urgences = Number.parseFloat(String(p.emergencyVisits ?? '0'));
-      const positivity = Number.parseFloat(String(p.positivityRate ?? '0'));
-      const aplIndex = Number.parseFloat(String(p.aplIndex ?? 'NaN'));
-      const aplCategoryRaw = String(p.aplCategory ?? 'indisponible');
-      const topMotifsJson = String(p.topMotifsJson ?? '[]');
-      let topMotifs: Array<{ code: string; label: string; trendLabel: string; trendPct: number; network: 'OSCOUR' | 'SOS_MED' }> = [];
-      try {
-        const parsed = JSON.parse(topMotifsJson);
-        if (Array.isArray(parsed)) {
-          topMotifs = parsed
-            .map((m) => ({
-              code: String(m?.code ?? '').trim(),
-              label: String(m?.label ?? '').trim(),
-              trendLabel: String(m?.trendLabel ?? '').trim(),
-              trendPct: Number(m?.trendPct ?? 0),
-              network: String(m?.network ?? '').includes('SOS') ? 'SOS_MED' as const : 'OSCOUR' as const,
-            }))
-            .filter((m) => m.code || m.label)
-            .slice(0, 4);
-        }
-      } catch {
-        topMotifs = [];
-      }
-      const trend = String(p.trend ?? 'stable');
-      const trendLabel = trend === 'up' ? `${fmIcon('trending-up')} Hausse` : trend === 'down' ? `${fmIcon('trending-down')} Baisse` : '→ Stable';
-      const source = getHealthSourceLabel(String(p.source ?? 'spf-epid'));
-      const semio = getISSSemio(Number.isFinite(iss) ? iss : 0);
-      const granularityLabel = isDept ? 'Département' : 'Région';
-      const aplDef = APL_LEVELS.find(l => l.category === aplCategoryRaw);
-      const aplCategoryLabel = aplDef ? aplDef.label : 'Indisponible';
-      const aplColor = aplDef ? aplDef.color : '#9898a8';
-      const motifsHtml = topMotifs.length > 0
-        ? `<div style="font-size:11px; margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.08);">
-            <div style="color:#9898a8; margin-bottom:4px;">Motifs en forte hausse (OSCOUR / SOS Médecins)</div>
-            ${topMotifs.map((m) => {
-          const lvl = [...OSCOUR_LEVELS].reverse().find(l => m.trendPct >= l.threshold) || OSCOUR_LEVELS[0];
-          return `<div style="display:flex; justify-content:space-between; gap:10px; margin:2px 0;">
-              <span style="color:#d8d8df;">${m.label || m.code} <span style="color:#9898a8;">(${m.network === 'SOS_MED' ? 'SOS' : 'OSCOUR'})</span></span>
-              <strong style="color:${lvl.color};">${m.trendLabel || `${m.trendPct >= 0 ? '+' : ''}${Math.round(m.trendPct * 100)}%`}</strong>
-            </div>`;
-        }).join('')}
-          </div>`
-        : '';
-
-
-
-      const html = `
-        <div style="color:#e8e8ec; font-family:sans-serif; min-width:290px;">
-          <h4 style="margin:0 0 2px; font-weight:700; font-size:15px; color:#ffffff;">${geoName}</h4>
-          <div style="font-size:11px; color:#9898a8; margin-bottom:6px;">${granularityLabel} • ${source}</div>
-          <div style="font-size:13px; margin-bottom:8px; color:${semio.color}; font-weight:700;">${fmStatusDot(semio.dotLevel)} Niv. ${semio.level} • ${semio.name} — ${semio.label}</div>
-
-          <div style="font-size:12px; display:grid; grid-template-columns: 1fr auto; gap:4px 10px; padding:6px 0; border-top:1px solid rgba(255,255,255,0.08);">
-            <span style="color:#9898a8;">ISS (0-100)</span><strong style="color:${semio.color}">${Number.isFinite(iss) ? Math.round(iss) : 0}</strong>
-            <span style="color:#9898a8;">Incidence composite /100k</span><strong>${Number.isFinite(incidence) ? incidence.toFixed(1) : '0.0'}</strong>
-            ${spfIncidence > 0 ? `<span style="color:#5ac8fa;">┗ SPF incidence</span><strong>${spfIncidence.toFixed(1)}</strong>` : ''}
-
-            <span style="color:#9898a8;">Hospitalisations</span><strong>${Number.isFinite(hosp) ? Math.round(hosp) : 0}</strong>
-            ${spfHosp > 0 ? `<span style="color:#5ac8fa;">┗ SPF hospitalisations</span><strong>${Math.round(spfHosp)}</strong>` : ''}
-            ${rea > 0 ? `<span style="color:#ff6b6b;">Réanimation / Soins critiques</span><strong>${Math.round(rea)}</strong>` : ''}
-            ${urgences > 0 ? `<span style="color:#ffa94d;">Passages urgences</span><strong>${Math.round(urgences)}</strong>` : ''}
-            ${positivity > 0 ? `<span style="color:#9898a8;">Positivité</span><strong>${positivity.toFixed(1)} %</strong>` : ''}
-            ${isDept ? `<span style="color:${aplColor};">APL (déserts médicaux)</span><strong style="color:${aplColor};">${Number.isFinite(aplIndex) ? aplIndex.toFixed(2) : 'n/d'} • ${aplCategoryLabel}</strong>` : ''}
-            <span style="color:#9898a8;">Tendance</span><strong>${trendLabel}</strong>
-          </div>
-
-          ${isDept ? motifsHtml : ''}
-
-          <div style="margin-top:10px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.08); text-align: center;">
-            <button onclick="document.dispatchEvent(new CustomEvent('open-national-health', { detail: { explicit: true } }))" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); color: #fff; padding: 6px 12px; border-radius: 4px; font-size: 11px; cursor: pointer; transition: background 0.2s;">Voir les indicateurs nationaux (Sentinelles, ANSM)</button>
-          </div>
-        </div>
-      `;
-
-      this.healthHoverPopup?.remove(); // Hide hover tooltip when clicking to avoid overlap
-
-      const featureId = typeof feat.id === 'number' ? feat.id : Number.parseInt(String(p.code ?? ''), 10);
-      this._activeHealthClickId = featureId;
-
-      const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '360px', className: 'dark-popup' })
-        .setLngLat(e.lngLat)
-        .setHTML(html)
-        .addTo(this.map);
-
-      popup.on('close', () => {
-        if (this._activeHealthClickId === featureId) {
-          this._activeHealthClickId = null;
-        }
-      });
-    };
-
-    this.map.on('mousemove', LYR_HEALTH_FILL, handleHealthMove);
-    this.map.on('mousemove', LYR_HEALTH_APL_FILL, handleHealthMove);
-    this.map.on('mousemove', LYR_HEALTH_APL_LINE, handleHealthMove);
-    this.map.on('mousemove', LYR_HEALTH_OSCOUR_CIRCLES, handleHealthMove);
-    this.map.on('mousemove', LYR_HEALTH_MARKERS, handleHealthMove);
-    this.map.on('mousemove', (e) => {
-      if (!this.map || this._lastHoveredHealthId === null) return;
-      const healthAtCursor = this.map.queryRenderedFeatures(e.point, { layers: [LYR_HEALTH_FILL, LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE, LYR_HEALTH_OSCOUR_CIRCLES, LYR_HEALTH_MARKERS] });
-      if (healthAtCursor.length === 0) {
-        handleHealthLeave();
-      }
-    });
-    this.map.on('mouseleave', LYR_HEALTH_FILL, handleHealthLeave);
-    this.map.on('mouseleave', LYR_HEALTH_APL_FILL, handleHealthLeave);
-    this.map.on('mouseleave', LYR_HEALTH_APL_LINE, handleHealthLeave);
-    this.map.on('mouseleave', LYR_HEALTH_OSCOUR_CIRCLES, handleHealthLeave);
-    this.map.on('mouseleave', LYR_HEALTH_MARKERS, handleHealthLeave);
-
-    this.map.on('click', LYR_HEALTH_FILL, handleHealthClick);
-    this.map.on('click', LYR_HEALTH_APL_FILL, handleHealthClick);
-    this.map.on('click', LYR_HEALTH_APL_LINE, handleHealthClick);
+    // Couches Environnement : infobulle au survol, point du profil radar au clic (initEnvironmentInteractions).
+    this.initEnvironmentInteractions();
+    // Couches Souveraineté : infobulle au survol, clic transmis à App.ts (initSovereigntyInteractions).
+    this.initSovereigntyInteractions();
 
 
     this.map.on('mouseenter', LYR_DROM_ENERGY_POINTS, () => {
@@ -4363,8 +3574,6 @@ export class DeckGLMap {
         .setHTML(html)
         .addTo(this.map);
     });
-    this.map.on('click', LYR_HEALTH_OSCOUR_CIRCLES, handleHealthClick);
-    this.map.on('click', LYR_HEALTH_MARKERS, handleHealthClick);
 
     // ─── Citizen outage zone — hover tooltip élargi ───
     let citizenHoverPopup: maplibregl.Popup | null = null;
@@ -4391,13 +3600,13 @@ export class DeckGLMap {
       const radiusKm = Number(p.radiusKm ?? 0).toFixed(1);
       const density = Number(p.density ?? 0).toFixed(2);
       const reports = Number(p.totalReports ?? 0);
-      const updatedAt = p.createdAt ? new Date(p.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '—';
+      const updatedAt = p.createdAt ? new Date(p.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : 'n.d.';
       const areaKm2 = Math.round(Math.PI * Math.pow(Number(p.radiusKm ?? 0), 2));
 
       const html = `
         <div style="font-family:var(--font-sans,sans-serif);color:#e8e8ec;min-width:240px;max-width:300px;">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.1);">
-            <span style="font-size:13px;font-weight:700;color:#fff;">${fmStatusDot(sevLevel)} Zone de coupures — ${sev.label}</span>
+            <span style="font-size:13px;font-weight:700;color:#fff;">${fmStatusDot(sevLevel)} Zone de coupures : ${sev.label}</span>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:12px;margin-bottom:10px;">
             <div>
@@ -4451,8 +3660,8 @@ export class DeckGLMap {
       const typeColor = p.incidentType === 'transmission' ? '#a0b4ff' : '#6c8cff';
       const statusLabel = p.status === 'active' ? '● Actif' : p.status === 'inactive' ? '◯ Terminé' : '⊘ Retiré';
       const statusColor = p.status === 'active' ? '#f97316' : p.status === 'inactive' ? '#6b7280' : '#6b7280';
-      const startFmt = p.startDate ? new Date(p.startDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
-      const endFmt   = p.endDate   ? new Date(p.endDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+      const startFmt = p.startDate ? new Date(p.startDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'n.d.';
+      const endFmt   = p.endDate   ? new Date(p.endDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'n.d.';
 
       const html = `
         <div style="font-family:var(--font-sans,sans-serif);color:#e8e8ec;min-width:240px;max-width:320px;">
@@ -4605,7 +3814,7 @@ export class DeckGLMap {
       const realLng = Number(p.realLng ?? e.lngLat.lng);
       const realLat = Number(p.realLat ?? e.lngLat.lat);
       const offsetMeters = Number(p.offsetMeters ?? 0);
-      const updatedLabel = p.lastUpdated ? new Date(String(p.lastUpdated)).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+      const updatedLabel = p.lastUpdated ? new Date(String(p.lastUpdated)).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : 'n.d.';
       const html = `
         <div style="color:#e8e8ec;font-family:sans-serif;min-width:200px;">
           <h4 style="margin:0 0 2px;font-weight:700;font-size:14px;color:#fff;">${p.name ?? 'IXP'}</h4>
@@ -4620,7 +3829,7 @@ export class DeckGLMap {
           </div>
           <div style="display:flex;justify-content:space-between;font-size:13px;">
             <span style="color:#9898a8">Capacité :</span>
-            <span style="font-weight:600">${p.speedGbps ?? '—'} Gbps</span>
+            <span style="font-weight:600">${p.speedGbps ?? 'n.d.'} Gbps</span>
           </div>
           <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px;margin-top:10px;font-size:11px;">
             <span style="color:#9898a8">Coord. réelle</span>
@@ -4692,7 +3901,7 @@ export class DeckGLMap {
           <div style="background:${visColor}18;border:1px solid ${visColor}40;border-radius:8px;padding:8px 10px;margin-bottom:10px;">
             <div style="display:flex;justify-content:space-between;align-items:center;">
               <span style="font-size:11px;color:${visColor};font-weight:700;text-transform:uppercase;">Statut BGP : ${statusLabel}</span>
-              <span style="font-size:13px;font-weight:800;color:${visColor}">${p.visibility ?? '—'} %</span>
+              <span style="font-size:13px;font-weight:800;color:${visColor}">${p.visibility ?? 'n.d.'} %</span>
             </div>
             <div style="height:3px;background:rgba(255,255,255,0.08);border-radius:2px;margin-top:5px;overflow:hidden;">
               <div style="height:100%;width:${p.visibility ?? 100}%;background:${visColor};border-radius:2px;"></div>
@@ -4982,144 +4191,35 @@ export class DeckGLMap {
       hideEnrichedHover();
     });
 
-    // ─── Vigicrues Interactions ───
+    // ─── Crues : curseur sur un tronçon ; infobulle de initEnvironmentInteractions ; clic : images satellite avant / après (Sentinel-2) ───
     this.map.on('mouseenter', LYR_FLOODS, () => {
       if (this.map) this.map.getCanvas().style.cursor = 'pointer';
-      this.weatherHoverPopup?.remove();
-      this.previewWeatherDepartment(null);
-    });
-    this.map.on('mousemove', LYR_FLOODS, (e) => {
-      if (!this.map || !e.features?.length) return;
-      this.weatherHoverPopup?.remove();
-      this.previewWeatherDepartment(null);
-      const feature = e.features[0];
-      const featureId = feature.id;
-      this.highlightFloodSegment(typeof featureId === 'string' ? featureId : null);
-
-      const p = feature.properties || {};
-      const level = String(p.level ?? 'green');
-      const name = String(p.name ?? 'Tronçon inconnu');
-      const confidence = typeof p.matchConfidence === 'number'
-        ? Math.round(p.matchConfidence * 100)
-        : Math.round(Number(p.matchConfidence ?? 0) * 100);
-      const displayVertices = Number(p.displayVertexCount ?? 0);
-
-      const levelColors: Record<string, string> = {
-        red: '#ff3b30',
-        orange: '#ff9500',
-        yellow: '#ffcc00',
-        green: '#34c759',
-      };
-      const levelLabels: Record<string, string> = {
-        red: 'Rouge',
-        orange: 'Orange',
-        yellow: 'Jaune',
-        green: 'Vert',
-      };
-      const levelColor = levelColors[level] ?? '#888';
-      const levelLabel = levelLabels[level] ?? 'Inconnu';
-      const traceText = p.geometryFidelity === 'matched'
-        ? 'Tracé hydrographique recalé'
-        : p.geometryFidelity === 'fallback'
-          ? 'Corridor hydrographique'
-          : 'Tracé brut Vigicrues';
-      const sourceText = p.dataSource === 'mock' ? 'mock' : 'live';
-
-      const html = `
-        <div style="color:#e8e8ec; font-family:sans-serif; min-width:170px; padding:4px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:6px;">
-            <strong style="font-size:14px; color:#fff;">${name}</strong>
-            <span style="font-size:11px; padding:2px 8px; border-radius:4px; font-weight:700; color:${level === 'yellow' || level === 'green' ? '#000' : '#fff'}; background:${levelColor};">${levelLabel}</span>
-          </div>
-          <div style="font-size:12px; color:#c8c8d0; margin-bottom:4px;">${traceText}</div>
-          <div style="font-size:11px; color:#9898a8;">Source ${sourceText} · confiance ${confidence}% · ${displayVertices} sommets</div>
-        </div>
-      `;
-
-      if (!this.floodHoverPopup) {
-        this.floodHoverPopup = new maplibregl.Popup({
-          closeButton: false,
-          closeOnClick: false,
-          offset: 16,
-          maxWidth: '320px',
-          className: 'dark-popup',
-        });
-      }
-      this.floodHoverPopup.setLngLat(e.lngLat).setHTML(html).addTo(this.map);
     });
     this.map.on('mouseleave', LYR_FLOODS, () => {
       if (this.map) this.map.getCanvas().style.cursor = '';
-      this.highlightFloodSegment(null);
-      this.floodHoverPopup?.remove();
     });
     this.map.on('click', LYR_FLOODS, (e) => {
       if (!this.map || !e.features || e.features.length === 0) return;
       const feat = e.features[0];
-      const p = feat.properties || {};
-
-      let levelText = 'Inconnu';
-      let levelColor = '#888';
-      if (p.level === 'red') { levelText = 'Rouge'; levelColor = '#ff3b30'; }
-      else if (p.level === 'orange') { levelText = 'Orange'; levelColor = '#ff9500'; }
-      else if (p.level === 'yellow') { levelText = 'Jaune'; levelColor = '#ffcc00'; }
-      else if (p.level === 'green') { levelText = 'Vert'; levelColor = '#34c759'; }
-
-      let traceText = 'Tracé brut Vigicrues';
-      if (p.geometryFidelity === 'matched') traceText = 'Tracé recalé sur hydrographie';
-      else if (p.geometryFidelity === 'fallback') traceText = 'Corridor hydrographique';
-
-      const dataSourceText = p.dataSource === 'mock' ? 'mock' : 'live';
-      const confidence = typeof p.matchConfidence === 'number'
-        ? Math.round(p.matchConfidence * 100)
-        : Math.round(Number(p.matchConfidence ?? 0) * 100);
-      const displayVertices = Number(p.displayVertexCount ?? 0);
-
-      // Compute bbox from actual geometry for EO Browser deep-link
+      const name = String(feat.properties?.name ?? 'Tronçon Vigicrues');
+      // Emprise du tracé publié par Vigicrues, pour le lien EO Browser et le panneau satellite.
       const geom = feat.geometry;
-      const hasLineGeom = geom !== null &&
-          (geom.type === 'LineString' || geom.type === 'MultiLineString');
+      const hasLineGeom = geom !== null && (geom.type === 'LineString' || geom.type === 'MultiLineString');
       const aoBbox: [number, number, number, number] = hasLineGeom
-          ? computeFloodSegmentBbox(geom as LineString | MultiLineString)
-          : [e.lngLat.lng - 0.05, e.lngLat.lat - 0.05, e.lngLat.lng + 0.05, e.lngLat.lat + 0.05];
+        ? computeFloodSegmentBbox(geom as LineString | MultiLineString)
+        : [e.lngLat.lng - 0.05, e.lngLat.lat - 0.05, e.lngLat.lng + 0.05, e.lngLat.lat + 0.05];
       const eoBrowserUrl = buildEoBrowserUrl(aoBbox, 'sentinel-2-l2a');
       const ctaHtml = this.onSatelliteView
-        ? `<button class="satellite-cta-btn" type="button" data-action="satellite-panel">Avant / apres</button>`
-        : `<a class="satellite-cta-btn" href="${eoBrowserUrl}" target="_blank" rel="noopener noreferrer">Avant / apres ${fmIcon('external-link')}</a>`;
-
-      this.floodHoverPopup?.remove();
+        ? `<button class="satellite-cta-btn" type="button" data-action="satellite-panel">Avant / après</button>`
+        : `<a class="satellite-cta-btn" href="${eoBrowserUrl}" target="_blank" rel="noopener noreferrer">Avant / après ${fmIcon('external-link')}</a>`;
+      this.hideEnvironmentHover();
       this.fitBounds(aoBbox, 80);
-
-      const html = `
-        <div style="color:#e8e8ec; font-family:sans-serif; min-width:180px;">
-          <h4 style="margin:0 0 4px; font-weight:700; font-size: 15px; color: #ffffff;">
-            Vigicrues
-          </h4>
-          <div style="margin:0 0 10px; font-size: 13px; font-weight: 600; color: #64d2ff;">
-            ${p.name || 'Tronçon inconnu'}
-          </div>
-          <div style="font-size:13px; margin-bottom: 2px;">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <span style="color:#9898a8">Niveau de vigilance :</span>
-              <span style="font-size:11px; padding:2px 6px; border-radius:4px; font-weight:700; color:${p.level === 'yellow' || p.level === 'green' ? '#000' : '#fff'}; background:${levelColor}">${levelText}</span>
-            </div>
-          </div>
-          <div style="font-size:12px; color:#c8c8d0; margin:8px 0 2px;">
-            ${traceText}
-          </div>
-          <div style="font-size:11px; color:#8f90a0; margin-bottom: 10px;">
-            Source ${dataSourceText} · confiance ${confidence}% · ${displayVertices} sommets
-          </div>
-          ${ctaHtml}
-        </div>
-      `;
-
       const popup = new maplibregl.Popup({
-          closeButton: true, closeOnClick: true, maxWidth: '300px', className: 'dark-popup',
+        closeButton: true, closeOnClick: true, maxWidth: '300px', className: 'dark-popup',
       })
-          .setLngLat(e.lngLat)
-          .setHTML(html)
-          .addTo(this.map);
-
+        .setLngLat(e.lngLat)
+        .setHTML(`<div class="hm-tip"><b>${escapeHtml(name)}</b><div class="hm-sub">Vigicrues · images satellite du tronçon</div>${ctaHtml}</div>`)
+        .addTo(this.map);
       if (this.onSatelliteView) {
         const button = popup.getElement().querySelector<HTMLElement>('[data-action="satellite-panel"]');
         button?.addEventListener('click', (event) => {
@@ -5128,7 +4228,7 @@ export class DeckGLMap {
           this.onSatelliteView?.({
             bbox: aoBbox,
             sourceType: 'flood',
-            title: String(p.name || 'Zone Vigicrues'),
+            title: name,
             geometry: hasLineGeom ? geom as LineString | MultiLineString : undefined,
             preferredCollection: 'sentinel-2-l2a',
           });
@@ -5137,98 +4237,16 @@ export class DeckGLMap {
       }
     });
 
-    // ─── Weather Department Interactions (tooltip on hover) ───
-    this.map.on('mouseenter', LYR_WEATHER_FILL, () => {
-      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
+    // ─── Vigilance : curseur sur un département en vigilance ; infobulle et mise en avant de initEnvironmentInteractions ───
+    this.map.on('mousemove', LYR_WEATHER_FILL, (e) => {
+      if (!this.map) return;
+      const hasAlert = e.features?.[0]?.properties?.hasAlert === true;
+      this.map.getCanvas().style.cursor = hasAlert ? 'pointer' : '';
+      if (!hasAlert) this.previewWeatherDepartment(null);
     });
     this.map.on('mouseleave', LYR_WEATHER_FILL, () => {
       if (this.map) this.map.getCanvas().style.cursor = '';
-      this.weatherHoverPopup?.remove();
       this.previewWeatherDepartment(null);
-    });
-    this.map.on('mousemove', LYR_WEATHER_FILL, (e) => {
-      if (!this.map || !e.features || e.features.length === 0) return;
-
-      const floodFeaturesAtCursor = this.map.queryRenderedFeatures(e.point, {
-        layers: [LYR_FLOODS, LYR_FLOODS_HIGHLIGHT, LYR_FLOODS_RAW],
-      });
-      if (floodFeaturesAtCursor.length > 0) {
-        this.weatherHoverPopup?.remove();
-        this.previewWeatherDepartment(null);
-        return;
-      }
-
-      const feat = e.features[0];
-      const p = feat.properties || {};
-      if (!p.hasAlert) {
-        this.map.getCanvas().style.cursor = '';
-        this.weatherHoverPopup?.remove();
-        this.previewWeatherDepartment(null);
-        return;
-      }
-      this.map.getCanvas().style.cursor = 'pointer';
-      const code = String(p.code ?? '');
-      const nom = String(p.nom ?? p.name ?? 'Département');
-      const level = String(p.level ?? 'green');
-      const risksStr = String(p.risks ?? '');
-
-      // Level display
-      const levelColors: Record<string, string> = {
-        red: '#ff3b30', orange: '#ff9500', yellow: '#ffcc00', green: '#34c759', violet: '#af52de'
-      };
-      const levelLabels: Record<string, string> = {
-        red: 'Rouge', orange: 'Orange', yellow: 'Jaune', green: 'Vert', violet: 'Violet'
-      };
-      const levelColor = levelColors[level] ?? '#888';
-      const levelLabel = levelLabels[level] ?? 'Inconnu';
-
-      // Risk labels
-      const riskLabels: Record<string, string> = {
-        'wind': 'Vent violent',
-        'rain-flood': 'Pluie-inondation',
-        'thunderstorm': 'Orages',
-        'flood': 'Crues',
-        'snow-ice': 'Neige-verglas',
-        'heat': 'Canicule',
-        'cold': 'Grand froid',
-        'avalanche': 'Avalanches',
-        'wave-surge': 'Vagues-submersion',
-      };
-
-      const risks = risksStr.split(',').map(r => r.trim()).filter(Boolean);
-      const risksHtml = risks.length > 0
-        ? `<div style="margin-top:8px; display:flex; flex-wrap:wrap; gap:4px;">
-             ${risks.map(r => {
-          const icon = WEATHER_RISK_ICONS[r as import('../types/index.ts').MeteoRiskType] ?? 'triangle-alert';
-          const label = riskLabels[r] ?? r;
-          return `<span style="background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); padding:2px 6px; border-radius:4px; font-size:11px; display:inline-flex; align-items:center; gap:4px;">${fmIcon(icon)} ${label}</span>`;
-        }).join('')}
-           </div>`
-        : '';
-
-      const html = `
-        <div style="color:#e8e8ec; font-family:sans-serif; min-width:160px; padding:4px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:6px;">
-            <strong style="font-size:14px; color:#fff;">${nom}</strong>
-            <span style="font-size:11px; padding:2px 8px; border-radius:4px; font-weight:700; color:${level === 'yellow' || level === 'green' ? '#000' : '#fff'}; background:${levelColor};">${levelLabel}</span>
-          </div>
-          <div style="font-size:11px; color:#9898a8;">Dpt. ${code}</div>
-          ${risksHtml}
-        </div>
-      `;
-
-      if (!this.weatherHoverPopup) {
-        this.weatherHoverPopup = new maplibregl.Popup({
-          closeButton: false,
-          closeOnClick: false,
-          offset: 16,
-          maxWidth: '320px',
-          className: 'dark-popup'
-        });
-      }
-      this.weatherHoverPopup.setLngLat(e.lngLat).setHTML(html).addTo(this.map);
-
-      this.previewWeatherDepartment(code);
     });
 
     // ─── Fuel tension department interactions ───
@@ -5384,7 +4402,7 @@ export class DeckGLMap {
           ${row('Actuelle', fmtMW(s.consumptionMW))}
           ${row('Vs J-1', fmtDelta(s.consumptionDeltaPct), deltaColor)}
           ${sep}
-          ${sectionLabel(`Production — ${fmtMW(p.total)}`)}
+          ${sectionLabel(`Production : ${fmtMW(p.total)}`)}
           ${prodRowsHTML}
           ${row('Bas-carbone', `${s.lowCarbonPct.toFixed(0)} %`, '#34c759')}
           ${sep}
@@ -5482,156 +4500,12 @@ export class DeckGLMap {
     });
     this.map.on('mousemove', LYR_INTERCONN_HITAREA, showFlowHover);
 
-    // ─── Traffic Incidents Interactions ───
-    this.map.on('mouseenter', LYR_TRAFFIC_INCIDENTS, () => {
+    // ─── Sites de défense : curseur ; infobulle échappée de initSovereigntyInteractions ; clic : fiche du site (onMilitaryBaseClick) ───
+    this.map.on('mouseenter', LYR_MILITARY_BASES_CIRCLE, () => {
       if (this.map) this.map.getCanvas().style.cursor = 'pointer';
-    });
-    this.map.on('mouseleave', LYR_TRAFFIC_INCIDENTS, () => {
-      if (this.map) this.map.getCanvas().style.cursor = '';
-    });
-    this.map.on('mouseenter', LYR_TRAFFIC_CLUSTER, () => {
-      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
-    });
-    this.map.on('mouseleave', LYR_TRAFFIC_CLUSTER, () => {
-      if (this.map) this.map.getCanvas().style.cursor = '';
-    });
-    this.map.on('click', LYR_TRAFFIC_CLUSTER, (e) => {
-      if (!this.map || !e.features || e.features.length === 0) return;
-      const clusterId = e.features[0].properties?.cluster_id as number | undefined;
-      const geom = e.features[0].geometry as GeoJSON.Point;
-      if (clusterId == null || !geom?.coordinates) return;
-
-      const center = geom.coordinates as [number, number];
-      const index = this.trafficClusterIndex;
-      if (!index) return;
-
-      const zoom = index.getClusterExpansionZoom(clusterId);
-      this.map.flyTo({
-        center,
-        zoom: zoom + 0.5,
-        curve: 1.2,
-        speed: 1.5,
-        essential: true,
-      });
-    });
-    this.map.on('click', LYR_TRAFFIC_INCIDENTS, (e) => {
-      if (!this.map || !e.features || e.features.length === 0) return;
-      const feat = e.features[0];
-      const p = feat.properties || {};
-      const coords = (feat.geometry as GeoJSON.Point).coordinates as [number, number];
-      const roadNumbers = typeof p.roadNumbers === 'string'
-        ? (() => { try { return JSON.parse(p.roadNumbers) as string[]; } catch { return []; } })()
-        : Array.isArray(p.roadNumbers) ? p.roadNumbers as string[] : [];
-      const incident: TrafficIncident = {
-        id: String(p.id ?? ''),
-        lon: coords[0],
-        lat: coords[1],
-        type: String(p.type ?? 'Incident'),
-        severity: String(p.severity ?? 'low'),
-        delay: Number(p.delay ?? 0),
-        length: Number(p.length ?? 0),
-        description: String(p.description ?? ''),
-        startTime: p.startTime ? String(p.startTime) : undefined,
-        endTime: p.endTime ? String(p.endTime) : undefined,
-        from: p.from ? String(p.from) : undefined,
-        to: p.to ? String(p.to) : undefined,
-        roadNumbers,
-        timeValidity: p.timeValidity ? String(p.timeValidity) : undefined,
-        probabilityOfOccurrence: p.probabilityOfOccurrence ? String(p.probabilityOfOccurrence) : undefined,
-        numberOfReports: p.numberOfReports != null ? Number(p.numberOfReports) : null,
-        lastReportTime: p.lastReportTime ? String(p.lastReportTime) : null,
-      };
-
-      void this.showTrafficIncidentPopupResolved(coords, incident);
-    });
-
-    // ─── Rail Disruptions interactions ───
-    // Only LYR_RAIL_ARC_HIT and LYR_RAIL_STATION are interactive.
-    // Hover highlight is done via feature-state on SRC_RAIL_ARCS (no second geometry is drawn).
-    const railHoverLayers = [LYR_RAIL_ARC_HIT, LYR_RAIL_STATION];
-    let _hoveredRailArcId: string | number | null = null;
-    const setRailCursor = () => {
-      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
-    };
-    const clearRailCursor = () => {
-      if (this.map) this.map.getCanvas().style.cursor = '';
-      this.hideEnrichedHoverPopup();
-      // Clear feature-state hover
-      if (_hoveredRailArcId !== null && this.map) {
-        this.map.setFeatureState({ source: SRC_RAIL_ARCS, id: _hoveredRailArcId }, { hover: false });
-        _hoveredRailArcId = null;
-      }
-    };
-    const showRailHover = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
-      if (!this.map || !e.features || e.features.length === 0) return;
-      if (this.railStationPanel) {
-        this.hideEnrichedHoverPopup();
-        return;
-      }
-      const feat = e.features[0];
-      const props = (feat.properties ?? {}) as Record<string, unknown>;
-      const layerId = feat.layer?.id;
-
-      // Station dot → station summary tooltip; arc hit zone → train/disruption tooltip
-      const html = layerId === LYR_RAIL_STATION
-        ? this.buildRailStationHoverHtml(props)
-        : this.buildRailArcHoverHtml(props);
-      this.showEnrichedHoverPopup(e.lngLat, html);
-
-      // Feature-state highlight on the arc itself (no second geometry)
-      if (layerId === LYR_RAIL_ARC_HIT && feat.id !== undefined) {
-        if (_hoveredRailArcId !== null && _hoveredRailArcId !== feat.id) {
-          this.map.setFeatureState({ source: SRC_RAIL_ARCS, id: _hoveredRailArcId }, { hover: false });
-        }
-        _hoveredRailArcId = feat.id;
-        this.map.setFeatureState({ source: SRC_RAIL_ARCS, id: feat.id }, { hover: true });
-      } else if (layerId === LYR_RAIL_STATION) {
-        // Clear arc highlight when hovering a station
-        if (_hoveredRailArcId !== null) {
-          this.map.setFeatureState({ source: SRC_RAIL_ARCS, id: _hoveredRailArcId }, { hover: false });
-          _hoveredRailArcId = null;
-        }
-      }
-    };
-    const showRailPopup = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
-      if (!this.map || !e.features || e.features.length === 0) return;
-      const feat = e.features[0];
-      const props = (feat.properties ?? {}) as Record<string, unknown>;
-      const layerId = feat.layer?.id;
-      this.hideEnrichedHoverPopup();
-      if (layerId === LYR_RAIL_STATION) {
-        this.openRailStationPopup(e.lngLat, props);
-        return;
-      }
-      new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '320px', className: 'dark-popup' })
-        .setLngLat(e.lngLat)
-        .setHTML(this.buildRailArcHoverHtml(props))
-        .addTo(this.map);
-    };
-
-    for (const layerId of railHoverLayers) {
-      this.map.on('mouseenter', layerId, setRailCursor);
-      this.map.on('mousemove', layerId, showRailHover);
-      this.map.on('mouseleave', layerId, clearRailCursor);
-      this.map.on('click', layerId, showRailPopup);
-    }
-
-    // ─── Military Bases interactions ───
-    this.map.on('mouseenter', LYR_MILITARY_BASES_CIRCLE, (e) => {
-      if (!this.map) return;
-      this.map.getCanvas().style.cursor = 'pointer';
-      const feat = e.features?.[0];
-      if (!feat) return;
-      const p = feat.properties || {};
-      this.showMilitaryTooltip(
-        e.lngLat,
-        `<strong>${p.name || 'Base'}</strong><br><span style="color:#34c759;font-size:11px">${p.type || ''}</span>`
-      );
     });
     this.map.on('mouseleave', LYR_MILITARY_BASES_CIRCLE, () => {
       if (this.map) this.map.getCanvas().style.cursor = '';
-      this.militaryTooltip?.remove();
-      this.militaryTooltip = null;
     });
     this.map.on('click', LYR_MILITARY_BASES_CIRCLE, (e) => {
       if (!this.map || !e.features || e.features.length === 0) return;
@@ -5646,114 +4520,19 @@ export class DeckGLMap {
       this.onMilitaryBaseClick(base, pt.x, pt.y);
     });
 
-    // ─── Military Flights interactions ───
-    this.map.on('mouseenter', LYR_MILITARY_FLIGHTS, (e) => {
-      if (!this.map) return;
-      this.map.getCanvas().style.cursor = 'pointer';
-      const feat = e.features?.[0];
-      if (!feat) return;
-      const p = feat.properties || {};
-      const altFl = p.altitude > 0 ? `FL${Math.round(p.altitude / 100)}` : 'Au sol';
-      const typeModel = p.aircraftModel
-        ? `${p.aircraftModel}`
-        : (p.aircraftType && p.aircraftType !== 'unknown' ? p.aircraftType : 'MIL');
-      this.showMilitaryTooltip(
-        e.lngLat,
-        `<strong>${p.callsign || 'N/A'}</strong> · ${typeModel}<br><span style="color:#ffcc00;font-size:11px">${altFl} · ${p.speed || 0} kts</span>`
-      );
-    });
-    this.map.on('mouseleave', LYR_MILITARY_FLIGHTS, () => {
-      if (this.map) this.map.getCanvas().style.cursor = '';
-      this.militaryTooltip?.remove();
-      this.militaryTooltip = null;
-    });
-    this.map.on('click', LYR_MILITARY_FLIGHTS, (e) => {
-      if (!this.map || !e.features || e.features.length === 0) return;
-      const feat = e.features[0];
-      const flightId = feat.properties?.id as string | undefined;
-      if (!flightId || !this.onMilitaryFlightClick) return;
-      const flight = this.militaryFlightsById.get(flightId);
-      if (!flight) return;
-      this.militaryTooltip?.remove();
-      this.militaryTooltip = null;
-      const pt = this.map.project(e.lngLat);
-      this.onMilitaryFlightClick(flight, pt.x, pt.y);
-    });
-
     // ─── Civil Air Traffic interactions ───
     // Hover events are handled directly by DeckGL's IconLayer `onHover` handler.
 
 
-    // ─── Military Ships interactions ───
-    this.map.on('mouseenter', LYR_MILITARY_SHIPS, (e) => {
-      if (!this.map) return;
-      this.map.getCanvas().style.cursor = 'pointer';
-      const feat = e.features?.[0];
-      if (!feat) return;
-      const p = feat.properties || {};
-      this.showMilitaryTooltip(
-        e.lngLat,
-        `<strong>${fmIcon('anchor')} ${p.name || 'Navire'}</strong><br><span style="color:#00d4c8;font-size:11px">${p.type || 'Marine'}</span>${p.speed > 0 ? `<br><span style="color:#9898a8;font-size:10px">${p.speed} nœuds</span>` : ''}`
-      );
-    });
-    this.map.on('mouseleave', LYR_MILITARY_SHIPS, () => {
-      if (this.map) this.map.getCanvas().style.cursor = '';
-      this.militaryTooltip?.remove();
-      this.militaryTooltip = null;
-    });
-    this.map.on('click', LYR_MILITARY_SHIPS, (e) => {
-      if (!this.map || !e.features || e.features.length === 0) return;
-      const feat = e.features[0];
-      const shipId = feat.properties?.id as string | undefined;
-      if (!shipId) return;
-      const ship = this.militaryShipsById.get(shipId);
-      if (!ship) return;
-      this.militaryTooltip?.remove();
-      this.militaryTooltip = null;
-      const pt = this.map.project(e.lngLat);
-      if (this.onMilitaryShipClick) this.onMilitaryShipClick(ship, pt.x, pt.y);
-      if (this._onMaritimeShipClick) {
-        const full: MilitaryShip | undefined = getAllLiveTraffic().find(s => s.mmsi === ship.mmsi) ?? getMilitaryShips().find(s => s.mmsi === ship.mmsi);
-        if (full) this._onMaritimeShipClick(full, pt.x, pt.y);
-      }
-    });
-
-    // ─── Submarine Cables Interactions ───
-    const showSubseaCableHover = (
-      e: maplibregl.MapLayerMouseEvent,
-      source: typeof SRC_SUBMARINE_CABLES | typeof SRC_SUBMARINE_CABLES_LANDINGS
-    ) => {
-      if (!this.map) return;
-      const feat = e.features?.[0];
-      if (!feat?.properties) return;
-
-      this.map.getCanvas().style.cursor = 'pointer';
-      this.clearSubseaCableHoverState();
-
-      if (source === SRC_SUBMARINE_CABLES && feat.id != null) {
-        this.hoveredSubseaCableId = feat.id;
-        this.map.setFeatureState({ source, id: feat.id }, { hover: true });
-      }
-      if (source === SRC_SUBMARINE_CABLES_LANDINGS && feat.id != null) {
-        this.hoveredSubseaLandingId = feat.id;
-        this.map.setFeatureState({ source, id: feat.id }, { hover: true });
-      }
-
-      this.showMilitaryTooltip(e.lngLat, buildSubseaCableTooltip(feat.properties as Record<string, unknown>));
-    };
-
+    // ─── Câbles (Connectivité) : curseur ; infobulle et clic de initSovereigntyInteractions (câbles du Shom et d'OpenStreetMap) ───
     for (const layerId of [LYR_SUBMARINE_CABLES_HITAREA, LYR_SUBMARINE_CABLES_LANDING]) {
       this.map.on('mouseenter', layerId, () => {
         if (this.map) this.map.getCanvas().style.cursor = 'pointer';
       });
       this.map.on('mouseleave', layerId, () => {
         if (this.map) this.map.getCanvas().style.cursor = '';
-        this.hideSubseaCableTooltip();
       });
     }
-
-    this.map.on('mousemove', LYR_SUBMARINE_CABLES_HITAREA, (e) => showSubseaCableHover(e, SRC_SUBMARINE_CABLES));
-    this.map.on('mousemove', LYR_SUBMARINE_CABLES_LANDING, (e) => showSubseaCableHover(e, SRC_SUBMARINE_CABLES_LANDINGS));
 
     // Track view state
     this.map.on('moveend', () => {
@@ -5763,8 +4542,9 @@ export class DeckGLMap {
         longitude: c.lng, latitude: c.lat,
         zoom: this.map.getZoom(), pitch: this.map.getPitch(), bearing: this.map.getBearing(),
       };
-      this.syncTrafficIncidentSource();
-      if (this.threatEventsVisible && this.threatEvents.length > 0 && this.deckOverlay) {
+      // Avions : icônes à tous les zooms ; sous le zoom 7, une animation en cours s'arrête sur les positions du dernier relevé.
+      if (this.viewState.zoom < AIR_TWEEN_MIN_ZOOM && this.civilAirAnimFrame !== null) {
+        this.stopCivilAirTween();
         this.scheduleOverlayUpdate();
       }
       this.onViewChange?.(this.viewState);
@@ -5774,7 +4554,7 @@ export class DeckGLMap {
     // PULSE OVERLAY (CSS animations for critical/high alerts)
     // ═══════════════════════════════════════════════════════════════
     this.initPulseOverlay();
-    this.startSubseaPulseAnimation();
+    // Halo des câbles : animé seulement quand la couche Connectivité est visible (setLayerVisibility, audit 30).
 
     // Update pulse markers on map move — throttled via requestAnimationFrame
     // so DOM style updates happen at most once per frame (≤ 16 ms) instead of
@@ -5790,16 +4570,12 @@ export class DeckGLMap {
     this.map.on('move', schedulePulseUpdate);
     this.map.on('zoom', schedulePulseUpdate);
 
-    // Keep health layer above other fills so it remains visible when enabled.
+    // Couches santé au-dessus des autres remplissages : contours, marqueurs, puis les sites d'urgences.
     try {
-      this.map.moveLayer(LYR_HEALTH_FILL);
-      this.map.moveLayer(LYR_HEALTH_APL_FILL);
-      this.map.moveLayer(LYR_HEALTH_APL_LINE);
-      this.map.moveLayer(LYR_HEALTH_LINE);
-      this.map.moveLayer(LYR_HEALTH_OSCOUR_CIRCLES);
-      this.map.moveLayer(LYR_HEALTH_MARKERS);
+      // Même ordre que le survol (HEALTH_HOVER_LAYERS en est l'inverse) : la couche vue au-dessus répond.
+      for (const id of HEALTH_LAYER_ORDER) this.map.moveLayer(id);
     } catch {
-      // Ignore if layer order cannot be adjusted yet.
+      // Ordre des couches pas encore réglable.
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -5834,15 +4610,7 @@ export class DeckGLMap {
         ? 1
         : this.legendHoverCategory === 'trafficMaritime'
           ? 1
-          : ['trafficRoad', 'trafficAir', 'health', 'healthApl', 'healthOscour', 'hospitals'].includes(this.legendHoverCategory)
-            ? 0.15
-            : 1;
-    const roadDeckOpacity =
-      this.legendHoverCategory == null
-        ? 1
-        : this.legendHoverCategory === 'trafficRoad'
-          ? 1
-          : ['trafficMaritime', 'trafficAir', 'health', 'healthApl', 'healthOscour', 'hospitals'].includes(this.legendHoverCategory)
+          : ['trafficRoad', 'trafficAir', 'trafficRail', 'health', 'healthApl', 'healthOscour', 'hospitals'].includes(this.legendHoverCategory)
             ? 0.15
             : 1;
     const airDeckOpacity =
@@ -5850,7 +4618,7 @@ export class DeckGLMap {
         ? 1
         : this.legendHoverCategory === 'trafficAir'
           ? 1
-          : ['trafficRoad', 'trafficMaritime', 'health', 'healthApl', 'healthOscour', 'hospitals'].includes(this.legendHoverCategory)
+          : ['trafficRoad', 'trafficMaritime', 'trafficRail', 'health', 'healthApl', 'healthOscour', 'hospitals'].includes(this.legendHoverCategory)
             ? 0.15
             : 1;
 
@@ -5859,19 +4627,18 @@ export class DeckGLMap {
       const value = raw == null ? NaN : Number(raw);
       return Number.isFinite(value) ? value : 0;
     };
+    // Teinte d'un navire : son type déclaré, même classement que les comptes du serveur et la légende (traffic-legend.ts) ;
+    // navire survolé ou choisi : teintes propres.
     const getAisIconColor = (d: AisShipData): string => {
       if (d.mmsi && d.mmsi === this._highlightedMmsi) return '#ffffff';
       if (d.mmsi && d.mmsi === this._selectedShipMmsi) return '#5ac8fa';
-      const t = getShipTypeNumber(d);
-      if (t >= 80 && t <= 89) return '#60a5fa';      // Tanker — bleu clair
-      if (t >= 70 && t <= 79) return '#4ade80';      // Cargo — vert
-      if (t >= 60 && t <= 69) return '#f97316';      // Passagers — orange
-      if (t === 55 || t === 51 || t === 52 || t === 53) return '#a855f7'; // Remorqueur/SAR/pilote — violet
-      if (t === 36 || t === 37) return '#06b6d4';    // Voilier/plaisance — cyan
-      if (t >= 40 && t <= 49) return '#f472b6';      // Grande vitesse — rose
-      if (t === 30 || t === 31 || t === 32 || t === 33 || t === 34) return '#facc15'; // Pêche — jaune
-      if (d.navStatus === 7) return '#facc15';        // Pêche par statut — jaune
-      return '#94a3b8';                              // Inconnu — gris
+      return vesselHex(getShipTypeNumber(d), d.navStatus);
+    };
+    // Sillage : teinte du type, plus discrète ; type inconnu en gris léger.
+    const getAisTrailColor = (d: AisShipData): [number, number, number, number] => {
+      const hex = vesselHex(getShipTypeNumber(d), d.navStatus);
+      const alpha = hex === VESSEL_TYPE_HEX.inconnu ? 120 : 180;
+      return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16), alpha];
     };
     const getAisSize = (d: AisShipData): number => {
       if (d.mmsi && d.mmsi === this._highlightedMmsi) return 22;
@@ -5879,39 +4646,17 @@ export class DeckGLMap {
       return 14;
     };
     const getAisAngle = (d: AisShipData): number => this.getAisDeckAngle(d);
-    const maritimeLabelData = this.globalTrafficData.filter((ship) => {
-      if (!ship.name || ship.name.trim().length === 0) return false;
-      if (ship.mmsi && (ship.mmsi === this._highlightedMmsi || ship.mmsi === this._selectedShipMmsi)) return true;
-      // Pour éviter l'affichage trop brouillon: on n'affiche les noms de TOUS les navires
-      // que si le zoom est suffisant, sinon on ne garde que le navire survolé/sélectionné.
-      return this.viewState.zoom >= 10;
-    });
+    const maritimeLabelData = this.getAisLabelData();
+    const maritimeTrailData = this.getAisTrailData();
     return [
-      new DayNightLayer({
-        id: 'day-night',
-        timestamp: this.dayNightOptions.timestamp || Date.now(),
-        showNight: this.dayNightOptions.showNight,
-        showTwilight: this.dayNightOptions.showTwilight,
-        showSunIcon: this.dayNightOptions.showSunIcon,
-        resolution: 1,
-        visible: this.dayNightVisible,
-        opacity: 1,
-      }),
       new PathLayer<AisShipData>({
         id: 'deck-ais-trails',
-        data: this.globalTrafficData.filter(d => d.trail && d.trail.length >= 2),
+        data: maritimeTrailData,
         visible: this.globalTrafficVisible,
         opacity: maritimeDeckOpacity * 0.5,
         coordinateSystem: COORDINATE_SYSTEM.LNGLAT,
         getPath: (d: AisShipData) => (d.trail ?? []) as [number, number][],
-        getColor: (d: AisShipData) => {
-          const t = d.shipType ?? 0;
-          if (t >= 80 && t <= 89) return [96, 165, 250, 180];   // Tanker bleu
-          if (t >= 70 && t <= 79) return [74, 222, 128, 180];   // Cargo vert
-          if (t >= 60 && t <= 69) return [249, 115, 22, 180];   // Passagers orange
-          if (t === 30 || t === 31 || t === 32 || t === 33 || t === 34) return [250, 204, 21, 180]; // Pêche jaune
-          return [148, 163, 184, 120];                           // Défaut gris
-        },
+        getColor: getAisTrailColor,
         getWidth: 1.5,
         widthUnits: 'pixels',
         widthMinPixels: 1,
@@ -5977,46 +4722,6 @@ export class DeckGLMap {
           getSize: [maritimeLabelData, this._highlightedMmsi, this._selectedShipMmsi, this.viewState.zoom],
         },
       }),
-      new ScatterplotLayer<TrafficIncident>({
-        id: 'deck-road-incidents',
-        data: this.roadTrafficIncidents,
-        visible: this.roadTrafficVisible,
-        opacity: roadDeckOpacity,
-        coordinateSystem: COORDINATE_SYSTEM.LNGLAT,
-        getPosition: (d: TrafficIncident) => [d.lon, d.lat],
-        getRadius: (d: TrafficIncident) => {
-          if (d.severity === 'high' || d.type === 'Route barrée') return 22000;
-          if (d.severity === 'medium') return 18500;
-          return 11000;
-        },
-        getFillColor: (d: TrafficIncident) => {
-          if (d.severity === 'high' || d.type === 'Route barrée') return [255, 80, 80, 225] as [number, number, number, number];
-          if (d.severity === 'medium') return [255, 149, 0, 235] as [number, number, number, number];
-          return [255, 220, 80, 185] as [number, number, number, number];
-        },
-        radiusMinPixels: 6,
-        radiusMaxPixels: 20,
-        stroked: true,
-        getLineColor: (d: TrafficIncident) => (
-          d.severity === 'medium'
-            ? [255, 245, 214, 230] as [number, number, number, number]
-            : [255, 255, 255, 170] as [number, number, number, number]
-        ),
-        lineWidthMinPixels: 1.5,
-        pickable: true,
-        onHover: (info) => {
-          void this.handleRoadIncidentHover(info);
-        },
-        onClick: (info) => {
-          void this.handleRoadIncidentClick(info);
-        },
-        updateTriggers: {
-          getPosition: this.roadTrafficIncidents,
-          getFillColor: this.roadTrafficIncidents,
-          getRadius: this.roadTrafficIncidents,
-          getLineColor: this.roadTrafficIncidents,
-        },
-      }),
       // OSINT: Civil air traffic only (military flights shown in DÉFENSE layer)
       // Uses tweened positions for smooth animation between snapshots
       new IconLayer<AirTrafficFlight>({
@@ -6026,7 +4731,8 @@ export class DeckGLMap {
         opacity: airDeckOpacity,
         coordinateSystem: COORDINATE_SYSTEM.LNGLAT,
         getPosition: (d: AirTrafficFlight) => this.projectAirTrafficPosition(d),
-        getIcon: (d: AirTrafficFlight) => this.getAirTrafficIconDef(this.getAirTrafficColorHex(d)),
+        // Couleur selon l'altitude (tranches de traffic-legend.ts, une icône mise en cache par couleur).
+        getIcon: (d: AirTrafficFlight) => this.getAirTrafficIconDef(airAltitudeHex(d.altitude)),
         getColor: () => [255, 255, 255, 255],
         getSize: (d: AirTrafficFlight) => (d.altitude > 30000 ? 20 : d.altitude > 15000 ? 18 : 16),
         getAngle: (d: AirTrafficFlight) => this.headingToDeckAngle(this.getTweenedHeading(d)),
@@ -6043,86 +4749,6 @@ export class DeckGLMap {
           getSize: this.civilAirTrafficFlights,
           getAngle: [this.civilAirTrafficFlights, this.civilAirTweenProgress],
           getIcon: this.civilAirTrafficFlights,
-        },
-      }),
-      new ScatterplotLayer<ThreatMapDatum>({
-        id: 'deck-threat-clusters',
-        data: this.getThreatMapData().filter((d) => d.kind === 'cluster'),
-        visible: this.threatEventsVisible,
-        opacity: 1,
-        coordinateSystem: COORDINATE_SYSTEM.LNGLAT,
-        getPosition: (d: ThreatMapDatum) => d.coordinates,
-        getRadius: (d: ThreatMapDatum) => d.kind === 'cluster' ? 15000 + Math.min(d.count, 80) * 950 : 10000,
-        getFillColor: (d: ThreatMapDatum) => this.getThreatColor(d.severity, d.kind === 'cluster' ? 210 : 200),
-        radiusMinPixels: 18,
-        radiusMaxPixels: 42,
-        stroked: true,
-        getLineColor: [186, 230, 253, 230],
-        lineWidthMinPixels: 2.5,
-        pickable: true,
-        onClick: (info) => {
-          if (!this.map || !info.object || info.object.kind !== 'cluster') return;
-          this.map.flyTo({
-            center: info.object.coordinates,
-            zoom: Math.min(info.object.expansionZoom + 0.35, 14),
-            duration: 850,
-            essential: true,
-          });
-        },
-        updateTriggers: {
-          getPosition: [this.threatEvents, this.viewState.zoom],
-          getFillColor: [this.threatEvents, this.viewState.zoom],
-          getRadius: [this.threatEvents, this.viewState.zoom],
-        },
-      }),
-      new TextLayer<ThreatMapDatum>({
-        id: 'deck-threat-cluster-count',
-        data: this.getThreatMapData().filter((d) => d.kind === 'cluster'),
-        visible: this.threatEventsVisible,
-        coordinateSystem: COORDINATE_SYSTEM.LNGLAT,
-        getPosition: (d: ThreatMapDatum) => d.coordinates,
-        getText: (d: ThreatMapDatum) => d.kind === 'cluster' ? String(d.count) : '',
-        getSize: 14,
-        getColor: [255, 255, 255, 255],
-        getTextAnchor: 'middle',
-        getAlignmentBaseline: 'center',
-        fontWeight: 800,
-        pickable: false,
-        updateTriggers: {
-          getPosition: [this.threatEvents, this.viewState.zoom],
-          getText: [this.threatEvents, this.viewState.zoom],
-        },
-      }),
-      new ScatterplotLayer<ThreatMapDatum>({
-        id: 'deck-threat-events',
-        data: this.getThreatMapData().filter((d) => d.kind === 'event'),
-        visible: this.threatEventsVisible,
-        opacity: 1,
-        coordinateSystem: COORDINATE_SYSTEM.LNGLAT,
-        getPosition: (d: ThreatMapDatum) => d.coordinates,
-        getRadius: (d: ThreatMapDatum) => {
-          if (d.severity === 'critical') return 30000;
-          if (d.severity === 'high') return 20000;
-          if (d.severity === 'medium') return 12000;
-          return 8000;
-        },
-        getFillColor: (d: ThreatMapDatum) => this.getThreatColor(d.severity, 205),
-        radiusMinPixels: 8,
-        radiusMaxPixels: 24,
-        stroked: true,
-        getLineColor: [255, 255, 255, 190],
-        lineWidthMinPixels: 2,
-        pickable: true,
-        onClick: (info) => {
-          if (!this.map || !info.object || info.object.kind !== 'event') return;
-          const evt = info.object.event;
-          const pt = this.map.project(info.object.coordinates);
-          this.onThreatEventClick?.(evt, pt.x, pt.y);
-        },
-        updateTriggers: {
-          getPosition: [this.threatEvents, this.viewState.zoom],
-          getFillColor: [this.threatEvents, this.viewState.zoom],
-          getRadius: [this.threatEvents, this.viewState.zoom],
         },
       }),
       new ScatterplotLayer<EventMapPoint>({
@@ -6159,6 +4785,37 @@ export class DeckGLMap {
     ];
   }
 
+  /** Navires à sillage : tableau gardé tant que `globalTrafficData` est le même (deck.gl ne régénère pas ses attributs). */
+  private getAisTrailData(): AisShipData[] {
+    const source = this.globalTrafficData;
+    if (this.aisTrailCache?.source !== source) {
+      this.aisTrailCache = { source, data: source.filter((d) => d.trail && d.trail.length >= 2) };
+    }
+    return this.aisTrailCache.data;
+  }
+
+  /**
+   * Noms des navires : tous à partir du zoom 10, sinon le navire survolé ou choisi seulement (lisibilité) ; tableau gardé tant que
+   * la donnée, le navire survolé, le navire choisi et ce seuil de zoom ne changent pas.
+   */
+  private getAisLabelData(): AisShipData[] {
+    const source = this.globalTrafficData;
+    const highlighted = this._highlightedMmsi;
+    const selected = this._selectedShipMmsi;
+    const all = this.viewState.zoom >= 10;
+    const cache = this.aisLabelCache;
+    if (cache && cache.source === source && cache.highlighted === highlighted && cache.selected === selected && cache.all === all) {
+      return cache.data;
+    }
+    const data = source.filter((ship) => {
+      if (!ship.name || ship.name.trim().length === 0) return false;
+      if (ship.mmsi && (ship.mmsi === highlighted || ship.mmsi === selected)) return true;
+      return all;
+    });
+    this.aisLabelCache = { source, highlighted, selected, all, data };
+    return data;
+  }
+
   /**
    * Re-render Deck.gl AIS layers.
    */
@@ -6186,196 +4843,6 @@ export class DeckGLMap {
       this.deckOverlay.setProps({ layers: this.buildAisLayers() });
       this.map?.triggerRepaint();
     });
-  }
-
-  private getThreatSeverityRank(severity: ThreatEvent['severity']): number {
-    if (severity === 'critical') return 4;
-    if (severity === 'high') return 3;
-    if (severity === 'medium') return 2;
-    return 1;
-  }
-
-  private getThreatSeverityFromRank(rank: number): ThreatEvent['severity'] {
-    if (rank >= 4) return 'critical';
-    if (rank >= 3) return 'high';
-    if (rank >= 2) return 'medium';
-    return 'low';
-  }
-
-  private getThreatColor(severity: ThreatEvent['severity'], alpha: number): [number, number, number, number] {
-    if (severity === 'critical') return [239, 68, 68, alpha];
-    if (severity === 'high') return [249, 115, 22, alpha];
-    if (severity === 'medium') return [245, 158, 11, alpha];
-    return [59, 130, 246, alpha];
-  }
-
-  private offsetThreatCoordinate(
-    coordinates: [number, number],
-    precision: ThreatEvent['location']['precision'],
-    index: number,
-    groupSize: number,
-  ): [number, number] {
-    if (groupSize <= 1) return coordinates;
-
-    const baseKmByPrecision: Record<ThreatEvent['location']['precision'], number> = {
-      hq: 0.45,
-      city: 0.65,
-      region: 1.4,
-      country: 2.2,
-      unknown: 1.8,
-    };
-    const ringIndex = Math.floor(index / 6);
-    const slotIndex = index % 6;
-    const ringSize = Math.min(6, groupSize - ringIndex * 6);
-    const angle = (Math.PI * 2 * slotIndex) / Math.max(1, ringSize);
-    const radiusKm = baseKmByPrecision[precision] * (1 + ringIndex * 0.9);
-    const latRad = coordinates[1] * (Math.PI / 180);
-    const deltaLat = (radiusKm / 111.32) * Math.sin(angle);
-    const deltaLng = (radiusKm / (111.32 * Math.max(0.25, Math.cos(latRad)))) * Math.cos(angle);
-    return [coordinates[0] + deltaLng, coordinates[1] + deltaLat];
-  }
-
-  private buildThreatDisplayCoordinates(): Map<string, [number, number]> {
-    const grouped = new Map<string, ThreatEvent[]>();
-    for (const event of this.threatEvents) {
-      const [lng, lat] = event.location.coordinates;
-      const key = `${lng.toFixed(6)},${lat.toFixed(6)}`;
-      const existing = grouped.get(key) ?? [];
-      existing.push(event);
-      grouped.set(key, existing);
-    }
-
-    const displayCoordinates = new Map<string, [number, number]>();
-    for (const group of grouped.values()) {
-      if (group.length === 1) {
-        displayCoordinates.set(group[0].id, group[0].location.coordinates);
-        continue;
-      }
-
-      const sorted = [...group].sort((a, b) => a.id.localeCompare(b.id));
-      sorted.forEach((event, index) => {
-        displayCoordinates.set(
-          event.id,
-          this.offsetThreatCoordinate(event.location.coordinates, event.location.precision, index, sorted.length),
-        );
-      });
-    }
-
-    return displayCoordinates;
-  }
-
-  private rebuildThreatClusterIndex(): void {
-    const features = this.threatEvents.map((event) => ({
-      type: 'Feature' as const,
-      geometry: {
-        type: 'Point' as const,
-        coordinates: event.location.coordinates,
-      },
-      properties: {
-        event,
-        severityRank: this.getThreatSeverityRank(event.severity),
-      },
-    }));
-
-    this.threatClusterIndex = new Supercluster({
-      radius: 58,
-      maxZoom: 11,
-      minZoom: 0,
-      map: (props) => ({ maxSeverityRank: props.severityRank }),
-      reduce: (accumulated, props) => {
-        accumulated.maxSeverityRank = Math.max(
-          accumulated.maxSeverityRank || 0,
-          props.maxSeverityRank || 0,
-        );
-      },
-    });
-    this.threatClusterIndex.load(features);
-  }
-
-  /** Invalidate the memoized threat map data (call whenever threat events change). */
-  private invalidateThreatMapDataCache(): void {
-    this.threatMapDataCache = null;
-    this.threatMapDataCacheKey = null;
-  }
-
-  private getThreatMapData(): ThreatMapDatum[] {
-    if (!this.map || !this.threatClusterIndex) {
-      const displayCoordinates = this.buildThreatDisplayCoordinates();
-      return this.threatEvents.map((event) => ({
-        kind: 'event',
-        event,
-        coordinates: displayCoordinates.get(event.id) ?? event.location.coordinates,
-        severity: event.severity,
-      }));
-    }
-
-    const bounds = this.map.getBounds();
-    const zoom = Math.floor(this.map.getZoom());
-
-    // Memoization: the result only depends on the threat events (cache invalidated in
-    // updateThreatEvents), the integer zoom level and the visible bounds.
-    const cacheKey = [
-      zoom,
-      bounds.getWest().toFixed(3),
-      bounds.getSouth().toFixed(3),
-      bounds.getEast().toFixed(3),
-      bounds.getNorth().toFixed(3),
-    ].join('|');
-    if (this.threatMapDataCache && this.threatMapDataCacheKey === cacheKey) {
-      return this.threatMapDataCache;
-    }
-
-    const displayCoordinates = this.buildThreatDisplayCoordinates();
-    const clusters = this.threatClusterIndex.getClusters(
-      [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()],
-      zoom,
-    );
-
-    const data = clusters.map((feature): ThreatMapDatum => {
-      const coordinates = feature.geometry.coordinates as [number, number];
-      if (feature.properties?.cluster) {
-        const clusterId = Number(feature.properties.cluster_id);
-        return {
-          kind: 'cluster',
-          id: clusterId,
-          coordinates,
-          count: Number(feature.properties.point_count || 0),
-          severity: this.getThreatSeverityFromRank(Number(feature.properties.maxSeverityRank || 1)),
-          expansionZoom: this.threatClusterIndex?.getClusterExpansionZoom(clusterId) ?? 12,
-        };
-      }
-
-      const event = feature.properties.event as ThreatEvent;
-      return {
-        kind: 'event',
-        event,
-        coordinates: displayCoordinates.get(event.id) ?? event.location.coordinates,
-        severity: event.severity,
-      };
-    });
-
-    this.threatMapDataCache = data;
-    this.threatMapDataCacheKey = cacheKey;
-    return data;
-  }
-
-  private getAirTrafficColorHex(flight: AirTrafficFlight): string {
-    const alt = flight.altitude ?? 0;
-
-    // Low altitude flights (< 5000ft): warm/orange
-    if (alt < 5000) return '#ff7832'; // [255, 120, 50]
-
-    // Climbing/Descending mid-level (< 15000ft): yellow
-    if (alt < 15000) return '#ffd232'; // [255, 210, 50]
-
-    // High-mid level (< 25000ft): greenish
-    if (alt < 25000) return '#82e650'; // [130, 230, 80]
-
-    // Crusing (< 35000ft): light blue
-    if (alt < 35000) return '#32c8ff'; // [50, 200, 255]
-
-    // High crusing (> 35000ft): violet / indigo
-    return '#8264ff'; // [130, 100, 255]
   }
 
   private normalizeFlightHeading(heading?: number): number {
@@ -6456,38 +4923,6 @@ export class DeckGLMap {
     return newH;
   }
 
-  private refreshCivilAirTrafficSource(): void {
-    if (!this.map) return;
-    const src = this.map.getSource(SRC_AIR_TRAFFIC) as maplibregl.GeoJSONSource | undefined;
-    if (!src) return;
-
-    src.setData({
-      type: 'FeatureCollection',
-      features: this.civilAirTrafficFlights.map((flight) => {
-        const [longitude, latitude] = this.projectAirTrafficPosition(flight);
-        return {
-          type: 'Feature' as const,
-          geometry: { type: 'Point' as const, coordinates: [longitude, latitude] },
-          properties: {
-            id: flight.id,
-            callsign: flight.callsign,
-            altitude: flight.altitude,
-            speed: flight.speed,
-            heading: this.normalizeFlightHeading(flight.heading),
-            registration: flight.registration || '',
-            aircraftType: flight.aircraftType || '',
-            aircraftModel: flight.aircraftModel || '',
-            operator: flight.operator || '',
-            category: flight.category || '',
-            originAirport: flight.originAirport || '',
-            destinationAirport: flight.destinationAirport || '',
-            source: flight.source || '',
-          },
-        };
-      }),
-    });
-  }
-
   private handleAisHover(info: { object?: unknown; coordinate?: number[]; x?: number; y?: number }): void {
     if (!this.map) return;
     const ship = info.object as AisShipData | undefined;
@@ -6523,25 +4958,7 @@ export class DeckGLMap {
         ? new maplibregl.LngLat(coord[0], coord[1])
         : this.map.unproject([info.x ?? 0, info.y ?? 0]);
 
-    const altitude = flight.altitude > 0 ? `FL${Math.round(flight.altitude / 100)}` : 'Niveau inconnu';
-    const speed = flight.speed > 0 ? `${flight.speed} kts` : 'Vitesse inconnue';
-    const registration = flight.registration ? `<br><span style="color:#cbd5e1;font-size:10px">Immat: ${flight.registration}</span>` : '';
-    const aircraft = flight.aircraftModel || flight.aircraftType || 'Vol civil';
-    const operator = flight.operator ? `<br><span style="color:#94a3b8;font-size:10px">${flight.operator}</span>` : '';
-    const origin = flight.originAirport ? `<br><span style="color:#cbd5e1;font-size:10px">Origine: ${flight.originAirport}</span>` : '';
-    const destination = flight.destinationAirport ? `<br><span style="color:#cbd5e1;font-size:10px">Arrivée: ${flight.destinationAirport}</span>` : '';
-    const eta = flight.eta
-      ? `<br><span style="color:#cbd5e1;font-size:10px">ETA: ${new Date(flight.eta).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>`
-      : '';
-    const source = flight.source ? `<br><span style="color:#64748b;font-size:10px">Source: ${flight.source}</span>` : '';
-    const anomalies = Array.isArray(flight.anomalies) && flight.anomalies.length > 0
-      ? `<br><span style="color:#fda4af;font-size:10px">Anomalies: ${flight.anomalies.map((anomaly) => anomaly.label).join(' · ')}</span>`
-      : '';
-
-    this.showMilitaryTooltip(
-      lngLat,
-      `<strong>${flight.callsign || 'Vol civil'}</strong><br><span style="color:#7dd3fc;font-size:11px">${aircraft}</span>${operator}${registration}${origin}${destination}${eta}${anomalies}<br><span style="color:#9ca3af;font-size:10px">${altitude} · ${speed} · cap ${Math.round(flight.heading || 0)}°</span>${source}`
-    );
+    this.showMilitaryTooltip(lngLat, airFlightTooltipHtml(flight));
   }
 
   private showAisHoverTooltip(lngLat: maplibregl.LngLat, html: string): void {
@@ -6564,61 +4981,6 @@ export class DeckGLMap {
   private hideAisHoverTooltip(): void {
     this.aisHoverTooltip?.remove();
     this.aisHoverTooltip = null;
-  }
-
-  private handleRoadIncidentHover(info: { object?: unknown; coordinate?: number[]; x?: number; y?: number }): void {
-    if (!this.map) return;
-    const incident = info.object as TrafficIncident | undefined;
-    this.map.getCanvas().style.cursor = incident ? 'pointer' : '';
-
-    if (this.trafficIncidentHoverTimer) {
-      clearTimeout(this.trafficIncidentHoverTimer);
-      this.trafficIncidentHoverTimer = null;
-    }
-
-    if (!incident) {
-      this.hideTrafficIncidentPopup();
-      return;
-    }
-
-    const coord = info.coordinate;
-    const lngLat =
-      coord && coord.length >= 2
-        ? new maplibregl.LngLat(coord[0], coord[1])
-        : this.map.unproject([info.x ?? 0, info.y ?? 0]);
-
-    // Instant static popup — no deferred flow enrichment on hover (never returns data, causes tooltip jump)
-    const popup = this.getTrafficIncidentPopup();
-    popup.setLngLat(lngLat).setHTML(this.buildTrafficIncidentPopupHtml(incident)).addTo(this.map);
-    const popupEl = popup.getElement();
-    popupEl.style.pointerEvents = 'none';
-    popupEl.style.zIndex = '2000';
-  }
-
-  private async handleRoadIncidentClick(info: { object?: unknown; coordinate?: number[]; x?: number; y?: number }): Promise<void> {
-    if (!this.map) return;
-    const incident = info.object as TrafficIncident | undefined;
-    if (!incident) return;
-
-    const coord = info.coordinate;
-    const lngLat =
-      coord && coord.length >= 2
-        ? new maplibregl.LngLat(coord[0], coord[1])
-        : this.map.unproject([info.x ?? 0, info.y ?? 0]);
-    await this.showTrafficIncidentPopupResolved(lngLat, incident);
-  }
-
-  private getTrafficIncidentPopup(): maplibregl.Popup {
-    if (!this.trafficIncidentPopup) {
-      this.trafficIncidentPopup = new maplibregl.Popup({
-        closeButton: false,
-        closeOnClick: false,
-        maxWidth: '340px',
-        className: 'dark-popup',
-        offset: 8,
-      });
-    }
-    return this.trafficIncidentPopup;
   }
 
   private getEnrichedHoverPopup(): maplibregl.Popup {
@@ -6648,432 +5010,6 @@ export class DeckGLMap {
 
   private hideEnrichedHoverPopup(): void {
     this.enrichedHoverPopup?.remove();
-  }
-
-  private openRailStationPopup(_lngLat: maplibregl.LngLatLike, properties: Record<string, unknown>): void {
-    if (!this.map) return;
-    this.hideEnrichedHoverPopup();
-    if (!this.railStationPanel) {
-      this.railStationPanel = document.createElement('div');
-      this.railStationPanel.className = 'rail-station-detail-panel';
-      this.container.appendChild(this.railStationPanel);
-    }
-    this.renderRailStationPopupPage(this.railStationPanel, properties, 0);
-  }
-
-  private parseRailStationDisruptionSummaries(properties: Record<string, unknown>): Array<{
-    id: string;
-    severity: string;
-    type: string;
-    line: string;
-    trainNumber?: string;
-    description: string;
-    causeLabel?: string;
-    effectLabel?: string;
-    impactLabel?: string;
-    sourceMessages?: string[];
-    totalDelayMinutes?: number;
-    departureName?: string;
-    arrivalName?: string;
-    departurePlannedTime?: string;
-    departureUpdatedTime?: string;
-    arrivalPlannedTime?: string;
-    arrivalUpdatedTime?: string;
-    startDate: string;
-    endDate?: string;
-    affectedStops?: string[];
-    stopDetails?: Array<{
-      name: string;
-      plannedTime?: string;
-      updatedTime?: string;
-      delayMinutes?: number;
-    }>;
-  }> {
-    try {
-      const parsed = JSON.parse(String(properties.disruptionSummariesJson ?? '[]'));
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  }
-
-  private getRailDisruptionTemporalState(startDate?: string, endDate?: string): { label: string; color: string; bg: string } {
-    const now = Date.now();
-    const start = startDate ? new Date(startDate).getTime() : Number.NaN;
-    const end = endDate ? new Date(endDate).getTime() : Number.NaN;
-
-    if (Number.isFinite(start) && start > now) {
-      return { label: 'À venir', color: '#7DD3FC', bg: 'rgba(125,211,252,0.14)' };
-    }
-    if (Number.isFinite(end) && end < now) {
-      return { label: 'Terminée', color: '#94A3B8', bg: 'rgba(148,163,184,0.14)' };
-    }
-    return { label: 'En cours', color: '#34D399', bg: 'rgba(52,211,153,0.14)' };
-  }
-
-  private formatRailDateTime(value?: string): string {
-    if (!value) return 'n/d';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return 'n/d';
-    return date.toLocaleString('fr-FR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  }
-
-  private renderRailStationPopupPage(
-    root: HTMLElement,
-    properties: Record<string, unknown>,
-    requestedIndex: number,
-  ): void {
-    const severity = String(properties.severity ?? 'info');
-    const severityColor = RAIL_SEVERITY_HEX[severity] ?? RAIL_SEVERITY_HEX.info;
-    const severityBg = RAIL_SEVERITY_TINT[severity] ?? RAIL_SEVERITY_TINT.info;
-    const name = String(properties.name ?? 'Gare');
-    const count = Number(properties.count ?? 0);
-    const disruptions = this.parseRailStationDisruptionSummaries(properties);
-    const lines = (() => {
-      try {
-        const parsed = JSON.parse(String(properties.linesJson ?? '[]'));
-        return Array.isArray(parsed) ? parsed as string[] : [];
-      } catch {
-        return [];
-      }
-    })();
-
-    const safeIndex = Math.max(0, Math.min(requestedIndex, Math.max(0, disruptions.length - 1)));
-    const selected = disruptions[safeIndex];
-    const headerStats = `
-      <div class="rail-detail-stats">
-        <div class="rail-detail-stat">
-          <div class="rail-detail-stat-value">${count}</div>
-          <div class="rail-detail-stat-label">perturbation${count > 1 ? 's' : ''}</div>
-        </div>
-        <div class="rail-detail-stat">
-          <div class="rail-detail-stat-value">${lines.length}</div>
-          <div class="rail-detail-stat-label">ligne${lines.length > 1 ? 's' : ''}</div>
-        </div>
-      </div>
-    `;
-
-    if (!selected) {
-      root.innerHTML = `
-        <div class="rail-station-detail-shell">
-          <div class="rail-detail-header" style="border-bottom-color:${severityColor};background:${severityBg};">
-            <div class="rail-detail-icon" style="background:${severityBg};border-color:${severityColor}66;">${fmIcon('train-front', { size: 18 })}</div>
-            <div class="rail-detail-title-wrap">
-              <div class="rail-detail-title">${this.escapeHtml(name)}</div>
-              <div class="rail-detail-subtitle" style="color:${severityColor};">Gare impactee</div>
-            </div>
-            <button type="button" class="rail-detail-close" data-rail-close title="Fermer">×</button>
-          </div>
-          ${headerStats}
-          <div class="rail-detail-empty">Aucun detail de perturbation disponible.</div>
-        </div>
-      `;
-      root.querySelector<HTMLElement>('[data-rail-close]')?.addEventListener('click', () => {
-        this.railStationPanel?.remove();
-        this.railStationPanel = null;
-      });
-      return;
-    }
-
-    const cardColor = RAIL_SEVERITY_HEX[selected.severity] ?? RAIL_SEVERITY_HEX.info;
-    const cardBg = RAIL_SEVERITY_TINT[selected.severity] ?? RAIL_SEVERITY_TINT.info;
-    const routeLabel = selected.departureName && selected.arrivalName
-      ? `${this.escapeHtml(selected.departureName)} → ${this.escapeHtml(selected.arrivalName)}`
-      : selected.departureName
-        ? this.escapeHtml(selected.departureName)
-        : selected.arrivalName
-          ? this.escapeHtml(selected.arrivalName)
-          : 'Trajet non precise';
-    const sourceMessages = (selected.sourceMessages ?? []).slice(0, 4);
-    const affectedStops = (selected.affectedStops ?? []).slice(0, 12);
-    const stopDetails = (selected.stopDetails ?? []).slice(0, 18);
-    const causeLabel = selected.causeLabel || selected.description || 'Cause non précisée';
-    const effectLabel = selected.effectLabel || 'Impact non qualifié par SNCF';
-    const impactLabel = selected.impactLabel || 'Impact horaire à confirmer dans le flux SNCF';
-    const severityLabel =
-      selected.severity === 'critical' ? 'Critique'
-        : selected.severity === 'high' ? 'Important'
-          : selected.severity === 'medium' ? 'Modere'
-            : selected.severity === 'low' ? 'Faible'
-              : 'Info';
-    const typeLabel =
-      selected.type === 'cancellation' ? 'Suppression'
-        : selected.type === 'delay' ? 'Retard'
-          : selected.type === 'works' ? 'Travaux'
-            : 'Perturbation';
-    const formatTimeCell = (planned?: string, updated?: string): string => {
-      if (updated && planned && updated !== planned) {
-        return `${this.escapeHtml(planned)} → <span style="color:${cardColor};font-weight:700;">${this.escapeHtml(updated)}</span>`;
-      }
-      if (updated) return `<span style="color:${cardColor};font-weight:700;">${this.escapeHtml(updated)}</span>`;
-      if (planned) return this.escapeHtml(planned);
-      return 'n/d';
-    };
-    const temporalState = this.getRailDisruptionTemporalState(selected.startDate, selected.endDate);
-    const itineraryHtml = stopDetails.length > 0
-      ? stopDetails.map((stop, index) => {
-        const isFirst = index === 0;
-        const isLast = index === stopDetails.length - 1;
-        const planned = stop.plannedTime ? this.escapeHtml(stop.plannedTime) : '';
-        const updated = stop.updatedTime ? this.escapeHtml(stop.updatedTime) : '';
-        const hasChange = planned && updated && planned !== updated;
-        const timeHtml = hasChange
-          ? `<span style="color:#7c8aa5;text-decoration:line-through;">${planned}</span><span style="color:${cardColor};font-weight:750;margin-left:4px;">${updated}</span>`
-          : updated
-            ? `<span style="color:#dce4f4;font-weight:650;">${updated}</span>`
-            : planned
-              ? `<span style="color:#c9d3e6;">${planned}</span>`
-              : '<span style="color:#5f6c82;">n/d</span>';
-        return `
-          <div style="display:grid;grid-template-columns:14px 1fr auto;gap:7px;align-items:center;padding:4px 0;border-bottom:${index < stopDetails.length - 1 ? '1px solid rgba(255,255,255,0.045)' : '0'};">
-            <span style="width:7px;height:7px;border-radius:50%;background:${isFirst || isLast ? cardColor : 'rgba(156,172,199,0.55)'};justify-self:center;"></span>
-            <span style="font-size:10px;color:${isFirst || isLast ? '#fff' : '#c9d3e6'};font-weight:${isFirst || isLast ? '700' : '500'};line-height:1.3;">${this.escapeHtml(stop.name)}</span>
-            <span style="font-size:10px;white-space:nowrap;">${timeHtml}</span>
-          </div>
-        `;
-      }).join('')
-      : '';
-
-    const trainButtons = disruptions.map((entry, index) => {
-      const active = index === safeIndex;
-      const label = entry.trainNumber ? `Train ${this.escapeHtml(entry.trainNumber)}` : this.escapeHtml(entry.line);
-      return `
-        <button type="button" class="rail-train-chip ${active ? 'active' : ''}" data-rail-index="${index}" style="border-color:${active ? `${cardColor}66` : 'rgba(255,255,255,0.12)'};background:${active ? cardBg : 'rgba(255,255,255,0.06)'};color:${active ? '#fff' : '#c9d3e6'};">
-          ${label}
-        </button>
-      `;
-    }).join('');
-
-    root.innerHTML = `
-      <div class="rail-station-detail-shell">
-        <div class="rail-detail-header" style="border-bottom-color:${severityColor};background:${severityBg};">
-          <div class="rail-detail-icon" style="background:${severityBg};border-color:${severityColor}66;">${fmIcon('train-front', { size: 18 })}</div>
-          <div class="rail-detail-title-wrap">
-            <div class="rail-detail-title">${this.escapeHtml(name)}</div>
-            <div class="rail-detail-subtitle" style="color:${severityColor};">Gare impactee</div>
-          </div>
-          <button type="button" class="rail-detail-close" data-rail-close title="Fermer">×</button>
-        </div>
-        ${headerStats}
-        <div class="rail-detail-trains">
-          <div class="rail-detail-section-label">Train impacte</div>
-          <div class="rail-detail-train-list">${trainButtons}</div>
-        </div>
-        <div class="rail-detail-nav">
-          <button type="button" data-rail-nav="prev" ${safeIndex === 0 ? 'disabled' : ''}>Précédente</button>
-          <div class="rail-detail-page">${safeIndex + 1} / ${disruptions.length}</div>
-          <button type="button" data-rail-nav="next" ${safeIndex >= disruptions.length - 1 ? 'disabled' : ''}>Suivante</button>
-        </div>
-        <div class="rail-station-detail-body">
-          <div style="display:flex;align-items:flex-start;gap:8px;">
-            <div style="width:8px;height:8px;border-radius:50%;background:${cardColor};margin-top:5px;flex-shrink:0;"></div>
-            <div style="flex:1;min-width:0;">
-              <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">
-                <div style="font-size:12px;font-weight:700;color:#fff;">${selected.trainNumber ? `${this.escapeHtml(selected.trainNumber)} — ` : ''}${this.escapeHtml(selected.line)}</div>
-                <div style="font-size:9px;color:${cardColor};font-weight:700;text-transform:uppercase;letter-spacing:0.05em;white-space:nowrap;">${severityLabel}</div>
-              </div>
-              <div style="margin-top:3px;font-size:10px;color:#c9d3e6;">${typeLabel} · ${routeLabel}</div>
-              <div style="margin-top:6px;display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;background:${temporalState.bg};color:${temporalState.color};font-size:9px;font-weight:700;letter-spacing:0.04em;text-transform:uppercase;">${temporalState.label}</div>
-              <div style="margin-top:6px;display:grid;grid-template-columns:1fr 1fr;gap:6px;">
-                <div style="padding:6px 7px;border-radius:6px;background:${cardBg};border:1px solid ${cardColor}33;">
-                  <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;">Depart</div>
-                  <div style="margin-top:2px;font-size:10px;color:#e8e8ec;">${formatTimeCell(selected.departurePlannedTime, selected.departureUpdatedTime)}</div>
-                </div>
-                <div style="padding:6px 7px;border-radius:6px;background:${cardBg};border:1px solid ${cardColor}33;">
-                  <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;">Arrivee</div>
-                  <div style="margin-top:2px;font-size:10px;color:#e8e8ec;">${formatTimeCell(selected.arrivalPlannedTime, selected.arrivalUpdatedTime)}</div>
-                </div>
-              </div>
-              <div style="margin-top:6px;display:flex;justify-content:space-between;gap:10px;font-size:10px;color:#9aa7bf;">
-                <span>Debut: ${this.formatRailDateTime(selected.startDate)}</span>
-                <span>${selected.endDate ? `Fin: ${this.formatRailDateTime(selected.endDate)}` : ''}</span>
-              </div>
-              <div style="margin-top:8px;display:grid;grid-template-columns:1fr;gap:5px;">
-                <div style="padding:7px 8px;border-radius:6px;background:rgba(255,255,255,0.035);border:1px solid rgba(255,255,255,0.06);">
-                  <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;">Origine / cause</div>
-                  <div style="margin-top:2px;font-size:10px;color:#eef4ff;line-height:1.4;font-weight:650;">${this.escapeHtml(causeLabel)}</div>
-                </div>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
-                  <div style="padding:7px 8px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.055);">
-                    <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;">Impact train</div>
-                    <div style="margin-top:2px;font-size:10px;color:#dce4f4;line-height:1.35;">${this.escapeHtml(effectLabel)}</div>
-                  </div>
-                  <div style="padding:7px 8px;border-radius:6px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.055);">
-                    <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;">Impact horaires</div>
-                    <div style="margin-top:2px;font-size:10px;color:#dce4f4;line-height:1.35;">${this.escapeHtml(impactLabel)}</div>
-                  </div>
-                </div>
-              </div>
-              ${typeof selected.totalDelayMinutes === 'number' && selected.totalDelayMinutes > 0 ? `<div style="margin-top:6px;font-size:10px;color:${cardColor};font-weight:700;">Retard estime: +${selected.totalDelayMinutes} min</div>` : ''}
-              <div style="margin-top:6px;font-size:10px;color:#b4bfd4;line-height:1.45;">${this.escapeHtml(selected.description)}</div>
-              ${itineraryHtml ? `<div style="margin-top:8px;"><div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">Itineraire horaire</div><div style="background:rgba(0,0,0,0.16);border:1px solid rgba(255,255,255,0.06);border-radius:6px;padding:5px 7px;">${itineraryHtml}</div></div>` : ''}
-              ${sourceMessages.length > 0 ? `<div style="margin-top:8px;"><div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">Messages SNCF</div>${sourceMessages.map((message) => `<div style="font-size:10px;color:#dce4f4;line-height:1.45;margin-bottom:3px;">• ${this.escapeHtml(message)}</div>`).join('')}</div>` : ''}
-              ${affectedStops.length > 0 ? `<div style="margin-top:8px;"><div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;">Arrets impactes</div><div style="font-size:10px;color:#c9d3e6;line-height:1.5;">${this.escapeHtml(affectedStops.join(' • '))}</div></div>` : ''}
-            </div>
-          </div>
-        </div>
-      </div>
-    `;
-
-    root.querySelectorAll<HTMLElement>('[data-rail-index]').forEach((button) => {
-      button.addEventListener('click', (event) => {
-        event.preventDefault();
-        const nextIndex = Number(button.dataset.railIndex ?? safeIndex);
-        this.renderRailStationPopupPage(root, properties, nextIndex);
-      });
-    });
-    root.querySelectorAll<HTMLElement>('[data-rail-nav]').forEach((button) => {
-      button.addEventListener('click', (event) => {
-        event.preventDefault();
-        if (button.getAttribute('disabled') !== null) return;
-        const direction = button.dataset.railNav;
-        const nextIndex = direction === 'prev' ? safeIndex - 1 : safeIndex + 1;
-        this.renderRailStationPopupPage(root, properties, nextIndex);
-      });
-    });
-    root.querySelector<HTMLElement>('[data-rail-close]')?.addEventListener('click', () => {
-      this.railStationPanel?.remove();
-      this.railStationPanel = null;
-    });
-  }
-
-  private buildRailArcHoverHtml(properties: Record<string, unknown>): string {
-    const severity = String(properties.severity ?? 'info');
-    const severityLabel =
-      severity === 'critical' ? 'Supprimé'
-        : severity === 'high' ? 'Retards importants'
-          : severity === 'medium' ? 'Service réduit'
-            : severity === 'low' ? 'Perturbation mineure'
-              : 'Info';
-    const severityColor = RAIL_SEVERITY_HEX[severity] ?? RAIL_SEVERITY_HEX.info;
-    const severityBg = RAIL_SEVERITY_TINT[severity] ?? RAIL_SEVERITY_TINT.info;
-
-    const type = String(properties.type ?? 'other');
-    const typeIcon =
-      type === 'cancellation' ? fmIcon('ban', { size: 16 })
-        : type === 'delay' ? fmIcon('timer', { size: 16 })
-          : type === 'works' ? fmIcon('construction', { size: 16 })
-            : fmIcon('triangle-alert', { size: 16 });
-    const typeLabel =
-      type === 'cancellation' ? 'Suppression'
-        : type === 'delay' ? 'Retard'
-          : type === 'works' ? 'Travaux'
-            : 'Perturbation';
-
-    const line = String(properties.line ?? 'Train');
-    const trainNumber = String(properties.trainNumber ?? '').trim();
-    const departureName = String(properties.departureName ?? '').trim();
-    const arrivalName = String(properties.arrivalName ?? '').trim();
-    const departurePlannedTime = String(properties.departurePlannedTime ?? '').trim();
-    const departureUpdatedTime = String(properties.departureUpdatedTime ?? '').trim();
-    const arrivalPlannedTime = String(properties.arrivalPlannedTime ?? '').trim();
-    const arrivalUpdatedTime = String(properties.arrivalUpdatedTime ?? '').trim();
-    const desc = String(properties.description ?? '').trim();
-    const totalDelayMinutes = Number(properties.totalDelayMinutes ?? 0);
-    const affectedStopsCount = Number(properties.affectedStopsCount ?? 0);
-    let affectedStops: string[];
-    try { affectedStops = JSON.parse(String(properties.affectedStopsJson ?? '[]')); } catch { affectedStops = []; }
-
-    // Full station list — use affectedStops if available, else fall back to dep/arr pair
-    const allStops: string[] = affectedStops.length > 0
-      ? affectedStops
-      : [...(departureName ? [departureName] : []), ...(arrivalName ? [arrivalName] : [])];
-
-    const stationRows = allStops.map((stop, i) => {
-      const isFirst = i === 0;
-      const isLast = i === allStops.length - 1;
-      const weight = (isFirst || isLast) ? '600' : '400';
-      const color = (isFirst || isLast) ? '#ffffff' : '#b0b0c0';
-      const depTime = isFirst && departureUpdatedTime ? departureUpdatedTime
-        : isFirst && departurePlannedTime ? departurePlannedTime : '';
-      const arrTime = isLast && arrivalUpdatedTime ? arrivalUpdatedTime
-        : isLast && arrivalPlannedTime ? arrivalPlannedTime : '';
-      const time = depTime || arrTime;
-      const timeColor = (isFirst && departureUpdatedTime) || (isLast && arrivalUpdatedTime) ? severityColor : '#8a8a9a';
-      return `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04);">
-        <span style="font-size:11px;color:${color};font-weight:${weight};">${this.escapeHtml(stop)}</span>
-        ${time ? `<span style="font-size:10px;color:${timeColor};flex-shrink:0;margin-left:8px;">${this.escapeHtml(time)}</span>` : ''}
-      </div>`;
-    }).join('');
-
-    return `
-      <div style="font-family:var(--font-sans,system-ui,sans-serif);color:#e8e8ec;min-width:260px;max-width:340px;background:linear-gradient(180deg, rgba(8,18,33,0.98), rgba(8,12,24,0.98));border:1px solid rgba(96,165,250,0.14);border-radius:8px;overflow:hidden;">
-        <!-- Header -->
-        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:${severityBg};border-bottom:2px solid ${severityColor};">
-          <div style="font-size:16px;line-height:1;">${typeIcon}</div>
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:12px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-              ${trainNumber ? `${this.escapeHtml(trainNumber)} — ` : ''}${this.escapeHtml(line)}
-            </div>
-            <div style="font-size:10px;color:${severityColor};font-weight:600;margin-top:1px;">${severityLabel} · ${typeLabel}</div>
-          </div>
-          ${totalDelayMinutes > 0 ? `<div style="background:${severityBg};border:1px solid ${severityColor}66;border-radius:6px;padding:3px 7px;font-size:11px;font-weight:700;color:${severityColor};white-space:nowrap;">+${totalDelayMinutes} min</div>` : ''}
-        </div>
-        <!-- Station list -->
-        ${stationRows ? `
-          <div style="padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.07);">
-            <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">
-              Gares concernées${affectedStopsCount > 0 ? ` (${affectedStopsCount})` : ''}
-            </div>
-            ${stationRows}
-          </div>
-        ` : ''}
-        <!-- Description -->
-        ${desc ? `<div style="padding:8px 12px;font-size:11px;color:#9898a8;line-height:1.5;">${this.escapeHtml(desc.length > 140 ? desc.slice(0, 140) + '…' : desc)}</div>` : ''}
-      </div>
-    `;
-  }
-
-  private buildRailStationHoverHtml(properties: Record<string, unknown>): string {
-    const severity = String(properties.severity ?? 'info');
-    const severityColor = RAIL_SEVERITY_HEX[severity] ?? RAIL_SEVERITY_HEX.info;
-    const severityBg = RAIL_SEVERITY_TINT[severity] ?? RAIL_SEVERITY_TINT.info;
-
-    const name = String(properties.name ?? 'Gare');
-    const count = Number(properties.count ?? 0);
-    let lines: string[];
-    let trains: string[];
-    try { lines = JSON.parse(String(properties.linesJson ?? '[]')); } catch { lines = []; }
-    try { trains = JSON.parse(String(properties.trainNumbersJson ?? '[]')); } catch { trains = []; }
-
-    const lineChips = lines.slice(0, 6).map((l: string) =>
-      `<span style="display:inline-block;padding:2px 7px;border-radius:4px;background:rgba(255,255,255,0.06);border:1px solid ${severityColor}33;font-size:10px;color:#d8d8df;white-space:nowrap;">${this.escapeHtml(l)}</span>`
-    ).join('');
-    const trainPreview = trains.slice(0, 5).join(', ');
-    const hiddenTrainCount = Math.max(0, trains.length - 5);
-
-    return `
-      <div style="font-family:var(--font-sans,system-ui,sans-serif);color:#e8e8ec;width:260px;background:linear-gradient(180deg, rgba(8,18,33,0.98), rgba(8,12,24,0.98));border:1px solid rgba(96,165,250,0.14);border-radius:8px;overflow:hidden;">
-        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:2px solid ${severityColor};background:${severityBg};">
-          <div style="width:32px;height:32px;border-radius:8px;background:${severityBg};border:1.5px solid ${severityColor}66;display:flex;align-items:center;justify-content:center;flex-shrink:0;">${fmIcon('train-front', { size: 18 })}</div>
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:13px;font-weight:700;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${this.escapeHtml(name)}</div>
-            <div style="font-size:10px;color:${severityColor};font-weight:600;margin-top:1px;">Gare impactée</div>
-          </div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid rgba(255,255,255,0.07);">
-          <div style="padding:9px 12px;text-align:center;border-right:1px solid rgba(255,255,255,0.07);">
-            <div style="font-size:18px;font-weight:750;color:#fff;line-height:1;">${count}</div>
-            <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;">Perturbation${count > 1 ? 's' : ''}</div>
-          </div>
-          <div style="padding:9px 12px;text-align:center;">
-            <div style="font-size:18px;font-weight:750;color:#fff;line-height:1;">${lines.length}</div>
-            <div style="font-size:9px;color:#7c8aa5;text-transform:uppercase;letter-spacing:0.04em;">Ligne${lines.length > 1 ? 's' : ''}</div>
-          </div>
-        </div>
-        <div style="padding:10px 12px;">
-          ${lineChips ? `<div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px;">${lineChips}</div>` : ''}
-          ${trains.length ? `<div style="font-size:10px;color:#7c8aa5;line-height:1.45;">Trains: <span style="color:#c9d3e6;">${this.escapeHtml(trainPreview)}${hiddenTrainCount > 0 ? ` +${hiddenTrainCount}` : ''}</span></div>` : ''}
-        </div>
-      </div>
-    `;
-
   }
 
   private buildInfrastructureHoverHtml(properties: Record<string, unknown>): string {
@@ -7402,7 +5338,7 @@ export class DeckGLMap {
     const sparklineBlock = f.sevenDaySeries.length > 2
       ? `${sep}
          <div>
-           ${sectionLabel('7 derniers jours — solde GWh/j')}
+           ${sectionLabel('7 derniers jours : solde GWh/j')}
            ${buildSparklineSVG(f.sevenDaySeries, { width: 222, height: 44 })}
            <div style="display:flex;justify-content:space-between;font-size:9px;color:#555;margin-top:2px;">
              <span>J-7</span><span>↑ export FR · ↓ import FR</span><span>Maintenant</span>
@@ -7664,121 +5600,14 @@ export class DeckGLMap {
     `;
   }
 
-  private hideTrafficIncidentPopup(): void {
-    this.trafficIncidentPopup?.remove();
-  }
-
-  private async showTrafficIncidentPopupResolved(
-    lngLat: maplibregl.LngLatLike,
-    incident: TrafficIncident,
-  ): Promise<void> {
-    if (!this.map) return;
-    let flow: TrafficFlowSegment | null;
-    try {
-      flow = await fetchTrafficFlowSegment(incident.lat, incident.lon, this.viewState.zoom);
-    } catch {
-      flow = null;
-    }
-
-    const popup = this.getTrafficIncidentPopup();
-    popup.setLngLat(lngLat).setHTML(this.buildTrafficIncidentPopupHtml(incident, flow)).addTo(this.map);
-  }
-
-  private buildTrafficIncidentPopupHtml(incident: TrafficIncident, flow?: TrafficFlowSegment | null): string {
-    const delayMin = Math.round((incident.delay || 0) / 60);
-    const delayText = delayMin > 0 ? `${delayMin} min` : null;
-    const lengthText = incident.length > 0 ? `${(incident.length / 1000).toFixed(1)} km` : null;
-    const sevColors: Record<string, string> = {
-      critical: '#ff3b30',
-      high: '#ff3b30',
-      medium: '#ff9500',
-      low: '#ffcc00',
-    };
-    const sevColor = sevColors[incident.severity] || '#ffcc00';
-    const sevText = incident.severity === 'critical' ? 'Critique'
-      : incident.severity === 'high' ? 'Fort'
-        : incident.severity === 'medium' ? 'Modéré'
-          : 'Faible';
-    const typeIcons: Record<string, string> = {
-      Accident: fmIcon('siren', { size: 20 }),
-      Bouchon: fmIcon('car-front', { size: 20 }),
-      Travaux: fmIcon('construction', { size: 20 }),
-      'Voie fermée': fmIcon('ban', { size: 20 }),
-      'Route barrée': fmIcon('circle-off', { size: 20 }),
-      'Vent fort': fmIcon('wind', { size: 20 }),
-      Inondation: fmIcon('waves', { size: 20 }),
-    };
-    const emoji = typeIcons[incident.type] || fmIcon('triangle-alert', { size: 20 });
-    const routeText = incident.roadNumbers && incident.roadNumbers.length > 0 ? incident.roadNumbers.join(', ') : null;
-    const validityText = incident.timeValidity === 'future' ? 'Planifié' : 'En cours';
-    const formatDate = (value?: string | null) => {
-      if (!value) return null;
-      const date = new Date(value);
-      if (Number.isNaN(date.getTime())) return this.escapeHtml(value);
-      return date.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-    };
-    const statItems = [
-      delayText ? `<div><span style="color:#71717a;">Retard</span><br><strong>${delayText}</strong></div>` : '',
-      lengthText ? `<div><span style="color:#71717a;">Longueur</span><br><strong>${lengthText}</strong></div>` : '',
-      routeText ? `<div><span style="color:#71717a;">Route</span><br><strong>${this.escapeHtml(routeText)}</strong></div>` : '',
-      incident.numberOfReports != null ? `<div><span style="color:#71717a;">Signalements</span><br><strong>${incident.numberOfReports}</strong></div>` : '',
-    ].filter(Boolean).join('');
-
-    const flowHtml = flow === undefined
-      ? ''
-      : flow
-        ? `<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.1);display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:11px;">
-            <div><span style="color:#71717a;">Vitesse</span><br><strong>${flow.currentSpeed} km/h</strong></div>
-            <div><span style="color:#71717a;">Vitesse libre</span><br><strong>${flow.freeFlowSpeed} km/h</strong></div>
-            <div><span style="color:#71717a;">Temps courant</span><br><strong>${flow.currentTravelTime}s</strong></div>
-            <div><span style="color:#71717a;">Fermeture</span><br><strong>${flow.roadClosure ? 'Oui' : 'Non'}</strong></div>
-          </div>`
-        : `<div style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.1);font-size:11px;color:#71717a;">Données flow non disponibles.</div>`;
-
-    return `
-      <div style="padding:14px; min-width:280px;">
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
-          <span style="font-size:20px;">${emoji}</span>
-          <div style="flex:1;">
-            <div style="font-size:14px; font-weight:700; color:#fff;">${this.escapeHtml(incident.type)}</div>
-            <div style="font-size:11px; color:${sevColor}; font-weight:600;">${sevText} · ${validityText}</div>
-          </div>
-        </div>
-        ${statItems ? `<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:11px; margin-bottom:10px;">${statItems}</div>` : ''}
-        ${incident.osintSignals && incident.osintSignals.length > 0 ? `<div style="font-size:11px; margin-bottom:8px;"><span style="color:#71717a;">Signaux OSINT</span><br><strong>${this.escapeHtml(incident.osintSignals.join(' · '))}</strong></div>` : ''}
-        ${(incident.from || incident.to) ? `<div style="font-size:11px; margin-bottom:8px;"><span style="color:#71717a;">Tronçon</span><br><strong>${this.escapeHtml(incident.from ?? '—')} → ${this.escapeHtml(incident.to ?? '—')}</strong></div>` : ''}
-        ${(incident.startTime || incident.endTime) ? `<div style="font-size:11px; margin-bottom:8px;"><span style="color:#71717a;">Fenêtre</span><br><strong>${formatDate(incident.startTime) ?? '—'} → ${formatDate(incident.endTime) ?? '—'}</strong></div>` : ''}
-        ${(incident.lastReportTime || incident.probabilityOfOccurrence) ? `<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:11px; margin-bottom:8px;">
-          ${incident.lastReportTime ? `<div><span style="color:#71717a;">Dernier signalement</span><br><strong>${formatDate(incident.lastReportTime)}</strong></div>` : ''}
-          ${incident.probabilityOfOccurrence ? `<div><span style="color:#71717a;">Probabilité</span><br><strong>${this.escapeHtml(incident.probabilityOfOccurrence)}</strong></div>` : ''}
-        </div>` : ''}
-        ${incident.description && incident.description.trim() !== '' ? `<p style="margin:0; font-size:11px; color:#a1a1aa;">${this.escapeHtml(incident.description)}</p>` : ''}
-        ${flowHtml}
-      </div>
-    `;
-  }
-
   private getAisTooltipHtml(ship: AisShipData): string {
     const shipType = Number.isFinite(ship.shipType) ? ship.shipType : 0;
-    const fishingByStatus = shipType === 0 && ship.navStatus === 7;
+    const category = vesselCategory(shipType);
+    const fishingByStatus = category === 'inconnu' && ship.navStatus === 7;
 
-    // Get readable ship type label
-    const typeLabel = fishingByStatus ? 'Pêche (statut)' : this.getShipTypeLabel(shipType);
-
-    // Ship type icons based on AIS code
-    const getTypeIcon = (t: number): string => {
-      if (t >= 80 && t <= 89) return fmIcon('fuel');       // Tanker
-      if (t >= 70 && t <= 79) return fmIcon('package');    // Cargo
-      if (t >= 60 && t <= 69) return fmIcon('ship');       // Passagers
-      if (t === 55) return fmIcon('shield');               // Police/SAR
-      if (t === 51) return fmIcon('life-buoy');            // SAR
-      if (t === 52 || t === 53) return fmIcon('anchor');   // Remorqueur/pilote
-      if (t === 36 || t === 37 || (t >= 20 && t <= 29)) return fmIcon('waves'); // Voilier/plaisance
-      if (t >= 40 && t <= 49) return fmIcon('zap');        // Grande vitesse
-      if (t >= 30 && t <= 34) return fmIcon('fish');        // Pêche
-      return fmIcon('ship');                                // Inconnu/divers
-    };
-    const typeIcon = fishingByStatus ? fmIcon('fish') : getTypeIcon(shipType);
+    // Libellé et icône du type : même classement que la teinte de la carte, la légende et les comptes du serveur (traffic-legend.ts).
+    const typeLabel = fishingByStatus ? 'Pêche (statut)' : vesselTypeLabel(category);
+    const typeIcon = fmIcon(fishingByStatus ? 'fish' : this.getShipTypeIcon(category));
 
     const nameColor = '#fff';
     const typeColor = '#9898a8';
@@ -7857,7 +5686,7 @@ export class DeckGLMap {
         ${callSign ? row('Callsign', callSign) : ''}
         ${imo ? row('IMO', imo) : ''}
         ${navStatus ? row('Statut', navStatus) : ''}
-        ${cog || heading ? row('COG/HDG', `${cog || '—'} / ${heading || '—'}`) : ''}
+        ${cog || heading ? row('COG/HDG', `${cog || 'n.d.'} / ${heading || 'n.d.'}`) : ''}
         ${draught ? row('Tirant d\'eau', draught) : ''}
         ${dimensions ? row('Dimensions', dimensions) : ''}
         ${eta ? row('ETA (UTC)', eta) : ''}
@@ -8061,6 +5890,9 @@ export class DeckGLMap {
 
       // ─── Navire militaire ───
       'mil-ship': this.buildSvg(SIZE, this.svgAnchor('#00d4c8')),
+      // ─── Marine nationale (souveraineté) : port base, position de référence (contour pointillé) ; vu en AIS, flux figé (gris) ───
+      'mil-ship-ref': this.buildSvg(SIZE, `<circle cx="32" cy="32" r="29" fill="none" stroke="${NAVY_HEX}" stroke-width="3" stroke-dasharray="6 5"/>${this.svgAnchor(NAVY_HEX)}`),
+      'mil-ship-stale': this.buildSvg(SIZE, this.svgAnchor(SOV_ABROAD_HEX)),
     };
 
     const canvas = document.createElement('canvas');
@@ -8391,10 +6223,10 @@ export class DeckGLMap {
     ];
 
     const allLegendLayers = [
-      LYR_HEALTH_FILL, LYR_HEALTH_LINE,
+      LYR_HEALTH_ALERT_FILL, LYR_HEALTH_ALERT_LINE,
+      LYR_HEALTH_URG_FILL, LYR_HEALTH_URG_LINE,
       LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE,
-      LYR_HEALTH_OSCOUR_CIRCLES,
-      LYR_HOSPITALS_CHU, LYR_HOSPITALS_CH, LYR_HOSPITALS_LABEL,
+      LYR_HOSPITALS,
       LYR_POWER_FILL, LYR_POWER_LINE,
       LYR_CITIZEN_FILL, LYR_CITIZEN_LINE,
       LYR_TELECOM_PTS,
@@ -8402,18 +6234,19 @@ export class DeckGLMap {
       LYR_NET_ISP_CLUSTER, LYR_NET_ISP_CLUSTER_COUNT, LYR_NET_ISP_GLOW, LYR_NET_ISP_RING, LYR_NET_ISP,
       LYR_DC_CLUSTER, LYR_DC_CLUSTER_COUNT, LYR_DC_GLOW, LYR_DC_CORE,
       LYR_IXP_CLUSTER, LYR_IXP_CLUSTER_COUNT, LYR_IXP_CIRCLE,
-      LYR_TRAFFIC, LYR_AIR_TRAFFIC_LABEL,
+      LYR_TRAFFIC, ...Object.values(TRAFFIC_LAYER_KEYS).flat(), LYR_TRAIN_ROUTE, LYR_TRAIN_STATIONS,
+      ...Object.values(ENV_LAYER_KEYS).flat(), ...FOREST_DANGER_LAYERS,
     ];
 
     let activeLayers: string[] = [];
     if (categoryId === 'health') {
-      activeLayers = [LYR_HEALTH_FILL, LYR_HEALTH_LINE];
+      activeLayers = [LYR_HEALTH_ALERT_FILL, LYR_HEALTH_ALERT_LINE];
     } else if (categoryId === 'healthApl') {
       activeLayers = [LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE];
     } else if (categoryId === 'healthOscour') {
-      activeLayers = [LYR_HEALTH_OSCOUR_CIRCLES];
+      activeLayers = [LYR_HEALTH_URG_FILL, LYR_HEALTH_URG_LINE];
     } else if (categoryId === 'hospitals') {
-      activeLayers = [LYR_HOSPITALS_CHU, LYR_HOSPITALS_CH, LYR_HOSPITALS_LABEL];
+      activeLayers = [LYR_HOSPITALS];
     } else if (categoryId === 'outagesElec') {
       activeLayers = [LYR_POWER_FILL, LYR_POWER_LINE, LYR_CITIZEN_FILL, LYR_CITIZEN_LINE];
     } else if (categoryId === 'outagesTelecom') {
@@ -8429,12 +6262,39 @@ export class DeckGLMap {
         LYR_IXP_CLUSTER, LYR_IXP_CLUSTER_COUNT, LYR_IXP_CIRCLE,
       ];
     } else if (categoryId === 'trafficRoad') {
-      activeLayers = [LYR_TRAFFIC, LYR_TRAFFIC_CLUSTER, LYR_TRAFFIC_CLUSTER_COUNT, LYR_TRAFFIC_INCIDENTS];
+      activeLayers = [LYR_TRAFFIC, ...TRAFFIC_LAYER_KEYS.trafficRoad];
     } else if (categoryId === 'trafficAir') {
-      activeLayers = [LYR_AIR_TRAFFIC_LABEL];
+      activeLayers = [...TRAFFIC_LAYER_KEYS.trafficAir];
+    } else if (categoryId === 'trafficRail') {
+      activeLayers = [...TRAFFIC_LAYER_KEYS.trafficRail, LYR_TRAIN_ROUTE, LYR_TRAIN_STATIONS];
     } else if (categoryId === 'trafficMaritime') {
-      activeLayers = [];
+      activeLayers = [...TRAFFIC_LAYER_KEYS.trafficMaritime];
+    } else if (categoryId === 'environmental') {
+      activeLayers = [...ENV_LAYER_KEYS.environmental];
+    } else if (categoryId === 'floods') {
+      activeLayers = [...ENV_LAYER_KEYS.floods];
+    } else if (categoryId === 'weatherRadar') {
+      activeLayers = [...ENV_LAYER_KEYS.weatherRadar];
+    } else if (categoryId === 'fires') {
+      activeLayers = [...ENV_LAYER_KEYS.fires, ...FOREST_DANGER_LAYERS];
+    } else if (categoryId === 'drought' || categoryId === 'airQuality' || categoryId === 'earthquakes') {
+      activeLayers = [...ENV_LAYER_KEYS[categoryId]];
     }
+
+    const applyLegendDim = (layerId: string, prop: string, orig: unknown): void => {
+      if (categoryId === null || activeLayers.length === 0) {
+        // Reset to original
+        this.map!.setPaintProperty(layerId, prop, orig);
+        return;
+      }
+      const isTarget = activeLayers.includes(layerId);
+      // If original is an expression, wrap it down to smaller scale
+      if (Array.isArray(orig)) {
+        this.map!.setPaintProperty(layerId, prop, ['*', orig, isTarget ? 1 : 0.15]);
+      } else {
+        this.map!.setPaintProperty(layerId, prop, isTarget ? orig : Number(orig) * 0.15);
+      }
+    };
 
     allLegendLayers.forEach(layerId => {
       const layer = this.map!.getLayer(layerId);
@@ -8457,20 +6317,20 @@ export class DeckGLMap {
       }
 
       const { prop, orig } = this.originalOpacities.get(layerId)!;
-
-      if (categoryId === null || activeLayers.length === 0) {
-        // Reset to original
-        this.map!.setPaintProperty(layerId, prop, orig);
-      } else {
-        const isTarget = activeLayers.includes(layerId);
-        // If original is an expression, wrap it down to smaller scale
-        if (Array.isArray(orig)) {
-          this.map!.setPaintProperty(layerId, prop, ['*', orig, isTarget ? 1 : 0.15]);
-        } else {
-          this.map!.setPaintProperty(layerId, prop, isTarget ? orig : Number(orig) * 0.15);
-        }
-      }
+      applyLegendDim(layerId, prop, orig);
     });
+
+    // Contours colorés des Trafics (anneau des signalements AIS, aéroports, mouillages, urgences, arrêts du trajet d'un train) :
+    // atténués avec leur couche, en plus du remplissage.
+    for (const layerId of TRAFFIC_STROKE_DIM_LAYERS) {
+      if (!this.map.getLayer(layerId)) continue;
+      const key = `${layerId}::stroke`;
+      if (!this.originalOpacities.has(key)) {
+        this.originalOpacities.set(key, { prop: 'circle-stroke-opacity', orig: this.map.getPaintProperty(layerId, 'circle-stroke-opacity') ?? 1 });
+      }
+      const { prop, orig } = this.originalOpacities.get(key)!;
+      applyLegendDim(layerId, prop, orig);
+    }
 
     const outageFocusGroups: Record<string, string[]> = {
       outagesInternet: [
@@ -8548,17 +6408,6 @@ export class DeckGLMap {
   setOnRawMapClick(h: (lat: number, lon: number) => void): void { this.onRawMapClick = h; }
   setOnItemHover(h: (item: NewsItem | null, x: number, y: number) => void): void { this.onItemHover = h; }
   setOnViewChange(h: (vs: MapViewState) => void): void { this.onViewChange = h; }
-  /** Trame radar affichée (et état de chargement) ; rappelée aussitôt avec l'état courant. */
-  setOnWeatherRadarFrame(h: (frame: WeatherRadarFrame | null, status: WeatherRadarStatus) => void): void {
-    this.onWeatherRadarFrame = h;
-    h(this.weatherRadarFrame, this.weatherRadarStatus);
-  }
-  private publishWeatherRadar(frame: WeatherRadarFrame | null, status: WeatherRadarStatus): void {
-    this.weatherRadarFrame = frame;
-    this.weatherRadarStatus = status;
-    this.onWeatherRadarFrame?.(frame, status);
-  }
-
   /**
    * Set callback for cluster hover - receives list of items in the cluster.
    * Called when user hovers over a cluster with up to 20 preview items.
@@ -8577,30 +6426,6 @@ export class DeckGLMap {
 
   setOnSatelliteView(handler: (request: SatelliteViewRequest) => void): void {
     this.onSatelliteView = handler;
-  }
-
-  setOnThreatEventClick(handler: (event: ThreatEvent, x: number, y: number) => void): void {
-    this.onThreatEventClick = handler;
-  }
-
-  /** Update the threat events data and trigger a map re-render. */
-  updateThreatEvents(events: ThreatEvent[]): void {
-    // Cheap diff: skip the Supercluster rebuild + overlay update when the
-    // event set is identical (same ids / severities / dates / coordinates).
-    const hash = events
-      .map((e) => `${e.id}:${e.date}:${e.severity}:${e.location.coordinates[0]},${e.location.coordinates[1]}`)
-      .sort()
-      .join('|');
-    if (hash === this.threatEventsHash) {
-      this.threatEvents = events;
-      return;
-    }
-    this.threatEventsHash = hash;
-
-    this.threatEvents = events;
-    this.invalidateThreatMapDataCache();
-    this.rebuildThreatClusterIndex();
-    this.scheduleOverlayUpdate();
   }
 
   project(longitude: number, latitude: number): { x: number; y: number } | null {
@@ -9683,7 +7508,7 @@ export class DeckGLMap {
    * Perf audit §6 item 8: sets the real odre.opendatasoft.com URLs on the gas
    * network sources the first time the gas layer is switched on. Memoized —
    * a no-op after the first successful call, matching getDepartmentsGeojson()'s
-   * pattern. Called from setLayerVisibility() (mirrors ensureWeatherRadarLayer()).
+   * pattern. Called from setLayerVisibility().
    */
   private ensureGasNetworkSources(): Promise<void> {
     if (!this.gasNetworkSourcesPromise) {
@@ -9719,104 +7544,6 @@ export class DeckGLMap {
         properties: { ...(feature.properties ?? {}) },
       })),
     };
-  }
-
-  async updateWeather(alerts: MeteoAlert[]): Promise<void> {
-    if (!this.map) return;
-
-    // Perf audit §6 item 2: skip the departments.geojson-backed choropleth
-    // (and the risk icons below, also gated by `environmental`) while the
-    // layer is hidden. setLayerVisibility() replays this call with the same
-    // alerts the moment the layer is switched on.
-    if (!this.currentLayers?.environmental) {
-      this._pendingWeatherAlerts = alerts;
-      return;
-    }
-    this._pendingWeatherAlerts = null;
-
-    const alertsByCode = new Map<string, MeteoAlert>();
-    for (const a of alerts) alertsByCode.set(a.departmentCode, a);
-
-    try {
-      const baseGeojson = await this.getDepartmentsGeojson();
-      if (!baseGeojson) return;
-      const geojson = this.cloneDepartmentsGeojson(baseGeojson);
-      for (let i = 0; i < geojson.features.length; i++) {
-        const feat = geojson.features[i];
-        const code = (feat.properties?.code as string) ?? '';
-        feat.id = deptCodeToId(code); // Strict numeric ID for MapLibre feature-state
-        const alert = alertsByCode.get(code);
-        const hasAlert = alert != null;
-        const level = alert?.level ?? 'green';
-        feat.properties = {
-          ...feat.properties,
-          fillColor: METEO_COLORS[level] ?? METEO_COLORS.green,
-          lineColor: level === 'violet' ? 'rgba(196,121,255,0.98)' :
-            level === 'red' ? 'rgba(255,82,82,0.98)' :
-              level === 'orange' ? 'rgba(255,150,36,0.99)' :
-                level === 'yellow' ? 'rgba(255,214,10,0.92)' :
-                  'rgba(52,199,89,0.5)',
-          hasAlert,
-          level,
-          risks: alert?.risks?.join(', ') ?? '',
-        };
-      }
-      const src = this.map.getSource(SRC_WEATHER) as maplibregl.GeoJSONSource;
-      src?.setData(geojson);
-
-      // Update weather icons (risk pictograms at centroids)
-      this.updateWeatherIcons(alerts);
-    } catch (e) {
-      console.warn('[DeckGLMap] Failed to load depts for weather layer', e);
-    }
-  }
-
-  /**
-   * Update weather risk icons at department centroids.
-   */
-  private updateWeatherIcons(alerts: MeteoAlert[]): void {
-    if (!this.map) return;
-
-    const iconFeatures: GeoJSON.Feature<GeoJSON.Point>[] = [];
-
-    for (const alert of alerts) {
-      const centroid = WEATHER_DEPT_CENTROIDS[alert.departmentCode];
-      if (!centroid) continue;
-
-      // Get primary risk icon (nom d'icône Lucide)
-      const icon = getWeatherRiskIcon(alert.risks);
-
-      // Priority for z-ordering (red = highest)
-      const priority = alert.level === 'red' ? 4 :
-        alert.level === 'orange' ? 3 :
-          alert.level === 'yellow' ? 2 : 1;
-
-      iconFeatures.push({
-        type: 'Feature',
-        geometry: {
-          type: 'Point',
-          coordinates: centroid,
-        },
-        properties: {
-          code: alert.departmentCode,
-          department: alert.department,
-          level: alert.level,
-          icon,
-          priority,
-          risks: alert.risks.join(', '),
-        },
-      });
-    }
-
-    const iconsSrc = this.map.getSource(SRC_WEATHER_ICONS) as maplibregl.GeoJSONSource;
-    iconsSrc?.setData({
-      type: 'FeatureCollection',
-      features: iconFeatures,
-    });
-  }
-
-  highlightWeatherDepartment(departmentCode: string | null): void {
-    this.selectWeatherDepartment(departmentCode);
   }
 
   previewWeatherDepartment(departmentCode: string | null): void {
@@ -9932,249 +7659,167 @@ export class DeckGLMap {
     }
   }
 
-  // ─── Hospitals Layer (FINESS) ───
+  // ─── Santé (spec 2026-10-03 § 3) ───
 
-  updateHospitals(hospitals: GeoJSON.FeatureCollection<GeoJSON.Point>): void {
-    if (!this.map) return;
-    const src = this.map.getSource(SRC_HOSPITALS) as maplibregl.GeoJSONSource;
-    if (!src) return;
-    src.setData(hospitals);
-
-    // Event listeners (registered once)
-    if (!this._hospitalsEventsRegistered) {
-      this._hospitalsEventsRegistered = true;
-      this._initHospitalEvents();
-    }
+  /** Veille sanitaire : alertes Odissé par région (§ 3.1) ; `now` sert à la règle « en saison ». */
+  updateHealthAlerts(alerts: AlertLevelsResponse | null, now: number): void {
+    this.healthAlerts = alerts;
+    this.healthNow = now;
+    this.hideHealthHover();
+    void this.renderHealthRegions();
   }
 
-  private _hospitalsEventsRegistered = false;
-  private _hospitalsPopup: maplibregl.Popup | null = null;
-
-  private _initHospitalEvents(): void {
-    if (!this.map) return;
-
-    const showHospitalTooltip = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
-      if (!e.features?.length || !this.map) return;
-      const feat = e.features[0];
-      const p = feat.properties as Record<string, unknown>;
-      const name = p.name as string ?? 'Établissement';
-      const type = p.type as string ?? 'Hôpital';
-      const beds = p.beds ? `${p.beds} lits` : 'Capacité inconnue';
-      const isEmergency = p.emergency === true || p.emergency === 'true';
-      const color = type === 'CHU' ? '#ff3b30' : '#ff9500';
-
-      const isChu = type === 'CHU';
-      const icon = isChu ? fmIcon('hospital', { size: 18 }) : fmIcon('stethoscope', { size: 18 });
-
-      this._hospitalsPopup?.remove();
-      this._hospitalsPopup = new maplibregl.Popup({
-        closeButton: false,
-        closeOnClick: false,
-        className: 'health-hospital-popup',
-        offset: 12,
-        maxWidth: '260px',
-      })
-        .setLngLat((feat.geometry as GeoJSON.Point).coordinates as [number, number])
-        .setHTML(`
-          <div style="font-family:'Inter',sans-serif;background:#12121a;border:1px solid ${color}55;border-radius:8px;padding:10px 14px;">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-              <span style="font-size:18px;">${icon}</span>
-              <span style="font-size:13px;font-weight:700;color:#fff;">${name}</span>
-            </div>
-            <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:11px;">
-              <span style="background:${color}22;border:1px solid ${color}44;color:${color};padding:2px 8px;border-radius:4px;">${type}</span>
-              <span style="background:#ffffff10;color:#ccc;padding:2px 8px;border-radius:4px;">${beds}</span>
-              ${isEmergency ? `<span style="background:#ff3b3022;border:1px solid #ff3b3055;color:#ff3b30;padding:2px 8px;border-radius:4px;">${fmIcon('siren')} Urgences</span>` : ''}
-            </div>
-          </div>
-        `)
-        .addTo(this.map);
-    };
-
-    const hideHospitalTooltip = () => {
-      this._hospitalsPopup?.remove();
-      this._hospitalsPopup = null;
-    };
-
-    // Hover events for both CHU and CH layers
-    for (const lyr of [LYR_HOSPITALS_CHU, LYR_HOSPITALS_CH]) {
-      this.map.on('mouseenter', lyr, (e) => {
-        if (this.map) this.map.getCanvas().style.cursor = 'pointer';
-        showHospitalTooltip(e);
-      });
-      this.map.on('mouseleave', lyr, () => {
-        if (this.map) this.map.getCanvas().style.cursor = '';
-        hideHospitalTooltip();
-      });
-    }
+  /**
+   * Urgences (§ 3.2) et APL (§ 3.3) : une source départementale, une propriété de couleur par syndrome et par profession ;
+   * `now` sert au retard des urgences (S2 : en retard, aucune couleur de niveau).
+   */
+  updateHealthDepartments(syndromic: SyndromicResponse | null, apl: AplDataset | null, now: number): void {
+    this.healthSyndromic = syndromic;
+    this.healthApl = apl;
+    this.healthNow = now;
+    this.hideHealthHover();
+    void this.renderHealthDepartments();
   }
 
-  // ─── Health Layer ───
+  /** Sélecteur du panneau Urgences : change la propriété peinte, sans nouvel envoi de données. */
+  setHealthUrgencesSyndrome(syndrome: UrgencesSyndrome): void {
+    this.healthUrgencesSyndrome = syndrome;
+    this.hideHealthHover();
+    if (this.map?.getLayer(LYR_HEALTH_URG_FILL)) this.map.setPaintProperty(LYR_HEALTH_URG_FILL, 'fill-color', colorFromProp(urgencesProp(syndrome)));
+  }
 
-  async updateHealth(regions: HealthRegionMetric[], healthFeatures?: HealthFeatures, departments?: HealthDepartmentMetric[]): Promise<void> {
+  /** Sélecteur du panneau Accès aux soins : change la propriété peinte, sans nouvel envoi de données. */
+  setHealthAplProfession(profession: AplProfession): void {
+    this.healthAplProfession = profession;
+    this.hideHealthHover();
+    if (this.map?.getLayer(LYR_HEALTH_APL_FILL)) this.map.setPaintProperty(LYR_HEALTH_APL_FILL, 'fill-color', colorFromProp(aplProp(profession)));
+  }
+
+  /** Hôpitaux (§ 3.4) : sites placés, index par n° FINESS (infobulle, fiche, panneau). */
+  updateHospitals(data: HospitalsDataset | null): void {
+    this.hospitalSites = new Map((data?.sites ?? []).map((s): [string, EmergencySite] => [s.finess, s]));
+    this.hospitalsVintage = data?.vintage ?? null;
+    this.hideHealthHover();
+    const src = this.map?.getSource(SRC_HOSPITALS) as maplibregl.GeoJSONSource | undefined;
+    src?.setData(hospitalFeatures(data));
+  }
+
+  /** Site choisi dans le panneau Hôpitaux : la carte s'y centre et ouvre sa fiche. */
+  focusHospital(site: EmergencySite): void {
     if (!this.map) return;
-    this.latestHealthFeatures = healthFeatures ?? this.latestHealthFeatures;
+    this.flyTo(site.lon, site.lat, Math.max(this.map.getZoom(), 9));
+    this.openHospitalPopup(site);
+  }
 
-    const hasDepts = Array.isArray(departments) && departments.length > 0;
-    const hasRegions = regions.length > 0;
-
-    if (!hasDepts && !hasRegions) {
-      const src = this.map.getSource(SRC_HEALTH) as maplibregl.GeoJSONSource;
-      const markersSrc = this.map.getSource(SRC_HEALTH_MARKERS) as maplibregl.GeoJSONSource;
-      src?.setData(emptyFC());
-      markersSrc?.setData(emptyFC());
+  private async renderHealthRegions(): Promise<void> {
+    if (!this.map) return;
+    if (!this.currentLayers?.health) {
+      this.healthRegionsDirty = true;
       return;
     }
+    this.healthRegionsDirty = false;
+    const geo = await this.getRegionsGeojson();
+    const src = this.map?.getSource(SRC_HEALTH_REGIONS) as maplibregl.GeoJSONSource | undefined;
+    if (geo) src?.setData(regionAlertFeatures(geo, this.healthAlerts?.levels ?? [], this.healthNow));
+  }
 
-    try {
-      // ─ Prefer departmental granularity ─
-      if (hasDepts) {
-        const deptMap = new Map<string, HealthDepartmentMetric>();
-        for (const d of departments!) deptMap.set(d.depCode, d);
-
-        // Mémorise toute valeur APL non-nulle reçue (fichier statique ou API) ;
-        // un appel ultérieur sans APL ne pourra plus écraser la couche.
-        // (Runs unconditionally, even while hidden below — see
-        // project_apl_prod_overwrite.md: this memory must stay correct
-        // regardless of whether the choropleth itself is rendered.)
-        for (const d of departments!) {
-          const hasApl = d.aplIndex != null || (d.aplCategory != null && d.aplCategory !== 'indisponible');
-          if (hasApl) this.aplByDept.set(d.depCode, { aplIndex: d.aplIndex ?? null, aplCategory: d.aplCategory ?? 'indisponible' });
-        }
-
-        // Perf audit §6 item 2: skip the departments.geojson-backed choropleth
-        // while no health layer is visible. setLayerVisibility() replays this
-        // call with the same args once one is switched on.
-        const anyHealthLayerActive =
-          this.currentLayers?.health || this.currentLayers?.healthApl ||
-          this.currentLayers?.healthOscour || this.currentLayers?.hospitals;
-        if (!anyHealthLayerActive) {
-          this._pendingHealthArgs = { regions, healthFeatures, departments };
-          return;
-        }
-        this._pendingHealthArgs = null;
-
-        const baseGeojson = await this.getDepartmentsGeojson();
-        if (!baseGeojson) return;
-        const geojson = this.cloneDepartmentsGeojson(baseGeojson);
-
-        for (const feature of geojson.features) {
-          const code = String(feature.properties?.code ?? '');
-          const metric = deptMap.get(code);
-          const iss = metric?.iss ?? 0;
-          feature.id = deptCodeToId(code);
-          feature.properties = {
-            ...feature.properties,
-            fillColor: issToFillColor(iss),
-            lineColor: issToLineColor(iss),
-            healthIconColor: issToColor(iss),
-            healthStressIndex: iss,
-            iss,
-            issLevel: metric?.issLevel ?? 1,
-            incidenceRate: metric?.incidenceRate ?? 0,
-            spfIncidenceRate: metric?.spfIncidence ?? 0,
-            sentinellesIncidenceRate: metric?.sentinellesIncidence ?? 0,
-            hospitalizations: metric?.hospitalizations ?? 0,
-            spfHospitalizations: metric?.spfHospitalizations ?? 0,
-            reanimation: metric?.reanimation ?? 0,
-            emergencyVisits: metric?.emergencyVisits ?? 0,
-            positivityRate: metric?.positivityRate ?? 0,
-            hasOscourAlert: metric?.topMotifs && metric.topMotifs.length > 0 ? 1 : 0,
-            oscourMaxTrend: metric?.topMotifs && metric.topMotifs.length > 0 ? Math.max(...metric.topMotifs.map(m => m.trendPct || (m as { trend_pct?: number }).trend_pct || 0)) : 0,
-            topMotifsJson: JSON.stringify(metric?.topMotifs ?? []),
-            aplIndex: metric?.aplIndex ?? this.aplByDept.get(code)?.aplIndex ?? null,
-            aplCategory: (metric?.aplCategory && metric.aplCategory !== 'indisponible')
-              ? metric.aplCategory
-              : (this.aplByDept.get(code)?.aplCategory ?? 'indisponible'),
-            trend: metric?.trend ?? 'stable',
-            source: metric?.source ?? 'spf-epid',
-            updatedAt: metric?.updatedAt?.toISOString() ?? new Date().toISOString(),
-            isDepartmental: 1,
-          };
-        }
-
-        const src = this.map.getSource(SRC_HEALTH) as maplibregl.GeoJSONSource;
-        const markersSrc = this.map.getSource(SRC_HEALTH_MARKERS) as maplibregl.GeoJSONSource;
-        src?.setData(geojson);
-
-        // Use SRC_HEALTH_MARKERS for points (ex: OSCOUR circles)
-        const markerFeatures = geojson.features.map(f => {
-          const center = getFeatureCenter(f);
-          if (!center) return null;
-          return {
-            type: 'Feature',
-            properties: { ...f.properties },
-            geometry: { type: 'Point', coordinates: center }
-          } as GeoJSON.Feature;
-        }).filter(f => f !== null) as GeoJSON.Feature[];
-
-        markersSrc?.setData({ type: 'FeatureCollection', features: markerFeatures });
-      } else {
-        // ─ Fallback: regional ─
-        const regionsByCode = new Map<string, HealthRegionMetric>();
-        for (const region of regions) regionsByCode.set(region.regionCode, region);
-
-        const resp = await fetch('/data/regions.geojson');
-        if (!resp.ok) return;
-        const geojson = await resp.json() as GeoJSON.FeatureCollection;
-
-        geojson.features = geojson.features.filter((f) => regionsByCode.has(String(f.properties?.code ?? '')));
-
-        for (const feature of geojson.features) {
-          const code = String(feature.properties?.code ?? '');
-          const metric = regionsByCode.get(code);
-          if (!metric) continue;
-          const iss = metric.iss ?? metric.healthStressIndex ?? 0;
-          feature.id = Number.parseInt(code, 10);
-          feature.properties = {
-            ...feature.properties,
-            fillColor: issToFillColor(iss),
-            lineColor: issToLineColor(iss),
-            healthIconColor: issToColor(iss),
-            healthStressIndex: iss,
-            iss,
-            issLevel: metric.issLevel ?? 1,
-            incidenceRate: metric.incidenceRate,
-            spfIncidenceRate: metric.spfIncidenceRate,
-            sentinellesIncidenceRate: metric.sentinellesIncidenceRate,
-            hospitalizations: metric.hospitalizations,
-            spfHospitalizations: metric.spfHospitalizations,
-            reanimation: metric.reanimation ?? 0,
-            positivityRate: metric.positivityRate,
-            trend: metric.trend,
-            source: metric.source,
-            updatedAt: metric.updatedAt.toISOString(),
-            isDepartmental: 0,
-          };
-        }
-
-        const src = this.map.getSource(SRC_HEALTH) as maplibregl.GeoJSONSource;
-        const markersSrc = this.map.getSource(SRC_HEALTH_MARKERS) as maplibregl.GeoJSONSource;
-        const markerFeatures: GeoJSON.Feature[] = geojson.features
-          .map((feature) => {
-            const center = getFeatureCenter(feature);
-            if (!center) return null;
-            return { type: 'Feature', properties: { ...feature.properties }, geometry: { type: 'Point', coordinates: center } } as GeoJSON.Feature;
-          })
-          .filter((f): f is GeoJSON.Feature => f !== null);
-
-        src?.setData(geojson);
-        markersSrc?.setData({ type: 'FeatureCollection', features: markerFeatures });
-      }
-
-      try {
-        this.map.moveLayer(LYR_HEALTH_FILL);
-        this.map.moveLayer(LYR_HEALTH_APL_FILL);
-        this.map.moveLayer(LYR_HEALTH_APL_LINE);
-        this.map.moveLayer(LYR_HEALTH_LINE);
-        this.map.moveLayer(LYR_HEALTH_OSCOUR_CIRCLES);
-        this.map.moveLayer(LYR_HEALTH_MARKERS);
-      } catch {
-        // Ignore ordering errors.
-      }
-    } catch (error) {
-      console.warn('[DeckGLMap] Failed to update health layer', error);
+  private async renderHealthDepartments(): Promise<void> {
+    if (!this.map) return;
+    if (!this.currentLayers?.healthOscour && !this.currentLayers?.healthApl) {
+      this.healthDeptsDirty = true;
+      return;
     }
+    this.healthDeptsDirty = false;
+    const base = await this.getDepartmentsGeojson();
+    const src = this.map?.getSource(SRC_HEALTH_DEPTS) as maplibregl.GeoJSONSource | undefined;
+    if (base) src?.setData(departmentHealthFeatures(base, this.healthSyndromic, this.healthApl, this.healthNow));
+  }
+
+  /** Contours des régions (18, DROM compris), lus une fois ; un échec est relu au prochain affichage. */
+  private getRegionsGeojson(): Promise<GeoJSON.FeatureCollection | null> {
+    this.regionsGeojsonPromise ??= fetch('/data/regions.geojson')
+      .then((r) => (r.ok ? (r.json() as Promise<GeoJSON.FeatureCollection>) : null))
+      .catch(() => null)
+      .then((geo) => {
+        if (!geo) this.regionsGeojsonPromise = null;
+        return geo;
+      });
+    return this.regionsGeojsonPromise;
+  }
+
+  private healthMapData(): HealthMapData {
+    return {
+      alerts: this.healthAlerts?.levels ?? [], now: this.healthNow, syndromic: this.healthSyndromic, apl: this.healthApl,
+      hospitals: this.hospitalSites, hospitalsVintage: this.hospitalsVintage,
+      syndrome: this.healthUrgencesSyndrome, profession: this.healthAplProfession,
+    };
+  }
+
+  private openHospitalPopup(site: EmergencySite): void {
+    if (!this.map) return;
+    this.hideHealthHover();
+    this.hospitalPopup?.remove();
+    const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '320px', className: 'dark-popup' });
+    popup.on('close', () => {
+      if (this.hospitalPopup !== popup) return;
+      this.hospitalPopup = null;
+      this.hospitalPopupFiness = null;
+    });
+    this.hospitalPopup = popup;
+    this.hospitalPopupFiness = site.finess;
+    popup
+      .setLngLat([site.lon, site.lat])
+      .setHTML(hospitalPopupHtml(site, this.hospitalsVintage))
+      .addTo(this.map);
+  }
+
+  /** Ferme l'infobulle de survol santé (souris hors de la carte, sélecteur, nouvelles données, couches changées). */
+  private hideHealthHover(): void {
+    if (!this.healthHoverShown) return;
+    this.healthHoverShown = false;
+    this.healthHoverPopup?.remove();
+  }
+
+  /** Curseur main sur un site seulement ; remis à zéro uniquement s'il a été posé ici (les autres couches gardent le leur). */
+  private setHealthPointer(on: boolean): void {
+    if (!this.map || on === this.healthPointer) return;
+    this.healthPointer = on;
+    this.map.getCanvas().style.cursor = on ? 'pointer' : '';
+  }
+
+  /**
+   * Couches santé : une infobulle au survol, celle de la couche dessinée au-dessus (site, APL, urgences, région) ; clic sur un
+   * site : sa fiche, sans infobulle par-dessus. Seules les couches visibles sont interrogées ; l'infobulle se ferme quand la
+   * souris quitte la carte (panneau, légende, en-tête).
+   */
+  private initHealthInteractions(): void {
+    const map = this.map;
+    if (!map) return;
+    map.on('mousemove', (e) => {
+      const visible = HEALTH_HOVER_LAYERS.filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+      const hit = topHealthHit(visible.length > 0 ? map.queryRenderedFeatures(e.point, { layers: visible }) : []);
+      const onSite = hit?.layer.id === LYR_HOSPITALS;
+      this.setHealthPointer(onSite);
+      const ficheOpen = onSite && String(hit?.properties?.['finess'] ?? '') === this.hospitalPopupFiness;
+      const html = hit && !ficheOpen ? healthTooltipHtml(hit.layer.id, hit.properties ?? {}, this.healthMapData()) : null;
+      if (!html) {
+        this.hideHealthHover();
+        return;
+      }
+      this.healthHoverShown = true;
+      const popup = this.healthHoverPopup
+        ?? new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12, maxWidth: '300px', className: 'dark-popup hm-hover' });
+      this.healthHoverPopup = popup;
+      popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
+    });
+    map.on('mouseout', () => {
+      this.setHealthPointer(false);
+      this.hideHealthHover();
+    });
+    map.on('click', LYR_HOSPITALS, (e) => {
+      const site = this.hospitalSites.get(String(e.features?.[0]?.properties?.['finess'] ?? ''));
+      if (site) this.openHospitalPopup(site);
+    });
   }
 
   // ─── ISNR Stability Layer ───
@@ -10247,140 +7892,123 @@ export class DeckGLMap {
   }
   private _lastHoveredISNRDeptId: number | null = null;
 
-  // ─── Rail Network (SNCF disruptions) ───
+  // ─── Trafics (spec 2026-10-03 trafics § 3) ───
 
-  /**
-   * Update the persistent rail disruption layer.
-   * Call with the result of buildRailNetworkData(disruptions).
-   * Pass empty FeatureCollections to clear the layer.
-   */
-  updateRailNetwork(data: RailNetworkData): void {
-    if (!this.map) return;
-
-    const arcSrc = this.map.getSource(SRC_RAIL_ARCS) as maplibregl.GeoJSONSource | undefined;
-    const staSrc = this.map.getSource(SRC_RAIL_STATIONS) as maplibregl.GeoJSONSource | undefined;
-
-    arcSrc?.setData(data.arcs);
-    staSrc?.setData(data.stations);
+  /** Route : sections Traficolor, bouchons TomTom et événements DIR ; `now` sert au retard (S2 : couleurs retirées). */
+  updateRoadTraffic(national: RoadNationalResponse | null, urban: RoadUrbanResponse | null, now: number): void {
+    this.setTrafficSource(SRC_ROAD_SECTIONS, traficolorFeatures(national, now));
+    this.setTrafficSource(SRC_ROAD_JAMS, urbanJamFeatures(urban, now));
+    this.setTrafficSource(SRC_ROAD_EVENTS, roadEventFeatures(national, now));
   }
 
-  // ─── Train Route Highlight ───
+  /** Aérien : aéroports (surface selon les départs) et urgences en vol ; les positions des avions passent par updateAirTraffic. */
+  updateAirOverview(overview: AirOverviewResponse | null, now: number): void {
+    this.setTrafficSource(SRC_AIRPORTS, airportFeatures(overview, now));
+    this.setTrafficSource(SRC_AIR_EMERGENCIES, airEmergencyFeatures(overview, now));
+  }
+
+  /** Rail : gares des trains perturbés en cours ; le retard des données SNCF retire aussi la couleur du trajet tracé. */
+  updateRailTraffic(overview: RailOverviewResponse | null, now: number): void {
+    this.railTrafficLate = railOverviewLate(overview, now);
+    this.setTrafficSource(SRC_RAIL_STATIONS, railStationFeatures(overview, now));
+    // Trajet tracé : retard relu dans la nouvelle donnée ; train qui n'y figure plus (arrivé, retiré) : trajet effacé.
+    const fresh = (t: RailTrain | null): RailTrain | null => (t ? overview?.trains.find((x) => x.id === t.id) ?? null : null);
+    this.chosenTrain = fresh(this.chosenTrain);
+    this.previewTrain = fresh(this.previewTrain);
+    this.drawTrainRoute();
+  }
+
+  /** Maritime : mouillages devant les ports et signalements croisés (T3) ; les navires restent dans la couche Deck.gl du WebSocket. */
+  updateMaritimeSnapshot(snapshot: MaritimeSnapshot | null, now: number): void {
+    this.setTrafficSource(SRC_ANCHORAGES, anchorageFeatures(snapshot, now));
+    this.setTrafficSource(SRC_AIS_SIGNALS, maritimeSignalFeatures(snapshot, now));
+  }
+
+  /** Train choisi dans le panneau ferroviaire : trajet par ses arrêts, couleur de son retard ; null efface. */
+  highlightTrainRoute(train: RailTrain | null): void {
+    this.chosenTrain = train;
+    this.drawTrainRoute();
+  }
+
+  /** Train survolé dans le panneau : son trajet le temps du survol ; null rend le trajet du train choisi (ou rien). */
+  previewTrainRoute(train: RailTrain | null): void {
+    this.previewTrain = train;
+    this.drawTrainRoute();
+  }
+
+  private drawTrainRoute(): void {
+    const train = this.previewTrain ?? this.chosenTrain;
+    const src = this.map?.getSource(SRC_TRAIN_ROUTE) as maplibregl.GeoJSONSource | undefined;
+    src?.setData(trainRouteFeatures(train, this.railTrafficLate));
+  }
+
+  private setTrafficSource(id: string, data: GeoJSON.FeatureCollection): void {
+    this.hideTrafficHover();
+    const src = this.map?.getSource(id) as maplibregl.GeoJSONSource | undefined;
+    src?.setData(data);
+  }
+
+  /** Ferme l'infobulle de survol des Trafics (souris hors de la carte, nouvelles données, couches changées). */
+  private hideTrafficHover(): void {
+    if (!this.trafficHoverShown) return;
+    this.trafficHoverShown = false;
+    this.trafficHoverPopup?.remove();
+  }
+
+  /** Curseur main sur un bouchon (cliquable) seulement ; remis à zéro uniquement s'il a été posé ici. */
+  private setTrafficPointer(on: boolean): void {
+    if (!this.map || on === this.trafficPointer) return;
+    this.trafficPointer = on;
+    this.map.getCanvas().style.cursor = on ? 'pointer' : '';
+  }
 
   /**
-   * Draw a train route between two stations on the map.
-   * Pass null to clear the route.
+   * Couches Trafics : une infobulle au survol, celle de la couche dessinée au-dessus (préparée avec la donnée, texte échappé) ;
+   * clic sur un bouchon TomTom : vitesse du tronçon (/api/traffic/flow, budget serveur du jour).
    */
-  highlightTrainRoute(
-    disruption: TransportDisruption | null,
-  ): void {
-    if (!this.map) return;
-
-    const src = this.map.getSource(SRC_TRAIN_ROUTE) as maplibregl.GeoJSONSource;
-    if (!src) return;
-
-    // Clear route if no coordinates
-    if (!disruption) {
-      src.setData(emptyFC());
-      return;
-    }
-
-    const severity = disruption.severity;
-    const routeCoords = disruption.routeGeometry?.coordinates ?? null;
-    const fallbackDeparture = routeCoords?.[0] as [number, number] | undefined;
-    const fallbackArrival = routeCoords?.[routeCoords.length - 1] as [number, number] | undefined;
-    const departure = disruption.departure?.coordinates ?? disruption.coordinates ?? fallbackDeparture ?? null;
-    const arrival = disruption.arrival?.coordinates ?? fallbackArrival ?? null;
-    const primaryPoint = departure ?? arrival;
-
-    if (!primaryPoint) {
-      src.setData(emptyFC());
-      return;
-    }
-
-    const features: GeoJSON.Feature[] = [];
-    const departurePoint = departure ?? primaryPoint;
-
-    // Add departure station point
-    features.push({
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: departurePoint },
-      properties: {
-        role: departure ? 'departure' : 'localized',
-        severity: severity ?? 'medium',
-        name: departure ? (disruption.departure?.name ?? 'Départ') : (disruption.arrival?.name ?? 'Point localisé'),
-        line: disruption.line,
-        trainNumber: disruption.trainNumber,
-        departureName: disruption.departure?.name,
-        arrivalName: disruption.arrival?.name,
-        departurePlannedTime: disruption.departure?.plannedTime,
-        departureUpdatedTime: disruption.departure?.updatedTime,
-        arrivalPlannedTime: disruption.arrival?.plannedTime,
-        arrivalUpdatedTime: disruption.arrival?.updatedTime,
-        totalDelayMinutes: disruption.totalDelayMinutes,
-        affectedStopsCount: disruption.affectedStops?.length ?? 0,
-        affectedStopsJson: JSON.stringify((disruption.affectedStops ?? []).slice(0, 12)),
-        description: disruption.description,
-        geometryFidelity: disruption.geometryFidelity ?? (disruption.routeGeometry ? 'matched' : 'fallback'),
-      },
+  private initTrafficInteractions(): void {
+    const map = this.map;
+    if (!map) return;
+    map.on('mousemove', (e) => {
+      const visible = TRAFFIC_HOVER_LAYERS.filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+      const hit = topTrafficHit(visible.length > 0 ? map.queryRenderedFeatures(e.point, { layers: visible }) : []);
+      this.setTrafficPointer(hit !== undefined && TRAFFIC_JAM_LAYERS.includes(hit.layer.id));
+      const html = hit ? trafficTooltipHtml(hit.layer.id, hit.properties ?? {}) : null;
+      if (!html) {
+        this.hideTrafficHover();
+        return;
+      }
+      this.trafficHoverShown = true;
+      const popup = this.trafficHoverPopup
+        ?? new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12, maxWidth: '300px', className: 'dark-popup hm-hover' });
+      this.trafficHoverPopup = popup;
+      popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
     });
-
-    if (arrival && (!departure || arrival[0] !== departure[0] || arrival[1] !== departure[1])) {
-      // Add arrival station point
-      features.push({
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: arrival },
-        properties: {
-          role: 'arrival',
-          severity: severity ?? 'medium',
-          name: disruption.arrival?.name ?? 'Arrivée',
-          line: disruption.line,
-          trainNumber: disruption.trainNumber,
-          departureName: disruption.departure?.name,
-          arrivalName: disruption.arrival?.name,
-          departurePlannedTime: disruption.departure?.plannedTime,
-          departureUpdatedTime: disruption.departure?.updatedTime,
-          arrivalPlannedTime: disruption.arrival?.plannedTime,
-          arrivalUpdatedTime: disruption.arrival?.updatedTime,
-          totalDelayMinutes: disruption.totalDelayMinutes,
-          affectedStopsCount: disruption.affectedStops?.length ?? 0,
-          affectedStopsJson: JSON.stringify((disruption.affectedStops ?? []).slice(0, 12)),
-          description: disruption.description,
-          geometryFidelity: disruption.geometryFidelity ?? (disruption.routeGeometry ? 'matched' : 'fallback'),
-        },
-      });
-
-    }
-
-    if (departure && arrival) {
-      const useFocusGeometry = !!disruption.routeGeometry?.coordinates?.length;
-      const lineCoords = useFocusGeometry
-        ? disruption.routeGeometry!.coordinates
-        : this.generateCurvedLine(departure, arrival);
-      const focusFidelity =
-        useFocusGeometry ? (disruption.geometryFidelity ?? 'matched') : 'fallback';
-      features.push({
-        type: 'Feature',
-        geometry: { type: 'LineString', coordinates: lineCoords },
-        properties: {
-          severity: severity ?? 'medium',
-          line: disruption.line,
-          trainNumber: disruption.trainNumber,
-          departureName: disruption.departure?.name,
-          arrivalName: disruption.arrival?.name,
-          departurePlannedTime: disruption.departure?.plannedTime,
-          departureUpdatedTime: disruption.departure?.updatedTime,
-          arrivalPlannedTime: disruption.arrival?.plannedTime,
-          arrivalUpdatedTime: disruption.arrival?.updatedTime,
-          totalDelayMinutes: disruption.totalDelayMinutes,
-          affectedStopsCount: disruption.affectedStops?.length ?? 0,
-          affectedStopsJson: JSON.stringify((disruption.affectedStops ?? []).slice(0, 12)),
-          description: disruption.description,
-          geometryFidelity: focusFidelity,
-        },
+    map.on('mouseout', () => {
+      this.setTrafficPointer(false);
+      this.hideTrafficHover();
+    });
+    for (const id of TRAFFIC_JAM_LAYERS) {
+      map.on('click', id, (e) => {
+        const props = e.features?.[0]?.properties ?? {};
+        const body = typeof props['body'] === 'string' ? props['body'] : '';
+        const lat = Number(props['lat']);
+        const lon = Number(props['lon']);
+        if (body !== '' && Number.isFinite(lat) && Number.isFinite(lon)) void this.openJamPopup(e.lngLat, body, lat, lon);
       });
     }
+  }
 
-    src.setData({ type: 'FeatureCollection', features });
+  /** Fiche d'un bouchon : son infobulle et la vitesse du tronçon (ou « indisponible », budget du jour atteint compris). */
+  private async openJamPopup(at: maplibregl.LngLat, body: string, lat: number, lon: number): Promise<void> {
+    const flow = await fetchTrafficFlowSegment(lat, lon, this.map?.getZoom() ?? 10);
+    if (!this.map) return;
+    this.hideTrafficHover();
+    this.trafficJamPopup?.remove();
+    this.trafficJamPopup = new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '320px', className: 'dark-popup' })
+      .setLngLat(at)
+      .setHTML(jamPopupHtml(body, flow))
+      .addTo(this.map);
   }
 
   // ─── Outages (Telecom & Power) ───
@@ -10509,17 +8137,6 @@ export class DeckGLMap {
       this.map.setPaintProperty(LYR_IIP_CORE, 'circle-stroke-width', 1.5);
       this.map.setPaintProperty(LYR_IIP_CORE, 'circle-stroke-opacity', 0.6);
     }
-  }
-
-  /** Met à jour le polygone jour/nuit sur la carte. */
-  updateTerminator(geojson: GeoJSON.FeatureCollection): void {
-    (this.map?.getSource(SRC_TERMINATOR) as maplibregl.GeoJSONSource)?.setData(geojson);
-  }
-
-  /** Met à jour les options du layer Deck.gl Jour/Nuit (showNight, showTwilight, showSunIcon, timestamp). */
-  updateDayNightOptions(opts: Partial<typeof this.dayNightOptions>): void {
-    Object.assign(this.dayNightOptions, opts);
-    this.refreshAisLayers();
   }
 
   /** Highlight a specific department on the power outages layer. */
@@ -10788,218 +8405,291 @@ export class DeckGLMap {
     return 'low';
   }
 
-  /**
-   * Generate a curved line between two points (arc-like effect).
-   */
-  private generateCurvedLine(
-    start: [number, number],
-    end: [number, number],
-    numPoints: number = 50
-  ): [number, number][] {
-    const coords: [number, number][] = [];
-    const [x1, y1] = start;
-    const [x2, y2] = end;
 
-    // Calculate distance for curve height
-    const dx = x2 - x1;
-    const dy = y2 - y1;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-
-    // Perpendicular offset for curve (proportional to distance)
-    const curveHeight = dist * 0.15;
-
-    // Midpoint
-    const mx = (x1 + x2) / 2;
-    const my = (y1 + y2) / 2;
-
-    // Perpendicular direction (rotated 90 degrees)
-    const px = -dy / dist;
-    const py = dx / dist;
-
-    // Control point for quadratic bezier
-    const cx = mx + px * curveHeight;
-    const cy = my + py * curveHeight;
-
-    // Generate points along quadratic bezier curve
-    for (let i = 0; i <= numPoints; i++) {
-      const t = i / numPoints;
-      const u = 1 - t;
-
-      // Quadratic bezier: B(t) = (1-t)²P0 + 2(1-t)tP1 + t²P2
-      const x = u * u * x1 + 2 * u * t * cx + t * t * x2;
-      const y = u * u * y1 + 2 * u * t * cy + t * t * y2;
-      coords.push([x, y]);
-    }
-
-    return coords;
-  }
-
-  // ─── Topage visual Layer ───
-
-  /**
-   * Met à jour le réseau hydro décoratif (fond bleu clair).
-   * Appelé depuis App.ts après un fetch /api/environment/topage-hydro?bbox=vue courante.
-   * Les features passent directement : pas de matching, juste l'affichage brut.
-   */
-  updateTopageVisual(geojson: GeoJSON.FeatureCollection): void {
-    if (!this.map) return;
-    const src = this.map.getSource(SRC_TOPAGE_VIS) as maplibregl.GeoJSONSource;
-    src?.setData(geojson);
-  }
-
-  // ─── Floods Layer ───
-
-  updateFloods(segments: FloodSegment[]): void {
-    if (!this.map) return;
-    this.floodSegmentsById = new Map(segments.map((segment) => [segment.id, segment]));
-    this.highlightFloodSegment(null);
-    // Tous les segments vont dans la source ; les layers filtrent par geometryFidelity :
-    // LYR_FLOODS      → matched + fallback (lignes pleines, couleur vigilance)
-    // LYR_FLOODS_RAW  → raw (pointillés, opacité réduite — Topage indisponible)
-    const fc: GeoJSON.FeatureCollection = {
-      type: 'FeatureCollection',
-      features: segments.map((s) => ({
-        type: 'Feature' as const,
-        id: s.id,
-        geometry: s.displayGeometry,
-        properties: {
-          name: s.name,
-          color: FLOOD_COLORS[s.level] ?? FLOOD_COLORS.green,
-          level: s.level,
-          dataSource: s.dataSource,
-          geometryFidelity: s.geometryFidelity,
-          matchConfidence: s.matchConfidence,
-          rawVertexCount: s.rawVertexCount,
-          displayVertexCount: s.displayVertexCount,
-        },
-      })),
-    };
-    const src = this.map.getSource(SRC_FLOODS) as maplibregl.GeoJSONSource;
-    src?.setData(fc);
-    const highlightSrc = this.map.getSource(SRC_FLOODS_HIGHLIGHT) as maplibregl.GeoJSONSource;
-    highlightSrc?.setData(emptyFC());
-
-    const matchedCount = segments.filter((s) => s.geometryFidelity === 'matched').length;
-    const corridorCount = segments.filter((s) => s.geometryFidelity === 'fallback').length;
-    const rawCount = segments.filter((s) => s.geometryFidelity === 'raw').length;
-    const hydrated = segments.filter((s) => s.geometryFidelity !== 'raw');
-    const avgConf = hydrated.length > 0
-      ? (hydrated.reduce((sum, s) => sum + s.matchConfidence, 0) / hydrated.length).toFixed(2)
-      : 'n/a';
-    console.info(
-      `[DeckGLMap/Vigicrues] total:${segments.length} — ` +
-      `matched:${matchedCount} fallback:${corridorCount} raw(pointillés):${rawCount} | confiance moy:${avgConf}`,
-    );
-  }
-
-  highlightFloodSegment(segmentId: string | null): void {
-    if (!this.map) return;
-    const highlightSrc = this.map.getSource(SRC_FLOODS_HIGHLIGHT) as maplibregl.GeoJSONSource | undefined;
-
-    if (this._highlightedFloodSegmentId !== null) {
-      this.map.setFeatureState(
-        { source: SRC_FLOODS, id: this._highlightedFloodSegmentId },
-        { hover: false },
-      );
-    }
-
-    if (segmentId !== null) {
-      this.map.setFeatureState(
-        { source: SRC_FLOODS, id: segmentId },
-        { hover: true },
-      );
-      const segment = this.floodSegmentsById.get(segmentId);
-      if (segment && highlightSrc) {
-        highlightSrc.setData({
-          type: 'FeatureCollection',
-          features: [{
-            type: 'Feature',
-            geometry: segment.displayGeometry,
-            properties: { id: segment.id },
-          }],
-        });
-        this.setVis(LYR_FLOODS_HIGHLIGHT, 'visible');
-      }
-      this._highlightedFloodSegmentId = segmentId;
-    } else {
-      highlightSrc?.setData(emptyFC());
-      this.setVis(LYR_FLOODS_HIGHLIGHT, 'none');
-      this._highlightedFloodSegmentId = null;
-    }
-  }
 
   private _highlightedFloodSegmentId: string | null = null;
 
-  // ─── Fires Layer ───
+  // ─── Environnement (spec 2026-10-04 environnement § 2 ; contrats § 5) ───
 
-  updateFires(fires: ActiveFire[]): void {
+  /** Vigilance de l'échéance choisie (J ou J+1), datée ; couche masquée : gardée, puis peinte à son réaffichage. */
+  async updateVigilanceLayer(v: VigilanceResponse | null, echeance: VigilanceEcheance, now: number): Promise<void> {
+    this.envVigilance = { v, echeance, now };
     if (!this.map) return;
-    const fc: GeoJSON.FeatureCollection = {
-      type: 'FeatureCollection',
-      features: fires.map((f) => ({
-        type: 'Feature' as const,
-        geometry: { type: 'Point', coordinates: [f.longitude, f.latitude] },
-        properties: {
-          frp: f.frp,
-          confidence: f.confidence,
-          acq_time: f.acq_time,
-          acq_date: f.acq_date,
-          daynight: f.daynight,
-          lat: f.latitude,
-          lon: f.longitude,
-          bright_ti4: f.bright_ti4,
-        }
-      }))
-    };
-    const src = this.map.getSource(SRC_FIRES) as maplibregl.GeoJSONSource;
-    src?.setData(fc);
+    if (!this.currentLayers?.environmental) {
+      this.envVigilancePending = true;
+      return;
+    }
+    this.envVigilancePending = false;
+    const geo = await this.getDepartmentsGeojson();
+    if (!this.map) return;
+    (this.map.getSource(SRC_WEATHER) as maplibregl.GeoJSONSource | undefined)?.setData(geo ? vigilanceDeptFeatures(geo, v, echeance, now) : emptyFC());
+    (this.map.getSource(SRC_WEATHER_ICONS) as maplibregl.GeoJSONSource | undefined)?.setData(vigilanceIconFeatures(v, echeance, now));
+    this.hideEnvironmentHover();
   }
 
-  highlightFire(lat: number, lon: number): void {
+  /** Tronçons jaunes, orange, rouges (aussi en v2) et stations des tronçons en vigilance, datés. */
+  updateFloodsLayer(f: FloodsResponse | null, now: number): void {
     if (!this.map) return;
-    const src = this.map.getSource(SRC_FIRES_HIGHLIGHT) as maplibregl.GeoJSONSource;
-    src?.setData({
+    this.envFloods = f;
+    const kept = this._highlightedFloodSegmentId;
+    this.envFloodSections = new Map((f?.sections ?? []).map((s) => [s.id, s]));
+    // Le tronçon mis en avant est gardé tant qu'il existe dans les nouvelles données.
+    this.highlightFloodSection(kept !== null && this.envFloodSections.has(kept) ? kept : null);
+    (this.map.getSource(SRC_FLOODS) as maplibregl.GeoJSONSource | undefined)?.setData(floodSectionFeatures(f, now));
+    (this.map.getSource(SRC_FLOOD_STATIONS) as maplibregl.GeoJSONSource | undefined)?.setData(floodStationFeatures(f, now));
+    this.hideEnvironmentHover();
+  }
+
+  // ─── Environnement, phase B (spec 2026-10-04 § 3) ───
+
+  /** Sécheresse : niveau le plus haut des arrêtés par département (VigiEau) ; départements lus une fois (getDepartmentsGeojson). */
+  async updateDroughtLayer(d: DroughtResponse | null, now: number): Promise<void> {
+    this.envB.drought = d;
+    const geo = await this.getDepartmentsGeojson();
+    if (!this.map) return;
+    (this.map.getSource(SRC_DROUGHT) as maplibregl.GeoJSONSource | undefined)?.setData(geo ? droughtDeptFeatures(geo, d, now) : emptyFC());
+    this.hideEnvironmentHover();
+  }
+
+  /** Qualité de l'air : indice ATMO le plus haut du jour par département (palette L1). */
+  async updateAirQualityLayer(a: AirQualityResponse | null, now: number): Promise<void> {
+    this.envB.air = a;
+    const geo = await this.getDepartmentsGeojson();
+    if (!this.map) return;
+    (this.map.getSource(SRC_AIR_QUALITY) as maplibregl.GeoJSONSource | undefined)?.setData(geo ? airDeptFeatures(geo, a, now) : emptyFC());
+    this.hideEnvironmentHover();
+  }
+
+  /** Séismes des 7 derniers jours : cercles proportionnels à la magnitude. */
+  updateEarthquakesLayer(q: EarthquakesResponse | null, now: number): void {
+    this.envB.quakes = q;
+    if (!this.map) return;
+    (this.map.getSource(SRC_QUAKES) as maplibregl.GeoJSONSource | undefined)?.setData(quakeFeatures(q, now));
+    this.hideEnvironmentHover();
+  }
+
+  /** Marégraphes SHOM (couche Vigilance météo) : anneau de la couleur du domaine littoral du jour. */
+  updateSeaLevelsLayer(s: SeaLevelsResponse | null, v: VigilanceResponse | null, now: number): void {
+    this.envB.seaLevels = s;
+    this.envB.vigilance = v;
+    if (!this.map) return;
+    (this.map.getSource(SRC_TIDE_GAUGES) as maplibregl.GeoJSONSource | undefined)?.setData(tideGaugeFeatures(s, v, now));
+    this.hideEnvironmentHover();
+  }
+
+  /** Tronçon du panneau Crues mis en avant (null : aucun). */
+  highlightFloodSection(id: string | null): void {
+    if (!this.map) return;
+    const highlightSrc = this.map.getSource(SRC_FLOODS_HIGHLIGHT) as maplibregl.GeoJSONSource | undefined;
+    const section = id === null ? undefined : this.envFloodSections.get(id);
+    if (!section) {
+      highlightSrc?.setData(emptyFC());
+      this.setVis(LYR_FLOODS_HIGHLIGHT, 'none');
+      this._highlightedFloodSegmentId = null;
+      return;
+    }
+    highlightSrc?.setData({
       type: 'FeatureCollection',
-      features: [{ type: 'Feature', geometry: { type: 'Point', coordinates: [lon, lat] }, properties: {} }]
+      features: [{ type: 'Feature', geometry: { type: 'MultiLineString', coordinates: section.path }, properties: { id: section.id } }],
+    });
+    this._highlightedFloodSegmentId = section.id;
+    this.setVis(LYR_FLOODS_HIGHLIGHT, envLayerOn(this.currentLayers ?? {}, 'floods') ? 'visible' : 'none');
+  }
+
+  /** Recentre la carte sur un tronçon (clic dans le panneau Crues) et le met en avant. */
+  focusFloodSection(id: string): void {
+    const section = this.envFloodSections.get(id);
+    if (!section || section.path.length === 0) return;
+    this.highlightFloodSection(id);
+    this.fitBounds(computeFloodSegmentBbox({ type: 'MultiLineString', coordinates: section.path }), 80);
+  }
+
+  /** Détections de France par foyer, détections hors de France, météo des forêts (option, éteinte par défaut), datées. */
+  updateFiresLayer(f: FiresResponse | null, now: number, opts: { forestDangerFill: boolean }): void {
+    this.envFires = f;
+    this.envFiresNow = now;
+    this._forestDangerFill = opts.forestDangerFill;
+    if (!this.map) return;
+    (this.map.getSource(SRC_FIRES) as maplibregl.GeoJSONSource | undefined)?.setData(fireDetectionFeatures(f, now));
+    (this.map.getSource(SRC_FIRES_ABROAD) as maplibregl.GeoJSONSource | undefined)?.setData(fireAbroadFeatures(f));
+    const firesOn = envLayerOn(this.currentLayers ?? {}, 'fires');
+    for (const id of FOREST_DANGER_LAYERS) this.setVis(id, firesOn && opts.forestDangerFill ? 'visible' : 'none');
+    void this.paintForestDanger();
+    this.hideEnvironmentHover();
+  }
+
+  /** Remplissage de la météo des forêts : polygones lus seulement quand l'option est cochée. */
+  private async paintForestDanger(): Promise<void> {
+    const src = this.map?.getSource(SRC_FOREST_DANGER) as maplibregl.GeoJSONSource | undefined;
+    if (!this._forestDangerFill) {
+      src?.setData(emptyFC());
+      return;
+    }
+    const geo = await this.getDepartmentsGeojson();
+    if (!this.map || !this._forestDangerFill) return;
+    (this.map.getSource(SRC_FOREST_DANGER) as maplibregl.GeoJSONSource | undefined)?.setData(
+      geo ? forestDangerFeatures(geo, this.envFires, this.envFiresNow) : emptyFC(),
+    );
+  }
+
+  /** Détections d'un foyer mises en avant (survol d'un foyer dans le panneau) ; null : aucune. */
+  highlightFoyer(id: string | null): void {
+    if (!this.map) return;
+    const points = id === null ? [] : (this.envFires?.detections ?? []).filter((d) => d.foyerId === id);
+    (this.map.getSource(SRC_FIRES_HIGHLIGHT) as maplibregl.GeoJSONSource | undefined)?.setData({
+      type: 'FeatureCollection',
+      features: points.map((d) => ({ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [d.lon, d.lat] }, properties: {} })),
     });
   }
 
-  clearFireHighlight(): void {
+  /** Point du profil vertical radar (null : effacé). */
+  setRadarPick(point: { lat: number; lon: number } | null): void {
+    this.radarPick = point;
     if (!this.map) return;
-    const src = this.map.getSource(SRC_FIRES_HIGHLIGHT) as maplibregl.GeoJSONSource;
-    src?.setData({ type: 'FeatureCollection', features: [] });
+    (this.map.getSource(SRC_RADAR_PICK) as maplibregl.GeoJSONSource | undefined)?.setData(point ? radarPickFeature(point.lat, point.lon) : emptyFC());
+    const shown = point !== null && envLayerOn(this.currentLayers ?? {}, 'weatherRadar');
+    for (const id of ENV_LAYER_KEYS.weatherRadar) this.setVis(id, shown ? 'visible' : 'none');
+  }
+
+  /** Clic sur la carte, couche Radar active : point du profil vertical (App.ts lit la colonne). */
+  setOnRadarPointPick(handler: (lat: number, lon: number) => void): void {
+    this.onRadarPointPick = handler;
+  }
+
+  /** Couches crues ou feux réaffichées : couleurs recalculées avec l'horloge courante (S2), jamais celle du dernier rafraîchissement. */
+  private repaintEnvironmentOnShow(before: MapLayers | null | undefined, layers: MapLayers): void {
+    if (!this.map) return;
+    const was = before ?? {};
+    if (envLayerOn(layers, 'floods') && !envLayerOn(was, 'floods') && this.envFloods) {
+      const now = Date.now();
+      (this.map.getSource(SRC_FLOODS) as maplibregl.GeoJSONSource | undefined)?.setData(floodSectionFeatures(this.envFloods, now));
+      (this.map.getSource(SRC_FLOOD_STATIONS) as maplibregl.GeoJSONSource | undefined)?.setData(floodStationFeatures(this.envFloods, now));
+    }
+    if (envLayerOn(layers, 'fires') && !envLayerOn(was, 'fires') && this.envFires) {
+      this.envFiresNow = Date.now();
+      (this.map.getSource(SRC_FIRES) as maplibregl.GeoJSONSource | undefined)?.setData(fireDetectionFeatures(this.envFires, this.envFiresNow));
+      void this.paintForestDanger();
+    }
+    void this.repaintEnvironmentBOnShow(was, layers);
+  }
+
+  /** Phase B réaffichée (sécheresse, qualité de l'air, séismes, marégraphes avec la vigilance) : repeinte à l'heure courante (S2). */
+  private async repaintEnvironmentBOnShow(was: EnvBLayerState, layers: EnvBLayerState): Promise<void> {
+    const needGeo = ((layers.drought ?? false) && !(was.drought ?? false)) || ((layers.airQuality ?? false) && !(was.airQuality ?? false));
+    const geo = needGeo ? await this.getDepartmentsGeojson() : null;
+    if (!this.map) return;
+    for (const p of envBReshowPaints(was, layers, this.envB, geo, Date.now())) {
+      (this.map.getSource(p.source) as maplibregl.GeoJSONSource | undefined)?.setData(p.data);
+    }
+    this.hideEnvironmentHover();
+  }
+
+  /** Clic sur un objet d'une autre couche interactive : le point du profil radar ne se pose que sur la carte vide ou l'image radar. */
+  private clickHitsInteractiveFeature(point: maplibregl.PointLike): boolean {
+    const map = this.map;
+    if (!map) return false;
+    const ids = [
+      // Surfaces départementales exclues (comme la vigilance et la météo des forêts) : elles couvrent la carte et bloqueraient le profil radar ; séismes et marégraphes restent.
+      ...ENV_HOVER_LAYERS.filter((id) => id !== LYR_WEATHER_FILL && id !== LYR_FOREST_DANGER_FILL && id !== LYR_DROUGHT_FILL && id !== LYR_AIR_FILL), LYR_WEATHER_ICONS,
+      LYR_POINTS, LYR_CLUSTER_CIRCLE, LYR_TELECOM_PTS, LYR_MILITARY_BASES_CIRCLE, LYR_HOSPITALS,
+      ...Object.values(TRAFFIC_LAYER_KEYS).flat(), ...SOV_HOVER_LAYERS,
+    ].filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+    return ids.length > 0 && map.queryRenderedFeatures(point, { layers: ids }).length > 0;
   }
 
   /**
-   * Met en surbrillance TOUS les points d'un cluster d'incident (DBSCAN).
-   * Utilisé quand on survole une carte incident dans FiresPanel.
-   * Si points est vide, efface le highlight (comme clearFireHighlight).
+   * Image 2D Météo-France visible : couche Radar météo active. L'argument `enabled` de setRadar2dOverlay ne commande plus
+   * l'affichage (l'interrupteur « Réflectivité radar 2D » du panneau Feux est remplacé par la couche Radar météo) ; il reste
+   * l'état restauré quand une image échoue.
    */
-  highlightFireCluster(points: { lat: number; lon: number }[]): void {
+  private radar2dShown(): boolean {
+    return this.currentLayers?.weatherRadar ?? false;
+  }
+
+  /** Sommets d'écho visibles : option cochée et couche Radar ou Feux active. */
+  private echoTopsShown(enabled: boolean): boolean {
+    return enabled && ((this.currentLayers?.weatherRadar ?? false) || (this.currentLayers?.fires ?? false));
+  }
+
+  /** Pictogrammes des phénomènes de la vigilance en images SDF (teintés par la couleur de l'objet). */
+  private registerEnvironmentIcons(): void {
     if (!this.map) return;
-    const src = this.map.getSource(SRC_FIRES_HIGHLIGHT) as maplibregl.GeoJSONSource;
-    src?.setData({
-      type: 'FeatureCollection',
-      features: points.map(p => ({
-        type: 'Feature' as const,
-        geometry: { type: 'Point' as const, coordinates: [p.lon, p.lat] },
-        properties: {},
-      })),
+    const SIZE = ENV_ICON_SIZE;
+    const GLYPH = ENV_ICON_GLYPH;
+    const MARGIN = ENV_ICON_MARGIN;
+    const canvas = document.createElement('canvas');
+    canvas.width = SIZE;
+    canvas.height = SIZE;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+    for (const name of ENV_ICON_NAMES) {
+      const id = envIconImage(name);
+      if (this.map.hasImage(id)) continue;
+      const svg = fmIcon(name, { size: GLYPH }).replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ').replace('stroke="currentColor"', 'stroke="#ffffff"');
+      const img = new Image(GLYPH, GLYPH);
+      const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+      img.onload = () => {
+        ctx.clearRect(0, 0, SIZE, SIZE);
+        ctx.drawImage(img, MARGIN, MARGIN, GLYPH, GLYPH);
+        URL.revokeObjectURL(url);
+        // Vrai champ de distance (alphaToSdf) : l'alpha brut du dessin en SDF donnerait des bords crénelés.
+        const pixels = ctx.getImageData(0, 0, SIZE, SIZE);
+        const sdf = alphaToSdf(pixels.data, SIZE);
+        for (let i = 0; i < sdf.length; i += 1) {
+          pixels.data[i * 4] = 255;
+          pixels.data[i * 4 + 1] = 255;
+          pixels.data[i * 4 + 2] = 255;
+          pixels.data[i * 4 + 3] = sdf[i] ?? 0;
+        }
+        if (this.map && !this.map.hasImage(id)) this.map.addImage(id, pixels, { pixelRatio: 2, sdf: true });
+      };
+      img.src = url;
+    }
+  }
+
+  /** Ferme l'infobulle de l'environnement (souris hors de la carte, nouvelles données, couches changées). */
+  private hideEnvironmentHover(): void {
+    if (!this.envHoverShown) return;
+    this.envHoverShown = false;
+    this.envHoverPopup?.remove();
+  }
+
+  /**
+   * Couches Environnement : une infobulle au survol, celle de la couche dessinée au-dessus (préparée avec la donnée, texte échappé) ;
+   * département de la vigilance survolé mis en avant ; clic sur la carte, couche Radar active : point du profil vertical.
+   */
+  private initEnvironmentInteractions(): void {
+    const map = this.map;
+    if (!map) return;
+    map.on('mousemove', (e) => {
+      const visible = ENV_HOVER_LAYERS.filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+      const hit = topEnvHit(visible.length > 0 ? map.queryRenderedFeatures(e.point, { layers: visible }) : []);
+      const html = hit ? envTooltipHtml(hit.layer.id, hit.properties ?? {}) : null;
+      if (hit?.layer.id === LYR_WEATHER_FILL && html) this.previewWeatherDepartment(String(hit.properties?.['code'] ?? ''));
+      if (!html) {
+        this.hideEnvironmentHover();
+        return;
+      }
+      this.envHoverShown = true;
+      const popup = this.envHoverPopup
+        ?? new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12, maxWidth: '300px', className: 'dark-popup hm-hover' });
+      this.envHoverPopup = popup;
+      popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
+    });
+    map.on('mouseout', () => this.hideEnvironmentHover());
+    map.on('click', (e) => {
+      if (!this.onRadarPointPick || !(this.currentLayers?.weatherRadar ?? false)) return;
+      if (this.clickHitsInteractiveFeature(e.point)) return;
+      this.onRadarPointPick(e.lngLat.lat, e.lngLat.lng);
     });
   }
+
+  // ─── Feux : imagerie satellite (GIBS) et MTG-FRP, options de la couche ───
 
   setModisOverlayVisible(enabled: boolean): void {
     this._modisOverlayEnabled = enabled;
     this.setVis(LYR_MODIS, enabled ? 'visible' : 'none');
     if (enabled) this._modisTilesProbe ??= this.swapModisTilesToLatest();
-  }
-
-  setFirePointsVisible(enabled: boolean): void {
-    this._firePointsEnabled = enabled;
-    const visibility = enabled ? 'visible' : 'none';
-    this.setVis(LYR_FIRES_GLOW, visibility);
-    this.setVis(LYR_FIRES_POINTS, visibility);
-    this.setVis(LYR_FIRES_HIGHLIGHT, visibility);
   }
 
   private async swapModisTilesToLatest(): Promise<void> {
@@ -11096,6 +8786,7 @@ export class DeckGLMap {
   }
 
   setEchoTopsOverlay(manifest: Radar2dManifest | null, enabled: boolean): void {
+    this._echoTopsEnabled = enabled;
     if (!this.map) return;
     const url = manifest?.echoTopImageUrl;
     if (!url) {
@@ -11116,14 +8807,14 @@ export class DeckGLMap {
           id: ECHO_TOPS_LAYER_ID,
           type: 'raster',
           source: ECHO_TOPS_SOURCE_ID,
-          layout: { visibility: enabled ? 'visible' : 'none' },
+          layout: { visibility: this.echoTopsShown(enabled) ? 'visible' : 'none' },
           paint: {
             'raster-opacity': 0.62,
             'raster-resampling': 'linear',
             'raster-fade-duration': 0,
           },
         },
-        this.map.getLayer(LYR_FIRES_GLOW) ? LYR_FIRES_GLOW : undefined,
+        this.map.getLayer(LYR_WEATHER_FILL) ? LYR_WEATHER_FILL : undefined,
       );
     } else if (this._echoTopsUrl !== url) {
       const source = this.map.getSource(ECHO_TOPS_SOURCE_ID) as
@@ -11132,7 +8823,7 @@ export class DeckGLMap {
       source?.updateImage?.({ url, coordinates });
     }
     this._echoTopsUrl = url;
-    this.setVis(ECHO_TOPS_LAYER_ID, enabled ? 'visible' : 'none');
+    this.setVis(ECHO_TOPS_LAYER_ID, this.echoTopsShown(enabled) ? 'visible' : 'none');
   }
 
   async setRadar2dOverlay(manifest: Radar2dManifest | null, enabled: boolean): Promise<void> {
@@ -11155,8 +8846,8 @@ export class DeckGLMap {
     const sourceExists = this.map.getSource(RADAR_2D_SOURCE_ID) !== undefined;
     const layerExists = this.map.getLayer(RADAR_2D_LAYER_ID) !== undefined;
     if (manifest.observedAt === this.radar2dManifest?.observedAt && sourceExists && layerExists) {
-      this.setVis(RADAR_2D_LAYER_ID, enabled ? 'visible' : 'none');
       this._radar2dEnabled = enabled;
+      this.setVis(RADAR_2D_LAYER_ID, this.radar2dShown() ? 'visible' : 'none');
       return;
     }
 
@@ -11332,15 +9023,16 @@ export class DeckGLMap {
       id: RADAR_2D_LAYER_ID,
       type: 'raster',
       source: RADAR_2D_SOURCE_ID,
-      layout: { visibility: this._radar2dEnabled ? 'visible' : 'none' },
+      layout: { visibility: this.radar2dShown() ? 'visible' : 'none' },
       paint: {
         'raster-opacity': 0.58,
-        'raster-resampling': 'linear',
+        // Mosaïque de 1 km : pixels nets à tous les zooms utiles (spec § 2.3), jamais lissés.
+        'raster-resampling': 'nearest',
         'raster-fade-duration': 0,
       },
-    }, this.map.getLayer(LYR_FIRES_GLOW) ? LYR_FIRES_GLOW : undefined);
+    }, this.map.getLayer(ECHO_TOPS_LAYER_ID) ? ECHO_TOPS_LAYER_ID : this.map.getLayer(LYR_WEATHER_FILL) ? LYR_WEATHER_FILL : undefined);
     // DeckGLMap's anti-flash wrapper hides newly added layers during startup.
-    this.setVis(RADAR_2D_LAYER_ID, this._radar2dEnabled ? 'visible' : 'none');
+    this.setVis(RADAR_2D_LAYER_ID, this.radar2dShown() ? 'visible' : 'none');
   }
 
   private removeRadar2dLayer(): void {
@@ -11696,11 +9388,11 @@ export class DeckGLMap {
 
   // ─── Métropoles Layer ───
 
-  updateMetropoles(data: MetropoleConsumption[], nationalLoadMW?: number): void {
+  updateMetropoles(data: MetropoleConsumption[]): void {
     if (!this.map) return;
     if (data.length === 0) return;
 
-    const classified = classifyMetropoles(data, nationalLoadMW);
+    const classified = classifyMetropoles(data);
 
     const fc: GeoJSON.FeatureCollection = {
       type: 'FeatureCollection',
@@ -11737,13 +9429,7 @@ export class DeckGLMap {
     src?.setData(fc);
   }
 
-  // ─── Traffic Layer & Incidents ───
-
-  updateTraffic(_trafficData?: Array<{ start: [number, number], end: [number, number], level: string }>): void {
-    // Les tuiles trafic sont chargées automatiquement par MapLibre via le proxy
-    // /api/traffic/tile (clé TomTom côté serveur). Rien à faire côté client ici.
-    if (!this.map) return;
-  }
+  // ─── Événements consolidés (v2) ───
 
   setEventPoints(points: EventMapPoint[]): void {
     this.eventPoints = points;
@@ -11754,159 +9440,148 @@ export class DeckGLMap {
     this.onEventPointClick = handler;
   }
 
-  updateTrafficIncidents(incidents: TrafficIncident[]): void {
-    if (!this.map) return;
-    this.roadTrafficIncidents = incidents;
-    const features = incidents.map((incident) => ({
-      type: 'Feature' as const,
-      geometry: { type: 'Point' as const, coordinates: [incident.lon, incident.lat] as [number, number] },
-      properties: {
-        ...incident,
-        maxSeverity:
-          incident.severity === 'critical' || incident.severity === 'high' ? 2
-            : incident.severity === 'medium' ? 1
-              : 0,
-      },
-    }));
+  // ─── Souveraineté (spec 2026-10-04 souveraineté § 2 ; contrats § 5) ───
 
-    this.trafficClusterIndex = new Supercluster<Supercluster.AnyProps, Supercluster.AnyProps>({
-      radius: 140,
-      maxZoom: 14,
-      minZoom: 3,
-      map: (props) => ({ maxSeverity: props.maxSeverity ?? 0 }),
-      reduce: (accumulated, props) => {
-        accumulated.maxSeverity = Math.max(accumulated.maxSeverity ?? 0, props.maxSeverity ?? 0);
-      },
-    });
-    this.trafficClusterIndex.load(features);
-    this.syncTrafficIncidentSource();
+  /** Aéronefs militaires au-dessus de la France (français en bleu, autres en rose), hors de France en gris, urgences cerclées par niveau ; relevé en retard : gris. */
+  updateMilitaryLayer(m: MilitaryResponse | null, now: number): void {
+    this.sovMilitary = m;
+    if (!this.map) return;
+    this.paintMilitary(m, now);
+    this.hideSovereigntyHover();
   }
 
-  private syncTrafficIncidentSource(): void {
+  private paintMilitary(m: MilitaryResponse | null, now: number): void {
     if (!this.map) return;
-    const src = this.map.getSource(SRC_TRAFFIC_INCIDENTS) as maplibregl.GeoJSONSource | undefined;
-    if (!src) return;
+    (this.map.getSource(SRC_SOV_AIRCRAFT) as maplibregl.GeoJSONSource | undefined)?.setData(aircraftFeatures(m, now));
+    (this.map.getSource(SRC_SOV_AIRCRAFT_ABROAD) as maplibregl.GeoJSONSource | undefined)?.setData(abroadAircraftFeatures(m));
+    (this.map.getSource(SRC_SOV_EMERGENCIES) as maplibregl.GeoJSONSource | undefined)?.setData(militaryEmergencyFeatures(m, now));
+  }
 
-    if (!this.trafficClusterIndex || this.roadTrafficIncidents.length === 0) {
-      src.setData(emptyFC());
-      return;
-    }
+  /** Marine nationale : vus en AIS (heure en étiquette ; flux figé : gris) et ports base de référence (icône à part) ; jamais un SNLE ni un SNA (O11). */
+  updateNavyLayer(ships: readonly MilitaryShip[], frozen: boolean, now: number): void {
+    // O11 : un sous-marin n'entre jamais dans la table (surbrillance et sélection par MMSI).
+    const shown = ships.filter((s) => !isSubmarine(s));
+    this.sovNavy = { ships: shown, frozen };
+    if (!this.map) return;
+    // Surbrillance et sélection du Trafic maritime : un bâtiment au port est retrouvé par son MMSI dans cette table.
+    this.militaryShipsById.clear();
+    for (const s of shown) this.militaryShipsById.set(s.id, s);
+    (this.map.getSource(SRC_SOV_NAVY) as maplibregl.GeoJSONSource | undefined)?.setData(navyFeatures(shown, frozen, now));
+    this.updateMilitaryShipMarkerSource(SRC_MILITARY_SHIPS_HIGHLIGHT, this._highlightedMmsi);
+    this.updateMilitaryShipMarkerSource(SRC_MILITARY_SHIPS_SELECTED, this._selectedShipMmsi);
+  }
 
-    // Use the current map view if available, otherwise use a full-France bbox fallback
-    let bbox: [number, number, number, number];
-    if (this.map) {
-      const bounds = this.map.getBounds();
-      bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()];
-    } else {
-      bbox = [-5.5, 41.0, 10.0, 51.5]; // France métropolitaine
+  /** Sites de la liste interne (triangles par catégorie), sans fusion OpenStreetMap. */
+  updateDefenseSites(bases: readonly MilitaryBase[]): void {
+    if (!this.map) return;
+    this.militaryBasesById.clear();
+    for (const b of bases) this.militaryBasesById.set(b.id, b);
+    (this.map.getSource(SRC_MILITARY_BASES) as maplibregl.GeoJSONSource | undefined)?.setData(defenseSiteFeatures(bases));
+  }
+
+  /** Ouvrages OpenStreetMap (option de la couche Défense, éteinte par défaut). */
+  updateOsmWorks(file: DefenseOsmWorksFile | null): void {
+    (this.map?.getSource(SRC_SOV_OSM_WORKS) as maplibregl.GeoJSONSource | undefined)?.setData(osmWorksFeatures(file));
+  }
+
+  setOsmWorksVisible(on: boolean): void {
+    this.osmWorksVisible = on;
+    const shown = on && (this.currentLayers?.military ?? false);
+    for (const id of SOV_OPTION_LAYERS.osmWorks) this.setVis(id, shown ? 'visible' : 'none');
+  }
+
+  /** Câbles télécom du Shom et d'OpenStreetMap (tracés, atterrages) et navires lents signalés, datés. */
+  updateCablesLayer(file: SubseaCablesFile | null, watch: CablesWatchResponse | null, now: number): void {
+    this.sovCables = file;
+    this.sovCableWatch = watch;
+    if (!this.map) return;
+    (this.map.getSource(SRC_SUBMARINE_CABLES) as maplibregl.GeoJSONSource | undefined)?.setData(cableFeatures(file));
+    (this.map.getSource(SRC_SUBMARINE_CABLES_LANDINGS) as maplibregl.GeoJSONSource | undefined)?.setData(landingFeatures(file));
+    (this.map.getSource(SRC_SOV_CABLE_VESSELS) as maplibregl.GeoJSONSource | undefined)?.setData(cableAlertFeatures(watch, now));
+    this.hideSovereigntyHover();
+  }
+
+  /** Câble choisi dans le panneau Connectivité : la carte se cale sur l'emprise de son tracé ; null : rien ne bouge. */
+  highlightCable(id: string | null): void {
+    const cable = id === null ? undefined : this.sovCables?.cables.find((c) => c.id === id);
+    const points = cable ? cable.path.flat() : [];
+    if (points.length === 0) return;
+    const lons = points.map((p) => p[0]);
+    const lats = points.map((p) => p[1]);
+    this.fitBounds([Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)], 80);
+  }
+
+  /** Clic sur un objet Souveraineté : App.ts ouvre le panneau de sa couche ou la fiche d'un navire. */
+  setOnSovereigntyFeatureClick(handler: (layerId: string, props: Record<string, unknown>) => void): void {
+    this.onSovereigntyFeatureClick = handler;
+  }
+
+  /** Défense ou Connectivité réaffichée : couleurs recalculées avec l'horloge courante (S2), jamais celle du dernier rafraîchissement. */
+  private repaintSovereigntyOnShow(before: MapLayers | null | undefined, layers: MapLayers): void {
+    if (!this.map) return;
+    const was = before ?? ({} as Partial<MapLayers>);
+    const now = Date.now();
+    if (layers.military && !was.military) {
+      if (this.sovMilitary) this.paintMilitary(this.sovMilitary, now);
+      if (this.sovNavy) (this.map.getSource(SRC_SOV_NAVY) as maplibregl.GeoJSONSource | undefined)?.setData(navyFeatures(this.sovNavy.ships, this.sovNavy.frozen, now));
     }
-    const zoom = this.map ? Math.round(this.map.getZoom()) : 6;
-    const clusters = this.trafficClusterIndex.getClusters(bbox, zoom);
-    src.setData({
-      type: 'FeatureCollection',
-      features: clusters,
+    if (layers.subseaCables && !was.subseaCables && this.sovCableWatch) {
+      (this.map.getSource(SRC_SOV_CABLE_VESSELS) as maplibregl.GeoJSONSource | undefined)?.setData(cableAlertFeatures(this.sovCableWatch, now));
+    }
+  }
+
+  private hideSovereigntyHover(): void {
+    if (!this.sovHoverShown) return;
+    this.sovHoverShown = false;
+    this.sovHoverPopup?.remove();
+  }
+
+  /** Couches Souveraineté : une infobulle préparée avec la donnée (couche du dessus, texte échappé) ; clic transmis à App.ts. */
+  private initSovereigntyInteractions(): void {
+    const map = this.map;
+    if (!map) return;
+    const visibleLayers = (): string[] => SOV_HOVER_LAYERS.filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+    map.on('mousemove', (e) => {
+      const layers = visibleLayers();
+      const hit = topSovHit(layers.length > 0 ? map.queryRenderedFeatures(e.point, { layers }) : []);
+      const html = hit ? sovTooltipHtml(hit.layer.id, hit.properties ?? {}) : null;
+      if (!html) {
+        this.hideSovereigntyHover();
+        return;
+      }
+      this.sovHoverShown = true;
+      const popup = this.sovHoverPopup
+        ?? new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12, maxWidth: '300px', className: 'dark-popup hm-hover' });
+      this.sovHoverPopup = popup;
+      popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
     });
-
-    this.refreshAisLayers();
+    map.on('mouseout', () => this.hideSovereigntyHover());
+    map.on('click', (e) => {
+      if (!this.onSovereigntyFeatureClick) return;
+      const layers = visibleLayers();
+      const hit = topSovHit(layers.length > 0 ? map.queryRenderedFeatures(e.point, { layers }) : []);
+      if (hit) this.onSovereigntyFeatureClick(hit.layer.id, { ...(hit.properties ?? {}) });
+    });
   }
 
   // ─── Military Layers ───
 
-  updateMilitaryZones(zones: RestrictedZone[]): void {
-    if (!this.map) return;
-    const src = this.map.getSource(SRC_MILITARY_ZONES) as maplibregl.GeoJSONSource | undefined;
-    if (!src) return;
-    src.setData({
-      type: 'FeatureCollection',
-      features: zones.filter(z => z.active).map((z) => ({
-        type: 'Feature' as const,
-        geometry: z.geometry,
-        properties: { name: z.name, type: z.type },
-      })),
-    });
+  /** Mailles GNSS jaunes et orange du jour UTC précédent (hors de France en gris, dégradation générale du jour en contour seul). */
+  updateGnssLayer(g: GnssResponse | null, now: number): void {
+    (this.map?.getSource(SRC_SOV_GNSS) as maplibregl.GeoJSONSource | undefined)?.setData(gnssCellFeatures(g, now));
+    this.hideSovereigntyHover();
   }
 
-  updateMilitaryBases(bases: MilitaryBase[]): void {
-    if (!this.map) return;
-    // Populate lookup table
-    this.militaryBasesById.clear();
-    for (const b of bases) this.militaryBasesById.set(b.id, b);
-
-    const src = this.map.getSource(SRC_MILITARY_BASES) as maplibregl.GeoJSONSource | undefined;
-    if (!src) return;
-    src.setData({
-      type: 'FeatureCollection',
-      features: bases.map((b) => ({
-        type: 'Feature' as const,
-        geometry: { type: 'Point', coordinates: b.coordinates },
-        properties: {
-          id: b.id,
-          name: b.name,
-          type: b.type,
-          description: b.description || '',
-        },
-      })),
-    });
+  /** Zones drones DGAC du fichier publié (lu une fois par session par App.ts). */
+  updateDroneZones(file: DroneZonesFile | null): void {
+    (this.map?.getSource(SRC_SOV_DRONES) as maplibregl.GeoJSONSource | undefined)?.setData(droneZoneFeatures(file));
   }
 
-  updateMilitaryFlights(flights: MilitaryFlight[]): void {
-    if (!this.map) return;
-    // Populate lookup table
-    this.militaryFlightsById.clear();
-    for (const f of flights) this.militaryFlightsById.set(f.id, f);
-
-    this._renderMilitaryFlightsGeoJSON(flights);
-
-    // Update flight trails layer (only on real API fetch, not on interpolation ticks)
-    this.updateMilitaryFlightTrails(flights);
-
-    this._startFlightInterpolation();
-  }
-
-  private _renderMilitaryFlightsGeoJSON(flights: MilitaryFlight[]): void {
-    if (!this.map) return;
-    const src = this.map.getSource(SRC_MILITARY_FLIGHTS) as maplibregl.GeoJSONSource | undefined;
-    if (!src) return;
-    src.setData({
-      type: 'FeatureCollection',
-      features: flights.map((f) => ({
-        type: 'Feature' as const,
-        geometry: { type: 'Point', coordinates: [f.longitude, f.latitude] },
-        properties: {
-          id: f.id,
-          callsign: f.callsign,
-          country: f.country,
-          altitude: f.altitude,
-          velocity: f.velocity,
-          speed: f.speed,
-          heading: f.heading,
-          hexCode: f.hexCode || f.id,
-          aircraftType: f.aircraftType || 'unknown',
-          aircraftModel: f.aircraftModel || '',
-          operator: f.operator || 'unknown',
-          operatorLabel: f.operatorLabel || '',
-          confidence: f.confidence || 'low',
-          squawk: f.squawk || '',
-          squawkSeverity: f.squawkAlert?.severity || '',
-          squawkDescription: f.squawkAlert?.description || '',
-          isAllied: f.isAllied || false,
-          branch: f.branch || '',
-        },
-      })),
-    });
-  }
-
-  private _startFlightInterpolation(): void {
-    if (this._flightInterpolTick) return; // already running
-    this._flightInterpolTick = setInterval(() => {
-      if (!this.map || this.militaryFlightsById.size === 0) return;
-      const now = Date.now() / 1000;
-      const interpolated = Array.from(this.militaryFlightsById.values()).map(f => {
-        const pos = interpolateFlightPosition(f, now);
-        return { ...f, latitude: pos.latitude, longitude: pos.longitude };
-      });
-      this._renderMilitaryFlightsGeoJSON(interpolated);
-    }, 1_000);
+  /** Option « zones drones » de la couche Défense, éteinte par défaut : visible seulement couche active. */
+  setDroneZonesVisible(on: boolean): void {
+    this.droneZonesVisible = on;
+    const shown = on && (this.currentLayers?.military ?? false);
+    for (const id of SOV_OPTION_LAYERS.droneZones) this.setVis(id, shown ? 'visible' : 'none');
   }
 
   updateAirTraffic(flights: AirTrafficFlight[]): void {
@@ -11917,7 +9592,7 @@ export class DeckGLMap {
     for (const flight of flights) this.airTrafficFlightsById.set(flight.id, flight);
 
     // OSINT: Filter out military flights for the civil traffic layer
-    // Military flights are displayed via the DÉFENSE layer (military-flights.ts → /v2/mil)
+    // Aéronefs militaires : couche Défense (adsb.lol, collecte du serveur, deckgl/sovereignty-map.ts)
     const newCivil = flights.filter(f => {
       const cs = f.callsign?.trim() ?? '';
       return !identifyFrenchCallsign(cs) && !identifyAlliedCallsign(cs);
@@ -11943,12 +9618,14 @@ export class DeckGLMap {
 
     this.civilAirTrafficFlights = newCivil;
 
-    // Start tween animation (only if we had data before — no tween on first load)
-    if (hadPreviousData) {
+    // Animation des positions (12 s) : couche active, zoom 7 ou plus, jamais au premier relevé. Sous le zoom 7, les icônes restent
+    // dessinées et leurs positions sont posées d'un coup : une seule reconstruction des couches par relevé, aucune par image.
+    if (shouldTweenAirPositions(hadPreviousData, this.airTrafficVisible, this.viewState.zoom)) {
       this.startCivilAirTween();
+    } else {
+      this.stopCivilAirTween();
     }
 
-    this.refreshCivilAirTrafficSource();
     this.refreshAisLayers();
   }
 
@@ -11998,8 +9675,6 @@ export class DeckGLMap {
         this.civilAirAnimFrame = requestAnimationFrame(tick);
       } else {
         this.civilAirAnimFrame = null;
-        // Final: update MapLibre GeoJSON source (labels) with settled positions
-        this.refreshCivilAirTrafficSource();
       }
     };
 
@@ -12017,47 +9692,8 @@ export class DeckGLMap {
     this.civilAirTweenProgress = 1;
   }
 
-  private updateMilitaryFlightTrails(flights: MilitaryFlight[]): void {
-    if (!this.map) return;
-    const src = this.map.getSource(SRC_MILITARY_FLIGHT_TRAILS) as maplibregl.GeoJSONSource | undefined;
-    if (!src) return;
-
-    // Only include flights with trails of 2+ points
-    const trailFeatures = flights
-      .filter(f => f.trail && f.trail.length >= 2)
-      .map(f => ({
-        type: 'Feature' as const,
-        geometry: {
-          type: 'LineString' as const,
-          coordinates: f.trail!,
-        },
-        properties: {
-          id: f.id,
-          aircraftType: f.aircraftType || 'unknown',
-          operator: f.operator || 'unknown',
-        },
-      }));
-
-    src.setData({
-      type: 'FeatureCollection',
-      features: trailFeatures,
-    });
-  }
-
-  setOnMilitaryFlightClick(handler: (flight: MilitaryFlight, x: number, y: number) => void): void {
-    this.onMilitaryFlightClick = handler;
-  }
-
   setOnMilitaryBaseClick(handler: (base: MilitaryBase, x: number, y: number) => void): void {
     this.onMilitaryBaseClick = handler;
-  }
-
-  setOnMilitaryShipClick(handler: (ship: { id: string; name: string; type: string; role: string; mmsi?: string; lat: number; lon: number; speed?: number; heading?: number; port?: string; isLive?: boolean }, x: number, y: number) => void): void {
-    this.onMilitaryShipClick = handler;
-  }
-
-  setOnMaritimeShipClick(cb: (ship: MilitaryShip, x: number, y: number) => void): void {
-    this._onMaritimeShipClick = cb;
   }
 
   setHighlightedShip(mmsi: string | null): void {
@@ -12099,9 +9735,7 @@ export class DeckGLMap {
       src.setData({ type: 'FeatureCollection', features: [] });
       return;
     }
-    const ship = Array.from(this.militaryShipsById.values()).find((s) => s.mmsi === mmsi)
-      ?? this.globalTrafficData.find((s) => s.mmsi === mmsi)
-      ?? getAllLiveTraffic().find((s) => s.mmsi === mmsi);
+    const ship = findShipByKey<{ id: string; mmsi?: string; lat: number; lon: number }>(mmsi, Array.from(this.militaryShipsById.values()), this.globalTrafficData, getAllLiveTraffic());
     if (!ship) {
       src.setData({ type: 'FeatureCollection', features: [] });
       return;
@@ -12155,35 +9789,6 @@ export class DeckGLMap {
       new maplibregl.LngLat(Number(ship.lon), Number(ship.lat)),
       this.getAisTooltipHtml(ship)
     );
-  }
-
-  updateMilitaryShips(ships: Array<{ id: string; name: string; type: string; role: string; mmsi?: string; lat: number; lon: number; speed?: number; heading?: number; port?: string; isLive?: boolean }>): void {
-    if (!this.map) return;
-    const src = this.map.getSource(SRC_MILITARY_SHIPS) as maplibregl.GeoJSONSource | undefined;
-    if (!src) return;
-    // Update lookup table
-    this.militaryShipsById.clear();
-    for (const s of ships) this.militaryShipsById.set(s.id, s);
-    src.setData({
-      type: 'FeatureCollection',
-      features: ships.map(s => ({
-        type: 'Feature' as const,
-        geometry: { type: 'Point', coordinates: [s.lon, s.lat] },
-        properties: {
-          id: s.id,
-          name: s.name,
-          type: s.type,
-          role: s.role ?? '',
-          speed: s.speed ?? 0,
-          heading: s.heading ?? 0,
-          mmsi: s.mmsi ?? '',
-          port: s.port ?? '',
-          isLive: s.isLive ?? false,
-        },
-      })),
-    });
-    this.updateMilitaryShipMarkerSource(SRC_MILITARY_SHIPS_HIGHLIGHT, this._highlightedMmsi);
-    this.updateMilitaryShipMarkerSource(SRC_MILITARY_SHIPS_SELECTED, this._selectedShipMmsi);
   }
 
   /**
@@ -12303,21 +9908,19 @@ export class DeckGLMap {
     return 'other';
   }
 
-  /**
-   * Returns human-readable ship type label from AIS type code.
-   */
-  private getShipTypeLabel(shipType: number): string {
-    if (shipType >= 70 && shipType <= 79) return 'Cargo';
-    if (shipType >= 80 && shipType <= 89) return 'Pétrolier';
-    if (shipType >= 60 && shipType <= 69) return 'Passagers';
-    if (shipType === 30) return 'Pêche';
-    if (shipType === 35) return 'Militaire';
-    if (shipType >= 31 && shipType <= 32) return 'Remorqueur';
-    if (shipType >= 50 && shipType <= 59) return 'Plaisance';
-    if (shipType >= 40 && shipType <= 49) return 'Haute vitesse';
-    if (shipType === 52) return 'Remorqueur';
-    if (shipType === 53) return 'Drague';
-    return shipType > 0 ? `Type ${shipType}` : 'Inconnu';
+  /** Icône du type d'un navire, par catégorie (classement de traffic-legend.ts). */
+  private getShipTypeIcon(category: VesselCategory): IconName {
+    switch (category) {
+      case 'petrolier': return 'fuel';
+      case 'cargo': return 'package';
+      case 'peche': return 'fish';
+      case 'remorqueur': return 'anchor';
+      case 'plaisance': return 'waves';
+      case 'grande-vitesse': return 'zap';
+      case 'service': return 'life-buoy';
+      case 'militaire': return 'shield';
+      default: return 'ship';
+    }
   }
 
 
@@ -12340,29 +9943,12 @@ export class DeckGLMap {
     el.style.pointerEvents = 'none';
   }
 
-  private clearSubseaCableHoverState(): void {
-    if (!this.map) return;
-    if (this.hoveredSubseaCableId != null) {
-      this.map.setFeatureState({ source: SRC_SUBMARINE_CABLES, id: this.hoveredSubseaCableId }, { hover: false });
-      this.hoveredSubseaCableId = null;
-    }
-    if (this.hoveredSubseaLandingId != null) {
-      this.map.setFeatureState({ source: SRC_SUBMARINE_CABLES_LANDINGS, id: this.hoveredSubseaLandingId }, { hover: false });
-      this.hoveredSubseaLandingId = null;
-    }
-  }
-
-  private hideSubseaCableTooltip(): void {
-    this.clearSubseaCableHoverState();
-    this.militaryTooltip?.remove();
-    this.militaryTooltip = null;
-  }
-
   // ─── Layer Visibility Toggle ───
 
   private currentLayers?: MapLayers;
 
   setLayerVisibility(layers: MapLayers): void {
+    const before = this.currentLayers;
     this.currentLayers = layers;
     const eventsVisible = layers.events === true;
     if (eventsVisible !== this.eventPointsVisible) {
@@ -12373,24 +9959,22 @@ export class DeckGLMap {
     this.updatePulseMarkerPositions();
     if (!this.map) return;
 
-    if (layers.weatherRadar) {
-      void this.ensureWeatherRadarLayer();
-    }
     if (layers.gasNetwork) {
       void this.ensureGasNetworkSources();
     }
 
     // Perf audit §6 item 2: replay any department-choropleth update that was
-    // skipped (§ updateWeather/updateHealth/updateISNR/updateOutages above)
+    // skipped (vigilance, updateISNR/updateOutages below ; health layers through their dirty flags)
     // while its layer was hidden, now that it's visible again.
-    if (layers.environmental && this._pendingWeatherAlerts !== null) {
-      const alerts = this._pendingWeatherAlerts;
-      void this.updateWeather(alerts);
+    if (layers.environmental && this.envVigilancePending && this.envVigilance) {
+      // Rejeu à l'heure courante (S2) : une carte devenue en retard pendant que la couche était masquée repasse en gris.
+      const { v, echeance } = this.envVigilance;
+      void this.updateVigilanceLayer(v, echeance, Date.now());
     }
-    if ((layers.health || layers.healthApl || layers.healthOscour || layers.hospitals) && this._pendingHealthArgs) {
-      const { regions, healthFeatures, departments } = this._pendingHealthArgs;
-      void this.updateHealth(regions, healthFeatures, departments);
-    }
+    this.repaintEnvironmentOnShow(before, layers);
+    this.repaintSovereigntyOnShow(before, layers);
+    if (layers.health && this.healthRegionsDirty) void this.renderHealthRegions();
+    if ((layers.healthOscour || layers.healthApl) && this.healthDeptsDirty) void this.renderHealthDepartments();
     if (layers.stability && this._pendingIsnrScores !== null) {
       const scores = this._pendingIsnrScores;
       void this.updateISNR(scores);
@@ -12419,34 +10003,33 @@ export class DeckGLMap {
     this.setVis(LYR_INTERCONN_CHEVRONS, vis(layers.powerGrid));
     this.setVis(LYR_INTERCONN_LINE, vis(layers.powerGrid));
     this.setVis(LYR_INTERCONN_LABEL, vis(layers.powerGrid));
-    for (const region of WEATHER_RADAR_REGIONS) {
-      this.setVis(getWeatherRadarLayerId(region.id), vis(layers.weatherRadar ?? false));
-    }
-    this.setVis(LYR_WEATHER_FILL, vis(layers.environmental));
-    this.setVis(LYR_WEATHER_LINE, vis(layers.environmental));
-    this.setVis(LYR_WEATHER_LINE_YELLOW, vis(layers.environmental));
-    this.setVis(LYR_WEATHER_LINE_ORANGE, vis(layers.environmental));
-    this.setVis(LYR_WEATHER_LINE_RED, vis(layers.environmental));
-    this.setVis(LYR_WEATHER_LINE_VIOLET, vis(layers.environmental));
-    this.setVis(LYR_WEATHER_ICONS, vis(layers.environmental));
-    // Core health uses ISS fill, shown when health is enabled
-    this.setVis(LYR_HEALTH_FILL, vis(layers.health ?? false));
+    // Environnement (spec 2026-10-04 § 2) : couches de deckgl/environment-map.ts, par couche.
+    for (const id of ENV_LAYER_KEYS.environmental) this.setVis(id, vis(envLayerOn(layers, 'environmental')));
+    // Santé (spec 2026-10-03 § 3) : un jeu de couches par panneau.
+    this.setVis(LYR_HEALTH_ALERT_FILL, vis(layers.health ?? false));
+    this.setVis(LYR_HEALTH_ALERT_LINE, vis(layers.health ?? false));
+    this.setVis(LYR_HEALTH_URG_FILL, vis(layers.healthOscour ?? false));
+    this.setVis(LYR_HEALTH_URG_LINE, vis(layers.healthOscour ?? false));
     this.setVis(LYR_HEALTH_APL_FILL, vis(layers.healthApl ?? false));
     this.setVis(LYR_HEALTH_APL_LINE, vis(layers.healthApl ?? false));
-    this.setVis(LYR_HEALTH_LINE, vis(layers.health ?? false));
-    this.setVis(LYR_HEALTH_OSCOUR_CIRCLES, vis(layers.healthOscour ?? false));
-    this.setVis(LYR_HEALTH_MARKERS, vis(layers.health ?? false));
-    this.setVis(LYR_HOSPITALS_CHU, vis(layers.hospitals ?? false));
-    this.setVis(LYR_HOSPITALS_CH, vis(layers.hospitals ?? false));
-    this.setVis(LYR_HOSPITALS_LABEL, vis(layers.hospitals ?? false));
-    this.setVis(LYR_TOPAGE_VIS, vis(layers.environmental));
-    this.setVis(LYR_FLOODS_RAW, vis(layers.environmental));
-    this.setVis(LYR_FLOODS, vis(layers.environmental));
-    this.setVis(LYR_FLOODS_HIGHLIGHT, vis(layers.environmental && this._highlightedFloodSegmentId !== null));
-    this.setVis(LYR_MODIS, vis((layers.fires ?? false) && this._modisOverlayEnabled));
-    this.setVis(LYR_FIRES_GLOW, vis((layers.fires ?? false) && this._firePointsEnabled));
-    this.setVis(LYR_FIRES_POINTS, vis((layers.fires ?? false) && this._firePointsEnabled));
-    this.setVis(LYR_FIRES_HIGHLIGHT, vis((layers.fires ?? false) && this._firePointsEnabled));
+    this.setVis(LYR_HOSPITALS, vis(layers.hospitals ?? false));
+    // Couches changées : l'infobulle de survol se recalcule au prochain mouvement ; Hôpitaux éteinte : sa fiche se ferme.
+    this.hideHealthHover();
+    if (!layers.hospitals) this.hospitalPopup?.remove();
+    const floodsOn = envLayerOn(layers, 'floods');
+    for (const id of ENV_LAYER_KEYS.floods) this.setVis(id, vis(floodsOn));
+    this.setVis(LYR_FLOODS_HIGHLIGHT, vis(floodsOn && this._highlightedFloodSegmentId !== null));
+    const firesOn = envLayerOn(layers, 'fires');
+    this.setVis(LYR_MODIS, vis(firesOn && this._modisOverlayEnabled));
+    for (const id of ENV_LAYER_KEYS.fires) this.setVis(id, vis(firesOn));
+    for (const id of FOREST_DANGER_LAYERS) this.setVis(id, vis(firesOn && this._forestDangerFill));
+    for (const id of ENV_LAYER_KEYS.weatherRadar) this.setVis(id, vis(envLayerOn(layers, 'weatherRadar') && this.radarPick !== null));
+    for (const id of ENV_LAYER_KEYS.drought) this.setVis(id, vis(envLayerOn(layers, 'drought')));
+    for (const id of ENV_LAYER_KEYS.airQuality) this.setVis(id, vis(envLayerOn(layers, 'airQuality')));
+    for (const id of ENV_LAYER_KEYS.earthquakes) this.setVis(id, vis(envLayerOn(layers, 'earthquakes')));
+    this.setVis(RADAR_2D_LAYER_ID, vis(this.radar2dShown()));
+    this.setVis(ECHO_TOPS_LAYER_ID, vis(this.echoTopsShown(this._echoTopsEnabled)));
+    this.hideEnvironmentHover();
     this.setVis(LYR_ISNR_FILL, vis(layers.stability ?? false));
     this.setVis(LYR_ISNR_LINE, vis(layers.stability ?? false));
     this.setVis(LYR_ENERGY_INFRA_VITAL_HALO, 'none');
@@ -12526,19 +10109,13 @@ export class DeckGLMap {
     this.setVis(LYR_FUEL_TENSION_FILL, oilVis);
     this.setVis(LYR_FUEL_TENSION_LINE, oilVis);
     this.setVis(LYR_TRAFFIC, vis(layers.trafficRoad));
-    const roadVis = vis(layers.trafficRoad);
-    this.setVis(LYR_TRAFFIC_CLUSTER, roadVis);
-    this.setVis(LYR_TRAFFIC_CLUSTER_COUNT, roadVis);
-    this.setVis(LYR_TRAFFIC_INCIDENTS, roadVis);
-    // Sync cluster data whenever the layer becomes visible (may not have been triggered by moveend)
-    if (layers.trafficRoad) this.syncTrafficIncidentSource();
+    // Trafics (spec 2026-10-03 trafics § 3) : couches de deckgl/traffic-map.ts, par couche.
+    for (const id of TRAFFIC_LAYER_KEYS.trafficRoad) this.setVis(id, vis(layers.trafficRoad));
+    for (const id of TRAFFIC_LAYER_KEYS.trafficAir) this.setVis(id, vis(layers.trafficAir));
+    for (const id of TRAFFIC_LAYER_KEYS.trafficMaritime) this.setVis(id, vis(layers.trafficMaritime));
     const railVis = vis(layers.trafficRail ?? false);
-    this.setVis(LYR_RAIL_ARC_GLOW,      railVis);
-    this.setVis(LYR_RAIL_ARC,           railVis);
-    this.setVis(LYR_RAIL_ARC_HIT,       railVis);
-    this.setVis(LYR_RAIL_STATION_GLOW,  railVis);
-    this.setVis(LYR_RAIL_STATION,       railVis);
-    this.setVis(LYR_RAIL_STATION_LABEL, railVis);
+    for (const id of TRAFFIC_LAYER_KEYS.trafficRail) this.setVis(id, railVis);
+    this.hideTrafficHover();
     this.setVis(LYR_TRAIN_ROUTE,        railVis);
     this.setVis(LYR_TRAIN_STATIONS,     railVis);
     this.setVis(LYR_TRAIN_STATION_LABELS, railVis);
@@ -12546,31 +10123,23 @@ export class DeckGLMap {
     this.setVis(LYR_METRO_LOAD_CIRCLE, vis(layers.metroLoad));
     this.setVis(LYR_METRO_LOAD_LABEL, vis(layers.metroLoad));
 
-    // Military layers
-    this.setVis(LYR_MILITARY_ZONES_FILL, vis(layers.military));
-    this.setVis(LYR_MILITARY_ZONES_LINE, vis(layers.military));
-    this.setVis(LYR_MILITARY_BASES_CIRCLE, vis(layers.military));
-    this.setVis(LYR_MILITARY_BASES_LABEL, vis(layers.military));
-    this.setVis(LYR_MILITARY_FLIGHT_TRAILS, vis(layers.military));
-    this.setVis(LYR_MILITARY_FLIGHTS, vis(layers.military));
-    this.setVis(LYR_MILITARY_FLIGHTS_LABEL, vis(layers.military));
-    this.setVis(LYR_AIR_TRAFFIC_LABEL, vis(layers.trafficAir));
-    this.setVis(LYR_MILITARY_SHIPS, vis(layers.military));
-    this.setVis(`${LYR_MILITARY_SHIPS}-label`, vis(layers.military));
+    // Military layers : couches Souveraineté de deckgl/sovereignty-map.ts (aéronefs, urgences, Marine nationale, sites, zones) ; option des
+    // ouvrages OpenStreetMap éteinte par défaut. Sélection et surbrillance d'un bâtiment : partagées avec le Trafic maritime.
+    for (const id of SOV_LAYER_KEYS.military) this.setVis(id, vis(layers.military));
+    for (const id of SOV_OPTION_LAYERS.osmWorks) this.setVis(id, vis(layers.military && this.osmWorksVisible));
+    for (const id of SOV_OPTION_LAYERS.droneZones) this.setVis(id, vis(layers.military && this.droneZonesVisible));
     this.setVis(LYR_MILITARY_SHIPS_HIGHLIGHT, vis(layers.trafficMaritime || layers.military));
     this.setVis(LYR_MILITARY_SHIPS_SELECTED, vis(layers.trafficMaritime || layers.military));
     // AIS traffic layer (Deck.gl IconLayer)
     this.globalTrafficVisible = layers.trafficMaritime;
-    this.roadTrafficVisible = false;
     this.airTrafficVisible = layers.trafficAir;
-    this.dayNightVisible = layers.dayNight ?? false;
+    if (!this.airTrafficVisible) this.stopCivilAirTween();
     this.refreshAisLayers();
-    // Submarine cables
-    this.setVis(LYR_SUBMARINE_CABLES, vis(layers.subseaCables));
-    this.setVis(LYR_SUBMARINE_CABLES_GLOW, vis(layers.subseaCables));
-    this.setVis(LYR_SUBMARINE_CABLES_CORE, vis(layers.subseaCables));
-    this.setVis(LYR_SUBMARINE_CABLES_HITAREA, vis(layers.subseaCables));
-    this.setVis(LYR_SUBMARINE_CABLES_LANDING, vis(layers.subseaCables));
+    // Connectivité : câbles du Shom et d'OpenStreetMap, atterrages, navires signalés ; halo animé seulement couche visible (audit 30).
+    for (const id of SOV_LAYER_KEYS.subseaCables) this.setVis(id, vis(layers.subseaCables));
+    if (layers.subseaCables) this.startSubseaPulseAnimation();
+    else this.stopSubseaPulseAnimation();
+    this.hideSovereigntyHover();
     this.setVis(LYR_POWER_FILL, vis(layers.outagesElec));
     this.setVis(LYR_POWER_LINE, vis(layers.outagesElec));
     this.setVis(LYR_CITIZEN_FILL, vis(layers.outagesElec));
@@ -12598,19 +10167,6 @@ export class DeckGLMap {
     this.setVis(LYR_DC_HIGHLIGHT, vis(layers.outagesCloud));
     this.setVis(LYR_IXP_CIRCLE, vis(layers.outagesCloud));
     this.setVis(LYR_IXP_HIGHLIGHT, vis(layers.outagesCloud));
-    // LYR_TERMINATOR masqué : le Deck.gl DayNightLayer gère toute la visualisation jour/nuit
-    this.setVis(LYR_TERMINATOR, 'none');
-
-    // Threat map — couche Deck.gl ScatterplotLayer
-    const threatMapEnabled = layers.threatMap ?? false;
-    if (this.threatEventsVisible !== threatMapEnabled) {
-      this.threatEventsVisible = threatMapEnabled;
-      this.scheduleOverlayUpdate();
-    }
-  }
-
-  async refreshWeatherRadar(force = true): Promise<void> {
-    await this.ensureWeatherRadarLayer(force);
   }
 
   // ═══════════════════════════════════════════════════════════════
@@ -12626,117 +10182,6 @@ export class DeckGLMap {
       }
     } catch {
       // Silently ignore - layer may not exist yet during initialization
-    }
-  }
-
-  private async ensureWeatherRadarLayer(force = false): Promise<void> {
-    if (!this.map) return;
-    const now = Date.now();
-    if (!force && this.weatherRadarTileTemplate && (now - this.weatherRadarFetchedAt) < 10 * 60_000) {
-      for (const region of WEATHER_RADAR_REGIONS) {
-        const sourceId = getWeatherRadarSourceId(region.id);
-        const layerId = getWeatherRadarLayerId(region.id);
-        if (!this.map.getSource(sourceId)) {
-          this.map.addSource(sourceId, {
-            type: 'raster',
-            tiles: [this.weatherRadarTileTemplate],
-            tileSize: 256,
-            attribution: 'RainViewer',
-            bounds: region.bounds,
-            maxzoom: WEATHER_RADAR_MAX_ZOOM,
-          });
-        }
-        if (!this.map.getLayer(layerId)) {
-          this.map.addLayer({
-            id: layerId,
-            type: 'raster',
-            source: sourceId,
-            maxzoom: WEATHER_RADAR_MAX_ZOOM,
-            paint: {
-              'raster-opacity': 0.58,
-              'raster-resampling': 'linear',
-              'raster-fade-duration': 0,
-            },
-          }, this.map.getLayer(LYR_WEATHER_FILL) ? LYR_WEATHER_FILL : undefined);
-        }
-      }
-      return;
-    }
-
-    try {
-      const response = await fetch('https://api.rainviewer.com/public/weather-maps.json');
-      if (!response.ok) {
-        if (!this.weatherRadarFrame) this.publishWeatherRadar(null, 'error');
-        return;
-      }
-      const payload = await response.json() as {
-        host?: string;
-        radar?: { past?: Array<{ time?: number; path?: string }>; nowcast?: Array<{ time?: number; path?: string }> };
-      };
-      const host = typeof payload.host === 'string' && payload.host.length > 0
-        ? payload.host
-        : 'https://tilecache.rainviewer.com';
-      const tagged = (list: Array<{ time?: number; path?: string }> | undefined, kind: 'past' | 'nowcast') =>
-        (Array.isArray(list) ? list : []).map((frame) => ({ ...frame, kind }));
-      const frames = [
-        ...tagged(payload.radar?.past, 'past'),
-        ...tagged(payload.radar?.nowcast, 'nowcast'),
-      ].filter((frame): frame is { time?: number; path: string; kind: 'past' | 'nowcast' } =>
-        typeof frame?.path === 'string' && frame.path.length > 0);
-      const latest = frames.at(-1);
-      if (!latest) {
-        if (!this.weatherRadarFrame) this.publishWeatherRadar(null, 'error');
-        return;
-      }
-
-      const tileTemplate = `${host}${latest.path}/256/{z}/{x}/{y}/2/1_1.png`;
-      this.weatherRadarTileTemplate = tileTemplate;
-      this.weatherRadarFetchedAt = now;
-      this.publishWeatherRadar(
-        typeof latest.time === 'number' && Number.isFinite(latest.time)
-          ? { time: latest.time * 1000, kind: latest.kind }
-          : null,
-        typeof latest.time === 'number' && Number.isFinite(latest.time) ? 'ready' : 'error',
-      );
-
-      for (const region of WEATHER_RADAR_REGIONS) {
-        const sourceId = getWeatherRadarSourceId(region.id);
-        const layerId = getWeatherRadarLayerId(region.id);
-        const existingSource = this.map.getSource(sourceId) as maplibregl.RasterTileSource | undefined;
-        if (!existingSource) {
-          this.map.addSource(sourceId, {
-            type: 'raster',
-            tiles: [tileTemplate],
-            tileSize: 256,
-            attribution: 'RainViewer',
-            bounds: region.bounds,
-            maxzoom: WEATHER_RADAR_MAX_ZOOM,
-          });
-        } else {
-          (existingSource as { setTiles?: (tiles: string[]) => void }).setTiles?.([tileTemplate]);
-        }
-
-        if (!this.map.getLayer(layerId)) {
-          this.map.addLayer({
-            id: layerId,
-            type: 'raster',
-            source: sourceId,
-            maxzoom: WEATHER_RADAR_MAX_ZOOM,
-            paint: {
-              'raster-opacity': 0.58,
-              'raster-resampling': 'linear',
-              'raster-fade-duration': 0,
-            },
-          }, this.map.getLayer(LYR_WEATHER_FILL) ? LYR_WEATHER_FILL : undefined);
-        }
-      }
-
-      for (const region of WEATHER_RADAR_REGIONS) {
-        this.setVis(getWeatherRadarLayerId(region.id), this.currentLayers?.weatherRadar ? 'visible' : 'none');
-      }
-    } catch (error) {
-      console.warn('[DeckGLMap] Failed to refresh weather radar tiles', error);
-      if (!this.weatherRadarFrame) this.publishWeatherRadar(null, 'error');
     }
   }
 
@@ -12823,6 +10268,8 @@ export class DeckGLMap {
     this.gasFlowPopup?.remove();
     this.dromEnergyHoverPopup?.remove();
     this.dromEnergyHoverPopup = null;
+    this.trafficHoverPopup?.remove();
+    this.trafficJamPopup?.remove();
 
     // Cleanup interconnection animation
     this.stopInterconnAnimation();
@@ -12832,9 +10279,6 @@ export class DeckGLMap {
 
     // Cleanup civil air traffic tween animation
     this.stopCivilAirTween();
-
-    // Cleanup flight interpolation interval
-    if (this._flightInterpolTick) { clearInterval(this._flightInterpolTick); this._flightInterpolTick = null; }
     this.stopSentinelSceneBlink();
 
     this.revokeRadar2dObjectUrl(this.radar2dObjectUrl);

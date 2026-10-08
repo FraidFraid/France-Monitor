@@ -40,54 +40,6 @@ export interface ThreatClassification {
   source: 'keyword' | 'ml' | 'llm';
 }
 
-export interface ThreatEvent {
-  id: string;
-  type: 'leak' | 'ransomware' | 'exposure' | 'vulnerability';
-  organizationName: string;
-  domain?: string;
-  logoUrl?: string;
-  countryCode?: string;
-  countryName?: string;
-  flagEmoji?: string;
-  ransomwareGroup?: string;
-  sourceLabel?: string;
-  location: {
-    label: string;
-    coordinates: [number, number];
-    precision: 'hq' | 'city' | 'region' | 'country' | 'unknown';
-    address?: string;
-    source?: string;
-  };
-  severity: 'critical' | 'high' | 'medium' | 'low';
-  confidence: 'high' | 'medium' | 'low';
-  sector?: string;
-  organizationProfile?: {
-    legalName?: string;
-    siren?: string;
-    siret?: string;
-    category?: string;
-    employeeRange?: string;
-    activityCode?: string;
-    activitySection?: string;
-    createdAt?: string;
-    openEstablishments?: number;
-  };
-  date: string;
-  summary: string;
-  compromisedData?: string[];
-  metrics?: {
-    records?: number;
-    sources?: number;
-    affectedAssets?: number;
-  };
-  dataClasses?: string[];
-  sources: {
-    name: string;
-    url?: string;
-    observedAt: string;
-  }[];
-}
-
 // ═══ Feeds & News ═══
 
 export interface Feed {
@@ -147,8 +99,14 @@ export interface MapLayers {
   hospitals: boolean;
   environmentGroup: boolean;
   environmental: boolean;
+  /** Crues : tronçons Vigicrues et stations Hub'Eau (spec 2026-10-04 environnement § 2.2), séparée de la vigilance météo. */
+  floods: boolean;
   weatherRadar: boolean;
   fires: boolean;
+  /** Environnement, phase B (spec 2026-10-04 § 3) : sécheresse (VigiEau), qualité de l'air (Atmo France), séismes (BCSF-RéNaSS). */
+  drought: boolean;
+  airQuality: boolean;
+  earthquakes: boolean;
   traffic: boolean;
   trafficRoad: boolean;
   trafficMaritime: boolean;
@@ -165,11 +123,9 @@ export interface MapLayers {
   outagesCloud: boolean;
   stability: boolean;
   cyber: boolean;
-  threatMap: boolean;  // Flag interne synchronisé avec cyber pour la cartographie des incidents.
   gasNetwork: boolean;
   oilNetwork: boolean;
   nuclearFleet: boolean;
-  dayNight?: boolean;
   elus?: boolean;
 }
 
@@ -289,6 +245,39 @@ export interface EcowattResponse {
   mixes: Record<string, EnergyMix>;
   national: EnergyMix;
   interconnections: InterconnectionFlow[];
+  /** Réseau national éCO2mix ; null si indisponible. */
+  grid: GridSnapshot | null;
+}
+
+/** Production par filière, MW ; null si la source ne l'a pas publiée. */
+export interface GridMix {
+  nuclear: number | null;
+  hydro: number | null;
+  wind: number | null;
+  solar: number | null;
+  /** gaz + fioul + charbon */
+  thermal: number | null;
+  bio: number | null;
+}
+/** Détail de l'hydraulique éCO2mix (MW) ; pompage tel que publié (≤ 0 quand les STEP pompent). */
+export interface GridHydroDetail { runOfRiver: number | null; lakes: number | null; stepTurbine: number | null; pumping: number | null }
+/** Éolien terrestre et en mer (MW). */
+export interface GridWindDetail { onshore: number | null; offshore: number | null }
+export interface GridPoint { at: number; consumptionMw: number | null; forecastMw: number | null; windMw: number | null }
+/** Réseau national éCO2mix (ODRÉ, pas de 15 min) au dernier quart d'heure mesuré. */
+export interface GridSnapshot {
+  /** Heure de la donnée (ms epoch). */
+  dataTime: number;
+  consumptionMw: number | null;
+  forecastMw: number | null;
+  co2gPerKwh: number | null;
+  /** Solde physique, positif = import (convention éCO2mix). */
+  netImportMw: number | null;
+  mix: GridMix;
+  hydroDetail: GridHydroDetail;
+  windDetail: GridWindDetail;
+  /** Journée de Paris en cours, ordre croissant ; réalisé null pour les quarts d'heure à venir. */
+  day: GridPoint[];
 }
 
 export interface EnergyMix {
@@ -304,7 +293,7 @@ export interface EnergyMix {
 
 // ═══ Weather (Météo-France) ═══
 
-export type MeteoVigilanceLevel = 'green' | 'yellow' | 'orange' | 'red' | 'violet';
+export type MeteoVigilanceLevel = 'green' | 'yellow' | 'orange' | 'red';
 
 export type MeteoRiskType =
   | 'wind'
@@ -342,22 +331,6 @@ export const RISK_LABELS: Record<string, string> = {
 // ═══ Floods (Vigicrues) ═══
 
 export type FloodVigilanceLevel = 'green' | 'yellow' | 'orange' | 'red';
-export type FloodDataSource = 'live' | 'mock';
-export type FloodGeometryFidelity = 'raw' | 'matched' | 'fallback';
-
-export interface FloodSegment {
-  id: string;
-  name: string;
-  level: FloodVigilanceLevel;
-  dataSource: FloodDataSource;
-  geometryFidelity: FloodGeometryFidelity;
-  matchConfidence: number;
-  rawVertexCount: number;
-  displayVertexCount: number;
-  geometry: LineString | MultiLineString;
-  rawGeometry: LineString | MultiLineString;
-  displayGeometry: LineString | MultiLineString;
-}
 
 // ═══ Copernicus / Satellite ═══
 
@@ -430,11 +403,6 @@ export interface FireObservationFeedState {
   readonly fetchedAt: number | null;
   readonly source: string;
   readonly detail?: string;
-}
-
-export interface FireObservationRuntimeState {
-  readonly mtgFrp: FireObservationFeedState;
-  readonly radar2d: FireObservationFeedState;
 }
 
 export interface ActiveFire {
@@ -567,77 +535,6 @@ export interface WaterLevel {
   trend: 'rising' | 'stable' | 'falling';
 }
 
-// ═══ Transport (SNCF) ═══
-
-export interface TrainStop {
-  name: string;
-  time?: string; // Format HH:MM
-  plannedTime?: string; // Scheduled HH:MM
-  updatedTime?: string; // Realtime HH:MM
-  delayMinutes?: number;
-  coordinates?: [number, number]; // [lon, lat]
-}
-
-export interface TransportDisruption {
-  id: string;
-  type: 'delay' | 'cancellation' | 'works' | 'other';
-  trainNumber?: string;
-  line: string;
-  description: string;
-  causeLabel?: string;
-  effectLabel?: string;
-  impactLabel?: string;
-  sourceMessages?: string[];
-  severity: ThreatLevel;
-  startDate: Date;
-  endDate?: Date;
-  departure?: TrainStop;
-  arrival?: TrainStop;
-  impactedStopPoints?: TrainStop[];
-  affectedStops?: string[];
-  totalDelayMinutes?: number;
-  coordinates?: [number, number]; // Center point for map highlight [lon, lat]
-  routeGeometry?: LineString;
-  rawRouteGeometry?: LineString;
-  geometryFidelity?: 'matched' | 'raw' | 'fallback' | 'synthetic';
-}
-
-export interface RailNetworkData {
-  /** LineString features: disrupted arc between departure and arrival */
-  arcs: GeoJSON.FeatureCollection<GeoJSON.LineString, {
-    id: string;
-    severity: string;
-    type: string;
-    line: string;
-    trainNumber?: string;
-    description: string;
-    causeLabel?: string;
-    effectLabel?: string;
-    impactLabel?: string;
-    departureName?: string;
-    arrivalName?: string;
-    departurePlannedTime?: string;
-    departureUpdatedTime?: string;
-    arrivalPlannedTime?: string;
-    arrivalUpdatedTime?: string;
-    totalDelayMinutes?: number;
-    affectedStopsCount?: number;
-    affectedStopsJson?: string;
-    geometryFidelity?: string;
-  }>;
-  /** Point features: unique departure/arrival stations, worst severity wins */
-  stations: GeoJSON.FeatureCollection<GeoJSON.Point, {
-    name: string;
-    severity: string;
-    count: number;
-    linesJson?: string;
-    trainNumbersJson?: string;
-    affectedStopsJson?: string;
-    disruptionIdsJson?: string;
-    disruptionSummariesJson?: string;
-  }>;
-}
-
 // ═══ Map & Geo ═══
 
 export interface MapViewState {
@@ -727,6 +624,8 @@ export interface HydraulicBackboneAsset {
     confidence: number;
     measuredStationCount: number;
     sourceDetail: string | null;
+    /** Cause principale du signal (« crue vigilance orange », « débit en hausse »…) ; null sans cause identifiée. */
+    cause?: string | null;
   };
   selection_reason?: string;
 }
@@ -798,6 +697,10 @@ export interface NuclearUnavailability {
   endDate: Date | null;
   type: 'PLANNED' | 'UNPLANNED' | 'FORCE_MAJEURE';
   updatedAt: Date;
+  /** Version du message RTE (la plus haute fait foi) */
+  version?: number;
+  /** ACTIVE | INACTIVE | DISMISSED (RTE) */
+  eventStatus?: string;
 }
 
 /** Signal REMIT filtré pour le nucléaire (Layer 2 — IIP RSS) */
@@ -830,9 +733,14 @@ export interface UnconfirmedRemitSignal {
 /** Score de tension nucléaire (Layer 3) */
 export interface NuclearStressScore {
   installedCapacityMW: number;
+  /** Toutes indisponibilités comprises, maintenance programmée incluse. */
   availableCapacityMW: number;
-  stressRatio: number;  // (installed - available) / installed
-  level: 'NORMAL' | 'TENSION' | 'CRITIQUE'; // <10% / 10–25% / >25%
+  /** Puissance perdue en arrêts imprévus seuls (fortuits, force majeure), une fois par tranche. */
+  unplannedLostMW: number;
+  /** unplannedLostMW / installé : la maintenance programmée n'y entre pas. */
+  stressRatio: number;
+  /** Paliers du panneau Parc nucléaire : TENSION dès 3 GW perdus en arrêts imprévus, CRITIQUE dès 6 GW. */
+  level: 'NORMAL' | 'TENSION' | 'CRITIQUE';
   gridTensionRisk: boolean;
   updatedAt: Date;
   freshness: 'quasi-realtime' | 'stale' | 'unavailable';
@@ -848,6 +756,10 @@ export interface NuclearState {
   remitAvailable: boolean;
   remitStatus: 'ok' | 'empty' | 'html' | 'loading' | 'unavailable';
   fetchedAt: Date;
+  /** Heure de lecture des indisponibilités RTE (serveur ou cache), distincte de la construction de l'état */
+  rteFetchedAt?: Date;
+  /** Heure de lecture du flux REMIT (IIP) */
+  remitFetchedAt?: Date;
 }
 
 // ═══ Military (Def & Sec) ═══
@@ -873,58 +785,6 @@ export type FrenchAircraftType =
   | 'liaison'
   | 'unknown';
 
-export interface MilitaryFlight {
-  id: string; // ICAO24
-  callsign: string;
-  country: string;
-  longitude: number;
-  latitude: number;
-  altitude: number;  // feet
-  velocity: number;  // m/s (raw) kept for compat
-  speed: number;     // knots
-  heading: number;
-  lastContact: number;
-  isMilitary?: boolean;
-  // Enriched classification fields
-  hexCode?: string;
-  aircraftType?: FrenchAircraftType;
-  aircraftModel?: string;  // e.g. "Rafale", "A400M"
-  operator?: FrenchMilitaryOperator;
-  operatorLabel?: string;  // human-readable label
-  confidence?: 'high' | 'medium' | 'low';
-  squawk?: string;
-  registration?: string;   // immatriculation (e.g. F-ZBMH, 5890)
-  // Trail (position history for path rendering)
-  trail?: [number, number][];  // [[lon, lat], ...] - last N positions
-  // Squawk alert (emergency codes)
-  squawkAlert?: {
-    code: string;
-    type: 'emergency' | 'military' | 'special';
-    severity: 'critical' | 'high' | 'info';
-    description: string;
-  };
-  // Allied aircraft info
-  isAllied?: boolean;
-  branch?: string;  // e.g. "USAF", "RAF", "Luftwaffe"
-  // Navigation accuracy — NAC-P (0–11), from ADS-B DO-260B §2.2.3.2.7.2
-  // 11 = <3m, 0 = unknown/no GPS fix. Only available from adsb.fi, not proxy.
-  nacP?: number;
-}
-
-export type MilitaryFlightsMode = 'live' | 'stale-cache' | 'empty';
-
-export interface MilitaryFlightsSnapshot {
-  source: string;
-  fetchedAt: number;
-  ttlMs: number;
-  flights: MilitaryFlight[];
-  sourceCounts: Record<string, number>;
-  errors: Array<{ source: string; message: string }>;
-  mode: MilitaryFlightsMode;
-  isMock: boolean;
-  isStale: boolean;
-}
-
 export interface AirTrafficFlight {
   id: string;
   callsign: string;
@@ -943,14 +803,13 @@ export interface AirTrafficFlight {
   eta?: number;
   lastSeen?: number;
   onGround?: boolean;
+  /** Code transpondeur (squawk) tel qu'OpenSky le publie ; 7500, 7600 et 7700 sont des urgences. */
+  squawk?: string;
   source: string;
   anomalies?: AirTrafficAnomaly[];
   nearbyAirportIata?: string;
   nearbyAirportName?: string;
   nearbyAirportDistanceKm?: number;
-  airportScore?: number;
-  airportSeverity?: ThreatLevel;
-  airportSignals?: string[];
 }
 
 export interface AirTrafficAnomaly {
@@ -961,40 +820,15 @@ export interface AirTrafficAnomaly {
   airportIata?: string;
 }
 
-export interface AirTrafficAirportScore {
-  iata: string;
-  icao: string;
-  name: string;
-  city: string;
-  score: number;
-  severity: ThreatLevel;
-  activeFlights: number;
-  terminalFlights: number;
-  anomalyCount: number;
-  signals: string[];
-  reasons: string[];
-}
-
 export interface MilitaryBase {
   id: string;
   name: string;
   type: 'air' | 'navy' | 'army' | 'joint' | 'fortification' | 'other';
   coordinates: [number, number]; // [lng, lat]
-  description?: string;
   /** Sous-type enrichi (aeronavale, commandement, fortification, etc.) */
   subtype?: string;
   /** Tier de visibilité (1=zoom 3+, 2=zoom 5+, 3=zoom 8+) */
   tier?: number;
-}
-
-export interface RestrictedZone {
-  id: string;
-  name: string;
-  type: 'ZIT' | 'ZRT' | 'ZIA';
-  geometry: GeoJSON.Polygon;
-  active: boolean;
-  minAltitude?: number;
-  maxAltitude?: number;
 }
 
 // ═══ Finance (Bourse) ═══
@@ -1028,6 +862,8 @@ export interface TelecomOutage {
   voiceStatus: 'OK' | 'HS' | 'Degraded';
   dataStatus: 'OK' | 'HS' | 'Degraded';
   reason: string;
+  /** Début de la panne (ISO UTC), issu du champ ARCEP `debut` (heure de Paris) ; null si absent ou illisible. */
+  since?: string | null;
   coordinates: [number, number]; // [lon, lat]
 }
 
@@ -1038,237 +874,6 @@ export interface PowerOutage {
   totalPDL: number;          // Total PDL (estimation)
   eventCause: string;        // "Tempête Caetano", "Vents violents", "Neige"
   trend: 'stable' | 'improving' | 'worsening';
-}
-
-// ═══ Santé / Épidémiologie — ISS (Indice de Stress Sanitaire) ═══
-
-/** Niveaux ISS — nomenclature inspirée du système de vigilance français */
-export type ISSLevel = 1 | 2 | 3 | 4;
-
-export interface ISSLevelDef {
-  level: ISSLevel;
-  range: [number, number];  // [min, max] inclusive
-  name: string;              // nom officiel court
-  label: string;             // libellé descriptif
-  color: string;             // couleur primaire hex
-  fillColor: string;         // couleur remplissage carte (avec alpha)
-  lineColor: string;         // couleur contour carte
-  dotLevel: ThreatLevel;     // niveau de pastille (fmStatusDot) — remplace l'ancien champ `icon` (emoji)
-}
-
-export const ISS_LEVELS: readonly ISSLevelDef[] = [
-  { level: 1, range: [0, 24], name: 'Sérénité', label: 'Activité sanitaire normale', color: '#2ECC71', fillColor: 'rgba(46,204,113,0.25)', lineColor: '#2ECC71', dotLevel: 'low' },
-  { level: 2, range: [25, 49], name: 'Vigilance', label: 'Surveillance renforcée', color: '#F1C40F', fillColor: 'rgba(241,196,15,0.25)', lineColor: '#F1C40F', dotLevel: 'medium' },
-  { level: 3, range: [50, 74], name: 'Alerte', label: 'Tension modérée (accès restreint)', color: '#E67E22', fillColor: 'rgba(230,126,34,0.30)', lineColor: '#E67E22', dotLevel: 'high' },
-  { level: 4, range: [75, 100], name: 'Crise', label: 'Pression élevée, plan blanc', color: '#E74C3C', fillColor: 'rgba(231,76,60,0.35)', lineColor: '#E74C3C', dotLevel: 'critical' },
-] as const;
-
-export type APLCategory = 'desert' | 'fragile' | 'bon' | 'surdote' | 'indisponible';
-
-export interface APLLevelDef {
-  id: string;
-  category: APLCategory;
-  label: string;
-  color: string;
-}
-
-/** 
- * SINGLE SOURCE OF TRUTH for APL classes (Déserts médicaux).
- * Used by map renderer (DeckGLMap) and the map legend (App) 
- * to ensure exact synchronization of colors and logical order.
- */
-export const APL_LEVELS: readonly APLLevelDef[] = [
-  { id: 'apl-4', category: 'surdote', label: 'Très bonne', color: '#00BCD4' }, // turquoise / cyan
-  { id: 'apl-3', category: 'bon', label: 'Moyenne', color: '#1E88E5' }, // bleu moyen
-  { id: 'apl-2', category: 'fragile', label: 'Mauvaise (fragile)', color: '#9575CD' }, // violet clair
-  { id: 'apl-1', category: 'desert', label: 'Désert', color: '#311B92' }, // violet profond très saturé
-] as const;
-
-export interface OscourLevelDef {
-  id: string;
-  threshold: number;
-  label: string;
-  color: string;
-  radius: number;
-}
-
-/** 
- * SINGLE SOURCE OF TRUTH for OSCOUR classes.
- * Used by map renderer (DeckGLMap) and the map legend (App) 
- */
-export const OSCOUR_LEVELS: readonly OscourLevelDef[] = [
-  {
-    id: 'osc-1',
-    threshold: 0,
-    label: 'Normal / Pas de hausse',
-    color: '#BDC3C7',      // gris neutre
-    radius: 4,
-  },
-  {
-    id: 'osc-2',
-    threshold: 0.05,
-    label: 'Hausse modérée (+5%)',
-    color: '#F39C12',      // orange
-    radius: 8,
-  },
-  {
-    id: 'osc-3',
-    threshold: 0.20,
-    label: 'Forte hausse (+20%)',
-    color: '#FF5252',      // rouge "normal", bien lisible
-    radius: 14,
-  },
-  {
-    id: 'osc-4',
-    threshold: 0.50,
-    label: 'Situation extrême (+50%)',
-    color: '#7C4DFF',      // violet électrique très contrasté
-    radius: 24,
-  },
-] as const;
-
-
-/** Sources de données santé clairement identifiées */
-export type HealthDataSource =
-  | 'spf-epid'         // Santé Publique France — indicateurs épidémiologiques
-  | 'drees'            // DREES — hospitalisations, urgences
-  | 'sentinelles'      // Réseau Sentinelles — surveillance syndromique
-  | 'ansm'             // ANSM — pénuries médicaments
-  | 'sos-medecins'     // SOS Médecins — actes de médecine de ville
-  | 'oscour'           // OSCOUR — passages aux urgences
-  | 'composite';       // Agrégat multi-sources
-
-/** Métrique départementale — granularité fine pour usage professionnel */
-export interface HealthDepartmentMetric {
-  depCode: string;               // code INSEE département (01, 2A, 75, 971, …)
-  depName: string;
-  regionCode: string;            // code INSEE région parent
-  regionName: string;
-
-  // ── Indicateurs épidémiologiques ──
-  incidenceRate: number;         // taux d'incidence pour 100k (composite)
-  hospitalizations: number;      // hospitalisations en cours (toutes pathologies couvertes)
-  reanimation: number;           // soins critiques / réanimation
-  emergencyVisits: number;       // passages urgences (OSCOUR / SOS Médecins)
-  positivityRate: number;        // taux de positivité (%), si disponible
-
-  // ── Détail par source ──
-  spfIncidence: number | null;           // SPF : incidence 100k
-  spfHospitalizations: number | null;    // SPF : hospitalisations
-  spfReanimation: number | null;         // SPF : réanimation
-  dreesUrgences: number | null;          // DREES : passages urgences
-  sentinellesIncidence: number | null;   // Sentinelles : incidence syndromique 100k
-
-  // ── Axes enrichis: OSCOUR/SOS + désert médical ──
-  topMotifs: Array<{
-    code: string;
-    label: string;
-    trendPct: number;
-    trendLabel: string;
-    network: 'OSCOUR' | 'SOS_MED';
-  }>;
-  aplIndex: number | null; // Accessibilité Potentielle Localisée (normalisée autour de 1)
-  aplCategory: APLCategory;
-
-  // ── Scores ──
-  iss: number;                   // Indice de Stress Sanitaire 0-100
-  issLevel: ISSLevel;            // Niveau ISS (1-5)
-  trend: 'up' | 'down' | 'stable';
-  source: HealthDataSource;
-  updatedAt: Date;
-}
-
-/** Métrique régionale — agrégation des départements */
-export interface HealthRegionMetric {
-  regionCode: string;            // code INSEE région (11, 24, ...)
-  regionName: string;
-  incidenceRate: number;         // pour 100k, composite
-  spfIncidenceRate: number | null;
-  sentinellesIncidenceRate: number | null;
-  hospitalizations: number;      // valeur brute
-  spfHospitalizations: number | null;
-  reanimation: number;
-  positivityRate: number;        // %
-  iss: number;                   // ISS 0-100 (anciennement healthStressIndex)
-  issLevel: ISSLevel;
-  /** @deprecated use `iss` */ healthStressIndex: number;
-  trend: 'up' | 'down' | 'stable';
-  source: HealthDataSource;
-  updatedAt: Date;
-  /** Nombre de départements avec données dans cette région */
-  departmentCount: number;
-}
-
-export interface HealthFeatures {
-  generatedAt: Date;
-  /** ISS national — moyenne pondérée par population */
-  nationalISS: number;
-  /** @deprecated use `nationalISS` */ nationalHealthStressIndex: number;
-  nationalISSLevel: ISSLevel;
-  regionalCount: number;
-  departmentalCount: number;
-  worseningRegions: number;
-  improvingRegions: number;
-  worseningDepartments: number;
-  improvingDepartments: number;
-  topRiskRegionCodes: string[];
-  topRiskDepartmentCodes: string[];
-
-  sourceStatus: {
-    santePubliqueFrance: 'ok' | 'stale' | 'error';
-    drees: 'ok' | 'stale' | 'error';
-    sentinelles: 'ok' | 'stale' | 'error';
-    drugShortages: 'ok' | 'stale' | 'error';
-    oscourSos: 'ok' | 'stale' | 'error';
-    apl: 'ok' | 'stale' | 'error';
-  };
-
-  // ── Sentinelles ──
-  sentinellesIndicatorPoints: number;
-  sentinellesIndicators: Array<{
-    code: string;      // grippe, diarrhee, varicelle
-    label: string;
-    nationalIncidence: number;
-    trend?: number;    // difference with previous week
-  }>;
-
-  epidemicAlerts: Array<{
-    id: string;
-    pathogen: string;
-    severity: 'critical' | 'high' | 'warning';
-    title: string;
-    summary: string;
-    locations: string[];
-    date: string;
-    sourceLabel: string;
-    sourceUrl?: string | null;
-  }>;
-
-  // ── ANSM Pharmacovigilance ──
-  drugShortagesCount: number;
-  drugShortagesByStatus: {
-    rupture: number;
-    tension: number;
-    normalisation: number;
-    unknown: number;
-  };
-  drugShortagesLastUpdate: Date | null;
-  drugShortagesUrl: string;
-  drugShortagesItems: Array<{
-    drugName: string;
-    status: 'tension' | 'rupture' | 'normalisation' | 'unknown';
-  }>;
-
-  epidemiologyAlerts: AlerteEpidemique[];
-  epidemiologyFreshness: {
-    checkedAt: Date | null;
-    staleAfterDays: number;
-    refreshAfterHours: number;
-    obsoleteCount: number;
-  };
-  sentinellesLastWeekAvailable: string | null;
-  sentinellesNormalizedIndicators: SentinellesIndicator[];
-  hantavirusEvents: HantavirusEvent[];
 }
 
 // ═══ Data Freshness & Watchdog ═══
@@ -1306,6 +911,11 @@ export interface DataSourceStatus {
   detail?: string;
   /** Vérité intrinsèque de la donnée (indépendante du statut de fetch) */
   freshness?: DataFreshness;
+  /**
+   * Période réelle d'une donnée hebdomadaire ou annuelle (« S39 · publiée le 30/09 », « millésime 2024 ») : affichée à la
+   * place de l'âge relatif et du libellé « temps réel » (spec 2026-10-03 S1).
+   */
+  period?: string;
   // ── Watchdog metrics (optionnels, rétrocompatibles) ──
   lastSuccess?: Date | null;
   lastError?: Date | null;
@@ -1396,210 +1006,14 @@ export interface ISNRData {
   timestamp: Date;
 }
 
-// ═══ Cybersécurité Nationale ═══
-
-export type CyberSeverity = 'low' | 'medium' | 'high' | 'critical';
-
-export type CyberSource = 'CERT-FR' | 'RansomwareLive' | 'NVD';
-
-export interface CyberSourceStatus {
-  source: CyberSource;
-  isUp: boolean;
-  lastSync: string;
-  error?: string;
-}
-
-export interface CyberAlert {
-  id: string;
-  title: string;
-  severity: CyberSeverity;
-  url: string;
-  date: string;
-  source: CyberSource;
-}
-
-export interface CyberRansomwareVictim {
-  sector: string;
-  count: number;
-}
-
-export interface CyberCVE {
-  id: string;
-  score: number;       // CVSS score 0-10
-  target: string;      // affected software/vendor
-  description?: string;
-  url: string;
-}
-
-export interface CyberState {
-  meta: {
-    globalScore: number;  // 0-100 (baromètre)
-    trend: 'rising' | 'stable' | 'falling';
-    sources: CyberSourceStatus[];
-    lastUpdate: Date;
-  };
-  alerts: {
-    count30d: number;
-    latest: CyberAlert[];
-  };
-  ransomware: {
-    total30d: number;
-    topSectors: CyberRansomwareVictim[];
-  };
-  vulnerabilities: {
-    criticalCount: number;
-    topCVEs: CyberCVE[];
-  };
-}
-
-// ═══ OSINT Epidemio / Hantavirus ═══
-
-export type TerritoireNiveau =
-  | 'nation'
-  | 'region'
-  | 'departement'
-  | 'outre_mer';
-
-export type TerritoireNiveauEtendu =
-  | 'pays'
-  | 'region'
-  | 'departement'
-  | 'etablissement'
-  | 'navire';
-
-export type StatutEpidemique =
-  | 'niveau_de_base'
-  | 'pre-epidemie'
-  | 'epidemie'
-  | 'post-epidemie';
-
-export type PathologieEpidemique =
-  | 'grippe'
-  | 'bronchiolite'
-  | 'covid'
-  | 'ira'
-  | 'varicelle'
-  | 'diarrhee_aigue'
-  | 'hantavirus'
-  | string;
-
-export interface AlerteEpidemique {
-  source: 'SPF_Odisse' | 'SPF_DataGouv' | 'Sentinelles';
-  path: string;
-  dataset_id?: string | null;
-  territoire_niveau: TerritoireNiveau;
-  territoire_code: string;
-  semaine_epid: string;
-  date_maj_source: string;
-  last_checked_at: string;
-  statut: StatutEpidemique;
-  pathologie: PathologieEpidemique;
-  valeur: number;
-  unite: string;
-  obsolete: boolean;
-  meta?: Record<string, string | number | boolean | null>;
-}
-
-export interface SentinellesIndicator {
-  pathologie: 'IRA' | 'Grippe' | 'Varicelle' | 'Diarrhee aigue' | string;
-  semaine_epid: string;
-  territoire_niveau: 'nation' | 'region' | 'departement';
-  territoire_code: string;
-  incidence: number;
-  ic_low?: number;
-  ic_high?: number;
-  date_maj_source: string;
-}
-
-export type HantavirusEvidenceLevel =
-  | 'official_confirmed'
-  | 'official_monitoring'
-  | 'official_historical'
-  | 'media_confirmed'
-  | 'media_unverified'
-  | 'inferred'
-  | 'manual_seed';
-
-export type HantavirusSignalKind =
-  | 'confirmed_case'
-  | 'probable_case'
-  | 'contact_case'
-  | 'hospital_monitoring'
-  | 'historical_risk_zone'
-  | 'ship_cluster'
-  | 'policy_measure'
-  | 'research_response';
-
-export type HantavirusValidationStatus =
-  | 'auto_detected'
-  | 'needs_review'
-  | 'validated'
-  | 'rejected'
-  | 'superseded';
-
-export type HantavirusSource =
-  | 'DGS-URGENT'
-  | 'DGS-AUTO'
-  | 'SPF'
-  | 'ANRS'
-  | 'WHO'
-  | 'ECDC'
-  | 'INFO_GOUV'
-  | 'ARS'
-  | 'Reuters'
-  | 'AFP'
-  | 'MediaValidated'
-  | 'LocalMedia';
-
-export interface HantavirusContactGeo {
-  publicLocationLabel?: string;
-  locationType: 'residence' | 'hospital' | 'transit' | 'unknown';
-  precision: 'city' | 'department' | 'region' | 'country';
-  publicationStatus: 'official' | 'media' | 'not_public';
-  privacyMode: 'show_city' | 'aggregate_department' | 'hide';
-}
-
-export interface HantavirusEvent {
-  id: string;
-  source: HantavirusSource;
-  sourceLabel?: string;
-  sourceRank: number;
-  type: 'cluster' | 'zone_historique';
-  kind: HantavirusSignalKind;
-  evidenceLevel: HantavirusEvidenceLevel;
-  validationStatus: HantavirusValidationStatus;
-  activeContext: 'andes_active_cluster' | 'historical_france_context';
-  souche?: 'Andes' | 'autre';
-  territoire_niveau: TerritoireNiveauEtendu;
-  territoire_code: string;
-  label: string;
-  date_debut: string;
-  date_fin?: string;
-  severite: 'info' | 'surveillance' | 'alerte' | 'crise';
-  commentaires?: string;
-  contactGeo?: HantavirusContactGeo;
-  clusterId?: 'MV_HONDIUS' | 'none';
-  reportedCounts?: {
-    confirmed?: number | null;
-    probable?: number | null;
-    contacts?: number | null;
-    deaths?: number | null;
-  };
-  lastCheckedAt?: string;
-  supersededBy?: string;
-  url_sources: string[];
-}
-
-export interface HeatmapPoint {
-  eventId: string;
-  lat: number;
-  lon: number;
-  weight: number;
-  type: 'cluster' | 'zone_historique';
-  label: string;
-}
-
 // ═══ France Intelligence Card ═══
+
+/** Sources Environnement lues pour le score et la tuile « Météo » (spec 2026-10-04 environnement S3) : false si indisponible. */
+export interface EnvironmentAvailability {
+  vigilance: boolean;
+  floods: boolean;
+  fires: boolean;
+}
 
 export interface FranceCountrySignals {
   // News
@@ -1607,9 +1021,33 @@ export interface FranceCountrySignals {
   highNews: number;
   topNewsCount: number;      // min(newsItems.length, 20) — used in information axis formula
   // Météo / crues / feux (severe levels only)
-  meteoAlerts: number;       // orange | red | violet
+  meteoAlerts: number;       // orange | red
   floodAlerts: number;       // orange | red
-  fireDetections: number;
+  fireDetections: number;    // détections en France non récurrentes (spec 2026-10-04 environnement § 2.7)
+  /** Départements en vigilance rouge (échéance du jour). Absent : 0. */
+  meteoRedAlerts?: number;
+  /** Tronçons Vigicrues en rouge. Absent : 0. */
+  floodRedAlerts?: number;
+  /** Foyers confirmés (au moins deux passages) non récurrents, en France. Absent : 0. */
+  fireFoyersConfirmed?: number;
+  /** Parmi eux, ceux d'au moins 10 MW cumulés (orange ou rouge sur la pastille Feux, arbitrage 14 du contrôleur). Absent : 0. */
+  fireFoyersOrange?: number;
+  /** Parmi eux, les foyers majeurs (isMajorFoyer : au moins 100 MW cumulés, confiance non faible). Absent : 0. */
+  fireFoyersMajor?: number;
+  /** Détections isolées (foyers non confirmés) non récurrentes, en France : part « Feux » de la tuile au jaune (arbitrage 14). Absent : 0. */
+  fireFoyersIsolated?: number;
+  /**
+   * Source Environnement indisponible (jamais lue, en échec sans donnée, sans carte ou sans relevé ; collecte des feux de plus de
+   * 2 jours) : chiffres « n.d. » et point gris, jamais un « 0 » vert (S3). Le score, lui, voit des listes vides. Absent : lue.
+   */
+  vigilanceUnavailable?: boolean;
+  floodsUnavailable?: boolean;
+  firesUnavailable?: boolean;
+  /**
+   * Niveau de la pastille Feux (firesLevel : foyers et météo des forêts du jour), repris par la part « Feux » de la tuile « Météo »
+   * (arbitrage 14) ; 'nd' : FIRMS et météo des forêts indisponibles. Affichage seulement. Absent : niveau des seuls foyers.
+   */
+  firesPillLevel?: 'vert' | 'jaune' | 'orange' | 'rouge' | 'nd';
   // Transport
   railDisruptions: number;
   railSevere: number;
@@ -1623,9 +1061,38 @@ export interface FranceCountrySignals {
   // Defense / intelligence
   militaryFlights: number;
   maritimeTrafficFrance: number;
+  /** Navires lents confirmés sur un câble, AIS frais : navires distincts, pas des alertes (arbitrage FX2). */
   defenseAlerts: number;
   defenseHigh: number;
   jammingSignals: number;
+  /*
+   * Souveraineté (spec 2026-10-04 souveraineté § 2.4, tâche A16), affichage seulement (tuiles, fiche ; S3) : la formule ne lit aucun de
+   * ces champs. Absents : comportement d'avant (niveaux des tuiles par leurs anciens seuils).
+   */
+  /** Aéronefs du bloc d'adresse OACI France parmi ceux visibles en ADS-B au-dessus de la métropole. */
+  militaryFrench?: number;
+  /** Source indisponible (jamais lue ou en retard) : « n.d. » et point gris, jamais un « 0 » vert. */
+  militaryUnavailable?: boolean;
+  cablesUnavailable?: boolean;
+  cyberUnavailable?: boolean;
+  /**
+   * Mailles à précision GNSS dégradée non mesurées (phase A : aucune grille ; phase B : grille jamais complète, en retard ou en
+   * dégradation générale) : « GNSS non évalué », jamais « GNSS 0 ».
+   */
+  gnssUnavailable?: boolean;
+  /** Compte de mailles positif sur une fenêtre partielle : heures de mesure (« mesure partielle de N h ») ; absent sur 24 h. */
+  gnssPartialHours?: number;
+  /** Catalogue KEV de la CISA indisponible ou en retard (26 h) : vulnérabilités citées et avis KEV « non évalués », jamais « 0 ». */
+  kevUnavailable?: boolean;
+  /** Alertes CERT-FR au statut « en cours » repris du CERT-FR (O1 ; gros chiffre du panneau Vigilance cyber, tuile « Cyber », fiche). */
+  cyberOpenAlerts?: number;
+  /** Avis du CERT-FR citant une vulnérabilité ajoutée au catalogue KEV depuis moins de 7 jours (O6), dits à part des alertes au brief. */
+  cyberKevAdvisories?: number;
+  /** Pastilles des panneaux Défense et Vigilance cyber, mêmes fonctions (defenseLevel, cyberLevel). */
+  defensePillLevel?: 'vert' | 'jaune' | 'orange' | 'rouge' | 'nd';
+  cyberPillLevel?: 'vert' | 'jaune' | 'orange' | 'rouge' | 'nd';
+  /** Pastille Défense relevée par la seule grille GNSS (mailles à précision dégradée) : la tuile « Militaire » le dit (« GNSS à vérifier »). */
+  defensePillFromGnss?: boolean;
   // Finance (weak signal)
   marketStress: number;
 }
@@ -1644,7 +1111,8 @@ export interface FranceBriefContext {
   topHeadlines: string[];              // max 6 normalized titles
   ecowattSignal: string | null;
   meteoMaxLevel: string | null;
-  cyberScore: number;
+  /** Pression cyber consolidée (0 à 100) ; null : CERT-FR indisponible ou en retard, dit « non évaluée » au modèle (jamais « faible »). */
+  cyberScore: number | null;
   isnrComponents: { social: number; security: number; infra: number };
   energySummary: FranceIntelEnergySummary | null;
 }
@@ -1801,7 +1269,11 @@ export interface FranceCountrySnapshot {
   situations: DetectedSituation[];     // Situation engine output
   // Raw data for the renderer (mirrors old FranceIntelData fields)
   stability: ISNRData;
-  cyber: CyberState;
+  /**
+   * Pression cyber consolidée (0 à 100), même fonction que le pilier Sécurité (contrats § 6) ; historique de situation. null : CERT-FR
+   * indisponible ou en retard (jamais un 0 calme).
+   */
+  cyberScore: number | null;
   meteo: MeteoAlert[];
   topNews: NewsItem[];
   energy: FranceIntelEnergySummary | null;
@@ -2089,6 +1561,8 @@ export interface GasInterconnection {
   direction: 'bidirectional' | 'import' | 'export';
   coordinates: [number, number]; // Border point [lng, lat]
   flowGWhDay: number; // Current flow (positive = import, negative = export)
+  /** true : ENTSOG n'a pas publié ce point (réponse partielle) ; flowGWhDay vaut 0 par défaut mais n'est pas une mesure. */
+  flowMissing?: boolean;
   maxCapacityGWhDay: number;
   entsogKey?: string; // ENTSOG connectionpoint key (ITP-XXXXX)
 }
@@ -2478,6 +1952,8 @@ export interface FuelStationFuelStatus {
   updatedAt: string | null;
   updateAgeMinutes: number | null;
   ruptureType: 'temporaire' | 'definitive' | null;
+  /** Début de la rupture déclarée (`<carburant>_rupture_debut` du flux), sinon null. */
+  ruptureSince: string | null;
   available: boolean;
 }
 
@@ -2524,6 +2000,8 @@ export interface FuelTensionNationalSummary {
   anomalyShare: number; // percent
   avgUpdateAgeMinutes: number | null;
   medianUpdateAgeMinutes: number | null;
+  /** Dernier relevé de prix du flux (fraîcheur du flux), ISO ; null si aucun. */
+  latestUpdateAt: string | null;
   tensionLevel: FuelTensionLevel;
   avgPrices: Partial<Record<FuelType, number>>;
   topDepartments: FuelTensionDepartmentSummary[];
@@ -2544,26 +2022,6 @@ export interface FuelTensionDashboard {
   errorMessage?: string;
 }
 
-// ═══ GPS Jamming / Guerre Électronique ═══
-
-/**
- * Signal OSINT de suspicion de brouillage GPS, construit à partir d'anomalies ADS-B.
- * Ce n'est pas une preuve de brouillage — c'est un signal heuristique plausible.
- *
- * Timestamp en secondes Unix (cohérent avec MilitaryFlight.lastContact).
- * Position en [lng, lat] (convention GeoJSON du projet).
- */
-export interface GpsJammingSignal {
-  id: string;                    // jamming-${ts}-${idx}
-  position: [number, number];    // [lng, lat] centroïde de la zone suspectée
-  timestamp: number;             // Unix seconds
-  severity: ThreatLevel;         // 'high' | 'medium' | 'low'
-  confidence: number;            // 0.0–1.0
-  reasons: string[];             // indicateurs déclencheurs lisibles
-  affectedIcao24s: string[];     // codes ICAO24 (hex) des aéronefs impliqués
-  clusterRadius?: number;        // km — rayon de la zone, si signal multi-aéronefs
-}
-
 // ═══ Situation Engine ═══
 
 export type SituationType =
@@ -2582,7 +2040,9 @@ export type SituationType =
   | 'WEATHER_ALERT'
   | 'AIS_ANOMALY_ALERT'
   | 'DEFENSE_ALERT'
-  | 'GPS_JAMMING_ALERT';
+  | 'GPS_JAMMING_ALERT'
+  | 'SEISMIC_EVENT'
+  | 'AIR_POLLUTION_EPISODE';
 
 export type SituationSeverity = 'critical' | 'high' | 'medium' | 'watch';
 
@@ -2617,6 +2077,11 @@ export interface DetectedSituation {
   lat?: number;
   lon?: number;
   activateLayers?: string[];       // clés de layers MapLayers à activer (ex: ['subseaCables', 'trafficMaritime'])
+  /**
+   * Entrées du moniteur d'alertes que cette situation dit déjà (identifiants) : la liste « À traiter » ne les montre pas une seconde fois
+   * (« Précision GNSS dégradée » et l'entrée GNSS, 7500 confirmé et son urgence ; revue de B28). Le moniteur, lui, les garde.
+   */
+  coveredAlertIds?: string[];
 }
 
 // ─── Situation History ────────────────────────────────────────────────────────
@@ -2626,7 +2091,7 @@ export interface SituationSnapshotAxes {
   defense:    number | null;  // FranceCountryAxes.defense — military posture
   security:   number | null;  // FranceCountryAxes.security — security severity
   signal:     number | null;  // FranceCountryAxes.signal — multi-source pressure
-  cyber:      number | null;  // CyberState.meta.globalScore
+  cyber:      number | null;  // FranceCountrySnapshot.cyberScore (pression cyber consolidée)
   social:     number | null;  // ISNRData.nationalScore
 }
 
@@ -2719,3 +2184,901 @@ export interface RadarColumnProfile {
 export type RadarColumnResult =
   | { readonly kind: 'profile'; readonly profile: RadarColumnProfile }
   | { readonly kind: 'hors-couverture' };
+
+// ═══ DROM et Corse : production par filière en temps réel (EDF SEI, spec lot 2 § 2.2) ═══
+export type DromLiveCode = 'RE' | 'GP' | 'MQ' | 'GF' | 'COR';
+export type DromLiveSector = 'coal' | 'oil' | 'turbine' | 'bio' | 'geothermal' | 'hydro' | 'solar' | 'wind' | 'storage' | 'links' | 'other';
+/** MW signés (négatif : stockage en charge, export par les liaisons, auxiliaires) ; null = filière non publiée. */
+export type DromLiveMix = Record<DromLiveSector, number | null>;
+export interface DromLivePoint { at: number; totalMw: number | null }
+export interface DromLiveTerritory {
+  code: DromLiveCode;
+  name: string;
+  /** « UTC+4 », « UTC−4 », « UTC−3 », « heure de Paris ». */
+  utcOffsetLabel: string;
+  /** Fuseau IANA de l'heure locale. */
+  timeZone: string;
+  state: 'ok' | 'error';
+  /** Message interne, jamais affiché. */
+  error: string | null;
+  /** Heure de la donnée (ms epoch) ; null en erreur. */
+  dataTime: number | null;
+  /** Statut publié par EDF (« Estimé ») ; null s'il n'est pas publié (Guyane). */
+  status: string | null;
+  totalMw: number | null;
+  mix: DromLiveMix;
+  renewableSharePct: number | null;
+  /** Journée locale de la dernière donnée, ordre croissant. */
+  day: DromLivePoint[];
+}
+export interface DromLiveResponse { fetchedAt: number; territories: DromLiveTerritory[] }
+
+// ═══ Santé, phase A : sources (spec 2026-10-03 panneaux santé § 2, contrats partagés avec la phase B) ═══
+/** Semaine épidémiologique ISO : id « 2026-S39 », lundi et dimanche au format AAAA-MM-JJ. */
+export interface EpiWeek { id: string; start: string; end: string }
+
+export type SyndromeKey = 'ira' | 'grippe' | 'covid' | 'bronchio' | 'gastro' | 'asthme' | 'allergie';
+
+/** Parts en % (taux Odissé pour 100 000 divisé par 1 000 : 2 108 → 2.108). er : passages aux urgences ;
+ *  hosp : hospitalisations après passage ; sos : actes SOS Médecins (null : pas d'association). */
+export interface SyndromicValue { er: number | null; hosp: number | null; sos: number | null }
+export interface SyndromicWeekPoint extends SyndromicValue { week: string; start: string }
+export interface SyndromicSeries {
+  key: SyndromeKey;
+  label: string;                                // 'IRA' | 'Grippe' | 'COVID-19' | 'Bronchiolite' | 'Gastro-entérite' | 'Asthme' | 'Allergie'
+  ageClass: string;                             // classe de la série principale : 'Tous âges' ou '0 an' (bronchiolite)
+  france: SyndromicWeekPoint[];                 // chronologique, depuis la semaine du lundi 2022-07-04
+  ages: Record<string, SyndromicWeekPoint[]>;   // 14 dernières semaines ; IRA : '00-04 ans', '05-14 ans', '15-64 ans', '65 ans ou plus' ; COVID : '65 ans ou plus' ; autres : {}
+}
+/** refEr : part aux urgences de la même semaine ISO des 3 saisons précédentes, de la plus récente à la plus ancienne. */
+export interface SyndromicDepartmentValue extends SyndromicValue { refEr: number[] }
+export interface SyndromicDepartment { code: string; name: string; values: Partial<Record<SyndromeKey, SyndromicDepartmentValue>> }
+export interface SyndromicResponse {
+  week: EpiWeek | null;
+  publishedAt: string | null;                   // data_processed (ISO) du jeu IRA France
+  syndromes: SyndromicSeries[];                 // ordre : ira, bronchio, gastro, asthme, allergie, grippe, covid
+  departments: SyndromicDepartment[];           // dernière semaine, 101 départements
+  errors: string[];                             // un message par jeu en échec
+}
+
+/** 1 pas d'alerte, 2 pré-épidémie, 3 épidémie, 4 post-épidémie (4 revient à 1 : pas plus grave que 3). */
+export type EpidemicPhase = 1 | 2 | 3 | 4;
+export interface RegionalAlertLevel { region: string; regionName: string; pathology: 'grippe' | 'bronchiolite'; phase: EpidemicPhase; week: string; start: string }
+export interface HealthBulletin { territory: string; title: string; date: string; url: string; summary: string }
+export interface AlertLevelsResponse {
+  levels: RegionalAlertLevel[];                 // dernière ligne publiée par région et pathologie
+  bulletins: HealthBulletin[];                  // bulletins régionaux SPF des DROM, 45 derniers jours
+  latestWeek: EpiWeek | null;
+  ignoredRegionCodes: string[];                 // codes sans libellé (07, 08)
+  errors: string[];
+}
+
+export type SentinellesIndicatorKey = 'ira' | 'covid' | 'grippe' | 'vrs' | 'bronchiolite' | 'diarrhee' | 'varicelle';
+export interface SentinellesIndicator {
+  key: SentinellesIndicatorKey; label: string; parent: 'ira' | null;
+  rate: number | null; ciLow: number | null; ciHigh: number | null;   // cas pour 100 000 habitants, France hexagonale
+  previous: number | null;                      // semaine précédente consolidée
+  trend: string | null;                         // mots du réseau : « en augmentation », « stable »…
+  activity: string | null;                      // « faible », « modérée », « forte », « très forte » ou autre libellé brut
+}
+export interface SentinellesNationalResponse {
+  week: EpiWeek | null; provisional: boolean;
+  indicators: SentinellesIndicator[];
+  topRegions: Array<{ indicator: SentinellesIndicatorKey; region: string; rate: number; ciLow: number | null; ciHigh: number | null }>;
+  bulletinUrl: string | null; errors: string[];
+}
+
+export interface WastewaterPoint { week: string; start: string; national54: number | null; national12: number | null }
+export interface WastewaterResponse {
+  points: WastewaterPoint[];                    // 26 dernières semaines, chronologique
+  lastYear: WastewaterPoint | null;             // même semaine ISO, un an plus tôt
+  stationsReporting: number | null; stationsTotal: number;
+  publishedAt: string | null; errors: string[];
+}
+
+export interface OutbreakNews { id: string; title: string; originalTitle: string; date: string; url: string; summary: string }
+export interface EcdcReport { title: string; date: string; url: string; topics: string[] }
+export interface InternationalResponse { who: OutbreakNews[]; ecdc: EcdcReport[]; errors: string[] }
+
+export interface MinistryMessage { kind: 'DGS-Urgent' | 'MARS'; number: string; date: string; title: string; url: string | null; reply: boolean }
+export interface MinistryMessagesResponse { messages: MinistryMessage[]; sourceUrl: string; officialUrl: string; errors: string[] }
+
+export type ShortageStatus = 'rupture' | 'tension' | 'remise' | 'arret';
+export interface DrugShortage { name: string; status: ShortageStatus; updatedAt: string | null; startedAt: string | null; availableAgainAt: string | null; domains: string[]; url: string | null }
+/** Réponse de /api/health/drug-shortages (ANSM, au fil de l’eau). */
+export interface DrugShortagesV2 { items: DrugShortage[]; counts: Record<ShortageStatus, number>; latestUpdate: string | null; mitmListUrl: string; errors: string[] }
+
+export type RecallRisk = 'listeria' | 'salmonelle' | 'stec' | 'campylobacter' | 'staphylocoque' | 'histamine' | 'allergene' | 'autre';
+export interface ProductRecall { id: string; date: string; label: string; brand: string; category: string; risks: RecallRisk[]; riskText: string; zone: string; url: string }
+export interface RecallsResponse {
+  since: string; total: number; healthRisk: number;
+  byRisk: Partial<Record<RecallRisk, number>>;
+  byDay: Array<{ day: string; total: number; healthRisk: number }>;
+  latest: ProductRecall[];                      // 10 derniers à risque sanitaire
+  errors: string[];
+}
+
+/** mg : consultations par an et par habitant standardisé ; autres : ETP pour 100 000 habitants (sf : pour 100 000 femmes). */
+export type AplProfession = 'mg' | 'inf' | 'kine' | 'sf' | 'dent';
+export interface AplDepartment {
+  code: string; name: string;
+  apl: Record<AplProfession, number | null>; apl2023: Record<AplProfession, number | null>;
+  pop: number; popUnder25: number; shareUnder25: number;   // généralistes, seuil 2,5 ; part en %
+}
+export interface AplDataset {
+  vintage: number; publishedAt: string; source: string;
+  france: { apl: Record<AplProfession, number>; apl2023: Record<AplProfession, number>; byYear: Array<{ year: number; aplMg: number; shareUnder25: number; popUnder25: number }> };
+  departments: AplDepartment[]; missing: string[];
+}
+
+export type HospitalCategory = 'chu' | 'ch' | 'private' | 'gcs' | 'army' | 'other';
+export interface EmergencySite {
+  finess: string; name: string; commune: string; dept: string; category: HospitalCategory; lat: number; lon: number;
+  general: boolean; pediatric: boolean; seasonal: boolean; antenna: boolean;
+  passages: number | null; bedsMco: number | null; bedsIcu: number | null; bedsIntensive: number | null; bedsUhcd: number | null;
+}
+export interface HospitalsDataset {
+  vintage: number; finessDate: string; sites: EmergencySite[]; unmatched: string[];
+  totals: { sites: number; passages: number; bedsMco: number; bedsIcu: number; bedsIntensive: number; icuSites: number };
+  establishments: Array<{ aggregate: string; label: string; count: number }>;
+}
+
+// ═══ Trafics, phase A : sources (spec 2026-10-03 panneaux trafic § 2, contrats partagés avec la phase B) ═══
+export type RoadEventKind = 'accident' | 'obstruction' | 'queue' | 'weather' | 'closure' | 'lane' | 'works' | 'info';
+export interface RoadEvent {
+  id: string; kind: RoadEventKind; subtype: string; label: string;      // label : « Accident », « Route coupée », « Bouchon »…
+  road: string | null; place: string | null; direction: string | null;  // road « A7 » ; direction « vers Lyon »
+  dir: string; start: string; end: string | null;                        // dir « DIR Méditerranée » ; ISO
+  severity: 'low' | 'medium' | 'high' | 'highest' | null; safety: boolean;
+  planned: boolean; longTerm: boolean;                                   // T2 : planifié, ou démarré depuis plus de 24 h
+  lat: number | null; lon: number | null; detail: string;
+}
+export interface RoadSpeedStation { id: string; dir: string; road: string | null; speed: number; flow: number | null; lat: number | null; lon: number | null }
+export interface RoadAggloOfficial { network: string; label: string; sections: number; freeFlow: number; heavy: number; congested: number; unknown: number; congestedPct: number | null; at: string }
+export interface ConcededJam { motorway: string; lengthKm: number | null; from: string | null; to: string | null; operator: string | null; importance: 1 | 2 | 3; text: string }
+export interface RoadNationalResponse {
+  publishedAt: string | null;
+  events: RoadEvent[];            // en cours (non planifiés, moins de 24 h), incidents, coupures, bouchons
+  longTerm: RoadEvent[];          // fermetures et chantiers de longue durée
+  counts: { incidents: number; accidents: number; closures: number; obstructions: number; weather: number; works: number };
+  byDir: Array<{ dir: string; incidents: number }>;
+  speeds: { at: string | null; stations: number; under50: number; median: number | null; slowest: RoadSpeedStation[] };
+  agglos: RoadAggloOfficial[];
+  sections: Array<{ id: string; network: string; status: 'freeFlow' | 'heavy' | 'congested' | 'unknown'; path: Array<[number, number]> }>; // sections Traficolor géolocalisées (carte)
+  conceded: { at: string | null; jams: ConcededJam[] };
+  errors: string[];
+}
+
+export interface UrbanJam { road: string | null; from: string | null; to: string | null; lengthKm: number; delayMin: number; magnitude: 1 | 2 | 3; start: string | null; lat: number; lon: number; path: Array<[number, number]> }
+export interface UrbanAgglo { name: string; jams: number; jamKm: number; delayMin: number; longest: UrbanJam | null; collectedAt: string }
+export interface RoadUrbanResponse { collectedAt: string | null; agglos: UrbanAgglo[]; jams: UrbanJam[]; quota: { callsToday: number; limit: number }; errors: string[] }
+
+export type Squawk = '7500' | '7600' | '7700';
+export interface AirEmergency { icao24: string; callsign: string | null; squawk: Squawk; lat: number; lon: number; altitudeM: number | null; firstSeen: string; lastSeen: string; overFrance: boolean }
+export interface AirportActivity {
+  icao: string; iata: string; name: string; lat: number; lon: number;
+  departures: number | null; departuresWindow: { begin: string; end: string } | null;
+  onGround: number; approaching: number;
+  board: { delayed: number; cancelled: number; at: string } | null;       // Beauvais et Bordeaux seulement
+}
+export interface AirVolumeSample { at: string; airborneZone: number; airborneFrance: number }
+export interface AirAnomaly { callsign: string | null; kind: string; airport: string | null; at: string }
+export interface AirOverviewResponse {
+  at: string | null; airborneZone: number; airborneFrance: number; onGround: number;
+  emergencies: AirEmergency[]; emergencyLog: AirEmergency[];
+  airports: AirportActivity[];
+  volume: { samples: AirVolumeSample[]; sameHourPrevDays: number[] };     // 8 jours ; valeurs de la même heure les jours précédents, plus récent d'abord
+  anomalies: AirAnomaly[];
+  credits: { remaining: number | null };
+  errors: string[];
+}
+
+export type RailAxis = 'sud-est' | 'atlantique' | 'nord' | 'est' | 'intercites-bercy' | 'normandie' | 'province';
+export type RailEffect = 'retard' | 'supprime' | 'service-reduit' | 'detour' | 'modifie' | 'ajoute';
+export interface RailGroupStats { key: string; label: string; trains: number; avgDelayMin: number | null; maxDelayMin: number | null; cancelled: number; reduced: number; detour: number }
+export interface RailTrain {
+  id: string; number: string; kind: 'grandes-lignes' | 'ter' | 'autre';
+  axis: RailAxis | null; region: string | null;
+  origin: string; destination: string; effect: RailEffect; delayMin: number | null;
+  status: 'en-cours' | 'a-venir'; updatedAt: string;
+  stops: Array<{ name: string; lat: number; lon: number; delayMin: number | null }>;
+}
+export interface RailOverviewResponse {
+  updatedAt: string | null;
+  longDistance: { active: number; delayed15: number };
+  axes: RailGroupStats[]; regions: RailGroupStats[];
+  topDelays: RailTrain[]; trains: RailTrain[];
+  errors: string[];
+}
+export type RailCauseKind = 'intemperies' | 'passage-a-niveau' | 'obstacle' | 'panne-installation' | 'panne-train' | 'malaise' | 'forces-ordre' | 'travaux' | 'autre';
+export interface RailSituation { id: string; title: string; cause: string | null; causeKind: RailCauseKind; scope: string; start: string; end: string | null; trains: number }
+export interface RailSituationsResponse { at: string | null; situations: RailSituation[]; errors: string[] }
+
+export type MaritimeZone = 'pas-de-calais' | 'manche' | 'atlantique' | 'mediterranee';
+export interface MaritimeZoneStats { zone: MaritimeZone; label: string; vessels: number; classA: number; classB: number; atAnchor: number; moored: number; underWay: number; restricted: number; fishing: number }
+export interface MaritimePortStats { port: string; vessels: number; atAnchor: number; moored: number; underWay: number; lastSeenAt: string | null }  // lastSeenAt : dernière position reçue dans la zone du port (24 h, UTC)
+export interface MaritimeSignal { mmsi: string; name: string | null; type: string | null; status: number; statusLabel: string; lat: number; lon: number; since: string; confirmed: boolean; sensitive: boolean }
+export interface MaritimeSensitiveVessel { mmsi: string; name: string | null; type: 'petrolier' | 'passagers'; lat: number; lon: number; distanceNm: number }
+export interface MaritimeSnapshot {
+  at: string | null; lastMessageAt: string | null;
+  vessels: number; frenchFlag: number; typedShare: number;            // typedShare en %
+  zones: MaritimeZoneStats[]; ports: MaritimePortStats[];
+  byType: Record<'cargo' | 'petrolier' | 'passagers' | 'peche' | 'remorqueur' | 'plaisance' | 'grande-vitesse' | 'service' | 'militaire' | 'autre' | 'inconnu', number>;
+  signals: MaritimeSignal[];                                          // seulement les confirmés (T3)
+  info: { restricted: number; draught: number; fishing: number };
+  sensitive: { tankers: number; passenger: number; list: MaritimeSensitiveVessel[] };
+  errors: string[];
+}
+
+// ═══ Environnement, phase A (spec 2026-10-04 panneaux environnement § 2 ; contrats § 1.1) ═══
+
+// ─── Commun ───
+/** Couleur officielle Météo-France et niveau Vigicrues (NivInfViCr) : 1 vert, 2 jaune, 3 orange, 4 rouge. */
+export type OfficialColorId = 1 | 2 | 3 | 4;
+
+// ─── Vigilance météo : GET /api/environment/vigilance ───
+/** 1 vent violent, 2 pluie-inondation, 3 orages, 4 crues, 5 neige-verglas, 6 canicule, 7 grand froid, 8 avalanches, 9 vagues-submersion. */
+export type VigilancePhenomenonId = '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9';
+export type VigilanceEcheance = 'J' | 'J1';
+/** Créneau horaire publié (timelaps_items), bornes ISO UTC. */
+export interface VigilanceSlot { from: string; to: string; color: OfficialColorId }
+export interface VigilancePhenomenon {
+  id: VigilancePhenomenonId;
+  color: OfficialColorId;            // phenomenon_max_color_id
+  slots: VigilanceSlot[];            // [] quand Météo-France ne publie pas de créneau (phénomène 4 crues) : la frise prend toute l'échéance
+}
+export interface VigilanceDepartment {
+  code: string;                      // « 66 », « 2A »
+  name: string;                      // « Pyrénées-Orientales » (api/_shared/departments.js DEPT_NAMES)
+  color: OfficialColorId;            // max_color_id ; la liste ne garde que jaune et plus
+  phenomena: VigilancePhenomenon[];  // jaune et plus, du plus fort au plus faible, puis par id
+}
+/** Domaine littoral « XX10 » (phénomène 9 vagues-submersion), 25 domaines. */
+export interface VigilanceCoastDomain {
+  code: string;                      // « 6610 »
+  departement: string;               // « 66 » (deux premiers caractères)
+  name: string;                      // « Pyrénées-Orientales, littoral »
+  color: OfficialColorId;
+  slots: VigilanceSlot[];
+}
+export interface VigilanceColorCount { color: 2 | 3 | 4; count: number }
+export interface VigilancePhenomenonCount { id: VigilancePhenomenonId; anyColor: number; counts: VigilanceColorCount[] }
+export interface VigilancePeriod {
+  echeance: VigilanceEcheance;
+  begin: string; end: string;          // begin_validity_time, end_validity_time (UTC)
+  maxColor: OfficialColorId;           // max des départements et des domaines littoraux (domaine FRA exclu)
+  comment: string | null;              // text_items.text réunis ; null si vide (J1 souvent)
+  departments: VigilanceDepartment[];  // jaune et plus seulement ; tri : couleur décroissante puis nom
+  greenDepartments: number;            // départements verts (96 moins la liste)
+  coast: VigilanceCoastDomain[];       // les 25 domaines, toutes couleurs (affichés en phase B, § 3.4)
+  counts: VigilanceColorCount[];       // max_count_items (départements)
+  perPhenomenon: VigilancePhenomenonCount[];
+}
+export type VigilanceBulletinScope = 'national' | 'zonal' | 'departemental';
+/** Rubrique d'un texte : heading « Faits nouveaux » (deux-points finaux retirés) ; underline_text pris comme heading quand bold_text est vide. */
+export interface VigilanceBulletinParagraph { heading: string; text: string[] }
+export interface VigilanceBulletinItem {
+  kind: 'situation' | 'suivi';                 // type_group SITUATION / SUIVI
+  phenomenon: VigilancePhenomenonId | null;    // hazard_code ; null pour « tous aléas »
+  hazard: string;                              // hazard_name (« Pluie », « tous aléas »)
+  echeance: VigilanceEcheance;                 // term_names
+  color: OfficialColorId;                      // risk_code
+  paragraphs: VigilanceBulletinParagraph[];
+}
+export interface VigilanceBulletin {
+  scope: VigilanceBulletinScope;
+  domainId: string;                  // « FRA », « ZDF_SUD », « 66 »
+  domainName: string;                // « France », « Défense Sud », « Pyrénées-Orientales »
+  items: VigilanceBulletinItem[];    // [] : zone sans texte (6 zones sur 7 le 04/10)
+}
+/** Maximum du jour (jour de Paris) des départements par couleur, sur les publications de l'archive (échéance J). */
+export interface VigilanceDayCount {
+  date: string; jaune: number; orange: number; rouge: number; publications: number;
+  /** Vrai pour le jour de Paris en cours (maximum encore susceptible de monter) et pour un jour dont des cartes n'ont pas pu être lues ; à montrer « jour en cours » ou incomplet. */
+  partial?: boolean;
+}
+export interface VigilanceResponse {
+  updateTime: string | null;           // product.update_time de la carte ; null : carte jamais lue
+  textsUpdateTime: string | null;      // update_time des textes
+  periods: VigilancePeriod[];          // [J, J1] dans cet ordre ; [] sans carte
+  bulletins: VigilanceBulletin[];      // national, 7 zonaux (ZDF_NORD, ZDF_EST, ZDF_OUEST, ZDF_PARIS, ZDF_SUD, ZDF_SUD_EST, ZDF_SUD_OUEST), départementaux non vides
+  history: { days: VigilanceDayCount[]; since: string | null };  // 30 jours au plus, plus ancien d'abord ; since = premier jour gardé
+  readAt: string | null;               // dernière lecture réussie de la carte par le serveur
+  errors: string[];
+}
+
+// ─── Crues : GET /api/environment/floods ───
+export type FloodLevel = OfficialColorId;
+/** Point de série, valeur en unité SI (m ou m³/s). Aucun point inventé : un trou reste un trou. */
+export interface FloodSeriesPoint { at: string; value: number }
+export interface FloodStation {
+  code: string;                        // « Y046401001 » (10 caractères)
+  name: string;                        // « Vinca » (LbEntVigiCruInferieur)
+  lat: number | null; lon: number | null;   // coordonnées des observations Hub'Eau ; null sans observation
+  lastAt: string | null;               // dernière mesure de hauteur (UTC)
+  heightM: number | null;              // hauteur au repère de la station (Hub'Eau H en mm / 1000)
+  flowM3s: number | null;              // débit (Hub'Eau Q en L/s / 1000) ; null si la station ne publie pas Q
+  flowAt?: string | null;              // date propre de la dernière mesure de débit (UTC) ; la hauteur et le débit peuvent différer
+  change1hM: number | null;            // dernière hauteur moins celle d'une heure avant (à 10 min près) ; null si absente
+  heightSeries: FloodSeriesPoint[];    // 48 h, un point par quart d'heure au plus
+  flowSeries: FloodSeriesPoint[];      // [] sans débit
+}
+export interface FloodTerritory { code: string; name: string | null; url: string }  // « 21 », « Méditerranée Ouest », https://www.vigicrues.gouv.fr/territoire/21
+export interface FloodSection {
+  id: string;                          // CdEntCru « MO12 »
+  name: string;                        // lbentcru « Têt »
+  level: FloodLevel;                   // NivInfViCr (2 à 4 dans la liste)
+  territory: FloodTerritory;
+  path: Array<Array<[number, number]>>;  // MultiLineString [lng, lat] tel que publié par Vigicrues (aucun recalage)
+  stations: FloodStation[];
+}
+export interface FloodsResponse {
+  readAt: string | null;               // relevé du serveur (InfoVigiCru n'a pas d'heure de bulletin) ; null : jamais lu
+  total: number;                       // tronçons surveillés (337 le 04/10)
+  counts: { vert: number; jaune: number; orange: number; rouge: number };
+  sections: FloodSection[];            // niveaux 2 à 4 seulement ; les verts sont comptés, pas listés
+  stationsReadAt: string | null;       // dernière lecture Hub'Eau réussie
+  stationsOmitted: number;             // stations au-delà du plafond de 60 (0 en temps ordinaire)
+  errors: string[];
+}
+/** Référence d'un tronçon pour le score, la note de situation, la file de travail, le stress hydro et le poste v2. */
+export interface FloodSectionRef { id: string; name: string; level: FloodVigilanceLevel; geometry: LineString | MultiLineString }
+
+// ─── Feux de forêt : GET /api/environment/fires ───
+export type FireSatellite = 'Suomi NPP' | 'NOAA-20' | 'NOAA-21' | 'Terra' | 'Aqua';
+export type FireSensor = 'VIIRS' | 'MODIS';
+/** VIIRS l, n, h ; MODIS 0 à 29 faible, 30 à 79 nominale, 80 à 100 haute (classes FIRMS). */
+export type FireConfidence = 'faible' | 'nominale' | 'haute';
+export type FirmsSourceId = 'VIIRS_SNPP_NRT' | 'VIIRS_NOAA20_NRT' | 'VIIRS_NOAA21_NRT' | 'MODIS_NRT' | 'VIIRS_SNPP_PUBLIC_24H';
+export interface FireDetection {
+  id: string;                          // `${lat.toFixed(4)}_${lon.toFixed(4)}_${acq_date}_${HHMM}_${satellite}`
+  lat: number; lon: number;
+  acquiredAt: string;                  // ISO UTC (acq_date + acq_time complété à 4 chiffres : « 137 » = 01:37)
+  satellite: FireSatellite;
+  sensor: FireSensor;
+  confidence: FireConfidence;
+  confidenceRaw: string;               // « l », « n », « h » ou « 0 » à « 100 », tel que publié
+  frpMw: number;
+  daynight: 'D' | 'N';
+  dept: string;                        // département (point dans polygone) ; la liste ne contient que la France
+  recurrent: boolean;                  // une détection à moins de 1 km au moins 5 des 10 derniers jours
+  foyerId: string;
+}
+export interface FireAbroadDetection { lat: number; lon: number; acquiredAt: string; frpMw: number; satellite: FireSatellite }
+export interface FireFoyer {
+  id: string;                          // id de sa première détection
+  dept: string;                        // département majoritaire
+  depts: string[];
+  lat: number; lon: number;            // centroïde pondéré par la FRP
+  detections: number;
+  passes: number;                      // passages distincts (satellite + heure d'acquisition)
+  confirmed: boolean;                  // passes >= 2
+  recurrent: boolean;                  // centroïde récurrent (règle de FireDetection.recurrent) : « à vérifier, probablement industriel »
+  frpTotalMw: number; frpMaxMw: number;
+  firstAt: string; lastAt: string;
+  satellites: FireSatellite[];
+  confidenceMax: FireConfidence;
+  nightDetections: number;
+}
+export type ForestDangerLevel = 1 | 2 | 3 | 4;   // 1 faible, 2 modéré, 3 élevé, 4 très élevé
+export interface ForestDangerDept { dept: string; name: string; j1: ForestDangerLevel; j2: ForestDangerLevel }
+/** Départements par niveau pour un jour J1 de la saison (CSV annuel). */
+export interface ForestDangerDay { date: string; n1: number; n2: number; n3: number; n4: number }
+export interface ForestDanger {
+  publishedAt: string;                 // colonne date du dernier jour publié (« 2026-10-03T14:50:06Z »)
+  j1Date: string; j2Date: string;      // jours de Paris couverts par J1 et J2 (publication + 1 et + 2 jours)
+  season: 'en-saison' | 'hors-saison'; // forestDangerSeason(publishedAt, readAt)
+  departments: ForestDangerDept[];     // 96
+  history: ForestDangerDay[];          // saison de l'année en cours, plus ancien d'abord (129 jours le 04/10)
+}
+export interface FiresResponse {
+  readAt: string | null;               // dernière collecte FIRMS réussie ; null : jamais
+  lastAcquisitionAt: string | null;    // acquisition la plus récente dans la boîte (France et marges)
+  sources: Array<{ id: FirmsSourceId; ok: boolean; lastAcquisitionAt: string | null }>;
+  detections: FireDetection[];         // France seulement, 24 h glissantes
+  abroadCount: number;                 // détections de la boîte hors de France, 24 h
+  abroad: FireAbroadDetection[];       // les mêmes, pour la carte (gris clair)
+  foyers: FireFoyer[];                 // France, 24 h ; tri : niveau (foyerLevel) puis FRP cumulée
+  daily: { days: Array<{ date: string; france: number; recurrent: number }>; since: string | null };  // 10 jours (jour UTC d'acquisition)
+  nextPasses: Array<{ satellite: FireSatellite; expectedAt: string }>;  // estimés : passages de la veille + 24 h encore à venir ; [] si inconnus
+  forestDanger: ForestDanger | null;   // null : CSV jamais lu
+  errors: string[];
+}
+
+// ─── Communes autour d'un foyer : GET /api/fires/impacts?lat=&lon= ───
+export interface FireImpactCommune { code: string; name: string; dept: string; population: number | null; distanceKm: number }
+export interface FireImpactsResponse {
+  lat: number; lon: number;
+  radiusKm: 10;
+  communes: FireImpactCommune[];       // centre de commune à moins de 10 km, du plus proche au plus lointain
+  nearest: FireImpactCommune | null;
+  georisquesUrl: string | null;        // zonage de la commune la plus proche (forme du lien : § 9, vérification 6)
+  readAt: string;
+  errors: string[];
+}
+
+// ═══ Environnement, phase B (spec 2026-10-04 panneaux environnement § 3 ; contrats § 1.2 ; amendement 2 : Quake.inFrance ; amendement 16 : nonSeismic) ═══
+
+// ─── Sécheresse : GET /api/environment/drought ───
+export type DroughtLevel = 'vigilance' | 'alerte' | 'alerte_renforcee' | 'crise';   // valeurs VigiEau telles quelles
+export interface DroughtDept {
+  dept: string; name: string; region: string;
+  /**
+   * Amendement 15 : false quand VigiEau publie le département « unavailable » (availability.AEP.status ; niveaux null, Guyane et
+   * Mayotte le 04/10) : « donnée indisponible », jamais « aucun arrêté », hors de la répartition par niveau.
+   */
+  available: boolean;
+  max: DroughtLevel | null;            // niveauGraviteMax ; null : aucun arrêté (département disponible seulement)
+  superficielle: DroughtLevel | null;  // niveauGraviteSupMax
+  souterraine: DroughtLevel | null;    // niveauGraviteSouMax
+  potable: DroughtLevel | null;        // niveauGraviteAepMax
+}
+export interface DroughtDayCount { date: string; vigilance: number; alerte: number; alerte_renforcee: number; crise: number }
+export interface DroughtResponse {
+  asOf: string | null;                 // availability.AEP.asOf le plus récent
+  departments: DroughtDept[];          // 101 (métropole et DROM) ; la carte dessine les 96 de métropole
+  counts: Record<DroughtLevel, number> & { aucun: number };     // départements disponibles seulement (amendement 15)
+  history: { days: DroughtDayCount[]; since: string | null };   // série serveur depuis la mise en service (référence en construction)
+  readAt: string | null;
+  errors: string[];
+}
+
+// ─── Qualité de l'air : GET /api/environment/air ───
+export type AirEpisodeState = 'information' | 'alerte' | 'inconnu';   // « PAS DE DEPASSEMENT » n'est pas un épisode
+export interface AirEpisode {
+  zoneCode: string; zone: string;      // code_zone, lib_zone (zone de l'AASQA, telle que publiée)
+  pollutantCode: string; pollutant: string;   // clé normalisée (PM2.5, PM10, O3, NO2, SO2) et nom français (arbitrage 6)
+  date: string;                        // date_ech (jour civil)
+  state: AirEpisodeState;
+  stateRaw: string;                    // etat tel que publié
+  updatedAt: string | null;            // date_maj
+}
+/** Jours publiés seulement (arbitrage 8) : un jour absent est « prévision non encore publiée ». */
+export interface AirPollutantDays { pollutantCode: string; pollutant: string; days: Array<{ date: string; information: number; alerte: number }> }
+export interface AirIndexDept {
+  dept: string; name: string;
+  communes: number;                    // communes couvertes ce jour (codes INSEE seulement, arbitrage 7)
+  degrade: number; mauvais: number; tresMauvaisEtPlus: number;   // code_qual 3, 4, 5 et plus
+  maxIndex: number | null;             // code_qual le plus haut ; null sans commune
+}
+export interface AirQualityResponse {
+  days: string[];                      // [J, J+1, J+2] (jours de Paris)
+  episodesUpdatedAt: string | null;    // date_maj la plus récente de la couche des épisodes
+  zonesCovered: number;                // zones distinctes publiées
+  episodes: AirEpisode[];              // états autres que « PAS DE DEPASSEMENT » seulement ; tri : jour, état, zone
+  perPollutant: AirPollutantDays[];    // barres J, J+1, J+2
+  index: { date: string | null; updatedAt: string | null; communes: number; departments: AirIndexDept[] };
+  readAt: string | null;
+  errors: string[];
+}
+
+// ─── Séismes : GET /api/environment/earthquakes ───
+export interface Quake {
+  id: string;
+  at: string;                          // heure d'origine (UTC)
+  lat: number; lon: number;
+  depthKm: number | null;
+  magnitude: number;                   // arrondie au dixième, comme la description publiée (arbitrage 4)
+  magType: string | null;              // « MLv », « ml »
+  type: string | null;                 // type d'événement publié (null : pas encore qualifié)
+  description: string;                 // description.fr (BCSF) ou flynn_region (EMSC)
+  status: 'automatique' | 'revu';
+  url: string | null;
+  dept: string | null;                 // département de l'épicentre ; null en mer ou à l'étranger
+  distanceKm: number;                  // distance au territoire : 0 dessus, sinon au dixième (bornée à 999)
+  inFrance: boolean;                   // amendement 2 : polygone métropolitain ou eaux françaises
+  source: 'BCSF-RéNaSS' | 'EMSC';
+}
+export interface EarthquakesResponse {
+  readAt: string | null;
+  source: 'BCSF-RéNaSS' | 'EMSC' | null;   // EMSC = repli
+  quakes: Quake[];                     // 7 jours, France et 20 km autour, plus récent d'abord
+  nonSeismic: number;                  // tirs de carrière, explosions, glissements écartés sur 7 jours (arbitrage 3, amendement 16)
+  errors: string[];
+}
+
+// ─── Submersion marine : GET /api/environment/sea-levels ───
+export interface TideGauge {
+  id: number;                          // identifiant REFMAR (shom_id)
+  name: string;                        // « Brest »
+  coastDomain: string;                 // domaine de vigilance « 2910 »
+  dept: string;
+  lat: number; lon: number;
+  lastAt: string | null;
+  heightM: number | null;              // hauteur d'eau observée (m, zéro hydrographique)
+  change1hM: number | null;
+  series: Array<{ at: string; value: number }>;   // 24 h, minutes rondes toutes les 10 min plus la dernière mesure (arbitrage 10)
+}
+export interface SeaLevelsResponse {
+  readAt: string | null;
+  gauges: TideGauge[];
+  predictionAvailable: false;          // le SHOM ne publie pas la marée prédite sans clé (contrats § 9)
+  errors: string[];
+}
+
+// ═══ Souveraineté, phase A (spec 2026-10-04 panneaux souveraineté § 2 ; contrats § 1.1 ; amendement 7 : conformité aux autorités) ═══
+
+// ─── Commun ───
+/** Famille d'un aéronef par son bloc d'adresse OACI (V2, faits § 5.3) : bloc France 380000 à 3BFFFF ; tout le reste, « autres ». */
+export type AircraftFamily = 'francais' | 'autres';
+/**
+ * Précision GNSS dégradée retenue par le score et la situation « Signal défense » (amendement 7, O7 et O17) : des comptes de mailles,
+ * jamais un lieu (les mailles localisées ne sont publiées que pour le jour UTC précédent). Phase A : aucune grille, aucun compte.
+ */
+export interface GnssDegradedCounts {
+  rolling24h: number;                               // mailles à précision dégradée sur les 24 dernières heures (pastille, score)
+  previousUtcDays: readonly [number | null, number | null];   // deux derniers jours UTC complets, veille d'abord ; null : jour non couvert
+  /**
+   * Côté navigateur seulement (gnssDegradedCounts, jamais dans la réponse du serveur) : heures entières de mesure quand un compte positif
+   * vient d'une fenêtre de moins de 23 h 50 (après un redémarrage du serveur) ; la tuile, la fiche et le brief disent « mesure partielle ».
+   */
+  partialHours?: number;
+}
+/** Sources Souveraineté lues pour le score et les tuiles (S3) : false si indisponible ; jamais lu par la formule. */
+export interface SovereigntyAvailability { military: boolean; cables: boolean; cyber: boolean }
+/** En-tête commun des fichiers statiques datés tirés d'OpenStreetMap (V5). */
+export interface OsmFileMeta {
+  generatedAt: string;              // ISO, date de génération par le script
+  osmBase: string;                  // osm3s.timestamp_osm_base de la réponse Overpass
+  licence: 'ODbL 1.0';
+  source: string;                   // « © les contributeurs d'OpenStreetMap »
+}
+
+// ─── Défense : GET /api/sovereignty/military ───
+/**
+ * Aéronef militaire ou d'État au-dessus de la France, montré un par un avec son identité publiée par adsb.lol (décision du
+ * 08/10/2026, qui remplace la règle O10 : plus aucun masquage, appareils français, PIA, LADD et adresses non OACI compris).
+ */
+export interface MilitaryAircraft {
+  hex: string;                      // adresse 24 bits en minuscules (« 43c700 ») ; « ~… » : adresse non OACI, pays inconnu
+  callsign: string | null;          // `flight` sans espaces de remplissage ; null si vide
+  registration: string | null;      // `r` (« F-ZFIC », fictif) ; null si non publiée
+  type: string | null;              // `t` (« A400 », « A332 »)
+  country: string | null;           // pays du bloc OACI (« Royaume-Uni ») ; null hors table ou adresse non OACI
+  family: AircraftFamily;
+  lat: number; lon: number;
+  dept: string | null;              // departementAt ; null au-dessus de la mer territoriale (eaux françaises à moins de 22 km)
+  altitudeFt: number | null;        // alt_baro (pieds) ; « ground » écarté avant : un aéronef au sol n'est jamais compté
+  speedKt: number | null;           // gs
+  track: number | null;
+  seenAt: string;                   // instant de la position : `now` d'adsb.lol moins `seen_pos` (ISO UTC)
+}
+/** Position de /v2/mil dans la zone d'affichage (41 à 51,8 N ; −5,8 à 10,2 E) hors de France : dessinée en gris, jamais comptée. */
+export interface MilitaryAbroad {
+  hex: string; callsign: string | null; registration: string | null; type: string | null; country: string | null;
+  family: AircraftFamily; lat: number; lon: number;
+}
+/** Appareils du bloc France au-dessus de la France, comptés par département (résumé) ; dept null : au-dessus de la mer territoriale. */
+export interface MilitaryDeptCount { dept: string | null; count: number }
+/**
+ * Urgence militaire (règle T3 du Trafic aérien réutilisée, arbitrage 6), identité complète. `overFrance` garde le sens
+ * d'AirEmergency : territoire ou moins de 40 km (APPROACH_KM), pour qu'emergencyColoursPill s'applique tel quel ; `inFrance` est le
+ * périmètre V2.
+ */
+export interface MilitaryEmergency extends AirEmergency {
+  registration: string | null;
+  family: AircraftFamily;
+  type: string | null;
+  country: string | null;
+  emergency: string | null;         // champ `emergency` publié (« general », « nordo », « unlawful »…) ; null si seul le transpondeur
+  inFrance: boolean;
+  dept: string | null;              // null au-dessus de la mer territoriale ou hors de France
+}
+/** Aéronefs distincts (par hex) vus au-dessus de la France pendant une heure UTC, par famille. */
+export interface MilitaryHourCount { hour: string; francais: number; autres: number }   // hour : « 2026-10-04T14 »
+export interface MilitaryResponse {
+  readAt: string | null;            // dernière collecte réussie (horloge du serveur) ; null : jamais lue
+  sourceNow: string | null;         // `now` d'adsb.lol de cette collecte (ms, converti en ISO)
+  frenchByDept: MilitaryDeptCount[];   // appareils du bloc OACI France au-dessus de la France (V2), par département, mer en dernier
+  aircraft: MilitaryAircraft[];     // tous les appareils au-dessus de la France (V2) : français d'abord, puis tri par indicatif
+  abroadCount: number;              // aéronefs de la zone d'affichage hors de France : jamais comptés au-dessus de la France
+  abroad: MilitaryAbroad[];         // ces mêmes aéronefs, dessinés en gris
+  emergencies: MilitaryEmergency[]; // épisodes vus à la dernière lecture, partout dans la zone d'affichage
+  emergencyLog: MilitaryEmergency[];// 7 jours, plus récent d'abord
+  hourly: { hours: MilitaryHourCount[]; since: string | null };   // 7 jours au plus, plus ancien d'abord ; since : première heure gardée
+  errors: string[];
+}
+
+// ─── Vigipirate : saisie datée (src/config/vigipirate.ts, tâche A9) et relecture de la page officielle (O14, tâche A8) ───
+/** Stades du plan Vigipirate 2026, libellés du SGDSN (arbitrage 18) : une posture, jamais une couleur de niveau. */
+export type VigipirateStade = 'vigilance' | 'vigilance-renforcee' | 'alerte-attentat';
+export interface VigipirateEntry {
+  stade: VigipirateStade;
+  depuis: string;                   // « 2026-06-22 » : début du stade (alerte attentat : début des 12 jours)
+  posture: string;                  // « été-automne 2026 »
+  accents: readonly string[];       // « menace drones », « sites touristiques », « bâtiments publics »
+  saisiLe: string;                  // « 2026-10-04 »
+  lien: string;                     // « https://www.sgdsn.gouv.fr/vigipirate »
+}
+/**
+ * Relecture quotidienne de https://www.sgdsn.gouv.fr/vigipirate par le serveur (O14) : GET, empreinte du contenu utile, jamais le
+ * texte lui-même. Une modification lue après le jour de la saisie affiche « niveau à revérifier sur sgdsn.gouv.fr (page modifiée le
+ * JJ/MM) ».
+ */
+export interface VigipiratePageCheck {
+  readAt: string | null;            // dernière lecture réussie (horloge du serveur) ; null : jamais lue
+  fingerprint: string | null;       // empreinte (SHA-256 hexadécimal) du contenu utile à cette lecture ; null : jamais lue
+  pageChangedAt: string | null;     // lecture où l'empreinte a changé pour la dernière fois (ISO) ; null : aucun changement vu
+  errors: string[];
+}
+
+// ─── Marine nationale : MMSI vérifiés (O12, tâches A10 et A18) ───
+/**
+ * MMSI d'un bâtiment de la Marine nationale vérifié sur une source officielle publique (base MARS de l'UIT, page du bâtiment sur
+ * defense.gouv.fr) : seul un MMSI vérifié reconnaît un bâtiment en AIS ; sans vérification, aucune ligne « vu en AIS ».
+ */
+export interface NavyMmsiVerification {
+  mmsi: string;
+  mmsiVerifiedAt: string;           // « AAAA-MM-JJ » : jour de la vérification
+  mmsiSource: string;               // lien de la source officielle consultée
+}
+
+// ─── Fichier des câbles sous-marins : Shom en référence, compléments OpenStreetMap (amendement 7, O18 ; public/data/subsea-cables.json) ───
+export type CableSourceName = 'Shom' | 'OpenStreetMap';
+/** Source du fichier des câbles, datée par son édition ; ordre : câbles du Shom, zones de câbles, zones de mouillage, OpenStreetMap. */
+export interface CableDataSource {
+  source: CableSourceName;
+  dataset: string;                  // fiche data.gouv.fr du Shom, ou « OpenStreetMap »
+  layer: string;                    // couche WFS du Shom (« CABLES_BDD_WFS:cblsub_lv »…), ou « Overpass »
+  licence: 'CC BY-SA' | 'Licence ouverte 2.0' | 'ODbL 1.0';
+  attribution: string;              // « Shom » ou « © les contributeurs d'OpenStreetMap »
+  edition: string | null;           // « 2019-01-07 » (câbles du Shom), « 2021-07 » (réglementation), base OSM ; null si non publiée
+  url: string;                      // fiche de la donnée et de sa licence
+  count: number;                    // objets gardés de cette source
+}
+export interface CableLanding { commune: string; dept: string; lat: number; lon: number }
+export interface SubseaCable {
+  id: string;                       // « shom/FR000015019700001 » (identifiant INSPIRE du Shom) ou « way/761201757 » (OSM)
+  name: string | null;              // toujours null pour le Shom (il ne publie pas de nom) ; tag name d'OSM, null si absent
+  operator: string | null;          // toujours null pour le Shom
+  path: Array<Array<[number, number]>>;   // [lng, lat] ; un câble du Shom peut avoir plusieurs lignes
+  landings: CableLanding[];         // extrémités dans un département ou à moins de 2 km de sa côte ; vide pour un tronçon du Shom au large
+  source: CableSourceName;
+  licence: 'CC BY-SA' | 'ODbL 1.0'; // Shom : CC BY-SA (citer « Shom ») ; OpenStreetMap : ODbL 1.0
+  outOfService: boolean;            // Shom : STATUS S-57 4 sur tous ses objets (gardé, dessiné en gris, jamais une alerte) ; OSM : false
+}
+/** Zone réglementaire du Shom (« Réglementation - Navigation ») : polygones [lng, lat] simplifiés à 10 m, trous gardés. */
+export interface ShomZone {
+  id: string;                       // « shom/FR… »
+  name: string | null;              // nom publié (« Sainte-Marie ») ; souvent absent
+  info: string | null;              // information en français
+  source: 'Shom';
+  licence: 'Licence ouverte 2.0';
+  polygons: Array<Array<Array<[number, number]>>>;   // polygones : anneau extérieur puis trous
+}
+export interface CableZone extends ShomZone { cableCategory: 'telecom' | 'power' | null }
+/** Zone de mouillage : un navire lent dans une zone permise qui ne recoupe aucune zone de câbles n'est pas signalé (S9). */
+export interface AnchorageZone extends ShomZone { anchoringProhibited: boolean; crossesCableZone: boolean }
+/** Fichier des câbles : licences mêlées, donc ni licence ni source au niveau du fichier ; source et licence par objet. */
+export interface SubseaCablesFile {
+  generatedAt: string;              // ISO, date de génération par le script
+  osmBase: string;                  // osm3s.timestamp_osm_base de la réponse Overpass
+  sources: CableDataSource[];
+  cables: SubseaCable[];            // câbles du Shom d'abord, compléments OpenStreetMap (absents du Shom) ensuite
+  cableZones: CableZone[];
+  anchorageZones: AnchorageZone[];
+}
+
+// ─── Fichiers OpenStreetMap (scripts, public/data/) ───
+export interface DefenseOsmWork {
+  id: string; name: string | null; kind: string;        // kind : tag OSM brut (bunker, barracks, airfield…)
+  type: MilitaryBase['type']; lat: number; lon: number; dept: string;
+}
+export interface DefenseOsmWorksFile extends OsmFileMeta { items: DefenseOsmWork[] }    // public/data/defense-osm-works.json
+
+// ─── Connectivité : GET /api/sovereignty/cables-watch ───
+export interface CableAlert {
+  id: string;                       // `${mmsi}:${cableId}` : stable, jamais l'horloge (audit 31)
+  mmsi: string;
+  name: string | null;
+  vesselType: string | null;        // typeLabel AIS du relais
+  cableId: string;                  // « shom/FR… » (câble du Shom) ou « way/… » (complément OpenStreetMap)
+  cableName: string | null;         // null pour un câble du Shom (le Shom ne publie pas de nom) ou un tracé OSM sans nom
+  lat: number; lon: number;
+  distanceM: number;                // au segment le plus proche du tracé (Shom ou OSM), arrondi au mètre
+  speedKn: number;                  // vitesse connue (jamais une absence prise pour 0)
+  navStatus: number | null;
+  firstSeen: string; lastSeen: string;
+  confirmed: boolean;               // revu sur un message AIS postérieur d'au moins 5 min à sa première vue (jamais le même message relu)
+  /**
+   * Vrai : « non évaluée (flux de la zone muet) » : absente du dernier relevé alors que sa position n'est couverte que par des lots
+   * amont muets ; gardée telle quelle (dates, confirmation) jusqu'à ce que le lot reparle. Faux : évaluée par le dernier relevé. Le
+   * serveur l'écrit toujours ; facultatif dans le type pour les alertes construites avant ce champ.
+   */
+  zoneMuted?: boolean;
+}
+export interface CablesWatchResponse {
+  readAt: string | null;            // dernier relevé du relais lu par le serveur ; null : jamais lu
+  aisLastMessageAt: string | null;  // dernier message AIS en eaux françaises, selon le relais
+  evaluated: boolean;               // false : flux AIS muet depuis plus de 5 min (T3), relais injoignable ou fichier des câbles illisible ; alertes gardées, « non évaluées »
+  cablesFile: { generatedAt: string; osmBase: string; cables: number; landings: number } | null;   // câbles Shom et OSM, atterrages (aucun pour un tronçon au large) ; null : fichier illisible
+  slowVessels: number | null;       // navires de moins de 2 nœuds du relevé, avant les exclusions (dénominateur de la méthode) ; null quand evaluated est faux (« non évalué », jamais un compte périmé)
+  alerts: CableAlert[];             // confirmées d'abord, puis vues une fois ; distance croissante
+  errors: string[];
+}
+
+// ─── Vigilance cyber : GET /api/sovereignty/cyber ───
+export type CertFrKind = 'alerte' | 'avis';
+/** Statut officiel d'une alerte (O1) : « Alerte en cours » ou « Clôturée le … » de la page liste, sinon « Clôture de l'alerte » de sa page. */
+export type CertFrStatus = 'en-cours' | 'cloturee';
+export interface CertFrItem {
+  ref: string;                      // « CERTFR-2026-ALE-011 », « CERTFR-2026-AVI-1257 »
+  kind: CertFrKind;
+  title: string;                    // sans le préfixe « [MàJ] » ni la date entre parenthèses
+  product: string | null;           // titre sans « Multiples vulnérabilités dans » ni « Vulnérabilité dans » ; null si illisible
+  updatedMark: boolean;             // préfixe « [MàJ] » ou « [Màj] » présent dans le flux
+  url: string;
+  firstVersion: string;             // date de publication en « AAAA-MM-JJ » (pubDate du flux, première version de la page)
+  lastVersion: string | null;       // « Date de la dernière version » de la page ; null : page non lue
+  cves: string[];                   // section « Référence CVE » de la page, sinon CVE du résumé du flux ; triés
+  kevCves: string[];                // parmi eux, ceux du catalogue KEV
+  pageReadAt: string | null;
+  status: CertFrStatus | null;      // alerte : statut repris du CERT-FR ; null : avis (pas de statut) ou statut non lu, jamais « en cours » supposé
+  closedAt: string | null;          // « AAAA-MM-JJ » : date de clôture d'une alerte close ; null sinon
+  exploited: boolean | null;        // le texte de la page dit l'exploitation (« activement exploitées », O3) ; null : page non lue
+  exploitedQuote: string | null;    // la phrase citée telle quelle (elle peut attribuer l'exploitation à un éditeur) ; null sinon
+}
+/** Rapport « Menaces et incidents » de l'ANSSI (flux CTI du CERT-FR, S12) : plus récent d'abord. */
+export interface CertFrReport {
+  ref: string;                      // « CERTFR-2026-CTI-006 »
+  title: string;                    // sans la date finale ni le drapeau de langue
+  lang: 'fr' | 'en';
+  date: string;                     // « AAAA-MM-JJ »
+  url: string;
+}
+export interface KevItem {
+  cve: string; vendor: string; product: string; name: string;
+  dateAdded: string;                // « AAAA-MM-JJ »
+  dueDate: string | null;
+  ransomware: boolean;              // knownRansomwareCampaignUse === 'Known'
+  certfrRefs: string[];             // alertes et avis qui citent ce CVE ; non vide : « citée par le CERT-FR »
+}
+/** Semaine glissante de 7 × 24 h, plus ancienne d'abord ; weekStart : début ISO. */
+export interface KevWeek { weekStart: string; added: number; cited: number }
+export interface RansomWeek { weekStart: string; count: number }
+/** Secteur ou groupe tel que publié par ransomware.live (traduit par la vue), compte sur 30 jours. */
+export interface RansomShare { label: string; count: number }
+export interface RansomwareSummary {
+  lastModified: string | null;      // en-tête last-modified de victims.json
+  checkedAt: string | null;         // dernière lecture réussie, 304 compris
+  weeks: RansomWeek[];              // 12 semaines, France seulement
+  weekCount: number;                // dernière semaine
+  baselineWeekly: number | null;    // moyenne hebdomadaire des 90 jours précédant la dernière semaine ; null sans historique
+  ratio: number | null;             // weekCount / baselineWeekly ; null si baselineWeekly est null ou nul
+  last30: number;
+  baseline30: number | null;        // moyenne sur 30 jours des 90 jours précédant les 30 derniers jours
+  sectors30: RansomShare[];         // décroissant
+  groups30: RansomShare[];
+}
+/**
+ * Fuites publiées en « .fr » ajoutées depuis moins de 30 jours (O5, opération REACTIV de l'ANSSI) : un compte et un lien seulement,
+ * jamais un titre, un domaine, un nom ni une description.
+ */
+export interface HibpSummary {
+  readAt: string;                   // lecture de la liste publique (horloge du serveur)
+  count: number;
+  newestAddedDate: string | null;   // AddedDate telle que publiée de la fuite la plus récente ; null sans fuite
+  url: string;                      // https://haveibeenpwned.com/PwnedWebsites
+}
+export interface CybermalveillanceEntry {
+  feed: 'alertes' | 'actualites'; title: string; url: string; published: string | null; updated: string | null;
+}
+export interface CyberResponse {
+  readAt: string | null;            // dernière collecte où au moins une source a répondu
+  certfr: {
+    readAt: string | null;
+    alerts: CertFrItem[];           // plus récent d'abord (lastVersion ?? firstVersion) ; 90 jours
+    avis: CertFrItem[];             // plus récent d'abord ; 30 jours
+    reports: CertFrReport[];        // flux CTI, plus récent d'abord (S12)
+  };
+  kev: {
+    readAt: string | null; catalogVersion: string | null; dateReleased: string | null; count: number | null;
+    recent: KevItem[];              // ajoutées depuis 30 jours ; citées par le CERT-FR d'abord, puis date décroissante
+    weeks: KevWeek[];               // 12 semaines
+  };
+  ransomware: RansomwareSummary | null;   // null : jamais lu
+  hibp: HibpSummary | null;               // null : jamais lu
+  cybermalveillance: { readAt: string | null; entries: CybermalveillanceEntry[] } | null;
+  errors: string[];                 // préfixées par la source : « CERT-FR, avis : HTTP 503 », « CISA KEV : délai dépassé (15000 ms) »
+}
+
+// ═══ Souveraineté, phase B (spec § 3 ; contrats § 1.2 ; amendement 7 : O15 à O17, S6 à S8) ═══
+
+// ─── GNSS et météo spatiale : GET /api/sovereignty/gnss ───
+/** peu : moins de 5 aéronefs distincts sur la fenêtre (« trop peu d'avions », jamais dessinée). */
+export type GnssCellLevel = 'vert' | 'jaune' | 'orange' | 'peu';
+export interface GnssCell {
+  lat: number; lon: number;         // coin sud-ouest de la maille de 0,5° × 0,5°
+  good: number;                     // aéronefs distincts à nac_p ≥ 8
+  degraded: number;                 // aéronefs distincts à nac_p de 1 à 7, ou à nac_p 0 après une bonne précision (O16, limite dite en méthode)
+  unknown: number;                  // nac_p 0 (précision non déclarée) sans bonne précision antérieure, hors calcul
+  pct: number | null;               // 100 × (degraded − 1) / (good + degraded) ; null sous 5 aéronefs
+  level: GnssCellLevel;             // jaune de 2 à 10 %, orange au-delà de 10 % : précision de position dégradée, jamais « brouillage » (O15)
+  inFrance: boolean;                // centre de la maille au-dessus de la France (V2)
+}
+export interface GnssDay { date: string; jaune: number; orange: number; general: boolean }   // jour UTC ; mailles françaises
+export interface NoaaScaleDay {
+  date: string;                     // DateStamp
+  observed: boolean;                // clé "0" : observé ; "1" à "3" : prévu
+  r: number | null; s: number | null; g: number | null;   // échelles (null : non publiées, prévisions R et S)
+  rMinorProb: number | null; rMajorProb: number | null; sProb: number | null;   // probabilités publiées (%)
+}
+export interface KpPoint { at: string; kp: number }               // tranche de 3 h (time_tag), Kp au tiers
+export interface NoaaAlert { productId: string; issuedAt: string; title: string; gScale: number | null }
+export interface SpaceWeather {
+  readAt: string | null;
+  scalesAt: string | null;          // DateStamp + TimeStamp de la clé "0" (UTC)
+  today: NoaaScaleDay | null;
+  forecast: NoaaScaleDay[];         // J+1 à J+3
+  kp: KpPoint[];                    // 7 jours (60 tranches au plus), plus ancien d'abord
+  lastAlert: NoaaAlert | null;
+}
+export interface GnssResponse {
+  readAt: string | null;            // dernière collecte complète (5 lectures)
+  windowStart: string | null;       // début du cumul ; moins de 24 h après un redémarrage : « référence en construction »
+  reads: number;                    // lectures réussies dans la fenêtre
+  aircraft: number;                 // aéronefs distincts de la fenêtre
+  /**
+   * Mailles localisées du jour UTC précédent seulement (O17, choix de l'utilisateur : jamais le glissant en direct, un lieu en direct
+   * peut signaler une protection en cours), « peu » comprises ; [] tant que la veille n'est pas couverte.
+   */
+  cells: GnssCell[];
+  cellsDay: string | null;          // jour UTC « AAAA-MM-JJ » des mailles localisées ; null : veille non couverte
+  frenchCells: number;              // mailles françaises d'au moins 5 aéronefs (jour des mailles localisées)
+  generalDegradation: boolean;      // plus de 30 % des mailles françaises dégradées (jaune ou orange) et Kp ≥ 4,67 dans la fenêtre
+  /** Comptes sans lieu (O17) : glissant de 24 h pour la pastille et le score, deux derniers jours UTC complets (veille d'abord) ; hors dégradation générale. */
+  degraded: GnssDegradedCounts;
+  days: { days: GnssDay[]; since: string | null };   // 14 jours
+  spaceWeather: SpaceWeather;
+  errors: string[];
+}
+
+// ─── Connectivité, grands réseaux : GET /api/sovereignty/connectivity ───
+export type MajorNetworkAsn = 3215 | 15557 | 5410 | 12322 | 2200 | 16276;
+export interface NetworkVisibility {
+  asn: MajorNetworkAsn;
+  name: string;                     // « Orange », « SFR », « Bouygues Telecom », « Free », « RENATER », « OVHcloud »
+  v4Seeing: number; v4Total: number; v6Seeing: number; v6Total: number;   // routeurs témoins RIPE (RIS) qui voient l'AS
+  v4Prefixes: number; v6Prefixes: number;   // préfixes annoncés (base de la règle de baisse, S8)
+  visibilityPct: number;            // min(v4Seeing / v4Total, v6Seeing / v6Total) × 100
+}
+export interface VisibilitySample { at: string; minPct: number }          // query_time, minimum des six réseaux
+export interface ExchangePoint { id: number; name: string; city: string | null; updated: string | null; url: string }
+/** Préfixes annoncés par réseau à un instantané (clé : ASN), IPv4 + IPv6 : base de la règle de baisse (S8), seuil à poser par B26. */
+export interface PrefixSample { at: string; prefixes: Record<string, number> }
+/** Réseau non lu à cet instantané : jamais omis, jamais compté à 0 ; `error` = panne nommée (« RIPEstat, AS15557 : HTTP 503 »), null si lecture en cours. */
+export interface UnreadNetwork { asn: MajorNetworkAsn; name: string; error: string | null }
+export interface ConnectivityResponse {
+  readAt: string | null;
+  snapshotAt: string | null;        // query_time RIPEstat (00 h, 08 h ou 16 h UTC)
+  networks: NetworkVisibility[];    // ordre de MajorNetworkAsn
+  unread?: UnreadNetwork[];         // les réseaux de MajorNetworkAsn absents de `networks` : networks + unread = toujours les six
+  history: { samples: VisibilitySample[]; since: string | null; prefixSamples?: PrefixSample[] };       // 30 jours
+  exchanges: { readAt: string | null; items: ExchangePoint[] } | null;  // PeeringDB, points d'échange en France
+  errors: string[];
+}
+
+// ─── Registre national des gels : GET /api/sovereignty/sanctions ───
+export interface SanctionsPublication {
+  publishedAt: string;              // DatePublication (ISO avec décalage de Paris)
+  total: number; physiques: number; morales: number; navires: number;
+  added: number | null;             // différence des IdRegistre ; null au premier passage (jamais « tout est nouveau »)
+  removed: number | null;
+}
+export interface SanctionsResponse {
+  readAt: string | null;            // dernière lecture réussie du fichier complet
+  dateCheckedAt: string | null;     // dernière lecture réussie de la date (base du retard)
+  current: SanctionsPublication | null;
+  history: { publications: SanctionsPublication[]; since: string | null };   // plus ancienne d'abord
+  errors: string[];
+}
+
+// ─── Zones drones DGAC (public/data/drone-restrictions.json) ───
+export interface DroneZone { id: string; remarque: string | null; polygons: Array<Array<Array<[number, number]>>> }  // [lng, lat]
+export interface DroneZonesFile {
+  generatedAt: string; edition: string;   // « 2025-07-01 » (GetCapabilities)
+  source: string;                         // « DGAC / IGN, Géoplateforme »
+  licence: string;                        // « CGU cartes.gouv.fr »
+  counts: { volInterdit: number; agglomerations: number; kept: number };
+  zones: DroneZone[];
+}

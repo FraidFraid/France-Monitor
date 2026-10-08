@@ -72,7 +72,7 @@ function _startStaleCheck(): void {
 /** Ouvre le WebSocket. Idempotent si déjà en cours de connexion ou connecté. */
 export function connectAis(): void {
     if (!AIS_RELAY_URL) {
-        console.info('[AIS] Pas de relais configuré (VITE_AIS_RELAY_URL non défini) — layer maritime désactivé');
+        console.info('[AIS] Pas de relais configuré (VITE_AIS_RELAY_URL non défini) : layer maritime désactivé');
         return;
     }
     if (_ws && (_ws.readyState === WebSocket.CONNECTING || _ws.readyState === WebSocket.OPEN)) return;

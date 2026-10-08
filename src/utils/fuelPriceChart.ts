@@ -120,8 +120,8 @@ export function renderFuelPriceChartSvg(
         const value = maxPrice - (maxPrice - minPrice) * ratio;
         const y = scaleY(value);
         return `
-          <line x1="${padding.left}" y1="${y.toFixed(2)}" x2="${(padding.left + innerWidth).toFixed(2)}" y2="${y.toFixed(2)}" stroke="rgba(255,255,255,0.08)" stroke-width="1" />
-          <text x="${(padding.left - 8).toFixed(2)}" y="${(y + 4).toFixed(2)}" fill="rgba(255,255,255,0.52)" font-size="10" text-anchor="end">${escapeHtml(value.toFixed(2))}</text>
+          <line x1="${padding.left}" y1="${y.toFixed(2)}" x2="${(padding.left + innerWidth).toFixed(2)}" y2="${y.toFixed(2)}" stroke="var(--border-color)" stroke-width="1" />
+          <text x="${(padding.left - 8).toFixed(2)}" y="${(y + 4).toFixed(2)}" fill="var(--text-muted)" font-size="10" text-anchor="end">${escapeHtml(value.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }))}</text>
         `;
       }).join('')
     : '';
@@ -131,8 +131,8 @@ export function renderFuelPriceChartSvg(
 
   const axisLabels = showAxes
     ? `
-      <text x="${padding.left}" y="${options.height - 4}" fill="rgba(255,255,255,0.52)" font-size="10">${escapeHtml(startLabel)}</text>
-      <text x="${padding.left + innerWidth}" y="${options.height - 4}" fill="rgba(255,255,255,0.52)" font-size="10" text-anchor="end">${escapeHtml(endLabel)}</text>
+      <text x="${padding.left}" y="${options.height - 4}" fill="var(--text-muted)" font-size="10">${escapeHtml(startLabel)}</text>
+      <text x="${padding.left + innerWidth}" y="${options.height - 4}" fill="var(--text-muted)" font-size="10" text-anchor="end">${escapeHtml(endLabel)}</text>
     `
     : '';
 

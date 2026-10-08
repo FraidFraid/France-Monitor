@@ -92,7 +92,7 @@ describe('ecowattLevelLabel — libellés RTE', () => {
 
 describe('ecowattStatusNote — état du signal dit en clair (légende, sources)', () => {
   it('signal du jour : niveau RTE, temps réel', () => {
-    expect(ecowattStatusNote(rte([day('2026-09-25', 'orange')]), NOW)).toBe('Écowatt (RTE, signal national) : Système électrique tendu — TEMPS RÉEL');
+    expect(ecowattStatusNote(rte([day('2026-09-25', 'orange')]), NOW)).toBe('Écowatt (RTE, signal national) : Système électrique tendu · TEMPS RÉEL');
   });
 
   it('repli open data : jamais présenté comme le signal du jour', () => {

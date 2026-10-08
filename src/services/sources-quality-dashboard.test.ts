@@ -8,6 +8,7 @@ import {
   getSourceQualityRegistry,
 } from './sources-quality-dashboard.ts';
 import { computeSourceQualityScore } from './qualityMappers.ts';
+import { HEALTH_SOURCE_NAMES } from '../config/health-sources.ts';
 
 function observed(overrides: Partial<ObservedMetrics> = {}): ObservedMetrics {
   return {
@@ -52,7 +53,7 @@ describe('sources-quality-dashboard', () => {
     const afterContact = getSourcesQualityDashboardData({
       statuses: [
         status({ name: 'MTG-FRP LSA SAF', status: 'ok' }),
-        status({ name: 'Radar 2D Météo-France', status: 'ok', detail: 'Configuration requise' }),
+        status({ name: 'Radar Météo-France', status: 'ok', detail: 'Configuration requise' }),
       ],
     });
     assert.equal(afterContact.sources.some((source) => source.id === 'fire-mtg-frp'), true);
@@ -79,7 +80,7 @@ describe('sources-quality-dashboard', () => {
           fallbackCount: 1,
         }),
         status({
-          name: 'Cyber',
+          name: 'CERT-FR',
           status: 'error',
           lastUpdate: new Date('2026-06-27T07:00:00.000Z'),
           error: 'source indisponible',
@@ -97,6 +98,17 @@ describe('sources-quality-dashboard', () => {
     assert.ok(data.signalsToReview.some((signal) => signal.source === 'Cyber'));
     assert.ok(data.moduleMatrix.some((row) => row.module === 'Réseau'));
     assert.ok(data.methodScale.some((row) => row.range === '70-100'));
+  });
+
+  it('souveraineté : cinq lignes cyber datées pour l’entrée « Cyber », plus de ligne « Cyber » ; vols militaires sans repli (O9)', () => {
+    const registry = getSourceQualityRegistry();
+    assert.deepEqual(registry.find((e) => e.id === 'cyber')?.watchdogNames, ['CERT-FR', 'CISA KEV', 'Ransomware.live', 'Have I Been Pwned', 'Cybermalveillance.gouv.fr']);
+    assert.equal(registry.find((e) => e.id === 'cyber')?.mappedIndicators.includes('score global'), false);
+    const military = registry.find((e) => e.id === 'military-flights');
+    assert.deepEqual(military?.watchdogNames, ['Vols militaires']);
+    assert.deepEqual(military?.limits, ['Couverture communautaire : un appareil absent du flux n’est pas absent du ciel']);
+    assert.equal(military?.mappedIndicators.includes('fallback'), false);
+    assert.ok(military?.mappedIndicators.includes('aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole'));
   });
 });
 
@@ -150,6 +162,32 @@ describe('sources-quality-dashboard — scores calculés', () => {
     assert.equal(meteo.quality.natureBaseline, 90);
     assert.equal(meteo.quality.reliabilityScore, 90);
     assert.equal(meteo.quality.confidenceScore, 90);
+  });
+
+  it('santé : l’entrée couvre les dix sources santé ; l’historique de l’une d’elles est retenu', () => {
+    const entry = getSourceQualityRegistry().find((source) => source.id === 'health');
+    assert.deepEqual(entry?.watchdogNames, [...HEALTH_SOURCE_NAMES]);
+    const data = getSourcesQualityDashboardData({
+      now: new Date('2026-10-03T10:00:00.000Z'),
+      statuses: [],
+      getObserved: (name) => (name === 'Odissé alertes' ? observed({ samples: 20, observationDays: 3 }) : null),
+    });
+    const health = data.sources.find((source) => source.id === 'health');
+    assert.equal(health?.quality.qualityProvisional, false);
+    assert.equal(health?.quality.observed?.observationDays, 3);
+  });
+
+  it('trafic aérien : l’entrée couvre l’aperçu et les positions de la carte ; l’historique des positions est retenu', () => {
+    const entry = getSourceQualityRegistry().find((source) => source.id === 'air-traffic');
+    assert.deepEqual(entry?.watchdogNames, ['Trafic aérien', 'Positions aériennes (carte)']);
+    const data = getSourcesQualityDashboardData({
+      now: new Date('2026-10-03T10:00:00.000Z'),
+      statuses: [],
+      getObserved: (name) => (name === 'Positions aériennes (carte)' ? observed({ samples: 20, observationDays: 3 }) : null),
+    });
+    const air = data.sources.find((source) => source.id === 'air-traffic');
+    assert.equal(air?.quality.qualityProvisional, false);
+    assert.equal(air?.quality.observed?.observationDays, 3);
   });
 
   it('avec métriques observées injectées : score calculé et non provisoire', () => {

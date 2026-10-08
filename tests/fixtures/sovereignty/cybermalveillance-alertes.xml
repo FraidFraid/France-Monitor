@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Flux RSS des alertes</title>
+  <subtitle/>
+  <link href="https://www.cybermalveillance.gouv.fr/feed/atom-flux-alertes" rel="self" type="application/rss+xml"/>
+  <updated>2026-10-04T15:44:56+02:00</updated>
+  <id>https://www.cybermalveillance.gouv.fr/feed/atom-flux-alertes</id>
+  <author>
+    <name>ACYMA</name>
+  </author>
+  <icon>favicon.ico</icon>
+  <link rel="alternate">https://www.cybermalveillance.gouv.fr</link>
+  <entry>
+    <id>https://www.cybermalveillance.gouv.fr/tous-nos-contenus/alertes/le-cybermois-arrive-preparez-vous</id>
+    <title><![CDATA[Cybermois 2026]]></title>
+    <link href="https://www.cybermalveillance.gouv.fr/tous-nos-contenus/alertes/le-cybermois-arrive-preparez-vous"/>
+    <updated>2026-09-30T22:39:53+02:00</updated>
+    <published>2026-09-15 10:54:02</published>
+  </entry>
+</feed>

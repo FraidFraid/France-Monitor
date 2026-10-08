@@ -1,9 +1,14 @@
 /**
- * Profil vertical radar (phase 0 « radar 3D ») — rendu pur, testable.
- * DÉMONSTRATION assumée : réflectivité PAM brute, aucun diagnostic.
+ * Profil vertical radar (phase 0 « radar 3D ») : rendu pur, testable, partagé par le panneau Radar météo (point cliqué sur la carte)
+ * et le module « Hauteur du panache » du panneau Feux de forêt (spec 2026-10-04 environnement § 2.3 et § 2.4).
+ * DÉMONSTRATION assumée : réflectivité PAM brute, aucun diagnostic. Heure d'observation datée (S1), distance à la station sur une
+ * ligne (R1) ; classes du cadre des panneaux de couches, aucun style en ligne hors du SVG.
  * Palette alignée sur services/radar-worker/render.py (PALETTE 2D).
  */
 import type { RadarColumnResult, RadarColumnProfile } from '../types/index.ts';
+import { absoluteTime } from './fiche/kit.ts';
+import { NBSP } from './layer-panel/format.ts';
+import { formatKm as formatDistanceKm } from './layer-panel/traffic-format.ts';
 
 const WIDTH = 260;
 const HEIGHT = 150;
@@ -98,29 +103,48 @@ function svg(profile: RadarColumnProfile): string {
     + `</svg>`;
 }
 
-const BADGE = `<span style="background:rgba(255,214,10,0.15);color:#ffd60a;border:1px solid rgba(255,214,10,0.4);border-radius:4px;padding:1px 6px;font-size:9px;font-weight:700;letter-spacing:0.5px;">DÉMONSTRATION</span>`;
+const BADGE = '<span class="fmk-tag fmk-tag--warn">DÉMONSTRATION</span>';
+
+/** Racine `fmk` : les styles des notes et du badge sont portés par cette classe, le rendu est autonome où qu'il soit inséré. */
+const wrap = (inner: string): string => `<div class="fmk">${inner}</div>`;
 
 export function radarProfileLoadingHtml(): string {
-  return `<div style="padding:10px 14px;color:var(--text-muted);font-size:10px;">Chargement du profil radar…</div>`;
+  return wrap('<p class="fmk-note">Chargement du profil radar…</p>');
 }
 
 export function radarProfileErrorHtml(): string {
-  return `<div style="padding:10px 14px;color:var(--text-muted);font-size:10px;">Profil radar indisponible pour le moment.</div>`;
+  return wrap('<p class="fmk-note">Profil radar indisponible pour le moment.</p>');
 }
 
-export function radarProfileHtml(result: RadarColumnResult): string {
+/** Tolérance (1 min) avant de tenir une heure d'observation pour postérieure à maintenant. */
+const FUTURE_TOLERANCE_MS = 60_000;
+
+/**
+ * Date de la colonne : « observation du 04/10 11:30 », ou, si l'heure est postérieure à maintenant (heure nominale du balayage,
+ * pas une observation déjà faite), « balayage annoncé pour 11:30 (heure nominale Météo-France) ». Jamais utilisée comme date de la donnée.
+ */
+export function profileObservationLabel(observedAt: string, now: number): string {
+  const ms = Date.parse(observedAt);
+  if (!Number.isFinite(ms)) return 'observation n.d.';
+  if (ms > now + FUTURE_TOLERANCE_MS) {
+    return `balayage annoncé pour ${absoluteTime(ms, now, 'fr', { withDate: true })} (heure nominale Météo-France)`;
+  }
+  return `observation du ${absoluteTime(ms, now, 'fr', { withDate: true })}`;
+}
+
+/**
+ * Profil daté : « Radar NIMES · 53,6 km · observation du 04/10 11:30 · 5 élévations » (heure de Paris AVEC la date, jamais l'heure
+ * du navigateur), SVG inchangé, mention de nature ; hors couverture : dit, sans SVG.
+ */
+export function radarProfileHtml(result: RadarColumnResult, now: number): string {
   if (result.kind === 'hors-couverture') {
-    return `<div style="padding:10px 14px;color:var(--text-muted);font-size:10px;">${BADGE} Foyer hors de portée des radars métropole (&gt; 160 km).</div>`;
+    return wrap(`<p class="fmk-note">${BADGE} Point hors de portée des radars de métropole (plus de 160${NBSP}km).</p>`);
   }
   const { profile } = result;
-  const observed = new Date(profile.observedAt);
-  const time = Number.isFinite(observed.getTime())
-    ? new Intl.DateTimeFormat('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }).format(observed)
-    : profile.observedAt;
-  return `<div style="padding:8px 14px;display:flex;flex-direction:column;gap:6px;">`
-    + `<div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text-muted);">${BADGE}`
-    + `<span>Radar ${escapeHtml(profile.station.name)} · ${profile.distanceKm} km · obs. ${time} · ${profile.levels.length} élévation${profile.levels.length > 1 ? 's' : ''}</span></div>`
+  const n = profile.levels.length;
+  return '<div class="fmk">'
+    + `<p class="fmk-note">${BADGE} Radar ${escapeHtml(profile.station.name)} · ${formatDistanceKm(profile.distanceKm)} · ${profileObservationLabel(profile.observedAt, now)} · ${n} élévation${n > 1 ? 's' : ''}</p>`
     + svg(profile)
-    + `<div style="font-size:9px;color:var(--text-muted);">Réflectivité brute (échos fixes non corrigés) · sans diagnostic automatique · Météo-France DPRadar, Licence Ouverte 2.0</div>`
-    + `</div>`;
+    + `<p class="fmk-note">Réflectivité brute (échos fixes non corrigés) · sans diagnostic automatique · Météo-France DPRadar, Licence Ouverte 2.0</p>`
+    + '</div>';
 }

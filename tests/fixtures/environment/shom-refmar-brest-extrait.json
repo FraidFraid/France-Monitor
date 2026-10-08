@@ -1,0 +1,28 @@
+{
+ "data": [
+  {
+   "idstation": 3,
+   "idsource": 1,
+   "value": 5.1837,
+   "timestamp": "2026/10/04 08:11:00"
+  },
+  {
+   "idstation": 3,
+   "idsource": 1,
+   "value": 5.1888,
+   "timestamp": "2026/10/04 08:12:00"
+  },
+  {
+   "idstation": 3,
+   "idsource": 1,
+   "value": 5.1951,
+   "timestamp": "2026/10/04 08:13:00"
+  },
+  {
+   "idstation": 3,
+   "idsource": 1,
+   "value": 5.2016,
+   "timestamp": "2026/10/04 08:14:00"
+  }
+ ]
+}

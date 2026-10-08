@@ -1,667 +1,188 @@
+// src/components/DefensePanel.ts : panneau de couche « Défense » (spec 2026-10-04 souveraineté § 2.1 ; contrats § 4.2), réécrit dans le
+// cadre commun : plus de modale déplaçable, plus de câbles (panneau Connectivité) ni de brouillage déduit des vols. Coquille DOM : contenu
+// de buildDefenseView (pur), positions de la Marine nationale lues à chaque rendu (getters de military-ships.ts, injectables en test,
+// comme MaritimePanel) ; un aéronef, une urgence ou un bâtiment cliqués (ou Entrée) sont recentrés sur la carte ; bouton des ouvrages
+// OpenStreetMap. Aucun masquage des aéronefs (décision du 08/10/2026, qui remplace O10). Posture Vigipirate vérifiée par la relecture
+// quotidienne de la page du SGDSN (O14). Phase B (tâche B28) : grille GNSS et registre des gels gardés quand une mise à jour ne les donne
+// pas (règle de VigilancePanel) ; une maille du jour UTC précédent cliquée est recentrée (O17 : jamais un lieu en direct) ; bouton des
+// zones drones DGAC (option de la couche). Chaque rendu, relève AIS de 5 s comprise, met à jour sans reconstruire ce qui n'a pas changé
+// (shell.patch).
+import { VIGIPIRATE } from '../config/vigipirate.ts';
+import type { AisConnectionStatus } from '../services/ais-connection.ts';
+import { loadSectionState } from '../services/fiche-sections-store.ts';
+import { getAisConnectionState, getMilitaryShips, type MilitaryShip } from '../services/military-ships.ts';
+import type { CablesState } from '../services/sovereignty-cables.ts';
+import type { GnssState } from '../services/sovereignty-gnss.ts';
+import type { MilitaryState } from '../services/sovereignty-military.ts';
+import type { SanctionsState } from '../services/sovereignty-sanctions.ts';
+import type { VigipirateCheckState } from '../services/sovereignty-vigipirate.ts';
+import type { MilitaryAircraft, MilitaryEmergency } from '../types/index.ts';
+import { buildDefenseView, type DefenseSitesSummary } from './layer-panel/defense.ts';
+import { createLayerPanelShell, isLayerPanelOpen, safeStorage, sectionOpenOf, type LayerPanelShell } from './layer-panel/frame.ts';
+import { findShipByKey } from './layer-panel/navy.ts';
+import { cablesAisDown } from './layer-panel/sovereignty-format.ts';
+
+const PANEL_ID = 'military';
+
 /**
- * DefensePanel - Panneau Alertes Défense
- *
- * Affiche les alertes de défense, notamment :
- * - Activités suspectes près des câbles sous-marins
- * - Navires militaires à comportement atypique
+ * État reçu d'App.ts : relevé adsb.lol, veille des câbles (état de l'AIS vu par le serveur), relecture de la page Vigipirate du SGDSN
+ * (null avant la première lecture), sites de défense (zones drones de la phase B comprises).
  */
+export interface DefensePanelState {
+  military: MilitaryState | null;
+  cables: CablesState | null;
+  vigipirate: VigipirateCheckState | null;
+  sites: DefenseSitesSummary;
+  /**
+   * Phase B (contrats § 4.2) : grille GNSS et météo spatiale, registre national des gels. Absents d'une mise à jour : derniers reçus
+   * gardés ; null : pas encore lus (sections « chargement… »).
+   */
+  gnss?: GnssState | null;
+  sanctions?: SanctionsState | null;
+}
 
-import { Panel } from './Panel.ts';
-import {
-  applyPremiumCloseButtonHover,
-  createPremiumIconHeader,
-  getPremiumCloseButtonStyle,
-  getPremiumModalStyle,
-} from './panelHeader.ts';
-import type { DefenseAlert } from '../services/cable-threats.ts';
-import type { GpsJammingSignal } from '../types/index.ts';
-import { formatProximityDistance } from '../utils/cable-proximity.ts';
-import { renderFreshnessBadge } from './shared/truthBadge.ts';
-import { fmIcon, fmStatusDot } from './shared/icons.ts';
+/** Marine nationale vue en AIS et état du WebSocket du relais (injectables en test). */
+export interface DefenseLiveSource {
+  navy(): MilitaryShip[];
+  connection(): { status: AisConnectionStatus; lastMessageAt: number | null };
+}
 
-// ═══ Constantes UI ═══
-
-const SEVERITY_COLORS: Record<DefenseAlert['severity'], string> = {
-  high: '#EF4444',
-  medium: '#F59E0B',
-  low: '#3B82F6',
+const LIVE_AIS: DefenseLiveSource = {
+  navy: () => getMilitaryShips(),
+  connection: () => {
+    const s = getAisConnectionState();
+    return { status: s.status, lastMessageAt: s.lastMessageAt };
+  },
 };
 
-const SEVERITY_LABELS: Record<DefenseAlert['severity'], string> = {
-  high: 'Critique',
-  medium: 'Élevée',
-  low: 'Attention',
-};
-
-// ═══ DefensePanel Class ═══
-
-export type DefenseAlertClickHandler = (alert: DefenseAlert) => void;
-export type DefenseJammingClickHandler = (signal: GpsJammingSignal) => void;
-
-export class DefensePanel extends Panel {
-  private modalEl!: HTMLElement;
-  private contentEl: HTMLElement | null = null;
-  private closeBtn: HTMLElement | null = null;
+export class DefensePanel {
+  private shell: LayerPanelShell | null = null;
   private onClose?: () => void;
-  private onAlertClick?: DefenseAlertClickHandler;
-  private onJammingClick?: DefenseJammingClickHandler;
-  private currentJammingSignals: GpsJammingSignal[] = [];
-  /** Dernier instant (ms) où le panel a reçu des données, pour la pastille de fraîcheur. */
-  private lastDataAt: number | null = null;
-  /** Re-render guard: serialized snapshot of the last rendered dataset. */
-  private lastRenderKey: string | null = null;
-  private isDragging = false;
-  private dragOffsetX = 0;
-  private dragOffsetY = 0;
+  private onFocusAircraft?: (aircraft: MilitaryAircraft) => void;
+  private onFocusEmergency?: (emergency: MilitaryEmergency) => void;
+  private onFocusNavy?: (ship: MilitaryShip) => void;
+  private onOsmWorks?: (on: boolean) => void;
+  private onDroneZones?: (on: boolean) => void;
+  private onFocusGnssCell?: (cell: { lat: number; lon: number }) => void;
+  private state: DefensePanelState | null = null;
+  private readonly storage = safeStorage();
+  private readonly container: HTMLElement;
+  private readonly live: DefenseLiveSource;
 
-  constructor(container: HTMLElement) {
-    super(container, { title: 'Alertes Défense', collapsible: false });
+  constructor(container: HTMLElement, live: DefenseLiveSource = LIVE_AIS) {
+    this.container = container;
+    this.live = live;
   }
 
   mount(): void {
-    this.modalEl = document.createElement('div');
-    this.modalEl.className = 'defense-panel-modal';
-    this.modalEl.style.cssText = `
-      ${getPremiumModalStyle({
-        width: '400px',
-        maxHeight: 'calc(100vh - var(--right-panel-top) - 20px)',
-        backgroundStart: 'rgba(10, 16, 31, 0.97)',
-        backgroundEnd: 'rgba(16, 12, 29, 0.96)',
-        borderColor: 'rgba(59, 130, 246, 0.18)',
-      })}
-      cursor: grab;
-    `;
-
-    // Close button
-    this.closeBtn = this.createCloseButton(() => this.hide());
-    this.closeBtn.classList.add('defense-panel-close');
-    this.closeBtn.style.cssText = getPremiumCloseButtonStyle();
-    applyPremiumCloseButtonHover(this.closeBtn);
-    this.modalEl.appendChild(this.closeBtn);
-
-    const header = createPremiumIconHeader({
-      icon: fmIcon('shield', { size: 32 }),
-      title: 'Alertes Défense',
-      subtitle: 'Surveillance câbles sous-marins',
-      gradientStart: 'rgba(59, 130, 246, 0.18)',
-      gradientEnd: 'rgba(147, 51, 234, 0.10)',
-      iconGradientStart: 'rgba(59, 130, 246, 0.22)',
-      iconGradientEnd: 'rgba(147, 51, 234, 0.14)',
-      titlePrefix: 'Sûreté stratégique',
-      statusId: 'defense-status-label',
-      badgeId: 'defense-truth-badge',
-      extraTopRowHtml: `<div style="margin-top:4px;"><span id="defense-alert-count" style="background: rgba(59, 130, 246, 0.2); color: #60A5FA; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700;">0</span></div>`,
+    const shell = createLayerPanelShell({
+      container: this.container, className: 'defense-panel-modal', panelId: PANEL_ID, storage: this.storage, onClose: () => this.hide(),
     });
-    header.className = 'defense-panel-header';
-    this.modalEl.appendChild(header);
-
-    // Content container
-    this.contentEl = document.createElement('div');
-    this.contentEl.className = 'defense-panel-content';
-    this.contentEl.style.cssText = `
-      padding: 12px;
-      overflow-y: auto;
-      flex: 1;
-    `;
-    this.modalEl.appendChild(this.contentEl);
-
-    // Legend / Explanation section
-    const legend = document.createElement('div');
-    legend.className = 'defense-panel-legend';
-    legend.style.cssText = `
-      padding: 12px 14px 14px;
-      background: rgba(0,0,0,0.25);
-      border-top: 1px solid var(--border-color);
-      font-size: 11px;
-    `;
-    legend.innerHTML = `
-      <div style="color: var(--text-muted); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 10px;">
-        Méthodologie
-      </div>
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;">
-        <span style="font-size:12px;">${fmIcon('compass')}</span>
-        <span style="color: var(--text-primary); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;">
-          Notes de lecture
-        </span>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:8px;">
-        <div style="
-          padding: 10px 12px;
-          background: rgba(255,255,255,0.03);
-          border: 1px solid rgba(255,255,255,0.06);
-          border-radius: 8px;
-        ">
-          <div style="color: var(--text-secondary); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px;">
-            Détection câbles
-          </div>
-          <div style="color: var(--text-muted); line-height: 1.45; margin-bottom: 8px;">
-            Navires à <strong style="color: var(--text-primary);">faible vitesse</strong> (&lt;2 nœuds)
-            près des <strong style="color: var(--text-primary);">câbles sous-marins</strong> (&lt;500m)
-          </div>
-          <div style="display:flex;flex-direction:column;gap:5px;">
-            <div style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:rgba(239,68,68,0.10);border-radius:6px;border-left:3px solid #EF4444;">
-              <span style="color:#EF4444;font-size:10px;">●</span>
-              <span style="color:#EF4444;font-weight:600;font-size:10px;min-width:52px;">Critique</span>
-              <span style="color:var(--text-muted);font-size:10px;">&lt;100m, quasi-stationnaire</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:rgba(245,158,11,0.10);border-radius:6px;border-left:3px solid #F59E0B;">
-              <span style="color:#F59E0B;font-size:10px;">●</span>
-              <span style="color:#F59E0B;font-weight:600;font-size:10px;min-width:52px;">Élevée</span>
-              <span style="color:var(--text-muted);font-size:10px;">&lt;300m, &lt;1 nœud</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:8px;padding:4px 8px;background:rgba(59,130,246,0.10);border-radius:6px;border-left:3px solid #3B82F6;">
-              <span style="color:#3B82F6;font-size:10px;">●</span>
-              <span style="color:#3B82F6;font-weight:600;font-size:10px;min-width:52px;">Attention</span>
-              <span style="color:var(--text-muted);font-size:10px;">&lt;500m</span>
-            </div>
-          </div>
-        </div>
-        <div style="
-          padding: 10px 12px;
-          background: rgba(59,130,246,0.08);
-          border: 1px solid rgba(59,130,246,0.22);
-          border-radius: 8px;
-        ">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-            <span style="font-size:12px;">${fmIcon('circle-help')}</span>
-            <span style="color: var(--text-primary); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;">
-              Couverture AIS
-            </span>
-          </div>
-          <div style="color: var(--text-muted); font-size: 10px; line-height: 1.5;">
-            Les navires militaires ou d'État <strong style="color: var(--text-secondary);">n'apparaissent pas toujours</strong>
-            dans les flux AIS publics. Leur émission peut être absente, limitée ou non diffusée publiquement.
-            L'absence de trace AIS <strong style="color: var(--text-secondary);">n'exclut donc pas</strong> une présence réelle.
-          </div>
-        </div>
-      </div>
-    `;
-    this.modalEl.appendChild(legend);
-
-    this.container.appendChild(this.modalEl);
-    this.setupDrag();
-    this.render();
+    shell.root.addEventListener('click', (e) => this.onClick(e));
+    this.shell = shell;
   }
 
-  private setupDrag(): void {
-    this.modalEl.addEventListener('mousedown', (e) => {
-      // Don't drag if clicking close button, inside content, or on alert items
-      const target = e.target as HTMLElement;
-      if (target.closest('.defense-panel-close')) return;
-      if (target.closest('.defense-panel-content')) return;
-      if (target.closest('.defense-alert-item')) return;
-      if (target.closest('.defense-cable-group')) return;
+  setOnClose(handler: () => void): void { this.onClose = handler; }
+  /** Lignes d'aéronefs d'autres nations et d'urgences montrées cliquables seulement avec ce gestionnaire (carte WebGL, posé par App.ts). */
+  setOnFocusAircraft(handler: (aircraft: MilitaryAircraft) => void): void { this.onFocusAircraft = handler; }
+  setOnFocusEmergency(handler: (emergency: MilitaryEmergency) => void): void { this.onFocusEmergency = handler; }
+  setOnFocusNavy(handler: (ship: MilitaryShip) => void): void { this.onFocusNavy = handler; }
+  /** Bouton « Afficher les ouvrages OpenStreetMap » : App.ts lit le fichier daté à la première demande. */
+  setOnOsmWorks(handler: (on: boolean) => void): void { this.onOsmWorks = handler; }
+  /** Bouton des zones drones (section Sites) : bascule de l'option de la couche Défense, d'après son aria-pressed (phase B). */
+  setOnDroneZones(handler: (on: boolean) => void): void { this.onDroneZones = handler; }
+  /** Ligne d'une maille GNSS du jour UTC précédent (section GNSS) : recentrage de la carte (phase B, O17). */
+  setOnFocusGnssCell(handler: (cell: { lat: number; lon: number }) => void): void { this.onFocusGnssCell = handler; }
 
-      this.isDragging = true;
-      const rect = this.modalEl.getBoundingClientRect();
-      this.dragOffsetX = e.clientX - rect.left;
-      this.dragOffsetY = e.clientY - rect.top;
-      this.modalEl.style.cursor = 'grabbing';
-    });
-
-    document.addEventListener('mousemove', (e) => {
-      if (!this.isDragging) return;
-      
-      const x = e.clientX - this.dragOffsetX;
-      const y = e.clientY - this.dragOffsetY;
-      
-      // Keep panel within viewport
-      const maxX = window.innerWidth - this.modalEl.offsetWidth;
-      const maxY = window.innerHeight - this.modalEl.offsetHeight;
-      
-      this.modalEl.style.left = Math.max(0, Math.min(x, maxX)) + 'px';
-      this.modalEl.style.top = Math.max(0, Math.min(y, maxY)) + 'px';
-      
-      // Remove bottom/right positioning when dragging
-      this.modalEl.style.bottom = 'auto';
-      this.modalEl.style.right = 'auto';
-    });
-
-    document.addEventListener('mouseup', () => {
-      if (this.isDragging) {
-        this.isDragging = false;
-        this.modalEl.style.cursor = 'grab';
-      }
-    });
+  show(state: DefensePanelState): void {
+    this.shell?.root.classList.add('is-open');
+    this.update(state);
   }
 
-  protected render(): void {
-    // Initial render is empty - populated by show()
+  /** Nouvel état ; un panneau fermé ne se rouvre pas. Grille GNSS et registre des gels absents de l'appel : derniers reçus gardés. */
+  update(state: DefensePanelState): void {
+    this.state = {
+      ...state,
+      gnss: state.gnss !== undefined ? state.gnss : this.state?.gnss ?? null,
+      sanctions: state.sanctions !== undefined ? state.sanctions : this.state?.sanctions ?? null,
+    };
+    if (this.isVisible()) this.render();
   }
 
-  setOnClose(handler: () => void): void {
-    this.onClose = handler;
-  }
-
-  /** Register a click handler for when user clicks on an alert item (fly-to) */
-  setOnAlertClick(handler: DefenseAlertClickHandler): void {
-    this.onAlertClick = handler;
-  }
-
-  setOnJammingClick(handler: DefenseJammingClickHandler): void {
-    this.onJammingClick = handler;
-  }
-
-  show(alerts: DefenseAlert[], jammingSignals: GpsJammingSignal[] = []): void {
-    if (!this.contentEl) return;
-
-    this.currentJammingSignals = jammingSignals;
-    this.lastDataAt = Date.now();
-    this.modalEl.style.display = 'flex';
-    this.lastRenderKey = DefensePanel.buildRenderKey(alerts, jammingSignals);
-    this.updateHeader(alerts);
-    this.renderContent(alerts, jammingSignals);
-  }
-
-  private static buildRenderKey(alerts: DefenseAlert[], jammingSignals: GpsJammingSignal[]): string {
-    return `${JSON.stringify(alerts)}\u2225${JSON.stringify(jammingSignals)}`;
-  }
-
-  private updateHeader(alerts: DefenseAlert[]): void {
-    const countEl = this.modalEl.querySelector('#defense-alert-count') as HTMLElement;
-    const statusEl = this.modalEl.querySelector('#defense-status-label') as HTMLElement;
-
-    const highCount = alerts.filter(a => a.severity === 'high').length;
-    const mediumCount = alerts.filter(a => a.severity === 'medium').length;
-    const totalCount = alerts.length;
-
-    if (countEl) {
-      countEl.textContent = String(totalCount);
-
-      // Color based on severity
-      if (highCount > 0) {
-        countEl.style.background = 'rgba(239, 68, 68, 0.2)';
-        countEl.style.color = '#EF4444';
-      } else if (mediumCount > 0) {
-        countEl.style.background = 'rgba(245, 158, 11, 0.2)';
-        countEl.style.color = '#F59E0B';
-      } else if (totalCount > 0) {
-        countEl.style.background = 'rgba(59, 130, 246, 0.2)';
-        countEl.style.color = '#3B82F6';
-      } else {
-        countEl.style.background = 'rgba(16, 185, 129, 0.2)';
-        countEl.style.color = '#10B981';
-      }
-    }
-
-    if (statusEl) {
-      if (totalCount === 0) {
-        statusEl.textContent = 'Aucune activité suspecte détectée';
-        statusEl.style.color = '#10B981';
-      } else {
-        const parts: string[] = [];
-        if (highCount > 0) parts.push(`${highCount} critique${highCount > 1 ? 's' : ''}`);
-        if (mediumCount > 0) parts.push(`${mediumCount} élevée${mediumCount > 1 ? 's' : ''}`);
-        statusEl.textContent = parts.join(', ') || `${totalCount} alerte${totalCount > 1 ? 's' : ''}`;
-        statusEl.style.color = highCount > 0 ? '#EF4444' : mediumCount > 0 ? '#F59E0B' : 'var(--text-muted)';
-      }
-    }
-
-    const truthBadge = this.modalEl.querySelector('#defense-truth-badge') as HTMLElement | null;
-    if (truthBadge) {
-      // Aucune source AIS navires enregistrée au Watchdog : on s'appuie sur
-      // l'instant du dernier jeu de données reçu par le panel.
-      truthBadge.innerHTML = renderFreshnessBadge([], { lastUpdated: this.lastDataAt });
-    }
-  }
-
-  private renderContent(alerts: DefenseAlert[], jammingSignals: GpsJammingSignal[] = []): void {
-    if (!this.contentEl) return;
-
-    // Clear existing content
-    this.contentEl.innerHTML = '';
-
-    const activeSectionEl = document.createElement('div');
-    activeSectionEl.style.cssText = 'color: var(--text-muted); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin: 2px 2px 10px;';
-    activeSectionEl.textContent = 'Surveillance active';
-    this.contentEl.appendChild(activeSectionEl);
-
-    this.contentEl.appendChild(this.createJammingSection(jammingSignals));
-
-    if (alerts.length === 0) {
-      const emptyEl = document.createElement('div');
-      emptyEl.innerHTML = `
-        <div style="text-align: center; padding: 24px 16px 32px;">
-          <div style="margin-bottom: 16px; opacity: 0.4;">${fmIcon('check', { size: 48 })}</div>
-          <div style="color: #10B981; font-weight: 600; margin-bottom: 8px;">
-            Situation normale
-          </div>
-          <div style="color: var(--text-muted); font-size: 12px; line-height: 1.6;">
-            Aucun navire suspect détecté<br>à proximité des câbles sous-marins
-          </div>
-        </div>
-      `;
-      this.contentEl.appendChild(emptyEl);
-      return;
-    }
-
-    const cableSectionLabel = document.createElement('div');
-    cableSectionLabel.style.cssText = 'color: var(--text-muted); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin: 4px 2px 10px;';
-    cableSectionLabel.textContent = 'Proximité câbles';
-    this.contentEl.appendChild(cableSectionLabel);
-
-    const cableSectionEl = document.createElement('div');
-    cableSectionEl.style.cssText = `
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      max-height: 430px;
-      overflow-y: auto;
-      padding-right: 2px;
-      margin-bottom: 2px;
-      scrollbar-width: thin;
-    `;
-
-    // Group alerts by cable
-    const alertsByCable = new Map<string, DefenseAlert[]>();
-    for (const alert of alerts) {
-      const existing = alertsByCable.get(alert.cableId) ?? [];
-      existing.push(alert);
-      alertsByCable.set(alert.cableId, existing);
-    }
-
-    for (const [, cableAlerts] of alertsByCable) {
-      const cableName = cableAlerts[0].cableName;
-      const maxSeverity = cableAlerts.reduce((max, a) => {
-        const order = { high: 2, medium: 1, low: 0 };
-        return order[a.severity] > order[max] ? a.severity : max;
-      }, 'low' as DefenseAlert['severity']);
-
-      // Create cable group container
-      const groupEl = document.createElement('div');
-      groupEl.className = 'defense-cable-group';
-      groupEl.style.cssText = `
-        background: rgba(0,0,0,0.2);
-        border-radius: 8px;
-        margin-bottom: 10px;
-        border: 1px solid rgba(255,255,255,0.05);
-        overflow: hidden;
-      `;
-
-      // Cable header
-      const headerEl = document.createElement('div');
-      headerEl.style.cssText = `
-        padding: 10px 12px;
-        background: rgba(0,0,0,0.2);
-        border-bottom: 1px solid rgba(255,255,255,0.05);
-        display: flex;
-        align-items: center;
-        gap: 8px;
-      `;
-      headerEl.innerHTML = `
-        <span style="font-size: 14px;">${fmIcon('plug-zap')}</span>
-        <span style="color: var(--text-primary); font-size: 12px; font-weight: 600; flex: 1;">
-          ${this.escapeHtml(cableName)}
-        </span>
-        <span style="
-          background: ${SEVERITY_COLORS[maxSeverity]}20;
-          color: ${SEVERITY_COLORS[maxSeverity]};
-          padding: 2px 8px;
-          border-radius: 10px;
-          font-size: 10px;
-          font-weight: 600;
-        ">${cableAlerts.length} navire${cableAlerts.length > 1 ? 's' : ''}</span>
-      `;
-      groupEl.appendChild(headerEl);
-
-      // Alert items container
-      const itemsEl = document.createElement('div');
-      itemsEl.style.cssText = 'padding: 8px;';
-
-      for (const alert of cableAlerts) {
-        const itemEl = this.createAlertItemElement(alert);
-        itemsEl.appendChild(itemEl);
-      }
-
-      groupEl.appendChild(itemsEl);
-      cableSectionEl.appendChild(groupEl);
-    }
-
-    this.contentEl.appendChild(cableSectionEl);
-  }
-
-  private createJammingSection(signals: GpsJammingSignal[]): HTMLElement {
-    const sectionEl = document.createElement('div');
-    sectionEl.style.cssText = 'display:flex;flex-direction:column;gap:10px;margin-bottom:12px;';
-
-    const labelEl = document.createElement('div');
-    labelEl.style.cssText = 'color: var(--text-muted); font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin: 0 2px;';
-    labelEl.textContent = 'Brouillage radar';
-    sectionEl.appendChild(labelEl);
-
-    const listEl = document.createElement('div');
-    listEl.style.cssText = `
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      max-height: 252px;
-      overflow-y: auto;
-      padding-right: 2px;
-      scrollbar-width: thin;
-    `;
-
-    const sortedSignals = [...signals].sort((a, b) => b.confidence - a.confidence);
-    const visibleSignals = sortedSignals.slice(0, Math.max(sortedSignals.length, 1));
-
-    if (sortedSignals.length === 0) {
-      listEl.appendChild(this.createSingleJammingCard(null, 0));
-    } else {
-      for (const signal of visibleSignals) {
-        listEl.appendChild(this.createSingleJammingCard(signal, sortedSignals.length));
-      }
-    }
-
-    sectionEl.appendChild(listEl);
-    return sectionEl;
-  }
-
-  private createSingleJammingCard(signal: GpsJammingSignal | null, totalSignals: number): HTMLElement {
-    const cardEl = document.createElement('div');
-    const severityColor = signal?.severity === 'high'
-      ? '#EF4444'
-      : signal?.severity === 'medium'
-        ? '#F59E0B'
-        : '#3B82F6';
-    const confidencePct = signal ? Math.round(signal.confidence * 100) : 0;
-    const radius = signal?.clusterRadius ? ` · rayon ${signal.clusterRadius} km` : '';
-    const affected = signal ? `${signal.affectedIcao24s.length} aéronef${signal.affectedIcao24s.length > 1 ? 's' : ''}` : '';
-    const primaryReason = signal?.reasons[0] ?? 'Aucun brouillage détecté';
-
-    cardEl.style.cssText = `
-      background: ${signal ? `${severityColor}14` : 'rgba(16,185,129,0.10)'};
-      border: 1px solid ${signal ? `${severityColor}55` : 'rgba(16,185,129,0.28)'};
-      border-radius: 10px;
-      padding: 12px 14px;
-      ${signal ? 'cursor: pointer;' : ''}
-    `;
-
-    cardEl.innerHTML = signal
-      ? `
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
-          <div style="display:flex;align-items:center;gap:8px;min-width:0;">
-            <span style="font-size:15px;">${fmIcon('satellite-dish')}</span>
-            <span style="color: var(--text-primary); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;">
-              Brouillage radar / GPS
-            </span>
-          </div>
-          <span style="background:${severityColor}22;color:${severityColor};padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700;">
-            ${confidencePct}%
-          </span>
-        </div>
-        <div style="color:${severityColor};font-size:12px;font-weight:600;margin-bottom:6px;">
-          Suspicion active · ${affected}${radius}
-        </div>
-        <div style="color: var(--text-secondary); font-size: 11px; line-height: 1.5; margin-bottom: 8px;">
-          ${this.escapeHtml(primaryReason)}
-        </div>
-        <div style="color: var(--text-muted); font-size: 10px; line-height: 1.5;">
-          Zone: ${signal.position[1].toFixed(2)} / ${signal.position[0].toFixed(2)}
-          ${totalSignals > 1 ? ` · ${totalSignals} signaux corrélés` : ''}
-        </div>
-      `
-      : `
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-          <span style="font-size:15px;">${fmIcon('satellite-dish')}</span>
-          <span style="color: var(--text-primary); font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;">
-            Brouillage radar / GPS
-          </span>
-        </div>
-        <div style="color:#10B981;font-size:12px;font-weight:600;margin-bottom:4px;">
-          Aucun brouillage détecté
-        </div>
-        <div style="color: var(--text-muted); font-size: 11px; line-height: 1.5;">
-          Aucun cluster ni signal individuel plausible sur le cycle de surveillance courant.
-        </div>
-      `;
-
-    if (signal) {
-      cardEl.addEventListener('mouseenter', () => {
-        cardEl.style.transform = 'translateY(-1px)';
-        cardEl.style.boxShadow = `0 8px 24px ${severityColor}22`;
-      });
-      cardEl.addEventListener('mouseleave', () => {
-        cardEl.style.transform = 'translateY(0)';
-        cardEl.style.boxShadow = 'none';
-      });
-      cardEl.addEventListener('click', (event) => {
-        event.stopPropagation();
-        event.preventDefault();
-        this.onJammingClick?.(signal);
-      });
-    }
-
-    return cardEl;
-  }
-
-  /** Create a clickable alert item element */
-  private createAlertItemElement(alert: DefenseAlert): HTMLElement {
-    const color = SEVERITY_COLORS[alert.severity];
-    const label = SEVERITY_LABELS[alert.severity];
-    const isPulsing = alert.severity === 'high';
-
-    const distStr = formatProximityDistance(alert.distanceMeters);
-    const speedStr = alert.speedKnots.toFixed(1);
-    const timeStr = new Date(alert.createdAt).toLocaleTimeString('fr-FR', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-
-    const itemEl = document.createElement('div');
-    itemEl.className = `defense-alert-item ${isPulsing ? 'defense-pulse' : ''}`;
-    itemEl.style.cssText = `
-      padding: 10px;
-      background: rgba(0,0,0,0.2);
-      border-radius: 6px;
-      border-left: 3px solid ${color};
-      margin-bottom: 6px;
-      cursor: pointer;
-      transition: background 0.15s, transform 0.1s;
-      ${isPulsing ? 'animation: defense-pulse 2s ease-in-out infinite;' : ''}
-    `;
-
-    itemEl.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: start; gap: 8px;">
-        <div style="flex: 1;">
-          <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px;">
-            ${fmStatusDot(alert.severity)}
-            <span style="color: var(--text-primary); font-size: 12px; font-weight: 600;">
-              ${this.escapeHtml(alert.shipName)}
-            </span>
-          </div>
-          <div style="color: var(--text-muted); font-size: 11px; line-height: 1.5;">
-            <span style="color: ${color}; font-weight: 500;">${distStr}</span> du câble
-            <span style="margin-left: 8px; color: var(--text-secondary);">${speedStr} kn</span>
-          </div>
-        </div>
-        <div style="text-align: right;">
-          <span style="
-            background: ${color}20;
-            color: ${color};
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-size: 9px;
-            font-weight: 600;
-            text-transform: uppercase;
-          ">${label}</span>
-          <div style="color: var(--text-muted); font-size: 9px; margin-top: 4px;">${timeStr}</div>
-        </div>
-      </div>
-      <div style="
-        margin-top: 6px;
-        padding-top: 6px;
-        border-top: 1px solid rgba(255,255,255,0.05);
-        display: flex;
-        align-items: center;
-        gap: 4px;
-        color: var(--text-muted);
-        font-size: 10px;
-      ">
-        <span>${fmIcon('map-pin')}</span>
-        <span>Cliquer pour localiser</span>
-      </div>
-    `;
-
-    // Hover effects
-    itemEl.addEventListener('mouseenter', () => {
-      itemEl.style.background = 'rgba(255,255,255,0.05)';
-      itemEl.style.transform = 'translateX(2px)';
-    });
-    itemEl.addEventListener('mouseleave', () => {
-      itemEl.style.background = 'rgba(0,0,0,0.2)';
-      itemEl.style.transform = 'translateX(0)';
-    });
-
-    // Click handler for fly-to
-    itemEl.addEventListener('click', (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      if (this.onAlertClick) {
-        this.onAlertClick(alert);
-      }
-    });
-
-    return itemEl;
-  }
-
-  private escapeHtml(text: string): string {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
+  /** Positions AIS rafraîchies (App.ts, relève de 5 s) : nouveau rendu si le panneau est ouvert. */
+  refreshLive(): void {
+    if (this.isVisible()) this.render();
   }
 
   hide(opts: { silent?: boolean } = {}): void {
-    if (this.modalEl) {
-      this.modalEl.style.display = 'none';
-    }
+    this.shell?.root.classList.remove('is-open');
     // Masquage « silencieux » (bascule entre panneaux) : ne désactive pas la couche.
     if (!opts.silent) this.onClose?.();
   }
 
   isVisible(): boolean {
-    return this.modalEl?.style.display === 'flex';
+    return this.shell ? isLayerPanelOpen(this.shell.root) : false;
   }
 
-  update(alerts: DefenseAlert[], jammingSignals: GpsJammingSignal[] = this.currentJammingSignals): void {
-    this.lastDataAt = Date.now();
-    if (this.isVisible()) {
-      // Polling path (military feed) — skip the rebuild when data is unchanged.
-      const renderKey = DefensePanel.buildRenderKey(alerts, jammingSignals);
-      if (renderKey === this.lastRenderKey) return;
-      this.lastRenderKey = renderKey;
-      this.currentJammingSignals = jammingSignals;
-      this.updateHeader(alerts);
-      this.renderContent(alerts, jammingSignals);
+  destroy(): void {
+    this.shell?.destroy();
+    this.shell = null;
+  }
+
+  private onClick(e: Event): void {
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-osm-works]')) {
+      this.onOsmWorks?.(!(this.state?.sites.osm.shown ?? false));
+      return;
+    }
+    const droneToggle = target.closest<HTMLElement>('[data-drone-zones]');
+    if (droneToggle) {
+      this.onDroneZones?.(droneToggle.getAttribute('aria-pressed') !== 'true');
+      return;
+    }
+    // « 48:-3.5 » : coin sud-ouest d'une maille du jour UTC précédent (seules lignes portant l'attribut, O17).
+    const gnssCell = target.closest<HTMLElement>('[data-gnss-cell]')?.dataset['gnssCell'];
+    if (gnssCell) {
+      const [lat, lon] = gnssCell.split(':').map(Number);
+      if (Number.isFinite(lat) && Number.isFinite(lon)) this.onFocusGnssCell?.({ lat, lon });
+      return;
+    }
+    const m = this.state?.military?.military.data ?? null;
+    const hex = target.closest<HTMLElement>('[data-aircraft]')?.dataset['aircraft'];
+    if (hex) {
+      const aircraft = m?.aircraft.find((a) => a.hex === hex);
+      if (aircraft) this.onFocusAircraft?.(aircraft);
+      return;
+    }
+    const key = target.closest<HTMLElement>('[data-emergency]')?.dataset['emergency'];
+    if (key) {
+      const emergency = m?.emergencies.find((x) => `${x.icao24}:${x.squawk}` === key);
+      if (emergency) this.onFocusEmergency?.(emergency);
+      return;
+    }
+    const navy = target.closest<HTMLElement>('[data-navy]')?.dataset['navy'];
+    if (navy) {
+      const ship = findShipByKey(navy, this.live.navy());
+      if (ship) this.onFocusNavy?.(ship);
     }
   }
 
-  /**
-   * Returns the current alert count (for status indicators)
-   */
-  getAlertCount(alerts: DefenseAlert[]): { total: number; high: number; medium: number } {
-    return {
-      total: alerts.length,
-      high: alerts.filter(a => a.severity === 'high').length,
-      medium: alerts.filter(a => a.severity === 'medium').length,
-    };
+  private render(): void {
+    if (!this.shell || !this.state) return;
+    const { military, cables, vigipirate, sites, gnss, sanctions } = this.state;
+    const connection = this.live.connection();
+    const watch = cables?.watch.data ?? null;
+    const open = sectionOpenOf(loadSectionState(this.storage), PANEL_ID);
+    this.shell.patch(buildDefenseView({
+      military: military?.military.data ?? null, militaryError: military?.military.error ?? null, vigipirate: VIGIPIRATE,
+      vigipirateCheck: vigipirate?.check ?? null,
+      navy: { status: connection.status, lastMessageAt: connection.lastMessageAt, ships: this.live.navy() },
+      // AIS indisponible pour le serveur (muet, relais injoignable) ; un fichier des câbles illisible ne fige pas la Marine nationale.
+      aisRelay: watch !== null && watch.readAt !== null ? { evaluated: !cablesAisDown(watch), lastMessageAt: watch.aisLastMessageAt } : null,
+      sites,
+      gnss: gnss?.gnss.data ?? null, gnssError: gnss?.gnss.error ?? null,
+      sanctions: sanctions?.sanctions.data ?? null, sanctionsError: sanctions?.sanctions.error ?? null,
+      canFocus: this.onFocusAircraft !== undefined, now: Date.now(), open,
+    }));
   }
 }

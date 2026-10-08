@@ -5,11 +5,9 @@
  *  - NOAA SWPC Kp index (1 min) : https://services.swpc.noaa.gov
  *
  * Exports :
- *  - fetchSpaceWeather()        → Kp courant + niveau d'alerte
- *  - computeTerminatorGeoJSON() → Polygone GeoJSON côté nuit (layer carte)
+ *  - fetchSpaceWeather()        → Kp courant + niveau d'alerte ; null si jamais lu (V1 : une panne n'est jamais un « Calme »)
  */
 
-import type * as GeoJSON from 'geojson';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -53,7 +51,7 @@ function classifyKp(kp: number): Omit<SpaceWeatherData, 'kpIndex' | 'fetchedAt'>
     if (kp >= 4) return {
         level: 'active',    levelLabel: 'Active',
         color: '#CA8A04',
-        riskFrance: 'Activité géomagnétique modérée — surveillance recommandée',
+        riskFrance: 'Activité géomagnétique modérée : surveillance recommandée',
     };
     if (kp >= 2) return {
         level: 'unsettled', levelLabel: 'Agitée',
@@ -69,7 +67,11 @@ function classifyKp(kp: number): Omit<SpaceWeatherData, 'kpIndex' | 'fetchedAt'>
 
 // ── Fetch NOAA SWPC ───────────────────────────────────────────────────────────
 
-export async function fetchSpaceWeather(): Promise<SpaceWeatherData> {
+/**
+ * Kp courant. En panne (réseau, HTTP, réponse vide ou sans Kp lisible) : la dernière lecture réussie, datée par son `fetchedAt`, sinon
+ * null ; jamais un Kp 0 « Calme » inventé (revue finale I5 : le panneau Énergie et le baromètre disent alors « n.d. », sans couleur).
+ */
+export async function fetchSpaceWeather(): Promise<SpaceWeatherData | null> {
     if (_cache && Date.now() - _cache.ts < CACHE_TTL_MS) return _cache.data;
 
     try {
@@ -79,80 +81,17 @@ export async function fetchSpaceWeather(): Promise<SpaceWeatherData> {
         );
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-        const json = await res.json() as Array<{ time_tag: string; kp_index: number }>;
-        const last = json[json.length - 1];
-        const kp = Math.round(last?.kp_index ?? 0);
+        const json: unknown = await res.json();
+        const last: unknown = Array.isArray(json) ? json[json.length - 1] : undefined;
+        const raw = last && typeof last === 'object' ? (last as { kp_index?: unknown }).kp_index : undefined;
+        if (typeof raw !== 'number' || !Number.isFinite(raw)) throw new Error('Kp non publié');
+        const kp = Math.round(raw);
 
         const data: SpaceWeatherData = { kpIndex: kp, ...classifyKp(kp), fetchedAt: new Date() };
         _cache = { data, ts: Date.now() };
         return data;
 
     } catch {
-        return _cache?.data ?? { kpIndex: 0, ...classifyKp(0), fetchedAt: new Date() };
+        return _cache?.data ?? null;
     }
-}
-
-// ── Terminateur jour/nuit ─────────────────────────────────────────────────────
-
-const DEG = Math.PI / 180;
-
-/** Calcule la position du point subsolaire (approx. 0.01° de précision). */
-function subsolarPoint(date: Date): { lat: number; lon: number } {
-    const JD     = date.getTime() / 86_400_000 + 2_440_587.5;
-    const n      = JD - 2_451_545.0;
-
-    const L      = (280.46 + 0.9856474 * n) % 360;
-    const g      = ((357.528 + 0.9856003 * n) % 360) * DEG;
-    const lambda = (L + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) * DEG;
-
-    const epsilon = 23.439 * DEG;
-    const lat     = Math.asin(Math.sin(epsilon) * Math.sin(lambda)) / DEG;
-
-    const GMST   = (18.697375 + 24.065709824279 * n) % 24;
-    const RA_deg = Math.atan2(Math.cos(epsilon) * Math.sin(lambda), Math.cos(lambda)) / DEG;
-    const lon    = ((RA_deg - GMST * 15 + 540) % 360) - 180;
-
-    return { lat, lon };
-}
-
-/**
- * Calcule le polygone GeoJSON représentant la zone de nuit.
- * Prêt à être injecté dans une source MapLibre via `source.setData()`.
- *
- * Algorithme : pour chaque longitude θ, la latitude du terminateur est
- *   φ = atan(-cos(θ − θ☉) / tan(δ☉))
- * où δ☉ = déclinaison solaire et θ☉ = longitude subsolaire.
- */
-export function computeTerminatorGeoJSON(date: Date = new Date()): GeoJSON.FeatureCollection {
-    const { lat: sunLat, lon: sunLon } = subsolarPoint(date);
-
-    // Évite la division par zéro à l'équinoxe (tan(0°) = 0)
-    const safeDec = Math.abs(sunLat) < 0.5 ? (sunLat >= 0 ? 0.5 : -0.5) : sunLat;
-    const decRad  = safeDec * DEG;
-
-    const pts: [number, number][] = [];
-    for (let lon = -180; lon <= 180; lon++) {
-        const H   = (lon - sunLon) * DEG;
-        const lat = Math.atan2(-Math.cos(H), Math.tan(decRad)) / DEG;
-        pts.push([lon, Math.max(-89.9, Math.min(89.9, lat))]);
-    }
-
-    // Le pôle en nuit dépend de l'hémisphère du soleil
-    // sunLat > 0 (été boréal) → pôle nord éclairé → on ferme par le pôle SUD (nuit)
-    // mais la ligne du terminateur part de -180 vers +180, donc le cap doit fermer
-    // du côté OPPOSÉ au soleil pour enclore la bonne moitié
-    const nightCap: [number, number][] = sunLat >= 0
-        ? [[180,  90], [-180,  90]]   // soleil nord → fermer par pôle nord (côté nuit)
-        : [[180, -90], [-180, -90]];  // soleil sud → fermer par pôle sud (côté nuit)
-
-    const ring: [number, number][] = [...pts, ...nightCap, pts[0]];
-
-    return {
-        type: 'FeatureCollection',
-        features: [{
-            type: 'Feature',
-            geometry: { type: 'Polygon', coordinates: [ring] },
-            properties: { sunLat, sunLon },
-        }],
-    };
 }

@@ -2,8 +2,14 @@
  * ais-anomalies.ts — Détection d'anomalies AIS.
  *
  * Détecte :
- *  1. Radio silence : navire militaire absent du flux AIS trop longtemps
- *  2. Rendezvous suspect : deux navires (dont un militaire/risque) < 2 km hors port
+ *  1. Radio silence : navire civil à risque élevé absent du flux AIS trop longtemps
+ *  2. Rendezvous suspect : deux navires (dont un à risque élevé) < 2 km hors port
+ *
+ * Bâtiments de la Marine nationale jamais retenus (revue finale I1) : reconnus par un registre public ou leur propre message
+ * (NAVY_MMSI_SET), ou sous pavillon français de type AIS 35 ou nommés « FRENCH WARSHIP » (isFrenchWarship, même règle que la
+ * veille des câbles). Un bâtiment de guerre qui coupe son AIS est un usage courant, pas un signal (V1 : une absence n'est pas un
+ * événement) ; un ravitaillement à la mer n'est pas un rendez-vous suspect ; et suivre l'heure où un bâtiment nommé se tait irait
+ * contre la discrétion d'O10 et O11. Aucune anomalie, donc jamais de situation « Anomalie maritime » ni de plafond du score.
  *
  * Détecteur stateful — appeler à chaque cycle de polling AIS avec getAllLiveTraffic().
  *
@@ -12,12 +18,12 @@
  */
 
 import { NAVY_MMSI_SET, type MilitaryShip } from './military-ships.ts';
+import { isFrenchWarship } from './french-warship.js';
 import { FRENCH_PORTS } from '../config/french-ports.ts';
 import type { AisAnomaly } from '../types/index.ts';
 
 // ─── Seuils ──────────────────────────────────────────────────────────────────
 
-const SILENCE_MILITARY_MS  = 10 * 60 * 1000;  // 10 min pour navire militaire
 const SILENCE_RISK_MS = 20 * 60 * 1000;  // 20 min pour navire civil à risque élevé
 const RENDEZVOUS_DIST_KM   = 2;               // Distance max rendezvous (km)
 const RENDEZVOUS_MIN_SPEED = 1;               // Vitesse min des deux navires (kts)
@@ -36,6 +42,13 @@ const seenSilenceAlerts = new Set<string>();
 const lastSeenRisk = new Map<string, 'none' | 'low' | 'medium' | 'high' | 'critical'>();
 /** Cooldowns actifs pour les paires de rendezvous : clé → timestamp d'expiry. */
 const rendezvousCooldowns = new Map<string, number>();
+/** MMSI vus comme bâtiment de la Marine nationale (type 35 ou nom « FRENCH WARSHIP » sous pavillon français), gardés pour le silence. */
+const navySeen = new Set<string>();
+
+/** Bâtiment de la Marine nationale : registre public ou propre message AIS (NAVY_MMSI_SET), sinon règle FX2 (isFrenchWarship). */
+function isNavy(mmsi: string): boolean {
+    return NAVY_MMSI_SET.has(mmsi) || navySeen.has(mmsi);
+}
 
 // ─── Utilitaires ─────────────────────────────────────────────────────────────
 
@@ -86,6 +99,7 @@ export function detectAisAnomalies(ships: MilitaryShip[]): AisAnomaly[] {
             lastSeenPos.delete(mmsi);
             lastSeenRisk.delete(mmsi);
             seenSilenceAlerts.delete(mmsi);
+            navySeen.delete(mmsi);
         }
     }
     // Purge cooldowns rendezvous expirés
@@ -98,6 +112,7 @@ export function detectAisAnomalies(ships: MilitaryShip[]): AisAnomaly[] {
         if (!ship.mmsi) continue;
         lastSeenTs.set(ship.mmsi, ship.lastSeen ?? nowMs);
         lastSeenPos.set(ship.mmsi, [ship.lon, ship.lat]);
+        if (isFrenchWarship({ mmsi: ship.mmsi, name: ship.name, typeCode: ship.shipType ?? null })) navySeen.add(ship.mmsi);
         if (ship.riskLevel) {
             lastSeenRisk.set(ship.mmsi, ship.riskLevel);
         }
@@ -108,18 +123,15 @@ export function detectAisAnomalies(ships: MilitaryShip[]): AisAnomaly[] {
         }
     }
 
-    // ── 1. Radio silence (militaires + civils à risque élevé) ────────────────
+    // ── 1. Radio silence (civils à risque élevé seulement ; jamais la Marine nationale) ──
     for (const [mmsi, lastTs] of lastSeenTs) {
         const elapsed = nowMs - lastTs;
-        const isMilitary = NAVY_MMSI_SET.has(mmsi);
+        if (isNavy(mmsi)) continue;
 
         const cachedRisk = lastSeenRisk.get(mmsi);
-        const isHighRiskCivilian = !isMilitary && (cachedRisk === 'high' || cachedRisk === 'critical');
+        if (cachedRisk !== 'high' && cachedRisk !== 'critical') continue;
 
-        if (!isMilitary && !isHighRiskCivilian) continue;
-
-        const thresholdMs = isMilitary ? SILENCE_MILITARY_MS : SILENCE_RISK_MS;
-        if (elapsed < thresholdMs) continue;
+        if (elapsed < SILENCE_RISK_MS) continue;
         if (seenSilenceAlerts.has(mmsi)) continue;
 
         const pos = lastSeenPos.get(mmsi);
@@ -130,7 +142,7 @@ export function detectAisAnomalies(ships: MilitaryShip[]): AisAnomaly[] {
         anomalies.push({
             id: `silence-${mmsi}-${nowSec}-${idx}`,
             type: 'radio_silence',
-            severity: isMilitary ? 'high' : 'medium',
+            severity: 'medium',
             position: pos,
             timestamp: nowMs,
             mmsis: [mmsi],
@@ -138,9 +150,9 @@ export function detectAisAnomalies(ships: MilitaryShip[]): AisAnomaly[] {
         });
     }
 
-    // ── 2. Rendezvous suspects ────────────────────────────────────────────────
+    // ── 2. Rendezvous suspects (navire à risque élevé ; aucune paire qui compte un bâtiment de la Marine nationale) ──
     const watchedShips = ships.filter(s =>
-        s.mmsi && (NAVY_MMSI_SET.has(s.mmsi) || s.riskLevel === 'high' || s.riskLevel === 'critical')
+        s.mmsi && !isNavy(s.mmsi) && (s.riskLevel === 'high' || s.riskLevel === 'critical')
     );
 
     for (const watched of watchedShips) {
@@ -150,6 +162,7 @@ export function detectAisAnomalies(ships: MilitaryShip[]): AisAnomaly[] {
 
         for (const other of ships) {
             if (!other.mmsi || other.mmsi === watched.mmsi) continue;
+            if (isNavy(other.mmsi)) continue;
             if ((other.speed ?? 0) < RENDEZVOUS_MIN_SPEED) continue;
             if (isNearFrenchPort(other.lat, other.lon)) continue;
 
@@ -187,4 +200,5 @@ export function clearAisAnomalyState(): void {
     lastSeenRisk.clear();
     seenSilenceAlerts.clear();
     rendezvousCooldowns.clear();
+    navySeen.clear();
 }

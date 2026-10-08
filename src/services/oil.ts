@@ -80,14 +80,14 @@ const FALLBACK_ANNUAL_STATS: AnnualOilStats = {
   refinedExportMtep: 16.0,
   refinedConsumptionMtep: 60.9,
   reserveMtep: 7.6,
-  sourceLabel: 'SDES — Chiffres clés de l’énergie 2025 (données 2024)',
+  sourceLabel: 'SDES · Chiffres clés de l’énergie 2025 (données 2024)',
 };
 
 const FALLBACK_ORIGINS: OilOriginShare[] = [
-  { label: 'Amérique du Nord',      sharePct: 23.0, volumeMt: 10.5, referenceYear: 2024, sourceLabel: 'SDES — provenance du brut importé (2024)', partialBreakdown: false, breakdown: [] },
-  { label: 'Afrique subsaharienne', sharePct: 21.0, volumeMt: 9.6, referenceYear: 2024, sourceLabel: 'SDES — provenance du brut importé (2024)', partialBreakdown: false, breakdown: [] },
-  { label: 'Afrique du Nord',       sharePct: 17.0, volumeMt: 7.8, referenceYear: 2024, sourceLabel: 'SDES — provenance du brut importé (2024)', partialBreakdown: false, breakdown: [] },
-  { label: 'Autres origines SDES',  sharePct: 39.0, volumeMt: 17.8, referenceYear: 2024, sourceLabel: 'SDES — provenance du brut importé (2024)', partialBreakdown: true, breakdown: [] },
+  { label: 'Amérique du Nord',      sharePct: 23.0, volumeMt: 10.5, referenceYear: 2024, sourceLabel: 'SDES · provenance du brut importé (2024)', partialBreakdown: false, breakdown: [] },
+  { label: 'Afrique subsaharienne', sharePct: 21.0, volumeMt: 9.6, referenceYear: 2024, sourceLabel: 'SDES · provenance du brut importé (2024)', partialBreakdown: false, breakdown: [] },
+  { label: 'Afrique du Nord',       sharePct: 17.0, volumeMt: 7.8, referenceYear: 2024, sourceLabel: 'SDES · provenance du brut importé (2024)', partialBreakdown: false, breakdown: [] },
+  { label: 'Autres origines SDES',  sharePct: 39.0, volumeMt: 17.8, referenceYear: 2024, sourceLabel: 'SDES · provenance du brut importé (2024)', partialBreakdown: true, breakdown: [] },
 ];
 
 const OIL_FRESHNESS_TEXT = {
@@ -795,7 +795,7 @@ export async function fetchAnnualOilStatsFromSdes(): Promise<AnnualOilStats> {
       'SDES refined exports',
     ),
     refinedConsumptionMtep: extractFirstNumber(html, /Consommation de produits raffinés[^]*?TOTAL\s*:\s*([0-9]+,[0-9]+)\s*Mtep/i, 'SDES refined consumption'),
-    sourceLabel: `SDES — Chiffres clés de l’énergie (${year})`,
+    sourceLabel: `SDES · Chiffres clés de l’énergie (${year})`,
   };
 }
 
@@ -811,7 +811,7 @@ export async function fetchOilOriginsFromInsee(): Promise<OilOriginShare[]> {
       ?.match(/(\d{4})/)?.[1] ?? '',
     10,
   );
-  const sourceLabel = 'Insee / SDES — Provenance du pétrole brut importé en France';
+  const sourceLabel = 'Insee / SDES · Provenance du pétrole brut importé en France';
 
   const origins: OilOriginShare[] = [];
   let currentOrigin: OilOriginShare | null = null;
@@ -903,7 +903,7 @@ export async function fetchMonthlyDeliveriesFromUfip(): Promise<OilMonthlyDelive
       title,
       periodLabel,
       publicationDate,
-      sourceLabel: 'UFIP Énergies et Mobilités — communiqué mensuel',
+      sourceLabel: 'UFIP Énergies et Mobilités · communiqué mensuel',
       roadFuelMillionM3: extractVolume(combinedText, /carburants routiers[^.]{0,220}?(?:volume de|pour atteindre|atteindre|atteignant|enregistr(?:ant|é) un volume de|s['’]établ(?:it|ies|is|issent) à)\s*([0-9]+,[0-9]+)\s*million(?:s)?\s+de(?:\s+de)?\s+m3/i),
       roadFuelYoYPct: extractSignedPercent(combinedText, /carburants routiers[^.]{0,220}?(hausse|augmentation|progression|baisse|repli|recul|baiss[ée]s?|augmentent|en hausse|en baisse)[^0-9]{0,20}([0-9]+,[0-9]+)\s*%/i),
       totalProductsMillionTons: extractVolume(combinedText, /produits pétroliers énergétiques[^.]{0,320}?(?:s['’]établ(?:it|ies|is|issent) à|atteign(?:ent|ant|ait)|pour atteindre|à)\s*([0-9]+,[0-9]+)\s*million(?:s)?\s+de\s+tonnes/i),
@@ -969,7 +969,7 @@ export async function fetchLocalOilConsumption(): Promise<OilLocalConsumptionSna
     year: latestYear,
     totalRoadFuelVolume: Array.from(byRegion.values()).reduce((sum, region) => sum + region.roadFuelVolume, 0),
     topRegions,
-    sourceLabel: `SDES / CPDP — données locales ${latestYear}`,
+    sourceLabel: `SDES / CPDP · données locales ${latestYear}`,
   };
 }
 
@@ -1142,7 +1142,7 @@ export async function fetchOilDashboard(): Promise<OilDashboard> {
 
   if (!annualResult.data) {
     if (cache) return cache.data;
-    console.warn('[Oil] SDES unavailable — using latest consolidated SDES fallback (2024)');
+    console.warn('[Oil] SDES unavailable : using latest consolidated SDES fallback (2024)');
     annualResult.data = FALLBACK_ANNUAL_STATS;
     annualResult.status = 'stale';
   }

@@ -1,0 +1,21 @@
+[
+  {"shom_id":"2","name":"DUNKERQUE","longitude":2.366698,"latitude":51.048091,"state":"OK","reseau":"RONIM","alertCustom":false,"delai_alerte":"06:00"},
+  {"shom_id":"55","name":"CALAIS","longitude":1.86772001,"latitude":50.9693985,"state":"OK","reseau":"RONIM","alertCustom":false,"delai_alerte":"06:00"},
+  {"shom_id":"4","name":"LE_HAVRE","longitude":0.10598,"latitude":49.481892,"state":"OK","reseau":"RONIM","alertCustom":false,"delai_alerte":"06:00"},
+  {"shom_id":"13","name":"CHERBOURG","longitude":-1.635508,"latitude":49.651447,"state":"OK","reseau":"RONIM","alertCustom":false,"delai_alerte":"06:00"},
+  {"shom_id":"410","name":"SAINT-MALO","longitude":-2.028103,"latitude":48.640812,"state":"OK","reseau":"RONIM","alertCustom":false,"delai_alerte":"06:00"},
+  {"shom_id":"3","name":"BREST","longitude":-4.49503994,"latitude":48.38290024,"state":"OK","reseau":"RONIM","alertCustom":false,"delai_alerte":"03:00"},
+  {"shom_id":"160","name":"CONCARNEAU","longitude":-3.907207,"latitude":47.873549,"state":"OK","reseau":"RONIM","alertCustom":false,"delai_alerte":"06:00"},
+  {"shom_id":"37","name":"SAINT-NAZAIRE","longitude":-2.20155,"latitude":47.266862,"state":"OK","reseau":"RONIM","alertCustom":false,"delai_alerte":"06:00"},
+  {"shom_id":"62","name":"LES_SABLES_D_OLONNE","longitude":-1.793528,"latitude":46.497358,"state":"OK","reseau":"RONIM","alertCustom":false,"delai_alerte":"06:00"},
+  {"shom_id":"34","name":"LA_ROCHELLE-PALLICE","longitude":-1.2206499576568604,"latitude":46.15850067138672,"state":"OK","reseau":"RONIM","alertCustom":false,"delai_alerte":"06:00"},
+  {"shom_id":"297","name":"PORT_BLOC_GPM","longitude":-1.06148333,"latitude":45.56843333,"state":"OK","reseau":"REFMAR","alertCustom":false,"delai_alerte":"06:00"},
+  {"shom_id":"190","name":"ARCACHON_EYRAC","longitude":-1.16355002,"latitude":44.66500092,"state":"OK","reseau":"RONIM","alertCustom":false,"delai_alerte":"06:00"},
+  {"shom_id":"94","name":"BAYONNE_BOUCAU","longitude":-1.51483,"latitude":43.52732,"state":"OK","reseau":"RONIM","alertCustom":false,"delai_alerte":"06:00"},
+  {"shom_id":"75","name":"PORT-VENDRES","longitude":3.10745,"latitude":42.519922,"state":"OK","reseau":"RONIM","alertCustom":false,"delai_alerte":"06:00"},
+  {"shom_id":"250","name":"SETE","longitude":3.701918,"latitude":43.399907,"state":"OK","reseau":"RONIM","alertCustom":false,"delai_alerte":"06:00"},
+  {"shom_id":"524","name":"MARSEILLE","longitude":5.353758,"latitude":43.278814,"state":"OK","reseau":"RONIM","alertCustom":false,"delai_alerte":"06:00"},
+  {"shom_id":"68","name":"TOULON","longitude":5.91306,"latitude":43.11722,"state":"OK","reseau":"RONIM","alertCustom":false,"delai_alerte":"06:00"},
+  {"shom_id":"339","name":"NICE","longitude":7.285257,"latitude":43.695508,"state":"OK","reseau":"RONIM","alertCustom":false,"delai_alerte":"06:00"},
+  {"shom_id":"300","name":"AJACCIO","longitude":8.76284981,"latitude":41.92279816,"state":"OK","reseau":"RONIM","alertCustom":false,"delai_alerte":"06:00"}
+]

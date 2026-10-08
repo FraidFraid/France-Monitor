@@ -1,0 +1,313 @@
+// src/components/layer-panel/frame.ts : cadre commun des panneaux de couches (spec 2026-10-02 § 4).
+// Rendu pur (HTML échappé) + une coquille DOM mince : en-tête collant, onglets, fermeture, sections du kit.
+import { levelColorVar, type VigilanceLevel } from '../../services/vigilance.ts';
+import { loadSectionState, saveSectionState, type SectionStorage } from '../../services/fiche-sections-store.ts';
+import { escapeHtml, safeHref } from '../france-intel-events.ts';
+import { renderVigilancePill } from '../shared/vigilancePill.ts';
+import { fmLoaderHTML } from '../shared/loader.ts';
+import { absoluteTime, levelDot } from '../fiche/kit.ts';
+import { renderKitSection, type FicheSection } from '../fiche/parts.ts';
+import { morphInto } from './morph.ts';
+
+export interface LayerFigure {
+  value: string;
+  caption: string;
+  /** HTML déjà échappé qui remplace `caption` (partie colorée, R2). */
+  captionHtml?: string;
+  /** R3 : niveau du chiffre quand il en a un (le chiffre prend sa couleur). */
+  level?: VigilanceLevel | null;
+}
+
+export interface LayerHeadModel {
+  theme: string;
+  title: string;
+  figure?: LayerFigure | null;
+  level?: VigilanceLevel | 'nd' | null;
+  status: string[];
+  lead?: string | null;
+}
+export interface LayerTab { id: string; label: string; count?: number | null }
+export interface LayerView { head: LayerHeadModel; tabs?: LayerTab[]; activeTab?: string; sections: FicheSection[]; bodyHtml?: string }
+
+export function renderNdPill(): string {
+  return '<span class="fm-vig fm-vig--nd">n.d.</span>';
+}
+
+export function renderLayerHead(m: LayerHeadModel, titleId: string): string {
+  const pill = m.level === 'nd' ? renderNdPill() : m.level ? renderVigilancePill(m.level) : '';
+  const status = m.status.filter((s) => s.length > 0).map((s) => `<span class="fmk-ctx">${escapeHtml(s)}</span>`).join('');
+  const f = m.figure;
+  // R3 : le gros chiffre prend son propre niveau ; à défaut (undefined), celui de la pastille du panneau.
+  // `level: null` explicite (donnée en retard…) le laisse en couleur de texte ; « n.d. » ne colore jamais.
+  const figLevel = f && f.value !== 'n.d.' ? (f.level !== undefined ? f.level : m.level && m.level !== 'nd' ? m.level : null) : null;
+  const figure = f
+    ? `<div class="lp-figure"><b class="fmk-num${figLevel ? ` lp-lvl lp-lvl--${figLevel}` : ''}">${escapeHtml(f.value)}</b>`
+      + `<span>${f.captionHtml ?? escapeHtml(f.caption)}</span></div>`
+    : '';
+  return `<div class="fmk-eyebrow">${escapeHtml(`${m.theme} · Couche`)}</div>`
+    + `<h2 class="lp-title" id="${escapeHtml(titleId)}" tabindex="-1">${escapeHtml(m.title)}</h2>`
+    + figure
+    + (pill || status ? `<div class="fmk-level">${pill}${status}</div>` : '')
+    + (m.lead ? `<p class="fmk-lead">${escapeHtml(m.lead)}</p>` : '');
+}
+
+export function renderLayerTabs(tabs: readonly LayerTab[], activeId: string, panelId: string): string {
+  const items = tabs.map((t) => {
+    const on = t.id === activeId;
+    const count = t.count != null ? `<span class="lp-tab-count fmk-num">${t.count}</span>` : '';
+    return `<button type="button" role="tab" class="lp-tab${on ? ' is-on' : ''}" data-tab="${escapeHtml(t.id)}"`
+      + ` id="${escapeHtml(`${panelId}-tab-${t.id}`)}" aria-selected="${on}" aria-controls="${escapeHtml(`${panelId}-body`)}"`
+      + ` tabindex="${on ? 0 : -1}">${escapeHtml(t.label)}${count}</button>`;
+  }).join('');
+  return `<div class="lp-tabs" role="tablist">${items}</div>`;
+}
+
+export function renderLayerSections(panelId: string, sections: readonly FicheSection[]): string {
+  return sections.map((s) => renderKitSection(`layer:${panelId}`, s)).join('');
+}
+
+export function renderLayerView(panelId: string, view: LayerView): string {
+  const tabs = view.tabs && view.tabs.length > 0 ? renderLayerTabs(view.tabs, view.activeTab ?? view.tabs[0].id, panelId) : '';
+  return `<header class="lp-head">${renderLayerHead(view.head, `${panelId}-title`)}${tabs}</header>`
+    + `<div class="lp-body fmk" id="${escapeHtml(`${panelId}-body`)}"${tabs ? ' role="tabpanel"' : ''}>`
+    + (view.bodyHtml ?? '') + renderLayerSections(panelId, view.sections) + `</div>`;
+}
+
+export function renderCloseButton(): string {
+  return '<button type="button" class="lp-close" aria-label="Fermer">'
+    + '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></button>';
+}
+
+export function loadingBody(): string {
+  return `<div class="lp-state">${fmLoaderHTML()}<p>Chargement des données…</p></div>`;
+}
+
+export function sourceErrorCallout(lastDataMs: number | null, now: number): string {
+  const text = lastDataMs === null
+    ? 'Source injoignable. Aucune donnée reçue.'
+    : `Source injoignable. Dernières données : ${absoluteTime(lastDataMs, now, 'fr')}.`;
+  return `<p class="fmk-callout lp-callout">${escapeHtml(text)}</p>`;
+}
+
+export function emptyLine(text: string): string {
+  return `<p class="fiche-empty">${escapeHtml(text)}</p>`;
+}
+
+/** Valeur insécable (R1), colorée par son niveau quand elle en a un (R2, R3). */
+export function valueHtml(text: string, level: VigilanceLevel | null = null): string {
+  return `<span class="lp-val fmk-num${level ? ` lp-lvl lp-lvl--${level}` : ''}">${escapeHtml(text)}</span>`;
+}
+
+function marker(level: VigilanceLevel | 'gris' | null | undefined, color: string | null | undefined): string {
+  if (level === 'gris') return levelDot(null);
+  if (level) return levelDot(level);
+  if (color) return `<span class="lp-swatch" style="background:${escapeHtml(color)}" aria-hidden="true"></span>`;
+  return '<span aria-hidden="true"></span>';
+}
+
+/** Attributs data-* internes : nom en minuscules seulement, valeur échappée. */
+function dataAttrs(data: Readonly<Record<string, string>> | undefined): string {
+  if (!data) return '';
+  return Object.entries(data)
+    .filter(([k]) => /^[a-z][a-z0-9-]*$/.test(k))
+    .map(([k, v]) => ` data-${k}="${escapeHtml(v)}"`).join('');
+}
+
+export interface ListRow {
+  text: string;
+  value?: string | null;
+  /** HTML déjà échappé à la place de `value` (valeur colorée). */
+  valueHtml?: string | null;
+  /** Puce de niveau ; 'gris' = puce grise (arrêt, maintenance, n.d.). */
+  level?: VigilanceLevel | 'gris' | null;
+  /** Puce de catégorie (jeton CSS) quand il n'y a pas de niveau. */
+  color?: string | null;
+  note?: string | null;
+  noteHtml?: string | null;
+  data?: Readonly<Record<string, string>>;
+  /** Ligne cliquable (recentrer la carte) : focus clavier, Entrée = clic. */
+  link?: boolean;
+  /** Détail secondaire en infobulle (échappé). */
+  title?: string | null;
+}
+
+export function listRow(r: ListRow): string {
+  const value = r.valueHtml ?? (r.value !== undefined && r.value !== null ? valueHtml(r.value) : '<span></span>');
+  const note = r.noteHtml ?? (r.note ? escapeHtml(r.note) : '');
+  const link = r.link ? ' is-link" tabindex="0" role="button' : '';
+  const title = r.title ? ` title="${escapeHtml(r.title)}"` : '';
+  return `<div class="lp-row${link}"${dataAttrs(r.data)}${title}>${marker(r.level, r.color)}<span>${escapeHtml(r.text)}</span>${value}`
+    + `${note ? `<small>${note}</small>` : ''}</div>`;
+}
+
+interface BarRowBase {
+  label: string;
+  /** 0–100 ; null : pas de barre. */
+  pct: number | null;
+  value: string;
+  /** HTML déjà échappé à la place de `value` (valeur suivie d'une flèche colorée). */
+  valueHtml?: string | null;
+  /** Puce devant le libellé (défaut : oui). */
+  dot?: boolean;
+  note?: string | null;
+  noteHtml?: string | null;
+  data?: Readonly<Record<string, string>>;
+}
+/** Jamais de jauge grise (demande de l'utilisateur) : un niveau OU une couleur de catégorie, imposé par le type. */
+export type BarRow = BarRowBase & ({ level: VigilanceLevel; color?: undefined } | { color: string; level?: undefined });
+
+/** Ligne libellé · barre · valeur : barre et puce en couleur de niveau ou de catégorie. */
+export function barRow(r: BarRow): string {
+  const fill = r.level !== undefined ? levelColorVar(r.level) : r.color;
+  const width = r.pct === null || !Number.isFinite(r.pct) ? null : Math.max(0, Math.min(100, r.pct));
+  const bar = width === null ? '' : `<i style="width:${Math.round(width * 10) / 10}%;background:${escapeHtml(fill)}"></i>`;
+  const note = r.noteHtml ?? (r.note ? escapeHtml(r.note) : '');
+  const dot = r.dot === false ? '<span aria-hidden="true"></span>' : marker(r.level, r.color);
+  return `<div class="lp-bar-row"${dataAttrs(r.data)}>${dot}<span class="lp-bar-label">${escapeHtml(r.label)}</span>`
+    + `<span class="fmk-bar">${bar}</span>${r.valueHtml ?? valueHtml(r.value)}${note ? `<small>${note}</small>` : ''}</div>`;
+}
+
+/** Cadence éCO2mix suivie par les panneaux Réseau, Éolien et Hydro : « en retard » au-delà de deux fois cette durée (45 min). */
+export const ECO2MIX_LATE_PERIOD_MS = 22.5 * 60_000;
+/** Seuil de retard éCO2mix (45 min), commun à tous les panneaux qui lisent cette source. */
+export const ECO2MIX_LATE_MS = 2 * ECO2MIX_LATE_PERIOD_MS;
+
+export function freshnessSegment(dataMs: number, now: number, periodMs: number): string {
+  const base = `données de ${absoluteTime(dataMs, now, 'fr')}`;
+  return now - dataMs > 2 * periodMs ? `${base} (en retard)` : base;
+}
+
+export function sourceLinkHtml(label: string, href: string): string {
+  const safe = safeHref(href);
+  if (!safe) return escapeHtml(label);
+  return `<a class="lp-link" href="${safe}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`;
+}
+
+export const LAYER_TABS_STORAGE_KEY = 'fm.layer.tabs';
+
+function readTabs(storage: SectionStorage | null): Record<string, string> {
+  if (!storage) return {};
+  try {
+    const parsed: unknown = JSON.parse(storage.getItem(LAYER_TABS_STORAGE_KEY) ?? '{}');
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {};
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(parsed)) if (typeof v === 'string') out[k] = v;
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+export function loadLayerTab(storage: SectionStorage | null, panelId: string, allowed: readonly string[]): string {
+  const saved = readTabs(storage)[panelId];
+  return saved !== undefined && allowed.includes(saved) ? saved : allowed[0] ?? '';
+}
+
+export function saveLayerTab(storage: SectionStorage | null, panelId: string, tabId: string): void {
+  if (!storage) return;
+  try {
+    storage.setItem(LAYER_TABS_STORAGE_KEY, JSON.stringify({ ...readTabs(storage), [panelId]: tabId }));
+  } catch {
+    // Stockage refusé : l'onglet reste celui de la session.
+  }
+}
+
+export function sectionOpenOf(state: ReadonlyMap<string, boolean>, panelId: string): (sectionId: string, byDefault: boolean) => boolean {
+  return (sectionId, byDefault) => state.get(`layer:${panelId}:${sectionId}`) ?? byDefault;
+}
+
+export function safeStorage(): SectionStorage | null {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Vérifie si un élément est un panneau de couche ouvert.
+ * Utilisé par `App.ts:isPanelVisible` pour éviter les panneaux fermés dans le calcul d'empilement.
+ */
+export function isLayerPanelOpen(el: HTMLElement): boolean {
+  return el.classList.contains('lp') && el.classList.contains('is-open');
+}
+
+export interface LayerPanelShell {
+  root: HTMLElement;
+  render(view: LayerView): void;
+  /** Même contenu que render, sans reconstruire les nœuds inchangés (focus, menu déroulant ouvert, saisie et défilement gardés). */
+  patch(view: LayerView): void;
+  destroy(): void;
+}
+
+export function createLayerPanelShell(opts: {
+  container: HTMLElement; className: string; panelId: string;
+  onClose: () => void; onTab?: (tabId: string) => void; storage?: SectionStorage | null;
+}): LayerPanelShell {
+  const storage = opts.storage === undefined ? safeStorage() : opts.storage;
+  const root = document.createElement('section');
+  root.className = `lp ${opts.className}`;
+  root.setAttribute('aria-labelledby', `${opts.panelId}-title`);
+  // .fmk sur l'enveloppe : en-tête et corps reçoivent les styles du kit (sélecteurs « :is(#app.ui-v2, .lp) .fmk … »).
+  root.innerHTML = `${renderCloseButton()}<div class="lp-view fmk"></div>`;
+  const viewEl = root.querySelector<HTMLElement>('.lp-view');
+
+  const onClick = (e: Event): void => {
+    const target = e.target as HTMLElement;
+    if (target.closest('.lp-close')) { opts.onClose(); return; }
+    const tab = target.closest<HTMLElement>('[data-tab]');
+    if (tab?.dataset['tab']) opts.onTab?.(tab.dataset['tab']);
+  };
+  const onKey = (e: KeyboardEvent): void => {
+    const link = (e.target as HTMLElement).closest<HTMLElement>('.lp-row.is-link');
+    if (link && e.target === link && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      link.click();
+      return;
+    }
+    const tab = (e.target as HTMLElement).closest<HTMLElement>('[role="tab"]');
+    if (!tab) return;
+    const tabs = [...root.querySelectorAll<HTMLElement>('[role="tab"]')];
+    const i = tabs.indexOf(tab);
+    const next = e.key === 'ArrowRight' ? tabs[(i + 1) % tabs.length]
+      : e.key === 'ArrowLeft' ? tabs[(i - 1 + tabs.length) % tabs.length]
+      : e.key === 'Home' ? tabs[0] : e.key === 'End' ? tabs[tabs.length - 1] : null;
+    if (!next?.dataset['tab']) return;
+    e.preventDefault();
+    opts.onTab?.(next.dataset['tab']);
+    // Identifiants d'onglet internes (overview, calendar…) : sûrs dans un sélecteur d'attribut.
+    root.querySelector<HTMLElement>(`[data-tab="${next.dataset['tab']}"]`)?.focus();
+  };
+  const onToggle = (e: Event): void => {
+    const details = e.target as HTMLElement;
+    if (!(details instanceof HTMLDetailsElement)) return;
+    const key = details.dataset['section'];
+    if (!key) return;
+    const state = loadSectionState(storage);
+    state.set(key, details.open);
+    saveSectionState(storage, state);
+  };
+  root.addEventListener('click', onClick);
+  root.addEventListener('keydown', onKey);
+  root.addEventListener('toggle', onToggle, true);
+  opts.container.appendChild(root);
+
+  return {
+    root,
+    render(view: LayerView): void {
+      if (!viewEl) return;
+      const scroll = root.scrollTop;
+      viewEl.innerHTML = renderLayerView(opts.panelId, view);
+      root.scrollTop = scroll;
+    },
+    patch(view: LayerView): void {
+      if (viewEl) morphInto(viewEl, renderLayerView(opts.panelId, view));
+    },
+    destroy(): void {
+      root.removeEventListener('click', onClick);
+      root.removeEventListener('keydown', onKey);
+      root.removeEventListener('toggle', onToggle, true);
+      root.remove();
+    },
+  };
+}

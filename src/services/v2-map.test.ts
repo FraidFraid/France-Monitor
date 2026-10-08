@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { eventMapPoints, sourcesRadius, v2FloodSegments } from './v2-map.ts';
-import type { FloodSegment, NewsEvent } from '../types/index.ts';
+import { eventMapPoints, sourcesRadius } from './v2-map.ts';
+import type { NewsEvent } from '../types/index.ts';
 import { buildWorkQueue, viewWorkQueue } from './work-queue.ts';
 import type { ThemeId } from './themes.ts';
 
@@ -45,18 +45,6 @@ describe('eventMapPoints (spec 2026-09-29 § 5)', () => {
   });
 });
 
-describe('v2FloodSegments', () => {
-  const line = { type: 'LineString' as const, coordinates: [] };
-  const flood = (name: string, level: FloodSegment['level']): FloodSegment => ({
-    id: name, name, level, dataSource: 'live', geometryFidelity: 'raw', matchConfidence: 1,
-    rawVertexCount: 0, displayVertexCount: 0, geometry: line, rawGeometry: line, displayGeometry: line,
-  });
-
-  it('ne garde que les tronçons orange et rouges', () => {
-    const kept = v2FloodSegments([flood('a', 'green'), flood('b', 'yellow'), flood('c', 'orange'), flood('d', 'red')]);
-    expect(kept.map((s) => s.name)).toEqual(['c', 'd']);
-  });
-});
 
 describe('carte et fil : un seul thème, un seul jeu d’événements', () => {
   const events = [

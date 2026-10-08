@@ -1,0 +1,10 @@
+{
+"Scenario": {"Flux": {"Version": "1", "DateRevision": "2019-07-02T10:00:00"}, "CodeScenario": "VIC", "VersionScenario": "1.1", "NomScenario": "Référentiels et données de la vigilance crues métropolitaine", "DateHeureCreationFichier": "2026-10-04T08:08:39+00:00", "Emetteur": "1524"},
+"ListEntVigiCru": [
+ {"CdEntVigiCru": "MO12", "TypEntVigiCru": "8", "LbEntVigiCru": "Têt", "CdDistrictEntVigiCru_1": "A renseigner obligatoirement", "DtHrCreatEntVigiCru": "A renseigner obligatoirement", "DtHrMajEntVigiCru": "A renseigner obligatoirement", "StEntVigiCru": "Validé", "CdTCC": "A renseigner obligatoirement", "CdInt": "A renseigner obligatoirement", "aNPlusUn": {"CdEntVigiCruSuperieur": "21", "TypEntVigiCruSuperieur": "5", "Link": "https://www.vigicrues.gouv.fr/services/v1.1/TerEntVigiCru.json?CdEntVigiCru=21&TypEntVigiCru=5"}, "aNMoinsUn": [
+  {"CdEntVigiCruInferieur": "Y046401001", "TypEntVigiCruInferieur": "7", "LbEntVigiCruInferieur": "Vinca", "Link": "https://www.vigicrues.gouv.fr/services/v1.1/StaEntVigiCru.json?CdEntVigiCru=Y046401001&TypEntVigiCru=7"},
+  {"CdEntVigiCruInferieur": "Y047403001", "TypEntVigiCruInferieur": "7", "LbEntVigiCruInferieur": "Perpignan [Pont-Joffre]", "Link": "https://www.vigicrues.gouv.fr/services/v1.1/StaEntVigiCru.json?CdEntVigiCru=Y047403001&TypEntVigiCru=7"},
+  {"CdEntVigiCruInferieur": "Y046600501", "TypEntVigiCruInferieur": "7", "LbEntVigiCruInferieur": "Ille-sur-Têt", "Link": "https://www.vigicrues.gouv.fr/services/v1.1/StaEntVigiCru.json?CdEntVigiCru=Y046600501&TypEntVigiCru=7"}
+ ]}
+]
+}

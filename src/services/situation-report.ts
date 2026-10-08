@@ -162,7 +162,7 @@ function renderStability(stability: ReportStability | null): string {
         <span class="isnr-value">${stability.nationalScore}</span><span class="isnr-max">/100</span>
       </div>
       <div class="isnr-body">
-        <div class="isnr-label">Indice de stabilité nationale — <strong>${escapeHtml(stability.statusLabel)}</strong></div>
+        <div class="isnr-label">Indice de stabilité nationale : <strong>${escapeHtml(stability.statusLabel)}</strong></div>
         ${depts}
       </div>
     </div>`;
@@ -204,7 +204,7 @@ function renderEvents(data: SituationReportData): string {
 
   const rows = data.events
     .map((e) => {
-      const place = e.place ? escapeHtml(e.place) : '—';
+      const place = e.place ? escapeHtml(e.place) : 'n.d.';
       return `
         <tr>
           <td class="ev-time">${escapeHtml(e.time)}</td>
@@ -356,7 +356,7 @@ export function buildSituationReportHtml(data: SituationReportData): string {
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Note de situation — France Monitor</title>
+  <title>Note de situation : France Monitor</title>
   <style>${STYLES}</style>
 </head>
 <body>
@@ -364,10 +364,10 @@ export function buildSituationReportHtml(data: SituationReportData): string {
     <button type="button" class="print-btn" onclick="window.print()">Imprimer / PDF</button>
   </div>
   <div class="sheet">
-    <div class="classif">Diffusion libre — Sources ouvertes</div>
+    <div class="classif">Diffusion libre · Sources ouvertes</div>
 
     <header class="doc-head">
-      <h1 class="doc-title">NOTE DE SITUATION — France Monitor</h1>
+      <h1 class="doc-title">NOTE DE SITUATION · France Monitor</h1>
       <div class="doc-meta">
         <span>Généré le ${escapeHtml(data.generatedAtLabel)}</span>
         <span>Période : ${escapeHtml(data.periodLabel)}</span>
@@ -392,12 +392,12 @@ export function buildSituationReportHtml(data: SituationReportData): string {
     </section>
 
     <section>
-      <h2>Annexe — Sources auditables</h2>
+      <h2>Annexe : Sources auditables</h2>
       ${renderSources(data.sources)}
     </section>
 
     <footer class="doc-foot">
-      Généré automatiquement par France Monitor — signaux issus de sources ouvertes, non vérifiés
+      Généré automatiquement par France Monitor : signaux issus de sources ouvertes, non vérifiés
       humainement. Distinguer signal ≠ fait confirmé.
       ${version}
     </footer>

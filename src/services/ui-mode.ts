@@ -35,17 +35,6 @@ export function reopensLayerPanelsOnLoad(uiV2: boolean): boolean {
 }
 
 /**
- * v2 (spec 2026-09-29 § 4) : un panneau de module ne s'ouvre que sur une demande explicite de
- * l'analyste (sélecteur de panneaux, « Voir les indicateurs » d'une bulle de la carte), jamais au
- * chargement ni à l'activation d'une couche. Le déclencheur le dit par `detail.explicit === true`.
- * v1 : inchangé, tout déclencheur ouvre le panneau.
- */
-export function opensModulePanel(uiV2: boolean, detail: unknown): boolean {
-  if (!uiV2) return true;
-  return typeof detail === 'object' && detail !== null && (detail as { explicit?: unknown }).explicit === true;
-}
-
-/**
  * Stockage de l'état des couches. v2 : la session — un rechargement le garde, une nouvelle visite
  * repart des couches de démarrage (spec 2026-09-29 § 5). v1 : localStorage, comme avant. null si
  * le stockage est inaccessible (navigation privée stricte) : rien n'est gardé.

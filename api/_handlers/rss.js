@@ -16,8 +16,6 @@ import { parseRssXml, detectSourceFormat } from '../_lib/parse-rss.js';
 const ALLOWED_DOMAINS = [
   // RTE / Énergie — REMIT / IIP
   'iip.cloud-rte-france.com',
-  // Sécurité / cyber
-  'cert.ssi.gouv.fr',
   // Nationales
   'franceinfo.fr',
   'lemonde.fr',

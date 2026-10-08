@@ -98,6 +98,7 @@ export const NUCLEAR_UNITS: NuclearUnitReference[] = [
   ...makeNuclearUnits('nuc-flamanville', 'Flamanville', [
     { unitName: 'FLAMANVILLE 1', nominalPowerMW: 1345 },
     { unitName: 'FLAMANVILLE 2', nominalPowerMW: 1345 },
+    { unitName: 'FLAMANVILLE 3', nominalPowerMW: 1630 },
   ]),
   ...makeNuclearUnits('nuc-golfech', 'Golfech', [
     { unitName: 'GOLFECH 1', nominalPowerMW: 1310 },

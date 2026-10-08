@@ -43,10 +43,9 @@ export function dedupe<T>(key: string, fn: () => Promise<T>): Promise<T> {
 /**
  * `fetch` JSON en single-flight, clé = URL complète (+ méthode si fournie).
  * Deux appelants qui interrogent la même URL pendant que la requête est en
- * vol partagent la même réponse au lieu de doubler l'appel réseau — c'est ce
- * qui permet à `cyber.ts` et `threat-map.ts` de partager le même fetch
- * CERT-FR/ransomware.live sans se connaître l'un l'autre : ils construisent
- * la même URL de proxy et retombent donc sur la même clé.
+ * vol partagent la même réponse au lieu de doubler l'appel réseau : deux
+ * services qui construisent la même URL retombent sur la même clé sans se
+ * connaître l'un l'autre.
  *
  * Lève une erreur sur réponse HTTP non-OK (le corps caller doit gérer via
  * try/catch, comme un `fetch` classique suivi d'une vérification `.ok`).

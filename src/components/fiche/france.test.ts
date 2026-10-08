@@ -88,17 +88,109 @@ function input(over: Partial<FranceFicheInput> = {}): FranceFicheInput {
     snapshot: snap, queue, drivers: ['energy'], brief: { brief: BRIEF, freshness: 'fresh' }, briefSituationIds: ['energy-stress'],
     events, resolved: [], changeTimes: new Map(), score: { delta24h: -4, pillarDeltas: null, series: [81, 70, 43] },
     briefMeta: { at: NOW - 30 * 60_000, level: 'orange' },
-    freshness: '33 sources sur 35 à jour', whyOpen: false, ready: true, lang: 'fr', now: NOW, ...over,
+    freshness: '33 sources sur 35 à jour', infra: null, sectionOpen: new Map(), ready: true, lang: 'fr', now: NOW, ...over,
   };
 }
 
-const sectionTitles = (html: string): string[] => [...html.matchAll(/<h3 class="fiche-part-title">([^<]*)<\/h3>/g)].map((m) => m[1]);
+const sectionTitles = (html: string): string[] => [...html.matchAll(/<h3 class="fiche-part-title fmk-eyebrow">([^<]*)<\/h3>/g)].map((m) => m[1] ?? '');
+const section = (id: string) => (over: Partial<FranceFicheInput> = {}) => buildFranceFiche(input(over)).sections.find((s) => s.id === id);
 
 describe('onglet État de la France (spec 2026-09-29 § 7)', () => {
-  it('Pourquoi replié en tête, puis Situations, Note, Depuis votre visite, Indicateurs', () => {
+  it('en-tête Instrument, puis Situations, Note, Depuis votre visite, indicateurs, Preuves et sources', () => {
     const model = buildFranceFiche(input());
-    expect(model.whyFirst).toBe(true);
-    expect(sectionTitles(renderFiche(model, 'fr'))).toEqual(['Situations (1)', 'Note de situation', 'Depuis votre dernière visite', 'Indicateurs', 'Preuves et sources']);
+    expect(model.score).not.toBe('pending');
+    expect(sectionTitles(renderFiche(model, 'fr'))).toEqual([
+      'Situations actives', 'Note de situation', 'Depuis votre dernière visite',
+      'Infrastructures', 'Domaines', 'Énergie', 'Chronologie 7 jours', 'Preuves et sources',
+    ]);
+  });
+
+  it('ouvertures par défaut : situations et note ouvertes, le reste replié ; situations non repliable', () => {
+    const byId = new Map(buildFranceFiche(input()).sections.map((s) => [s.id, s]));
+    expect(byId.get('situations')?.collapsible).toBe(false);
+    expect(byId.get('note')).toMatchObject({ collapsible: true, open: true });
+    for (const id of ['changes', 'infra', 'domains', 'energy', 'timeline', 'sources']) expect(byId.get(id)).toMatchObject({ collapsible: true, open: false });
+  });
+
+  it('état retenu par section : remplace la valeur par défaut', () => {
+    const byId = new Map(buildFranceFiche(input({ sectionOpen: new Map([['note', false], ['infra', true]]) })).sections.map((s) => [s.id, s]));
+    expect(byId.get('note')?.open).toBe(false);
+    expect(byId.get('infra')?.open).toBe(true);
+  });
+
+  it('score : valeur, niveau, piliers dans l’ordre, écart formaté, facteur, plafond', () => {
+    const score = buildFranceFiche(input()).score;
+    if (score === undefined || score === 'pending') throw new Error('score attendu');
+    expect(score).toMatchObject({ value: 43, level: 'rouge', baseline: 95, delta24h: '−4 ▼', cap: 55 });
+    expect(score.pillars.map((p) => p.label)).toEqual(['Continuité', 'Sécurité', 'Signal', 'Défense']);
+    expect(score.pillars[0]).toMatchObject({ value: 61, level: 'orange', delta: 'n.d.', deduction: '−18,9' });
+    expect(score.factor).toContain('Continuité (Carburants &amp; pétrole 100');
+    expect(score.sparkline).toContain('frintel-spark');
+  });
+
+  it('avant les couches critiques : score en attente, ni indice ni piliers', () => {
+    const model = buildFranceFiche(input({ ready: false, snapshot: snapshot({ score: 95, scoreBreakdown: breakdown(95), situations: [] }) }));
+    expect(model.score).toBe('pending');
+    const html = renderFiche(model, 'fr');
+    expect(html).toContain('Calcul du niveau national…');
+    for (const part of ['fmk-scale', 'fmk-meters--pillars', '95/100']) expect(html).not.toContain(part);
+  });
+
+  it('note : « En bref », jugements avec preuves cliquables, à surveiller ; résumé IA, heure, niveau de rédaction', () => {
+    const note = section('note')();
+    expect(note?.html).toContain('<b>En bref :</b> France en vigilance rouge, en dégradation sur 24 h.');
+    expect(note?.html).toContain('data-select="event:42"');
+    expect(note?.html).toContain('6 h');
+    expect(note?.html).not.toContain('Rédigée à');
+    expect(note?.html).not.toContain('Brief : IA');
+    expect(note?.summary).toMatch(/^IA · rédigée \d{2}:\d{2} · au niveau orange$/);
+  });
+
+  it('note : en cache, synthèse automatique, même niveau, en préparation', () => {
+    const cached = section('note')({ brief: { brief: BRIEF, freshness: 'cached' } });
+    expect(cached?.summary).toMatch(/^IA, en cache · rédigée/);
+    const auto = section('note')({ brief: { brief: { ...BRIEF, origin: 'deterministic' }, freshness: 'fresh' } });
+    expect(auto?.summary).toMatch(/^Synthèse automatique · rédigée/);
+    expect(section('note')({ briefMeta: { at: NOW - 30 * 60_000, level: 'rouge' } })?.summary).not.toContain('au niveau');
+    const none = section('note')({ brief: null, briefMeta: null });
+    expect(none?.summary).toBe('en préparation');
+    expect(none?.html).toContain('Synthèse nationale en cours de préparation…');
+    expect((none?.html ?? '') + (none?.summary ?? '')).not.toContain('indisponible');
+  });
+
+  it('note périmée (plus de 12 h) : contenu grisé avec sa date, résumé grisé', () => {
+    const note = section('note')({ briefMeta: { at: NOW - 13 * H, level: 'orange' } });
+    expect(note?.html).toContain('fiche-stale');
+    expect(note?.html).toContain('données du');
+    expect(note?.summary).toContain('<span class="fmk-stale">');
+  });
+
+  it('depuis la visite : résumé du nombre de changements, chargement, aucun', () => {
+    expect(section('changes')({ events: null })?.summary).toBe('chargement…');
+    const events = Array.from({ length: 2 }, (_, i) => event({ id: 100 + i, title: `Événement ${i}`, severity: 'high' }));
+    const digest: ChangeDigestItem[] = events.map((e) => ({ event: e, kinds: ['created'], latestAt: '2026-09-24T07:40:00Z', severityFrom: null, independentFrom: null }));
+    expect(section('changes')({ events: eventsState({ events, digest }) })?.summary).toBe('3 changements orange ou rouges');
+    expect(section('changes')({ snapshot: snapshot({ situations: [] }), events: eventsState({ events: [], digest: [] }) })?.summary).toBe('aucun changement orange ou rouge');
+  });
+
+  it('situations : nombre en résumé ; aucune : message', () => {
+    expect(section('situations')()?.summary).toBe('1');
+    const none = section('situations')({ snapshot: snapshot({ situations: [] }) });
+    expect(none?.summary).toBe('0');
+    expect(none?.html).toContain('Aucune situation active.');
+  });
+
+  it('preuves et sources : section repliable, résumé compté, plus de partie séparée', () => {
+    const model = buildFranceFiche(input());
+    const sources = model.sections.find((s) => s.id === 'sources');
+    expect(sources?.summary).toBe('2 preuves · 1 source');
+    expect(sources?.html).toContain('E42 · Explosion dans une usine chimique');
+    expect(sources?.html).toContain('SDES');
+    expect(buildFranceFiche(input({ brief: null })).sections.find((s) => s.id === 'sources')).toBeUndefined();
+  });
+
+  it('carburants seulement quand l’énergie en porte', () => {
+    expect(buildFranceFiche(input()).sections.find((s) => s.id === 'fuel')).toBeUndefined();
   });
 
   it('preuves lisibles et sources nommées des jugements', () => {
@@ -107,30 +199,19 @@ describe('onglet État de la France (spec 2026-09-29 § 7)', () => {
     expect(html).toContain('SDES');
   });
 
-  it('les graphiques sont visibles, plus cachés dans le volet ; ni événements consolidés, ni chiffres clés', () => {
-    const model = buildFranceFiche(input());
-    for (const part of ['frintel-dom-grid', 'frintel-timeline', 'fiche-infra-slot']) {
-      expect(model.why).not.toContain(part);
-      expect(model.sections.find((s) => s.title === 'Indicateurs')?.html).toContain(part);
-    }
-    expect(model.why).toContain('Indice de stabilité 43/100');
-    expect(renderFiche(model, 'fr')).not.toContain('Événements consolidés ouverts');
-    expect(model.figures).toEqual([]);
-  });
-
-  it('note : évaluation, jugements avec preuves cliquables, à surveiller, heure et niveau de rédaction', () => {
-    const note = buildFranceFiche(input()).sections.find((s) => s.title === 'Note de situation')?.html ?? '';
-    expect(note).toContain('France en vigilance rouge, en dégradation sur 24 h.');
-    expect(note).toContain('data-select="event:42"');
-    expect(note).toContain('6 h');
-    expect(note).toContain('Rédigée à');
-    expect(note).toContain('niveau orange');
-  });
-
   it('note en attente : « en cours de préparation », jamais « indisponible »', () => {
     const note = buildFranceFiche(input({ brief: null, briefMeta: null })).sections.find((s) => s.title === 'Note de situation')?.html ?? '';
     expect(note).toContain('Synthèse nationale en cours de préparation…');
     expect(note).not.toContain('indisponible');
+  });
+
+  it('depuis la visite : le résumé compte tous les changements importants, sans plafond', () => {
+    const events = Array.from({ length: 7 }, (_, i) => event({ id: 100 + i, title: `Événement ${i}`, severity: 'high' }));
+    const digest: ChangeDigestItem[] = events.map((e) => ({ event: e, kinds: ['created'], latestAt: '2026-09-24T07:40:00Z', severityFrom: null, independentFrom: null }));
+    const sec = section('changes')({ events: eventsState({ events, digest }) });
+    // 7 événements listés + la situation active nouvelle = 8, au-delà du plafond de 5 lignes.
+    expect(sec?.summary).toBe('8 changements orange ou rouges');
+    expect(sec?.html.match(/data-select=/g)?.length ?? 0).toBeLessThanOrEqual(5);
   });
 
   it('en-tête : situations actives, heure de mise à jour, sources', () => {
@@ -171,19 +252,6 @@ describe('onglet État de la France (spec 2026-09-29 § 7)', () => {
   it('S<n> désigne la situation figée au moment du brief, pas l’instantané courant', () => {
     const html = renderFiche(buildFranceFiche(input({ briefSituationIds: ['cyber-pressure'] })), 'fr');
     expect(html).toContain('data-select="situation:cyber-pressure">S1');
-  });
-
-  it('avant les couches critiques : ni indice ni piliers dans le volet', () => {
-    const html = renderFiche(buildFranceFiche(input({ ready: false, snapshot: snapshot({ score: 95, scoreBreakdown: breakdown(95), situations: [] }) })), 'fr');
-    expect(html).toContain('Calcul du niveau national…');
-    for (const part of ['Indice de stabilité', 'frintel-pillars', '95/100']) expect(html).not.toContain(part);
-  });
-
-  it('note périmée (plus de 12 h) : grisée, avec sa date', () => {
-    const note = buildFranceFiche(input({ briefMeta: { at: NOW - 13 * H, level: 'orange' } })).sections
-      .find((s) => s.title === 'Note de situation')?.html ?? '';
-    expect(note).toContain('fiche-stale');
-    expect(note).toContain('données du');
   });
 
   it('actions : voir sur la carte et note de situation ; bascule EN', () => {

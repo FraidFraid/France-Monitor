@@ -1,7 +1,7 @@
-// src/components/fiche/france.ts — fiche « France », affichée quand rien n'est sélectionné en
-// « Vue générale » (spec §6.3) : BLUF du brief en guise d'essentiel, jugements avec leurs preuves
-// cliquables et leur confiance en mots, « À surveiller » du brief, changements depuis la visite,
-// et dans « Pourquoi ce niveau ? » tout le contenu chiffré de l'ancien tiroir (spec §14).
+// src/components/fiche/france.ts — fiche « France » (spec §6.3), affichée quand rien n'est sélectionné :
+// en-tête « Instrument » (indice, piliers, facteur dominant), puis sections résumées et repliables du
+// kit fmk (situations, note de situation, changements depuis la visite, indicateurs, preuves et sources) ;
+// plus de volet « Pourquoi ce niveau ? » (spec 2026-10-01).
 
 import type { FranceCountrySnapshot, IntelEventsState, StructuredBrief } from '../../types/index.ts';
 import type { StabilityPillarValues } from '../../utils/stability-history.ts';
@@ -11,17 +11,21 @@ import { dataDateLabel, freshnessOf } from '../../services/freshness.ts';
 import { drivenByText, type ThemeId } from '../../services/themes.ts';
 import type { WorkQueue } from '../../services/work-queue.ts';
 import { escapeHtml, formatAge, resolveEvidenceRef } from '../france-intel-events.ts';
-import { renderWhyBody } from '../france-intel-score.ts';
+import { PILLAR_UI, dominantFactorText, formatDelta, pillarLevel, renderSparkline } from '../france-intel-score.ts';
+import type { InfraInput } from '../../services/infra-continuity.ts';
+import { domainsSection, energySection, fuelSection, infraSection, timelineSection, type IndicatorSection } from './france-indicators.ts';
 import { renderVigilancePill } from '../shared/vigilancePill.ts';
-import { renderDomainsBlock, renderEnergyBlock, renderTimelineBlock } from '../france-intel-blocks.ts';
 import {
   digestChangeText,
   formatClock,
   labelled,
   parseTime,
   renderChangeRows,
+  renderSourceChips,
   t,
   type FicheChange,
+  type FicheScore,
+  type FicheSection,
   type FicheModel,
   type FicheSource,
   type Lang,
@@ -51,7 +55,10 @@ export interface FranceFicheInput {
   /** Heure de réception et niveau national au moment de la note ; null tant qu'aucune note n'est arrivée. */
   briefMeta: { at: number; level: VigilanceLevel } | null;
   freshness: string;
-  whyOpen: boolean;
+  /** Baromètre des infrastructures (null tant qu'App ne l'a pas reçu). */
+  infra: InfraInput | null;
+  /** Ouverture retenue par id de section (« note », « infra »…) ; absente → valeur par défaut. */
+  sectionOpen: ReadonlyMap<string, boolean>;
   /**
    * Couches critiques chargées. Avant, l'indice est calculé sur des données absentes : ni indice,
    * ni jauge, ni piliers dans le volet (relecture finale m1).
@@ -153,7 +160,7 @@ export function franceChangeDigest(input: FranceFicheInput): { meta: string; row
   const all = allChanges(input);
   // Première visite (ancre par défaut) : « dernières 24 h » sans totaux — ils comptent depuis une visite qui n'a pas eu lieu.
   const totals = input.events?.anchor.kind === 'default' ? '' : totalsText(all, input.lang);
-  const meta = totals ? `${changesMeta(input)} — ${totals}` : changesMeta(input);
+  const meta = totals ? `${changesMeta(input)} · ${totals}` : changesMeta(input);
   const rows = all.filter((c) => c.important).slice(0, MAX_ETAT_CHANGES).map(({ at, text, select }) => ({ at, text, select }));
   return { meta, rows };
 }
@@ -191,19 +198,28 @@ function franceSources(brief: StructuredBrief, input: FranceFicheInput): FicheSo
   return out;
 }
 
-function briefOrigin(brief: FranceFicheInput['brief'], lang: Lang): string {
-  if (!brief) return '';
-  const text = brief.brief.origin === 'llm'
-    ? `${t(lang, 'Brief : IA', 'Brief: AI')}, ${brief.freshness === 'fresh' ? t(lang, 'à jour', 'fresh') : t(lang, 'en cache', 'cached')}`
-    : t(lang, 'Brief : synthèse automatique', 'Brief: automatic synthesis');
-  return `<p class="fiche-meta">${text}</p>`;
-}
-
 function situationsHtml(input: FranceFicheInput): string {
   const { lang } = input;
   return input.snapshot.situations.map((s) => `<li class="fiche-situation">`
-    + `<button type="button" class="fiche-link" data-select="situation:${escapeHtml(s.id)}">${renderVigilancePill(situationLevel(s.severity), lang)} ${escapeHtml(s.title)}</button>`
+    + `<button type="button" class="fiche-link" data-select="situation:${escapeHtml(s.id)}" title="${escapeHtml(s.title)}">${renderVigilancePill(situationLevel(s.severity), lang)}<span class="fmk-sit-title">${escapeHtml(s.title)}</span></button>`
     + ` <span class="fiche-meta">${confidenceLabel(s.confidence, lang)}</span></li>`).join('');
+}
+
+/** Résumé de la note : origine, heure de rédaction, niveau de rédaction s'il diffère ; grisé si périmée. */
+function noteSummary(input: FranceFicheInput): string {
+  const { lang } = input;
+  if (!input.brief) return escapeHtml(t(lang, 'en préparation', 'in preparation'));
+  const origin = input.brief.brief.origin === 'llm'
+    ? (input.brief.freshness === 'fresh' ? t(lang, 'IA', 'AI') : t(lang, 'IA, en cache', 'AI, cached'))
+    : t(lang, 'Synthèse automatique', 'Automatic synthesis');
+  const parts = [origin];
+  const meta = input.briefMeta;
+  if (meta) parts.push(t(lang, `rédigée ${formatClock(meta.at, lang)}`, `written ${formatClock(meta.at, lang)}`));
+  if (meta && input.ready && meta.level !== scoreLevel(input.snapshot.score)) {
+    parts.push(t(lang, `au niveau ${levelLabel(meta.level, lang).toLowerCase()}`, `at ${levelLabel(meta.level, lang).toLowerCase()} level`));
+  }
+  const text = escapeHtml(parts.join(' · '));
+  return freshnessOf(meta?.at ?? null, 'brief', input.now) === 'fresh' ? text : `<span class="fmk-stale">${text}</span>`;
 }
 
 function noteHtml(input: FranceFicheInput): string {
@@ -211,16 +227,11 @@ function noteHtml(input: FranceFicheInput): string {
   const brief = input.brief?.brief ?? null;
   if (!brief) return `<p>${t(lang, 'Synthèse nationale en cours de préparation…', 'National summary being prepared…')}</p>`;
   const watch = brief.watch.length > 0
-    ? `<h4 class="fiche-why-title">${t(lang, 'À surveiller', 'Watch')}</h4><ul class="fiche-list">${brief.watch
+    ? `<div class="fmk-sub fmk-eyebrow">${t(lang, 'À surveiller', 'Watch')}</div><ul class="fiche-list fmk-watch">${brief.watch
       .map((w) => `<li><span class="fiche-horizon">${escapeHtml(w.horizon.replace('h', ' h'))}</span> ${escapeHtml(w.text)}</li>`).join('')}</ul>`
     : '';
-  const meta = input.briefMeta
-    ? `<p class="fiche-meta">${t(lang,
-      `Rédigée à ${formatClock(input.briefMeta.at, lang)}, niveau ${levelLabel(input.briefMeta.level, lang).toLowerCase()}`,
-      `Written at ${formatClock(input.briefMeta.at, lang)}, level ${levelLabel(input.briefMeta.level, lang).toLowerCase()}`)}</p>`
-    : '';
   const judgments = brief.judgments.length > 0 ? judgmentsHtml(brief, input) : '';
-  const body = `<p>${escapeHtml(brief.bluf)}</p>${judgments}${watch}${meta}${briefOrigin(input.brief, lang)}`;
+  const body = `<p class="fmk-bluf"><b>${t(lang, 'En bref :', 'Bottom line:')}</b> ${escapeHtml(brief.bluf)}</p>${judgments}${watch}`;
   const at = input.briefMeta?.at ?? null;
   if (freshnessOf(at, 'brief', input.now) === 'fresh') return body;
   return `<div class="fiche-stale"><p class="fiche-meta">${escapeHtml(dataDateLabel(at, lang))}</p>${body}</div>`;
@@ -228,8 +239,48 @@ function noteHtml(input: FranceFicheInput): string {
 
 function changesHtml(input: FranceFicheInput): string {
   const { meta, rows } = franceChangeDigest(input);
-  const list = renderChangeRows(rows, input.lang);
+  const list = renderChangeRows(rows, input.lang, input.now);
   return `<div class="fiche-meta">${escapeHtml(meta)}</div>${list || `<p class="fiche-empty">${t(input.lang, 'Aucun changement orange ou rouge.', 'No orange or red change.')}</p>`}`;
+}
+
+function changesSummary(input: FranceFicheInput): string {
+  const { lang } = input;
+  if (input.events === null) return escapeHtml(t(lang, 'chargement…', 'loading…'));
+  const n = allChanges(input).filter((c) => c.important).length;
+  if (n === 0) return escapeHtml(t(lang, 'aucun changement orange ou rouge', 'no orange or red change'));
+  return escapeHtml(lang === 'fr'
+    ? `${n} changement${n > 1 ? 's' : ''} orange ou rouge${n > 1 ? 's' : ''}`
+    : `${n} orange or red change${n > 1 ? 's' : ''}`);
+}
+
+function sourcesSummary(sources: readonly FicheSource[], lang: Lang): string {
+  const evidence = sources.filter((s) => s.select !== null).length;
+  const named = sources.length - evidence;
+  const parts: string[] = [];
+  if (evidence > 0) parts.push(lang === 'fr' ? `${evidence} preuve${evidence > 1 ? 's' : ''}` : `${evidence} evidence`);
+  if (named > 0) parts.push(`${named} source${named > 1 ? 's' : ''}`);
+  return escapeHtml(parts.join(' · '));
+}
+
+function formatDeduction(value: number, lang: Lang): string {
+  return `−${value.toLocaleString(lang === 'fr' ? 'fr-FR' : 'en-GB', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`;
+}
+
+function franceScore(input: FranceFicheInput): FicheScore {
+  const { snapshot, lang } = input;
+  const bd = snapshot.scoreBreakdown;
+  const level = scoreLevel(snapshot.score);
+  const pillars = PILLAR_UI.flatMap((ui) => {
+    const p = bd.pillars.find((x) => x.key === ui.key);
+    if (!p) return [];
+    const delta = input.score.pillarDeltas ? input.score.pillarDeltas[ui.key] : null;
+    return [{ label: t(lang, ui.fr, ui.en), value: p.value, level: pillarLevel(p.value), delta: formatDelta(delta), deduction: formatDeduction(p.deduction, lang) }];
+  });
+  return {
+    value: snapshot.score, level, baseline: bd.baseline, delta24h: formatDelta(input.score.delta24h),
+    sparkline: renderSparkline(input.score.series, level, lang), pillars,
+    factor: dominantFactorText(bd, lang), cap: bd.situationCap,
+  };
 }
 
 export function buildFranceFiche(input: FranceFicheInput): FicheModel {
@@ -237,14 +288,31 @@ export function buildFranceFiche(input: FranceFicheInput): FicheModel {
   const brief = input.brief?.brief ?? null;
   const n = snapshot.situations.length;
   const count = lang === 'fr' ? `${n} situation${n > 1 ? 's' : ''} active${n > 1 ? 's' : ''}` : `${n} active situation${n === 1 ? '' : 's'}`;
+  const open = (id: string, byDefault: boolean): boolean => input.sectionOpen.get(id) ?? byDefault;
   const situations = situationsHtml(input);
   const indicators = [
-    // Le baromètre des infrastructures est un composant vivant : App.ts l'y rattache (onFicheRendered).
-    '<div class="fiche-infra-slot"></div>',
-    renderDomainsBlock(snapshot, lang),
-    renderEnergyBlock(snapshot.energy, lang),
-    renderTimelineBlock(snapshot.timeline, lang),
-  ].join('');
+    infraSection(input.infra, lang),
+    domainsSection(snapshot, lang),
+    energySection(snapshot.energy, lang),
+    fuelSection(snapshot.energy, lang),
+    timelineSection(snapshot.timeline, lang),
+  ].filter((s): s is IndicatorSection => s !== null);
+  const sources = brief ? franceSources(brief, input) : [];
+  const sections: FicheSection[] = [
+    {
+      id: 'situations', title: t(lang, 'Situations actives', 'Active situations'), summary: String(n), collapsible: false,
+      html: situations ? `<ul class="fiche-list">${situations}</ul>` : `<p class="fmk-muted">${t(lang, 'Aucune situation active.', 'No active situation.')}</p>`,
+    },
+    { id: 'note', title: t(lang, 'Note de situation', 'Situation note'), summary: noteSummary(input), html: noteHtml(input), collapsible: true, open: open('note', true) },
+    {
+      id: 'changes', title: t(lang, 'Depuis votre dernière visite', 'Since your last visit'), summary: changesSummary(input),
+      html: changesHtml(input), collapsible: true, open: open('changes', false),
+    },
+    ...indicators.map((s) => ({ ...s, collapsible: true, open: open(s.id, false) })),
+    ...(sources.length > 0
+      ? [{ id: 'sources', title: t(lang, 'Preuves et sources', 'Evidence and sources'), summary: sourcesSummary(sources, lang), html: renderSourceChips(sources), collapsible: true, open: open('sources', false) }]
+      : []),
+  ];
   return {
     key: 'france',
     kind: t(lang, 'État de la France', 'State of France'),
@@ -252,30 +320,8 @@ export function buildFranceFiche(input: FranceFicheInput): FicheModel {
     level: scoreLevel(snapshot.score),
     driver: drivenByText(input.drivers, lang),
     freshness: [count, `MAJ ${formatClock(input.now, lang)}`, input.freshness].filter(Boolean).join(' · '),
-    essentiel: [],
-    changesMeta: '',
-    changes: [],
-    sections: [
-      ...(situations ? [{ title: `Situations (${n})`, html: `<ul class="fiche-list">${situations}</ul>` }] : []),
-      { title: t(lang, 'Note de situation', 'Situation note'), html: noteHtml(input) },
-      { title: t(lang, 'Depuis votre dernière visite', 'Since your last visit'), html: changesHtml(input) },
-      { title: t(lang, 'Indicateurs', 'Indicators'), html: indicators },
-    ],
-    figures: [],
-    watch: [],
-    sourcesTitle: t(lang, 'Preuves et sources', 'Evidence and sources'),
-    sources: brief ? franceSources(brief, input) : [],
-    why: input.ready
-      ? renderWhyBody({
-          breakdown: snapshot.scoreBreakdown,
-          delta24h: input.score.delta24h,
-          pillarDeltas: input.score.pillarDeltas,
-          series: input.score.series,
-          lang,
-        })
-      : `<p class="fiche-meta">${t(lang, 'Calcul du niveau national…', 'Computing the national level…')}</p>`,
-    whyFirst: true,
-    whyOpen: input.whyOpen,
+    sections,
+    score: input.ready ? franceScore(input) : 'pending',
     actions: [
       { id: 'show-france', label: t(lang, 'Voir sur la carte', 'Show on map') },
       { id: 'report', label: t(lang, 'Note de situation', 'Situation report') },

@@ -62,7 +62,7 @@ Vercel Hobby limits a Vite + `api/` deployment to **12 serverless functions**. F
 2. Lazily imports the matching handler in `api/_handlers/`.
 3. Runs it. Two handler styles coexist and both work unmodified:
    - **Node style** `(req, res)` using the familiar Vercel helpers (`req.query`, `res.status().json()`) — called as-is.
-   - **"Edge" style** `Request → Response` (marked with `export const config = { runtime: 'edge' }`) — historically written for Vercel's Edge runtime. Since Vercel is deprecating Edge, these now run on the **Node runtime** too; `dispatch()` adapts the incoming `IncomingMessage` into a `Request` and the returned `Response` back into a `ServerResponse`, so the 10 handlers written this way (`threats`, `exposure`, `rss`, `rss-proxy`, `json-proxy`, `oil-proxy`, `fuel-prices-proxy`, `intelligence/v1/*` ×3) did not need rewriting.
+   - **"Edge" style** `Request → Response` (marked with `export const config = { runtime: 'edge' }`) — historically written for Vercel's Edge runtime. Since Vercel is deprecating Edge, these now run on the **Node runtime** too; `dispatch()` adapts the incoming `IncomingMessage` into a `Request` and the returned `Response` back into a `ServerResponse`, so the handlers written this way (`rss`, `rss-proxy`, `oil-proxy`, `fuel-prices-proxy`, `intelligence/v1/*` ×3) did not need rewriting (`threats`, `exposure` and `json-proxy` were retired with the old cyber dashboard in the Souveraineté lot).
 
 `api/_routes.js` is **generated** — never edit it by hand:
 

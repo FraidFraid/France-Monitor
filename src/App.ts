@@ -10,11 +10,14 @@ import { fmIcon, type IconName } from './components/shared/icons.ts';
 import { UnderMapNewsFeed } from './components/UnderMapNewsFeed.ts';
 import { StatusPanel } from './components/StatusPanel.ts';
 import type { SearchModal } from './components/SearchModal.ts';
-import { EnvironmentPanel } from './components/EnvironmentPanel.ts';
+import type { VigilancePanel } from './components/VigilancePanel.ts';
+import type { FloodsPanel } from './components/FloodsPanel.ts';
 import { EnergyPanel } from './components/EnergyPanel.ts';
-import { TransportPanel } from './components/TransportPanel.ts';
+import { isLayerPanelOpen } from './components/layer-panel/frame.ts';
+import type { TransportPanel } from './components/TransportPanel.ts';
 import type { FiresPanel } from './components/FiresPanel.ts';
 import type { TrafficPanel } from './components/TrafficPanel.ts';
+import type { AirTrafficPanel } from './components/AirTrafficPanel.ts';
 import { MarketStrip } from './components/MarketStrip.ts';
 import { CommodityStrip } from './components/CommodityStrip.ts';
 import { fetchCommodityData } from './services/commodities.ts';
@@ -24,18 +27,18 @@ import type { FranceIntelPanel } from './components/FranceIntelPanel.ts';
 import type { PosteSituation } from './components/poste/PosteSituation.ts';
 import type { VisitBaselineSession } from './services/intel-last-visit.ts';
 import { briefSituationIds, evaluateBriefLevel, fetchFranceIntelBrief, type BriefLevelMark } from './services/france-intel-brief.ts';
-import { scoreLevel } from './services/vigilance.ts';
-import { eventMapPoints, v2FloodSegments } from './services/v2-map.ts';
+import { levelHex, scoreLevel } from './services/vigilance.ts';
+import { eventMapPoints } from './services/v2-map.ts';
 import type { ThemeId } from './services/themes.ts';
 import { innerLayerOpen } from './services/escape-layers.ts';
-import { isUiV2, layerActivationOptions, layerStateStorage, legendStatusLabel, moduleInColumn, opensModulePanel, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
+import { isUiV2, layerActivationOptions, layerStateStorage, legendStatusLabel, moduleInColumn, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
 import { restorePanelPlan, showsSwitcher, switcherPanelOffsetPx, v2ColumnVars } from './services/floating-panel-switcher.ts';
 import { settleWithin } from './utils/settle-within.ts';
 import {
   buildFranceCountrySnapshot as buildFranceEngine,
   type FranceRawData,
 } from './services/france-country-intel.ts';
-import { detectWildfireIncidents } from './services/situation-engine.ts';
+import { cableAlertSituations, detectWildfireIncidents, militaryEmergencyAlerts } from './services/situation-engine.ts';
 import {
   getDelta24h,
   getPillarDeltas24h,
@@ -50,33 +53,28 @@ import type { HydraulicPanel } from './components/HydraulicPanel.ts';
 import type { EolienPanel } from './components/EolienPanel.ts';
 import { OilPanel } from './components/OilPanel.ts';
 import type { DromEnergyPanel } from './components/DromEnergyPanel.ts';
-import { DayNightPanel } from './components/DayNightPanel.ts';
 import { OutagesPanel } from './components/OutagesPanel.ts';
-import type { DefensePanel } from './components/DefensePanel.ts';
-import type { NationalHealthPanel } from './components/NationalHealthPanel.ts';
-import type { WeatherRadarPanel } from './components/WeatherRadarPanel.ts';
-import type { WeatherRadarFrame, WeatherRadarStatus } from './services/weather-radar.ts';
-import { WEATHER_RADAR_LEGEND_ITEMS } from './config/weather-radar-legend.ts';
-import type { HealthBarometerPanel } from './components/HealthBarometerPanel.ts';
+import type { DefensePanel, DefensePanelState } from './components/DefensePanel.ts';
+import type { ConnectivityPanel, ConnectivityPanelState } from './components/ConnectivityPanel.ts';
+import type { WeatherRadarPanel, RadarPanelState } from './components/WeatherRadarPanel.ts';
+import type { FiresPanelState } from './components/FiresPanel.ts';
 import type { MaritimePanel } from './components/MaritimePanel.ts';
 import { BarometerWidget } from './components/BarometerWidget.ts';
 import type { SentinelModal } from './components/SentinelModal.ts';
 import type { RightSidebar } from './components/RightSidebar.ts';
 import { fetchNetworkBarometer, setBarometerEolienLive } from './services/network-barometer.ts';
+import type { NetworkBarometerResult } from './services/network-barometer.ts';
 import { LayerPanel } from './components/LayerPanel.ts';
-import { ALL_PRESETABLE_LAYER_KEYS, DEFAULT_PRESET_ID, hasPersistedLayers, layersForPreset, themeLayers, v2StartupLayers, type LayerPresetId } from './config/layer-presets.ts';
+import {
+  ALL_PRESETABLE_LAYER_KEYS, DEFAULT_PRESET_ID, hasPersistedLayers, layersForPreset, migrateStoredLayers, themeLayers, v2StartupLayers, type LayerPresetId,
+} from './config/layer-presets.ts';
 import { computeISNR } from './services/stability-index.ts';
 import { ALL_INFRASTRUCTURE, NUCLEAR_PLANTS } from './config/infrastructure.ts';
-import { RESTRICTED_ZONES, detectMilitarySurges, type MilitarySurge } from './config/military.ts';
-// ACTIVE_INSTALLATIONS (config/military-bases-db ~1100 l.) chargé dynamiquement dans loadStaticData()
-import { loadStaticOsmFeatures, mergeWithStaticDb } from './services/military-osm.ts';
+// ACTIVE_INSTALLATIONS (config/military-bases-db ~1100 l.) chargé dynamiquement dans loadDefenseSites(), sans fusion OpenStreetMap.
 
-import { fetchMilitaryFlights } from './services/military-flights.ts';
-import { detectGpsJammingSignals } from './services/gps-jamming.ts';
-import { AIS_RELAY_URL, getAisStatus, getMilitaryShips, getAllLiveTraffic, NAVY_MMSI_SET, onFirstAisData } from './services/military-ships.ts';
+import { AIS_RELAY_URL, getAisStatus, getAisConnectionState, getMilitaryShips, getAllLiveTraffic, NAVY_MMSI_SET, onFirstAisData } from './services/military-ships.ts';
 import { connectAis } from './services/ais-connection.ts';
 import { detectAisAnomalies } from './services/ais-anomalies.ts';
-import { detectCableThreats, militaryShipToAIS, type DefenseAlert } from './services/cable-threats.ts';
 import { ALL_FEEDS } from './config/feeds.ts';
 import { VIEW_PRESETS } from './config/geo.ts';
 import { fetchAllFeeds, fetchFromIngestApi } from './services/rss.ts';
@@ -89,34 +87,111 @@ import { ecowattStatusNote, ecowattToday } from './services/ecowatt-official.ts'
 import { fetchBiogasProduction } from './services/biogas.ts';
 import { fetchBiomethaneSites } from './services/biogas-sites.ts';
 import { fetchEnergyRegions, fetchBorderHistory } from './services/energy-regions.ts';
-import { fetchMetropoles } from './services/metropoles.ts';
-import { fetchHospitalsData } from './services/hospitals.ts';
-import { fetchVigilanceMeteo, fetchVigilanceTimeline, type VigilanceTimeline } from './services/vigilance-meteo.ts';
-import { fetchVigicrues } from './services/vigicrues.ts';
-// transport.ts (~970 l.) chargé dynamiquement dans loadSncf/loadSncfFullCoverage + handler focus rail
+import { fetchMetropoles, type MetropoleConsumption } from './services/metropoles.ts';
+import { METRO_LEGEND_LABELS, METRO_LEVEL } from './utils/metropolesElectric.ts';
+import type { MetroLoadPanel } from './components/MetroLoadPanel.ts';
+// Environnement (spec 2026-10-04 environnement) : vigilance et crues lues au démarrage (score, situations), feux en arrière-plan.
+import { fetchVigilance, mergeVigilance, vigilanceStatus, type VigilanceState } from './services/environment-vigilance.ts';
+import { fetchFloods, floodsStatus, mergeFloods, type FloodsState } from './services/environment-floods.ts';
+import { fetchFires, firesStatus, mergeFires, type FiresState } from './services/environment-fires.ts';
+import { buildEnvironmentInputs, servedAirEpisodes, servedQuakes, type EnvironmentInputs } from './services/environment-inputs.ts';
+import { ENVIRONMENT_LATE_AFTER_MIN, parisDayOf } from './services/environment-levels.ts';
+// Phase B (spec 2026-10-04 environnement § 3) : qualité de l'air et séismes lus au démarrage (situations, tâche 32), sécheresse avec sa
+// couche ou son panneau (un stock, jamais au score : E2), marégraphes avec la vigilance.
+import { droughtStatus, fetchDrought, mergeDrought, type DroughtState } from './services/environment-drought.ts';
+import { airQualityStatus, fetchAirQuality, mergeAirQuality, type AirQualityState } from './services/environment-air.ts';
+import { earthquakesStatus, fetchEarthquakes, mergeEarthquakes, type EarthquakesState } from './services/environment-earthquakes.ts';
+import { fetchSeaLevels, mergeSeaLevels, seaLevelsStatus, type SeaLevelsState } from './services/environment-sea-levels.ts';
+import type { DroughtPanel } from './components/DroughtPanel.ts';
+import type { AirQualityPanel } from './components/AirQualityPanel.ts';
+import type { EarthquakesPanel } from './components/EarthquakesPanel.ts';
+import { departementCentroid } from './config/departements.ts';
+import { radarStatus, type RadarProfileState } from './services/environment-radar.ts';
+import { clusterFireDetections } from './services/fire-clustering.ts';
+import { fetchRadarColumn } from './services/radar-column.ts';
+import {
+  ENVIRONMENT_ALWAYS_POLLED, ENVIRONMENT_LAYER_KEYS, ENVIRONMENT_LAYER_SOURCES, ENVIRONMENT_POLL_MS, ENVIRONMENT_SOURCE_NAMES,
+  environmentReportSources, hasActiveEnvironment, type EnvironmentLayerKey,
+} from './config/environment-sources.ts';
+import {
+  AIR_QUALITY_LEGEND, DROUGHT_LEGEND, EARTHQUAKES_LEGEND, FIRES_LEGEND, FLOODS_LEGEND, RADAR_LEGEND, VIGILANCE_LEGEND, airQualityLegend, droughtLegend, withFillMask,
+  earthquakesLegend, firesLegend, floodsLegend, radarLegend, vigilanceLegend, withTideGauges,
+} from './components/layer-panel/environment-legend.ts';
+// Souveraineté (spec 2026-10-04 souveraineté ; contrats § 4.4) : aéronefs militaires, veille des câbles et vigilance cyber lus au démarrage
+// et relevés sans arrêt (score, arbitrage 21) ; panneaux, carte, légendes et panneau des sources datés par leur donnée.
+import { fetchDefenseOsmWorks, fetchMilitary, mergeMilitary, militaryStatus, type MilitaryState } from './services/sovereignty-military.ts';
+import { cablesStatus, fetchCables, mergeCables, type CablesState } from './services/sovereignty-cables.ts';
+import { cyberStatus, fetchCyber, mergeCyber, type CyberPart, type SovCyberState } from './services/sovereignty-cyber.ts';
+import {
+  fetchVigipirateCheck, mergeVigipirateCheck, vigipirateCheckStatus, type VigipirateCheckState,
+} from './services/sovereignty-vigipirate.ts';
+import {
+  SOVEREIGNTY_ALWAYS_POLLED, SOVEREIGNTY_LAYER_KEYS, SOVEREIGNTY_LAYER_SOURCES, SOVEREIGNTY_POLL_MS, SOVEREIGNTY_SOURCE_NAMES,
+  hasActiveSovereignty, sovereigntyReportSources, type SovereigntyLayerKey,
+} from './config/sovereignty-sources.ts';
+import {
+  CONNECTIVITY_LEGEND, CYBER_LEGEND, DEFENSE_LEGEND, connectivityLegend, cyberLegend, defenseLegend, withDefensePhaseB,
+} from './components/layer-panel/sovereignty-legend.ts';
+import { findShipByKey, navyLiveState } from './components/layer-panel/navy.ts';
+import type { DefenseSitesSummary } from './components/layer-panel/defense.ts';
+import { buildSovereigntyInputs, monitoredMilitaryEmergencies, type SovereigntyInputs } from './services/sovereignty-inputs.ts';
+// Souveraineté, phase B (tâche B28) : grille GNSS et météo spatiale (score), grands réseaux, registre des gels, zones drones ; moniteur.
+import { fetchGnss, gnssStatus, mergeGnss, type GnssState } from './services/sovereignty-gnss.ts';
+import { fetchConnectivity, mergeConnectivity, ripeStatus, type ConnectivityState } from './services/sovereignty-connectivity.ts';
+import { fetchSanctions, gelsStatus, mergeSanctions, type SanctionsState } from './services/sovereignty-sanctions.ts';
+import { fetchDroneZones } from './services/sovereignty-drones.ts';
+import { withGnssInputs } from './services/sovereignty-inputs-b.ts';
+import { gnssJammingSituations, pruneStaleGnssAlert } from './services/sovereignty-alerts.ts';
+import { distinctVessels } from './services/sovereignty-levels.ts';
+import type { DroneZonesFile } from './types/index.ts';
+import {
+  LYR_SOV_AIRCRAFT, LYR_SOV_AIRCRAFT_ABROAD, LYR_SOV_CABLE_VESSELS, LYR_SOV_EMERGENCIES, LYR_SOV_GNSS_FILL, LYR_SOV_NAVY_OBSERVED,
+  LYR_SOV_NAVY_REFERENCE, LYR_SUBMARINE_CABLES_HITAREA, LYR_SUBMARINE_CABLES_LANDING,
+} from './components/deckgl/constants.ts';
+
+/** Clé d'une des couches Environnement (un panneau, une relève, une légende chacune). */
+const isEnvironmentLayerKey = (key: keyof MapLayers): key is EnvironmentLayerKey => (ENVIRONMENT_LAYER_KEYS as readonly string[]).includes(key);
+/** Clé d'une des trois couches Souveraineté (un panneau, une relève, une légende chacune ; contrats § 4.4 point 2). */
+const isSovereigntyLayerKey = (key: keyof MapLayers): key is SovereigntyLayerKey => (SOVEREIGNTY_LAYER_KEYS as readonly string[]).includes(key);
+/** Lignes cyber du panneau des sources (arbitrage 22) : partie de la réponse qui date chaque ligne, nom affiché. */
+const CYBER_STATUS_PARTS: ReadonlyArray<readonly [CyberPart, string]> = [
+  ['certfr', 'CERT-FR'], ['kev', 'CISA KEV'], ['ransomware', 'Ransomware.live'], ['hibp', 'Have I Been Pwned'],
+  ['cybermalveillance', 'Cybermalveillance.gouv.fr'],
+];
+/** Ligne de la relecture quotidienne de la page Vigipirate du SGDSN (O14, arbitrage du contrôleur) ; la saisie n'a pas de ligne. */
+const VIGIPIRATE_CHECK_SOURCE = 'Vigipirate (page du SGDSN)';
+/** Sites de défense avant la lecture de la liste interne : jamais affichés (ensureDefensePanel attend loadDefenseSites). */
+const NO_DEFENSE_SITES: DefenseSitesSummary = {
+  curated: { total: 0, byType: { air: 0, navy: 0, army: 0, joint: 0, fortification: 0, other: 0 }, overseas: 0, abroad: 0 },
+  osm: { meta: null, error: null, shown: false },
+};
 // buildHydraulicBackboneAssets (+ config hydraulic-backbone-official ~1200 l.) chargé
 // dynamiquement dans refreshHydraulicLayer() — sort la grosse config du chunk critique.
 import { fetchHydraulicHydrometrySnapshot, type HydraulicHydrometrySnapshot } from './services/hubeau-hydrometry.ts';
 import { EolienTracker } from './services/eolien/eolien-tracker.ts';
 
-import { fetchFiresData } from './services/fires.ts';
 import { resolveIncidentGeography } from './services/incident-geography.ts';
-import { buildDossier } from './services/wildfire-dossier.ts';
-import { enrichWithLlm } from './services/wildfire-enrich.ts';
-import type { WildfireDossierModal } from './components/WildfireDossierModal.ts';
 import { fetchMtgFrpMetadata, type MtgFrpMetadata } from './services/mtg-frp.ts';
-import { fetchRadar2dManifest, type Radar2dManifest } from './services/radar-2d.ts';
+import { fetchRadar2dManifest, type Radar2dResult } from './services/radar-2d.ts';
+// Services Trafics chargés à la demande (loadRoadTraffic, loadAirOverview, loadRailTraffic, loadMaritimeSnapshot) : hors du chunk critique.
+import type { RoadTrafficState } from './services/traffic-road.ts';
+import type { AirOverviewState } from './services/traffic-air.ts';
+import type { RailTrafficState } from './services/traffic-rail.ts';
+import type { MaritimeState } from './services/traffic-maritime.ts';
 import {
-  installRadar2dObservation,
-  runRadar2dToggleTransition,
-} from './services/radar-2d-orchestration.ts';
-import { fetchTrafficIncidents, hasFreshTrafficIncidentCache, type TrafficIncident } from './services/traffic.ts';
+  AIR_POSITIONS_SOURCE, TRAFFIC_LAYER_KEYS, TRAFFIC_LAYER_SOURCES, TRAFFIC_SOURCE_NAMES, aisLiveStatus, airPositionsStatus, trafficReportSources,
+  type TrafficLayerKey,
+} from './config/traffic-sources.ts';
+import { dedupe } from './utils/inflight.ts';
+import {
+  AIR_TRAFFIC_LEGEND, MARITIME_TRAFFIC_LEGEND, RAIL_TRAFFIC_LEGEND, ROAD_TRAFFIC_LEGEND, airLegend, maritimeLegend, railLegend, roadLegend,
+} from './components/layer-panel/traffic-legend.ts';
 import { fetchAirTrafficSnapshot } from './services/air-traffic.ts';
 import { fetchMarketData } from './services/finance.ts';
 import { fetchTelecomOutages, fetchPowerOutages, getPowerOutagesMeta, lastArcepDataDate } from './services/outages.ts';
 import { fetchOutageZoneCollection } from './services/outages-scraper.ts';
 import { fetchRTEIIPIncidents } from './services/rte-iip.ts';
-import { fetchNuclearUnavailabilities, buildNuclearColorMap } from './services/nuclear-rte.ts';
+import { fetchNuclearUnavailabilities, buildNuclearColorMap, NUCLEAR_LEGEND_ITEMS } from './services/nuclear-rte.ts';
 import { buildNuclearState } from './services/nuclear-correlation.ts';
 import type { NuclearPanel } from './components/NuclearPanel.ts';
 import { SituationMonitor } from './components/SituationMonitor.ts';
@@ -128,31 +203,27 @@ import { AlertMonitor } from './components/AlertMonitor.ts';
 import { UpdateNotification } from './components/UpdateNotification.ts';
 import type { NuclearState, NuclearUnavailability, InfrastructurePoint } from './types/index.ts';
 import { fetchNetworkOutages } from './services/internet-outages.ts';
-import { fetchSpaceWeather, computeTerminatorGeoJSON } from './services/space-weather.ts';
+import { fetchSpaceWeather } from './services/space-weather.ts';
 import { fetchInfraNetwork } from './services/infra-network.ts';
-// fetchHealthData chargé dynamiquement dans loadHealth() (sort le service ~1300 l. du chunk critique)
-import { computeHealthBarometer } from './services/health-barometer.ts';
-import type { HealthBarometerMetrics } from './services/health-barometer.ts';
-import { fetchCyberDashboard, isCyberPanelEnabled } from './services/cyber.ts';
-import {
-  DEFAULT_THREAT_EVENT_FILTERS,
-  fetchThreatMapEvents,
-  filterThreatEvents,
-  type ThreatEventFilters,
-} from './services/threat-map.ts';
+// Services et panneaux santé chargés à la demande (loadHealthSurveillance, loadHealthOffer, ensure*Panel) : hors du chunk critique.
+import type { HealthSurveillanceKey, HealthSurveillanceState } from './services/health-surveillance.ts';
+import type { HealthOfferState } from './services/health-offer.ts';
+import type { NationalHealthSummary } from './components/layer-panel/veille.ts';
+import type { VeilleSanitairePanel } from './components/VeilleSanitairePanel.ts';
+import type { UrgencesPanel } from './components/UrgencesPanel.ts';
+import type { AccesSoinsPanel } from './components/AccesSoinsPanel.ts';
+import type { HopitauxPanel } from './components/HopitauxPanel.ts';
 import { fetchGasNetwork, isGasPanelEnabled } from './services/gas.ts';
 // oil.ts (~1250 l.) chargé dynamiquement dans loadOil() — sort du chunk critique
 import { buildDegradedFuelTensionDashboard, fetchFuelTensionDashboard } from './services/fuel-tension.ts';
-import { computeSentinellesBarometerFromIndicators } from './services/sentinellesService.ts';
-import { computeFloodSegmentBbox } from './services/copernicus.ts';
 import { readUrlState, writeUrlState } from './utils/urlState.ts';
 import { loadNewsFromCache, saveNewsToCache } from './utils/newsCache.ts';
-import type { NewsItem, FilterState, FuelTensionDashboard, MapLayers, MeteoAlert, EcowattResponse, TransportDisruption, FloodSegment, ISNRData, LayerConfig, CyberState, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailNetworkData, HydraulicBackboneAsset, MarketData, HealthFeatures, HealthDepartmentMetric, APLCategory, GpsJammingSignal, DetectedSituation, SituationSeverity, ThreatLevel, ThreatEvent, BiogasState, BiomethaneSite, FireObservationRuntimeState, MilitaryFlight, CommodityData } from './types/index.ts';
-import { APL_LEVELS, OSCOUR_LEVELS } from './types/index.ts';
+import type { DromLiveResponse, NewsItem, FilterState, FuelTensionDashboard, MapLayers, EcowattResponse, ISNRData, LayerConfig, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailTrain, RoadEvent, HydraulicBackboneAsset, MarketData, DetectedSituation, SituationSeverity, ThreatLevel, BiogasState, BiomethaneSite, FireObservationFeedState, CommodityData, VigilanceEcheance } from './types/index.ts';
 import { fetchISNRSynthesis, type NuclearBriefingContext, type EolienBriefingContext, type OilBriefingContext } from './services/isnr-synthesis.ts';
 import type { EolienLive, EolienParkSummary } from './services/eolien/types.ts';
 import { Watchdog } from './services/watchdog.ts';
-import { startQualityHistoryTracking } from './services/source-quality-history.ts';
+import { recordStatusSamples, startQualityHistoryTracking } from './services/source-quality-history.ts';
+import { HEALTH_NATIONAL_KEYS, HEALTH_OFFER_SOURCES, HEALTH_STATUS_SOURCES, healthReportSources } from './config/health-sources.ts';
 import type { SituationReportContext } from './components/SituationReport.ts';
 import type { ExportContext } from './services/data-export.ts';
 import type { ExportMenu } from './components/ExportMenu.ts';
@@ -161,13 +232,6 @@ import type { DromEnergyDashboard } from './services/drom-energy/index.ts';
 import { loadDepartementIndex } from './services/departement-lookup.ts';
 import { getCurrentLanguage, onLanguageChange, setLanguage, t } from './services/i18n.ts';
 
-// Cache global des dernières métriques du baromètre santé, partagé avec le handler
-// d'événement 'open-health-barometer' (évite un recalcul quand le panneau est rouvert).
-declare global {
-  interface Window {
-    __healthBarometerMetrics?: HealthBarometerMetrics;
-  }
-}
 
 
 // ─── Polling intervals (ms) ─────────────────────────────────────────────────
@@ -178,27 +242,31 @@ const POLL_FINANCE_MS                  =  5 * 60_000; //  5 min  (market data + 
 const POLL_NUCLEAR_MS                  = 15 * 60_000; // 15 min  (RTE real-time unavailabilities)
 const POLL_OIL_MS                      =  5 * 60_000; //  5 min  (fuel tension quasi-live + oil structural cache)
 const POLL_COMMODITIES_MS              = 15 * 60_000; // 15 min
-const POLL_AIR_TRAFFIC_MS              = 12_000;       // 12 s    (IATA feed latency)
-const POLL_HEALTH_MS                   = 15 * 60_000; // 15 min  (ISS / SOS Médecins metrics)
+const POLL_AIR_TRAFFIC_MS              = 12_000;       // 12 s    (positions de la carte ; collecte OpenSky du serveur toutes les 2 min)
+const POLL_AIR_OVERVIEW_MS             =  2 * 60_000; //  2 min  (panneau aérien : aperçu du serveur ; cache client 90 s)
+const POLL_ROAD_MS                     =  5 * 60_000; //  5 min  (DIR et agglomérations TomTom collectés par le serveur ; cache client 4 min)
+const POLL_MARITIME_SNAPSHOT_MS        =  2 * 60_000; //  2 min  (instantané du relais AIS ; cache client 90 s)
+const POLL_HEALTH_MS                   = 30 * 60_000; // 30 min  (veille sanitaire et offre de soins, hebdomadaires ou annuelles ; caches clients 25 min)
 const POLL_HYDRAULIC_MS                = 10 * 60_000; // 10 min  (hydrometrics + barrage signals)
+const POLL_ECO2MIX_MS                  =  5 * 60_000; //  5 min  (éCO2mix national, pas de 15 min ; cache client 4 min)
 const POLL_EOLIEN_MS                   =  5 * 60_000; //  5 min  (RTE éolien temps-réel)
-const POLL_WEATHER_VIGILANCE_MS        =  5 * 60_000; //  5 min  (Météo-France vigilance)
-const POLL_WEATHER_RADAR_MS            = 10 * 60_000; // 10 min  (RainViewer radar tiles)
+const POLL_DROM_LIVE_MS               =  5 * 60_000; //  5 min  (EDF SEI temps réel, pas de 5 min)
+// Vigilance, crues, radar et feux : relèves de ENVIRONMENT_POLL_MS (src/config/environment-sources.ts), syncEnvironmentPolling.
 const POLL_MTG_FRP_MS                  = 10 * 60_000; // 10 min  (LSA SAF product cadence)
-const POLL_RADAR_2D_MS                 =  5 * 60_000; //  5 min  (Météo-France DPRadar cadence)
-const RADAR_2D_FRESHNESS_MS            = 20 * 60_000; // worker rejects data older than 20 h; UI is stricter
-const MTG_FRP_FRESHNESS_MS             = 45 * 60_000; // documented upper delivery latency
+// MTG-FRP : retard S2 de la spec environnement (observation + 60 min), constante unique de la tâche 1, jamais l'ancien seuil de 45 min.
+const MTG_FRP_LATE_MS                  = ENVIRONMENT_LATE_AFTER_MIN['mtg-frp'] * 60_000;
 const POLL_INFRA_NETWORK_MS            =  5 * 60_000; //  5 min  (statuts cloud/DC/IXP)
 const POLL_NETWORK_BAROMETER_MS        =  5 * 60_000; //  5 min
-const POLL_SNCF_MS                     =  5 * 60_000; //  5 min  (proxy + client cache, only when rail layer is active)
-const POLL_SPACE_WEATHER_TERMINATOR_MS =     60_000;  //  1 min  (terminator drifts ~0.25°/min)
+const POLL_SNCF_MS                     =  5 * 60_000; //  5 min  (perturbations SNCF et situations SIRI SX ; cache client 4 min ; couche active, sans arrêt)
 const POLL_SPACE_WEATHER_REFRESH_MS    = 15 * 60_000; // 15 min
 const VERSION_POLL_INTERVAL_MS         =     60_000;  //  1 min
+/** Relève de chaque panneau Trafics, tant que sa couche est active ou son panneau ouvert (syncTrafficPolling). */
+const TRAFFIC_POLL_MS: Readonly<Record<TrafficLayerKey, number>> = {
+  trafficRoad: POLL_ROAD_MS, trafficAir: POLL_AIR_OVERVIEW_MS, trafficRail: POLL_SNCF_MS, trafficMaritime: POLL_MARITIME_SNAPSHOT_MS,
+};
 
 // Cap on news items kept in memory / pushed to map & panels (after date sort).
 const MAX_NEWS_ITEMS = 500;
-// GPS jamming + military surge analyses are throttled (positions stay at 5 s).
-const MILITARY_DETECTION_THROTTLE_MS = 30_000;
 // Inter-batch delays for background RSS augmentation pipelines.
 const GEOCODE_BATCH_DELAY_MS = 50;
 const SUMMARIZE_BATCH_DELAY_MS = 50;
@@ -262,12 +330,6 @@ function threatLevelToSituationSeverity(level?: ThreatLevel): SituationSeverity 
   if (level === 'high') return 'high';
   if (level === 'medium') return 'medium';
   return 'watch';
-}
-
-function defenseSeverityToSituationSeverity(level: DefenseAlert['severity']): SituationSeverity {
-  if (level === 'high') return 'critical';
-  if (level === 'medium') return 'high';
-  return 'medium';
 }
 
 function getAlertMonitorExpiry(alert: DetectedSituation, nowMs: number): number {
@@ -439,8 +501,12 @@ const DEFAULT_LAYERS: MapLayers = {
   hospitals: false,
   environmentGroup: false,
   environmental: false,
+  floods: false,
   weatherRadar: false,
   fires: false,
+  drought: false,
+  airQuality: false,
+  earthquakes: false,
   traffic: false,
   trafficRoad: false,
   trafficMaritime: false,
@@ -457,12 +523,10 @@ const DEFAULT_LAYERS: MapLayers = {
   outagesCloud: false,
   stability: false,
   cyber: false,
-  threatMap: false,
   gasNetwork: false,
   biomethaneSites: false,
   oilNetwork: false,
   nuclearFleet: false,
-  dayNight: false,
 };
 
 const ACTIVE_LAYERS_STORAGE_KEY = 'fm-active-layers';
@@ -470,7 +534,7 @@ const ACTIVE_LAYERS_STORAGE_KEY = 'fm-active-layers';
 /**
  * Registre des panneaux flottants possédés par une couche (audit UI 2026-09
  * §5.3 point 3 : un seul panneau flottant ouvert à la fois). Un seul id
- * représentatif par panneau — les groupes santé/pannes réseau partagent un
+ * représentatif par panneau ; le groupe pannes réseau partage un
  * unique panneau pour plusieurs clés enfant (`layerKeys`). Source unique pour
  * getFloatingPanelInstance()/hideAllFloatingPanels()/showFloatingPanel()/le
  * sélecteur « panneaux ouverts » (refreshFloatingPanelSwitcher()). `id` est
@@ -492,10 +556,13 @@ const V2_DRAWER_PX = 300;
 const V2_MAP_CONTROLS_PX = 180;
 
 const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
-  { id: 'environmental', label: 'Météo / crues', icon: 'leaf', layerKeys: ['environmental'] },
+  { id: 'environmental', label: 'Vigilance météo', icon: 'cloud-lightning', layerKeys: ['environmental'] },
+  { id: 'floods', label: 'Crues', icon: 'waves', layerKeys: ['floods'] },
   { id: 'weatherRadar', label: 'Radar météo', icon: 'cloud-rain', layerKeys: ['weatherRadar'] },
   { id: 'fires', label: 'Feux de forêt', icon: 'flame', layerKeys: ['fires'] },
-  { id: 'dayNight', label: 'Jour / nuit', icon: 'moon', layerKeys: ['dayNight'] },
+  { id: 'drought', label: 'Sécheresse', icon: 'sun', layerKeys: ['drought'] },
+  { id: 'airQuality', label: 'Qualité de l’air', icon: 'cloud', layerKeys: ['airQuality'] },
+  { id: 'earthquakes', label: 'Séismes', icon: 'activity', layerKeys: ['earthquakes'] },
   { id: 'powerGrid', label: 'Réseau électrique', icon: 'zap', layerKeys: ['powerGrid'] },
   { id: 'dromEnergy', label: 'Énergie DROM', icon: 'palmtree', layerKeys: ['dromEnergy'] },
   { id: 'nuclearFleet', label: 'Parc nucléaire', icon: 'atom', layerKeys: ['nuclearFleet'] },
@@ -503,12 +570,18 @@ const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
   { id: 'hydroBackbone', label: 'Stress hydro', icon: 'droplet', layerKeys: ['hydroBackbone'] },
   { id: 'oilNetwork', label: 'Pétrole', icon: 'fuel', layerKeys: ['oilNetwork'] },
   { id: 'windMonitor', label: 'Éolien', icon: 'wind', layerKeys: ['windMonitor'] },
-  { id: 'health', label: 'Santé', icon: 'stethoscope', layerKeys: ['health', 'healthOscour', 'healthApl', 'hospitals'] },
+  { id: 'metroLoad', label: 'Charge métropolitaine', icon: 'building-2', layerKeys: ['metroLoad'] },
+  { id: 'health', label: 'Veille sanitaire', icon: 'stethoscope', layerKeys: ['health'] },
+  { id: 'healthOscour', label: 'Urgences et SOS Médecins', icon: 'siren', layerKeys: ['healthOscour'] },
+  { id: 'healthApl', label: 'Accès aux soins', icon: 'map-pin', layerKeys: ['healthApl'] },
+  { id: 'hospitals', label: 'Hôpitaux', icon: 'hospital', layerKeys: ['hospitals'] },
   { id: 'trafficRoad', label: 'Trafic routier', icon: 'car-front', layerKeys: ['trafficRoad'] },
+  { id: 'trafficAir', label: 'Trafic aérien', icon: 'plane', layerKeys: ['trafficAir'] },
   { id: 'trafficMaritime', label: 'Trafic maritime', icon: 'ship', layerKeys: ['trafficMaritime'] },
   { id: 'trafficRail', label: 'Réseau ferroviaire', icon: 'train-front', layerKeys: ['trafficRail'] },
-  { id: 'cyber', label: 'Vigilance cyber', icon: 'lock-keyhole', layerKeys: ['cyber', 'threatMap'] },
   { id: 'military', label: 'Défense', icon: 'shield', layerKeys: ['military'] },
+  { id: 'subseaCables', label: 'Connectivité', icon: 'waves', layerKeys: ['subseaCables'] },
+  { id: 'cyber', label: 'Vigilance cyber', icon: 'lock-keyhole', layerKeys: ['cyber'] },
   { id: 'stability', label: 'Indice stabilité', icon: 'bar-chart-3', layerKeys: ['stability'] },
   {
     id: 'outagesElec',
@@ -518,6 +591,9 @@ const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
   },
 ];
 
+/** Lignes Souveraineté de la phase B : chacune n'est écrite que par son lecteur (tâche B28), jamais par un service de la phase A. */
+const SOVEREIGNTY_B_SOURCE_NAMES: ReadonlySet<string> = new Set(['Grille GNSS', 'NOAA SWPC', 'RIPEstat', 'Registre des gels']);
+
 /**
  * handleSourcePanelClick()'s source names → their FLOATING_PANEL_DEFS id
  * (best-effort, only for the chip switcher's "current" highlight — that
@@ -526,12 +602,30 @@ const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
  */
 const SOURCE_NAME_TO_FLOATING_PANEL: Record<string, keyof MapLayers> = {
   'Météo-France': 'environmental',
-  'Vigicrues': 'environmental',
+  'Vigicrues': 'floods',
+  'Radar Météo-France': 'weatherRadar',
+  'Météo des forêts': 'fires',
   'Éolien France': 'windMonitor',
   'SNCF': 'trafficRail',
   'NASA FIRMS': 'fires',
+  'VigiEau': 'drought',
+  'Atmo France': 'airQuality',
+  'BCSF-RéNaSS': 'earthquakes',
+  'Marégraphes SHOM': 'environmental',
   'Trafic': 'trafficRoad',
-  'Cyber': 'cyber',
+  'TomTom agglomérations': 'trafficRoad',
+  'Trafic aérien': 'trafficAir',
+  [AIR_POSITIONS_SOURCE]: 'trafficAir',
+  'SIRI SX': 'trafficRail',
+  'AIS maritime': 'trafficMaritime',
+  'AIS instantané': 'trafficMaritime',
+  'CERT-FR': 'cyber',
+  'CISA KEV': 'cyber',
+  'Ransomware.live': 'cyber',
+  'Have I Been Pwned': 'cyber',
+  'Cybermalveillance.gouv.fr': 'cyber',
+  'Câbles et AIS': 'subseaCables',
+  'RIPEstat': 'subseaCables',
   'Écowatt RTE': 'powerGrid',
   'ARCEP Réseau Mobile': 'outagesElec',
   'Enedis / Pannes Électricité': 'outagesElec',
@@ -539,10 +633,25 @@ const SOURCE_NAME_TO_FLOATING_PANEL: Record<string, keyof MapLayers> = {
   'IODA Internet': 'outagesElec',
   'Réseau Gaz / EcoGaz': 'gasNetwork',
   'Pétrole SDES / INSEE': 'oilNetwork',
-  'Vols Militaires ADS-B': 'military',
-  'Feux NASA FIRMS': 'fires',
-  'Santé SPF / DREES': 'health',
+  'Vols militaires': 'military',
+  'Vigipirate (page du SGDSN)': 'military',
+  'Grille GNSS': 'military',
+  'NOAA SWPC': 'military',
+  'Registre des gels': 'military',
+  'Santé publique France': 'healthOscour',
+  'Odissé alertes': 'health',
+  'Sentinelles': 'health',
+  'SUM’eau': 'health',
+  'OMS / ECDC': 'health',
+  'DGS-Urgent (PEPS)': 'health',
+  'ANSM Médicaments': 'health',
+  'RappelConso': 'health',
+  'DREES APL': 'healthApl',
+  'DREES SAE / FINESS': 'hospitals',
 };
+
+/** Couches santé, un panneau chacune (spec 2026-10-03 § 3). */
+type HealthLayerKey = 'health' | 'healthOscour' | 'healthApl' | 'hospitals';
 
 const ENERGY_SYSTEM_LAYER_KEYS: Array<
   'dromEnergy' |
@@ -570,138 +679,66 @@ function hasActiveEnergySystems(layers: Pick<MapLayers, typeof ENERGY_SYSTEM_LAY
   return ENERGY_SYSTEM_LAYER_KEYS.some((key) => layers[key]);
 }
 
-const HEALTH_ISS_LEGEND: LegendCategory = {
+// Légendes santé (spec 2026-10-03 § 3) : couleurs identiques à la carte (deckgl/health-map.ts, vérifié par test).
+const HEALTH_ALERTS_LEGEND: LegendCategory = {
   id: 'health',
-  title: 'Santé — ISS (Stress Sanitaire)',
-  type: 'gradient',
-  items: [],
-  gradientColors: ['#2ECC71', '#F1C40F', '#E67E22', '#E74C3C'],
-  gradientMin: 'Sérénité (0)',
-  gradientMax: 'Crise (100)',
-  source: {
-    label: 'Santé publique France / Composite',
-    year: new Date().getFullYear(),
-  },
-  refresh: {
-    label: 'Mise à jour quotidienne'
-  }
+  title: 'Veille sanitaire : alertes grippe et bronchiolite par région',
+  items: [
+    { id: 'health-alert-epidemic', label: 'Épidémie', color: levelHex('orange'), shape: 'square' },
+    { id: 'health-alert-pre-post', label: 'Pré-épidémie ou post-épidémie', color: levelHex('jaune'), shape: 'square' },
+    { id: 'health-alert-none', label: 'Pas d’alerte', color: levelHex('vert'), shape: 'square' },
+    { id: 'health-alert-off', label: 'Hors saison', color: '#c7c7cc', shape: 'square' },
+  ],
+  source: { label: 'Santé publique France (Odissé)', url: 'https://odisse.santepubliquefrance.fr' },
+  refresh: { label: 'Hebdomadaire, publié le mercredi' },
+};
+
+const HEALTH_URGENCES_LEGEND: LegendCategory = {
+  id: 'healthOscour',
+  title: 'Urgences : syndrome choisi, comparé aux 3 saisons précédentes',
+  items: [
+    { id: 'urg-rouge', label: 'Plus de 50 % au-dessus du maximum', color: levelHex('rouge'), shape: 'square' },
+    { id: 'urg-orange', label: 'De 15 à 50 % au-dessus', color: levelHex('orange'), shape: 'square' },
+    { id: 'urg-jaune', label: 'Au-dessus, de moins de 15 %', color: levelHex('jaune'), shape: 'square' },
+    { id: 'urg-vert', label: 'Au plus le maximum des 3 saisons', color: levelHex('vert'), shape: 'square' },
+  ],
+  notes: ['Département sans couleur : moins de deux saisons de référence.'],
+  source: { label: 'Santé publique France (Odissé : OSCOUR et SOS Médecins)', url: 'https://odisse.santepubliquefrance.fr' },
+  refresh: { label: 'Hebdomadaire, publié le mercredi' },
 };
 
 const HEALTH_APL_LEGEND: LegendCategory = {
   id: 'healthApl',
-  title: 'Santé — APL (Déserts médicaux)',
-  items: APL_LEVELS.map(level => ({
-    id: level.id,
-    label: level.label,
-    color: level.color,
-    shape: 'square'
-  })),
+  title: 'Accès aux soins : APL de la profession choisie',
+  items: [
+    { id: 'apl-rouge', label: 'Généralistes : moins de 2,5 consultations par an et par habitant', color: levelHex('rouge'), shape: 'square' },
+    { id: 'apl-orange', label: 'De 2,5 à 3,5', color: levelHex('orange'), shape: 'square' },
+    { id: 'apl-jaune', label: 'De 3,5 à 4', color: levelHex('jaune'), shape: 'square' },
+    { id: 'apl-vert', label: '4 et plus', color: levelHex('vert'), shape: 'square' },
+  ],
+  notes: ['Autres professions : rapport à la moyenne nationale, rouge sous 0,5, orange sous 0,75, jaune sous 1, vert au-delà.'],
   source: {
-    label: 'DREES',
-    url: 'https://data.drees.solidarites-sante.gouv.fr/explore/dataset/accessibilite-potentielle-localisee-apl-aux-medecins-generalistes/',
-    year: '2023',
+    label: 'DREES, APL',
+    url: 'https://data.drees.solidarites-sante.gouv.fr/explore/dataset/530_l-accessibilite-potentielle-localisee-apl/',
+    year: 2024,
   },
-  refresh: {
-    label: 'Mise à jour annuelle (structurelle)'
-  }
-};
-
-
-
-
-const HEALTH_OSCOUR_LEGEND: LegendCategory = {
-  id: 'healthOscour',
-  title: 'Santé — Urgences / SOS Médecins',
-  items: OSCOUR_LEVELS.map(level => ({
-    id: level.id,
-    label: level.label,
-    color: level.color,
-    shape: 'circle'
-  })),
-  source: {
-    label: 'Santé publique France – SURSAUD',
-    url: 'https://geodes.santepubliquefrance.fr/',
-    year: new Date().getFullYear(),
-  },
-  refresh: {
-    label: 'Données quotidiennes (J-1)'
-  }
+  refresh: { label: 'Annuelle' },
 };
 
 const HOSPITALS_LEGEND: LegendCategory = {
   id: 'hospitals',
-  title: 'Infrastructures Hospitalières',
+  title: 'Hôpitaux : sites d’urgences autorisés',
   items: [
-    { id: 'chu', label: 'Sous tension (CHU)', color: '#F4D03F', shape: 'circle' },
-    { id: 'ch', label: 'Capacité normale (CH / Clinique)', color: '#1ABC9C', shape: 'circle' }
+    { id: 'hosp-chu', label: 'CHU et CHR', color: '#64d2ff', shape: 'circle' },
+    { id: 'hosp-ch', label: 'Centres hospitaliers', color: '#bf5af2', shape: 'circle' },
+    { id: 'hosp-private', label: 'Cliniques privées', color: '#5e5ce6', shape: 'circle' },
+    { id: 'hosp-gcs', label: 'Groupements (GCS)', color: '#30b0c7', shape: 'circle' },
+    { id: 'hosp-army', label: 'Hôpitaux des armées', color: '#ac8e68', shape: 'circle' },
+    { id: 'hosp-other', label: 'Autres établissements', color: '#71717a', shape: 'circle' },
   ],
-  source: {
-    label: 'FINESS / data.gouv',
-  },
-  refresh: {
-    label: 'Mise à jour annuelle (structurelle)'
-  }
-};
-
-const ROAD_TRAFFIC_LEGEND: LegendCategory = {
-  id: 'trafficRoad',
-  title: 'Trafic routier',
-  items: [
-    { id: 'road-high', label: 'Incident fort', color: '#ff5050', shape: 'circle' },
-    { id: 'road-medium', label: 'Incident modéré', color: '#ffaa00', shape: 'circle' },
-    { id: 'road-low', label: 'Incident faible', color: '#ffdc50', shape: 'circle' },
-  ],
-  source: {
-    label: 'TomTom',
-    year: new Date().getFullYear(),
-  },
-  refresh: {
-    label: 'Environ 5 min'
-  }
-};
-
-const ENVIRONMENTAL_LEGEND: LegendCategory = {
-  id: 'environmental',
-  title: 'Météo / Crues',
-  columns: 2,
-  splitIndex: 4,
-  items: [
-    { id: 'env-weather-header', label: 'Météo-France', color: '#9898a8', isHeader: true },
-    { id: 'env-weather-red', label: 'Vigilance météo rouge', color: '#EF4444', shape: 'zone', borderColor: '#FCA5A5' },
-    { id: 'env-weather-orange', label: 'Vigilance météo orange', color: '#F59E0B', shape: 'zone', borderColor: '#FCD34D' },
-    { id: 'env-weather-yellow', label: 'Vigilance météo jaune', color: '#EAB308', shape: 'zone', borderColor: '#FDE68A' },
-    { id: 'env-flood-header', label: 'Vigicrues', color: '#9898a8', isHeader: true },
-    { id: 'env-flood-red', label: 'Tronçon en vigilance rouge', color: '#EF4444', icon: '━', iconSize: 18 },
-    { id: 'env-flood-orange', label: 'Tronçon en vigilance orange', color: '#F59E0B', icon: '━', iconSize: 18 },
-    { id: 'env-flood-yellow', label: 'Tronçon en vigilance jaune', color: '#EAB308', icon: '━', iconSize: 18 },
-  ],
-  source: {
-    label: 'Météo-France · Vigicrues',
-  },
-  refresh: {
-    label: 'Environ 15 min'
-  },
-  notes: [
-    'Météo-France = vigilance par département.',
-    'Vigicrues = vigilance par tronçon de cours d’eau.',
-  ],
-};
-
-const WEATHER_RADAR_LEGEND: LegendCategory = {
-  id: 'weatherRadar',
-  title: 'Radar météo',
-  items: WEATHER_RADAR_LEGEND_ITEMS,
-  source: {
-    label: 'RainViewer radar mosaic',
-  },
-  refresh: {
-    label: 'Environ 10 min'
-  },
-  notes: [
-    'Overlay raster pluie/précipitations.',
-    'Masqué aux gros zooms pour éviter une lecture trompeuse.',
-    'À lire avec la vigilance Météo-France pour qualifier le risque régional.',
-  ],
+  notes: ['Surface du disque : passages aux urgences de l’année.'],
+  source: { label: 'DREES (SAE) et FINESS', url: 'https://data.drees.solidarites-sante.gouv.fr/explore/dataset/707_bases-administratives-sae/', year: 2025 },
+  refresh: { label: 'Annuelle' },
 };
 
 const NEWS_LEGEND: LegendCategory = {
@@ -734,126 +771,12 @@ const NEWS_LEGEND: LegendCategory = {
   ],
 };
 
-const MARITIME_TRAFFIC_LEGEND: LegendCategory = {
-  id: 'trafficMaritime',
-  title: 'Trafic maritime',
-  columns: 2,
-  items: [
-    { id: 'sea-cargo',     label: 'Cargo',          color: '#4ade80', shape: 'vessel' },
-    { id: 'sea-tanker',    label: 'Pétrolier',      color: '#60a5fa', shape: 'vessel' },
-    { id: 'sea-passenger', label: 'Passagers',      color: '#f97316', shape: 'vessel' },
-    { id: 'sea-fishing',   label: 'Pêche',          color: '#facc15', shape: 'vessel' },
-    { id: 'sea-tug',       label: 'Remorqueur/SAR', color: '#a855f7', shape: 'vessel' },
-    { id: 'sea-sailing',   label: 'Voilier',        color: '#06b6d4', shape: 'vessel' },
-    { id: 'sea-highspeed', label: 'Grande vitesse', color: '#f472b6', shape: 'vessel' },
-    { id: 'sea-unknown',   label: 'Inconnu',        color: '#94a3b8', shape: 'vessel' },
-  ],
-  source: {
-    label: 'AIS · aisstream.io',
-    year: new Date().getFullYear(),
-  },
-  refresh: {
-    label: 'Temps réel WebSocket'
-  }
-};
-
-const AIR_TRAFFIC_LEGEND: LegendCategory = {
-  id: 'trafficAir',
-  title: 'Trafic aérien civil',
-  columns: 2,
-  items: [
-    { id: 'air-low', label: 'Très bas (< 5k ft)', color: '#ff7832', icon: fmIcon('plane') },
-    { id: 'air-mid', label: 'Bas / montée (5–15k)', color: '#ffd232', icon: fmIcon('plane') },
-    { id: 'air-upper-mid', label: 'Intermédiaire (15–25k)', color: '#82e650', icon: fmIcon('plane') },
-    { id: 'air-cruise', label: 'Croisière (25–35k)', color: '#32c8ff', icon: fmIcon('plane') },
-    { id: 'air-high', label: 'Très haut (> 35k)', color: '#8264ff', icon: fmIcon('plane') },
-  ],
-  source: {
-    label: 'OpenSky / airplanes.live',
-    year: new Date().getFullYear(),
-  },
-  refresh: {
-    label: 'Quasi temps réel'
-  }
-};
-
-
-const MILITARY_LEGEND: LegendCategory = {
-  id: 'military',
-  title: 'Défense — Activité Militaire',
-  columns: 2,
-  items: [
-    // Types d'aéronefs (icône avion)
-    { id: 'fighter', label: 'Chasseur', color: '#ff3b30', shape: 'circle', icon: fmIcon('plane') },
-    { id: 'transport', label: 'Transport', color: '#4a9eff', shape: 'circle', icon: fmIcon('plane') },
-    { id: 'tanker', label: 'Ravitailleur', color: '#ff9500', shape: 'circle', icon: fmIcon('plane') },
-    { id: 'awacs', label: 'AWACS / ISR', color: '#a855f7', shape: 'circle', icon: fmIcon('plane') },
-    { id: 'patrol', label: 'Patrouille maritime', color: '#00d4c8', shape: 'circle', icon: fmIcon('plane') },
-    { id: 'helicopter', label: 'Hélicoptère', color: '#22c55e', shape: 'circle', icon: fmIcon('plane') },
-    { id: 'drone', label: 'Drone / UAV', color: '#ff6b9d', shape: 'circle', icon: fmIcon('plane') },
-    { id: 'trainer', label: 'Entraînement', color: '#ffcc00', shape: 'circle', icon: fmIcon('plane') },
-    { id: 'liaison', label: 'Liaison', color: '#9898a8', shape: 'circle', icon: fmIcon('plane') },
-    // Bases (triangles ▲)
-    { id: 'base-air', label: 'Base aérienne', color: '#4a9eff', shape: 'triangle' },
-    { id: 'base-navy', label: 'Base navale', color: '#00d4c8', shape: 'triangle' },
-    { id: 'base-army', label: 'Base terrestre', color: '#22c55e', shape: 'triangle' },
-    { id: 'base-joint', label: 'Base interarmées', color: '#a855f7', shape: 'triangle' },
-    { id: 'base-fortification', label: 'Fortification', color: '#78716c', shape: 'triangle' },
-    { id: 'base-other', label: 'Autre site militaire', color: '#f59e0b', shape: 'triangle' },
-    // Navires & zones
-    { id: 'ship', label: 'Navire Marine Nationale', color: '#00d4c8', shape: 'square', icon: fmIcon('anchor') },
-    { id: 'zone', label: 'Zone restreinte (RTF/P/D)', color: '#ff2d55', shape: 'zone' },
-  ],
-  source: {
-    label: 'ADS-B Exchange / OpenSky / Marine Traffic',
-  },
-  refresh: {
-    label: 'Temps réel (~30s)'
-  }
-};
-
-const SUBSEA_CABLES_LEGEND: LegendCategory = {
-  id: 'subseaCables',
-  title: 'Connectivité sous-marine',
-  items: [
-    { id: 'subsea-route', label: 'Liaison sous-marine', color: '#22c7ff', icon: '━━━' },
-    { id: 'subsea-landing', label: 'Point d’atterrage (contour blanc = repère visuel)', color: '#7dd3fc', shape: 'circle', borderColor: '#ffffff', borderWidth: 2 },
-  ],
-  source: {
-    label: 'SubmarineCableMap / jeux publics consolidés',
-  },
-  refresh: {
-    label: 'Tracés statiques, enrichissement dérivé local'
-  }
-};
-
-const CYBER_LEGEND: LegendCategory = {
-  id: 'cyber',
-  title: 'Pression cyber & incidents',
-  type: 'categorical',
-  columns: 2,
-  splitIndex: 2,
-  items: [
-    { id: 'critical', label: 'Critique / crise', color: '#EF4444', shape: 'circle' },
-    { id: 'high', label: 'Élevée', color: '#F97316', shape: 'circle' },
-    { id: 'medium', label: 'Modérée', color: '#F59E0B', shape: 'circle' },
-    { id: 'low', label: 'Faible / veille', color: '#3B82F6', shape: 'circle' },
-  ],
-  source: {
-    label: 'Leaks FR / CERT-NVD / ransomware / Shodan / Censys',
-    year: new Date().getFullYear(),
-  },
-  refresh: {
-    label: '~5 min'
-  },
-  notes: ['Couleur = sévérité maximale affichée sur la carte ; les clusters héritent du signal le plus fort.'],
-};
 
 // Couleur des régions = solde production/consommation éco2mix (teintes de REGION_BALANCE_COLORS,
 // deckgl/constants.ts), jamais une vigilance : Écowatt est national et dit dans les notes.
 const ENERGY_ECOWATT_LEGEND: LegendCategory = {
   id: 'powerGrid',
-  title: 'Électricité — solde régional',
+  title: 'Électricité : solde régional',
   type: 'categorical',
   columns: 2,
   splitIndex: 3,
@@ -882,7 +805,7 @@ const ENERGY_ECOWATT_LEGEND: LegendCategory = {
 
 const HYDRAULIC_LEGEND: LegendCategory = {
   id: 'hydroBackbone',
-  title: 'Backbone énergétique — Hydraulique',
+  title: 'Backbone énergétique : Hydraulique',
   type: 'categorical',
   columns: 2,
   splitIndex: 3,
@@ -902,7 +825,7 @@ const HYDRAULIC_LEGEND: LegendCategory = {
     label: 'Structure statique · score dérivé recalculé ~10 min avec appui Hub’Eau si disponible'
   },
   notes: [
-    'Selection d’actifs hydrauliques critiques — couverture non exhaustive',
+    'Selection d’actifs hydrauliques critiques : couverture non exhaustive',
     'STEP, barrages > 50 MW, grands réservoirs et actifs insulaires structurants uniquement.',
     'Stress hydro-énergétique estimé à partir de signaux hydrométriques Hub’Eau + contexte énergie.',
   ],
@@ -939,9 +862,9 @@ const METROPOLES_ELECTRIC_LEGEND: LegendCategory = {
   title: 'Charge métropolitaine',
   type: 'categorical',
   items: [
-    { id: 'metro-low', label: 'Consommation relative faible', color: '#34C759', shape: 'circle' },
-    { id: 'metro-medium', label: 'Consommation relative moyenne', color: '#FF9500', shape: 'circle' },
-    { id: 'metro-high', label: 'Consommation relative forte', color: '#FF3B30', shape: 'circle' },
+    { id: 'metro-low', label: METRO_LEGEND_LABELS.small, color: levelHex(METRO_LEVEL.small), shape: 'circle' },
+    { id: 'metro-medium', label: METRO_LEGEND_LABELS.medium, color: levelHex(METRO_LEVEL.medium), shape: 'circle' },
+    { id: 'metro-high', label: METRO_LEGEND_LABELS.large, color: levelHex(METRO_LEVEL.large), shape: 'circle' },
   ],
   source: {
     label: 'ODRE / eco2mix-metropoles-tr',
@@ -1011,7 +934,7 @@ const OIL_LEGEND: LegendCategory = {
     label: 'SDES (Chiffres clés de l’énergie 2025, données 2024) + séries mensuelles produits pétroliers data.gouv',
   },
   refresh: {
-    label: 'HYBRID / MONTHLY / STRUCTURAL — pas de télémesure temps réel du raffinage ou du réseau'
+    label: 'HYBRID / MONTHLY / STRUCTURAL : pas de télémesure temps réel du raffinage ou du réseau'
   },
   notes: [
     'Qualité des données : chargement en cours',
@@ -1049,7 +972,7 @@ const OUTAGES_TELECOM_LEGEND: LegendCategory = {
     { id: 'telecom-hs',  label: 'Antenne HS',         color: '#EF4444', shape: 'circle', borderColor: '#0a0a0f', borderWidth: 1 },
     { id: 'telecom-deg', label: 'Antenne dégradée',   color: '#FF8C00', shape: 'circle', borderColor: '#0a0a0f', borderWidth: 1 },
   ],
-  source: { label: 'ARCEP — Observatoire qualité mobile' },
+  source: { label: 'ARCEP : Observatoire qualité mobile' },
   refresh: { label: 'Quotidien (J-1)' },
 };
 
@@ -1110,14 +1033,10 @@ function cloneLegend(category: LegendCategory, overrides: Partial<LegendCategory
 
 const NUCLEAR_LEGEND: LegendCategory = {
   id: 'nuclearFleet',
-  title: 'Nucléaire — Indisponibilités RTE',
+  title: 'Nucléaire : Indisponibilités RTE',
   items: [
-    { id: 'nuc-available',  label: 'Disponible',          color: '#2ECC71', shape: 'circle' },
-    { id: 'nuc-reduced',    label: 'Production réduite',  color: '#F59E0B', shape: 'circle' },
-    { id: 'nuc-planned',    label: 'Arrêt planifié',      color: '#7B8CDE', shape: 'circle' },
-    { id: 'nuc-unplanned',  label: 'Arrêt non planifié',  color: '#E74C3C', shape: 'circle' },
-    { id: 'nuc-unknown',    label: 'Inconnu',             color: '#6B7280', shape: 'circle' },
-    { id: 'nuc-remit',      label: 'Signal REMIT (alpha)', color: '#111827', shape: 'circle' },
+    ...NUCLEAR_LEGEND_ITEMS,
+    { id: 'nuc-remit', label: 'Signal REMIT (alpha)', color: '#111827', shape: 'circle' },
   ],
   source: {
     label: 'RTE Open Data · IIP REMIT',
@@ -1178,7 +1097,7 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     groupId: 'traffic',
     role: 'child',
     dependsOnGroup: true,
-    label: 'Trafic maritime (AIS)',
+    label: 'Trafic maritime',
     legend: MARITIME_TRAFFIC_LEGEND,
   },
   {
@@ -1186,7 +1105,7 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     groupId: 'traffic',
     role: 'child',
     dependsOnGroup: true,
-    label: 'Trafic aérien (preview)',
+    label: 'Trafic aérien',
     legend: AIR_TRAFFIC_LEGEND,
   },
   {
@@ -1194,7 +1113,8 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     groupId: 'traffic',
     role: 'child',
     dependsOnGroup: true,
-    label: 'Réseau ferroviaire (SNCF)',
+    label: 'Réseau ferroviaire',
+    legend: RAIL_TRAFFIC_LEGEND,
   },
   // ─── Energy Group ───
   {
@@ -1281,15 +1201,15 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     groupId: 'health',
     role: 'standalone',
     dependsOnGroup: false,
-    label: 'Santé / Épidémio',
-    legend: HEALTH_ISS_LEGEND,
+    label: 'Veille sanitaire',
+    legend: HEALTH_ALERTS_LEGEND,
   },
   {
     id: 'healthApl',
     groupId: 'health',
     role: 'standalone',
     dependsOnGroup: false,
-    label: 'APL – Déserts médicaux',
+    label: 'Accès aux soins',
     legend: HEALTH_APL_LEGEND,
   },
   {
@@ -1297,8 +1217,8 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     groupId: 'health',
     role: 'standalone',
     dependsOnGroup: false,
-    label: 'OSCOUR / SOS Médecins',
-    legend: HEALTH_OSCOUR_LEGEND,
+    label: 'Urgences et SOS Médecins',
+    legend: HEALTH_URGENCES_LEGEND,
   },
   {
     id: 'hospitals',
@@ -1320,23 +1240,23 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     groupId: 'sovereignty',
     role: 'child',
     dependsOnGroup: true,
-    label: 'Défense / Militaire',
-    legend: MILITARY_LEGEND,
+    label: 'Défense',
+    legend: DEFENSE_LEGEND,
   },
   {
     id: 'subseaCables',
     groupId: 'sovereignty',
     role: 'child',
     dependsOnGroup: true,
-    label: 'Connectivité sous-marine',
-    legend: SUBSEA_CABLES_LEGEND,
+    label: 'Connectivité',
+    legend: CONNECTIVITY_LEGEND,
   },
   {
     id: 'cyber',
     groupId: 'sovereignty',
     role: 'child',
     dependsOnGroup: true,
-    label: 'Vigilance Cyber',
+    label: 'Vigilance cyber',
     legend: CYBER_LEGEND,
   },
   {
@@ -1390,8 +1310,16 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     groupId: 'environment',
     role: 'child',
     dependsOnGroup: true,
-    label: 'MÉTÉO / CRUES',
-    legend: ENVIRONMENTAL_LEGEND,
+    label: 'VIGILANCE MÉTÉO',
+    legend: VIGILANCE_LEGEND,
+  },
+  {
+    id: 'floods',
+    groupId: 'environment',
+    role: 'child',
+    dependsOnGroup: true,
+    label: 'CRUES',
+    legend: FLOODS_LEGEND,
   },
   {
     id: 'weatherRadar',
@@ -1399,25 +1327,38 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     role: 'child',
     dependsOnGroup: true,
     label: 'RADAR MÉTÉO',
-    legend: WEATHER_RADAR_LEGEND,
+    legend: RADAR_LEGEND,
   },
   // ─── Feux de forêt ───
   {
     id: 'fires',
     role: 'standalone',
-    label: 'Feux de forêt (NASA FIRMS)',
+    label: 'Feux de forêt',
+    legend: FIRES_LEGEND,
   },
-  // ─── Terminateur jour/nuit ───
   {
-    id: 'dayNight',
-    role: 'standalone',
-    label: 'Jour / Nuit',
+    id: 'drought',
+    groupId: 'environment',
+    role: 'child',
+    dependsOnGroup: true,
+    label: 'SÉCHERESSE',
+    legend: DROUGHT_LEGEND,
   },
-  // ─── Terminateur jour/nuit ───
   {
-    id: 'dayNight',
-    role: 'standalone',
-    label: 'Jour / Nuit',
+    id: 'airQuality',
+    groupId: 'environment',
+    role: 'child',
+    dependsOnGroup: true,
+    label: 'QUALITÉ DE L’AIR',
+    legend: AIR_QUALITY_LEGEND,
+  },
+  {
+    id: 'earthquakes',
+    groupId: 'environment',
+    role: 'child',
+    dependsOnGroup: true,
+    label: 'SÉISMES',
+    legend: EARTHQUAKES_LEGEND,
   },
 ];
 
@@ -1436,46 +1377,58 @@ export class App {
   private mapLegend: MapLegend | null = null;
   private newsPanel: UnderMapNewsFeed | null = null;
   private statusPanel: StatusPanel | null = null;
-  private environmentPanel: EnvironmentPanel | null = null;
+  private vigilancePanel: VigilancePanel | null = null;
+  private floodsPanel: FloodsPanel | null = null;
   private energyPanel: EnergyPanel | null = null;
   private dromEnergyPanel: DromEnergyPanel | null = null;
   private hydraulicPanel: HydraulicPanel | null = null;
   private eolienPanel: EolienPanel | null = null;
+  private metroLoadPanel: MetroLoadPanel | null = null;
+  private currentMetropoles: MetropoleConsumption[] | null = null;
   private transportPanel: TransportPanel | null = null;
-  private sncfFullCoverageLoaded = false;
   private firesPanel: FiresPanel | null = null;
+  private droughtPanel: DroughtPanel | null = null;
+  private airQualityPanel: AirQualityPanel | null = null;
+  private earthquakesPanel: EarthquakesPanel | null = null;
   private weatherRadarPanel: WeatherRadarPanel | null = null;
-  private currentWeatherRadarFrame: WeatherRadarFrame | null = null;
-  private currentWeatherRadarStatus: WeatherRadarStatus = 'loading';
   private maritimePanel: MaritimePanel | null = null;
-  private currentActiveFires: import('./types/index.ts').ActiveFire[] = [];
-  /** Incidents clusterisés ET géo-résolus — consommés par le dossier (Task 8). */
+  /** Environnement (spec 2026-10-04 environnement) : dernières lectures des services, partagées par les panneaux, la carte et le score. */
+  private currentVigilance: VigilanceState | null = null;
+  private currentFloods: FloodsState | null = null;
+  private currentFires: FiresState | null = null;
+  /** Dernières lectures des services de la phase B (comme currentVigilance) ; la sécheresse n'entre jamais dans le score (E2). */
+  private currentDrought: DroughtState | null = null;
+  /**
+   * Remplissages départementaux visibles, dans l'ordre fixe de la carte (environment-map-b.ts, ENV_B_FILL_LAYERS) : la qualité de
+   * l'air est toujours dessinée au-dessus de la sécheresse, quel que soit l'ordre d'activation ; le dernier masque les autres.
+   */
+  private fillOrder: string[] = [];
+  private currentAirQuality: AirQualityState | null = null;
+  private currentEarthquakes: EarthquakesState | null = null;
+  private currentSeaLevels: SeaLevelsState | null = null;
+  /** Échéance de la vigilance affichée (bascule Aujourd’hui / Demain du panneau), suivie par la carte. */
+  private vigilanceEcheance: VigilanceEcheance = 'J';
+  /** Département choisi dans le panneau Vigilance (bulletin départemental, surbrillance de la carte). */
+  private selectedVigilanceDept: string | null = null;
+  /** Manifeste radar Météo-France (null avant la première lecture) et message de la dernière lecture en échec. */
+  private radarManifest: Radar2dResult | null = null;
+  private radarError: string | null = null;
+  /** Point cliqué sur la carte, couche Radar active, et son profil vertical (démonstration). */
+  private radarProfile: RadarProfileState | null = null;
+  /** Incidents DBSCAN sur ces détections, géo-résolus : situations WILDFIRE_ESCALATION et onglet « Dossier d'un feu ». */
   private currentFireIncidents: import('./types/index.ts').LocatedFireIncident[] = [];
-  private currentFiresSources: { sources: string[]; apiKeyUsed: boolean } | null = null;
   private mtgFrpEnabled = false;
   private latestMtgFrpMetadata: MtgFrpMetadata | null = null;
   private mtgFrpRequestInFlight = false;
-  private radar2dEnabled = false;
+  /** MTG-FRP (démonstration) : état dérivé de la dernière lecture, jamais « actif » codé. */
+  private mtgFrpFeed: FireObservationFeedState = { status: 'loading', observedAt: null, fetchedAt: null, source: 'EUMETSAT LSA SAF' };
+  /** Option « Sommets d'écho » : un seul état, partagé par les panneaux Radar météo et Feux de forêt. */
   private echoTopsEnabled = false;
-  private latestRadar2dManifest: Radar2dManifest | null = null;
-  private radar2dRequestInFlight = false;
-  private radar2dTransitionGeneration = 0;
-  private radar2dTransitionQueue: Promise<void> = Promise.resolve();
-  private fireObservationRuntime: FireObservationRuntimeState = {
-    mtgFrp: {
-      status: 'loading',
-      observedAt: null,
-      fetchedAt: null,
-      source: 'EUMETSAT LSA SAF',
-    },
-    radar2d: {
-      status: 'loading',
-      observedAt: null,
-      fetchedAt: null,
-      source: 'Météo-France DPRadar',
-    },
-  };
+  /** Imagerie satellite GIBS et remplissage par la météo des forêts : options de la carte du panneau Feux. */
+  private gibsEnabled = false;
+  private forestDangerFill = false;
   private trafficPanel: TrafficPanel | null = null;
+  private airTrafficPanel: AirTrafficPanel | null = null;
   private marketStrip: MarketStrip | null = null;
   private commodityStrip: CommodityStrip | null = null;
   private _intervalCommodities: ReturnType<typeof setInterval> | null = null;
@@ -1512,20 +1465,18 @@ export class App {
   private v2EventsTimer: ReturnType<typeof setInterval> | null = null;
   /** Matières premières en cache : mouvements exceptionnels de l'énergie dans la liste (spec §4.4). */
   private currentCommodityData: CommodityData[] = [];
-  private currentCyberData: CyberState | null = null;
-  private currentThreatEvents: ThreatEvent[] = [];
-  private currentThreatFilters: ThreatEventFilters = { ...DEFAULT_THREAT_EVENT_FILTERS };
 
   private gasPanel: GasPanel | null = null;
   private currentGasData: import('./types').GasNetworkState | null = null;
   private currentDromEnergyDashboard: DromEnergyDashboard | null = null;
+  private currentDromLive: DromLiveResponse | null = null;
+  private currentDromLiveError: string | null = null;
   private currentDromEnergyError: string | null = null;
   private oilPanel: OilPanel | null = null;
   private currentOilData: OilDashboard | null = null;
   private currentFuelTensionData: FuelTensionDashboard | null = null;
   private currentNuclearState: NuclearState | null = null;
   private nuclearPanel: NuclearPanel | null = null;
-  private dayNightPanel: DayNightPanel | null = null;
   private outagesPanel: OutagesPanel | null = null;
   private currentPowerOutages: PowerOutage[] = [];
   private currentTelecomOutages: TelecomOutage[] = [];
@@ -1533,27 +1484,33 @@ export class App {
   private currentInfraState: InfraNetworkState | null = null;
   private currentCitizenZones: import('./types/index.ts').OutageZoneCollection | null = null;
   private defensePanel: DefensePanel | null = null;
-  private currentDefenseAlerts: DefenseAlert[] = [];
+  private connectivityPanel: ConnectivityPanel | null = null;
+  /** Souveraineté (spec 2026-10-04 souveraineté) : dernières lectures des services, partagées par les panneaux, la carte et le score (A16). */
+  private currentMilitary: MilitaryState | null = null;
+  private currentCables: CablesState | null = null;
+  private currentSovCyber: SovCyberState | null = null;
+  /** Relecture quotidienne de la page Vigipirate du SGDSN par le serveur (O14), lue avec la Défense. */
+  private currentVigipirate: VigipirateCheckState | null = null;
+  /** Sites du panneau Défense : liste interne (lue avant le panneau) et ouvrages OpenStreetMap (option lue à la première demande). */
+  private defenseSites: DefenseSitesSummary = NO_DEFENSE_SITES;
   private currentAisAnomalies: AisAnomaly[] = [];
-  private currentJammingSignals: GpsJammingSignal[] = [];
-  private currentMilitarySurges: MilitarySurge[] = [];
   /** Alertes presse issues des événements corroborés, réévaluées à chaque rafraîchissement (spec 2026-09-28 § 4.7). */
   private readonly pressAlertSource = new PressAlertSource();
-  private currentMilitaryFlights: MilitaryFlight[] = [];
-  private currentMilitaryFlightsCount = 0;
   private currentMaritimeTrafficFranceCount = 0;
-  private submarineCablesData: GeoJSON.FeatureCollection<GeoJSON.LineString> | null = null;
-  private nationalHealthPanel: NationalHealthPanel | null = null;
-  private healthBarometerPanel: HealthBarometerPanel | null = null;
+  private veillePanel: VeilleSanitairePanel | null = null;
+  private urgencesPanel: UrgencesPanel | null = null;
+  private accesSoinsPanel: AccesSoinsPanel | null = null;
+  private hopitauxPanel: HopitauxPanel | null = null;
   private sentinelModal: SentinelModal | null = null;
   private rightSidebar: RightSidebar | null = null;
   private sentinelModalPromise: Promise<SentinelModal> | null = null;
-  /** Modal du dossier « grand feu ». Nom référencé par la Task 9. */
-  private wildfireModal: WildfireDossierModal | null = null;
-  private wildfireModalPromise: Promise<WildfireDossierModal> | null = null;
   private rightSidebarPromise: Promise<RightSidebar> | null = null;
-  private lastBarometerMetrics: HealthBarometerMetrics | null = null;
-  private currentHealthFeatures: HealthFeatures | null = null;
+  private currentHealth: HealthSurveillanceState | null = null;
+  private currentHealthOffer: HealthOfferState | null = null;
+  /** Niveau national de santé (fiche thème Santé de la v2, spec 2026-10-03 § 3.5), recalculé à chaque relève et à chaque rendu. */
+  private currentHealthNational: NationalHealthSummary | null = null;
+  /** Calcul du niveau national (vue Veille, chargée à la demande), gardé après le premier chargement de la veille sanitaire. */
+  private healthNationalOf: ((state: HealthSurveillanceState, now: number) => NationalHealthSummary) | null = null;
   private currentMarketData: MarketData[] = [];
   private searchModal: SearchModal | null = null;
   private searchModalPromise: Promise<SearchModal> | null = null;
@@ -1567,11 +1524,9 @@ export class App {
   private rssRequestSeq = 0;
   private isSummarizationRunning = false;
   private currentISNRData: ISNRData | null = null;
-  private currentMeteoAlerts: MeteoAlert[] = [];
   private _aisZeroWarnLogged = false; // Avoid spamming "0 ships" warning
   private _aisLoaderEl: HTMLElement | null = null; // Loader overlay while AIS connects
   private _showAisLoaderFn: (() => void) | null = null; // Ref so onLayerToggle can trigger it
-  private currentMeteoTimeline: VigilanceTimeline | null = null;
   private currentEcowattResponse: EcowattResponse | null = null;
   private currentBiogasState: BiogasState | null = null;
   private currentBiomethaneSites: BiomethaneSite[] | null = null;
@@ -1579,25 +1534,26 @@ export class App {
   private currentHydraulicAssets: HydraulicBackboneAsset[] = [];
   private currentHydraulicHydrometry: HydraulicHydrometrySnapshot | null = null;
   private currentEolienLive: EolienLive | null = null;
+  /** Dernier résultat du baromètre des infrastructures (section Infrastructures de l'onglet État v2). */
+  private currentNetworkBarometer: NetworkBarometerResult | null = null;
   private currentEolienPoints: EolienParkSummary[] = [];
   private currentEolienParks: EolienParkSummary[] = [];
   private currentEolienError: string | null = null;
   private readonly eolienTracker = new EolienTracker();
 
 
-  private currentSncfDisruptions: TransportDisruption[] = [];
-  private currentRailNetworkData: RailNetworkData | null = null;
-  private currentFloodSegments: FloodSegment[] = [];
-  private currentTrafficIncidents: TrafficIncident[] = [];
-  private trafficDataLoaded = false;
+  /** Trafics (spec 2026-10-03 trafics) : dernières lectures des quatre services, partagées par les panneaux, la carte, le score et la note. */
+  private currentRoadTraffic: RoadTrafficState | null = null;
+  private currentAirOverview: AirOverviewState | null = null;
+  private currentRailTraffic: RailTrafficState | null = null;
+  private currentMaritimeSnapshot: MaritimeState | null = null;
+  /** Positions de la carte : dernière lecture réussie (heure des états OpenSky, incidents) et dernier échec, pour leur ligne datée. */
+  private airPositions: { read: { at: number | null; errors: string[] } | null; failure: string | null } = { read: null, failure: null };
+  private legacyTomTomCleared = false;
   /** Menu d'export CSV / GeoJSON, instancié à la demande au premier clic. */
   private exportMenu: ExportMenu | null = null;
-  // Flags « données chargées » → affichent le loader unifié tant que false (cf. render*Panel()).
-  private firesLoaded = false;
-  private environmentLoaded = false;
-  private maritimeHasData = false;
+  // Flag « données chargées » → affiche le loader unifié tant que false (cf. render*Panel()).
   private outagesLoaded = false;
-  private trafficLoadPromise: Promise<void> | null = null;
   private franceIntelPanelPromise: Promise<FranceIntelPanel> | null = null;
   // Perf audit top-10 item 5 / task 5: these 13 panels used to be
   // dynamically imported unconditionally inside renderShell(), so every
@@ -1609,24 +1565,35 @@ export class App {
   private dromEnergyPanelPromise: Promise<void> | null = null;
   private hydraulicPanelPromise: Promise<void> | null = null;
   private eolienPanelPromise: Promise<void> | null = null;
-  private healthPanelsPromise: Promise<void> | null = null;
+  private metroLoadPanelPromise: Promise<void> | null = null;
+  private veillePanelPromise: Promise<void> | null = null;
+  private urgencesPanelPromise: Promise<void> | null = null;
+  private accesSoinsPanelPromise: Promise<void> | null = null;
+  private hopitauxPanelPromise: Promise<void> | null = null;
+  private vigilancePanelPromise: Promise<void> | null = null;
+  private floodsPanelPromise: Promise<void> | null = null;
   private firesPanelPromise: Promise<void> | null = null;
+  private droughtPanelPromise: Promise<void> | null = null;
+  private airQualityPanelPromise: Promise<void> | null = null;
+  private earthquakesPanelPromise: Promise<void> | null = null;
   private weatherRadarPanelPromise: Promise<void> | null = null;
   private trafficPanelPromise: Promise<void> | null = null;
   private maritimePanelPromise: Promise<void> | null = null;
+  private airTrafficPanelPromise: Promise<void> | null = null;
+  private transportPanelPromise: Promise<void> | null = null;
   private cyberPanelPromise: Promise<void> | null = null;
   private oilPanelPromise: Promise<void> | null = null;
   private nuclearPanelPromise: Promise<void> | null = null;
   private outagesPanelPromise: Promise<void> | null = null;
   private defensePanelPromise: Promise<void> | null = null;
+  private connectivityPanelPromise: Promise<void> | null = null;
+  private defenseSitesPromise: Promise<void> | null = null;
   private hasRestoredActiveLayerPanels = false;
   private activeLayers: MapLayers = { ...DEFAULT_LAYERS };
   // ── Single floating panel (audit UI 2026-09 §5.3 point 3) ────────────────
   /** Dernier panneau flottant ouvert explicitement via showFloatingPanel() —
    *  repli pour la puce active du sélecteur sur les panneaux sans isVisible(). */
   private currentFloatingPanelId: keyof MapLayers | null = null;
-  /** Vrai pendant une ouverture demandée par l'analyste (sélecteur de panneaux) — spec 2026-09-29 § 4. */
-  private explicitPanelRequest = false;
   private floatingPanelSwitcherEl: HTMLElement | null = null;
   /** true seulement pendant l'application du preset d'accueil (premier
    *  chargement OU état persisté "tout éteint") — voir init() et
@@ -1634,25 +1601,27 @@ export class App {
   private suppressFirstLoadPanelAutoOpen = false;
 
   private _intervalRSS: ReturnType<typeof setInterval> | null = null;
-  private _intervalMilitaryFlights: PausableTimer | null = null;
   private _intervalShips: PausableTimer | null = null;
   private _intervalFinance: ReturnType<typeof setInterval> | null = null;
   private _intervalNuclear: ReturnType<typeof setInterval> | null = null;
   private _intervalOil: ReturnType<typeof setInterval> | null = null;
   private _intervalAirTraffic: PausableTimer | null = null;
-  private _intervalHealth: ReturnType<typeof setInterval> | null = null;
+  private _intervalEco2mix: PausableTimer | null = null;
+  private _intervalHealth: PausableTimer | null = null;
   private _intervalHydraulic: ReturnType<typeof setInterval> | null = null;
-  private _intervalWeather: ReturnType<typeof setInterval> | null = null;
-  private _intervalWeatherRadar: ReturnType<typeof setInterval> | null = null;
   private _intervalMtgFrp: ReturnType<typeof setInterval> | null = null;
-  private _intervalRadar2d: ReturnType<typeof setInterval> | null = null;
   private _intervalInfraNetwork: ReturnType<typeof setInterval> | null = null;
   private _intervalEolien: ReturnType<typeof setInterval> | null = null;
-  private _intervalSncf: ReturnType<typeof setInterval> | null = null;
+  private _intervalDromLive: ReturnType<typeof setInterval> | null = null;
+  /** Relèves des panneaux Trafics, présentes tant que la couche est active ou le panneau ouvert (syncTrafficPolling). */
+  private trafficPolls: Partial<Record<TrafficLayerKey, PausableTimer>> = {};
+  /** Relèves des panneaux Environnement : sans arrêt pour la vigilance, les crues et les feux (score), sinon couche active ou panneau ouvert. */
+  private environmentPolls: Partial<Record<EnvironmentLayerKey, PausableTimer>> = {};
+  /** Relèves des couches Souveraineté : sans arrêt pour les trois (score, SOVEREIGNTY_ALWAYS_POLLED). */
+  private sovereigntyPolls: Partial<Record<SovereigntyLayerKey, PausableTimer>> = {};
   private _intervalClock: PausableTimer | null = null;
   private networkBarometerWidget: BarometerWidget | null = null;
   private _intervalNetworkBarometer: ReturnType<typeof setInterval> | null = null;
-  private _intervalSpaceWeatherTerminator: PausableTimer | null = null;
   private _intervalSpaceWeatherRefresh: ReturnType<typeof setInterval> | null = null;
   private _intervalVersion: PausableTimer | null = null;
   // Timers agressifs suspendus quand l'onglet est caché (visibilitychange)
@@ -1675,29 +1644,30 @@ export class App {
 
   public destroy(): void {
     if (this._intervalRSS !== null) { clearInterval(this._intervalRSS); this._intervalRSS = null; }
-    this.removePausableInterval(this._intervalMilitaryFlights); this._intervalMilitaryFlights = null;
     this.removePausableInterval(this._intervalShips); this._intervalShips = null;
     if (this._intervalFinance !== null) { clearInterval(this._intervalFinance); this._intervalFinance = null; }
     if (this._intervalNuclear !== null) { clearInterval(this._intervalNuclear); this._intervalNuclear = null; }
     if (this._intervalOil !== null) { clearInterval(this._intervalOil); this._intervalOil = null; }
     if (this._intervalCommodities !== null) { clearInterval(this._intervalCommodities); this._intervalCommodities = null; }
     this.removePausableInterval(this._intervalAirTraffic); this._intervalAirTraffic = null;
-    if (this._intervalHealth !== null) { clearInterval(this._intervalHealth); this._intervalHealth = null; }
+    this.removePausableInterval(this._intervalEco2mix); this._intervalEco2mix = null;
+    this.removePausableInterval(this._intervalHealth); this._intervalHealth = null;
     if (this._intervalHydraulic !== null) { clearInterval(this._intervalHydraulic); this._intervalHydraulic = null; }
-    if (this._intervalWeather !== null) { clearInterval(this._intervalWeather); this._intervalWeather = null; }
-    if (this._intervalWeatherRadar !== null) { clearInterval(this._intervalWeatherRadar); this._intervalWeatherRadar = null; }
     if (this._intervalMtgFrp !== null) { clearInterval(this._intervalMtgFrp); this._intervalMtgFrp = null; }
-    if (this._intervalRadar2d !== null) { clearInterval(this._intervalRadar2d); this._intervalRadar2d = null; }
     if (this._intervalInfraNetwork !== null) { clearInterval(this._intervalInfraNetwork); this._intervalInfraNetwork = null; }
     if (this._intervalEolien !== null) { clearInterval(this._intervalEolien); this._intervalEolien = null; }
-    if (this._intervalSncf !== null) { clearInterval(this._intervalSncf); this._intervalSncf = null; }
+    if (this._intervalDromLive !== null) { clearInterval(this._intervalDromLive); this._intervalDromLive = null; }
+    for (const key of TRAFFIC_LAYER_KEYS) this.removePausableInterval(this.trafficPolls[key] ?? null);
+    this.trafficPolls = {};
+    for (const key of ENVIRONMENT_LAYER_KEYS) this.removePausableInterval(this.environmentPolls[key] ?? null);
+    this.environmentPolls = {};
+    for (const key of SOVEREIGNTY_LAYER_KEYS) this.removePausableInterval(this.sovereigntyPolls[key] ?? null);
+    this.sovereigntyPolls = {};
     this.removePausableInterval(this._intervalClock); this._intervalClock = null;
     if (this._intervalNetworkBarometer !== null) {
       clearInterval(this._intervalNetworkBarometer);
       this._intervalNetworkBarometer = null;
     }
-    this.removePausableInterval(this._intervalSpaceWeatherTerminator);
-    this._intervalSpaceWeatherTerminator = null;
     if (this._intervalSpaceWeatherRefresh !== null) {
       clearInterval(this._intervalSpaceWeatherRefresh);
       this._intervalSpaceWeatherRefresh = null;
@@ -1740,7 +1710,8 @@ export class App {
    * setInterval qui se met en pause quand l'onglet est caché et reprend
    * (avec un tick immédiat) quand il redevient visible. Réservé aux pollings
    * agressifs (< 1 min) : vols militaires, AIS, trafic aérien, horloge,
-   * terminateur, check version.
+   * terminateur, check version ; à la relève éCO2mix et à la relève santé, dont la donnée doit être
+   * fraîche dès le retour sur l'onglet.
    */
   private registerPausableInterval(fn: () => void, ms: number): PausableTimer {
     this.ensureVisibilityHandler();
@@ -1795,7 +1766,9 @@ export class App {
   }
 
   private isPanelVisible(element: HTMLElement | null): boolean {
-    return !!element && element.style.display !== 'none';
+    if (!element) return false;
+    // Layer panels use CSS class `.lp.is-open`; other panels use inline display.
+    return element.classList.contains('lp') ? isLayerPanelOpen(element) : element.style.display !== 'none';
   }
 
   private layoutEnergyFloatingPanels(): void {
@@ -1805,36 +1778,12 @@ export class App {
         this.container.querySelector<HTMLElement>('.energy-panel-modal'),
         this.container.querySelector<HTMLElement>('.hydraulic-panel-modal'),
         this.container.querySelector<HTMLElement>('.eolien-panel-modal'),
+        this.container.querySelector<HTMLElement>('.metro-load-panel-modal'),
         this.container.querySelector<HTMLElement>('.gas-panel-modal'),
         this.container.querySelector<HTMLElement>('.oil-panel-modal'),
       ].filter((panel): panel is HTMLElement => this.isPanelVisible(panel));
 
       let previousBottom = 0;
-      for (const [index, panel] of panels.entries()) {
-        panel.style.right = '20px';
-        panel.style.left = 'auto';
-        panel.style.bottom = 'auto';
-        
-        if (index === 0) {
-          panel.style.top = 'var(--right-panel-top)';
-        } else {
-          panel.style.top = `${previousBottom + 16}px`;
-        }
-        
-        previousBottom = panel.offsetTop + panel.offsetHeight;
-      }
-    });
-  }
-
-  private layoutEnvironmentFloatingPanels(): void {
-    requestAnimationFrame(() => {
-      const panels = [
-        document.body.querySelector<HTMLElement>('.environment-panel-modal'),
-        document.body.querySelector<HTMLElement>('.fires-panel-modal'),
-      ].filter((panel): panel is HTMLElement => this.isPanelVisible(panel));
-
-      let previousBottom = 0;
-
       for (const [index, panel] of panels.entries()) {
         panel.style.right = '20px';
         panel.style.left = 'auto';
@@ -1887,7 +1836,7 @@ export class App {
     this.mapLegend.setCategoryVisibility('trafficRoad', this.activeLayers.traffic && this.activeLayers.trafficRoad);
     this.mapLegend.setCategoryVisibility('trafficMaritime', this.activeLayers.traffic && this.activeLayers.trafficMaritime);
     this.mapLegend.setCategoryVisibility('trafficAir', this.activeLayers.traffic && this.activeLayers.trafficAir);
-    // Rail legend lives in TransportPanel — no mapLegend entry to toggle
+    this.mapLegend.setCategoryVisibility('trafficRail', this.activeLayers.traffic && this.activeLayers.trafficRail);
   }
 
   private formatLegendSourceStatus(status: 'ok' | 'stale' | 'error'): string {
@@ -1940,7 +1889,7 @@ export class App {
           'Limite : pas de télémesure EDF barrage par barrage.',
         ]
       : [
-          'Selection d’actifs hydrauliques critiques — couverture non exhaustive',
+          'Selection d’actifs hydrauliques critiques : couverture non exhaustive',
           'Signaux auto-recalculés toutes les 10 minutes quand la couche est active',
           'Chargement des signaux hydrauliques en cours',
         ];
@@ -2156,52 +2105,6 @@ export class App {
     return this.sentinelModalPromise;
   }
 
-  private ensureWildfireModal(): Promise<WildfireDossierModal> {
-    if (this.wildfireModal) return Promise.resolve(this.wildfireModal);
-    if (this.wildfireModalPromise) return this.wildfireModalPromise;
-    if (!this.floatContainerEl) {
-      return Promise.reject(new Error('Floating container not ready'));
-    }
-
-    this.wildfireModalPromise = import('./components/WildfireDossierModal.ts').then(({ WildfireDossierModal }) => {
-      const modal = new WildfireDossierModal(this.floatContainerEl!);
-      this.wildfireModal = modal;
-      return modal;
-    });
-
-    return this.wildfireModalPromise;
-  }
-
-  /**
-   * Ouvre le dossier « grand feu » d'un incident géo-résolu. `/api/fires/impacts`
-   * (Task 4) est différé — un échec réseau (404, timeout, JSON invalide) n'est
-   * jamais bloquant : le dossier s'affiche avec la seule détection FIRMS et la
-   * mention « impacts non renseignés » (§7). Jamais de zéro ni de chiffre supposé.
-   */
-  private async openWildfireDossier(incident: import('./types/index.ts').LocatedFireIncident): Promise<void> {
-    let facts: import('./types/index.ts').ImpactFact[] = [];
-    try {
-      const deptParam = incident.deptCodes.join(',');
-      const response = await fetch(`/api/fires/impacts?dept=${encodeURIComponent(deptParam)}`, {
-        signal: AbortSignal.timeout(10_000),
-      });
-      if (response.ok) {
-        const json = await response.json() as { facts?: unknown };
-        facts = Array.isArray(json.facts) ? json.facts as import('./types/index.ts').ImpactFact[] : [];
-      }
-    } catch (error) {
-      console.warn('[WildfireDossier] /api/fires/impacts indisponible — dossier détection seule', error);
-    }
-
-    const dossier = buildDossier(incident, facts, incident.deptCodes);
-    const modal = await this.ensureWildfireModal();
-    modal.show(dossier);
-
-    // Ollama tourne en local et n'est sollicité qu'ici : à l'ouverture d'un
-    // dossier, pour un seul incident. Jamais dans une boucle de rafraîchissement.
-    void enrichWithLlm(dossier).then(enriched => this.wildfireModal?.show(enriched));
-  }
-
   private ensureSearchModal(): Promise<SearchModal> {
     if (this.searchModal) return Promise.resolve(this.searchModal);
     if (this.searchModalPromise) return this.searchModalPromise;
@@ -2246,61 +2149,14 @@ export class App {
     return this.franceIntelPanelPromise;
   }
 
-  private async loadAplData(): Promise<void> {
-    const response = await fetch('/data/apl-departements.json');
-    const data = await response.json() as {
-      metadata?: { year?: number | string };
-      departements?: Array<{ code_insee?: unknown; apl_index?: unknown; category?: unknown }>;
-    };
-
-    // Mise à jour de l'année réelle si présente dans le JSON
-    if (data.metadata?.year && HEALTH_APL_LEGEND.source) {
-      HEALTH_APL_LEGEND.source.year = data.metadata.year;
-      // addCategory remplace la catégorie existante (même id) en conservant sa visibilité.
-      this.mapLegend?.addCategory(HEALTH_APL_LEGEND);
-    }
-
-    const aplDepartments = Array.isArray(data?.departements)
-      ? data.departements.map((item): HealthDepartmentMetric => ({
-        depCode: String(item?.code_insee ?? '').trim(),
-        depName: '',
-        regionCode: '',
-        regionName: '',
-        incidenceRate: 0,
-        hospitalizations: 0,
-        reanimation: 0,
-        emergencyVisits: 0,
-        positivityRate: 0,
-        spfIncidence: null,
-        spfHospitalizations: null,
-        spfReanimation: null,
-        dreesUrgences: null,
-        sentinellesIncidence: null,
-        topMotifs: [],
-        aplIndex: Number.isFinite(Number(item?.apl_index)) ? Number(item.apl_index) : null,
-        aplCategory: (['desert', 'fragile', 'bon', 'surdote'].includes(String(item?.category ?? '').trim().toLowerCase())
-          ? String(item.category).trim().toLowerCase()
-          : 'indisponible') as APLCategory,
-        iss: 0,
-        issLevel: 1,
-        trend: 'stable',
-        source: 'drees',
-        updatedAt: new Date(),
-      })).filter((item) => item.depCode)
-      : [];
-
-    if (aplDepartments.length > 0) {
-      // undefined (pas {} as any) : ne pas écraser latestHealthFeatures du panneau santé.
-      this.mapContainer?.updateHealth([], undefined, aplDepartments);
-    }
-  }
-
   private readStoredActiveLayers(): Partial<MapLayers> | null {
     try {
       const raw = layerStateStorage(this.uiV2, window)?.getItem(ACTIVE_LAYERS_STORAGE_KEY);
       if (!raw) return null;
-      const parsed = JSON.parse(raw) as Record<string, unknown>;
-      if (!parsed || typeof parsed !== 'object') return null;
+      const stored = JSON.parse(raw) as Record<string, unknown>;
+      if (!stored || typeof stored !== 'object') return null;
+      // Vigilance météo et Crues séparées, Jour / Nuit retiré (spec 2026-10-04 environnement § 2.2, § 2.5 ; amendement 9).
+      const parsed = migrateStoredLayers(stored);
 
       const allowedKeys = new Set(Object.keys(DEFAULT_LAYERS));
       const layers: Partial<MapLayers> = {};
@@ -2317,16 +2173,14 @@ export class App {
 
   private normalizeLayerState(layers: MapLayers): MapLayers {
     const normalized = { ...layers };
-    normalized.cyber = normalized.cyber || normalized.threatMap;
-    normalized.threatMap = normalized.cyber;
     normalized.newsGroup = normalized.news || normalized.stability || normalized.events;
     if (normalized.traffic && !normalized.trafficRoad && !normalized.trafficMaritime && !normalized.trafficAir && !normalized.trafficRail) {
       normalized.trafficRoad = true;
     }
     normalized.traffic = normalized.trafficRoad || normalized.trafficMaritime || normalized.trafficAir || (normalized.trafficRail ?? false);
     normalized.energySystems = hasActiveEnergySystems(normalized);
-    normalized.environmentGroup = normalized.environmental || normalized.weatherRadar || normalized.fires || (normalized.dayNight ?? false);
-    normalized.sovereignty = normalized.military || normalized.subseaCables || normalized.cyber;
+    normalized.environmentGroup = hasActiveEnvironment(normalized);
+    normalized.sovereignty = hasActiveSovereignty(normalized);
     normalized.outages = normalized.outagesElec || normalized.outagesTelecom || normalized.outagesInternet || normalized.outagesCloud || normalized.outages;
     return normalized;
   }
@@ -2366,7 +2220,6 @@ export class App {
       });
     }
     this.startVersionPolling();
-    this.updateBarometerFabVisibility();
 
     // ── Cache warm-up (perf audit §6 item 1) ──────────────────────────────
     // initMap() below awaits a third-party network chain (cartocdn style →
@@ -2386,10 +2239,7 @@ export class App {
     // the map is ready but hidden layers must be set before any layer becomes visible.
     this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
     this.layerPanel?.updateLayers(this.activeLayers);
-    this.updateBarometerFabVisibility();
 
-    // APL JSON - non-blocking, the map does not need it to be interactive
-    this.loadAplData().catch((err) => console.warn('[Init] APL load failed:', err));
     // Apply URL view if present
     if (urlState.lng != null && urlState.lat != null) {
       this.mapContainer?.flyTo(urlState.lng, urlState.lat, urlState.zoom ?? 6);
@@ -2409,7 +2259,7 @@ export class App {
 
     // ── Polling — start immediately, independent of layer data
     this.startRSSPipeline();
-    this.startMilitaryPolling();
+    this.startShipsPolling();
     // Finance/commodities strips render under the map and aren't part of the
     // critical first paint — defer their startup (immediate fetch + interval)
     // until the browser is idle so they don't compete with critical-layer
@@ -2422,12 +2272,17 @@ export class App {
     this.startAirTrafficPolling();
     this.startHealthPolling();
     this.startHydraulicPolling();
-    this.startWeatherPolling();
+    this.startEco2mixPolling();
     this.startMtgFrpPolling();
-    this.startRadar2dPolling();
     this.startInfraNetworkPolling();
     this.startEolienPolling();
-    this.startSncfPolling();
+    this.startDromLivePolling();
+    // Relèves Trafics : couches actives au démarrage ; les autres démarrent à l'ouverture de leur panneau ou de leur couche.
+    for (const key of TRAFFIC_LAYER_KEYS) this.syncTrafficPolling(key);
+    // Relèves Environnement : vigilance, crues et feux sans arrêt (score, situations) ; le radar si sa couche est active.
+    for (const key of ENVIRONMENT_LAYER_KEYS) this.syncEnvironmentPolling(key);
+    // Relèves Souveraineté : aéronefs militaires, veille des câbles et cyber sans arrêt (score, arbitrage 21).
+    for (const key of SOVEREIGNTY_LAYER_KEYS) this.syncSovereigntyPolling(key);
 
     // ── Static data — sync, instant
     this.loadStaticData();
@@ -2483,9 +2338,15 @@ export class App {
 
   private warmCriticalDataCache(): void {
     fetchEcowatt().catch(() => {});
-    fetchVigilanceTimeline().catch(() => {});
-    fetchVigilanceMeteo().catch(() => {});
-    fetchVigicrues().catch(() => {});
+    // Lectures qui ne rejettent jamais (environment-source.ts) : elles remplissent le cache par URL relu par loadVigilance et loadFloods.
+    void fetchVigilance(null);
+    void fetchFloods(null);
+    // Souveraineté : lectures qui ne rejettent jamais, relues par loadMilitary, loadCables et loadCyber (cache par URL).
+    void fetchMilitary(null);
+    void fetchCables(null);
+    void fetchCyber(null);
+    // Phase B : la grille GNSS nourrit le score (relue par loadGnss) ; réseaux, gels et zones drones seulement à la demande.
+    void fetchGnss(null);
     fetchNuclearUnavailabilities().catch(() => {});
     fetchRTEIIPIncidents().catch(() => {});
     fetchFromIngestApi().catch(() => {});
@@ -2850,45 +2711,6 @@ export class App {
     }, { passive: true });
     mapArea.appendChild(underMapJumpBtn);
 
-    // ── Bouton flottant "Baromètre national Santé" ──
-    const barometerBtn = document.createElement('button');
-    barometerBtn.id = 'barometer-fab';
-    barometerBtn.innerHTML = `${fmIcon('stethoscope')} Baromètre Santé — <span style="color:#888; font-weight:600;">${fmIcon('hourglass')} Chargement...</span>`;
-    barometerBtn.style.cssText = `
-      position: absolute;
-      top: 70px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 900;
-      background: linear-gradient(135deg, rgba(30,30,50,0.92), rgba(20,20,40,0.95));
-      border: 1px solid rgba(255,255,255,0.18);
-      color: #e8e8ec;
-      padding: 8px 18px;
-      border-radius: 24px;
-      font-size: 13px;
-      font-weight: 600;
-      cursor: pointer;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.5);
-      backdrop-filter: blur(12px);
-      transition: all 0.2s;
-      white-space: nowrap;
-      letter-spacing: 0.2px;
-    `;
-    barometerBtn.onmouseover = () => {
-      barometerBtn.style.background = 'linear-gradient(135deg, rgba(46,204,113,0.25), rgba(231,76,60,0.25))';
-      barometerBtn.style.borderColor = 'rgba(255,255,255,0.3)';
-      barometerBtn.style.transform = 'translateX(-50%) scale(1.04)';
-    };
-    barometerBtn.onmouseout = () => {
-      barometerBtn.style.background = 'linear-gradient(135deg, rgba(30,30,50,0.92), rgba(20,20,40,0.95))';
-      barometerBtn.style.borderColor = 'rgba(255,255,255,0.18)';
-      barometerBtn.style.transform = 'translateX(-50%) scale(1)';
-    };
-    barometerBtn.onclick = () => {
-      document.dispatchEvent(new CustomEvent('open-health-barometer'));
-    };
-    mapArea.appendChild(barometerBtn);
-
     // ── « Panneaux ouverts » : sélecteur de panneau flottant unique ──
     // (audit UI 2026-09 §5.3 point 3). Peuplé/masqué par
     // refreshFloatingPanelSwitcher() — vide et caché tant qu'il n'y a pas
@@ -3076,32 +2898,7 @@ export class App {
     this.container.appendChild(floatContainer);
     this.floatContainerEl = floatContainer;
 
-    this.environmentPanel = new EnvironmentPanel(floatContainer);
-    this.environmentPanel.setOnHoverDepartment((code) => {
-      this.mapContainer?.previewWeatherDepartment(code);
-    });
-    this.environmentPanel.setOnSelectDepartment((code) => {
-      this.mapContainer?.selectWeatherDepartment(code);
-    });
-    this.environmentPanel.setOnShowWeatherAlerts((alerts) => {
-      this.mapContainer?.previewWeatherDepartment(null);
-      this.mapContainer?.selectWeatherDepartment(null);
-      void this.mapContainer?.updateWeather(alerts);
-    });
-    this.environmentPanel.setOnHoverSegment((segmentId) => {
-      this.mapContainer?.highlightFloodSegment(segmentId);
-    });
-    this.environmentPanel.setOnSelectSegment((segmentId) => {
-      const segment = this.currentFloodSegments.find((item) => item.id === segmentId);
-      if (!segment) return;
-      this.mapContainer?.highlightFloodSegment(segmentId);
-      this.mapContainer?.fitBounds(computeFloodSegmentBbox(segment.displayGeometry), 80);
-    });
-    this.environmentPanel.setOnClose(() => {
-      this.layoutEnvironmentFloatingPanels();
-      this.refreshFloatingPanelSwitcher();
-    });
-    this.environmentPanel.mount();
+    // Panneaux Environnement (Vigilance météo, Crues, Radar météo, Feux de forêt) : créés à la demande, ensure*Panel().
 
     this.energyPanel = new EnergyPanel(floatContainer);
     this.energyPanel.setOnClose(() => this.closeEnergyLayer('powerGrid'));
@@ -3118,68 +2915,11 @@ export class App {
     // Click sur département : pas de flyTo (panel latéral uniquement, sans interaction carte)
     this.isnrPanel.mount();
 
-    // NationalHealthPanel/HealthBarometerPanel: lazy-loaded on first health
-    // layer activation — see ensureHealthPanels() below (perf audit task 5).
-
     void this.refreshNetworkBarometerWidget();
     this._intervalNetworkBarometer = setInterval(() => {
       if (document.hidden) return; // skip tick while tab is hidden
       this.refreshNetworkBarometerWidget().catch(err => console.error('[App] Network barometer poll error', err));
     }, POLL_NETWORK_BAROMETER_MS);
-
-    this.addGlobalListener(document, 'open-national-health', (e) => {
-      // v2 : jamais d'ouverture d'office (chargement, activation de couche), seulement à la demande.
-      if (!opensModulePanel(this.uiV2, (e as CustomEvent<unknown>).detail)) return;
-      // Only open if at least one health layer is active
-      const isAnyHealthLayerActive =
-        this.activeLayers.health ||
-        this.activeLayers.healthApl ||
-        this.activeLayers.healthOscour ||
-        this.activeLayers.hospitals;
-
-      if (!isAnyHealthLayerActive) return;
-
-      // Un seul panneau flottant à la fois (audit UI 2026-09 §5.3.3) — sauf
-      // healthBarometerPanel, avec lequel nationalHealthPanel peut coexister
-      // (exception volontaire, cf. 'open-health-barometer' ci-dessous).
-      this.hideAllFloatingPanels('health');
-
-      // Utiliser les VRAIES features (currentHealthFeatures), pas getHealthFeatures()
-      // qui pouvait renvoyer l'objet vide posé par loadAplData → panneau non peuplé.
-      if (this.currentHealthFeatures) {
-        this.nationalHealthPanel?.show(this.currentHealthFeatures);
-      } else {
-        // Pas encore chargées : afficher le loader. loadHealth() (déclenché à
-        // l'activation) re-dispatch 'open-national-health' à la fin → peuplera.
-        this.nationalHealthPanel?.showLoading();
-      }
-      this.currentFloatingPanelId = 'health';
-      this.refreshFloatingPanelSwitcher();
-    });
-
-    this.addGlobalListener(document, 'open-health-barometer', () => {
-      // Only open if at least one health layer is active
-      const isAnyHealthLayerActive =
-        this.activeLayers.health ||
-        this.activeLayers.healthApl ||
-        this.activeLayers.healthOscour ||
-        this.activeLayers.hospitals;
-
-      if (!isAnyHealthLayerActive) return;
-
-      const metrics = window.__healthBarometerMetrics ?? this.lastBarometerMetrics;
-      if (metrics) {
-        // 'health' excepté : nationalHealthPanel peut rester ouvert à côté du
-        // baromètre (exception volontaire préexistante, pas de
-        // nationalHealthPanel?.hide() ici).
-        this.hideAllFloatingPanels('health');
-        this.healthBarometerPanel?.show(metrics);
-      } else {
-        // Données santé pas encore calculées → loader unifié, remplacé par show(metrics)
-        // dès que loadHealth() termine (cf. branche isVisible() dans loadHealth).
-        this.healthBarometerPanel?.showLoading();
-      }
-    });
 
     // France Intelligence Panel — open on sidebar button click or map click
     this.addGlobalListener(document, 'open-france-intel', () => {
@@ -3199,71 +2939,23 @@ export class App {
       this.requestFranceIntelBrief(snapshot, lang);
     });
 
-    this.transportPanel = new TransportPanel(floatContainer);
-    this.transportPanel.setOnHover((disruption) => {
-      void this.highlightRailDisruptionFromPanel(disruption);
-    });
-    this.transportPanel.setOnSelect((disruption) => {
-      const focusDisruption = this.resolveRailFocusDisruption(disruption);
-      this.mapContainer?.highlightTrainRoute(focusDisruption);
-      const departure = disruption?.departure?.coordinates ?? disruption?.coordinates ?? null;
-      const arrival = disruption?.arrival?.coordinates ?? null;
-      if (!departure) return;
-
-      if (arrival) {
-        const midLon = (departure[0] + arrival[0]) / 2;
-        const midLat = (departure[1] + arrival[1]) / 2;
-        this.mapContainer?.flyTo(midLon, midLat, 7);
-      } else {
-        this.mapContainer?.flyTo(departure[0], departure[1], 10);
-      }
-    });
-    this.transportPanel.setOnLoadFullCoverage(() => {
-      this.loadSncfFullCoverage().catch((error) => {
-        console.error('[App] Failed to load full SNCF coverage', error);
-        this.transportPanel?.setFullCoverageLoading(false);
-      });
-    });
-    this.transportPanel.mount();
-
     // FiresPanel/TrafficPanel/MaritimePanel/CyberPanel: lazy-loaded on first
     // layer activation — see ensureFiresPanel()/ensureTrafficPanel()/
     // ensureMaritimePanel()/ensureCyberPanel() below (perf audit task 5).
 
     // ElusPanel disabled
 
-    this.addGlobalListener(document, 'open-cyber-panel', () => {
-      // Fired from BarometerWidget's tooltip button, independent of the
-      // 'cyber' layer being toggled on — ensure the chunk is loaded first.
-      if (!this.currentCyberData) void this.loadCyber();
-      void this.ensureCyberPanel().then(() => {
-        this.cyberPanel?.show(this.currentCyberData);
-      });
-    });
+    // Bouton du baromètre et du poste de situation : panneau Vigilance cyber, même couche éteinte (contrats § 4.4 point 18).
+    this.addGlobalListener(document, 'open-cyber-panel', () => this.showSovereigntyPanel('cyber'));
 
     // Gas Panel (EcoGaz + Vital Organs Dashboard)
     this.gasPanel = new GasPanel(floatContainer);
     this.gasPanel.setOnClose(() => this.closeEnergyLayer('gasNetwork'));
-    this.gasPanel.setPipelineCallback((show) => {
-      this.mapContainer?.setGasPipelineVisible(show);
-    });
     this.gasPanel.mount();
 
     // OilPanel/NuclearPanel/OutagesPanel/DefensePanel: lazy-loaded on first
     // layer activation — see ensureOilPanel()/ensureNuclearPanel()/
     // ensureOutagesPanel()/ensureDefensePanel() below (perf audit task 5).
-
-    // Day/Night Panel (panneau latéral droit — contrôle terminateur)
-    this.dayNightPanel = new DayNightPanel(this.container);
-    this.dayNightPanel.setOnChange((opts) => {
-      this.mapContainer?.updateDayNightOptions({
-        showNight: opts.showNight,
-        showTwilight: opts.showTwilight,
-        showSunIcon: opts.showSunIcon,
-        timestamp: opts.timestamp,
-      });
-    });
-    this.dayNightPanel.mount();
 
     // Layer toggles now in header (UnifiedSettings modal)
 
@@ -3400,25 +3092,41 @@ export class App {
     // ci-dessous, seul le hide-others est centralisé.
     this.hideAllFloatingPanels();
 
-    if (name === 'Météo-France' || name === 'Vigicrues') {
-      this.environmentPanel?.show(this.currentMeteoAlerts, this.currentFloodSegments, this.currentMeteoTimeline ?? undefined);
-      this.layoutEnvironmentFloatingPanels();
+    if (name === 'Météo-France') {
+      // Panneaux Environnement créés à la demande : la source peut être cliquée couche éteinte ; le panneau lit alors sa source.
+      void this.ensureVigilancePanel().then(() => this.openEnvironmentPanel('environmental'));
+    } else if (name === 'Vigicrues') {
+      void this.ensureFloodsPanel().then(() => this.openEnvironmentPanel('floods'));
+    } else if (name === 'Radar Météo-France') {
+      void this.ensureWeatherRadarPanel().then(() => this.openEnvironmentPanel('weatherRadar'));
+    } else if (name === 'NASA FIRMS' || name === 'Météo des forêts') {
+      void this.ensureFiresPanel().then(() => this.openEnvironmentPanel('fires'));
+    } else if (name === 'VigiEau') {
+      void this.ensureDroughtPanel().then(() => this.openEnvironmentPanel('drought'));
+    } else if (name === 'Atmo France') {
+      void this.ensureAirQualityPanel().then(() => this.openEnvironmentPanel('airQuality'));
+    } else if (name === 'BCSF-RéNaSS') {
+      void this.ensureEarthquakesPanel().then(() => this.openEnvironmentPanel('earthquakes'));
+    } else if (name === 'Marégraphes SHOM') {
+      void this.ensureVigilancePanel().then(() => this.openEnvironmentPanel('environmental'));
     } else if (name === 'Éolien France') {
       this.eolienPanel?.show(this.currentEolienLive, this.currentEolienParks);
       this.layoutEnergyFloatingPanels();
-    } else if (name === 'SNCF') {
-      this.transportPanel?.show(this.currentSncfDisruptions, {
-        fullCoverageLoaded: this.sncfFullCoverageLoaded,
-        dataLoaded: this.currentSncfDisruptions.length > 0,
-        mapCoverageReady: this.hasRailMapCoverage(),
-      });
-    } else if (name === 'NASA FIRMS') {
-      this.firesPanel?.show(this.currentActiveFires);
-      this.layoutEnvironmentFloatingPanels();
-    } else if (name === 'Trafic') {
-      this.trafficPanel?.show(this.currentTrafficIncidents);
-    } else if (name === 'Cyber') {
-      this.cyberPanel?.show(this.currentCyberData);
+    } else if (name === 'SNCF' || name === 'SIRI SX') {
+      // Panneaux Trafics créés à la demande : la source peut être cliquée couche éteinte ; le panneau lit alors sa source et la
+      // relève tant qu'il reste ouvert (openTrafficPanel).
+      void this.ensureTransportPanel().then(() => this.openTrafficPanel('trafficRail'));
+    } else if (name === 'Trafic' || name === 'TomTom agglomérations') {
+      void this.ensureTrafficPanel().then(() => this.openTrafficPanel('trafficRoad'));
+    } else if (name === 'Trafic aérien' || name === AIR_POSITIONS_SOURCE) {
+      void this.ensureAirTrafficPanel().then(() => this.openTrafficPanel('trafficAir'));
+    } else if (name === 'AIS maritime' || name === 'AIS instantané') {
+      void this.ensureMaritimePanel().then(() => this.openTrafficPanel('trafficMaritime'));
+    } else if (SOURCE_NAME_TO_FLOATING_PANEL[name] === 'cyber') {
+      // Cinq sources de la Vigilance cyber (arbitrage 22) : panneau créé à la demande, couche éteinte possible.
+      void this.ensureCyberPanel().then(() => this.openSovereigntyPanel('cyber'));
+    } else if (name === 'Câbles et AIS') {
+      void this.ensureConnectivityPanel().then(() => this.openSovereigntyPanel('subseaCables'));
     } else if (name === 'Écowatt RTE') {
       this.energyPanel?.show(this.currentEcowattResponse);
     } else if (
@@ -3438,13 +3146,23 @@ export class App {
       if (this.currentGasData) this.gasPanel?.show(this.currentGasData, this.currentBiogasState);
     } else if (name === 'Pétrole SDES / INSEE') {
       if (this.currentOilData) this.oilPanel?.show(this.currentOilData, this.currentFuelTensionData);
-    } else if (name === 'Vols Militaires ADS-B') {
-      this.defensePanel?.show(this.currentDefenseAlerts, this.currentJammingSignals);
-    } else if (name === 'Feux NASA FIRMS') {
-      this.firesPanel?.show(this.currentActiveFires);
-      this.layoutEnvironmentFloatingPanels();
-    } else if (name === 'Santé SPF / DREES') {
-      if (this.currentHealthFeatures) this.nationalHealthPanel?.show(this.currentHealthFeatures);
+    } else if (name === 'Vols militaires') {
+      void this.ensureDefensePanel().then(() => this.openSovereigntyPanel('military'));
+    } else if (name === VIGIPIRATE_CHECK_SOURCE) {
+      void this.ensureDefensePanel().then(() => this.openSovereigntyPanel('military'));
+    } else if (name === 'Grille GNSS' || name === 'NOAA SWPC' || name === 'Registre des gels') {
+      void this.ensureDefensePanel().then(() => this.openSovereigntyPanel('military'));
+    } else if (name === 'RIPEstat') {
+      void this.ensureConnectivityPanel().then(() => this.openSovereigntyPanel('subseaCables'));
+    } else if (name === 'Santé publique France') {
+      // Panneaux Santé créés à la demande : la source peut être cliquée avant toute activation de couche.
+      void this.ensureUrgencesPanel().then(() => this.urgencesPanel?.show(this.currentHealth));
+    } else if (SOURCE_NAME_TO_FLOATING_PANEL[name] === 'health') {
+      void this.ensureVeillePanel().then(() => this.veillePanel?.show(this.currentHealth));
+    } else if (name === 'DREES APL') {
+      void this.ensureAccesSoinsPanel().then(() => this.accesSoinsPanel?.show(this.currentHealthOffer));
+    } else if (name === 'DREES SAE / FINESS') {
+      void this.ensureHopitauxPanel().then(() => this.hopitauxPanel?.show(this.currentHealthOffer));
     }
     this.currentFloatingPanelId = SOURCE_NAME_TO_FLOATING_PANEL[name] ?? null;
     this.refreshFloatingPanelSwitcher();
@@ -3456,8 +3174,12 @@ export class App {
 
     const restoreOrder: (keyof MapLayers)[] = [
       'environmental',
+      'floods',
+      'weatherRadar',
       'fires',
-      'dayNight',
+      'drought',
+      'airQuality',
+      'earthquakes',
       'powerGrid',
       'dromEnergy',
       'nuclearFleet',
@@ -3465,15 +3187,18 @@ export class App {
       'hydroBackbone',
       'oilNetwork',
       'windMonitor',
+      'metroLoad',
       'health',
       'healthOscour',
       'healthApl',
       'hospitals',
       'trafficRoad',
+      'trafficAir',
       'trafficMaritime',
       'trafficRail',
-      'cyber',
       'military',
+      'subseaCables',
+      'cyber',
       'stability',
       'outagesElec',
       'outagesTelecom',
@@ -3513,6 +3238,10 @@ export class App {
       effective.trafficMaritime ||
       effective.trafficAir ||
       effective.trafficRail;
+    // Comme `traffic` : sans le maître dérivé, une couche Environnement seule ne s'afficherait pas (enfants dependsOnGroup).
+    effective.environmentGroup = hasActiveEnvironment(effective);
+    // Même raison pour la Souveraineté : une couche enfant seule restaurée s'affiche.
+    effective.sovereignty = hasActiveSovereignty(effective);
     const groupsOn = new Set(
       LAYER_CONFIGS
         .filter(l => l.role === "groupMaster" && effective[l.id])
@@ -3524,29 +3253,7 @@ export class App {
         effective[config.id] = groupsOn.has(config.groupId);
       }
     }
-    effective.threatMap = effective.cyber;
     return effective;
-  }
-
-  private updateBarometerFabVisibility(): void {
-    const fab = document.getElementById('barometer-fab');
-
-    const isAnyHealthLayerActive =
-      this.activeLayers.health ||
-      this.activeLayers.healthApl ||
-      this.activeLayers.healthOscour ||
-      this.activeLayers.hospitals;
-
-    // Hide FAB when no health layer is active
-    if (fab) {
-      fab.style.display = isAnyHealthLayerActive ? 'block' : 'none';
-    }
-
-    // Also hide health panels when no health layer is active
-    if (!isAnyHealthLayerActive) {
-      this.healthBarometerPanel?.hide();
-      this.nationalHealthPanel?.hide();
-    }
   }
 
   /**
@@ -3575,16 +3282,13 @@ export class App {
     opts: { suppressPanel?: boolean } = {},
   ): void {
     this.activeLayers[key] = enabled;
-    if (key === 'cyber') {
-      this.activeLayers.threatMap = enabled;
-    } else if (key === 'threatMap') {
-      this.activeLayers.cyber = enabled;
-    }
     this._syncGroupFlags(key, enabled);
 
     this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
     this.refreshLegendVisibility();
     this.refreshTrafficLegend();
+    this.refreshEnvironmentLegend();
+    this.refreshSovereigntyLegend();
 
     // Persist layer state across sessions
     try {
@@ -3593,8 +3297,6 @@ export class App {
       console.warn('[App] localStorage quota exceeded, could not persist layer state', err);
     }
     writeUrlState({ layers: this.activeLayers });
-
-    this.updateBarometerFabVisibility();
 
     // AIS loader lifecycle — show while waiting for first ship data, hide when layer off
     if (key === 'trafficMaritime' && !enabled && this._aisLoaderEl) {
@@ -3605,25 +3307,15 @@ export class App {
       this._showAisLoaderFn?.();
     }
 
-    // Road traffic data is loaded on-demand (not pre-fetched) to save bandwidth
-    if (key === 'trafficRoad') {
-      if (enabled) {
-        void this.ensureTrafficLoaded().catch((error) => {
-          console.error('[App] Failed to load road traffic on demand', error);
-        });
-      } else if (!this.activeLayers.trafficRoad) {
-        this.mapContainer?.updateTrafficIncidents([]);
-      }
-    }
+    // Feux : MTG-FRP (démonstration) lu à l'activation ; manifeste radar aussi quand les sommets d'écho sont cochés. La couche Radar
+    // lit son manifeste à l'ouverture de son panneau (openEnvironmentPanel), comme toute couche Environnement.
     if (key === 'fires' && enabled) {
       void this.loadMtgFrpMetadata().catch((error) => {
         console.error('[App] MTG-FRP metadata load failed', error);
       });
-      void this.loadRadar2dManifest().catch((error) => {
-        console.error('[App] Radar 2D manifest load failed', error);
-      });
+      if (this.echoTopsEnabled) this.loadRadarManifest().catch((error) => console.error('[App] Manifeste radar indisponible', error));
     }
-    // AIS relay socket: opened lazily at boot (startMilitaryPolling) only if
+    // AIS relay socket: opened lazily at boot (startShipsPolling) only if
     // trafficMaritime/military was already active. connectAis() is idempotent
     // (no-op if already connecting/connected), so this just covers the case
     // where the layer is switched on later in the session (perf audit §6 item 4).
@@ -3681,19 +3373,12 @@ export class App {
       }
     }
 
-    if (key === 'military' || key === 'subseaCables' || key === 'cyber' || key === 'threatMap') {
-      this.activeLayers.sovereignty =
-        this.activeLayers.military || this.activeLayers.subseaCables || this.activeLayers.cyber;
-    }
+    if (isSovereigntyLayerKey(key)) this.activeLayers.sovereignty = hasActiveSovereignty(this.activeLayers);
     if (ENERGY_SYSTEM_LAYER_KEYS.includes(key as typeof ENERGY_SYSTEM_LAYER_KEYS[number])) {
       this.activeLayers.energySystems = hasActiveEnergySystems(this.activeLayers);
     }
-    if (key === 'environmental' || key === 'weatherRadar' || key === 'fires' || key === 'dayNight') {
-      this.activeLayers.environmentGroup =
-        this.activeLayers.environmental ||
-        this.activeLayers.weatherRadar ||
-        this.activeLayers.fires ||
-        (this.activeLayers.dayNight ?? false);
+    if (isEnvironmentLayerKey(key)) {
+      this.activeLayers.environmentGroup = hasActiveEnvironment(this.activeLayers);
     }
     if (key === 'trafficRoad' || key === 'trafficMaritime' || key === 'trafficAir' || key === 'trafficRail') {
       this.syncTrafficGroupState();
@@ -3713,59 +3398,44 @@ export class App {
   /**
    * Show or hide the panel that corresponds to the toggled layer.
    *
-   * Some layers have no panel (subseaCables: visual-only).
+   * Chaque couche Souveraineté a son panneau (Connectivité comprise).
    * Some panels are shared across child layers (outages tab auto-switch).
    * Some trigger lazy data loads if the data hasn't been fetched yet.
    *
    * Called at the end of onLayerToggle, after map visibility and state
    * have already been updated.
    */
-  // ─── Rendu panels overlay : loader unifié tant que les données ne sont pas arrivées ───
-  private renderFiresPanel(): void {
-    if (this.firesLoaded) this.firesPanel?.show(this.currentActiveFires);
-    else this.firesPanel?.showLoading();
-  }
-
-  private renderTrafficPanel(): void {
-    if (this.trafficDataLoaded) this.trafficPanel?.show(this.currentTrafficIncidents);
-    else this.trafficPanel?.showLoading();
-  }
-
-  private renderEnvironmentPanel(): void {
-    if (this.environmentLoaded) {
-      this.environmentPanel?.show(this.currentMeteoAlerts, this.currentFloodSegments, this.currentMeteoTimeline ?? undefined);
-    } else {
-      this.environmentPanel?.showLoading();
-    }
-  }
-
   private _handlePanelVisibility(key: keyof MapLayers, enabled: boolean): void {
-    // Traffic panels — standalone ifs so both run if key matches both (impossible in
-    // practice but safe: they guard on the specific key value).
-    if (key === 'trafficMaritime') {
+    // Panneaux Environnement (spec 2026-10-04 environnement § 2) : à l'ouverture, source lue et relève réglée ; à l'extinction,
+    // masquage silencieux et relève réglée (vigilance, crues et feux continuent pour le score, qualité de l'air et séismes pour les situations).
+    if (isEnvironmentLayerKey(key)) {
       if (enabled) {
-        if (this.maritimeHasData) this.maritimePanel?.show();
-        else this.maritimePanel?.showLoading();
-      }
-      else this.maritimePanel?.hide();
-    }
-    if (key === 'trafficRoad') {
-      if (enabled) {
-        void this.ensureTrafficLoaded().catch((error) => {
-          console.error('[App] Failed to load road traffic on restore', error);
-        });
-        this.renderTrafficPanel();
+        this.openEnvironmentPanel(key);
       } else {
-        this.trafficPanel?.hide();
+        this.getFloatingPanelInstance(key)?.hide({ silent: true });
+        this.syncEnvironmentPolling(key);
+        if (key === 'fires') this.syncEnvironmentPolling('weatherRadar');
       }
     }
-    if (key === 'trafficRail') {
-      if (enabled) this.transportPanel?.show(this.currentSncfDisruptions, {
-        fullCoverageLoaded: this.sncfFullCoverageLoaded,
-        dataLoaded: this.currentSncfDisruptions.length > 0,
-        mapCoverageReady: this.hasRailMapCoverage(),
-      });
-      else this.transportPanel?.hide();
+    // Panneaux Trafics (spec 2026-10-03 trafics § 3) : à l'ouverture (case, puce, restauration), source lue et relève réglée ; à
+    // l'extinction, masquage silencieux et relève arrêtée si le panneau n'est plus ouvert.
+    if (key === 'trafficRoad' || key === 'trafficAir' || key === 'trafficRail' || key === 'trafficMaritime') {
+      if (enabled) {
+        this.openTrafficPanel(key);
+      } else {
+        this.getFloatingPanelInstance(key)?.hide({ silent: true });
+        this.syncTrafficPolling(key);
+      }
+    }
+    // Panneaux Souveraineté (spec 2026-10-04 souveraineté § 2) : à l'ouverture, source lue et relève réglée ; à l'extinction, masquage
+    // silencieux et relève réglée (les trois couches restent relevées pour le score, arbitrage 21).
+    if (isSovereigntyLayerKey(key)) {
+      if (enabled) {
+        this.openSovereigntyPanel(key);
+      } else {
+        this.getFloatingPanelInstance(key)?.hide({ silent: true });
+        this.syncSovereigntyPolling(key);
+      }
     }
 
     // All remaining panels use an if/else chain — at most one branch fires per toggle.
@@ -3779,79 +3449,56 @@ export class App {
         this.layoutEnergyFloatingPanels();
       }
     } else if (key === 'environmentGroup') {
-      // Group master turned off: collapse all environment panels
+      // Maître éteint : les panneaux Environnement masqués (silencieux : les couches gardent leur état), relèves réglées.
       if (!this.activeLayers.environmentGroup) {
-        this.environmentPanel?.hide();
-        this.firesPanel?.hide();
-        this.weatherRadarPanel?.hide({ silent: true });
-        this.dayNightPanel?.hide();
-        this.layoutEnvironmentFloatingPanels();
+        for (const envKey of ENVIRONMENT_LAYER_KEYS) {
+          this.getFloatingPanelInstance(envKey)?.hide({ silent: true });
+          this.syncEnvironmentPolling(envKey);
+        }
       }
-    } else if (key === 'environmental') {
-      if (enabled) this.renderEnvironmentPanel();
-      else this.environmentPanel?.hide();
-      this.layoutEnvironmentFloatingPanels();
-    } else if (key === 'health' || key === 'healthApl' || key === 'healthOscour' || key === 'hospitals') {
-      const anyHealthActive =
-        this.activeLayers.health || this.activeLayers.healthApl ||
-        this.activeLayers.healthOscour || this.activeLayers.hospitals;
-      // Lazy-load les VRAIES features santé si pas encore chargées. On teste
-      // currentHealthFeatures (et non hasHealthData, que loadAplData force à true),
-      // sinon activer l'onglet APL n'aurait jamais peuplé le panneau santé.
-      if (enabled && !this.currentHealthFeatures) {
-        this.loadHealth().catch((err) => console.error('[App] Failed to load health layers', err));
+    } else if (key === 'health') {
+      if (this.activeLayers.health) {
+        this.loadHealthSurveillance('all').catch((err) => console.error('[App] Veille sanitaire indisponible', err));
+        this.veillePanel?.show(this.currentHealth);
+      } else {
+        this.veillePanel?.hide({ silent: true });
       }
-      if (enabled && anyHealthActive) {
-        document.dispatchEvent(new CustomEvent('open-national-health', { detail: { explicit: this.explicitPanelRequest } }));
-      } else if (!anyHealthActive) {
-        this.healthBarometerPanel?.hide();
-        this.nationalHealthPanel?.hide();
+    } else if (key === 'healthOscour') {
+      if (this.activeLayers.healthOscour) {
+        this.loadHealthSurveillance(['syndromic', 'alerts']).catch((err) => console.error('[App] Urgences indisponibles', err));
+        this.urgencesPanel?.show(this.currentHealth);
+      } else {
+        this.urgencesPanel?.hide({ silent: true });
+      }
+    } else if (key === 'healthApl') {
+      if (this.activeLayers.healthApl) {
+        this.loadHealthOffer().catch((err) => console.error('[App] APL indisponible', err));
+        this.accesSoinsPanel?.show(this.currentHealthOffer);
+      } else {
+        this.accesSoinsPanel?.hide({ silent: true });
+      }
+    } else if (key === 'hospitals') {
+      if (this.activeLayers.hospitals) {
+        this.loadHealthOffer().catch((err) => console.error('[App] Hôpitaux indisponibles', err));
+        this.hopitauxPanel?.show(this.currentHealthOffer);
+      } else {
+        this.hopitauxPanel?.hide({ silent: true });
       }
     } else if (key === 'sovereignty') {
-      // Group master: show/hide child panels based on which sub-layers are active
+      // Maître éteint : les trois panneaux Souveraineté masqués (silencieux : les couches gardent leur état), relèves réglées.
       if (!this.activeLayers.sovereignty) {
-        this.cyberPanel?.hide();
-        this.defensePanel?.hide();
-      } else {
-        if (this.activeLayers.cyber) {
-          if (!this.currentCyberData) this.loadCyber();
-          this.cyberPanel?.show(this.currentCyberData);
-        }
-        if (this.activeLayers.military) {
-          this.defensePanel?.show(this.currentDefenseAlerts, this.currentJammingSignals);
+        for (const sovKey of SOVEREIGNTY_LAYER_KEYS) {
+          this.getFloatingPanelInstance(sovKey)?.hide({ silent: true });
+          this.syncSovereigntyPolling(sovKey);
         }
       }
-    } else if (key === 'cyber') {
-      if (this.activeLayers.cyber && this.activeLayers.sovereignty) {
-        if (!this.currentCyberData) this.loadCyber(); // lazy-load on first enable
-        void this.loadThreatMapEvents();
-        this.cyberPanel?.show(this.currentCyberData);
-      } else {
-        this.cyberPanel?.hide();
-      }
-    } else if (key === 'threatMap') {
-      if (this.activeLayers.threatMap) {
-        void this.loadThreatMapEvents();
-        if (!this.currentCyberData) void this.loadCyber();
-        this.cyberPanel?.selectTab('incidents');
-        if (this.cyberPanel && !this.cyberPanel.isVisible() && this.activeLayers.sovereignty) {
-          this.cyberPanel.show(this.currentCyberData);
-        }
-      }
-    } else if (key === 'military') {
-      if (this.activeLayers.military && this.activeLayers.sovereignty) {
-        this.defensePanel?.show(this.currentDefenseAlerts, this.currentJammingSignals);
-      } else {
-        this.defensePanel?.hide();
-      }
-    } else if (key === 'subseaCables') {
-      // Visual-only layer — no panel to toggle.
     } else if (key === 'powerGrid') {
       if (this.activeLayers.powerGrid) this.energyPanel?.show(this.currentEcowattResponse);
       else this.energyPanel?.hide();
       this.layoutEnergyFloatingPanels();
     } else if (key === 'dromEnergy') {
       if (this.activeLayers.dromEnergy) {
+        void this.loadDromLive();
         if (!this.currentDromEnergyDashboard && !this.currentDromEnergyError) {
           this.dromEnergyPanel?.showLoadingState();
           void this.loadDromEnergy();
@@ -3878,6 +3525,14 @@ export class App {
         this.eolienPanel?.show(this.currentEolienLive, this.currentEolienParks);
       } else {
         this.eolienPanel?.hide();
+      }
+      this.layoutEnergyFloatingPanels();
+    } else if (key === 'metroLoad') {
+      if (this.activeLayers.metroLoad) {
+        void this.loadMetropoles();
+        this.metroLoadPanel?.show(this.currentMetropoles);
+      } else {
+        this.metroLoadPanel?.hide();
       }
       this.layoutEnergyFloatingPanels();
     } else if (key === 'gasNetwork') {
@@ -3917,16 +3572,6 @@ export class App {
         this.nuclearPanel?.hide();
         this.layoutEnergyFloatingPanels();
       }
-    } else if (key === 'fires') {
-      if (this.activeLayers.fires) this.renderFiresPanel();
-      else this.firesPanel?.hide();
-      this.layoutEnvironmentFloatingPanels();
-    } else if (key === 'weatherRadar') {
-      if (enabled) this.weatherRadarPanel?.show();
-      else this.weatherRadarPanel?.hide({ silent: true });
-    } else if (key === 'dayNight') {
-      if (enabled) this.dayNightPanel?.show();
-      else this.dayNightPanel?.hide();
     } else if (key === 'elus') {
       void this.mapContainer?.setMairesPolitiqueVisible(false);
     } else if (key === 'outages') {
@@ -3978,7 +3623,7 @@ export class App {
   // doesn't exist yet when onLayerToggle's synchronous _handlePanelVisibility
   // call runs) — but does NOT re-trigger the underlying data load
   // (loadOil/loadNuclear/loadEolien/loadCyber/refreshHydraulicSignalSources/
-  // loadHealth/loadDromEnergy), since _handlePanelVisibility already did
+  // loadHealthSurveillance/loadHealthOffer/loadDromEnergy), since _handlePanelVisibility already did
   // that on the original toggle; re-triggering here would risk a duplicate
   // in-flight request if the chunk resolves before that fetch completes.
 
@@ -3991,6 +3636,7 @@ export class App {
         this.mapContainer?.highlightDromEnergyAsset(asset);
       });
       panel.mount();
+      panel.setLive(this.currentDromLive, this.currentDromLiveError);
       this.dromEnergyPanel = panel;
       if (this.activeLayers.dromEnergy) {
         if (this.currentDromEnergyDashboard) panel.show(this.currentDromEnergyDashboard);
@@ -4029,6 +3675,7 @@ export class App {
         this.mapContainer?.flyTo(park.coordinates[0], park.coordinates[1], 9.8);
       });
       panel.mount();
+      panel.setGrid(this.currentEcowattResponse?.grid ?? null);
       this.eolienPanel = panel;
       if (this.activeLayers.windMonitor) {
         panel.show(this.currentEolienLive, this.currentEolienParks);
@@ -4038,189 +3685,1115 @@ export class App {
     return this.eolienPanelPromise;
   }
 
-  private ensureHealthPanels(): Promise<void> {
-    if (!this.floatContainerEl) return Promise.resolve();
-    this.healthPanelsPromise ??= Promise.all([
-      import('./components/NationalHealthPanel.ts'),
-      import('./components/HealthBarometerPanel.ts'),
-    ]).then(([{ NationalHealthPanel }, { HealthBarometerPanel }]) => {
-      const nationalPanel = new NationalHealthPanel(this.floatContainerEl!);
-      nationalPanel.mount();
-      this.nationalHealthPanel = nationalPanel;
-
-      const barometerPanel = new HealthBarometerPanel(this.floatContainerEl!);
-      barometerPanel.mount();
-      this.healthBarometerPanel = barometerPanel;
-
-      const anyHealthActive =
-        this.activeLayers.health || this.activeLayers.healthApl ||
-        this.activeLayers.healthOscour || this.activeLayers.hospitals;
-      if (anyHealthActive) {
-        document.dispatchEvent(new CustomEvent('open-national-health'));
+  private ensureMetroLoadPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.metroLoadPanelPromise ??= import('./components/MetroLoadPanel.ts').then(({ MetroLoadPanel }) => {
+      const panel = new MetroLoadPanel(container);
+      panel.setOnClose(() => this.closeEnergyLayer('metroLoad'));
+      panel.mount();
+      this.metroLoadPanel = panel;
+      if (this.activeLayers.metroLoad) {
+        panel.show(this.currentMetropoles);
+        this.layoutEnergyFloatingPanels();
       }
     });
-    return this.healthPanelsPromise;
+    return this.metroLoadPanelPromise;
+  }
+
+  private ensureVeillePanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.veillePanelPromise ??= import('./components/VeilleSanitairePanel.ts').then(({ VeilleSanitairePanel }) => {
+      const panel = new VeilleSanitairePanel(container);
+      panel.setOnClose(() => this.closeHealthLayer('health'));
+      panel.mount();
+      this.veillePanel = panel;
+      if (this.activeLayers.health) panel.show(this.currentHealth);
+    });
+    return this.veillePanelPromise;
+  }
+
+  private ensureUrgencesPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.urgencesPanelPromise ??= import('./components/UrgencesPanel.ts').then(({ UrgencesPanel }) => {
+      const panel = new UrgencesPanel(container);
+      panel.setOnClose(() => this.closeHealthLayer('healthOscour'));
+      panel.setOnSyndrome((syndrome) => this.mapContainer?.setHealthUrgencesSyndrome(syndrome));
+      this.mapContainer?.setHealthUrgencesSyndrome(panel.getSyndrome());
+      panel.mount();
+      this.urgencesPanel = panel;
+      if (this.activeLayers.healthOscour) panel.show(this.currentHealth);
+    });
+    return this.urgencesPanelPromise;
+  }
+
+  private ensureAccesSoinsPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.accesSoinsPanelPromise ??= import('./components/AccesSoinsPanel.ts').then(({ AccesSoinsPanel }) => {
+      const panel = new AccesSoinsPanel(container);
+      panel.setOnClose(() => this.closeHealthLayer('healthApl'));
+      panel.setOnProfession((profession) => this.mapContainer?.setHealthAplProfession(profession));
+      this.mapContainer?.setHealthAplProfession(panel.getProfession());
+      panel.mount();
+      this.accesSoinsPanel = panel;
+      if (this.activeLayers.healthApl) panel.show(this.currentHealthOffer);
+    });
+    return this.accesSoinsPanelPromise;
+  }
+
+  private ensureHopitauxPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.hopitauxPanelPromise ??= import('./components/HopitauxPanel.ts').then(({ HopitauxPanel }) => {
+      const panel = new HopitauxPanel(container);
+      panel.setOnClose(() => this.closeHealthLayer('hospitals'));
+      // Mobile (carte SVG) : la carte ne recentre pas sur un site, les lignes ne se donnent pas pour cliquables.
+      if (this.mapContainer?.canFocusHospital()) panel.setOnSelectSite((site) => this.mapContainer?.focusHospital(site));
+      panel.mount();
+      this.hopitauxPanel = panel;
+      if (this.activeLayers.hospitals) panel.show(this.currentHealthOffer);
+    });
+    return this.hopitauxPanelPromise;
+  }
+
+  /** Croix d'un panneau Santé : éteint sa couche comme une case décochée (persistance, carte, légende, barre des panneaux). */
+  private closeHealthLayer(key: HealthLayerKey): void {
+    if (!this.activeLayers[key]) return;
+    this.onLayerToggle(key, false);
+    this.layerPanel?.updateLayers(this.activeLayers);
+  }
+
+  /** Lien d'une fiche (thème Santé) vers le panneau d'une couche : active la couche si besoin, puis ouvre son panneau. */
+  private openLayerPanelFromFiche(key: string): void {
+    const def = FLOATING_PANEL_DEFS.find((d) => d.id === key);
+    if (!def) return;
+    if (!this.activeLayers[def.id]) this.onLayerToggle(def.id, true, { suppressPanel: true });
+    this.layerPanel?.updateLayers(this.activeLayers);
+    void Promise.all(this.ensureLazyPanelForLayer(def.id)).then(() => this.showFloatingPanel(def.id));
+  }
+
+  /**
+   * Sources de veille à relire : toutes pour Veille sanitaire, urgences et alertes pour Urgences ; en v2, fiche thème Santé à
+   * l'écran sans couche santé active, les quatre sources de son niveau national ; aucune sinon.
+   */
+  private healthSurveillanceKeys(): readonly HealthSurveillanceKey[] | 'all' {
+    if (this.activeLayers.health) return 'all';
+    const keys = new Set<HealthSurveillanceKey>(this.activeLayers.healthOscour ? ['syndromic', 'alerts'] : []);
+    if (this.healthThemeFicheVisible()) for (const k of HEALTH_NATIONAL_KEYS) keys.add(k);
+    return [...keys];
+  }
+
+  /** v2 : fiche du thème Santé ouverte (niveau national de santé à l'écran). */
+  private healthThemeFicheVisible(): boolean {
+    return this.uiV2 && this.poste?.selectedKey() === 'theme:health';
+  }
+
+  /**
+   * Niveau national de santé de la fiche thème, recalculé à l'instant du rendu (retard S2 réévalué entre deux relèves) une fois
+   * la vue Veille chargée ; avant, la dernière valeur connue.
+   */
+  private healthNationalNow(now: number): NationalHealthSummary | null {
+    if (this.currentHealth && this.healthNationalOf) this.currentHealthNational = this.healthNationalOf(this.currentHealth, now);
+    return this.currentHealthNational;
+  }
+
+  private ensureTrafficPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.trafficPanelPromise ??= import('./components/TrafficPanel.ts').then(({ TrafficPanel }) => {
+      const panel = new TrafficPanel(container);
+      panel.setOnClose(() => this.closeTrafficLayer('trafficRoad'));
+      if (this.mapContainer?.canFocusMap()) panel.setOnFocusEvent((event) => {
+        if (event.lon !== null && event.lat !== null) this.mapContainer?.flyTo(event.lon, event.lat, 12);
+      });
+      panel.mount();
+      this.trafficPanel = panel;
+      if (this.activeLayers.trafficRoad) panel.show(this.currentRoadTraffic);
+    });
+    return this.trafficPanelPromise;
+  }
+
+  private ensureAirTrafficPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.airTrafficPanelPromise ??= import('./components/AirTrafficPanel.ts').then(({ AirTrafficPanel }) => {
+      const panel = new AirTrafficPanel(container);
+      panel.setOnClose(() => this.closeTrafficLayer('trafficAir'));
+      panel.mount();
+      this.airTrafficPanel = panel;
+      if (this.activeLayers.trafficAir) panel.show(this.currentAirOverview);
+    });
+    return this.airTrafficPanelPromise;
+  }
+
+  private ensureTransportPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.transportPanelPromise ??= import('./components/TransportPanel.ts').then(({ TransportPanel }) => {
+      const panel = new TransportPanel(container);
+      panel.setOnClose(() => this.closeTrafficLayer('trafficRail'));
+      if (this.mapContainer?.canFocusMap()) {
+        panel.setOnSelectTrain((train) => this.focusTrain(train));
+        // Survol d'un train : son trajet prévisualisé ; sortie : retour au train choisi ou carte effacée (previewTrainRoute).
+        panel.setOnPreviewTrain((train) => this.mapContainer?.previewTrainRoute(train));
+      }
+      panel.mount();
+      this.transportPanel = panel;
+      if (this.activeLayers.trafficRail) panel.show(this.currentRailTraffic);
+    });
+    return this.transportPanelPromise;
+  }
+
+  private ensureMaritimePanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.maritimePanelPromise ??= import('./components/MaritimePanel.ts').then(({ MaritimePanel }) => {
+      const panel = new MaritimePanel(container);
+      panel.setOnClose(() => this.closeTrafficLayer('trafficMaritime'));
+      panel.setOnHighlightShip((mmsi) => this.mapContainer?.setHighlightedShip(mmsi));
+      panel.setOnSelectShip((ship) => {
+        this.mapContainer?.setSelectedShip(ship.mmsi ?? null);
+        if (this.mapContainer?.canFocusMap()) this.mapContainer.flyTo(ship.lon, ship.lat, 9);
+      });
+      panel.mount();
+      this.maritimePanel = panel;
+      if (this.activeLayers.trafficMaritime) panel.show(this.currentMaritimeSnapshot);
+    });
+    return this.maritimePanelPromise;
+  }
+
+  /**
+   * Croix d'un panneau Trafics : éteint sa couche comme une case décochée (persistance, carte, légende, barre des panneaux) ;
+   * panneau ouvert depuis le panneau des sources, couche éteinte : sa relève s'arrête avec lui.
+   */
+  private closeTrafficLayer(key: TrafficLayerKey): void {
+    if (this.activeLayers[key]) {
+      this.onLayerToggle(key, false);
+      this.layerPanel?.updateLayers(this.activeLayers);
+    }
+    this.syncTrafficPolling(key);
+  }
+
+  /**
+   * Ouvre le panneau d'une couche Trafics sur ses dernières données (chargement au premier affichage), lit aussitôt sa source et
+   * règle sa relève : case cochée, puce, restauration ou ligne du panneau des sources cliquée couche éteinte.
+   */
+  private openTrafficPanel(key: TrafficLayerKey): void {
+    switch (key) {
+      case 'trafficRoad': this.trafficPanel?.show(this.currentRoadTraffic); break;
+      case 'trafficAir': this.airTrafficPanel?.show(this.currentAirOverview); break;
+      case 'trafficRail': this.transportPanel?.show(this.currentRailTraffic); break;
+      case 'trafficMaritime': this.maritimePanel?.show(this.currentMaritimeSnapshot); break;
+    }
+    this.loadTrafficSource(key).catch((err) => console.error(`[App] Lecture ${key} en échec`, err));
+    this.syncTrafficPolling(key);
+  }
+
+  /** Source du panneau d'une couche Trafics (route, aperçu aérien, rail, instantané AIS). */
+  private loadTrafficSource(key: TrafficLayerKey): Promise<void> {
+    switch (key) {
+      case 'trafficRoad': return this.loadRoadTraffic();
+      case 'trafficAir': return this.loadAirOverview();
+      case 'trafficRail': return this.loadRailTraffic();
+      case 'trafficMaritime': return this.loadMaritimeSnapshot();
+    }
+  }
+
+  /** Relève voulue : couche active OU panneau ouvert (ligne du panneau des sources cliquée couche éteinte). */
+  private trafficPollWanted(key: TrafficLayerKey): boolean {
+    return this.activeLayers[key] || (this.getFloatingPanelInstance(key)?.isVisible?.() ?? false);
+  }
+
+  /**
+   * Démarre ou arrête la relève pausable d'une couche Trafics (TRAFFIC_POLL_MS) : elle tourne tant que la couche est active ou que
+   * son panneau est ouvert, et s'arrête quand les deux sont éteints (ici, ou au tour suivant après un masquage silencieux).
+   */
+  private syncTrafficPolling(key: TrafficLayerKey): void {
+    const timer = this.trafficPolls[key];
+    if (!this.trafficPollWanted(key)) {
+      if (timer) {
+        this.removePausableInterval(timer);
+        delete this.trafficPolls[key];
+      }
+      return;
+    }
+    if (timer) return;
+    this.trafficPolls[key] = this.registerPausableInterval(() => {
+      if (!this.trafficPollWanted(key)) {
+        this.syncTrafficPolling(key);
+        return;
+      }
+      this.loadTrafficSource(key).catch((err) => console.error(`[App] Relève ${key} en échec`, err));
+    }, TRAFFIC_POLL_MS[key]);
+  }
+
+  /**
+   * Lecture d'une source Trafics : une seule à la fois par couche (démarrage, restauration, ouverture, relève : un second appelant
+   * rejoint la lecture en cours) ; si le service ne se charge pas, toutes les lignes de la couche le disent (S3), quel que soit
+   * l'appelant.
+   */
+  private readTraffic(key: TrafficLayerKey, read: () => Promise<void>): Promise<void> {
+    return dedupe(`traffic:${key}`, () => read().catch((err: unknown) => {
+      this.markTrafficSourcesFailed(key, err);
+      throw err;
+    }));
+  }
+
+  /**
+   * Toutes les lignes d'une couche Trafics (TRAFFIC_LAYER_SOURCES : « TomTom agglomérations » et « SIRI SX » comprises) quand son
+   * service ne se charge pas : une ligne déjà datée garde sa date et passe « stale », sinon « error » sans heure inventée.
+   */
+  private markTrafficSourcesFailed(key: TrafficLayerKey, err: unknown): void {
+    const error = err instanceof Error ? err.message : 'service de la source introuvable';
+    for (const name of TRAFFIC_LAYER_SOURCES[key]) {
+      const dated = this.statusPanel?.getSources().find((s) => s.name === name)?.lastUpdate ?? null;
+      this.statusPanel?.updateSource(name, dated !== null ? { status: 'stale', error } : { status: 'error', lastUpdate: null, period: undefined, error });
+    }
+  }
+
+  // ─── Environnement (spec 2026-10-04 environnement § 2, § 3) : Vigilance météo, Crues, Radar météo, Feux de forêt, Sécheresse, Qualité de l'air, Séismes ───
+
+  private ensureVigilancePanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.vigilancePanelPromise ??= import('./components/VigilancePanel.ts').then(({ VigilancePanel }) => {
+      const panel = new VigilancePanel(container);
+      panel.setOnClose(() => this.closeEnvironmentLayer('environmental'));
+      // Département choisi : bulletin départemental dans le panneau, surbrillance sur la carte (sans carte : le bulletin seul).
+      panel.setOnSelectDepartment((code) => {
+        this.selectedVigilanceDept = code;
+        this.mapContainer?.selectWeatherDepartment(code);
+      });
+      panel.setOnEcheance((echeance) => {
+        this.vigilanceEcheance = echeance;
+        // Carte repeinte à l'échéance choisie, département choisi gardé en surbrillance.
+        void this.mapContainer?.updateVigilanceLayer(this.currentVigilance?.vigilance.data ?? null, echeance, Date.now())
+          .then(() => this.mapContainer?.selectWeatherDepartment(this.selectedVigilanceDept))
+          // Carte non repeinte : tracé ; le panneau reste sur l'échéance choisie et la prochaine lecture repeindra la carte.
+          .catch((err: unknown) => console.error('[App] Carte de vigilance non repeinte', err));
+        this.refreshEnvironmentLegend();
+      });
+      // Lignes de marégraphes cliquables avec la carte WebGL seulement (arbitrage 12).
+      if (this.mapContainer?.canFocusMap()) panel.setOnFocusGauge((id) => this.focusGauge(id));
+      panel.mount();
+      this.vigilancePanel = panel;
+      if (this.activeLayers.environmental) panel.show({ vigilance: this.currentVigilance, seaLevels: this.currentSeaLevels });
+    });
+    return this.vigilancePanelPromise;
+  }
+
+  private ensureFloodsPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.floodsPanelPromise ??= import('./components/FloodsPanel.ts').then(({ FloodsPanel }) => {
+      const panel = new FloodsPanel(container);
+      panel.setOnClose(() => this.closeEnvironmentLayer('floods'));
+      if (this.mapContainer?.canFocusMap()) {
+        panel.setOnFocusSection((id) => {
+          this.mapContainer?.highlightFloodSection(id);
+          this.mapContainer?.focusFloodSection(id);
+        });
+        panel.setOnFocusStation((code) => {
+          const station = this.currentFloods?.floods.data?.sections.flatMap((s) => s.stations).find((s) => s.code === code);
+          if (station && station.lat !== null && station.lon !== null) this.mapContainer?.flyTo(station.lon, station.lat, 11);
+        });
+      }
+      panel.mount();
+      this.floodsPanel = panel;
+      if (this.activeLayers.floods) panel.show(this.currentFloods);
+    });
+    return this.floodsPanelPromise;
   }
 
   private ensureWeatherRadarPanel(): Promise<void> {
-    if (!this.floatContainerEl) return Promise.resolve();
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
     this.weatherRadarPanelPromise ??= import('./components/WeatherRadarPanel.ts').then(({ WeatherRadarPanel }) => {
-      const panel = new WeatherRadarPanel(this.floatContainerEl!);
+      const panel = new WeatherRadarPanel(container);
+      panel.setOnClose(() => this.closeEnvironmentLayer('weatherRadar'));
+      panel.setOnEchoTops((on) => this.setEchoTops(on));
       panel.mount();
-      panel.setOnClose(() => this.refreshFloatingPanelSwitcher());
-      panel.update(this.currentWeatherRadarFrame, this.currentWeatherRadarStatus);
       this.weatherRadarPanel = panel;
-      // Ouverture v1 (bascule de la couche) : le panneau n'existait pas encore au moment du clic.
-      // (sans écraser un autre panneau déjà à l'écran).
-      if (this.activeLayers.weatherRadar && !this.uiV2
-        && !FLOATING_PANEL_DEFS.some((def) => this.isFloatingPanelVisible(def.id))) {
-        this.showFloatingPanel('weatherRadar');
-      }
+      if (this.activeLayers.weatherRadar) panel.show(this.radarPanelState());
     });
     return this.weatherRadarPanelPromise;
   }
 
   private ensureFiresPanel(): Promise<void> {
-    if (!this.floatContainerEl) return Promise.resolve();
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
     this.firesPanelPromise ??= import('./components/FiresPanel.ts').then(({ FiresPanel }) => {
-      const panel = new FiresPanel(this.floatContainerEl!);
-      panel.mount();
-      panel.setOnFilteredFires((filtered) => {
-        this.mapContainer?.updateFires(filtered);
-      });
-      panel.setOnFirePointsToggle((enabled) => {
-        this.mapContainer?.setFirePointsVisible(enabled);
-      });
-      panel.setOnHoverFire((lat, lon) => {
-        if (lat !== null && lon !== null) {
-          this.mapContainer?.highlightFire(lat, lon);
-        } else {
-          this.mapContainer?.clearFireHighlight();
-        }
-      });
-      panel.setOnHoverIncident((points) => {
-        if (points) {
-          this.mapContainer?.highlightFireCluster(points);
-        } else {
-          this.mapContainer?.clearFireHighlight();
-        }
-      });
-      panel.setOnModisToggle((enabled) => {
-        this.mapContainer?.setModisOverlayVisible(enabled);
-      });
-      panel.setOnMtgFrpToggle((enabled) => {
-        this.mtgFrpEnabled = enabled;
-        if (!enabled) {
-          this.mapContainer?.setMtgFrpEnabled(false);
-          return;
-        }
-        void this.loadMtgFrpMetadata().catch((error) => {
-          console.error('[App] MTG-FRP activation failed', error);
+      const panel = new FiresPanel(container);
+      panel.setOnClose(() => this.closeEnvironmentLayer('fires'));
+      if (this.mapContainer?.canFocusMap()) {
+        panel.setOnFocusFoyer((foyer) => {
+          this.mapContainer?.highlightFoyer(foyer.id);
+          this.mapContainer?.flyTo(foyer.lon, foyer.lat, 10);
         });
+      }
+      panel.setOnEchoTops((on) => this.setEchoTops(on));
+      panel.setOnGibs((on) => {
+        this.gibsEnabled = on;
+        this.mapContainer?.setModisOverlayVisible(on);
+        this.firesPanel?.update(this.firesPanelState());
       });
-      panel.setOnRadar2dToggle((enabled) => {
-        this.radar2dEnabled = enabled;
-        const generation = ++this.radar2dTransitionGeneration;
-        const isCurrent = (): boolean => generation === this.radar2dTransitionGeneration;
-        this.radar2dTransitionQueue = this.radar2dTransitionQueue.then(() =>
-          runRadar2dToggleTransition({
-            enabled,
-            isCurrent,
-            loadManifest: () => this.loadRadar2dManifest(false, isCurrent),
-            disableOverlay: async () => {
-              await this.mapContainer?.setRadar2dOverlay(this.latestRadar2dManifest, false);
-            },
-            syncEnabled: (next) => {
-              this.radar2dEnabled = next;
-              this.firesPanel?.setRadar2dEnabled(next);
-            },
-            onError: (error) => {
-              console.error(`[App] Radar 2D ${enabled ? 'activation' : 'deactivation'} failed`, error);
-            },
-          }),
-        );
+      panel.setOnMtgFrp((on) => {
+        this.mtgFrpEnabled = on;
+        if (on) void this.loadMtgFrpMetadata().catch((error) => console.error('[App] MTG-FRP activation failed', error));
+        else this.mapContainer?.setMtgFrpEnabled(false);
+        this.firesPanel?.update(this.firesPanelState());
       });
-      panel.setOnEchoTopsToggle((enabled) => {
-        this.echoTopsEnabled = enabled;
-        this.mapContainer?.setEchoTopsOverlay(this.latestRadar2dManifest, enabled);
+      panel.setOnForestDangerFill((on) => {
+        this.forestDangerFill = on;
+        this.mapContainer?.updateFiresLayer(this.currentFires?.fires.data ?? null, Date.now(), { forestDangerFill: on });
+        this.refreshEnvironmentLegend();
+        this.firesPanel?.update(this.firesPanelState());
       });
-      panel.setOnClose(() => {
-        this.layoutEnvironmentFloatingPanels();
-        this.refreshFloatingPanelSwitcher();
-      });
+      panel.mount();
       this.firesPanel = panel;
-      panel.setEchoTopsAvailability(Boolean(this.latestRadar2dManifest?.echoTopImageUrl));
-      panel.setObservationRuntimeState(this.fireObservationRuntime);
-      // Replay: loadFires (one-shot at boot) may have completed before the chunk arrived.
-      // setRawFires re-triggers the filter + map update through onFilteredFires.
-      if (this.currentFiresSources) {
-        panel.setSourcesInfo(this.currentFiresSources.sources, this.currentFiresSources.apiKeyUsed);
-      }
-      if (this.currentActiveFires.length > 0) {
-        panel.setRawFires(this.currentActiveFires);
-      }
-      if (this.activeLayers.fires) {
-        this.renderFiresPanel();
-        this.layoutEnvironmentFloatingPanels();
-      }
+      if (this.activeLayers.fires) panel.show(this.firesPanelState());
     });
     return this.firesPanelPromise;
   }
 
-  private ensureTrafficPanel(): Promise<void> {
-    if (!this.floatContainerEl) return Promise.resolve();
-    this.trafficPanelPromise ??= import('./components/TrafficPanel.ts').then(({ TrafficPanel }) => {
-      const panel = new TrafficPanel(this.floatContainerEl!);
-      panel.setOnClickIncident((lng, lat) => {
-        this.mapContainer?.flyTo(lng, lat, 14);
-      });
+  private ensureDroughtPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.droughtPanelPromise ??= import('./components/DroughtPanel.ts').then(({ DroughtPanel }) => {
+      const panel = new DroughtPanel(container);
+      panel.setOnClose(() => this.closeEnvironmentLayer('drought'));
+      if (this.mapContainer?.canFocusMap()) panel.setOnFocusDepartment((code) => this.focusDepartment(code));
       panel.mount();
-      this.trafficPanel = panel;
-      if (this.activeLayers.trafficRoad) {
-        this.renderTrafficPanel();
-      }
+      this.droughtPanel = panel;
+      if (this.activeLayers.drought) panel.show(this.currentDrought);
     });
-    return this.trafficPanelPromise;
+    return this.droughtPanelPromise;
   }
 
-  private ensureMaritimePanel(): Promise<void> {
-    if (!this.floatContainerEl) return Promise.resolve();
-    this.maritimePanelPromise ??= import('./components/MaritimePanel.ts').then(({ MaritimePanel }) => {
-      const panel = new MaritimePanel(this.floatContainerEl!);
-      panel.setOnHighlightShip((mmsi) => {
-        this.mapContainer?.setHighlightedShip(mmsi);
-      });
-      this.maritimePanel = panel;
-      if (this.activeLayers.trafficMaritime) {
-        if (this.maritimeHasData) panel.show();
-        else panel.showLoading();
-      }
+  private ensureAirQualityPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.airQualityPanelPromise ??= import('./components/AirQualityPanel.ts').then(({ AirQualityPanel }) => {
+      const panel = new AirQualityPanel(container);
+      panel.setOnClose(() => this.closeEnvironmentLayer('airQuality'));
+      panel.mount();
+      this.airQualityPanel = panel;
+      if (this.activeLayers.airQuality) panel.show(this.currentAirQuality);
     });
-    return this.maritimePanelPromise;
+    return this.airQualityPanelPromise;
+  }
+
+  private ensureEarthquakesPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.earthquakesPanelPromise ??= import('./components/EarthquakesPanel.ts').then(({ EarthquakesPanel }) => {
+      const panel = new EarthquakesPanel(container);
+      panel.setOnClose(() => this.closeEnvironmentLayer('earthquakes'));
+      if (this.mapContainer?.canFocusMap()) panel.setOnFocusQuake((quake) => this.mapContainer?.flyTo(quake.lon, quake.lat, 9));
+      panel.mount();
+      this.earthquakesPanel = panel;
+      if (this.activeLayers.earthquakes) panel.show(this.currentEarthquakes);
+    });
+    return this.earthquakesPanelPromise;
+  }
+
+  /** Département cliqué dans un panneau Environnement : la carte se centre sur son centroïde. */
+  private focusDepartment(code: string): void {
+    const c = departementCentroid(code);
+    if (c) this.mapContainer?.flyTo(c[0], c[1], 8);
+  }
+
+  /** Marégraphe cliqué dans la section Submersion marine : la carte se centre sur le port. */
+  private focusGauge(id: number): void {
+    const g = this.currentSeaLevels?.seaLevels.data?.gauges.find((x) => x.id === id);
+    if (g) this.mapContainer?.flyTo(g.lon, g.lat, 10);
+  }
+
+  /** Marégraphes voulus : couche Vigilance active ou panneau ouvert (contrats § 0.7) ; jamais lus pour le score. */
+  private seaLevelsWanted(): boolean {
+    return this.activeLayers.environmental || (this.vigilancePanel?.isVisible() ?? false);
+  }
+
+  /** Couche Vigilance : carte et textes à chaque relève ; marégraphes en plus quand ils sont voulus (relève de 5 min, cache client de 8 min). */
+  private loadVigilanceAndSeaLevels(): Promise<void> {
+    const seaLevels = this.seaLevelsWanted()
+      ? this.loadSeaLevels().catch((err: unknown) => console.error('[App] Lecture des marégraphes en échec', err))
+      : Promise.resolve();
+    return Promise.all([this.loadVigilance(), seaLevels]).then(() => undefined);
+  }
+
+  /** Croix d'un panneau Environnement : éteint sa couche comme une case décochée ; panneau ouvert couche éteinte : relève réglée. */
+  private closeEnvironmentLayer(key: EnvironmentLayerKey): void {
+    if (this.activeLayers[key]) {
+      this.onLayerToggle(key, false);
+      this.layerPanel?.updateLayers(this.activeLayers);
+    }
+    this.syncEnvironmentPolling(key);
+  }
+
+  /**
+   * Ouvre le panneau d'une couche Environnement sur ses dernières données (chargement au premier affichage), lit aussitôt sa source
+   * et règle sa relève : case cochée, puce, restauration ou ligne du panneau des sources cliquée couche éteinte.
+   */
+  private openEnvironmentPanel(key: EnvironmentLayerKey): void {
+    switch (key) {
+      case 'environmental': this.vigilancePanel?.show({ vigilance: this.currentVigilance, seaLevels: this.currentSeaLevels }); break;
+      case 'floods': this.floodsPanel?.show(this.currentFloods); break;
+      case 'weatherRadar': this.weatherRadarPanel?.show(this.radarPanelState()); break;
+      case 'fires': this.firesPanel?.show(this.firesPanelState()); break;
+      case 'drought': this.droughtPanel?.show(this.currentDrought); break;
+      case 'airQuality': this.airQualityPanel?.show(this.currentAirQuality); break;
+      case 'earthquakes': this.earthquakesPanel?.show(this.currentEarthquakes); break;
+    }
+    this.loadEnvironmentSource(key).catch((err) => console.error(`[App] Lecture ${key} en échec`, err));
+    this.syncEnvironmentPolling(key);
+    // Couche Feux : le manifeste radar est relevé tant que les sommets d'écho sont cochés (environmentPollWanted).
+    if (key === 'fires') this.syncEnvironmentPolling('weatherRadar');
+  }
+
+  /** Source du panneau d'une couche Environnement. */
+  private loadEnvironmentSource(key: EnvironmentLayerKey): Promise<void> {
+    switch (key) {
+      case 'environmental': return this.loadVigilanceAndSeaLevels();
+      case 'floods': return this.loadFloods();
+      case 'weatherRadar': return this.loadRadarManifest();
+      case 'fires': return this.loadFires();
+      case 'drought': return this.loadDrought();
+      case 'airQuality': return this.loadAirQuality();
+      case 'earthquakes': return this.loadEarthquakes();
+    }
+  }
+
+  /**
+   * Relève voulue : vigilance, crues, feux, qualité de l'air et séismes toujours (score et situations, ENVIRONMENT_ALWAYS_POLLED) ; radar et
+   * sécheresse si leur couche est active ou leur panneau ouvert ; radar aussi avec la couche Feux active et les sommets d'écho cochés.
+   */
+  private environmentPollWanted(key: EnvironmentLayerKey): boolean {
+    if (ENVIRONMENT_ALWAYS_POLLED.has(key) || this.activeLayers[key]) return true;
+    if (this.getFloatingPanelInstance(key)?.isVisible?.() ?? false) return true;
+    return key === 'weatherRadar' && this.activeLayers.fires && this.echoTopsEnabled;
+  }
+
+  /** Démarre ou arrête la relève pausable d'une couche Environnement (ENVIRONMENT_POLL_MS), comme syncTrafficPolling. */
+  private syncEnvironmentPolling(key: EnvironmentLayerKey): void {
+    const timer = this.environmentPolls[key];
+    if (!this.environmentPollWanted(key)) {
+      if (timer) {
+        this.removePausableInterval(timer);
+        delete this.environmentPolls[key];
+      }
+      return;
+    }
+    if (timer) return;
+    this.environmentPolls[key] = this.registerPausableInterval(() => {
+      if (!this.environmentPollWanted(key)) {
+        this.syncEnvironmentPolling(key);
+        return;
+      }
+      // La relève est la seule lecture qui force le manifeste radar (cadence de 5 min du worker) ; les autres passent par le cache.
+      const read = key === 'weatherRadar' ? this.loadRadarManifest(true) : this.loadEnvironmentSource(key);
+      read.catch((err) => console.error(`[App] Relève ${key} en échec`, err));
+    }, ENVIRONMENT_POLL_MS[key]);
+  }
+
+  /**
+   * Lecture d'une source Environnement : une seule à la fois par couche (démarrage, ouverture, relève : un second appelant rejoint la
+   * lecture en cours) ; si le service ne se charge pas, toutes les lignes de la couche le disent (S3).
+   */
+  private readEnvironment(key: EnvironmentLayerKey, read: () => Promise<void>): Promise<void> {
+    return dedupe(`environment:${key}`, () => read().catch((err: unknown) => {
+      this.markEnvironmentSourcesFailed(key, err);
+      throw err;
+    }));
+  }
+
+  /** Lignes d'une couche Environnement quand son service ne se charge pas : une ligne datée garde sa date (« stale »), sinon « error ». */
+  private markEnvironmentSourcesFailed(key: EnvironmentLayerKey, err: unknown): void {
+    const error = err instanceof Error ? err.message : 'service de la source introuvable';
+    for (const name of ENVIRONMENT_LAYER_SOURCES[key]) {
+      const dated = this.statusPanel?.getSources().find((s) => s.name === name)?.lastUpdate ?? null;
+      this.statusPanel?.updateSource(name, dated !== null ? { status: 'stale', error } : { status: 'error', lastUpdate: null, period: undefined, error });
+    }
+  }
+
+  /** Historique de qualité des sources Environnement hors Watchdog (même store que la santé et les trafics). */
+  private recordEnvironmentSamples(now: number): void {
+    recordStatusSamples(this.statusPanel?.getSources().filter((s) => ENVIRONMENT_SOURCE_NAMES.includes(s.name)) ?? [], now);
+  }
+
+  /**
+   * Légendes Environnement datées par leur donnée (S1) puis montrées selon leur couche ; avant toute lecture, la légende de base
+   * (jamais « indisponible » pour une source qui charge).
+   */
+  private refreshEnvironmentLegend(): void {
+    if (!this.mapLegend) return;
+    const now = Date.now();
+    const manifest = this.radarManifest?.configured ? this.radarManifest.manifest : null;
+    const shown = (key: EnvironmentLayerKey): boolean => this.activeLayers.environmentGroup && this.activeLayers[key];
+    const vigilance = this.currentVigilance ? vigilanceLegend(this.currentVigilance.vigilance.data, this.vigilanceEcheance, now) : VIGILANCE_LEGEND;
+    // Remplissages départementaux visibles, dans l'ordre de la carte et de l'infobulle : la qualité de l'air masque la sécheresse.
+    this.fillOrder = (['drought', 'airQuality'] as const).filter((k) => shown(k));
+    // Toutes les catégories (identifiants = clés des couches) d'un seul coup : une reconstruction de la légende par appel.
+    this.mapLegend.setCategories([
+      // Marégraphes (section Submersion marine) : élément et date de la dernière mesure, une fois lus (arbitrage 13).
+      {
+        ...(this.currentSeaLevels ? withTideGauges(vigilance, this.currentSeaLevels.seaLevels.data, now) : vigilance),
+        visible: shown('environmental'),
+      },
+      { ...(this.currentFloods ? floodsLegend(this.currentFloods.floods.data, now) : FLOODS_LEGEND), visible: shown('floods') },
+      {
+        ...(this.radarManifest !== null || this.radarError !== null ? radarLegend(manifest, this.echoTopsEnabled, now) : RADAR_LEGEND),
+        visible: shown('weatherRadar'),
+      },
+      { ...(this.currentFires ? firesLegend(this.currentFires.fires.data, this.forestDangerFill, now) : FIRES_LEGEND), visible: shown('fires') },
+      { ...withFillMask(this.currentDrought ? droughtLegend(this.currentDrought.drought.data, now) : DROUGHT_LEGEND, this.fillOrder), visible: shown('drought') },
+      { ...withFillMask(this.currentAirQuality ? airQualityLegend(this.currentAirQuality.air.data, now) : AIR_QUALITY_LEGEND, this.fillOrder), visible: shown('airQuality') },
+      { ...(this.currentEarthquakes ? earthquakesLegend(this.currentEarthquakes.quakes.data, now) : EARTHQUAKES_LEGEND), visible: shown('earthquakes') },
+    ]);
+  }
+
+  // ─── Souveraineté (spec 2026-10-04 souveraineté § 2 ; contrats § 4.4) : Défense, Connectivité, Vigilance cyber ───
+
+  private ensureDefensePanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    // La liste interne des sites est lue avant le panneau : la section « Sites de défense » n'affiche jamais un compte vide.
+    this.defensePanelPromise ??= Promise.all([import('./components/DefensePanel.ts'), this.loadDefenseSites()]).then(([{ DefensePanel }]) => {
+      const panel = new DefensePanel(container);
+      panel.setOnClose(() => this.closeSovereigntyLayer('military'));
+      // Lignes recentrées sur la carte WebGL seulement (mobile : aucun rendu de la souveraineté sur la carte) : tout aéronef et toute urgence.
+      if (this.mapContainer?.canFocusMap()) {
+        panel.setOnFocusAircraft((aircraft) => this.mapContainer?.flyTo(aircraft.lon, aircraft.lat, 9));
+        panel.setOnFocusEmergency((emergency) => this.mapContainer?.flyTo(emergency.lon, emergency.lat, 9));
+        panel.setOnFocusNavy((ship) => this.mapContainer?.flyTo(ship.lon, ship.lat, 10));
+        // Phase B : seules les mailles du jour UTC précédent ont une ligne (O17 : jamais un lieu en direct).
+        panel.setOnFocusGnssCell((cell) => this.focusGnssCell(cell));
+      }
+      panel.setOnOsmWorks((on) => this.setOsmWorks(on));
+      panel.setOnDroneZones((on) => this.setDroneZones(on));
+      panel.mount();
+      this.defensePanel = panel;
+      if (this.activeLayers.military) panel.show(this.defensePanelStateB());
+    });
+    return this.defensePanelPromise;
+  }
+
+  private ensureConnectivityPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.connectivityPanelPromise ??= import('./components/ConnectivityPanel.ts').then(({ ConnectivityPanel }) => {
+      const panel = new ConnectivityPanel(container);
+      panel.setOnClose(() => this.closeSovereigntyLayer('subseaCables'));
+      if (this.mapContainer?.canFocusMap()) {
+        panel.setOnFocusCable((id) => this.mapContainer?.highlightCable(id));
+        panel.setOnFocusLanding((landing) => this.mapContainer?.flyTo(landing.lon, landing.lat, 10));
+        panel.setOnFocusVessel((alert) => this.mapContainer?.flyTo(alert.lon, alert.lat, 11));
+      }
+      panel.mount();
+      this.connectivityPanel = panel;
+      if (this.activeLayers.subseaCables) panel.show(this.connectivityPanelStateB());
+    });
+    return this.connectivityPanelPromise;
   }
 
   private ensureCyberPanel(): Promise<void> {
-    if (!this.floatContainerEl) return Promise.resolve();
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
     this.cyberPanelPromise ??= import('./components/CyberPanel.ts').then(({ CyberPanel }) => {
-      const panel = new CyberPanel(this.floatContainerEl!);
-      panel.setOnClose(() => {
-        // Optional: could update StatusPanel state here
-      });
-      panel.setOnThreatFiltersChange((filters) => {
-        this.currentThreatFilters = filters;
-        this.mapContainer?.updateThreatEvents(filterThreatEvents(this.currentThreatEvents, this.currentThreatFilters));
-      });
-      panel.setOnThreatEventSelect((event) => this.focusThreatEvent(event));
+      const panel = new CyberPanel(container);
+      panel.setOnClose(() => this.closeSovereigntyLayer('cyber'));
       panel.mount();
       this.cyberPanel = panel;
-      // Replay buffered data pushed while the chunk was loading
-      if (this.currentCyberData) panel.update(this.currentCyberData);
-      if (this.currentThreatEvents.length > 0) panel.updateThreatEvents(this.currentThreatEvents);
-      if (this.activeLayers.cyber && this.activeLayers.sovereignty) {
-        panel.show(this.currentCyberData);
-      }
+      if (this.activeLayers.cyber) panel.show(this.currentSovCyber);
     });
     return this.cyberPanelPromise;
+  }
+
+  /** Panneau d'une couche Souveraineté, créé à la demande. */
+  private ensureSovereigntyPanel(key: SovereigntyLayerKey): Promise<void> {
+    switch (key) {
+      case 'military': return this.ensureDefensePanel();
+      case 'subseaCables': return this.ensureConnectivityPanel();
+      case 'cyber': return this.ensureCyberPanel();
+    }
+  }
+
+  /** Croix d'un panneau Souveraineté : éteint sa couche comme une case décochée ; panneau ouvert couche éteinte : relève réglée. */
+  private closeSovereigntyLayer(key: SovereigntyLayerKey): void {
+    if (this.activeLayers[key]) {
+      this.onLayerToggle(key, false);
+      this.layerPanel?.updateLayers(this.activeLayers);
+    }
+    this.syncSovereigntyPolling(key);
+  }
+
+  /**
+   * Ouvre le panneau d'une couche Souveraineté sur ses dernières données, lit aussitôt sa source et règle sa relève : case cochée, puce,
+   * restauration, clic sur la carte, ligne du panneau des sources ou bouton du baromètre (couche éteinte possible).
+   */
+  private openSovereigntyPanel(key: SovereigntyLayerKey): void {
+    switch (key) {
+      case 'military': this.defensePanel?.show(this.defensePanelStateB()); break;
+      case 'subseaCables': this.connectivityPanel?.show(this.connectivityPanelStateB()); break;
+      case 'cyber': this.cyberPanel?.show(this.currentSovCyber); break;
+    }
+    // Défense : la Marine nationale vient du WebSocket AIS du navigateur (connectAis() est idempotent).
+    if (key === 'military') connectAis();
+    this.loadSovereigntySourceB(key).catch((err) => console.error(`[App] Lecture ${key} en échec`, err));
+    this.syncSovereigntyPolling(key);
+  }
+
+  /** Panneau d'une couche Souveraineté ouvert depuis la carte ou le baromètre, couche éteinte possible : un seul panneau à la fois. */
+  private showSovereigntyPanel(key: SovereigntyLayerKey): void {
+    this.syncV2ColumnVars();
+    this.hideAllFloatingPanels(key);
+    void this.ensureSovereigntyPanel(key).then(() => this.openSovereigntyPanel(key));
+    this.currentFloatingPanelId = key;
+    this.refreshFloatingPanelSwitcher();
+  }
+
+  // ─── Souveraineté, phase B (tâche B28 ; contrats § 4.4 point 15, § 6 ; amendement 7, O7, O15, O17, S15) ───
+  // Grille GNSS et météo spatiale (score : lue avec chaque lecture de la couche Défense), registre des gels (couche Défense active ou
+  // panneau ouvert), grands réseaux et points d'échange (couche Connectivité active ou panneau ouvert), fichier des zones drones (une fois
+  // par session, à l'activation de l'option, jamais au démarrage).
+
+  private gnssState: GnssState | null = null;
+  private connectivityState: ConnectivityState | null = null;
+  private sanctionsState: SanctionsState | null = null;
+  private droneZonesFile: DroneZonesFile | null = null;
+  private droneZonesError: string | null = null;
+  private droneZonesOn = false;
+
+  /** Lecture d'une couche Souveraineté (tâche A15), puis les sources de la phase B de cette couche (arbitrage 21). */
+  private async loadSovereigntySourceB(key: SovereigntyLayerKey): Promise<void> {
+    const reads: Array<Promise<void>> = [this.loadSovereigntySource(key)];
+    if (key === 'military') {
+      reads.push(this.loadGnss());
+      if (this.sovereigntyBWanted('military')) reads.push(this.loadSanctions());
+    }
+    if (key === 'subseaCables' && this.sovereigntyBWanted('subseaCables')) reads.push(this.loadConnectivity());
+    await Promise.all(reads);
+  }
+
+  /** Sources de la phase B hors score : couche active ou panneau ouvert. */
+  private sovereigntyBWanted(key: 'military' | 'subseaCables'): boolean {
+    return this.activeLayers[key] || (this.getFloatingPanelInstance(key)?.isVisible?.() ?? false);
+  }
+
+  /**
+   * Grille GNSS et météo spatiale : lignes « Grille GNSS » et « NOAA SWPC » (S1, datées par leur donnée), mailles du jour UTC précédent
+   * sur la carte, panneau, légende, score, situations et moniteur.
+   */
+  private loadGnss(): Promise<void> {
+    return dedupe('sovereignty:gnss', async () => {
+      try {
+        this.gnssState = mergeGnss(this.gnssState, await fetchGnss(this.gnssState));
+        const now = Date.now();
+        this.statusPanel?.updateSource('Grille GNSS', gnssStatus(this.gnssState, 'adsb-gnss', now));
+        this.statusPanel?.updateSource('NOAA SWPC', gnssStatus(this.gnssState, 'noaa', now));
+        this.mapContainer?.updateGnssLayer(this.gnssState.gnss.data, now);
+        this.refreshSovereigntyPanelsB('military');
+        this.recordSovereigntySamples(now);
+        this.refreshFranceIntelPanel();
+      } catch (err) {
+        this.markSovereigntyBFailed(['Grille GNSS', 'NOAA SWPC'], err);
+        throw err;
+      }
+    });
+  }
+
+  /** Grands réseaux (RIPEstat) et points d'échange (PeeringDB), une route : ligne « RIPEstat », panneau Connectivité. Hors score. */
+  private loadConnectivity(): Promise<void> {
+    return dedupe('sovereignty:connectivity', async () => {
+      try {
+        this.connectivityState = mergeConnectivity(this.connectivityState, await fetchConnectivity(this.connectivityState));
+        const now = Date.now();
+        this.statusPanel?.updateSource('RIPEstat', ripeStatus(this.connectivityState, now));
+        this.refreshSovereigntyPanelsB('subseaCables');
+        this.recordSovereigntySamples(now);
+      } catch (err) {
+        this.markSovereigntyBFailed(['RIPEstat'], err);
+        throw err;
+      }
+    });
+  }
+
+  /** Registre national des gels (DG Trésor) : ligne « Registre des gels », section Sanctions du panneau Défense. Hors score, aucun nom. */
+  private loadSanctions(): Promise<void> {
+    return dedupe('sovereignty:sanctions', async () => {
+      try {
+        this.sanctionsState = mergeSanctions(this.sanctionsState, await fetchSanctions(this.sanctionsState));
+        const now = Date.now();
+        this.statusPanel?.updateSource('Registre des gels', gelsStatus(this.sanctionsState, now));
+        this.refreshSovereigntyPanelsB('military');
+        this.recordSovereigntySamples(now);
+      } catch (err) {
+        this.markSovereigntyBFailed(['Registre des gels'], err);
+        throw err;
+      }
+    });
+  }
+
+  /** Fichier des zones drones (1,47 Mo) : lu une fois par session ; un échec n'est pas gardé (nouvelle tentative à la demande suivante). */
+  private loadDroneZonesOnce(): Promise<void> {
+    if (this.droneZonesFile !== null) return Promise.resolve();
+    return dedupe('sovereignty:droneZones', async () => {
+      const { data, error } = await fetchDroneZones();
+      this.droneZonesFile = data;
+      this.droneZonesError = error;
+      this.mapContainer?.updateDroneZones(data);
+      this.refreshSovereigntyPanelsB('military');
+    });
+  }
+
+  /** Option « zones drones » de la couche Défense (bouton du panneau) : carte, panneau, légende ; fichier lu au premier appel. */
+  private setDroneZones(on: boolean): void {
+    this.droneZonesOn = on;
+    this.mapContainer?.setDroneZonesVisible(on);
+    this.refreshSovereigntyPanelsB('military');
+    if (on) this.loadDroneZonesOnce().catch((err: unknown) => console.error('[App] Zones drones illisibles', err));
+  }
+
+  /** Maille du jour UTC précédent choisie dans le panneau Défense ou sur la carte : la carte se cale sur son centre. */
+  private focusGnssCell(cell: { lat: number; lon: number }): void {
+    this.mapContainer?.flyTo(cell.lon + 0.25, cell.lat + 0.25, 8);
+  }
+
+  /** État du panneau Défense (tâche A15) complété : grille GNSS, registre des gels, zones drones (contrats § 4.2). */
+  private defensePanelStateB(): DefensePanelState {
+    const a = this.defensePanelState();
+    const f = this.droneZonesFile;
+    const meta = f ? { generatedAt: f.generatedAt, edition: f.edition, source: f.source, licence: f.licence, counts: f.counts } : null;
+    return {
+      ...a,
+      sites: { ...a.sites, drones: { meta, error: this.droneZonesError, shown: this.droneZonesOn } },
+      gnss: this.gnssState,
+      sanctions: this.sanctionsState,
+    };
+  }
+
+  /** État du panneau Connectivité (tâche A15) complété : grands réseaux et points d'échange. */
+  private connectivityPanelStateB(): ConnectivityPanelState {
+    return { ...this.connectivityPanelState(), connectivity: this.connectivityState };
+  }
+
+  /** Panneau de la couche et légende, après une lecture ou une option de la phase B (le seul panneau concerné : pas de rendu de trop). */
+  private refreshSovereigntyPanelsB(key: 'military' | 'subseaCables'): void {
+    if (key === 'military') this.defensePanel?.update(this.defensePanelStateB());
+    else this.connectivityPanel?.update(this.connectivityPanelStateB());
+    this.refreshSovereigntyLegend();
+  }
+
+  /** Légende Défense datée (tâche A10) complétée par les mailles GNSS du jour UTC précédent et, option active, les zones drones (B27). */
+  private defenseLegendB(...args: Parameters<typeof defenseLegend>): ReturnType<typeof defenseLegend> {
+    const [m, opts, now] = args;
+    return withDefensePhaseB(defenseLegend(m, { ...opts, droneZones: this.droneZonesOn }, now), {
+      gnss: this.gnssState?.gnss.data ?? null, drones: this.droneZonesFile, dronesShown: this.droneZonesOn,
+    }, now);
+  }
+
+  /** Entrées du score (tâche A16) avec les comptes GNSS sans lieu et la pastille Défense recalculée (contrats § 6, phase B ; O17). */
+  private buildSovereigntyInputsB(...args: Parameters<typeof buildSovereigntyInputs>): ReturnType<typeof buildSovereigntyInputs> {
+    const [military, cables, cyber, now] = args;
+    const gnss = this.gnssState?.gnss.data ?? null;
+    return withGnssInputs(buildSovereigntyInputs(military, cables, cyber, now), gnss, military, now);
+  }
+
+  /** Lignes d'une source de la phase B quand son lecteur échoue sans réponse : datée, « stale » ; sinon « error » (S3). */
+  private markSovereigntyBFailed(names: readonly string[], err: unknown): void {
+    const error = err instanceof Error ? err.message : 'service de la source introuvable';
+    for (const name of names) {
+      const dated = this.statusPanel?.getSources().find((s) => s.name === name)?.lastUpdate ?? null;
+      this.statusPanel?.updateSource(name, dated !== null ? { status: 'stale', error } : { status: 'error', lastUpdate: null, period: undefined, error });
+    }
+  }
+
+  /** Source du panneau d'une couche Souveraineté. */
+  private loadSovereigntySource(key: SovereigntyLayerKey): Promise<void> {
+    switch (key) {
+      case 'military': return this.loadMilitary();
+      case 'subseaCables': return this.loadCables();
+      case 'cyber': return this.loadCyber();
+    }
+  }
+
+  /** Relève voulue : les trois couches nourrissent le score (SOVEREIGNTY_ALWAYS_POLLED, arbitrage 21) ; sinon couche active ou panneau ouvert. */
+  private sovereigntyPollWanted(key: SovereigntyLayerKey): boolean {
+    if (SOVEREIGNTY_ALWAYS_POLLED.has(key) || this.activeLayers[key]) return true;
+    return this.getFloatingPanelInstance(key)?.isVisible?.() ?? false;
+  }
+
+  /** Démarre ou arrête la relève pausable d'une couche Souveraineté (SOVEREIGNTY_POLL_MS), comme syncEnvironmentPolling. */
+  private syncSovereigntyPolling(key: SovereigntyLayerKey): void {
+    const timer = this.sovereigntyPolls[key];
+    if (!this.sovereigntyPollWanted(key)) {
+      if (timer) {
+        this.removePausableInterval(timer);
+        delete this.sovereigntyPolls[key];
+      }
+      return;
+    }
+    if (timer) return;
+    this.sovereigntyPolls[key] = this.registerPausableInterval(() => {
+      if (!this.sovereigntyPollWanted(key)) {
+        this.syncSovereigntyPolling(key);
+        return;
+      }
+      this.loadSovereigntySourceB(key).catch((err) => console.error(`[App] Relève ${key} en échec`, err));
+    }, SOVEREIGNTY_POLL_MS[key]);
+  }
+
+  /**
+   * Lecture d'une source Souveraineté : une seule à la fois par couche (démarrage, ouverture, relève : un second appelant rejoint la
+   * lecture en cours) ; si le service ne se charge pas, toutes les lignes de la couche le disent (S3).
+   */
+  private readSovereignty(key: SovereigntyLayerKey, read: () => Promise<void>): Promise<void> {
+    return dedupe(`sovereignty:${key}`, () => read().catch((err: unknown) => {
+      this.markSovereigntySourcesFailed(key, err);
+      throw err;
+    }));
+  }
+
+  /**
+   * Lignes d'une couche Souveraineté quand son service ne se charge pas : une ligne datée garde sa date (« stale »), sinon « error ». Les
+   * lignes de la phase B ont chacune leur lecteur (loadGnss, loadConnectivity, loadSanctions) : seul celui-ci les écrit.
+   */
+  private markSovereigntySourcesFailed(key: SovereigntyLayerKey, err: unknown): void {
+    const error = err instanceof Error ? err.message : 'service de la source introuvable';
+    for (const name of SOVEREIGNTY_LAYER_SOURCES[key].filter((n) => !SOVEREIGNTY_B_SOURCE_NAMES.has(n))) {
+      const dated = this.statusPanel?.getSources().find((s) => s.name === name)?.lastUpdate ?? null;
+      this.statusPanel?.updateSource(name, dated !== null ? { status: 'stale', error } : { status: 'error', lastUpdate: null, period: undefined, error });
+    }
+  }
+
+  /** Historique de qualité des sources Souveraineté hors Watchdog (même store que la santé, les Trafics et l'Environnement). */
+  private recordSovereigntySamples(now: number): void {
+    recordStatusSamples(this.statusPanel?.getSources().filter((s) => SOVEREIGNTY_SOURCE_NAMES.includes(s.name)) ?? [], now);
+  }
+
+  /**
+   * Légendes Souveraineté datées par leur donnée (S1) puis montrées selon leur couche ; avant toute lecture, la légende de base (jamais
+   * « indisponible » pour une source qui charge).
+   */
+  private refreshSovereigntyLegend(): void {
+    if (!this.mapLegend) return;
+    const now = Date.now();
+    const shown = (key: SovereigntyLayerKey): boolean => this.activeLayers.sovereignty && this.activeLayers[key];
+    this.mapLegend.setCategories([
+      {
+        ...(this.currentMilitary
+          ? this.defenseLegendB(this.currentMilitary.military.data, { osmWorks: this.defenseSites.osm.shown, droneZones: false }, now)
+          : DEFENSE_LEGEND),
+        visible: shown('military'),
+      },
+      {
+        ...(this.currentCables ? connectivityLegend(this.currentCables.file, this.currentCables.watch.data, now) : CONNECTIVITY_LEGEND),
+        visible: shown('subseaCables'),
+      },
+      { ...(this.currentSovCyber ? cyberLegend(this.currentSovCyber.cyber.data, now) : CYBER_LEGEND), visible: shown('cyber') },
+    ]);
+  }
+
+  /**
+   * État du panneau Défense : relevé adsb.lol, veille des câbles (état de l'AIS vu par le serveur), relecture de la page Vigipirate du
+   * SGDSN, sites de défense.
+   */
+  private defensePanelState(): DefensePanelState {
+    return { military: this.currentMilitary, cables: this.currentCables, vigipirate: this.currentVigipirate, sites: this.defenseSites };
+  }
+
+  /** État du panneau Connectivité : veille des câbles et fichier des câbles (Shom et OpenStreetMap). */
+  private connectivityPanelState(): ConnectivityPanelState {
+    return { cables: this.currentCables };
+  }
+
+  /**
+   * Sites de défense : liste interne en chunk dynamique, lue une fois, sans fusion OpenStreetMap (les ouvrages OSM sont une option datée,
+   * setOsmWorks). Lue au démarrage et avant le premier affichage du panneau.
+   */
+  private loadDefenseSites(): Promise<void> {
+    this.defenseSitesPromise ??= Promise.all([import('./config/military-bases-db.ts'), import('./components/layer-panel/defense.ts')])
+      .then(([{ ACTIVE_INSTALLATIONS }, { summarizeCuratedSites }]) => {
+        this.mapContainer?.updateDefenseSites(ACTIVE_INSTALLATIONS);
+        this.defenseSites = { ...this.defenseSites, curated: summarizeCuratedSites(ACTIVE_INSTALLATIONS) };
+        this.defensePanel?.update(this.defensePanelStateB());
+      })
+      .catch((err: unknown) => console.error('[App] Sites de défense non chargés', err));
+    return this.defenseSitesPromise;
+  }
+
+  /** Option des ouvrages OpenStreetMap (bouton du panneau Défense) : fichier daté lu à la première demande, une fois (arbitrage 10). */
+  private setOsmWorks(on: boolean): void {
+    this.defenseSites = { ...this.defenseSites, osm: { ...this.defenseSites.osm, shown: on } };
+    this.mapContainer?.setOsmWorksVisible(on);
+    this.defensePanel?.update(this.defensePanelStateB());
+    this.refreshSovereigntyLegend();
+    if (!on || this.defenseSites.osm.meta !== null) return;
+    void fetchDefenseOsmWorks().then(({ data, error }) => {
+      this.mapContainer?.updateOsmWorks(data);
+      const meta = data
+        ? { generatedAt: data.generatedAt, osmBase: data.osmBase, licence: data.licence, source: data.source, count: data.items.length }
+        : null;
+      this.defenseSites = { ...this.defenseSites, osm: { ...this.defenseSites.osm, meta, error } };
+      this.defensePanel?.update(this.defensePanelStateB());
+    });
+  }
+
+  /**
+   * Défense (spec souveraineté § 2.1 ; amendement 7, O9, O14) : aéronefs militaires ou d'État visibles en ADS-B au-dessus de la
+   * métropole (collecte adsb.lol du serveur) et relecture quotidienne de la page Vigipirate du SGDSN (cache de 30 min : une requête au
+   * plus par demi-heure) ; panneau, carte, légende et lignes « Vols militaires » et « Vigipirate (page du SGDSN) » datées par leur
+   * donnée (S1), jamais « LIVE ».
+   */
+  private loadMilitary(): Promise<void> {
+    return this.readSovereignty('military', async () => {
+      const [incoming, check] = await Promise.all([fetchMilitary(this.currentMilitary), fetchVigipirateCheck(this.currentVigipirate)]);
+      this.currentMilitary = mergeMilitary(this.currentMilitary, incoming);
+      this.currentVigipirate = mergeVigipirateCheck(this.currentVigipirate, check);
+      const now = Date.now();
+      this.statusPanel?.updateSource('Vols militaires', militaryStatus(this.currentMilitary, now));
+      this.statusPanel?.updateSource(VIGIPIRATE_CHECK_SOURCE, vigipirateCheckStatus(this.currentVigipirate, now));
+      this.mapContainer?.updateMilitaryLayer(this.currentMilitary.military.data, now);
+      this.defensePanel?.update(this.defensePanelStateB());
+      this.refreshSovereigntyLegend();
+      this.recordSovereigntySamples(now);
+      // Score, situations, tuiles et moniteur d'alertes : entrées de sovereigntyInputs() (contrats § 6).
+      this.refreshFranceIntelPanel();
+    });
+  }
+
+  /**
+   * Connectivité (§ 2.2) : veille des câbles du serveur et fichier des câbles (Shom et OpenStreetMap) ; panneau, carte, légende et ligne
+   * « Câbles et AIS » datée par le dernier message AIS (S1) ; le panneau Défense lit l'état de l'AIS vu par le serveur.
+   */
+  private loadCables(): Promise<void> {
+    return this.readSovereignty('subseaCables', async () => {
+      const incoming = await fetchCables(this.currentCables);
+      this.currentCables = mergeCables(this.currentCables, incoming);
+      const now = Date.now();
+      this.statusPanel?.updateSource('Câbles et AIS', cablesStatus(this.currentCables, now));
+      this.mapContainer?.updateCablesLayer(this.currentCables.file, this.currentCables.watch.data, now);
+      this.connectivityPanel?.update(this.connectivityPanelStateB());
+      this.defensePanel?.update(this.defensePanelStateB());
+      this.refreshSovereigntyLegend();
+      this.recordSovereigntySamples(now);
+      this.refreshFranceIntelPanel();
+    });
+  }
+
+  /**
+   * Vigilance cyber (§ 2.3) : CERT-FR, CISA KEV, revendications, fuites publiées, Cybermalveillance (collecte du serveur) ; panneau,
+   * légende et cinq lignes du panneau des sources, chacune datée par sa partie de la réponse (arbitrage 22).
+   */
+  private loadCyber(): Promise<void> {
+    return this.readSovereignty('cyber', async () => {
+      const incoming = await fetchCyber(this.currentSovCyber);
+      this.currentSovCyber = mergeCyber(this.currentSovCyber, incoming);
+      const now = Date.now();
+      for (const [part, name] of CYBER_STATUS_PARTS) this.statusPanel?.updateSource(name, cyberStatus(this.currentSovCyber, part, now));
+      this.cyberPanel?.update(this.currentSovCyber);
+      this.refreshSovereigntyLegend();
+      this.recordSovereigntySamples(now);
+      this.refreshFranceIntelPanel();
+    });
+  }
+
+  /**
+   * Clic sur un objet Souveraineté de la carte (contrats § 4.4 point 19) : un bâtiment de la Marine nationale ouvre sa fiche à sa position
+   * (« position de référence, pas une observation » au port base) ; un aéronef ou une urgence ouvre le panneau Défense ; un câble, un
+   * atterrage ou un navire signalé ouvrent le panneau Connectivité. Sites et ouvrages : infobulle seule (un site garde son propre clic).
+   * Phase B : une maille GNSS (jour UTC précédent seulement, O17) recentre la carte et ouvre le panneau Défense ; une zone drones : infobulle
+   * seule.
+   */
+  private onSovereigntyMapClick(layerId: string, props: Record<string, unknown>): void {
+    const id = typeof props['id'] === 'string' ? props['id'] : null;
+    if (layerId === LYR_SOV_GNSS_FILL) {
+      // « 48:-3.5 » : coin sud-ouest de la maille, même clé que `data-gnss-cell` du panneau.
+      const [lat, lon] = typeof props['cell'] === 'string' ? props['cell'].split(':').map(Number) : [];
+      if (lat !== undefined && lon !== undefined && Number.isFinite(lat) && Number.isFinite(lon)) this.focusGnssCell({ lat, lon });
+      this.showSovereigntyPanel('military');
+      return;
+    }
+    if (layerId === LYR_SOV_NAVY_OBSERVED || layerId === LYR_SOV_NAVY_REFERENCE) {
+      // Clé du marqueur `mmsi ?? id` ; un bâtiment sans MMSI vérifié (O12) n'est trouvé que par son identifiant.
+      const ship = id !== null ? findShipByKey(id, getMilitaryShips()) : undefined;
+      const at = ship ? this.mapContainer?.project(ship.lon, ship.lat) ?? null : null;
+      if (ship && at) this.mapPopup?.showMilitaryShip(ship, at.x, at.y);
+      return;
+    }
+    if (layerId === LYR_SOV_AIRCRAFT || layerId === LYR_SOV_AIRCRAFT_ABROAD || layerId === LYR_SOV_EMERGENCIES) {
+      this.showSovereigntyPanel('military');
+    } else if (layerId === LYR_SUBMARINE_CABLES_HITAREA || layerId === LYR_SUBMARINE_CABLES_LANDING || layerId === LYR_SOV_CABLE_VESSELS) {
+      if (layerId === LYR_SUBMARINE_CABLES_HITAREA && id !== null) this.mapContainer?.highlightCable(id);
+      this.showSovereigntyPanel('subseaCables');
+    }
+  }
+
+  /**
+   * Entrées Souveraineté du score, des situations, de la frise, des tuiles et du moniteur d'alertes (contrats § 6), lues dans les
+   * dernières réponses des services, jamais copiées ailleurs (modèle environmentInputs). Phase B : grille GNSS par buildSovereigntyInputsB.
+   */
+  private sovereigntyInputs(now: number = Date.now()): SovereigntyInputs {
+    return this.buildSovereigntyInputsB(
+      this.currentMilitary?.military.data ?? null, this.currentCables?.watch.data ?? null, this.currentSovCyber?.cyber.data ?? null, now,
+    );
+  }
+
+  /** État du panneau Radar : manifeste, option des sommets d'écho (partagée avec les feux) et profil du point cliqué. */
+  private radarPanelState(): RadarPanelState {
+    const manifest = this.radarManifest?.configured ? this.radarManifest.manifest : null;
+    return {
+      manifest, configured: this.radarManifest?.configured ?? true, error: this.radarError, echoTops: this.echoTopsEnabled,
+      echoTopsAvailable: Boolean(manifest?.echoTopImageUrl), profile: this.radarProfile,
+    };
+  }
+
+  /** État du panneau Feux : collecte du serveur, incidents du dossier, MTG-FRP dérivé et options de la carte. */
+  private firesPanelState(): FiresPanelState {
+    const manifest = this.radarManifest?.configured ? this.radarManifest.manifest : null;
+    return {
+      fires: this.currentFires, incidents: this.currentFireIncidents, mtgFrp: this.mtgFrpFeed,
+      options: {
+        gibs: this.gibsEnabled, mtgFrp: this.mtgFrpEnabled, echoTops: this.echoTopsEnabled,
+        echoTopsAvailable: Boolean(manifest?.echoTopImageUrl), forestDangerFill: this.forestDangerFill,
+      },
+    };
+  }
+
+  /** Option « Sommets d'écho » (un seul état pour les panneaux Radar et Feux) : carte, panneaux, légende, relève du manifeste. */
+  private setEchoTops(on: boolean): void {
+    this.echoTopsEnabled = on;
+    const manifest = this.radarManifest?.configured ? this.radarManifest.manifest : null;
+    this.mapContainer?.setEchoTopsOverlay(manifest, on);
+    if (on && manifest === null) this.loadRadarManifest().catch((err) => console.error('[App] Manifeste radar indisponible', err));
+    this.weatherRadarPanel?.update(this.radarPanelState());
+    this.firesPanel?.update(this.firesPanelState());
+    this.refreshEnvironmentLegend();
+    this.syncEnvironmentPolling('weatherRadar');
+  }
+
+  /** Clic sur la carte, couche Radar active : profil vertical à la station la plus proche (démonstration) ; un clic plus récent l'emporte. */
+  private loadRadarProfile(lat: number, lon: number): void {
+    this.radarProfile = { lat, lon, result: 'loading' };
+    this.mapContainer?.setRadarPick({ lat, lon });
+    this.weatherRadarPanel?.update(this.radarPanelState());
+    void fetchRadarColumn(lat, lon).catch(() => null).then((result) => {
+      if (this.radarProfile?.lat !== lat || this.radarProfile.lon !== lon) return;
+      this.radarProfile = { lat, lon, result: result ?? 'error' };
+      this.weatherRadarPanel?.update(this.radarPanelState());
+    });
+  }
+
+  /** Train choisi dans le panneau ferroviaire : son trajet tracé par ses arrêts, puis la carte se centre dessus. */
+  private focusTrain(train: RailTrain): void {
+    this.mapContainer?.highlightTrainRoute(train);
+    const first = train.stops[0];
+    const last = train.stops[train.stops.length - 1];
+    if (!first || !last) return;
+    this.mapContainer?.flyTo((first.lon + last.lon) / 2, (first.lat + last.lat) / 2, first === last ? 10 : 6);
   }
 
   private ensureOilPanel(): Promise<void> {
@@ -4313,51 +4886,12 @@ export class App {
     return this.outagesPanelPromise;
   }
 
-  private ensureDefensePanel(): Promise<void> {
-    if (!this.floatContainerEl) return Promise.resolve();
-    this.defensePanelPromise ??= import('./components/DefensePanel.ts').then(({ DefensePanel }) => {
-      const panel = new DefensePanel(this.floatContainerEl!);
-      panel.setOnClose(() => {
-        // Optional: could update StatusPanel state here
-      });
-      panel.setOnAlertClick((alert) => {
-        // suppressPanel: true — ces couches ne sont activées qu'en renfort
-        // visuel sur la carte pendant que l'utilisateur regarde DefensePanel ;
-        // sans ça, showFloatingPanel('trafficMaritime') fermerait le panneau
-        // Défense qu'il est justement en train de consulter (audit UI
-        // 2026-09 §5.3.3).
-        if (!this.activeLayers.trafficMaritime && AIS_RELAY_URL) {
-          this.onLayerToggle('trafficMaritime', true, { suppressPanel: true });
-          this.layerPanel?.updateLayers(this.activeLayers);
-        }
-        if (!this.activeLayers.subseaCables) {
-          this.onLayerToggle('subseaCables', true, { suppressPanel: true });
-          this.layerPanel?.updateLayers(this.activeLayers);
-        }
-        // Fly to the threat location when clicking on an alert item
-        this.mapContainer?.flyTo(alert.coordinates[0], alert.coordinates[1], 10);
-      });
-      panel.setOnJammingClick((signal) => {
-        const zoom = signal.clusterRadius != null
-          ? (signal.clusterRadius > 50 ? 8 : 9)
-          : 11;
-        this.mapContainer?.flyTo(signal.position[0], signal.position[1], zoom);
-      });
-      panel.mount();
-      this.defensePanel = panel;
-      if (this.activeLayers.military && this.activeLayers.sovereignty) {
-        panel.show(this.currentDefenseAlerts, this.currentJammingSignals);
-      }
-    });
-    return this.defensePanelPromise;
-  }
-
   /**
    * Dispatches a toggled/restored layer key to the matching ensureXPanel()
    * loader above, if any. Called from onLayerToggle() (when a layer is
    * switched on) and restoreActiveLayerPanelsAfterRefresh() (persisted
    * layers active at boot). No-op for layers with no lazy panel (or an
-   * eagerly-constructed one, e.g. environmentPanel/energyPanel/gasPanel).
+   * eagerly-constructed one, e.g. energyPanel/gasPanel).
    */
   /**
    * Returns the ensureXPanel() promise(s) this key triggers (empty array for
@@ -4373,20 +4907,27 @@ export class App {
       case 'dromEnergy': return [this.ensureDromEnergyPanel()];
       case 'hydroBackbone': return [this.ensureHydraulicPanel()];
       case 'windMonitor': return [this.ensureEolienPanel()];
-      case 'health':
-      case 'healthApl':
-      case 'healthOscour':
-      case 'hospitals':
-        return [this.ensureHealthPanels()];
-      case 'fires': return [this.ensureFiresPanel()];
+      case 'metroLoad': return [this.ensureMetroLoadPanel()];
+      case 'health': return [this.ensureVeillePanel()];
+      case 'healthOscour': return [this.ensureUrgencesPanel()];
+      case 'healthApl': return [this.ensureAccesSoinsPanel()];
+      case 'hospitals': return [this.ensureHopitauxPanel()];
+      case 'environmental': return [this.ensureVigilancePanel()];
+      case 'floods': return [this.ensureFloodsPanel()];
       case 'weatherRadar': return [this.ensureWeatherRadarPanel()];
+      case 'fires': return [this.ensureFiresPanel()];
+      case 'drought': return [this.ensureDroughtPanel()];
+      case 'airQuality': return [this.ensureAirQualityPanel()];
+      case 'earthquakes': return [this.ensureEarthquakesPanel()];
       case 'trafficRoad': return [this.ensureTrafficPanel()];
+      case 'trafficAir': return [this.ensureAirTrafficPanel()];
+      case 'trafficRail': return [this.ensureTransportPanel()];
       case 'trafficMaritime': return [this.ensureMaritimePanel()];
-      case 'cyber':
-      case 'threatMap':
-        return [this.ensureCyberPanel()];
-      case 'sovereignty':
-        return [this.ensureCyberPanel(), this.ensureDefensePanel()];
+      // Souveraineté (contrats § 4.4 point 12) : un panneau par couche.
+      case 'military': return [this.ensureDefensePanel()];
+      case 'subseaCables': return [this.ensureConnectivityPanel()];
+      case 'cyber': return [this.ensureCyberPanel()];
+      case 'sovereignty': return [this.ensureDefensePanel(), this.ensureConnectivityPanel(), this.ensureCyberPanel()];
       case 'oilNetwork': return [this.ensureOilPanel()];
       case 'nuclearFleet': return [this.ensureNuclearPanel()];
       case 'outages':
@@ -4395,8 +4936,6 @@ export class App {
       case 'outagesInternet':
       case 'outagesCloud':
         return [this.ensureOutagesPanel()];
-      case 'military':
-        return [this.ensureDefensePanel()];
       default:
         return [];
     }
@@ -4412,15 +4951,18 @@ export class App {
 
   private getFloatingPanelInstance(key: keyof MapLayers): { hide(opts?: { silent?: boolean }): void; isVisible?(): boolean } | null {
     // Accepts either a def's representative `id` or any of its `layerKeys`
-    // members (e.g. 'healthOscour' resolves to the same panel as 'health') —
+    // members (e.g. 'outagesTelecom' resolves to the same panel as 'outagesElec'):
     // callers like activateLayerSilently() pass the exact key that was just
     // toggled, which isn't always the representative one.
     const id = this.floatingPanelIdForLayerKey(key) ?? key;
     switch (id) {
-      case 'environmental': return this.environmentPanel;
-      case 'fires': return this.firesPanel;
+      case 'environmental': return this.vigilancePanel;
+      case 'floods': return this.floodsPanel;
       case 'weatherRadar': return this.weatherRadarPanel;
-      case 'dayNight': return this.dayNightPanel;
+      case 'fires': return this.firesPanel;
+      case 'drought': return this.droughtPanel;
+      case 'airQuality': return this.airQualityPanel;
+      case 'earthquakes': return this.earthquakesPanel;
       case 'powerGrid': return this.energyPanel;
       case 'dromEnergy': return this.dromEnergyPanel;
       case 'nuclearFleet': return this.nuclearPanel;
@@ -4428,18 +4970,18 @@ export class App {
       case 'hydroBackbone': return this.hydraulicPanel;
       case 'oilNetwork': return this.oilPanel;
       case 'windMonitor': return this.eolienPanel;
-      case 'health': return this.nationalHealthPanel;
+      case 'metroLoad': return this.metroLoadPanel;
+      case 'health': return this.veillePanel;
+      case 'healthOscour': return this.urgencesPanel;
+      case 'healthApl': return this.accesSoinsPanel;
+      case 'hospitals': return this.hopitauxPanel;
       case 'trafficRoad': return this.trafficPanel;
-      // MaritimePanel has a private `isVisible` field of its own (unrelated
-      // to the optional method this interface declares) — TS treats that as
-      // a structural conflict, so we assert instead of returning it as-is.
-      // isFloatingPanelVisible()'s `typeof panel.isVisible === 'function'`
-      // check still resolves correctly at runtime (the field is a boolean,
-      // not a function), falling back to the tracked currentFloatingPanelId.
-      case 'trafficMaritime': return this.maritimePanel as { hide(opts?: { silent?: boolean }): void; isVisible?(): boolean } | null;
+      case 'trafficAir': return this.airTrafficPanel;
       case 'trafficRail': return this.transportPanel;
+      case 'trafficMaritime': return this.maritimePanel;
       case 'cyber': return this.cyberPanel;
       case 'military': return this.defensePanel;
+      case 'subseaCables': return this.connectivityPanel;
       case 'stability': return this.isnrPanel;
       case 'outagesElec': return this.outagesPanel;
       default: return null;
@@ -4449,9 +4991,7 @@ export class App {
   /** Hides every layer-owned floating panel (FLOATING_PANEL_DEFS) plus the
    *  France Intel drawer, optionally sparing one — the shared "one floating
    *  panel at a time" primitive (audit UI 2026-09 §5.3.3). `exceptId` is used
-   *  by showFloatingPanel() (about to show it) and by the health-barometer
-   *  open path (nationalHealthPanel/healthBarometerPanel are allowed to
-   *  coexist, a pre-existing, intentional exception). */
+   *  by showFloatingPanel() (about to show it). */
   private hideAllFloatingPanels(exceptId?: keyof MapLayers): void {
     for (const def of FLOATING_PANEL_DEFS) {
       if (def.id === exceptId) continue;
@@ -4474,12 +5014,7 @@ export class App {
   private showFloatingPanel(id: keyof MapLayers): void {
     this.syncV2ColumnVars();
     this.hideAllFloatingPanels(id);
-    this.explicitPanelRequest = true;
-    try {
-      this._handlePanelVisibility(id, true);
-    } finally {
-      this.explicitPanelRequest = false;
-    }
+    this._handlePanelVisibility(id, true);
     this.currentFloatingPanelId = id;
     this.refreshFloatingPanelSwitcher();
   }
@@ -4506,8 +5041,7 @@ export class App {
   /** Is `id`'s floating panel currently the one on screen? Prefers the
    *  panel's own isVisible() (ground truth, catches closes that bypassed
    *  showFloatingPanel — e.g. the panel's own × button) and falls back to
-   *  the tracked id for the few panels that don't implement isVisible()
-   *  (TrafficPanel, MaritimePanel, TransportPanel, DayNightPanel). */
+   *  the tracked id for the few panels that don't implement isVisible(). */
   private isFloatingPanelVisible(id: keyof MapLayers): boolean {
     const panel = this.getFloatingPanelInstance(id);
     if (!panel) return false;
@@ -4606,9 +5140,6 @@ export class App {
       el.classList.remove('is-measuring');
       const beside = mapWidth - (drawerOpen ? V2_DRAWER_PX : 0) - 24 - V2_MAP_CONTROLS_PX;
       el.classList.toggle('is-below-controls', oneRow > beside);
-      // Bas de la rangée de puces dans la carte : l'étiquette « Baromètre Santé » se place dessous.
-      const bottom = el.hidden ? 0 : el.offsetTop + el.offsetHeight;
-      document.documentElement.style.setProperty('--v2-switcher-bottom', `${bottom}px`);
     }
     this.syncV2ColumnVars();
   }
@@ -4672,28 +5203,42 @@ export class App {
   private openAlertDossier(situation: DetectedSituation): boolean {
     if (situation.type === 'WILDFIRE_ESCALATION') {
       const incidentId = situation.id.replace(/^wildfire-/, '');
-      // Champ alimenté par la Task 10 (géo-résolution) — currentFireIncidents,
-      // à côté de currentActiveFires.
-      const incident = this.currentFireIncidents.find((i) => i.id === incidentId);
-      if (!incident) return false;
-      void this.openWildfireDossier(incident);
+      if (!this.currentFireIncidents.some((i) => i.id === incidentId)) return false;
+      // Onglet « Dossier d'un feu » du panneau Feux (spec 2026-10-04 environnement § 2.4), à la place de l'ancienne fenêtre. Le panneau
+      // reçoit d'abord l'état courant : créé couche Feux éteinte, il n'en a aucun et l'incident y serait introuvable. Rien n'est masqué
+      // si le dossier ne s'ouvre pas.
+      const openDossier = (): boolean => {
+        this.firesPanel?.update(this.firesPanelState());
+        if (!this.firesPanel?.openDossier(incidentId)) return false;
+        this.hideAllFloatingPanels('fires');
+        this.currentFloatingPanelId = 'fires';
+        this.refreshFloatingPanelSwitcher();
+        return true;
+      };
+      if (this.firesPanel) return openDossier();
+      // Panneau pas encore chargé : l'incident est connu et le panneau reçoit son état avant l'ouverture, le dossier s'ouvrira donc
+      // dès l'arrivée du morceau (sans conteneur flottant, aucun panneau ne peut naître).
+      if (!this.floatContainerEl) return false;
+      void this.ensureFiresPanel().then(() => { openDossier(); });
+      return true;
+    }
+
+    if (situation.type === 'GPS_JAMMING_ALERT') {
+      // Précision GNSS dégradée (phase B, O17) : un compte sans lieu, rien à recentrer ; le panneau Défense dit les mailles du jour UTC
+      // précédent, la météo spatiale et la méthode.
+      if (!this.floatContainerEl) return false;
+      this.showSovereigntyPanel('military');
       return true;
     }
 
     if (situation.type === 'MILITARY_SURGE_ALERT') {
-      const flight = this.currentMilitaryFlights.find((item) => item.id === situation.entityId);
-      const lon = flight?.longitude ?? situation.lon;
-      const lat = flight?.latitude ?? situation.lat;
+      // Urgence militaire (souveraineté § 2.4) : sa position à la dernière lecture ; le panneau Défense dit le reste.
+      const { lon, lat } = situation;
       if (lon == null || lat == null) return false;
-
       if (!this.activeLayers.military) {
         this.onLayerToggle('military', true, layerActivationOptions(this.uiV2));
       }
       this.mapContainer?.flyTo(lon, lat, 10);
-      const mapEl = document.getElementById('map-container');
-      if (flight && mapEl) {
-        this.mapPopup?.showMilitaryFlight(flight, mapEl.clientWidth / 2, mapEl.clientHeight / 2);
-      }
       return true;
     }
 
@@ -4772,13 +5317,6 @@ export class App {
       void this.ensureSentinelModal().then((modal) => modal.show(request));
     });
 
-    // Handle military flight clicks → show detailed popup
-    this.mapContainer.setOnMilitaryFlightClick((flight, x, y) => {
-      if (this.mapPopup) {
-        this.mapPopup.showMilitaryFlight(flight, x, y);
-      }
-    });
-
     // Handle military base clicks → show detailed popup
     this.mapContainer.setOnMilitaryBaseClick((base, x, y) => {
       if (this.mapPopup) {
@@ -4786,32 +5324,11 @@ export class App {
       }
     });
 
-    // Handle military ship clicks → show detailed popup
-    this.mapContainer.setOnMilitaryShipClick((ship, x, y) => {
-      if (this.mapPopup) {
-        this.mapPopup.showMilitaryShip(ship, x, y);
-      }
-    });
-
-    // Handle threat event clicks → show detailed popup
-    this.mapContainer.setOnThreatEventClick((event, x, y) => {
-      if (this.mapPopup) {
-        this.mapPopup.showThreatEvent(event, x, y);
-      }
-    });
-
-    // Maritime ship click → open MaritimePanel modal
-    this.mapContainer.setOnMaritimeShipClick((ship) => {
-      this.mapContainer?.setSelectedShip(ship.mmsi ?? null);
-      this.maritimePanel?.openShipModal(ship);
-    });
-
+    // Clic sur la carte, couche Radar active : profil vertical du point (démonstration, panneau Radar météo).
+    this.mapContainer.setOnRadarPointPick((lat, lon) => this.loadRadarProfile(lat, lon));
+    // Clic sur un objet Souveraineté (contrats § 4.4 point 19) : fiche d'un bâtiment, ou panneau de sa couche.
+    this.mapContainer.setOnSovereigntyFeatureClick((layerId, props) => this.onSovereigntyMapClick(layerId, props));
     // Sync URL when map view changes
-    this.mapContainer.setOnWeatherRadarFrame((frame, status) => {
-      this.currentWeatherRadarFrame = frame;
-      this.currentWeatherRadarStatus = status;
-      this.weatherRadarPanel?.update(frame, status);
-    });
     this.mapContainer.setOnViewChange((vs) => {
       writeUrlState({
         lng: vs.longitude,
@@ -4883,10 +5400,10 @@ export class App {
     this.mapLegend.addCategory(ROAD_TRAFFIC_LEGEND);
     this.mapLegend.addCategory(MARITIME_TRAFFIC_LEGEND);
     this.mapLegend.addCategory(AIR_TRAFFIC_LEGEND);
-    // Rail legend is embedded in TransportPanel — not in the bottom map legend
-    this.mapLegend.addCategory(HEALTH_ISS_LEGEND);
+    this.mapLegend.addCategory(RAIL_TRAFFIC_LEGEND);
+    this.mapLegend.addCategory(HEALTH_ALERTS_LEGEND);
     this.mapLegend.addCategory(HEALTH_APL_LEGEND);
-    this.mapLegend.addCategory(HEALTH_OSCOUR_LEGEND);
+    this.mapLegend.addCategory(HEALTH_URGENCES_LEGEND);
     this.mapLegend.addCategory(HOSPITALS_LEGEND);
     this.mapLegend.addCategory(ENERGY_ECOWATT_LEGEND);
     this.mapLegend.addCategory(NUCLEAR_LEGEND);
@@ -4896,10 +5413,15 @@ export class App {
     this.mapLegend.addCategory(EOLIEN_LEGEND);
 
     this.mapLegend.addCategory(METROPOLES_ELECTRIC_LEGEND);
-    this.mapLegend.addCategory(ENVIRONMENTAL_LEGEND);
-    this.mapLegend.addCategory(WEATHER_RADAR_LEGEND);
-    this.mapLegend.addCategory(MILITARY_LEGEND);
-    this.mapLegend.addCategory(SUBSEA_CABLES_LEGEND);
+    this.mapLegend.addCategory(VIGILANCE_LEGEND);
+    this.mapLegend.addCategory(FLOODS_LEGEND);
+    this.mapLegend.addCategory(RADAR_LEGEND);
+    this.mapLegend.addCategory(FIRES_LEGEND);
+    this.mapLegend.addCategory(DROUGHT_LEGEND);
+    this.mapLegend.addCategory(AIR_QUALITY_LEGEND);
+    this.mapLegend.addCategory(EARTHQUAKES_LEGEND);
+    this.mapLegend.addCategory(DEFENSE_LEGEND);
+    this.mapLegend.addCategory(CONNECTIVITY_LEGEND);
     this.mapLegend.addCategory(CYBER_LEGEND);
     this.mapLegend.addCategory(OUTAGES_ELEC_LEGEND);
     this.mapLegend.addCategory(OUTAGES_TELECOM_LEGEND);
@@ -4909,6 +5431,8 @@ export class App {
 
     this.refreshLegendVisibility();
     this.refreshTrafficLegend();
+    this.refreshEnvironmentLegend();
+    this.refreshSovereigntyLegend();
 
     // Handle click on single item popup -> open article link
     this.mapPopup.setOnItemClick((item) => {
@@ -4951,125 +5475,19 @@ export class App {
     }, RSS_POLL_INTERVAL_MS);
   }
 
-  private startMilitaryPolling(): void {
-    // Perf audit §6 item 4: only open the AIS relay socket when something
-    // actually needs it at boot. onLayerToggle() below opens it on-demand
-    // (connectAis() is idempotent) the first time trafficMaritime/military
-    // is switched on later.
+  /**
+   * Relève AIS de 5 s (Trafic maritime et Marine nationale, spec souveraineté § 2.1) : ligne « AIS maritime » datée par le dernier message,
+   * carte de la Marine nationale (vue en AIS, ou port base de référence), panneaux maritime et Défense, anomalies AIS. Les aéronefs
+   * militaires ont leur relève (syncSovereigntyPolling('military')) ; la veille des câbles est faite par le serveur.
+   */
+  private startShipsPolling(): void {
+    // Audit de performance § 6 point 4 : le WebSocket du relais AIS n'est ouvert au démarrage que si une couche en a besoin ;
+    // onLayerToggle() l'ouvre ensuite à la demande (connectAis() est idempotent).
     if (this.activeLayers.trafficMaritime || this.activeLayers.military) {
       connectAis();
     }
-    // Heavy analyses (surges + GPS jamming) run at most every 30 s; positions stay at 5 s.
-    let lastDetectionRun = 0;
-    const fetchFlights = async () => {
-      try {
-        this.statusPanel?.updateSource('Vols militaires', {
-          status: 'loading',
-          lastUpdate: null,
-          detail: 'adsb.fi -> airplanes.live -> OpenSky',
-          error: undefined,
-        });
-        const snapshot = await fetchMilitaryFlights();
-        const flights = snapshot.flights;
-        this.currentMilitaryFlights = flights;
-        this.currentMilitaryFlightsCount = flights.length;
-        this.mapContainer?.updateMilitaryFlights(flights);
-        this.refreshFranceIntelPanel();
 
-        const sourceBreakdown = Object.entries(snapshot.sourceCounts)
-          .filter(([, count]) => count > 0)
-          .map(([source, count]) => `${source} ${count}`)
-          .join(' + ');
-        const modeLabel =
-          snapshot.mode === 'empty'
-            ? 'VIDE'
-            : snapshot.mode === 'stale-cache'
-              ? 'CACHE'
-              : snapshot.errors.length > 0
-                ? 'DEGRADE'
-                : 'LIVE';
-        const detail = `${modeLabel} · ${sourceBreakdown || snapshot.source}${snapshot.errors.length > 0 ? ` · fallback ${snapshot.errors.map((e) => e.source).join(', ')}` : ''}`;
-        this.statusPanel?.updateSource('Vols militaires', {
-          status: snapshot.mode === 'empty' || snapshot.mode === 'stale-cache' || snapshot.errors.length > 0 ? 'stale' : 'ok',
-          lastUpdate: new Date(snapshot.fetchedAt),
-          detail,
-          error: undefined,
-        });
-
-        // Heavy detections throttled to once per 30 s (positions refresh stays at 5 s)
-        const nowMs = Date.now();
-        if (nowMs - lastDetectionRun >= MILITARY_DETECTION_THROTTLE_MS) {
-          lastDetectionRun = nowMs;
-
-          // Detect and display military surges (WorldMonitor pattern)
-          const surges = detectMilitarySurges(
-            flights.map((f) => ({
-              id: f.id,
-              latitude: f.latitude,
-              longitude: f.longitude,
-              aircraftType: f.aircraftType,
-              squawkAlert: f.squawkAlert,
-            }))
-          );
-          this.currentMilitarySurges = surges;
-          if (surges.length > 0) {
-            const emergencies = surges.filter((s) => s.type === 'emergency');
-            if (emergencies.length > 0) {
-              this.statusPanel?.updateSource('Vols militaires', {
-                status: 'error',
-                lastUpdate: new Date(),
-                detail,
-                error: emergencies[0].description,
-              });
-            }
-          }
-
-          // Détection brouillage GPS / guerre électronique (heuristique ADS-B)
-          const jammingSignals = detectGpsJammingSignals(flights);
-          this.currentJammingSignals = jammingSignals;
-          this.defensePanel?.update(this.currentDefenseAlerts, jammingSignals);
-          this.refreshFranceIntelPanel();
-        }
-      } catch (err) {
-        console.error('[Military] Failed to fetch flights', err);
-        this.currentMilitarySurges = [];
-        this.currentJammingSignals = [];
-        this.refreshFranceIntelPanel();
-        this.statusPanel?.updateSource('Vols militaires', {
-          status: 'error',
-          lastUpdate: new Date(),
-          detail: 'adsb.fi -> airplanes.live -> OpenSky',
-          error: err instanceof Error ? err.message : 'Échec vols militaires',
-        });
-      }
-    };
-    fetchFlights();
-    // ADS-B: refresh frequently enough to feel live without hammering sources.
-    // Pausable: suspended while the tab is hidden, resumed with an immediate tick.
-    //
-    // Perf audit §5 item 5 / §6 item 4: military flights also feed AlertMonitor
-    // (surges + GPS jamming), so polling never stops outright — but when the
-    // military layer/panel isn't visible there is no map to update, so the
-    // tick is throttled to once every 5 min instead of every 5 s. The guard
-    // lives here, at the tick entry, rather than inside fetchFlights() itself.
-    const MILITARY_SLOW_POLL_MS = 5 * 60_000;
-    let lastSlowFlightsFetch = Date.now();
-    this._intervalMilitaryFlights = this.registerPausableInterval(
-      () => {
-        const militaryActive = this.activeLayers.military || this.defensePanel?.isVisible() === true;
-        if (!militaryActive) {
-          const now = Date.now();
-          if (now - lastSlowFlightsFetch < MILITARY_SLOW_POLL_MS) return;
-          lastSlowFlightsFetch = now;
-        }
-        fetchFlights().catch(err => console.error('[App] Military flights poll error', err));
-      },
-      5_000,
-    );
-
-    // Ships: refresh map frequently; heavier cable analysis stays throttled below.
     const AIS_UI_REFRESH_MS = 5_000;
-    const AIS_ALERT_REFRESH_MS = 30_000;
     let initialRetryCount = 0;
 
     const showAisLoader = () => {
@@ -5124,23 +5542,26 @@ export class App {
       }, 420);
     };
     const MAX_INITIAL_RETRIES = 5;
-    let lastDefenseAlertUpdate = 0;
 
     const updateShips = async () => {
       try {
         const aisStatus = getAisStatus();
         const aisRelayLabel = AIS_RELAY_URL ?? 'Non configuré';
         const aisDetail = `${aisRelayLabel} · ${aisStatus.shipCount} navire${aisStatus.shipCount > 1 ? 's' : ''} · ${aisStatus.messageCount} msg`;
+        // Date du dernier message reçu du relais (S1), jamais l'heure de lecture ; message trop ancien : en retard même connecté (S2).
+        const aisState = getAisConnectionState();
         this.statusPanel?.updateSource('AIS maritime', {
-          status: aisStatus.connected ? (aisStatus.shipCount > 0 ? 'ok' : 'loading') : 'error',
-          lastUpdate: aisStatus.connected ? new Date() : null,
+          ...aisLiveStatus({ connected: aisStatus.connected, shipCount: aisStatus.shipCount, lastMessageAt: aisState.lastMessageAt }, Date.now()),
           detail: aisStatus.connected ? aisDetail : aisRelayLabel,
-          error: aisStatus.connected ? undefined : 'relais déconnecté',
         });
 
-        // Navires Marine Nationale pour l'affichage sur la carte (icônes dédiées)
+        // Marine nationale (souveraineté § 2.1) : vue en AIS, ou port base de référence ; liaison figée : bâtiments vus en gris.
+        // O10 et O11 : plus rien n'est poussé vers l'ancienne couche des navires (retirée à A17).
         const militaryShips = getMilitaryShips();
-        this.mapContainer?.updateMilitaryShips(militaryShips);
+        const navyNow = Date.now();
+        const navyFrozen = navyLiveState({ status: aisState.status, lastMessageAt: aisState.lastMessageAt }, false, navyNow).frozen;
+        this.mapContainer?.updateNavyLayer(militaryShips, navyFrozen, navyNow);
+        this.defensePanel?.refreshLive();
 
         // Use exported NAVY_MMSI_SET (sovereign whitelist) - more reliable than runtime-built set
         const navyMmsiSet = NAVY_MMSI_SET;
@@ -5168,6 +5589,7 @@ export class App {
 
         // ALWAYS push to map, even with 0 ships (initializes the layer)
         this.mapContainer?.updateGlobalTraffic([...allTraffic], navyMmsiSet);
+        this.maritimePanel?.refreshLive();
 
         // Détection anomalies AIS (radio silence, rendezvous suspects)
         const aisAnomalies = detectAisAnomalies(allTraffic);
@@ -5178,18 +5600,12 @@ export class App {
           ...aisAnomalies,
         ];
         this.refreshFranceIntelPanel();
-
-        // Détection de menaces sur câbles (plus coûteuse) à cadence réduite.
-        const now = Date.now();
-        if (now - lastDefenseAlertUpdate >= AIS_ALERT_REFRESH_MS) {
-          lastDefenseAlertUpdate = now;
-          await this.loadDefenseAlerts(allTraffic, navyMmsiSet);
-        }
+        // Veille des câbles : faite par le serveur sur l'AIS du relais (/api/sovereignty/cables-watch, relève de la Connectivité).
       } catch (err) {
         console.error('[Military Ships] Failed to update', err);
         this.statusPanel?.updateSource('AIS maritime', {
           status: 'error',
-          lastUpdate: new Date(),
+          lastUpdate: null,
           detail: AIS_RELAY_URL ?? 'Non configuré',
           error: err instanceof Error ? err.message : 'Échec mise à jour AIS',
         });
@@ -5198,10 +5614,8 @@ export class App {
 
     // Register callback for first AIS data arrival (triggers immediate refresh)
     onFirstAisData(() => {
-      this.maritimeHasData = true;
+      // Première trame AIS : carte et panneau maritime (onglets Marine nationale et Alertes) aussitôt à jour.
       updateShips();
-      // Remplace le loader maritime par les données dès la 1re trame AIS.
-      if (this.activeLayers.trafficMaritime && this.maritimePanel?.isOpen()) this.maritimePanel.show();
     });
 
     updateShips();
@@ -5209,58 +5623,6 @@ export class App {
       () => { updateShips().catch(err => console.error('[App] Ships poll error', err)); },
       AIS_UI_REFRESH_MS,
     );
-  }
-
-  /**
-   * Load submarine cables data (once) and detect cable threats.
-   * Analyse TOUT le trafic AIS (civils + militaires étrangers) pour détecter les menaces.
-   * Les navires Marine Nationale sont exclus des alertes (whitelist souveraine).
-   *
-   * @param allTraffic - Tous les navires AIS reçus (civils, étrangers, militaires)
-   * @param navyMmsiSet - Set des MMSI Marine Nationale (exclus des alertes)
-   */
-  private async loadDefenseAlerts(
-    allTraffic: ReturnType<typeof getMilitaryShips>,
-    navyMmsiSet: Set<string>
-  ): Promise<void> {
-    try {
-      // Load cables data if not already loaded
-      if (!this.submarineCablesData) {
-        const response = await fetch('/data/submarine-cables.json');
-        if (!response.ok) {
-          console.warn('[Defense] Failed to load submarine cables data');
-          return;
-        }
-        this.submarineCablesData = await response.json();
-      }
-
-      // Filtrer les navires Marine Nationale (whitelist souveraine - pas d'alertes)
-      // et convertir en format AISShip pour la détection
-      const aisShips = allTraffic
-        .filter(ship => !ship.mmsi || !navyMmsiSet.has(ship.mmsi)) // Exclure Marine Nationale
-        .map(ship => ({
-          ...militaryShipToAIS(ship),
-          isMilitary: false, // Tous les navires restants sont civils/étrangers
-        }));
-
-      // Détecter les menaces sur le trafic civil/étranger uniquement
-      this.currentDefenseAlerts = detectCableThreats(
-        aisShips,
-        this.submarineCablesData!,
-        { maxDistanceMeters: 500, maxSpeedKnots: 2, militaryOnly: false }
-      );
-
-      // Update panel if visible
-      if (this.defensePanel?.isVisible()) {
-        this.defensePanel.update(this.currentDefenseAlerts, this.currentJammingSignals);
-      }
-
-      if (this.currentDefenseAlerts.length > 0) {
-        console.log(`[Defense] ${this.currentDefenseAlerts.length} cable threat(s) detected (excluding French Navy)`);
-      }
-    } catch (err) {
-      console.error('[Defense] Failed to load alerts', err);
-    }
   }
 
   private startFinancePolling(): void {
@@ -5322,12 +5684,6 @@ export class App {
       await this.loadAirTraffic();
     } catch (err) {
       console.error('[AirTraffic] Polling failed', err);
-      this.statusPanel?.updateSource('Trafic aérien', {
-        status: 'error',
-        lastUpdate: new Date(),
-        detail: 'airplanes.live + OpenSky · proxy agrégé',
-        error: err instanceof Error ? err.message : 'Échec trafic aérien',
-      });
     } finally {
       this._airTrafficPollInFlight = false;
     }
@@ -5575,6 +5931,7 @@ export class App {
       fetchBorderHistory(7).catch(() => new Map()),
     ]);
 
+    this.energyPanel?.updateBorderHistory(borderHistory);
     if (Object.keys(ecowatt.mixes).length > 0 || ecowatt.official !== null) {
       this.currentEcowattResponse = ecowatt;
       this.currentEcowattUsesFallback = false;
@@ -5588,7 +5945,7 @@ export class App {
         official: null,
         mixes: {},
         national: { timestamp: new Date(), nuclear: 0, wind: 0, solar: 0, hydro: 0, gas: 0, other: 0, total: 0 },
-        interconnections: [],
+        interconnections: [], grid: null,
       };
       this.currentEcowattUsesFallback = true;
       await this.mapContainer?.updateEnergy(this.currentEcowattResponse);
@@ -5603,165 +5960,162 @@ export class App {
     }
     // La tension réseau est nationale (Écowatt) : le panneau des pannes l'affiche en une ligne.
     this.outagesPanel?.setEcowattNational(ecowattToday(this.currentEcowattResponse.official, Date.now()));
+    this.eolienPanel?.setGrid(this.currentEcowattResponse.grid);
 
     await this.refreshHydraulicLayer();
     this.refreshEnergyDataLegends();
     this.refreshFranceIntelPanel();
   }
 
-  private async loadWeather(): Promise<void> {
-    this.statusPanel?.updateSource('Météo-France', { status: 'loading', lastUpdate: null });
-
-    const [timeline, alerts] = await Promise.all([
-      fetchVigilanceTimeline().catch(() => null),
-      fetchVigilanceMeteo().catch(() => []),
-    ]);
-
-    this.currentMeteoTimeline = timeline;
-
-    if (alerts.length > 0) {
-      this.currentMeteoAlerts = alerts;
-      await this.mapContainer?.updateWeather(alerts);
-      this.statusPanel?.updateSource('Météo-France', { status: 'ok', lastUpdate: new Date() });
-    } else if (timeline && timeline.slots.some((slot) => slot.alerts.length > 0)) {
-      const fallbackAlerts = timeline.slots[timeline.currentSlotIndex]?.alerts
-        ?? timeline.slots.find((slot) => slot.alerts.length > 0)?.alerts
-        ?? [];
-      this.currentMeteoAlerts = fallbackAlerts;
-      await this.mapContainer?.updateWeather(fallbackAlerts);
-      this.statusPanel?.updateSource('Météo-France', { status: 'ok', lastUpdate: new Date() });
-    } else {
-      this.currentMeteoAlerts = [];
-      await this.mapContainer?.updateWeather([]);
-      this.statusPanel?.updateSource('Météo-France', { status: 'stale', lastUpdate: new Date() });
-    }
-
-    this.environmentLoaded = true;
-
-    if (this.environmentPanel?.isVisible()) {
-      this.environmentPanel.show(this.currentMeteoAlerts, this.currentFloodSegments, this.currentMeteoTimeline ?? undefined);
-      this.layoutEnvironmentFloatingPanels();
-    }
-
-    // Perf audit §5 item 3 / §6 item 3: no explicit refreshHydraulicLayer()
-    // call here anymore — loadSecondaryLayers()'s own 'hydraulic' task runs
-    // right after loadCriticalLayers() (which includes this loadWeather())
-    // resolves, and refreshHydraulicLayer() already reads the up-to-date
-    // this.currentMeteoAlerts/currentFloodSegments/currentEcowattResponse set
-    // above. Calling it here duplicated that work on every single page load.
-    this.refreshFranceIntelPanel();
+  /**
+   * Vigilance météo (spec 2026-10-04 environnement § 2.1) : carte à l'échéance affichée, panneau, légende et ligne « Météo-France »
+   * datée par la carte (S1) ; score, note de situation, file de travail et stress hydro lisent l'échéance du jour par l'adaptateur.
+   */
+  private loadVigilance(): Promise<void> {
+    return this.readEnvironment('environmental', async () => {
+      const incoming = await fetchVigilance(this.currentVigilance);
+      this.currentVigilance = mergeVigilance(this.currentVigilance, incoming);
+      const now = Date.now();
+      const data = this.currentVigilance.vigilance.data;
+      this.statusPanel?.updateSource('Météo-France', vigilanceStatus(this.currentVigilance, now));
+      this.vigilancePanel?.update({ vigilance: this.currentVigilance });
+      this.refreshEnvironmentLegend();
+      this.recordEnvironmentSamples(now);
+      // Pas de refreshHydraulicLayer ici (audit perf § 5) : la tâche « hydraulic » du démarrage et la relève hydraulique le font.
+      this.refreshFranceIntelPanel();
+      await this.mapContainer?.updateVigilanceLayer(data, this.vigilanceEcheance, now);
+      // Département choisi dans le panneau : gardé en surbrillance sur la carte repeinte.
+      this.mapContainer?.selectWeatherDepartment(this.selectedVigilanceDept);
+      // Marégraphes : anneau de la couleur du domaine littoral du jour, repeint avec la carte relue.
+      if (this.currentSeaLevels) this.mapContainer?.updateSeaLevelsLayer(this.currentSeaLevels.seaLevels.data, data, now);
+    });
   }
 
-  private async loadFloods(): Promise<void> {
-    this.statusPanel?.updateSource('Vigicrues', { status: 'loading', lastUpdate: null });
-    try {
-      const segments = await fetchVigicrues();
-      this.currentFloodSegments = segments;
-      this.environmentLoaded = true;
-      this.mapContainer?.updateFloods(this.uiV2 ? v2FloodSegments(segments) : segments);
-      const matchedCount = segments.filter((segment) => segment.geometryFidelity === 'matched').length;
-      const corridorCount = segments.filter((segment) => segment.geometryFidelity === 'fallback').length;
-      const reconstructedOnly = segments.length > 0 && segments.every((segment) => segment.dataSource !== 'live');
-
-      if (reconstructedOnly) {
-        this.activeLayers.environmental = true;
-        this.activeLayers.environmentGroup = true;
-        this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
-        this.layerPanel?.updateLayers(this.activeLayers);
-        const bbox = segments.reduce<[number, number, number, number] | null>((acc, segment) => {
-          const next = computeFloodSegmentBbox(segment.displayGeometry);
-          if (!acc) return next;
-          return [
-            Math.min(acc[0], next[0]),
-            Math.min(acc[1], next[1]),
-            Math.max(acc[2], next[2]),
-            Math.max(acc[3], next[3]),
-          ];
-        }, null);
-        if (bbox) this.mapContainer?.fitBounds(bbox, 80);
-        this.environmentPanel?.show(this.currentMeteoAlerts, this.currentFloodSegments, this.currentMeteoTimeline ?? undefined);
-        this.layoutEnvironmentFloatingPanels();
-      }
-
-      if (segments.length > 0) {
-        console.info(
-          `[App/Vigicrues] Rendering ${segments.length} ${reconstructedOnly ? 'reconstructed' : 'live'} segments ` +
-          `(matched=${matchedCount}, corridor=${corridorCount})`,
-        );
-        this.statusPanel?.updateSource('Vigicrues', {
-          status: 'ok',
-          lastUpdate: new Date(),
-          detail: reconstructedOnly
-            ? `${segments.length} tronçons reconstruits`
-            : `${matchedCount + corridorCount}/${segments.length} tronçons cartographiés`,
-        });
-      } else {
-        console.info('[App/Vigicrues] No yellow/orange/red segments in current live feed');
-        this.statusPanel?.updateSource('Vigicrues', {
-          status: 'ok',
-          lastUpdate: new Date(),
-          detail: 'Aucun tronçon jaune/orange/rouge',
-        });
-      }
-      if (this.environmentPanel?.isVisible()) {
-        this.environmentPanel.show(this.currentMeteoAlerts, this.currentFloodSegments, this.currentMeteoTimeline ?? undefined);
-        this.layoutEnvironmentFloatingPanels();
-      }
+  /** Crues (spec § 2.2) : tronçons et stations datés ; tronçons en vigilance (FloodSectionRef) pour le score et le stress hydro. */
+  private loadFloods(): Promise<void> {
+    return this.readEnvironment('floods', async () => {
+      const incoming = await fetchFloods(this.currentFloods);
+      this.currentFloods = mergeFloods(this.currentFloods, incoming);
+      const now = Date.now();
+      const data = this.currentFloods.floods.data;
+      this.statusPanel?.updateSource('Vigicrues', floodsStatus(this.currentFloods, now));
+      this.mapContainer?.updateFloodsLayer(data, now);
+      this.floodsPanel?.update(this.currentFloods);
+      this.refreshEnvironmentLegend();
+      this.recordEnvironmentSamples(now);
       await this.refreshHydraulicLayer();
       this.refreshFranceIntelPanel();
-    } catch (error) {
-      this.currentFloodSegments = [];
-      this.mapContainer?.updateFloods([]);
-      console.warn('[App/Vigicrues] Source unavailable', error);
-      this.statusPanel?.updateSource('Vigicrues', {
-        status: 'stale',
-        lastUpdate: new Date(),
-        detail: 'Aucun tronçon disponible',
-        error: 'Source live indisponible',
-      });
-      if (this.environmentPanel?.isVisible()) {
-        this.environmentPanel.show(this.currentMeteoAlerts, this.currentFloodSegments, this.currentMeteoTimeline ?? undefined);
-        this.layoutEnvironmentFloatingPanels();
-      }
-      await this.refreshHydraulicLayer();
-      this.refreshFranceIntelPanel();
-    }
+    });
   }
 
-  private async loadFires(): Promise<void> {
-    this.statusPanel?.updateSource('NASA FIRMS', { status: 'loading', lastUpdate: null });
-    let data: Awaited<ReturnType<typeof fetchFiresData>>;
-    try {
-      data = await fetchFiresData();
-    } catch (err) {
-      this.firesLoaded = true; // settle même en erreur → le loader laisse place à l'état vide
-      throw err;
-    }
-    this.currentActiveFires = data.detections;
-    // La géo-résolution est best-effort : un échec laisse deptCodes/communes
-    // vides et l'alerte retombe sur les coordonnées (§7). Ne jamais bloquer
-    // l'affichage des détections pour attendre le découpage administratif.
-    void resolveIncidentGeography(data.incidents)
-      .then(located => {
-        this.currentFireIncidents = located;
-        this.refreshFranceIntelPanel();
-      })
-      .catch(() => { /* deptCodes/communes restent vides */ });
-    this.firesLoaded = true;
-    this.currentFiresSources = { sources: data.sources, apiKeyUsed: data.apiKeyUsed };
-    // Transmet les métadonnées sources au panel (header + footer adaptatifs)
-    this.firesPanel?.setSourcesInfo(data.sources, data.apiKeyUsed);
-    // setRawFires triggers applyFiresFilter + onFilteredFiresCb (updates map) + re-renders panel if open
-    this.firesPanel?.setRawFires(data.detections);
-    if (data.detections.length > 0) {
-      const sourceDetail = data.apiKeyUsed
-        ? `${data.sources.join(' + ')} · ${data.detections.length} det. · ${data.incidents.length} incidents`
-        : `SNPP (public) · ${data.detections.length} détections`;
-      this.statusPanel?.updateSource('NASA FIRMS', { status: 'ok', lastUpdate: new Date(), detail: sourceDetail });
-    } else {
-      this.statusPanel?.updateSource('NASA FIRMS', { status: 'stale', lastUpdate: new Date() });
-    }
-    if (this.firesPanel?.isVisible()) this.layoutEnvironmentFloatingPanels();
+  /**
+   * Feux de forêt (spec § 2.4, § 2.7) : collecte du serveur ; détections en France non récurrentes pour le score et le regroupement
+   * DBSCAN (situations, onglet « Dossier d'un feu ») ; deux lignes datées, « NASA FIRMS » et « Météo des forêts ».
+   */
+  private loadFires(): Promise<void> {
+    return this.readEnvironment('fires', async () => {
+      const incoming = await fetchFires(this.currentFires);
+      this.currentFires = mergeFires(this.currentFires, incoming);
+      const now = Date.now();
+      const data = this.currentFires.fires.data;
+      const incidents = clusterFireDetections(this.environmentInputs().activeFires, { epsKm: 3, minPoints: 2 });
+      this.statusPanel?.updateSource('NASA FIRMS', firesStatus(this.currentFires, 'firms', now));
+      this.statusPanel?.updateSource('Météo des forêts', firesStatus(this.currentFires, 'mdf', now));
+      this.mapContainer?.updateFiresLayer(data, now, { forestDangerFill: this.forestDangerFill });
+      this.firesPanel?.update(this.firesPanelState());
+      this.refreshEnvironmentLegend();
+      this.recordEnvironmentSamples(now);
+      this.refreshFranceIntelPanel();
+      // Géo-résolution au mieux (§ 7) : un échec laisse départements et communes vides et l'alerte retombe sur les coordonnées ;
+      // l'affichage des détections n'attend jamais le découpage administratif.
+      void resolveIncidentGeography(incidents)
+        .then((located) => {
+          this.currentFireIncidents = located;
+          this.firesPanel?.update(this.firesPanelState());
+          this.refreshFranceIntelPanel();
+        })
+        .catch(() => { /* départements et communes restent vides */ });
+    });
+  }
+
+  /**
+   * Sécheresse (spec environnement § 3.1) : arrêtés VigiEau ; même forme que loadFloods : panneau, carte, légendes, ligne « VigiEau »
+   * datée par les arrêtés (S1). Un stock (E2) : jamais dans le score ni dans une situation.
+   */
+  private loadDrought(): Promise<void> {
+    return this.readEnvironment('drought', async () => {
+      const incoming = await fetchDrought(this.currentDrought);
+      this.currentDrought = mergeDrought(this.currentDrought, incoming);
+      const now = Date.now();
+      const data = this.currentDrought.drought.data;
+      this.statusPanel?.updateSource('VigiEau', droughtStatus(this.currentDrought, now));
+      void this.mapContainer?.updateDroughtLayer(data, now);
+      this.droughtPanel?.update(this.currentDrought);
+      this.refreshEnvironmentLegend();
+      this.recordEnvironmentSamples(now);
+    });
+  }
+
+  /** Qualité de l'air (§ 3.2) : épisodes et indice ATMO ; lue au démarrage et relevée sans arrêt (situation « épisode d'alerte », tâche 32). */
+  private loadAirQuality(): Promise<void> {
+    return this.readEnvironment('airQuality', async () => {
+      const incoming = await fetchAirQuality(this.currentAirQuality);
+      this.currentAirQuality = mergeAirQuality(this.currentAirQuality, incoming);
+      const now = Date.now();
+      const data = this.currentAirQuality.air.data;
+      this.statusPanel?.updateSource('Atmo France', airQualityStatus(this.currentAirQuality, now));
+      void this.mapContainer?.updateAirQualityLayer(data, now);
+      this.airQualityPanel?.update(this.currentAirQuality);
+      this.refreshEnvironmentLegend();
+      this.recordEnvironmentSamples(now);
+      this.refreshFranceIntelPanel();
+    });
+  }
+
+  /** Séismes (§ 3.3) : 7 jours, France et 20 km autour ; lus au démarrage et relevés sans arrêt (situation sismique, tâche 32). */
+  private loadEarthquakes(): Promise<void> {
+    return this.readEnvironment('earthquakes', async () => {
+      const incoming = await fetchEarthquakes(this.currentEarthquakes);
+      this.currentEarthquakes = mergeEarthquakes(this.currentEarthquakes, incoming);
+      const now = Date.now();
+      const data = this.currentEarthquakes.quakes.data;
+      this.statusPanel?.updateSource('BCSF-RéNaSS', earthquakesStatus(this.currentEarthquakes, now));
+      this.mapContainer?.updateEarthquakesLayer(data, now);
+      this.earthquakesPanel?.update(this.currentEarthquakes);
+      this.refreshEnvironmentLegend();
+      this.recordEnvironmentSamples(now);
+      this.refreshFranceIntelPanel();
+    });
+  }
+
+  /**
+   * Marégraphes du SHOM (§ 3.4) : section Submersion marine, points de la couche Vigilance, ligne « Marégraphes SHOM » datée par la
+   * dernière mesure (ok avec une note tant que le plus récent est frais : tâche 25). Pas une couche (pas de clé ENVIRONMENT_LAYER_KEYS) :
+   * une seule lecture à la fois par `dedupe`, et un échec ne met en erreur que sa ligne (même règle que markEnvironmentSourcesFailed).
+   */
+  private loadSeaLevels(): Promise<void> {
+    return dedupe('environment:seaLevels', async () => {
+      try {
+        const incoming = await fetchSeaLevels(this.currentSeaLevels);
+        this.currentSeaLevels = mergeSeaLevels(this.currentSeaLevels, incoming);
+        const now = Date.now();
+        const data = this.currentSeaLevels.seaLevels.data;
+        this.statusPanel?.updateSource('Marégraphes SHOM', seaLevelsStatus(this.currentSeaLevels, now));
+        this.vigilancePanel?.update({ vigilance: this.currentVigilance, seaLevels: this.currentSeaLevels });
+        this.mapContainer?.updateSeaLevelsLayer(data, this.currentVigilance?.vigilance.data ?? null, now);
+        this.refreshEnvironmentLegend();
+        this.recordEnvironmentSamples(now);
+      } catch (err) {
+        const error = err instanceof Error ? err.message : 'service de la source introuvable';
+        const dated = this.statusPanel?.getSources().find((s) => s.name === 'Marégraphes SHOM')?.lastUpdate ?? null;
+        this.statusPanel?.updateSource('Marégraphes SHOM', dated !== null ? { status: 'stale', error } : { status: 'error', lastUpdate: null, period: undefined, error });
+        // La section Submersion dit la panne (S3) au lieu de rester sur « Chargement des marégraphes… » : données gardées, échec nommé.
+        const previous = this.currentSeaLevels?.seaLevels;
+        this.currentSeaLevels = { seaLevels: { data: previous?.data ?? null, fetchedAt: previous?.fetchedAt ?? null, error } };
+        this.vigilancePanel?.update({ vigilance: this.currentVigilance, seaLevels: this.currentSeaLevels });
+        throw err;
+      }
+    });
   }
 
   private async loadInfrastructure(): Promise<void> {
@@ -5778,10 +6132,11 @@ export class App {
     this.currentHydraulicHydrometry = await fetchHydraulicHydrometrySnapshot(
       this.currentHydraulicAssets.length > 0 ? this.currentHydraulicAssets : buildHydraulicBackboneAssets(null, [], []),
     );
+    const env = this.environmentInputs();
     this.currentHydraulicAssets = buildHydraulicBackboneAssets(
       this.currentEcowattResponse,
-      this.currentFloodSegments,
-      this.currentMeteoAlerts,
+      env.floodSegments,
+      env.meteoAlerts,
       this.currentHydraulicHydrometry,
     );
     this.mapContainer?.updateHydraulicBackbone(this.currentHydraulicAssets);
@@ -5819,6 +6174,7 @@ export class App {
       // Update barometer wind score + widget tooltip immediately
       setBarometerEolienLive(snapshot.live);
       this.networkBarometerWidget?.updateEolien(snapshot.live);
+      this.repaintPoste();
 
       try {
         this.mapContainer?.updateEolien(snapshot.live, [...snapshot.points, ...snapshot.parks]);
@@ -5875,6 +6231,7 @@ export class App {
 
       this.currentNuclearState = nuclearState;
       this.networkBarometerWidget?.updateNuclear(nuclearState);
+      this.repaintPoste();
 
       if (this.activeLayers.nuclearFleet && this.nuclearPanel?.isVisible()) {
         this.nuclearPanel.update(nuclearState, this.currentEcowattResponse);
@@ -5898,226 +6255,69 @@ export class App {
     }
   }
 
-  private async loadTraffic(): Promise<void> {
-    if (this.trafficLoadPromise) {
-      return this.trafficLoadPromise;
-    }
-
-    this.trafficLoadPromise = (async () => {
-      this.statusPanel?.updateSource('Trafic', { status: 'loading', lastUpdate: null });
-      try {
-        const incidents = await fetchTrafficIncidents();
-        this.trafficDataLoaded = true;
-
-        if (incidents.length > 0) {
-          this.currentTrafficIncidents = incidents;
-          this.mapContainer?.updateTrafficIncidents(incidents);
-          this.statusPanel?.updateSource('Trafic', {
-            status: 'ok',
-            lastUpdate: new Date(),
-            detail: `TomTom · ${incidents.length} incidents affichés`,
-            error: undefined,
-          });
-          this.refreshFranceIntelPanel();
-          return;
+  /**
+   * Trafic routier (spec trafics § 2.1, § 2.2) : DIR et TomTom collectés par le serveur ; panneau, carte, score, sources datées (S1).
+   * Lecture unique en cours partagée (readTraffic) ; fusion à l'écriture : une route en échec garde les données actuelles.
+   */
+  private loadRoadTraffic(): Promise<void> {
+    return this.readTraffic('trafficRoad', async () => {
+      const { fetchRoadTraffic, mergeRoadTraffic, roadStatus, clearLegacyTomTomStorage } = await import('./services/traffic-road.ts');
+      if (!this.legacyTomTomCleared) {
+        this.legacyTomTomCleared = true;
+        try {
+          clearLegacyTomTomStorage(window.localStorage);
+        } catch {
+          // Stockage refusé : rien à effacer.
         }
-
-        this.currentTrafficIncidents = [];
-        this.mapContainer?.updateTrafficIncidents([]);
-        this.statusPanel?.updateSource('Trafic', {
-          status: 'stale',
-          lastUpdate: new Date(),
-          detail: 'TomTom · aucun incident renvoyé',
-          error: undefined,
-        });
-        this.refreshFranceIntelPanel();
-      } catch (error) {
-        this.trafficDataLoaded = true;
-        const message = error instanceof Error ? error.message : 'Erreur inconnue';
-        this.currentTrafficIncidents = [];
-        this.mapContainer?.updateTrafficIncidents([]);
-        this.statusPanel?.updateSource('Trafic', {
-          status: 'error',
-          lastUpdate: new Date(),
-          detail: 'TomTom · incidents routiers',
-          error: message,
-        });
-        this.refreshFranceIntelPanel();
       }
-    })().finally(() => {
-      this.trafficLoadPromise = null;
-      // Remplace le loader par les données (ou l'état vide) une fois le fetch settlé.
-      if (this.activeLayers.trafficRoad && this.trafficPanel?.isVisible()) this.renderTrafficPanel();
-    });
-
-    return this.trafficLoadPromise;
-  }
-
-  private ensureTrafficLoaded(): Promise<void> {
-    if (this.currentTrafficIncidents.length > 0) {
-      this.mapContainer?.updateTrafficIncidents(this.currentTrafficIncidents);
-      return Promise.resolve();
-    }
-
-    if (!this.trafficDataLoaded && hasFreshTrafficIncidentCache()) {
-      return this.loadTraffic();
-    }
-
-    if (this.trafficDataLoaded) {
-      return Promise.resolve();
-    }
-
-    return this.loadTraffic();
-  }
-
-  private async loadAirTraffic(): Promise<void> {
-    this.statusPanel?.updateSource('Trafic aérien', {
-      status: 'loading',
-      lastUpdate: null,
-      detail: 'OpenSky + airplanes.live · proxy agrégé · 12 s',
-      error: undefined,
-    });
-
-    const snapshot = await fetchAirTrafficSnapshot();
-    const flights = snapshot.flights;
-    const openSkyCount = snapshot.sourceCounts?.opensky ?? 0;
-    const airplanesLiveCount = snapshot.sourceCounts?.['airplanes.live'] ?? 0;
-    const sourceLabel =
-      snapshot.source === 'opensky'
-        ? 'OpenSky'
-        : snapshot.source === 'airplanes.live'
-          ? 'airplanes.live'
-          : snapshot.source === 'opensky+airplanes.live'
-            ? 'OpenSky + airplanes.live'
-            : snapshot.source;
-    const sourceBreakdown =
-      openSkyCount > 0 || airplanesLiveCount > 0
-        ? `OpenSky ${openSkyCount} + airplanes.live ${airplanesLiveCount}`
-        : sourceLabel;
-    this.mapContainer?.updateAirTraffic(flights);
-
-    const rateLimitedAreas = (snapshot.errors || []).filter((entry) => entry.message.includes('429'));
-    const degradedDetail =
-      rateLimitedAreas.length > 0
-        ? ` · ${rateLimitedAreas.length} source${rateLimitedAreas.length > 1 ? 's' : ''} limitée${rateLimitedAreas.length > 1 ? 's' : ''}`
-        : '';
-    const anomalyDetail = snapshot.anomalyCount ? ` · ${snapshot.anomalyCount} anomalie${snapshot.anomalyCount > 1 ? 's' : ''}` : '';
-    const topAirportDetail = Array.isArray(snapshot.topAirports) && snapshot.topAirports.length > 0
-      ? ` · ${snapshot.topAirports
-          .slice(0, 3)
-          .map((airport) => `${airport.iata} ${airport.score}`)
-          .join(' · ')}`
-      : '';
-
-    if (flights.length > 0) {
-      const statusLabel = snapshot.errors && snapshot.errors.length > 0 ? 'DEGRADE' : 'LIVE';
-      this.statusPanel?.updateSource('Trafic aérien', {
-        status: snapshot.errors && snapshot.errors.length > 0 ? 'stale' : 'ok',
-        lastUpdate: new Date(),
-        detail: `${statusLabel} · ${sourceBreakdown} = ${flights.length} vols${anomalyDetail}${topAirportDetail}${degradedDetail}`,
-        error: undefined,
-      });
-    } else {
-      const statusLabel = snapshot.errors && snapshot.errors.length > 0 ? 'INDISPONIBLE' : 'VIDE';
-      this.statusPanel?.updateSource('Trafic aérien', {
-        status: snapshot.errors && snapshot.errors.length > 0 ? 'error' : 'stale',
-        lastUpdate: new Date(),
-        detail: snapshot.errors && snapshot.errors.length > 0
-          ? `${statusLabel} · ${sourceBreakdown} · aucune position exploitable`
-          : `${statusLabel} · ${sourceBreakdown} · aucun vol dans l’échantillon`,
-        error: snapshot.errors && snapshot.errors.length > 0 ? snapshot.errors[0].message : undefined,
-      });
-    }
-  }
-
-  private async loadCyber(): Promise<void> {
-    console.log('[App/loadCyber] ========== ENTRY ==========');
-    console.log('[App/loadCyber] isCyberPanelEnabled():', isCyberPanelEnabled());
-
-    // Skip if feature flag is disabled
-    if (!isCyberPanelEnabled()) {
-      console.log('[App/loadCyber] Feature DISABLED, skipping...');
-      this.statusPanel?.updateSource('Cyber', { status: 'stale', lastUpdate: null });
-      return;
-    }
-
-    this.statusPanel?.updateSource('Cyber', { status: 'loading', lastUpdate: null });
-    console.log('[App/loadCyber] Calling fetchCyberDashboard()...');
-
-    try {
-      const cyberData = await fetchCyberDashboard();
-      console.log('[App/loadCyber] Data received!');
-      console.log('[App/loadCyber] globalScore:', cyberData.meta.globalScore);
-      console.log('[App/loadCyber] alerts.count30d:', cyberData.alerts.count30d);
-      console.log('[App/loadCyber] alerts.latest.length:', cyberData.alerts.latest.length);
-      console.log('[App/loadCyber] ransomware.total30d:', cyberData.ransomware.total30d);
-      console.log('[App/loadCyber] vulnerabilities.criticalCount:', cyberData.vulnerabilities.criticalCount);
-
-      this.currentCyberData = cyberData;
-      console.log('[App/loadCyber] this.currentCyberData SET');
-
+      const now = Date.now();
+      const read = await fetchRoadTraffic(this.currentRoadTraffic, now);
+      // État relu APRÈS la lecture, jamais celui capturé à son départ.
+      const state = mergeRoadTraffic(this.currentRoadTraffic, read);
+      this.currentRoadTraffic = state;
+      this.trafficPanel?.update(state);
+      this.mapContainer?.updateRoadTraffic(state.national.data, state.urban.data, now);
+      this.mapLegend?.addCategory(roadLegend(state.national.data, state.urban.data, now));
+      this.statusPanel?.updateSource('Trafic', roadStatus(state, 'national', now));
+      this.statusPanel?.updateSource('TomTom agglomérations', roadStatus(state, 'urban', now));
+      this.recordTrafficSamples(now);
       this.refreshFranceIntelPanel();
-
-      // Determine status based on source availability
-      const allSourcesUp = cyberData.meta.sources.every(s => s.isUp);
-      const someSourcesUp = cyberData.meta.sources.some(s => s.isUp);
-
-      console.log('[App/loadCyber] Sources status:', cyberData.meta.sources.map(s => `${s.source}:${s.isUp}`).join(', '));
-
-      if (allSourcesUp) {
-        this.statusPanel?.updateSource('Cyber', { status: 'ok', lastUpdate: new Date() });
-      } else if (someSourcesUp) {
-        this.statusPanel?.updateSource('Cyber', { status: 'stale', lastUpdate: new Date() });
-      } else {
-        this.statusPanel?.updateSource('Cyber', { status: 'error', lastUpdate: new Date() });
-      }
-
-      // Update panel if visible
-      console.log('[App/loadCyber] cyberPanel exists:', !!this.cyberPanel);
-      console.log('[App/loadCyber] cyberPanel.isVisible():', this.cyberPanel?.isVisible());
-      this.cyberPanel?.update(cyberData);
-
-      // Also update the threat map layer with live data
-      void this.loadThreatMapEvents();
-
-      console.log(`[App/loadCyber] ========== COMPLETE: Score=${cyberData.meta.globalScore}, Sources=${cyberData.meta.sources.filter(s => s.isUp).length}/3 ==========`);
-    } catch (err) {
-      console.error('[App/loadCyber] ========== FAILED ==========', err);
-      this.statusPanel?.updateSource('Cyber', { status: 'error', lastUpdate: new Date() });
-    }
+    });
   }
 
-  /** Fetch threat map events → DeckGL layer + CyberPanel incidents tab. */
-  private async loadThreatMapEvents(): Promise<void> {
+  /**
+   * Positions des avions pour la carte (/api/traffic/air, 12 s) ; ligne « Positions aériennes (carte) » datée par l'heure des états
+   * OpenSky servis, jamais l'heure de lecture ; un échec garde cette date. « Trafic aérien » reste à l'aperçu du panneau.
+   */
+  private async loadAirTraffic(): Promise<void> {
     try {
-      const state = await fetchThreatMapEvents();
-      this.currentThreatEvents = state.events;
-      const visibleEvents = filterThreatEvents(state.events, this.currentThreatFilters);
-      this.mapContainer?.updateThreatEvents(visibleEvents);
-      this.cyberPanel?.updateThreatEvents(state.events);
-      console.log(`[ThreatMap] ${visibleEvents.length}/${state.events.length} events visible after filters`);
+      const snapshot = await fetchAirTrafficSnapshot();
+      this.mapContainer?.updateAirTraffic(snapshot.flights);
+      this.airPositions = { read: { at: snapshot.fetchedAt, errors: (snapshot.errors ?? []).map((e) => e.message) }, failure: null };
     } catch (err) {
-      console.error('[ThreatMap] Failed to load events:', err);
+      this.airPositions = { read: this.airPositions.read, failure: err instanceof Error ? err.message : 'lecture impossible' };
+      throw err;
+    } finally {
+      const now = Date.now();
+      this.statusPanel?.updateSource(AIR_POSITIONS_SOURCE, airPositionsStatus(this.airPositions.read, this.airPositions.failure, now));
+      this.recordTrafficSamples(now);
     }
   }
 
-  private focusThreatEvent(event: ThreatEvent): void {
-    const [lng, lat] = event.location.coordinates;
-    const zoomByPrecision: Record<ThreatEvent['location']['precision'], number> = {
-      hq: 13.5,
-      city: 12,
-      region: 8,
-      country: 6.2,
-      unknown: 6.2,
-    };
-    this.mapContainer?.flyTo(lng, lat, zoomByPrecision[event.location.precision] ?? 10);
-
-    window.setTimeout(() => {
-      const projected = this.mapContainer?.project(lng, lat);
-      if (projected && this.mapPopup) {
-        this.mapPopup.showThreatEvent(event, projected.x, projected.y);
-      }
-    }, 900);
+  /** Trafic aérien (spec trafics § 2.3) : aperçu OpenSky du serveur ; panneau, carte, sources datées par l'état OpenSky (S1). */
+  private loadAirOverview(): Promise<void> {
+    return this.readTraffic('trafficAir', async () => {
+      const { fetchAirOverview, mergeAirOverview, airStatus } = await import('./services/traffic-air.ts');
+      const now = Date.now();
+      const read = await fetchAirOverview(this.currentAirOverview, now);
+      const state = mergeAirOverview(this.currentAirOverview, read);
+      this.currentAirOverview = state;
+      this.airTrafficPanel?.update(state);
+      this.mapContainer?.updateAirOverview(state.overview.data, now);
+      this.mapLegend?.addCategory(airLegend(state.overview.data, now));
+      this.statusPanel?.updateSource('Trafic aérien', airStatus(state, now));
+      this.recordTrafficSamples(now);
+    });
   }
 
   private async loadGas(): Promise<void> {
@@ -6206,6 +6406,18 @@ export class App {
         this.layoutEnergyFloatingPanels();
       }
     }
+  }
+
+  /** Production DROM et Corse en temps réel (EDF SEI) ; un échec garde les dernières données. */
+  private async loadDromLive(): Promise<void> {
+    try {
+      const { fetchDromLive } = await import('./services/drom-live.ts');
+      this.currentDromLive = await fetchDromLive();
+      this.currentDromLiveError = null;
+    } catch (error) {
+      this.currentDromLiveError = error instanceof Error ? error.message : 'Erreur inconnue';
+    }
+    this.dromEnergyPanel?.setLive(this.currentDromLive, this.currentDromLiveError);
   }
 
   private async loadOil(): Promise<void> {
@@ -6433,208 +6645,89 @@ export class App {
     };
   }
 
-  private async loadSncf(): Promise<void> {
-    this.statusPanel?.updateSource('SNCF', { status: 'loading', lastUpdate: null });
-    const { fetchSncfDisruptions, buildRailNetworkData } = await import('./services/transport.ts');
-    const disruptions = await fetchSncfDisruptions((enriched) => {
-      // Geocoding + OSM route matching completed in background — refresh map + panel
-      this.currentSncfDisruptions = enriched;
-      const enrichedRail = buildRailNetworkData(enriched);
-      this.currentRailNetworkData = enrichedRail;
-      this.mapContainer?.updateRailNetwork(enrichedRail);
-      if (this.activeLayers.trafficRail && this.transportPanel?.isVisible()) {
-        this.transportPanel.show(enriched, {
-          fullCoverageLoaded: this.sncfFullCoverageLoaded,
-          dataLoaded: true,
-          mapCoverageReady: this.hasRailMapCoverage(),
-        });
-      }
+  /**
+   * Réseau ferroviaire (spec trafics § 2.4) : perturbations SNCF et situations SIRI SX ; panneau, carte, score, note, sources datées
+   * (S1). Lecture unique en cours partagée (readTraffic) ; fusion à l'écriture : une route en échec garde les données actuelles.
+   */
+  private loadRailTraffic(): Promise<void> {
+    return this.readTraffic('trafficRail', async () => {
+      const { fetchRailTraffic, mergeRailTraffic, railStatus } = await import('./services/traffic-rail.ts');
+      const now = Date.now();
+      const read = await fetchRailTraffic(this.currentRailTraffic, now);
+      const state = mergeRailTraffic(this.currentRailTraffic, read);
+      this.currentRailTraffic = state;
+      this.transportPanel?.update(state);
+      this.mapContainer?.updateRailTraffic(state.overview.data, now);
+      this.mapLegend?.addCategory(railLegend(state.overview.data, state.situations.data, now));
+      this.statusPanel?.updateSource('SNCF', railStatus(state, 'overview', now));
+      this.statusPanel?.updateSource('SIRI SX', railStatus(state, 'situations', now));
+      this.recordTrafficSamples(now);
       this.refreshFranceIntelPanel();
-    }, 'active');
-    this.sncfFullCoverageLoaded = false;
-    this.currentSncfDisruptions = disruptions;
-    if (disruptions.length > 0) {
-      this.statusPanel?.updateSource('SNCF', { status: 'ok', lastUpdate: new Date() });
-    } else {
-      this.statusPanel?.updateSource('SNCF', { status: 'stale', lastUpdate: new Date() });
-    }
-    // Update rail map layer immediately (partial data — geocoding still in progress)
-    const railData = buildRailNetworkData(disruptions);
-    this.currentRailNetworkData = railData;
-    this.mapContainer?.updateRailNetwork(railData);
-    if (this.activeLayers.trafficRail && this.transportPanel?.isVisible()) {
-      this.transportPanel.show(disruptions, {
-        fullCoverageLoaded: this.sncfFullCoverageLoaded,
-        dataLoaded: disruptions.length > 0,
-        mapCoverageReady: this.hasRailMapCoverage(),
-      });
-    }
-    this.refreshFranceIntelPanel();
-  }
-
-  private async loadSncfFullCoverage(): Promise<void> {
-    this.transportPanel?.setFullCoverageLoading(true);
-    this.statusPanel?.updateSource('SNCF', {
-      status: 'loading',
-      lastUpdate: null,
-      detail: 'Chargement couverture complète SNCF',
     });
-
-    const { fetchSncfDisruptions, buildRailNetworkData } = await import('./services/transport.ts');
-    const disruptions = await fetchSncfDisruptions((enriched) => {
-      this.currentSncfDisruptions = enriched;
-      const enrichedRail = buildRailNetworkData(enriched);
-      this.currentRailNetworkData = enrichedRail;
-      this.mapContainer?.updateRailNetwork(enrichedRail);
-      if (this.activeLayers.trafficRail && this.transportPanel?.isVisible()) {
-        this.transportPanel.show(enriched, {
-          fullCoverageLoaded: true,
-          dataLoaded: true,
-          mapCoverageReady: this.hasRailMapCoverage(),
-        });
-      }
-      this.refreshFranceIntelPanel();
-    }, 'all');
-
-    this.sncfFullCoverageLoaded = true;
-    this.currentSncfDisruptions = disruptions;
-    this.statusPanel?.updateSource('SNCF', { status: disruptions.length > 0 ? 'ok' : 'stale', lastUpdate: new Date() });
-
-    const railData = buildRailNetworkData(disruptions);
-    this.currentRailNetworkData = railData;
-    this.mapContainer?.updateRailNetwork(railData);
-    this.transportPanel?.setFullCoverageLoading(false);
-    if (this.activeLayers.trafficRail && this.transportPanel?.isVisible()) {
-      this.transportPanel.show(disruptions, {
-        fullCoverageLoaded: true,
-        dataLoaded: true,
-        mapCoverageReady: this.hasRailMapCoverage(),
-      });
-    }
-    this.refreshFranceIntelPanel();
   }
 
-  private startSncfPolling(): void {
-    this._intervalSncf = setInterval(() => {
-      if (document.hidden) return; // skip tick while tab is hidden
-      if (!this.activeLayers.trafficRail || this.sncfFullCoverageLoaded) return;
-      this.loadSncf().catch((error) => {
-        console.warn('[App] SNCF poll error', error);
-        this.statusPanel?.updateSource('SNCF', { status: 'error', lastUpdate: new Date() });
-      });
-    }, POLL_SNCF_MS);
+  /** Trafic maritime (spec trafics § 2.5) : instantané du relais AIS ; panneau, carte, sources datées par le dernier message (S1). */
+  private loadMaritimeSnapshot(): Promise<void> {
+    return this.readTraffic('trafficMaritime', async () => {
+      const { fetchMaritimeSnapshot, mergeMaritimeState, maritimeStatus } = await import('./services/traffic-maritime.ts');
+      const now = Date.now();
+      const read = await fetchMaritimeSnapshot(this.currentMaritimeSnapshot, AIS_RELAY_URL, now);
+      const state = mergeMaritimeState(this.currentMaritimeSnapshot, read);
+      this.currentMaritimeSnapshot = state;
+      this.maritimePanel?.update(state);
+      this.mapContainer?.updateMaritimeSnapshot(state.snapshot.data, now);
+      this.mapLegend?.addCategory(maritimeLegend(state.snapshot.data, now));
+      this.statusPanel?.updateSource('AIS instantané', maritimeStatus(state, now));
+      this.recordTrafficSamples(now);
+    });
   }
 
-  private resolveRailFocusDisruption(disruption: TransportDisruption | null): TransportDisruption | null {
-    if (!disruption || !this.currentRailNetworkData) return disruption;
+  /** Historique de qualité des sources Trafics hors Watchdog (même store que la santé). */
+  private recordTrafficSamples(now: number): void {
+    recordStatusSamples(this.statusPanel?.getSources().filter((s) => TRAFFIC_SOURCE_NAMES.includes(s.name)) ?? [], now);
+  }
 
-    const stationMatches = this.currentRailNetworkData.stations.features
-      .filter((feature) => {
-        try {
-          const ids = JSON.parse(String(feature.properties.disruptionIdsJson ?? '[]'));
-          if (Array.isArray(ids) && ids.includes(disruption.id)) return true;
-          const summaries = JSON.parse(String(feature.properties.disruptionSummariesJson ?? '[]'));
-          return Array.isArray(summaries) && summaries.some((summary) => summary?.id === disruption.id);
-        } catch {
-          return false;
-        }
-      });
-
-    if (stationMatches.length > 0) {
-      const byName = new Map(stationMatches.map((feature) => [
-        String(feature.properties.name ?? ''),
-        feature.geometry.coordinates as [number, number],
-      ]));
-      const fallbackCoords = stationMatches.map((feature) => feature.geometry.coordinates as [number, number]);
-      const departureName = disruption.departure?.name ?? 'Départ';
-      const arrivalName = disruption.arrival?.name ?? 'Arrivée';
-      const departureCoords = disruption.departure?.coordinates
-        ?? (disruption.departure?.name ? byName.get(disruption.departure.name) : undefined)
-        ?? disruption.coordinates
-        ?? fallbackCoords[0];
-      const arrivalCoords = disruption.arrival?.coordinates
-        ?? (disruption.arrival?.name ? byName.get(disruption.arrival.name) : undefined)
-        ?? fallbackCoords.find((coords) => coords !== departureCoords);
-
-      if (departureCoords || arrivalCoords) {
-        return {
-          ...disruption,
-          departure: disruption.departure
-            ? { ...disruption.departure, coordinates: disruption.departure.coordinates ?? departureCoords }
-            : departureCoords ? { name: departureName, coordinates: departureCoords } : undefined,
-          arrival: disruption.arrival
-            ? { ...disruption.arrival, coordinates: disruption.arrival.coordinates ?? arrivalCoords }
-            : arrivalCoords ? { name: arrivalName, coordinates: arrivalCoords } : undefined,
-          coordinates: disruption.coordinates ?? departureCoords ?? arrivalCoords,
-        };
-      }
-    }
-
-    const arcFeature = this.currentRailNetworkData.arcs.features.find(
-      (feature) => feature.properties.id === disruption.id
-    );
-
-    if (!arcFeature || arcFeature.geometry.coordinates.length < 2) {
-      return disruption;
-    }
-
+  /** Entrées Trafics du score France, de la frise et de la note (arbitrage 14 de la phase B). */
+  private trafficInputs(): { railTrains: RailTrain[]; roadEvents: RoadEvent[]; urbanJamCount: number } {
     return {
-      ...disruption,
-      routeGeometry: {
-        type: 'LineString',
-        coordinates: arcFeature.geometry.coordinates as [number, number][],
-      },
-      geometryFidelity: (arcFeature.properties.geometryFidelity as TransportDisruption['geometryFidelity'] | undefined) ?? disruption.geometryFidelity,
+      railTrains: this.currentRailTraffic?.overview.data?.trains ?? [],
+      roadEvents: this.currentRoadTraffic?.national.data?.events ?? [],
+      urbanJamCount: (this.currentRoadTraffic?.urban.data?.agglos ?? []).reduce((n, a) => n + a.jams, 0),
     };
   }
 
-  private async highlightRailDisruptionFromPanel(disruption: TransportDisruption | null): Promise<void> {
-    if (!disruption) {
-      this.mapContainer?.highlightTrainRoute(null);
-      return;
-    }
-
-    let focus = this.resolveRailFocusDisruption(disruption);
-    const hasDeparture = !!focus?.departure?.coordinates || !!focus?.coordinates;
-    const hasArrival = !!focus?.arrival?.coordinates;
-
-    if (focus && (!hasDeparture || !hasArrival)) {
-      const { geocodeSncfStation } = await import('./services/transport.ts');
-      const [departureCoords, arrivalCoords] = await Promise.all([
-        hasDeparture ? Promise.resolve(focus.departure?.coordinates ?? focus.coordinates) : geocodeSncfStation(focus.departure?.name),
-        hasArrival ? Promise.resolve(focus.arrival?.coordinates) : geocodeSncfStation(focus.arrival?.name),
-      ]);
-
-      focus = {
-        ...focus,
-        departure: focus.departure
-          ? { ...focus.departure, coordinates: focus.departure.coordinates ?? departureCoords }
-          : departureCoords ? { name: 'Départ', coordinates: departureCoords } : focus.departure,
-        arrival: focus.arrival
-          ? { ...focus.arrival, coordinates: focus.arrival.coordinates ?? arrivalCoords }
-          : arrivalCoords ? { name: 'Arrivée', coordinates: arrivalCoords } : focus.arrival,
-        coordinates: focus.coordinates ?? departureCoords ?? arrivalCoords,
-      };
-    }
-
-    this.mapContainer?.highlightTrainRoute(focus);
-  }
-
-  private hasRailMapCoverage(): boolean {
-    return (this.currentRailNetworkData?.stations.features.length ?? 0) > 0
-      || (this.currentRailNetworkData?.arcs.features.length ?? 0) > 0;
+  /**
+   * Entrées Environnement du score France, de la frise, des situations, de la note, de l'export, du poste v2, de l'ISNR et du stress
+   * hydro (spec 2026-10-04 environnement § 2.7) : vigilance du jour, tronçons en vigilance, détections en France non récurrentes,
+   * incidents DBSCAN géo-résolus, foyers du serveur, sources lues, séismes et épisodes de pollution (phase B, situations) ; lues dans
+   * les dernières réponses des services, jamais copiées ailleurs. Une source en retard (S2, mêmes délais que les panneaux : carte de
+   * vigilance, relevé Vigicrues, détections FIRMS) ou une collecte des feux de plus de 2 jours, gardée après une erreur, ne compte
+   * plus ; un relevé des séismes en retard ou une couche des épisodes en panne ou en retard non plus. Un rafraîchissement les lit
+   * une fois et les passe à ses consommateurs : un seul instant pour ces règles (revue m6).
+   */
+  private environmentInputs(now: number = Date.now()): EnvironmentInputs {
+    return {
+      ...buildEnvironmentInputs(
+        this.currentVigilance?.vigilance.data ?? null, this.currentFloods?.floods.data ?? null, this.currentFires?.fires.data ?? null,
+        this.currentFireIncidents, now,
+      ),
+      // Phase B : séismes et épisodes de pollution (situations, contrats § 6) ; la sécheresse n'y entre jamais (E2).
+      quakes: servedQuakes(this.currentEarthquakes?.quakes.data ?? null, now),
+      airEpisodes: servedAirEpisodes(this.currentAirQuality?.air.data ?? null, now),
+    };
   }
 
   private async loadMetropoles(): Promise<void> {
     this.statusPanel?.updateSource('Métropoles', { status: 'loading', lastUpdate: null });
     const metropoles = await fetchMetropoles();
+    this.currentMetropoles = metropoles;
     if (metropoles.length > 0) {
-      const nationalLoadMW = this.currentEcowattResponse?.national.total;
-      this.mapContainer?.updateMetropoles(metropoles, nationalLoadMW);
+      this.mapContainer?.updateMetropoles(metropoles);
       this.statusPanel?.updateSource('Métropoles', { status: 'ok', lastUpdate: new Date() });
     } else {
       this.statusPanel?.updateSource('Métropoles', { status: 'stale', lastUpdate: new Date() });
     }
+    this.metroLoadPanel?.update(metropoles);
   }
 
   private async loadOutages(): Promise<void> {
@@ -6693,110 +6786,106 @@ export class App {
       .catch(() => {});
   }
 
-  private async loadHealth(): Promise<void> {
-    this.statusPanel?.updateSource('SPF / DREES', { status: 'loading', lastUpdate: null });
-    this.statusPanel?.updateSource('Sentinelles', { status: 'loading', lastUpdate: null });
-    this.statusPanel?.updateSource('ANSM Médicaments', { status: 'loading', lastUpdate: null });
-    const { fetchHealthData } = await import('./services/health.ts');
-    const payload = await fetchHealthData();
-    this.currentHealthFeatures = payload.healthFeatures;
-
-    let sentinellesScore = undefined;
-    try {
-      sentinellesScore = computeSentinellesBarometerFromIndicators(
-        payload.healthFeatures.sentinellesIndicators ?? []
-      );
-    } catch (err) {
-      console.error("Failed to load or compute Sentinelles data for Barometer", err);
-    }
-
-
-    // Pass departments (preferred) and regions as fallback, plus healthFeatures
-    this.mapContainer?.updateHealth(payload.regions, payload.healthFeatures, payload.departments);
-
-    // Compute and expose barometer — reuses already-loaded data, no extra fetch
-    if (payload.departments.length > 0) {
-      const metrics = computeHealthBarometer(
-        payload.departments,
-        payload.healthFeatures,
-        this.lastBarometerMetrics ?? undefined,
-        sentinellesScore,
-      );
-      this.lastBarometerMetrics = metrics;
-
-      // Trigger barometer open event if panel is already visible
-      if (this.healthBarometerPanel?.isVisible()) {
-        this.healthBarometerPanel.show(metrics);
-      }
-
-      // Store on window for 'open-health-barometer' event handler
-      window.__healthBarometerMetrics = metrics;
-
-      // Update FAB button to show score + ready state
-      const fab = document.getElementById('barometer-fab');
-      if (fab) {
-        const color = metrics.levelColor;
-        fab.innerHTML = `${fmIcon('stethoscope')} Baromètre Santé — <span style="color:${color}; font-weight:800;">${metrics.globalScore}/100 ${metrics.levelLabel}</span>`;
-        fab.style.borderColor = `${color}55`;
+  /** Veille sanitaire (spec 2026-10-03 § 2, § 3.1, § 3.2) : panneaux, niveau national de la fiche thème, panneau des sources daté (S1). */
+  private async loadHealthSurveillance(keys: readonly HealthSurveillanceKey[] | 'all'): Promise<void> {
+    if (keys !== 'all' && keys.length === 0) return;
+    const [{ fetchHealthSurveillance, mergeSurveillance, surveillanceStatus }, { nationalSummary }, { urgencesLegend }, { sourcePeriod }] = await Promise.all([
+      import('./services/health-surveillance.ts'), import('./components/layer-panel/veille.ts'), import('./components/layer-panel/urgences-legend.ts'),
+      import('./components/layer-panel/health-format.ts'),
+    ]);
+    const now = Date.now();
+    const read = await fetchHealthSurveillance(this.currentHealth, now, keys);
+    // Lectures concurrentes (démarrage et couche restaurée, relève) : seules les sources lues remplacent l'état courant.
+    const state = mergeSurveillance(this.currentHealth, read, keys);
+    this.currentHealth = state;
+    this.healthNationalOf = nationalSummary;
+    this.currentHealthNational = nationalSummary(state, now);
+    this.veillePanel?.update(state);
+    this.urgencesPanel?.update(state);
+    this.mapContainer?.updateHealthAlerts(state.alerts.data, now);
+    this.mapContainer?.updateHealthDepartments(state.syndromic.data, this.currentHealthOffer?.apl.data ?? null, now);
+    // Légende Urgences datée (S1) ; en retard, « (en retard) » et couleurs retirées de la carte (S2).
+    this.mapLegend?.addCategory(urgencesLegend(HEALTH_URGENCES_LEGEND, state.syndromic.data, now));
+    const updated: string[] = [];
+    for (const [key, name] of HEALTH_STATUS_SOURCES) {
+      if (keys === 'all' || keys.includes(key)) {
+        this.statusPanel?.updateSource(name, { ...surveillanceStatus(state, key, now), period: sourcePeriod(state, key, now) });
+        updated.push(name);
       }
     }
-    const hasData = payload.departments.length > 0 || payload.regions.length > 0;
-    const anyHealthActive =
-      this.activeLayers.health || this.activeLayers.healthApl ||
-      this.activeLayers.healthOscour || this.activeLayers.hospitals;
-    // Ré-ouvre/peuple le panneau dès qu'UN sous-onglet santé (dont APL) est actif —
-    // sinon activer APL seul ouvrait un panneau jamais peuplé.
-    if (hasData && anyHealthActive) {
-      // Un panneau déjà ouvert à la demande (chargement affiché) se remplit : c'est la même demande.
-      document.dispatchEvent(new CustomEvent('open-national-health', { detail: { explicit: this.nationalHealthPanel?.isVisible() === true } }));
-    }
-    this.mapLegend?.setCategoryVisibility('health', hasData && this.activeLayers.health);
-    const ss = payload.healthFeatures.sourceStatus;
-    this.statusPanel?.updateSource('SPF / DREES', {
-      status: ss.santePubliqueFrance === 'ok' || ss.drees === 'ok' ? 'ok' : 'stale',
-      lastUpdate: new Date()
-    });
-    this.statusPanel?.updateSource('Sentinelles', {
-      status: ss.sentinelles,
-      lastUpdate: new Date()
-    });
-    this.statusPanel?.updateSource('ANSM Médicaments', {
-      status: ss.drugShortages,
-      lastUpdate: new Date()
-    });
+    this.recordHealthSamples(updated, now);
+    this.repaintPoste();
   }
 
+  /**
+   * Historique local de qualité des sources santé (hors Watchdog, spec 2026-10-03) : statuts du panneau des sources, datés par la
+   * donnée. Jamais réenregistrées au Watchdog, qui les daterait de la lecture et les passerait « en cache figé » au bout de 10 min.
+   */
+  private recordHealthSamples(names: readonly string[], now: number): void {
+    recordStatusSamples(this.statusPanel?.getSources().filter((s) => names.includes(s.name)) ?? [], now);
+  }
+
+  /** Offre de soins (APL, hôpitaux) : fichiers annuels, panneaux, panneau des sources sur la date de publication (S1). */
+  private async loadHealthOffer(): Promise<void> {
+    const { fetchHealthOffer, offerStatus } = await import('./services/health-offer.ts');
+    const offer = await fetchHealthOffer(this.currentHealthOffer);
+    this.currentHealthOffer = offer;
+    this.accesSoinsPanel?.update(offer);
+    this.hopitauxPanel?.update(offer);
+    this.mapContainer?.updateHealthDepartments(this.currentHealth?.syndromic.data ?? null, offer.apl.data, Date.now());
+    this.mapContainer?.updateHospitals(offer.hospitals.data);
+    this.statusPanel?.updateSource('DREES APL', offerStatus(offer, 'apl'));
+    this.statusPanel?.updateSource('DREES SAE / FINESS', offerStatus(offer, 'hospitals'));
+    this.recordHealthSamples(HEALTH_OFFER_SOURCES.map(([, name]) => name), Date.now());
+  }
+
+  /**
+   * Relève santé (spec 2026-10-03 § 3) : toutes les 30 min tant qu'une couche santé est active ; pausée onglet caché, relève
+   * immédiate au retour (registerPausableInterval) ; les caches clients (25 min) sont plus courts que la relève.
+   */
   private startHealthPolling(): void {
-    if (this._intervalHealth !== null) clearInterval(this._intervalHealth);
-
-    this._intervalHealth = setInterval(() => {
-      if (document.hidden) return; // skip tick while tab is hidden
-      const isHealthContextActive =
-        this.activeLayers.health ||
-        this.activeLayers.healthApl ||
-        this.activeLayers.healthOscour ||
-        this.activeLayers.hospitals ||
-        this.nationalHealthPanel?.isVisible() === true ||
-        this.healthBarometerPanel?.isVisible() === true;
-
-      if (!isHealthContextActive) return;
-
-      this.loadHealth().catch((err) => {
-        console.error('[App] Health poll error', err);
-      });
+    if (this._intervalHealth !== null) return;
+    let inFlight = false;
+    this._intervalHealth = this.registerPausableInterval(() => {
+      if (inFlight) return;
+      const keys = this.healthSurveillanceKeys();
+      const offer = this.activeLayers.healthApl || this.activeLayers.hospitals;
+      if (keys !== 'all' && keys.length === 0 && !offer) return;
+      inFlight = true;
+      Promise.all([this.loadHealthSurveillance(keys), offer ? this.loadHealthOffer() : Promise.resolve()])
+        .catch((err) => console.error('[App] Health poll error', err))
+        .finally(() => { inFlight = false; });
     }, POLL_HEALTH_MS);
   }
 
   private async refreshHydraulicSignalSources(): Promise<void> {
     const results = await Promise.allSettled([
       this.loadEcowatt(),
-      this.loadWeather(),
+      this.loadVigilance(),
       this.loadFloods(),
     ]);
 
     if (results.every((result) => result.status === 'rejected')) {
       await this.refreshHydraulicLayer();
     }
+  }
+
+  /**
+   * Relève éCO2mix dédiée : Réseau électrique, Parc nucléaire, Éolien, Stress hydro et le score France lisent
+   * `currentEcowattResponse`, qui n'était rechargé qu'au démarrage et par la relève hydraulique (10 min, couche
+   * hydro active seulement) : la donnée passait « en retard » alors que la source était à jour. Pausée onglet caché,
+   * relève immédiate au retour.
+   */
+  private startEco2mixPolling(): void {
+    if (this._intervalEco2mix !== null) return;
+    let inFlight = false;
+    this._intervalEco2mix = this.registerPausableInterval(() => {
+      if (inFlight) return;
+      inFlight = true;
+      this.loadEcowatt()
+        .catch((err) => console.error('[App] éCO2mix poll error', err))
+        .finally(() => { inFlight = false; });
+    }, POLL_ECO2MIX_MS);
   }
 
   private startHydraulicPolling(): void {
@@ -6828,43 +6917,12 @@ export class App {
     }, POLL_HYDRAULIC_MS);
   }
 
-  private startWeatherPolling(): void {
-    if (this._intervalWeather !== null) clearInterval(this._intervalWeather);
-    if (this._intervalWeatherRadar !== null) clearInterval(this._intervalWeatherRadar);
-
-    let weatherInFlight = false;
-    let radarInFlight = false;
-
-    this._intervalWeather = setInterval(() => {
-      if (document.hidden) return; // skip tick while tab is hidden
-      if (weatherInFlight) return;
-      weatherInFlight = true;
-      this.loadWeather()
-        .catch((err) => console.error('[App] Weather poll error', err))
-        .finally(() => {
-          weatherInFlight = false;
-        });
-    }, POLL_WEATHER_VIGILANCE_MS);
-
-    this._intervalWeatherRadar = setInterval(() => {
-      if (document.hidden) return; // skip tick while tab is hidden
-      if (!this.activeLayers.weatherRadar) return;
-      if (radarInFlight) return;
-      radarInFlight = true;
-      this.mapContainer?.refreshWeatherRadar(true)
-        .catch((err) => console.error('[App] Weather radar poll error', err))
-        .finally(() => {
-          radarInFlight = false;
-        });
-    }, POLL_WEATHER_RADAR_MS);
-  }
-
   private async loadMtgFrpMetadata(force = false): Promise<void> {
     if (this.mtgFrpRequestInFlight) return;
     this.mtgFrpRequestInFlight = true;
     Watchdog.register('fire-mtg-frp', {
       label: 'MTG-FRP LSA SAF',
-      staleAfterMs: MTG_FRP_FRESHNESS_MS,
+      staleAfterMs: MTG_FRP_LATE_MS,
       detail: 'Produit de démonstration EUMETSAT LSA SAF',
     });
     Watchdog.report('fire-mtg-frp', { type: 'loading' });
@@ -6878,14 +6936,13 @@ export class App {
         this.latestMtgFrpMetadata = metadata;
       }
       const observedAt = Date.parse(metadata.observedAt);
-      this.fireObservationRuntime = {
-        ...this.fireObservationRuntime,
-        mtgFrp: {
-          status: Date.now() - observedAt > MTG_FRP_FRESHNESS_MS ? 'stale' : 'ok',
-          observedAt,
-          fetchedAt: Date.now(),
-          source: 'EUMETSAT LSA SAF',
-        },
+      // État dérivé de l'observation (démonstration), jamais « actif » codé : le panneau Feux le date et dit son retard à l'affichage
+      // (observation + 60 min, S2) ; « stale » (dernière valide gardée) est réservé à une lecture en échec.
+      this.mtgFrpFeed = {
+        status: 'ok',
+        observedAt,
+        fetchedAt: Date.now(),
+        source: 'EUMETSAT LSA SAF',
       };
       Watchdog.report('fire-mtg-frp', {
         type: 'success',
@@ -6894,12 +6951,9 @@ export class App {
       });
       if (this.mtgFrpEnabled) this.mapContainer?.setMtgFrpEnabled(true);
     } catch (error) {
-      this.fireObservationRuntime = {
-        ...this.fireObservationRuntime,
-        mtgFrp: this.latestMtgFrpMetadata
-          ? { ...this.fireObservationRuntime.mtgFrp, status: 'stale', detail: 'Dernière observation valide conservée' }
-          : { status: 'error', observedAt: null, fetchedAt: Date.now(), source: 'EUMETSAT LSA SAF' },
-      };
+      this.mtgFrpFeed = this.latestMtgFrpMetadata
+        ? { ...this.mtgFrpFeed, status: 'stale', detail: 'Dernière observation valide conservée' }
+        : { status: 'error', observedAt: null, fetchedAt: Date.now(), source: 'EUMETSAT LSA SAF' };
       Watchdog.report('fire-mtg-frp', {
         type: 'failure',
         error: error instanceof Error ? error.message : String(error),
@@ -6907,7 +6961,7 @@ export class App {
       throw error;
     } finally {
       this.mtgFrpRequestInFlight = false;
-      this.firesPanel?.setObservationRuntimeState(this.fireObservationRuntime);
+      this.firesPanel?.update(this.firesPanelState());
     }
   }
 
@@ -6927,118 +6981,33 @@ export class App {
     this._intervalMtgFrp = setInterval(() => poll(true), POLL_MTG_FRP_MS);
   }
 
-  private async loadRadar2dManifest(
-    force = false,
-    isCurrent: () => boolean = () => true,
-  ): Promise<void> {
-    if (this.radar2dRequestInFlight) return;
-    this.radar2dRequestInFlight = true;
-    Watchdog.register('fire-radar-2d', {
-      label: 'Radar 2D Météo-France',
-      staleAfterMs: RADAR_2D_FRESHNESS_MS,
-      detail: 'Réflectivité atmosphérique 2D',
-    });
-    Watchdog.report('fire-radar-2d', { type: 'loading' });
-    const startedAt = performance.now();
-    if (!this.latestRadar2dManifest) {
-      this.fireObservationRuntime = {
-        ...this.fireObservationRuntime,
-        radar2d: { ...this.fireObservationRuntime.radar2d, status: 'loading' },
-      };
-    }
-    try {
-      const result = await fetchRadar2dManifest(force);
-      if (!result.configured) {
-        await this.mapContainer?.setRadar2dOverlay(null, false);
-        if (!isCurrent()) return;
-        this.latestRadar2dManifest = null;
-        this.fireObservationRuntime = {
-          ...this.fireObservationRuntime,
-          radar2d: {
-            status: 'not-configured',
-            observedAt: null,
-            fetchedAt: Date.now(),
-            source: 'Météo-France DPRadar',
-            detail: 'METEO_FRANCE_RADAR_MANIFEST_URL absent',
-          },
-        };
-        Watchdog.report('fire-radar-2d', {
-          type: 'success',
-          responseTimeMs: Math.round(performance.now() - startedAt),
-          detail: 'Configuration requise · worker radar non configuré',
-        });
-        return;
+  /**
+   * Manifeste radar Météo-France (spec § 2.3) : image 2D montrée par la couche Radar météo, sommets d'écho selon l'option partagée avec
+   * les feux, ligne « Radar Météo-France » datée par l'observation (S1) ; une lecture en échec garde la dernière image et le dit.
+   * `force` : relève périodique seulement (lecture réseau) ; ouverture du panneau, puce et sommets d'écho lisent par le cache de 2 min
+   * du service.
+   */
+  private loadRadarManifest(force = false): Promise<void> {
+    return this.readEnvironment('weatherRadar', async () => {
+      try {
+        const result = await fetchRadar2dManifest(force);
+        const manifest = result.configured ? result.manifest : null;
+        // Image 2D : la couche Radar la commande (l'interrupteur « Réflectivité radar 2D » du panneau Feux n'existe plus).
+        await this.mapContainer?.setRadar2dOverlay(manifest, false);
+        this.mapContainer?.setEchoTopsOverlay(manifest, this.echoTopsEnabled);
+        this.radarManifest = result;
+        this.radarError = null;
+      } catch (err) {
+        console.warn('[App] Manifeste radar illisible', err);
+        this.radarError = 'lecture du manifeste radar en échec';
       }
-
-      const observedAt = Date.parse(result.manifest.observedAt);
-      const stale = result.degraded || Date.now() - observedAt > RADAR_2D_FRESHNESS_MS;
-      await installRadar2dObservation({
-        manifest: result.manifest,
-        enabled: this.radar2dEnabled,
-        isCurrent,
-        installOverlay: async (manifest, enabled) => {
-          await this.mapContainer?.setRadar2dOverlay(manifest, enabled);
-        },
-        reportSuccess: () => {
-          this.latestRadar2dManifest = result.manifest;
-          this.firesPanel?.setEchoTopsAvailability(Boolean(result.manifest.echoTopImageUrl));
-          this.mapContainer?.setEchoTopsOverlay(result.manifest, this.echoTopsEnabled);
-          this.fireObservationRuntime = {
-            ...this.fireObservationRuntime,
-            radar2d: {
-              status: stale ? 'stale' : 'ok',
-              observedAt,
-              fetchedAt: Date.now(),
-              source: result.manifest.source,
-              ...(result.degraded ? { detail: 'Dernière observation valide conservée' } : {}),
-            },
-          };
-          Watchdog.report('fire-radar-2d', {
-            type: 'success',
-            responseTimeMs: Math.round(performance.now() - startedAt),
-            detail: `Observation ${result.manifest.observedAt} · résolution 1 km`,
-          });
-        },
-      });
-    } catch (error) {
-      if (!isCurrent()) throw error;
-      this.fireObservationRuntime = {
-        ...this.fireObservationRuntime,
-        radar2d: this.latestRadar2dManifest
-          ? {
-              status: 'stale',
-              observedAt: Date.parse(this.latestRadar2dManifest.observedAt),
-              fetchedAt: this.fireObservationRuntime.radar2d.fetchedAt,
-              source: this.latestRadar2dManifest.source,
-              detail: 'Dernière observation valide conservée',
-            }
-          : { status: 'error', observedAt: null, fetchedAt: Date.now(), source: 'Météo-France DPRadar' },
-      };
-      Watchdog.report('fire-radar-2d', {
-        type: 'failure',
-        error: error instanceof Error ? error.message : String(error),
-      });
-      throw error;
-    } finally {
-      this.radar2dRequestInFlight = false;
-      this.firesPanel?.setObservationRuntimeState(this.fireObservationRuntime);
-    }
-  }
-
-  private startRadar2dPolling(): void {
-    if (this._intervalRadar2d !== null) clearInterval(this._intervalRadar2d);
-
-    const poll = (force: boolean): void => {
-      if (document.hidden) return;
-      if (!this.activeLayers.fires && !this.radar2dEnabled) return;
-      void this.loadRadar2dManifest(force).catch((error) => {
-        // Keep the last valid image source visible on transient failures.
-        console.error('[App] Radar 2D poll error', error);
-      });
-    };
-
-    poll(false);
-    this._intervalRadar2d = setInterval(() => poll(true), POLL_RADAR_2D_MS);
+      const now = Date.now();
+      this.statusPanel?.updateSource('Radar Météo-France', radarStatus(this.radarManifest, this.radarError, now));
+      this.weatherRadarPanel?.update(this.radarPanelState());
+      this.firesPanel?.update(this.firesPanelState());
+      this.refreshEnvironmentLegend();
+      this.recordEnvironmentSamples(now);
+    });
   }
 
   private async refreshInfraNetworkLive(force = false): Promise<void> {
@@ -7103,17 +7072,18 @@ export class App {
     }, POLL_EOLIEN_MS);
   }
 
-  private async loadHospitals(): Promise<void> {
-    this.statusPanel?.updateSource('FINESS (Hôpitaux)', { status: 'loading', lastUpdate: null });
-    const hospitals = await fetchHospitalsData();
-    // Assuming mapContainer.updateHospitals will be implemented in DeckGLMap
-    this.mapContainer?.updateHospitals(hospitals);
-
-    const hasData = hospitals.features.length > 0;
-    // Legend visibility follows user's layer toggle, not data availability
-    this.mapLegend?.setCategoryVisibility('hospitals', hasData && this.activeLayers.hospitals);
-
-    this.statusPanel?.updateSource('FINESS (Hôpitaux)', { status: hasData ? 'ok' : 'error', lastUpdate: new Date() });
+  private startDromLivePolling(): void {
+    if (this._intervalDromLive !== null) clearInterval(this._intervalDromLive);
+    let inFlight = false;
+    this._intervalDromLive = setInterval(() => {
+      if (document.hidden || inFlight) return; // onglet masqué ou lecture en cours
+      const shouldRefresh = this.activeLayers.dromEnergy || this.dromEnergyPanel?.isVisible() === true;
+      if (!shouldRefresh) return;
+      inFlight = true;
+      this.loadDromLive()
+        .catch((err) => console.error('[App] DROM live poll error', err))
+        .finally(() => { inFlight = false; });
+    }, POLL_DROM_LIVE_MS);
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -7126,25 +7096,8 @@ export class App {
 
   /** Sync — called first, no network, instant display */
   private loadStaticData(): void {
-    // ─── STATIC DATA — Affichage immédiat (pas de fetch) ───────────────────
-    // military-bases-db (~1100 l.) chargé en chunk dynamique → hors du bundle critique.
-    // La couche militaire étant masquée par défaut, ce léger différé est invisible.
-    void import('./config/military-bases-db.ts').then(({ ACTIVE_INSTALLATIONS }) => {
-      // Affiche d'abord notre DB statique enrichie (~160 sites)
-      this.mapContainer?.updateMilitaryBases(ACTIVE_INSTALLATIONS);
-      this.mapContainer?.updateMilitaryZones(RESTRICTED_ZONES);
-
-      // ─── OSM MILITARY DATA — Charge puis fusionne avec la DB statique ──────
-      loadStaticOsmFeatures().then((osmFeatures) => {
-        if (osmFeatures.length > 0) {
-          const merged = mergeWithStaticDb(osmFeatures, ACTIVE_INSTALLATIONS);
-          this.mapContainer?.updateMilitaryBases(merged);
-          console.log(`[App] Military bases: ${ACTIVE_INSTALLATIONS.length} static + ${osmFeatures.length} OSM = ${merged.length} total`);
-        }
-      }).catch((err) => {
-        console.warn('[App] Failed to load OSM military features:', err);
-      });
-    });
+    // Sites de défense (liste interne en chunk dynamique) : loadDefenseSites, sans fusion OpenStreetMap (souveraineté § 2.1).
+    void this.loadDefenseSites();
   }
   /** CRITICAL — awaited in init(). 4 layers that seed the ISNR (energy + weather + floods). */
   private async loadCriticalLayers(): Promise<void> {
@@ -7155,25 +7108,18 @@ export class App {
             official: null,
             mixes: {},
             national: { timestamp: new Date(), nuclear: 0, wind: 0, solar: 0, hydro: 0, gas: 0, other: 0, total: 0 },
-            interconnections: [],
+            interconnections: [], grid: null,
           };
           this.mapContainer?.updateEnergy(this.currentEcowattResponse);
           this.statusPanel?.updateSource('Écowatt RTE', { status: 'error', lastUpdate: new Date() });
         })
       },
+      // Échec d'un service Environnement : ses lignes du panneau des sources sont mises en erreur par readEnvironment ; ici, la trace.
       {
-        name: 'weather', task: this.loadWeather().catch(() => {
-          this.currentMeteoAlerts = [];
-          this.mapContainer?.updateWeather([]);
-          this.statusPanel?.updateSource('Météo-France', { status: 'error', lastUpdate: new Date() });
-        })
+        name: 'vigilance', task: this.loadVigilance().catch((err) => console.error('[App] Vigilance météo indisponible', err))
       },
       {
-        name: 'floods', task: this.loadFloods().catch(() => {
-          this.currentFloodSegments = [];
-          this.mapContainer?.updateFloods([]);
-          this.statusPanel?.updateSource('Vigicrues', { status: 'error', lastUpdate: new Date() });
-        })
+        name: 'floods', task: this.loadFloods().catch((err) => console.error('[App] Crues indisponibles', err))
       },
       {
         name: 'nuclear', task: this.loadNuclear().catch(() => {
@@ -7195,10 +7141,26 @@ export class App {
   private async loadSecondaryLayers(): Promise<void> {
     const tasks: Array<{ name: string; task: Promise<void> }> = [
       {
-        name: 'fires', task: this.loadFires().catch(() => {
-          this.mapContainer?.updateFires([]);
-          this.statusPanel?.updateSource('NASA FIRMS', { status: 'error', lastUpdate: new Date() });
-        })
+        name: 'fires', task: this.loadFires().catch((err) => console.error('[App] Feux de forêt indisponibles', err))
+      },
+      // Souveraineté : aéronefs militaires et veille des câbles lus au démarrage (score, arbitrage 21) ; un service en échec met ses
+      // lignes en erreur (readSovereignty) ; ici, la trace.
+      {
+        name: 'military', task: this.loadMilitary().catch((err) => console.error('[App] Aéronefs militaires indisponibles', err))
+      },
+      // Phase B : la grille GNSS est lue avec chaque lecture de la Défense (score) ; ici, la première.
+      {
+        name: 'gnss', task: this.loadGnss().catch((err) => console.error('[App] Grille GNSS indisponible', err))
+      },
+      {
+        name: 'cables', task: this.loadCables().catch((err) => console.error('[App] Veille des câbles indisponible', err))
+      },
+      // Qualité de l'air et séismes lus au démarrage (situations, tâche 32) ; la sécheresse seulement avec sa couche ou son panneau.
+      {
+        name: 'air-quality', task: this.loadAirQuality().catch((err) => console.error('[App] Qualité de l’air indisponible', err))
+      },
+      {
+        name: 'earthquakes', task: this.loadEarthquakes().catch((err) => console.error('[App] Séismes indisponibles', err))
       },
       {
         name: 'infrastructure', task: this.loadInfrastructure().catch(() => {
@@ -7222,22 +7184,14 @@ export class App {
           this.statusPanel?.updateSource('Éolien France', { status: 'error', lastUpdate: new Date() });
         })
       },
+      // Échec d'un service Trafics : toutes les lignes de sa couche (« TomTom agglomérations », « SIRI SX » comprises) sont mises
+      // en erreur par readTraffic, pour chaque appelant ; ici, seulement la trace.
       ...(this.activeLayers.trafficRoad ? [{
-        name: 'traffic', task: this.loadTraffic().catch(() => {
-          this.mapContainer?.updateTrafficIncidents([]);
-          this.statusPanel?.updateSource('Trafic', { status: 'error', lastUpdate: new Date() });
-        })
+        name: 'traffic', task: this.loadRoadTraffic().catch((err) => console.error('[App] Trafic routier indisponible', err))
       }] : []),
       {
-        name: 'sncf', task: this.loadSncf().catch(() => {
-          this.currentSncfDisruptions = [];
-          this.currentRailNetworkData = null;
-          this.mapContainer?.updateRailNetwork({
-            arcs: { type: 'FeatureCollection', features: [] },
-            stations: { type: 'FeatureCollection', features: [] },
-          });
-          this.statusPanel?.updateSource('SNCF', { status: 'error', lastUpdate: new Date() });
-        })
+        // Score France et note de situation : perturbations SNCF lues au démarrage, même couche éteinte (comme avant).
+        name: 'sncf', task: this.loadRailTraffic().catch((err) => console.error('[App] Réseau ferroviaire indisponible', err))
       },
       {
         name: 'metropoles', task: this.loadMetropoles().catch(() => {
@@ -7262,36 +7216,29 @@ export class App {
   private async loadOptionalLayers(): Promise<void> {
     const tasks: Array<{ name: string; task: Promise<void> }> = [
       {
-        name: 'air-traffic', task: this.loadAirTraffic().catch(() => {
-          this.mapContainer?.updateAirTraffic([]);
-          this.statusPanel?.updateSource('Trafic aérien', {
-            status: 'error',
-            lastUpdate: new Date(),
-            detail: 'airplanes.live · proxy gratuit',
-          });
+        // Panneau des sources : aperçu aérien lu au démarrage ; les positions de la carte attendent l'activation de la couche.
+        // Échec du service : ligne « Trafic aérien » mise en erreur par readTraffic.
+        name: 'air-overview', task: this.loadAirOverview().catch((err) => console.error('[App] Aperçu aérien indisponible', err))
+      },
+      {
+        // Module santé en échec (chunk injoignable) : les huit sources de veille en erreur, jamais « en chargement » (S3).
+        name: 'health', task: this.loadHealthSurveillance('all').catch(() => {
+          for (const [, name] of HEALTH_STATUS_SOURCES) this.statusPanel?.updateSource(name, { status: 'error', lastUpdate: null, period: undefined });
         })
       },
       {
-        name: 'health', task: this.loadHealth().catch(() => {
-          this.statusPanel?.updateSource('SPF / DREES', { status: 'error', lastUpdate: new Date() });
-          this.statusPanel?.updateSource('Sentinelles', { status: 'error', lastUpdate: new Date() });
-          this.statusPanel?.updateSource('ANSM Médicaments', { status: 'error', lastUpdate: new Date() });
+        name: 'health-offer', task: this.loadHealthOffer().catch(() => {
+          for (const [, name] of HEALTH_OFFER_SOURCES) this.statusPanel?.updateSource(name, { status: 'error', lastUpdate: null, period: undefined });
         })
       },
       {
-        name: 'hospitals', task: this.loadHospitals().catch(() => {
-          this.statusPanel?.updateSource('FINESS (Hôpitaux)', { status: 'error', lastUpdate: new Date() });
-        })
+        // Vigilance cyber : un service en échec met ses cinq lignes en erreur (readSovereignty), jamais à l'heure du navigateur.
+        name: 'cyber', task: this.loadCyber().catch((err) => console.error('[App] Vigilance cyber indisponible', err))
       },
       {
-        name: 'cyber', task: this.loadCyber().catch(() => {
-          this.statusPanel?.updateSource('Cyber', { status: 'error', lastUpdate: new Date() });
-        })
-      },
-      {
-        name: 'space-weather', task: this.loadSpaceWeather().catch(() => {
-          this.statusPanel?.updateSource('NOAA SWPC', { status: 'error', lastUpdate: new Date() });
-        })
+        // Indice Kp du panneau Énergie. La ligne de la météo spatiale du panneau des sources n'est jamais écrite ici : elle est celle de la
+        // grille GNSS (loadGnss), datée par l'heure des échelles du serveur, jamais par l'horloge du navigateur (S1, revue de B28).
+        name: 'space-weather', task: this.loadSpaceWeather().catch((err) => console.error('[App] Météo spatiale du panneau Énergie indisponible', err))
       },
     ];
 
@@ -7305,19 +7252,10 @@ export class App {
 
 
   private async loadSpaceWeather(): Promise<void> {
-    this.statusPanel?.updateSource('NOAA SWPC', { status: 'loading', lastUpdate: null });
-
-    // Terminator jour/nuit — calcul astronomique pur, instantané
-    this.mapContainer?.updateTerminator(computeTerminatorGeoJSON());
-    this.removePausableInterval(this._intervalSpaceWeatherTerminator);
-    this._intervalSpaceWeatherTerminator = this.registerPausableInterval(() => {
-      this.mapContainer?.updateTerminator(computeTerminatorGeoJSON());
-    }, POLL_SPACE_WEATHER_TERMINATOR_MS);
-
-    // Kp index NOAA
+    // Kp index NOAA (panneau Énergie seulement ; la ligne de la météo spatiale du panneau des sources vient de loadGnss). null si
+    // jamais lu : « n.d. » sans couleur, jamais « Calme ».
     const data = await fetchSpaceWeather();
     this.energyPanel?.updateSpaceWeather(data);
-    this.statusPanel?.updateSource('NOAA SWPC', { status: 'ok', lastUpdate: data.fetchedAt });
 
     // Refresh Kp toutes les 15 min
     if (this._intervalSpaceWeatherRefresh !== null) {
@@ -7330,7 +7268,9 @@ export class App {
     }, POLL_SPACE_WEATHER_REFRESH_MS);
   }
 
-  private buildFranceTimeline(lang: 'fr' | 'en'): { days: string[]; lanes: FranceIntelTimelineLane[] } {
+  private buildFranceTimeline(
+    lang: 'fr' | 'en', env: EnvironmentInputs, sov: SovereigntyInputs = this.sovereigntyInputs(),
+  ): { days: string[]; lanes: FranceIntelTimelineLane[] } {
     const now = new Date();
     const days = Array.from({ length: 7 }, (_, index) => {
       const day = new Date(now);
@@ -7346,8 +7286,6 @@ export class App {
       transport: { key: 'transport' as const, label: lang === 'fr' ? 'Transport' : 'Transport', color: '#60a5fa', counts: Array(7).fill(0) as number[] },
       cyber:     { key: 'cyber'     as const, label: 'Cyber',                                   color: '#a855f7', counts: Array(7).fill(0) as number[] },
     };
-
-    const cyber = this.currentCyberData ?? null;
 
     for (const item of this.newsItems) {
       const key = item.pubDate.toISOString().slice(0, 10);
@@ -7365,14 +7303,20 @@ export class App {
     }
 
     const todayIndex = dayKeys.length - 1;
-    laneMap.weather.counts[todayIndex]   += this.currentMeteoAlerts.filter((a) => a.level !== 'green').length;
-    laneMap.weather.counts[todayIndex]   += this.currentFloodSegments.filter((a) => a.level !== 'green').length;
-    laneMap.transport.counts[todayIndex] += this.currentSncfDisruptions.length + this.currentTrafficIncidents.length;
-    laneMap.security.counts[todayIndex]  += this.currentDefenseAlerts.length + this.currentJammingSignals.length;
-    laneMap.cyber.counts[todayIndex]     += cyber?.alerts.latest.filter((a) => {
-      const ts = new Date(a.date);
-      return Number.isFinite(ts.getTime()) && (now.getTime() - ts.getTime()) <= 7 * 24 * 60 * 60 * 1000;
-    }).length ?? 0;
+    laneMap.weather.counts[todayIndex]   += env.meteoAlerts.filter((a) => a.level !== 'green').length;
+    laneMap.weather.counts[todayIndex]   += env.floodSegments.filter((a) => a.level !== 'green').length;
+    const traffic = this.trafficInputs();
+    laneMap.transport.counts[todayIndex] += traffic.railTrains.length + traffic.roadEvents.length + traffic.urbanJamCount;
+    // File « sécurité » du jour : navires lents confirmés sur un câble (AIS frais), comptés par navire (FX2 : une alerte par navire et
+    // par câble), et mailles à précision GNSS dégradée sur 24 h (B28).
+    laneMap.security.counts[todayIndex]  += distinctVessels(sov.cableAlerts) + (sov.gnssDegraded?.rolling24h ?? 0);
+    // File « cyber » : chaque jour de Paris, les alertes du CERT-FR publiées ce jour-là et les avis publiés ce jour-là qui citent une
+    // vulnérabilité du catalogue KEV (O6 : les autres avis, environ cinq par jour, sont un stock, pas un événement).
+    const parisDays = days.map((d) => parisDayOf(d.getTime()));
+    for (const item of sov.cyber ? [...sov.cyber.certfr.alerts, ...sov.cyber.certfr.avis.filter((a) => a.kevCves.length > 0)] : []) {
+      const dayIndex = parisDays.indexOf(item.firstVersion);
+      if (dayIndex !== -1) laneMap.cyber.counts[dayIndex] += 1;
+    }
 
     return {
       days: days.map((d) =>
@@ -7385,31 +7329,26 @@ export class App {
   private buildFranceSnapshot(
     lang: 'fr' | 'en',
     options?: { brief?: StructuredBrief | null; briefFreshness?: 'fresh' | 'cached' },
+    env: EnvironmentInputs = this.environmentInputs(),
   ): FranceCountrySnapshot {
+    const sov = this.sovereigntyInputs();
     const raw: FranceRawData = {
       newsItems:            this.newsItems,
       isnrData:             this.currentISNRData,
-      cyberData:            this.currentCyberData,
-      threatEvents:         this.currentThreatEvents,
-      meteoAlerts:          this.currentMeteoAlerts,
-      floodSegments:        this.currentFloodSegments,
-      sncfDisruptions:      this.currentSncfDisruptions,
-      trafficIncidents:     this.currentTrafficIncidents,
+      ...env,
+      ...this.trafficInputs(),
+      // Souveraineté : aéronefs, urgences, alertes câbles, mailles GNSS, réponse cyber, disponibilités et pastilles (contrats § 6).
+      ...sov,
       powerOutages:         this.currentPowerOutages,
       telecomOutages:       this.currentTelecomOutages,
-      defenseAlerts:        this.currentDefenseAlerts,
-      jammingSignals:       this.currentJammingSignals,
-      militaryFlightsCount: this.currentMilitaryFlightsCount,
       maritimeCount:        this.currentMaritimeTrafficFranceCount,
-      activeFires:          this.currentActiveFires,
-      fireIncidents:        this.currentFireIncidents,
       marketData:           this.currentMarketData,
       ecowattResponse:      this.currentEcowattResponse,
       gasState:             this.currentGasData,
       nuclearState:         this.currentNuclearState,
       eolienLive:           this.currentEolienLive,
       aisAnomalies:         this.currentAisAnomalies,
-      timeline:             this.buildFranceTimeline(lang),
+      timeline:             this.buildFranceTimeline(lang, env),
       briefLang:            lang,
       oilDashboard:         this.currentOilData ?? null,
       fuelTensionDashboard: this.currentFuelTensionData ?? null,
@@ -7442,11 +7381,12 @@ export class App {
     };
   }
 
-  private buildAlertMonitorSituations(): DetectedSituation[] {
+  private buildAlertMonitorSituations(env: EnvironmentInputs = this.environmentInputs()): DetectedSituation[] {
     const language = getCurrentLanguage();
     const locale = language === 'fr' ? 'fr-FR' : 'en-US';
     const now = new Date();
     const nowMs = now.getTime();
+    // env : vigilance du jour et incidents des feux, mêmes entrées que le score (carte en retard ou collecte FIRMS en retard écartées).
 
     // Presse : événements consolidés et corroborés quand ils sont chargés (spec 2026-09-28 § 4.7),
     // sinon repli sur les articles un par un.
@@ -7484,36 +7424,13 @@ export class App {
         updatedAt: item.pubDate,
       }));
 
-    const surgeSituations = this.currentMilitarySurges
-      .slice(0, 3)
-      .map((surge) => ({
-        id: `military-surge-${surge.type}-${surge.severity}`,
-        type: 'MILITARY_SURGE_ALERT' as const,
-        severity: (surge.severity === 'alert' ? 'critical' : surge.severity === 'warning' ? 'high' : 'medium') as SituationSeverity,
-        confidence: surge.severity === 'alert' ? 0.96 : surge.severity === 'warning' ? 0.86 : 0.72,
-        title: truncateLabel(surge.description, 88),
-        summary: surge.location
-          ? `${surge.description} autour de [${surge.location.lat.toFixed(2)}, ${surge.location.lon.toFixed(2)}].`
-          : surge.description,
-        affectedZones: [surge.location ? t('alerts.affectedAirZone') : t('alerts.zoneFrance')],
-        drivers: [
-          t('alerts.flightCount', { count: surge.flightCount }),
-          ...(surge.flightTypes?.length ? [t('alerts.flightTypes', { value: surge.flightTypes.join(', ') })] : []),
-          ...(surge.radius ? [t('alerts.estimatedRadiusKm', { value: Math.round(surge.radius) })] : []),
-        ],
-        recommendedActions: [
-          { label: t('alerts.confirmSurge'), ownerHint: t('alerts.defenseWatch'), actionType: 'cross-check' as const },
-          { label: t('alerts.watchTraffic'), ownerHint: t('alerts.airCell'), actionType: 'monitor' as const, automatable: true },
-        ],
-        sourceRefs: [t('alerts.sourceRefs.militaryFlights'), t('alerts.sourceRefs.adsb')],
-        entityId: surge.flightIds?.[0],
-        lat: surge.location?.lat,
-        lon: surge.location?.lon,
-        activateLayers: ['military'],
-        updatedAt: now,
-      }));
+    // Souveraineté (contrats § 6 ; amendement 7, O7) : urgences au-dessus du territoire ou à moins de 40 km, les trois codes,
+    // affichées sur deux relevés ou vues une fois ; navires lents confirmés sur un câble, AIS frais ; compte de mailles GNSS (phase B).
+    const sov = this.sovereigntyInputs(nowMs);
+    const surgeSituations = militaryEmergencyAlerts(monitoredMilitaryEmergencies(this.currentMilitary?.military.data ?? null, nowMs))
+      .slice(0, ALERT_MONITOR_LIMIT);
 
-    const weatherSituations = [...this.currentMeteoAlerts]
+    const weatherSituations = [...env.meteoAlerts]
       .filter((alert) => alert.level === 'red' || alert.level === 'orange')
       .sort((a, b) => (a.level === b.level ? 0 : a.level === 'red' ? -1 : 1))
       .slice(0, ALERT_MONITOR_LIMIT)
@@ -7545,61 +7462,13 @@ export class App {
         };
       });
 
-    const defenseSituations = this.currentDefenseAlerts
-      .filter((alert) => alert.severity === 'high' || alert.severity === 'medium')
-      .slice(0, ALERT_MONITOR_LIMIT)
-      .map((alert) => ({
-        id: `defense-alert-${alert.shipId}-${alert.cableId}`,
-        type: 'DEFENSE_ALERT' as const,
-        severity: defenseSeverityToSituationSeverity(alert.severity),
-        confidence: alert.severity === 'high' ? 0.93 : 0.81,
-        title: truncateLabel(t('alerts.nearCable', { ship: alert.shipName, cable: alert.cableName }), 88),
-        summary: `${alert.message} ${t('alerts.distanceSpeed', { distance: Math.round(alert.distanceMeters), speed: alert.speedKnots.toFixed(1) })}`,
-        affectedZones: [alert.cableName],
-        drivers: [
-          t('alerts.ship', { value: alert.shipName }),
-          t('alerts.distance', { value: Math.round(alert.distanceMeters) }),
-          t('alerts.speed', { value: alert.speedKnots.toFixed(1) }),
-        ],
-        recommendedActions: [
-          { label: t('alerts.verifyShip'), ownerHint: t('alerts.maritimeWatch'), actionType: 'investigate' as const },
-          { label: t('alerts.monitorCableZone'), ownerHint: t('alerts.infraSafety'), actionType: 'monitor' as const, automatable: true },
-        ],
-        sourceRefs: [t('alerts.sourceRefs.ais'), t('alerts.sourceRefs.subsea')],
-        updatedAt: new Date(alert.createdAt),
-        lon: alert.coordinates[0],
-        lat: alert.coordinates[1],
-        activateLayers: ['subseaCables', 'trafficMaritime'],
-      }));
-
-    const jammingSituations = this.currentJammingSignals
-      .filter((signal) => signal.severity === 'high' || signal.severity === 'medium')
-      .sort((a, b) => {
-        const severityDelta = (b.severity === 'high' ? 1 : 0) - (a.severity === 'high' ? 1 : 0);
-        if (severityDelta !== 0) return severityDelta;
-        return b.confidence - a.confidence;
-      })
-      .slice(0, ALERT_MONITOR_LIMIT)
-      .map((signal) => ({
-        id: `gps-jamming-${signal.id}`,
-        type: 'GPS_JAMMING_ALERT' as const,
-        severity: signal.severity === 'high' ? 'critical' : 'high',
-        confidence: signal.confidence,
-        title: t('alerts.gpsJammingTitle', { value: Math.round(signal.confidence * 100) }),
-        summary: signal.reasons[0] ?? t('alerts.heuristicSignal'),
-        affectedZones: [t('alerts.airZone')],
-        drivers: [
-          t('alerts.affectedAircraft', { count: signal.affectedIcao24s.length }),
-          ...(signal.clusterRadius ? [t('alerts.estimatedRadiusKm', { value: Math.round(signal.clusterRadius) })] : []),
-          ...signal.reasons.slice(0, 2),
-        ],
-        recommendedActions: [
-          { label: t('alerts.crossCheckSensors'), ownerHint: t('alerts.ewWatch'), actionType: 'cross-check' as const },
-          { label: t('alerts.monitorSignal'), ownerHint: t('alerts.airCell'), actionType: 'monitor' as const, automatable: true },
-        ],
-        sourceRefs: [t('alerts.sourceRefs.militaryFlights'), t('alerts.sourceRefs.gps')],
-        updatedAt: new Date(signal.timestamp * 1000),
-      }));
+    // Une entrée par navire, ses câbles listés (FX2).
+    const defenseSituations = cableAlertSituations(sov.cableAlerts).slice(0, ALERT_MONITOR_LIMIT);
+    // Phase B (tâche B28 ; O7, O17) : une seule entrée GNSS, sans lieu, tirée du compte des 24 h ; moyenne, élevée sur deux jours UTC
+    // complets de suite, jamais critique ; aucune si la grille est en retard, en dégradation générale ou jamais lue.
+    const jammingSituations = gnssJammingSituations(this.gnssState?.gnss.data ?? null, nowMs).slice(0, ALERT_MONITOR_LIMIT);
+    // Grille devenue inexploitable ou sans maille : l'entrée gardée en cache part tout de suite, jamais après sa durée de vie.
+    pruneStaleGnssAlert(this.alertMonitorCache, jammingSituations);
 
     const aisSituations = [...this.currentAisAnomalies]
       .sort((a, b) => b.timestamp - a.timestamp)
@@ -7627,7 +7496,7 @@ export class App {
       }));
 
     const wildfireSituations = detectWildfireIncidents({
-      fireIncidents: this.currentFireIncidents,
+      fireIncidents: env.fireIncidents,
     } as FranceRawData);
 
     const freshAlerts = [
@@ -7660,7 +7529,9 @@ export class App {
 
   private refreshFranceIntelPanel(): void {
     const lang = this.intelLang();
-    const snapshot = this.buildFranceSnapshot(lang);
+    // Entrées Environnement lues une fois : instantané, moniteur et poste v2 voient le même instant (revue m6).
+    const env = this.environmentInputs();
+    const snapshot = this.buildFranceSnapshot(lang, undefined, env);
     // Revue (correction post-relecture) : en v2, tant que les couches critiques ne sont pas
     // chargées, les caches consommés par l'instantané sont vides — ne pas écrire dans l'historique
     // de stabilité local ni dans l'historique de situation partagé (SET NX, une seule écriture par
@@ -7674,9 +7545,9 @@ export class App {
         defense: snapshot.axes.defense,
       });
     }
-    const alerts = this.buildAlertMonitorSituations();
+    const alerts = this.buildAlertMonitorSituations(env);
     if (this.uiV2) {
-      this.updatePoste(snapshot, alerts, lang);
+      this.updatePoste(snapshot, alerts, lang, env);
     } else {
       this.alertMonitor?.update(alerts, lang);
       this.situationMonitor?.update(snapshot.situations, lang);
@@ -7721,23 +7592,33 @@ export class App {
   /** Assemble l'état courant (caches, aucun fetch) pour la note de situation. */
   private buildSituationReportContext(): SituationReportContext {
     const lang = this.intelLang();
-    const snapshot = this.buildFranceSnapshot(lang);
-    return {
+    const env = this.environmentInputs();
+    const snapshot = this.buildFranceSnapshot(lang, undefined, env);
+    const traffic = this.trafficInputs();
+    const context: SituationReportContext = {
       generatedAt: new Date(),
       permalink: window.location.href,
       situations: snapshot.situations,
       stability: this.currentISNRData,
-      meteoAlerts: this.currentMeteoAlerts,
-      floodSegments: this.currentFloodSegments,
+      meteoAlerts: env.meteoAlerts,
+      floodSegments: env.floodSegments,
       ecowatt: this.currentEcowattResponse,
-      sncfDisruptions: this.currentSncfDisruptions,
-      trafficIncidents: this.currentTrafficIncidents,
+      railTrains: traffic.railTrains,
+      roadEvents: traffic.roadEvents,
       powerOutages: this.currentPowerOutages,
       telecomOutages: this.currentTelecomOutages,
       newsItems: this.newsItems,
-      sources: Watchdog.getSnapshot(),
+      // Sources santé : hors Watchdog, lues dans le panneau des sources avec leur période (spec 2026-10-03 S1).
+      sources: [...Watchdog.getSnapshot(), ...healthReportSources(this.statusPanel?.getSources() ?? [])],
       version: null,
     };
+    // Sources Trafics : hors Watchdog, lues dans le panneau des sources avec la date de leur donnée (spec 2026-10-03 trafics S1).
+    context.sources.push(...trafficReportSources(this.statusPanel?.getSources() ?? []));
+    // Sources Environnement : hors Watchdog, datées par leur donnée (spec 2026-10-04 environnement S1).
+    context.sources.push(...environmentReportSources(this.statusPanel?.getSources() ?? []));
+    // Sources Souveraineté : hors Watchdog, datées par leur donnée (spec 2026-10-04 souveraineté S1).
+    context.sources.push(...sovereigntyReportSources(this.statusPanel?.getSources() ?? []));
+    return context;
   }
 
   /** Ouvre la note de situation imprimable (module chargé à la demande). */
@@ -7749,16 +7630,19 @@ export class App {
   /** Instantané des caches courants pour l'export CSV / GeoJSON (aucun fetch). */
   private buildExportContext(): ExportContext {
     const lang = this.intelLang();
-    const snapshot = this.buildFranceSnapshot(lang);
+    const env = this.environmentInputs();
+    const snapshot = this.buildFranceSnapshot(lang, undefined, env);
     return {
       news: this.newsItems,
       situations: snapshot.situations,
-      meteoAlerts: this.currentMeteoAlerts,
-      floods: this.currentFloodSegments,
-      fires: this.currentActiveFires,
+      meteoAlerts: env.meteoAlerts,
+      floods: env.floodSegments,
+      // Toutes les détections en France de la dernière collecte, récurrentes comprises (colonne « récurrent ») : l'export dit tout.
+      fires: this.currentFires?.fires.data?.detections ?? [],
       powerOutages: this.currentPowerOutages,
       telecomOutages: this.currentTelecomOutages,
-      trafficIncidents: this.currentTrafficIncidents,
+      roadEvents: this.trafficInputs().roadEvents,
+      roadUrban: this.currentRoadTraffic?.urban.data ?? null,
     };
   }
 
@@ -7776,11 +7660,16 @@ export class App {
 
   private async refreshNetworkBarometerWidget(): Promise<void> {
     const result = await fetchNetworkBarometer();
+    this.currentNetworkBarometer = result;
     this.networkBarometerWidget?.update(result);
     this.networkBarometerWidget?.updateNuclear(this.currentNuclearState);
     this.networkBarometerWidget?.updateEolien(this.currentEolienLive);
     // v2 (spec 2026-09-29 § 7) : pas d'appel à la synthèse ISNR (Groq), son bloc n'est plus affiché.
-    if (this.uiV2) return;
+    if (this.uiV2) {
+      // Section Infrastructures de l'onglet État (spec 2026-10-01) : repeinte avec le nouveau résultat.
+      this.repaintPoste();
+      return;
+    }
 
     const medium = this.newsItems
       .filter(n => ['medium', 'high', 'critical'].includes(n.threat?.level ?? ''))
@@ -7921,7 +7810,7 @@ export class App {
   }
 
   private async openFranceIntelPanel(): Promise<void> {
-    if (!this.currentCyberData) void this.loadCyber();
+    if (!this.currentSovCyber) void this.loadCyber();
     if (!this.currentISNRData) this.updateISNR();
     if (!this.currentOilData) void this.loadOil();
     void this.refreshNetworkBarometerWidget().catch((err) => {
@@ -7929,12 +7818,7 @@ export class App {
     });
 
     // Un seul panneau flottant à la fois (audit UI 2026-09 §5.3.3).
-    // healthBarometerPanel n'est pas dans FLOATING_PANEL_DEFS (il peut
-    // coexister avec nationalHealthPanel, cf. 'open-health-barometer') donc
-    // hideAllFloatingPanels() ne le couvre pas — il ne doit pas non plus
-    // rester ouvert derrière Intelligence France.
     this.hideAllFloatingPanels();
-    this.healthBarometerPanel?.hide();
 
     const panel = await this.ensureFranceIntelPanel();
     const lang = panel.getCurrentLang();
@@ -7973,6 +7857,7 @@ export class App {
         },
         onFlyTo: (lon, lat, zoom) => this.mapContainer?.flyTo(lon, lat, zoom),
         onActivateLayers: (keys) => this.activateLayersFromSituation(keys),
+        onOpenLayerPanel: (key) => this.openLayerPanelFromFiche(key),
         onOpenDossier: (situation) => this.openAlertDossier(situation),
         onOpenReport: () => {
           void this.openSituationReport();
@@ -7980,11 +7865,6 @@ export class App {
         onShowFrance: () => {
           const france = VIEW_PRESETS.france;
           this.mapContainer?.flyTo(france.center[0], france.center[1], france.zoom);
-        },
-        onFicheRendered: (body) => {
-          // §14 : le baromètre des infrastructures (et son infobulle) vit dans « Indicateurs » de l'onglet État.
-          const slot = body.querySelector('.fiche-infra-slot');
-          if (slot instanceof HTMLElement) this.networkBarometerWidget?.attachTo(slot);
         },
         // Relecture finale m7 : la carte mobile, créée dans l'onglet masqué, s'ajuste à l'affichage.
         onMapShown: () => this.mapContainer?.resize(),
@@ -8026,7 +7906,7 @@ export class App {
     this.v2IntelStarted = true;
     // Les couches critiques sont là : la v2 peut afficher le niveau national.
     this.refreshFranceIntelPanel();
-    if (!this.currentCyberData) void this.loadCyber();
+    if (!this.currentSovCyber) void this.loadCyber();
     if (!this.currentOilData) void this.loadOil();
     void this.refreshNetworkBarometerWidget().catch((err) => {
       console.error('[App] Network barometer refresh on v2 start failed', err);
@@ -8053,25 +7933,30 @@ export class App {
   private repaintPoste(): void {
     if (!this.uiV2 || !this.poste) return;
     const lang = this.intelLang();
-    this.updatePoste(this.buildFranceSnapshot(lang), this.buildAlertMonitorSituations(), lang);
+    // Entrées Environnement lues une fois par repeinte : un seul instant pour la règle des 2 jours (revue m6).
+    const env = this.environmentInputs();
+    this.updatePoste(this.buildFranceSnapshot(lang, undefined, env), this.buildAlertMonitorSituations(env), lang, env);
   }
 
   /** Données en cache (aucun fetch) remises à la v2 à chaque rafraîchissement. */
-  private updatePoste(snapshot: FranceCountrySnapshot, alerts: DetectedSituation[], lang: 'fr' | 'en'): void {
+  private updatePoste(snapshot: FranceCountrySnapshot, alerts: DetectedSituation[], lang: 'fr' | 'en', env: EnvironmentInputs): void {
+    const now = Date.now();
     this.poste?.update({
       snapshot,
       alerts,
       ecowatt: this.currentEcowattResponse,
-      meteo: this.currentMeteoAlerts,
-      floods: this.currentFloodSegments,
+      meteo: env.meteoAlerts,
+      floods: env.floodSegments,
       markets: this.currentMarketData,
       commodities: this.currentCommodityData,
       sources: this.statusPanel?.getSources() ?? [],
+      infra: { result: this.currentNetworkBarometer, nuclear: this.currentNuclearState, eolien: this.currentEolienLive },
+      health: this.healthNationalNow(now),
       score: { delta24h: getDelta24h(), pillarDeltas: getPillarDeltas24h(), series: getSparklineSeries() },
       // Revue : pas de niveau national avant les couches critiques (jamais un vert par défaut).
       ready: this.v2IntelStarted,
       lang,
-      now: Date.now(),
+      now,
     });
   }
 
@@ -8102,15 +7987,15 @@ export class App {
   }
 
   private updateISNR(): void {
+    const env = this.environmentInputs();
     this.currentISNRData = computeISNR(
       this.newsItems,
-      this.currentMeteoAlerts,
-      this.currentFloodSegments,
+      env.meteoAlerts,
+      env.floodSegments,
       this.currentEcowattResponse,
       '24h',
       this.currentTelecomOutages,
       this.currentPowerOutages,
-      this.currentThreatEvents,
     );
 
     // Update map layer

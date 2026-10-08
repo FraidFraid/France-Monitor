@@ -65,7 +65,7 @@ PREVIEW_URL="https://<preview-deployment>.vercel.app"
 declare -A checks=(
   ["/api/news?limit=3"]="200 application/json"
   ["/api/news/history"]="200 application/json"
-  ["/api/weather/vigilance"]="200 application/json"
+  ["/api/environment/vigilance"]="200 application/json"
   ["/api/energy/ecowatt"]="200 application/json"
   ["/api/traffic/air"]="200 application/json"
   ["/api/ministers/composition"]="200 application/json"

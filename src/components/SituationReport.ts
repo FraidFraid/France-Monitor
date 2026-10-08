@@ -13,16 +13,16 @@
 import type {
   DetectedSituation,
   EcowattResponse,
-  FloodSegment,
+  FloodSectionRef,
   ISNRData,
   MeteoAlert,
   NewsItem,
   PowerOutage,
   TelecomOutage,
-  TransportDisruption,
+  RailTrain,
+  RoadEvent,
   WatchdogSnapshot,
 } from '../types/index.ts';
-import type { TrafficIncident } from '../services/traffic.ts';
 import { eventLevel, isnrLevel, levelVigilanceWord, situationLevel } from '../services/vigilance.ts';
 import { ecowattLevelLabel, ecowattToday } from '../services/ecowatt-official.ts';
 import {
@@ -45,10 +45,12 @@ export interface SituationReportContext {
   situations: DetectedSituation[];
   stability: ISNRData | null;
   meteoAlerts: MeteoAlert[];
-  floodSegments: FloodSegment[];
+  floodSegments: FloodSectionRef[];
   ecowatt: EcowattResponse | null;
-  sncfDisruptions: TransportDisruption[];
-  trafficIncidents: TrafficIncident[];
+  /** Trains signalés par la SNCF, en cours et à venir (spec 2026-10-03 trafics § 2.4). */
+  railTrains: RailTrain[];
+  /** Événements en cours du réseau routier national (DIR, § 2.1). */
+  roadEvents: RoadEvent[];
   powerOutages: PowerOutage[];
   telecomOutages: TelecomOutage[];
   newsItems: NewsItem[];
@@ -93,7 +95,7 @@ function formatGeneratedAt(date: Date): string {
 function formatAge(cacheAgeMs: number | null, lastUpdate: Date | null, now: Date): string {
   let ms = cacheAgeMs;
   if (ms == null && lastUpdate) ms = now.getTime() - lastUpdate.getTime();
-  if (ms == null || !Number.isFinite(ms) || ms < 0) return '—';
+  if (ms == null || !Number.isFinite(ms) || ms < 0) return 'n.d.';
 
   const seconds = Math.round(ms / 1000);
   if (seconds < 60) return `${seconds} s`;
@@ -124,8 +126,8 @@ function buildDomainSignals(ctx: SituationReportContext): ReportDomainSignal[] {
     }
   }
 
-  // Vigilance météo — départements orange/rouge (violet assimilé rouge).
-  const meteoRed = ctx.meteoAlerts.filter((a) => a.level === 'red' || a.level === 'violet');
+  // Vigilance météo : départements orange ou rouges.
+  const meteoRed = ctx.meteoAlerts.filter((a) => a.level === 'red');
   const meteoOrange = ctx.meteoAlerts.filter((a) => a.level === 'orange');
   if (meteoRed.length > 0 || meteoOrange.length > 0) {
     const names = [...meteoRed, ...meteoOrange].map((a) => a.department).slice(0, 6);
@@ -150,12 +152,11 @@ function buildDomainSignals(ctx: SituationReportContext): ReportDomainSignal[] {
     });
   }
 
-  // Transport — perturbations majeures (SNCF high/critical, routier high/critical ≥ 3).
-  const sncfMajor = ctx.sncfDisruptions.filter((d) => d.severity === 'high' || d.severity === 'critical');
-  const trafficMajor = ctx.trafficIncidents.filter((t) => t.severity === 'high' || t.severity === 'critical');
+  // Transport : trains supprimés ou retardés (SNCF), accidents et coupures en cours sur le réseau national (DIR) au moins 3.
+  const sncfMajor = ctx.railTrains.filter((t) => t.effect === 'supprime' || t.effect === 'retard');
+  const trafficMajor = ctx.roadEvents.filter((e) => e.kind === 'accident' || e.kind === 'closure');
   if (sncfMajor.length > 0 || trafficMajor.length >= 3) {
-    const hasCritical =
-      sncfMajor.some((d) => d.severity === 'critical') || trafficMajor.some((t) => t.severity === 'critical');
+    const hasCritical = sncfMajor.some((t) => t.effect === 'supprime');
     const parts: string[] = [];
     if (sncfMajor.length > 0) parts.push(`${sncfMajor.length} perturbation(s) ferroviaire(s) majeure(s)`);
     if (trafficMajor.length > 0) parts.push(`${trafficMajor.length} incident(s) routier(s) majeur(s)`);
@@ -237,7 +238,8 @@ export function collectSituationReportData(ctx: SituationReportContext): Situati
     .map((snap) => ({
       label: snap.status.name,
       state: snap.status.status,
-      ageLabel: formatAge(
+      // Source hebdomadaire ou annuelle (santé) : sa période réelle, jamais un âge relatif (spec 2026-10-03 S1).
+      ageLabel: snap.status.period ?? formatAge(
         snap.status.cacheAgeMs ?? null,
         snap.status.lastUpdate ?? snap.status.lastSuccess ?? null,
         ctx.generatedAt,

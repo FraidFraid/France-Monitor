@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { agsiNetFlowGWhDay, applyAlsiTerminals, parseAlsiTerminals } from './gas.ts';
-import { GAS_TERMINALS } from '../config/gas-infrastructure';
+import { agsiNetFlowGWhDay, applyAlsiTerminals, applyPirPoints, parseAlsiTerminals } from './gas.ts';
+import { GAS_INTERCONNECTIONS, GAS_TERMINALS } from '../config/gas-infrastructure';
 
 describe('agsiNetFlowGWhDay', () => {
   it('prend la dernière journée publiée, pas le cumul des 30 jours (réponse réelle du 28/09/2026)', () => {
@@ -76,5 +76,16 @@ describe('GIE ALSI par terminal', () => {
     const eics = GAS_TERMINALS.map((t) => t.gieEic);
     expect(eics.every((e) => typeof e === 'string' && e.length === 16)).toBe(true);
     expect(new Set(eics).size).toBe(eics.length);
+  });
+});
+
+describe('flux ENTSOG par interconnexion', () => {
+  it('réponse partielle : le point absent est marqué manquant (jamais un flux nul), les autres gardent leur valeur', () => {
+    const [first, ...others] = GAS_INTERCONNECTIONS;
+    const res = applyPirPoints([{ pointKey: first?.entsogKey ?? '', flowGWhDay: 123 }]);
+    expect(res[0]).toMatchObject({ flowGWhDay: 123 });
+    expect(res[0]?.flowMissing).toBeUndefined();
+    expect(res.slice(1).every((i) => i.flowMissing === true && i.flowGWhDay === 0)).toBe(true);
+    expect(res).toHaveLength(others.length + 1);
   });
 });

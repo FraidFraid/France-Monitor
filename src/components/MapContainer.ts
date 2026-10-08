@@ -3,21 +3,20 @@
  * Expose toutes les méthodes de calques unifié.
  */
 
-import type { WeatherRadarFrame, WeatherRadarStatus } from '../services/weather-radar.ts';
 import type { DeckGLMap } from './DeckGLMap.ts';
 import type { Map as SVGMap } from './Map.ts';
-import type { FeatureCollection } from 'geojson';
-import type { NewsItem, EcowattResponse, FuelTensionDashboard, MeteoAlert, FloodSegment, InfrastructurePoint, MapLayers, MapViewState, RestrictedZone, MilitaryBase, MilitaryFlight, AirTrafficFlight, ActiveFire, TelecomOutage, PowerOutage, ISNRScore, HealthRegionMetric, HealthDepartmentMetric, HealthFeatures, GasNetworkState, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, RailNetworkData, TransportDisruption, HydraulicBackboneAsset, ThreatEvent } from '../types/index.ts';
+import type { NewsItem, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, EcowattResponse, FuelTensionDashboard, InfrastructurePoint, MapLayers, MapViewState, MilitaryBase, AirTrafficFlight, TelecomOutage, PowerOutage, ISNRScore, AlertLevelsResponse, AplDataset, AplProfession, EmergencySite, HospitalsDataset, SyndromicResponse, GasNetworkState, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, HydraulicBackboneAsset } from '../types/index.ts';
 import type { MilitaryShip } from '../services/military-ships.ts';
 import type { RTEIIPIncident } from '../services/rte-iip.ts';
-import type { TrafficSegment } from '../config/mock-data.ts';
-import type { TrafficIncident } from '../services/traffic.ts';
 import type { EventMapPoint } from '../services/v2-map.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
 import type { CopernicusScene, SatelliteCollection } from '../types/index.ts';
 import type { EolienLive, EolienParkSummary } from '../services/eolien/types.ts';
 import { fetchDromEnergyDashboard, type DromEnergyAsset, type DromEnergyDashboard } from '../services/drom-energy/index.ts';
 import type { Radar2dManifest } from '../services/radar-2d.ts';
+import type { CablesWatchResponse, DefenseOsmWorksFile, DroneZonesFile, GnssResponse, MilitaryResponse, SubseaCablesFile } from '../types/index.ts';
+import type { AirQualityResponse, DroughtResponse, EarthquakesResponse, FiresResponse, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
+import type { UrgencesSyndrome } from './layer-panel/health-format.ts';
 
 /** Detect if the device is mobile (no WebGL or small screen) */
 function isMobileDevice(): boolean {
@@ -47,19 +46,17 @@ export class MapContainer {
   private onClusterHover: ((items: NewsItem[], x: number, y: number, totalCount: number) => void) | null = null;
   private onClusterClick: ((items: NewsItem[], center: [number, number]) => void) | null = null;
   private onViewChange: ((vs: MapViewState) => void) | null = null;
-  private onWeatherRadarFrame: ((frame: WeatherRadarFrame | null, status: WeatherRadarStatus) => void) | null = null;
-  private onMilitaryFlightClick: ((flight: MilitaryFlight, x: number, y: number) => void) | null = null;
   private onMilitaryBaseClick: ((base: MilitaryBase, x: number, y: number) => void) | null = null;
-  private onMilitaryShipClick: ((ship: { id: string; name: string; type: string; role: string; mmsi?: string; lat: number; lon: number; speed?: number; heading?: number; port?: string; isLive?: boolean }, x: number, y: number) => void) | null = null;
-  private _onMaritimeShipClickCb: ((ship: MilitaryShip, x: number, y: number) => void) | null = null;
   private onRawMapClick: ((lat: number, lon: number) => void) | null = null;
   private onSatelliteView: ((request: SatelliteViewRequest) => void) | null = null;
-  private onThreatEventClick: ((event: ThreatEvent, x: number, y: number) => void) | null = null;
   private dromEnergyData: DromEnergyDashboard | null = null;
   private dromEnergyLoadPromise: Promise<void> | null = null;
   private radar2dManifest: Radar2dManifest | null = null;
   private radar2dEnabled = false;
   private echoTopsEnabled = false;
+  private onRadarPointPick: ((lat: number, lon: number) => void) | null = null;
+  private radarPick: { lat: number; lon: number } | null = null;
+  private onSovereigntyFeatureClick: ((layerId: string, props: Record<string, unknown>) => void) | null = null;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -84,16 +81,14 @@ export class MapContainer {
     if (this.onItemClick) this.deckMap.setOnItemClick(this.onItemClick);
     if (this.onItemHover) this.deckMap.setOnItemHover(this.onItemHover);
     if (this.onViewChange) this.deckMap.setOnViewChange(this.onViewChange);
-    if (this.onWeatherRadarFrame) this.deckMap.setOnWeatherRadarFrame(this.onWeatherRadarFrame);
     if (this.onClusterHover) this.deckMap.setOnClusterHover(this.onClusterHover);
     if (this.onClusterClick) this.deckMap.setOnClusterClick(this.onClusterClick);
-    if (this.onMilitaryFlightClick) this.deckMap.setOnMilitaryFlightClick(this.onMilitaryFlightClick);
     if (this.onMilitaryBaseClick) this.deckMap.setOnMilitaryBaseClick(this.onMilitaryBaseClick);
-    if (this.onMilitaryShipClick) this.deckMap.setOnMilitaryShipClick(this.onMilitaryShipClick);
-    if (this._onMaritimeShipClickCb) this.deckMap.setOnMaritimeShipClick(this._onMaritimeShipClickCb);
+    if (this.onRadarPointPick) this.deckMap.setOnRadarPointPick(this.onRadarPointPick);
+    if (this.radarPick) this.deckMap.setRadarPick(this.radarPick);
+    if (this.onSovereigntyFeatureClick) this.deckMap.setOnSovereigntyFeatureClick(this.onSovereigntyFeatureClick);
     if (this.onRawMapClick) this.deckMap.setOnRawMapClick(this.onRawMapClick);
     if (this.onSatelliteView) this.deckMap.setOnSatelliteView(this.onSatelliteView);
-    if (this.onThreatEventClick) this.deckMap.setOnThreatEventClick(this.onThreatEventClick);
     await this.deckMap.init();
     await this.deckMap.setRadar2dOverlay(this.radar2dManifest, this.radar2dEnabled);
     this.deckMap.setEchoTopsOverlay(this.radar2dManifest, this.echoTopsEnabled);
@@ -159,23 +154,6 @@ export class MapContainer {
     await this.deckMap?.loadOilPipelines();
   }
 
-  // ─── Weather ───
-  async updateWeather(alerts: MeteoAlert[]): Promise<void> {
-    await this.deckMap?.updateWeather(alerts);
-  }
-
-  async refreshWeatherRadar(force = true): Promise<void> {
-    await this.deckMap?.refreshWeatherRadar(force);
-  }
-
-  // ─── Floods ───
-  updateFloods(segments: FloodSegment[]): void {
-    this.deckMap?.updateFloods(segments);
-  }
-
-  updateTopageVisual(geojson: FeatureCollection): void {
-    this.deckMap?.updateTopageVisual(geojson);
-  }
 
   /** [minLng, minLat, maxLng, maxLat] de la vue courante, ou null. */
   getBounds(): [number, number, number, number] | null {
@@ -186,31 +164,6 @@ export class MapContainer {
     return this.deckMap?.getViewState() ?? null;
   }
 
-  highlightFloodSegment(segmentId: string | null): void {
-    this.deckMap?.highlightFloodSegment(segmentId);
-  }
-
-  // ─── Fires ───
-  updateFires(fires: ActiveFire[]): void {
-    this.deckMap?.updateFires(fires);
-  }
-
-  highlightFire(lat: number, lon: number): void {
-    this.deckMap?.highlightFire(lat, lon);
-  }
-
-  clearFireHighlight(): void {
-    this.deckMap?.clearFireHighlight();
-  }
-
-  /** Highlight tous les points d'un cluster incident DBSCAN sur la carte. */
-  highlightFireCluster(points: { lat: number; lon: number }[]): void {
-    this.deckMap?.highlightFireCluster(points);
-  }
-
-  setFirePointsVisible(enabled: boolean): void {
-    this.deckMap?.setFirePointsVisible(enabled);
-  }
 
   setModisOverlayVisible(enabled: boolean): void {
     this.deckMap?.setModisOverlayVisible(enabled);
@@ -263,15 +216,7 @@ export class MapContainer {
     this.deckMap?.highlightDromEnergyAsset(asset);
   }
 
-  // ─── Traffic ───
-  updateTraffic(_segments: TrafficSegment[]): void {
-    // DeckGL map uses TomTom tiles, basemap mask handles France clipping
-    this.deckMap?.updateTraffic();
-  }
-
-  updateTrafficIncidents(incidents: TrafficIncident[]): void {
-    this.deckMap?.updateTrafficIncidents(incidents);
-  }
+  // ─── Événements consolidés (v2) ───
 
   setEventPoints(points: EventMapPoint[]): void {
     this.deckMap?.setEventPoints(points);
@@ -282,29 +227,26 @@ export class MapContainer {
   }
 
   // ─── Métropoles ───
-  updateMetropoles(data: MetropoleConsumption[], nationalLoadMW?: number): void {
-    this.deckMap?.updateMetropoles(data, nationalLoadMW);
+  updateMetropoles(data: MetropoleConsumption[]): void {
+    this.deckMap?.updateMetropoles(data);
   }
 
   // ─── Military ───
-  updateMilitaryZones(zones: RestrictedZone[]): void {
-    this.deckMap?.updateMilitaryZones(zones);
+  // Souveraineté, phase B (tâche B27) : carte WebGL seulement (aucun rendu Souveraineté sur la carte D3 mobile).
+  updateGnssLayer(g: GnssResponse | null, now: number): void {
+    this.deckMap?.updateGnssLayer(g, now);
   }
 
-  updateMilitaryBases(bases: MilitaryBase[]): void {
-    this.deckMap?.updateMilitaryBases(bases);
+  updateDroneZones(file: DroneZonesFile | null): void {
+    this.deckMap?.updateDroneZones(file);
   }
 
-  updateMilitaryFlights(flights: MilitaryFlight[]): void {
-    this.deckMap?.updateMilitaryFlights(flights);
+  setDroneZonesVisible(on: boolean): void {
+    this.deckMap?.setDroneZonesVisible(on);
   }
 
   updateAirTraffic(flights: AirTrafficFlight[]): void {
     this.deckMap?.updateAirTraffic(flights);
-  }
-
-  updateMilitaryShips(ships: Array<{ id: string; name: string; type: string; role: string; mmsi?: string; lat: number; lon: number; speed?: number; heading?: number; port?: string; isLive?: boolean }>): void {
-    this.deckMap?.updateMilitaryShips(ships);
   }
 
   /**
@@ -373,18 +315,6 @@ export class MapContainer {
     this.deckMap?.updateIIPIncidents(incidents);
   }
 
-  updateTerminator(geojson: GeoJSON.FeatureCollection): void {
-    this.deckMap?.updateTerminator(geojson);
-  }
-
-  updateDayNightOptions(opts: {
-    showNight?: boolean;
-    showTwilight?: boolean;
-    showSunIcon?: boolean;
-    timestamp?: number;
-  }): void {
-    this.deckMap?.updateDayNightOptions(opts);
-  }
 
   highlightPowerDept(deptCode: string | null): void {
     this.deckMap?.highlightPowerDept(deptCode);
@@ -415,14 +345,39 @@ export class MapContainer {
     this.deckMap?.updateInfraNetwork(state);
   }
 
-  // ─── Health (Santé — ISS) ───
-  updateHealth(regions: HealthRegionMetric[], healthFeatures?: HealthFeatures, departments?: HealthDepartmentMetric[]): void {
-    this.deckMap?.updateHealth(regions, healthFeatures, departments);
+  // ─── Santé (spec 2026-10-03 § 3) ───
+  updateHealthAlerts(alerts: AlertLevelsResponse | null, now: number): void {
+    this.deckMap?.updateHealthAlerts(alerts, now);
   }
 
-  // ─── Hospitals (FINESS) ───
-  updateHospitals(hospitals: GeoJSON.FeatureCollection<GeoJSON.Point>): void {
-    this.deckMap?.updateHospitals(hospitals);
+  updateHealthDepartments(syndromic: SyndromicResponse | null, apl: AplDataset | null, now: number): void {
+    this.deckMap?.updateHealthDepartments(syndromic, apl, now);
+  }
+
+  setHealthUrgencesSyndrome(syndrome: UrgencesSyndrome): void {
+    this.deckMap?.setHealthUrgencesSyndrome(syndrome);
+  }
+
+  setHealthAplProfession(profession: AplProfession): void {
+    this.deckMap?.setHealthAplProfession(profession);
+  }
+
+  updateHospitals(data: HospitalsDataset | null): void {
+    this.deckMap?.updateHospitals(data);
+  }
+
+  focusHospital(site: EmergencySite): void {
+    this.deckMap?.focusHospital(site);
+  }
+
+  /** Vrai si la carte peut recentrer sur un site d'urgences (carte WebGL ; la carte SVG du mobile ne le fait pas). */
+  canFocusHospital(): boolean {
+    return !this.isMobile;
+  }
+
+  /** Vrai si la carte peut recentrer ou surligner un objet des trafics (carte WebGL ; la carte SVG du mobile ne dessine pas les trafics). */
+  canFocusMap(): boolean {
+    return !this.isMobile;
   }
 
   // ─── Layer visibility ───
@@ -476,10 +431,6 @@ export class MapContainer {
     this.svgMap?.setOnItemHover(handler);
   }
 
-  setOnWeatherRadarFrame(handler: (frame: WeatherRadarFrame | null, status: WeatherRadarStatus) => void): void {
-    this.onWeatherRadarFrame = handler;
-    this.deckMap?.setOnWeatherRadarFrame(handler);
-  }
 
   setOnViewChange(handler: (vs: MapViewState) => void): void {
     this.onViewChange = handler;
@@ -496,38 +447,14 @@ export class MapContainer {
     this.deckMap?.setOnClusterClick(handler);
   }
 
-  setOnMilitaryFlightClick(handler: (flight: MilitaryFlight, x: number, y: number) => void): void {
-    this.onMilitaryFlightClick = handler;
-    this.deckMap?.setOnMilitaryFlightClick(handler);
-  }
-
   setOnMilitaryBaseClick(handler: (base: MilitaryBase, x: number, y: number) => void): void {
     this.onMilitaryBaseClick = handler;
     this.deckMap?.setOnMilitaryBaseClick(handler);
   }
 
-  setOnMilitaryShipClick(handler: (ship: { id: string; name: string; type: string; role: string; mmsi?: string; lat: number; lon: number; speed?: number; heading?: number; port?: string; isLive?: boolean }, x: number, y: number) => void): void {
-    this.onMilitaryShipClick = handler;
-    this.deckMap?.setOnMilitaryShipClick(handler);
-  }
-
-  setOnMaritimeShipClick(cb: (ship: MilitaryShip, x: number, y: number) => void): void {
-    this._onMaritimeShipClickCb = cb;
-    this.deckMap?.setOnMaritimeShipClick(cb);
-  }
-
   setOnSatelliteView(handler: (request: SatelliteViewRequest) => void): void {
     this.onSatelliteView = handler;
     this.deckMap?.setOnSatelliteView(handler);
-  }
-
-  setOnThreatEventClick(handler: (event: ThreatEvent, x: number, y: number) => void): void {
-    this.onThreatEventClick = handler;
-    this.deckMap?.setOnThreatEventClick(handler);
-  }
-
-  updateThreatEvents(events: ThreatEvent[]): void {
-    this.deckMap?.updateThreatEvents(events);
   }
 
   project(longitude: number, latitude: number): { x: number; y: number } | null {
@@ -563,11 +490,6 @@ export class MapContainer {
     this.svgMap?.selectItem(item);
   }
 
-  getHealthFeatures(): HealthFeatures | null {
-    if (this.deckMap) return this.deckMap.getHealthFeatures();
-    return null;
-  }
-
   flyTo(longitude: number, latitude: number, zoom?: number): void {
     this.deckMap?.flyTo(longitude, latitude, zoom);
     this.svgMap?.flyTo(longitude, latitude, zoom);
@@ -577,13 +499,6 @@ export class MapContainer {
     this.deckMap?.fitBounds(bounds, padding);
   }
 
-  highlightWeatherDepartment(departmentCode: string | null): void {
-    this.deckMap?.highlightWeatherDepartment(departmentCode);
-  }
-
-  previewWeatherDepartment(departmentCode: string | null): void {
-    this.deckMap?.previewWeatherDepartment(departmentCode);
-  }
 
   selectWeatherDepartment(departmentCode: string | null): void {
     this.deckMap?.selectWeatherDepartment(departmentCode);
@@ -598,12 +513,116 @@ export class MapContainer {
     this.deckMap?.highlightISNRDepartment(departmentCode);
   }
 
-  highlightTrainRoute(disruption: TransportDisruption | null): void {
-    this.deckMap?.highlightTrainRoute(disruption);
+  // ─── Trafics (spec 2026-10-03 trafics § 3) ───
+  updateRoadTraffic(national: RoadNationalResponse | null, urban: RoadUrbanResponse | null, now: number): void {
+    this.deckMap?.updateRoadTraffic(national, urban, now);
   }
 
-  updateRailNetwork(data: RailNetworkData): void {
-    this.deckMap?.updateRailNetwork(data);
+  updateAirOverview(overview: AirOverviewResponse | null, now: number): void {
+    this.deckMap?.updateAirOverview(overview, now);
+  }
+
+  updateRailTraffic(overview: RailOverviewResponse | null, now: number): void {
+    this.deckMap?.updateRailTraffic(overview, now);
+  }
+
+  updateMaritimeSnapshot(snapshot: MaritimeSnapshot | null, now: number): void {
+    this.deckMap?.updateMaritimeSnapshot(snapshot, now);
+  }
+
+  highlightTrainRoute(train: RailTrain | null): void {
+    this.deckMap?.highlightTrainRoute(train);
+  }
+
+  /** Survol d'un train dans le panneau ferroviaire : trajet provisoire ; null rend celui du train choisi. */
+  previewTrainRoute(train: RailTrain | null): void {
+    this.deckMap?.previewTrainRoute(train);
+  }
+
+  // ─── Environnement (spec 2026-10-04 environnement § 2 ; contrats § 5) ───
+  async updateVigilanceLayer(v: VigilanceResponse | null, echeance: VigilanceEcheance, now: number): Promise<void> {
+    await this.deckMap?.updateVigilanceLayer(v, echeance, now);
+  }
+
+  updateFloodsLayer(f: FloodsResponse | null, now: number): void {
+    this.deckMap?.updateFloodsLayer(f, now);
+  }
+
+  highlightFloodSection(id: string | null): void {
+    this.deckMap?.highlightFloodSection(id);
+  }
+
+  // ─── Environnement, phase B ───
+  updateDroughtLayer(d: DroughtResponse | null, now: number): Promise<void> {
+    return this.deckMap?.updateDroughtLayer(d, now) ?? Promise.resolve();
+  }
+
+  updateAirQualityLayer(a: AirQualityResponse | null, now: number): Promise<void> {
+    return this.deckMap?.updateAirQualityLayer(a, now) ?? Promise.resolve();
+  }
+
+  updateEarthquakesLayer(q: EarthquakesResponse | null, now: number): void {
+    this.deckMap?.updateEarthquakesLayer(q, now);
+  }
+
+  updateSeaLevelsLayer(s: SeaLevelsResponse | null, v: VigilanceResponse | null, now: number): void {
+    this.deckMap?.updateSeaLevelsLayer(s, v, now);
+  }
+
+  focusFloodSection(id: string): void {
+    this.deckMap?.focusFloodSection(id);
+  }
+
+  updateFiresLayer(f: FiresResponse | null, now: number, opts: { forestDangerFill: boolean }): void {
+    this.deckMap?.updateFiresLayer(f, now, opts);
+  }
+
+  highlightFoyer(id: string | null): void {
+    this.deckMap?.highlightFoyer(id);
+  }
+
+  setRadarPick(point: { lat: number; lon: number } | null): void {
+    this.radarPick = point;
+    this.deckMap?.setRadarPick(point);
+  }
+
+  setOnRadarPointPick(handler: (lat: number, lon: number) => void): void {
+    this.onRadarPointPick = handler;
+    this.deckMap?.setOnRadarPointPick(handler);
+  }
+
+  // ─── Souveraineté (spec 2026-10-04 souveraineté § 2 ; contrats § 5) : carte WebGL seulement (mobile : aucun rendu, comme avant) ───
+  updateMilitaryLayer(m: MilitaryResponse | null, now: number): void {
+    this.deckMap?.updateMilitaryLayer(m, now);
+  }
+
+  updateNavyLayer(ships: readonly MilitaryShip[], frozen: boolean, now: number): void {
+    this.deckMap?.updateNavyLayer(ships, frozen, now);
+  }
+
+  updateDefenseSites(bases: readonly MilitaryBase[]): void {
+    this.deckMap?.updateDefenseSites(bases);
+  }
+
+  updateOsmWorks(file: DefenseOsmWorksFile | null): void {
+    this.deckMap?.updateOsmWorks(file);
+  }
+
+  setOsmWorksVisible(on: boolean): void {
+    this.deckMap?.setOsmWorksVisible(on);
+  }
+
+  updateCablesLayer(file: SubseaCablesFile | null, watch: CablesWatchResponse | null, now: number): void {
+    this.deckMap?.updateCablesLayer(file, watch, now);
+  }
+
+  highlightCable(id: string | null): void {
+    this.deckMap?.highlightCable(id);
+  }
+
+  setOnSovereigntyFeatureClick(handler: (layerId: string, props: Record<string, unknown>) => void): void {
+    this.onSovereigntyFeatureClick = handler;
+    this.deckMap?.setOnSovereigntyFeatureClick(handler);
   }
 
   destroy(): void {

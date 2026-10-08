@@ -18,6 +18,9 @@ import { createServer } from 'node:http';
 import { pathToFileURL } from 'node:url';
 import { dispatch } from '../../api/_utils/dispatch.js';
 import { addResponseHelpers, addQuery, readBody } from './vercel-compat.mjs';
+import { COLLECTORS, startTrafficCollectors } from './traffic-collectors.mjs';
+import { ENVIRONMENT_COLLECTORS } from './environment-collectors.mjs';
+import { SOVEREIGNTY_COLLECTORS } from './sovereignty-collectors.mjs';
 
 export const DEFAULT_HOST = '127.0.0.1';
 export const DEFAULT_PORT = 3000;
@@ -162,11 +165,16 @@ if (isMainModule) {
     console.log(`[prod-server] écoute sur http://${host}:${port}`);
   });
 
+  // Collectes serveur : TomTom et OpenSky (quota, spec trafic T4), FIRMS et archive de la vigilance (spec environnement § 2.4, E5).
+  // Souveraineté : vols militaires, veille des câbles, vigilance cyber et page Vigipirate (spec 2026-10-04 souveraineté § 2, O14).
+  const stopCollectors = startTrafficCollectors({ collectors: [...COLLECTORS, ...ENVIRONMENT_COLLECTORS, ...SOVEREIGNTY_COLLECTORS] });
+
   let shuttingDown = false;
   /** @param {string} signal */
   function shutdown(signal) {
     if (shuttingDown) return;
     shuttingDown = true;
+    stopCollectors();
     console.log(`[prod-server] ${signal} reçu, arrêt en cours…`);
     server.close(() => {
       console.log('[prod-server] arrêt propre.');

@@ -1,0 +1,51 @@
+{
+ "count": 16583584,
+ "api_version": "2.0.1",
+ "data": [
+  {
+   "code_station": "1110000101",
+   "grandeur_hydro": "H",
+   "date_obs": "2026-10-04T08:00:00Z",
+   "resultat_obs": 36,
+   "libelle_methode_obs": "Mesurée",
+   "longitude": -61.627789221,
+   "latitude": 16.157806841
+  },
+  {
+   "code_station": "A402061001",
+   "grandeur_hydro": "H",
+   "date_obs": "2026-10-04T08:00:00Z",
+   "resultat_obs": -224,
+   "libelle_methode_obs": "Mesurée",
+   "longitude": 6.796285291,
+   "latitude": 47.866921289
+  },
+  {
+   "code_station": "A405062001",
+   "grandeur_hydro": "H",
+   "date_obs": "2026-10-04T08:00:00Z",
+   "resultat_obs": 397,
+   "libelle_methode_obs": "Mesurée",
+   "longitude": 6.685918446,
+   "latitude": 47.909444585
+  },
+  {
+   "code_station": "A414020201",
+   "grandeur_hydro": "H",
+   "date_obs": "2026-10-04T08:00:00Z",
+   "resultat_obs": 155,
+   "libelle_methode_obs": "Mesurée",
+   "longitude": 6.715932814,
+   "latitude": 47.993393232
+  },
+  {
+   "code_station": "A417301001",
+   "grandeur_hydro": "H",
+   "date_obs": "2026-10-04T08:00:00Z",
+   "resultat_obs": 193,
+   "libelle_methode_obs": "Mesurée",
+   "longitude": 6.690262579,
+   "latitude": 48.053182554
+  }
+ ]
+}

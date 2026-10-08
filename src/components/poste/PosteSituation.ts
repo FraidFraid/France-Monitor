@@ -9,7 +9,7 @@ import type {
   DataSourceStatus,
   DetectedSituation,
   EcowattResponse,
-  FloodSegment,
+  FloodSectionRef,
   IntelEventsState,
   MarketData,
   MeteoAlert,
@@ -33,6 +33,9 @@ import {
 import { fetchEventDetail } from '../../services/news-events.ts';
 import { escapeHtml, unavailableEventsState, type EventDetailState } from '../france-intel-events.ts';
 import { trendText } from '../france-intel-score.ts';
+import type { InfraInput } from '../../services/infra-continuity.ts';
+import type { NationalHealthSummary } from '../layer-panel/veille.ts';
+import { loadSectionState, saveSectionState, sectionsOf, sectionMemoryKey, type SectionStorage } from '../../services/fiche-sections-store.ts';
 import { buildFranceFiche, type FranceFicheSnapshot } from '../fiche/france.ts';
 import { buildEventFiche, buildMarketFiche, buildOfficialFiche, buildSituationFiche, buildThemeFiche } from '../fiche/items.ts';
 import type { FicheModel, Lang } from '../fiche/parts.ts';
@@ -56,8 +59,12 @@ export interface PosteData {
   alerts: readonly DetectedSituation[];
   ecowatt: EcowattResponse | null;
   meteo: readonly MeteoAlert[];
-  floods: readonly FloodSegment[];
+  floods: readonly FloodSectionRef[];
   markets: readonly MarketData[];
+  /** Baromètre des infrastructures (section Infrastructures de l'État). */
+  infra?: InfraInput | null;
+  /** Niveau national de santé (fiche thème Santé, spec 2026-10-03 § 3.5) ; absent ou null tant que la veille n'est pas chargée. */
+  health?: NationalHealthSummary | null;
   commodities: readonly CommodityData[];
   sources: readonly DataSourceStatus[];
   score: { delta24h: number | null; pillarDeltas: StabilityPillarValues | null; series: number[] };
@@ -79,12 +86,12 @@ export interface PosteCallbacks {
   onOpenDossier: (situation: DetectedSituation) => boolean;
   onOpenReport: () => void;
   onShowFrance: () => void;
-  /** Après chaque rendu de fiche : App y rattache le baromètre des infrastructures (§14). */
-  onFicheRendered: (body: HTMLElement) => void;
   /** Onglet « Carte » affiché (mobile) : la carte, créée masquée, s'ajuste à son conteneur (m7). */
   onMapShown: () => void;
   /** Toute sélection (ligne, carte, lien) : App ferme d'abord le panneau de module ouvert dans la colonne (v2). */
   onSelect: (key: string) => void;
+  /** Lien d'une fiche vers le panneau d'une couche (fiche thème Santé) : App active la couche et ouvre son panneau. */
+  onOpenLayerPanel?: (key: string) => void;
 }
 
 export interface PosteRoots {
@@ -100,6 +107,27 @@ export interface PosteRoots {
 export interface PosteOptions {
   /** Largeur de la fenêtre, injectable pour les tests. */
   viewportWidth?: () => number;
+  /** Stockage de la mémoire des sections ; défaut : localStorage s'il est accessible. */
+  storage?: SectionStorage | null;
+  /** Presse-papiers (copie de la référence) ; défaut : navigator.clipboard s'il existe. */
+  clipboard?: { writeText(text: string): Promise<void> } | null;
+}
+
+function defaultClipboard(): { writeText(text: string): Promise<void> } | null {
+  try {
+    return typeof navigator !== 'undefined' && navigator.clipboard ? navigator.clipboard : null;
+  } catch {
+    return null;
+  }
+}
+
+/** localStorage s'il est accessible (navigation privée, iframe sans stockage : null). */
+function defaultStorage(): SectionStorage | null {
+  try {
+    return typeof localStorage === 'undefined' ? null : localStorage;
+  } catch {
+    return null;
+  }
 }
 
 function durationLabel(ms: number, lang: Lang): string {
@@ -120,6 +148,9 @@ export class PosteSituation {
   private readonly roots: PosteRoots;
   private readonly callbacks: PosteCallbacks;
   private readonly viewportWidth: () => number;
+  private readonly storage: SectionStorage | null;
+  private readonly clipboard: { writeText(text: string): Promise<void> } | null;
+  private readonly sectionOpen: Map<string, boolean>;
   private readonly statusBar: StatusBar;
   private readonly themeBar: ThemeBar;
   private readonly workList: WorkList;
@@ -131,7 +162,7 @@ export class PosteSituation {
   private selection: string | null = null;
   private showAll = false;
   private tab: PosteTab = 'list';
-  private readonly whyOpen = new Set<string>();
+  private lastModel: FicheModel | null = null;
   /** Groupe « Hors de France » déplié (état conservé d'un rafraîchissement à l'autre). */
   private foreignOpen = false;
   private lastTabsHtml = '';
@@ -155,6 +186,9 @@ export class PosteSituation {
     this.roots = roots;
     this.callbacks = callbacks;
     this.viewportWidth = options.viewportWidth ?? ((): number => window.innerWidth);
+    this.storage = options.storage !== undefined ? options.storage : defaultStorage();
+    this.clipboard = options.clipboard !== undefined ? options.clipboard : defaultClipboard();
+    this.sectionOpen = loadSectionState(this.storage);
     this.statusBar = new StatusBar(roots.status);
     this.themeBar = new ThemeBar(roots.themes);
     this.workList = new WorkList(roots.list);
@@ -173,9 +207,11 @@ export class PosteSituation {
     });
     this.fichePanel.setOnSelect((key) => this.select(key));
     this.fichePanel.setOnAction((action, ficheKey) => this.runAction(action, ficheKey));
-    this.fichePanel.setOnWhyToggle((ficheKey, open) => {
-      if (open) this.whyOpen.add(ficheKey);
-      else this.whyOpen.delete(ficheKey);
+    this.fichePanel.setOnSectionToggle((rawKey, open) => {
+      const sectionKey = sectionMemoryKey(rawKey);
+      if (this.sectionOpen.get(sectionKey) === open) return;
+      this.sectionOpen.set(sectionKey, open);
+      saveSectionState(this.storage, this.sectionOpen);
     });
     this.fichePanel.setOnClose(() => this.close());
 
@@ -257,6 +293,11 @@ export class PosteSituation {
     }
     this.setTheme(theme);
     if (theme !== 'general' && this.layout() !== 'desktop') this.select(`theme:${theme}`);
+  }
+
+  /** Clé de la fiche ouverte (« theme:health », « event:42 »…) ; null : fiche par défaut. */
+  selectedKey(): string | null {
+    return this.selection;
   }
 
   select(key: string | null): void {
@@ -371,11 +412,14 @@ export class PosteSituation {
     const vanished = this.selection !== null && model === null;
     if (vanished) this.selection = null;
     model ??= this.defaultFiche(data, queue, drivers);
-    if (!data.ready && (model.key === 'france' || model.key.startsWith('theme:'))) {
-      model = { ...model, level: null, driver: lang === 'fr' ? 'niveau en cours de calcul' : 'level being computed' };
+    // La fiche France affiche son propre en-tête d'attente ; seules les fiches de thème gardent ce pilote,
+    // placé devant le contexte (l'en-tête kit n'affiche plus `driver`).
+    if (!data.ready && model.key.startsWith('theme:')) {
+      const notReadyText = lang === 'fr' ? 'niveau en cours de calcul' : 'level being computed';
+      model = { ...model, level: null, context: [notReadyText, ...(model.context ?? [])] };
     }
+    this.lastModel = model;
     this.fichePanel.render(model, lang, this.selection !== null);
-    this.callbacks.onFicheRendered(this.fichePanel.getBody());
     if (vanished && ficheHadFocus) this.restoreFocus(null);
 
     const history = this.events && !(this.events.unavailable && this.events.events.length === 0) ? this.events : null;
@@ -413,7 +457,8 @@ export class PosteSituation {
       changeTimes: this.firstSeen,
       score: data.score,
       freshness: this.freshness(data),
-      whyOpen: this.whyOpen.has('france'),
+      infra: data.infra ?? null,
+      sectionOpen: sectionsOf(this.sectionOpen, 'france'),
       ready: data.ready,
       lang: data.lang,
       now: data.now,
@@ -433,15 +478,16 @@ export class PosteSituation {
       events: this.events,
       changeTimes: this.firstSeen,
       freshness: this.freshness(data),
-      whyOpen: this.whyOpen.has(`theme:${theme}`),
+      sectionOpen: sectionsOf(this.sectionOpen, 'theme'),
+      now: data.now,
       ready: data.ready,
       lang: data.lang,
+      health: data.health ?? null,
     });
   }
 
   private ficheFor(key: string, data: PosteData, queue: WorkQueue, drivers: readonly ThemeId[]): FicheModel | null {
     const { lang, now } = data;
-    const whyOpen = this.whyOpen.has(key);
     if (key === 'france') return this.franceFiche(data, queue, drivers);
     if (key.startsWith('theme:')) {
       // Fiche thème ouverte en volet (tablette, mobile : relecture finale I3).
@@ -455,7 +501,8 @@ export class PosteSituation {
       const event = item?.ref.kind === 'event' ? item.ref.event : this.events?.events.find((e) => e.id === id);
       if (!event) return null;
       this.ensureEventDetail(event.id);
-      return buildEventFiche({ event, detail: this.eventDetails.get(event.id), whyOpen, lang, now });
+      const place = event.lat !== null && event.lon !== null ? this.departements?.at(event.lon, event.lat) ?? null : null;
+      return buildEventFiche({ event, detail: this.eventDetails.get(event.id), place, sectionOpen: sectionsOf(this.sectionOpen, 'event'), lang, now });
     }
     if (key.startsWith('situation:')) {
       const id = key.slice('situation:'.length);
@@ -463,18 +510,18 @@ export class PosteSituation {
       if (!situation) return null;
       return buildSituationFiche({
         situation, kind: 'situation', badge: item?.badge ?? null, changeAt: this.firstSeen.get(key) ?? null,
-        hasDossier: situation.type === 'WILDFIRE_ESCALATION', whyOpen, lang,
+        hasDossier: situation.type === 'WILDFIRE_ESCALATION', sectionOpen: sectionsOf(this.sectionOpen, 'situation'), lang, now,
       });
     }
     if (item?.ref.kind === 'alert') {
       const situation = item.ref.situation;
       return buildSituationFiche({
         situation, kind: 'alert', badge: item.badge, changeAt: this.firstSeen.get(key) ?? null,
-        hasDossier: situation.type === 'MILITARY_SURGE_ALERT' || situation.type === 'WILDFIRE_ESCALATION', whyOpen, lang,
+        hasDossier: situation.type === 'MILITARY_SURGE_ALERT' || situation.type === 'WILDFIRE_ESCALATION', sectionOpen: sectionsOf(this.sectionOpen, 'alert'), lang, now,
       });
     }
-    if (item?.ref.kind === 'official') return buildOfficialFiche(item.ref.group, { freshness: this.freshness(data), whyOpen, lang });
-    if (item?.ref.kind === 'market') return buildMarketFiche(item.ref.line, { whyOpen, lang });
+    if (item?.ref.kind === 'official') return buildOfficialFiche(item.ref.group, { freshness: this.freshness(data), sectionOpen: sectionsOf(this.sectionOpen, 'official'), lang });
+    if (item?.ref.kind === 'market') return buildMarketFiche(item.ref.line, { sectionOpen: sectionsOf(this.sectionOpen, 'market'), lang });
     return null;
   }
 
@@ -494,6 +541,31 @@ export class PosteSituation {
   private runAction(action: string, ficheKey: string): void {
     const data = this.data;
     if (!data) return;
+    if (action === 'copy-ref') {
+      const reference = this.lastModel?.reference;
+      if (!reference) return;
+      const lang = data.lang;
+      const done = (ok: boolean): void => this.fichePanel.announce(
+        ok ? (lang === 'fr' ? 'Référence copiée' : 'Reference copied') : (lang === 'fr' ? 'Copie impossible' : 'Copy failed'),
+      );
+      try {
+        const clip = this.clipboard;
+        if (!clip) { done(false); return; }
+        void clip.writeText(reference).then(() => done(true), () => done(false));
+      } catch {
+        done(false);
+      }
+      return;
+    }
+    if (action === 'open-cyber') {
+      document.dispatchEvent(new CustomEvent('open-cyber-panel'));
+      return;
+    }
+    if (action.startsWith('open-layer:')) {
+      this.revealMap();
+      this.callbacks.onOpenLayerPanel?.(action.slice('open-layer:'.length));
+      return;
+    }
     if (action === 'report') {
       this.callbacks.onOpenReport();
       return;
@@ -511,7 +583,9 @@ export class PosteSituation {
     }
     const item = this.queue?.items.find((i) => i.key === ficheKey);
     if (action === 'show-layer' && item?.ref.kind === 'official') {
-      const layers = item.ref.group.source === 'ecowatt' ? ['powerGrid'] : ['environmental'];
+      // Vigicrues ouvre la couche Crues, séparée de la vigilance météo (spec 2026-10-04 environnement § 2.2).
+      const source = item.ref.group.source;
+      const layers = source === 'ecowatt' ? ['powerGrid'] : source === 'vigicrues' ? ['floods'] : ['environmental'];
       this.revealMap();
       this.callbacks.onActivateLayers(layers);
       return;
@@ -520,7 +594,8 @@ export class PosteSituation {
       ? item.ref.situation
       : data.snapshot.situations.find((s) => `situation:${s.id}` === ficheKey);
     if (action === 'dossier' && situation) {
-      // « Voir l'aéronef » vole vers l'appareil sur la carte ; le dossier d'incendie est une fenêtre.
+      // « Voir l'aéronef » vole vers l'appareil sur la carte ; le dossier d'incendie s'ouvre dans l'onglet « Dossier d'un feu » du
+      // panneau Feux de forêt.
       if (situation.type === 'MILITARY_SURGE_ALERT') this.revealMap();
       this.callbacks.onOpenDossier(situation);
       return;

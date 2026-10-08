@@ -4,6 +4,7 @@ import type {
   BriefJudgment,
   BriefWatchItem,
   DetectedSituation,
+  FranceCountrySignals,
   FranceCountrySnapshot,
   FranceBriefContext,
   StructuredBrief,
@@ -11,6 +12,7 @@ import type {
 import { getDelta24h } from '../utils/stability-history.ts';
 import { levelVigilanceWord, scoreLevel, type VigilanceLevel } from './vigilance.ts';
 import { splitScoreSentences } from './situation-text.ts';
+import { noEmDash } from './typography.ts';
 
 interface BriefCacheEntry {
   brief: StructuredBrief;
@@ -48,6 +50,40 @@ function buildClientCacheKey(
     situations: compactSituations(situations),
     events: events.map((e) => [e.id, e.severity, e.independentCount, e.status]),
   }))}`;
+}
+
+/**
+ * Comptes envoyés au modèle (payload de /api/intelligence/v1/france-intel-brief). Souveraineté (S3, O6) : alertes CERT-FR en cours et
+ * avis KEV récents à part (même chiffre que la tuile) ; une source non lue est signalée par son drapeau, le serveur écrit alors « non
+ * évalué » et jamais « 0 ». Le contrat de sortie v14 ne change pas.
+ */
+export function briefSignalCounts(s: FranceCountrySignals): Record<string, number | boolean> {
+  return {
+    criticalNews:          s.criticalNews,
+    highNews:              s.highNews,
+    weatherAlerts:         s.meteoAlerts,   // API contract uses "weatherAlerts"
+    floodAlerts:           s.floodAlerts,
+    fireDetections:        s.fireDetections,
+    railDisruptions:       s.railDisruptions,
+    roadIncidents:         s.roadIncidents,
+    powerOutages:          s.powerOutages,
+    telecomOutages:        s.telecomOutages,
+    cyberAlerts:           s.cyberAlerts,
+    cyberOpenAlerts:       s.cyberOpenAlerts ?? s.cyberAlerts,
+    cyberKevAdvisories:    s.cyberKevAdvisories ?? 0,
+    militaryFlights:       s.militaryFlights,
+    maritimeTrafficFrance: s.maritimeTrafficFrance,
+    defenseAlerts:         s.defenseAlerts,
+    jammingSignals:        s.jammingSignals,
+    marketStress:          s.marketStress,
+    militaryUnavailable:   s.militaryUnavailable === true,
+    cablesUnavailable:     s.cablesUnavailable === true,
+    gnssUnavailable:       s.gnssUnavailable === true,
+    // Compte de mailles positif sur une mesure partielle : heures de mesure, dites au brief (absent sur 24 h).
+    ...(s.gnssPartialHours !== undefined ? { gnssPartialHours: s.gnssPartialHours } : {}),
+    cyberUnavailable:      s.cyberUnavailable === true,
+    kevUnavailable:        s.kevUnavailable === true,
+  };
 }
 
 export interface FranceBriefResult {
@@ -110,23 +146,7 @@ export async function fetchFranceIntelBrief(
         cyberScore,
         meteoAlertCount,
         topHeadlines,
-        signalCounts: {
-          criticalNews:          ctx.signals.criticalNews,
-          highNews:              ctx.signals.highNews,
-          weatherAlerts:         ctx.signals.meteoAlerts,   // API contract uses "weatherAlerts"
-          floodAlerts:           ctx.signals.floodAlerts,
-          fireDetections:        ctx.signals.fireDetections,
-          railDisruptions:       ctx.signals.railDisruptions,
-          roadIncidents:         ctx.signals.roadIncidents,
-          powerOutages:          ctx.signals.powerOutages,
-          telecomOutages:        ctx.signals.telecomOutages,
-          cyberAlerts:           ctx.signals.cyberAlerts,
-          militaryFlights:       ctx.signals.militaryFlights,
-          maritimeTrafficFrance: ctx.signals.maritimeTrafficFrance,
-          defenseAlerts:         ctx.signals.defenseAlerts,
-          jammingSignals:        ctx.signals.jammingSignals,
-          marketStress:          ctx.signals.marketStress,
-        },
+        signalCounts: briefSignalCounts(ctx.signals),
         energy,
         situations: compactSituations(snapshot.situations),
         events,
@@ -207,7 +227,7 @@ export function parseStructuredBrief(
       : [];
     // Le serveur v14 tranche « non étayé » ; à défaut (brief déterministe sérialisé), l'absence de preuve le décide.
     const unsupported = typeof j.unsupported === 'boolean' ? j.unsupported : evidence.length === 0;
-    judgments.push({ priority, text: j.text.trim().slice(0, JUDGMENT_TEXT_MAX), confidence, sources, evidence, unsupported });
+    judgments.push({ priority, text: noEmDash(j.text.trim()).slice(0, JUDGMENT_TEXT_MAX), confidence, sources, evidence, unsupported });
   }
   judgments.sort((a, b) => a.priority - b.priority);
 
@@ -218,11 +238,11 @@ export function parseStructuredBrief(
       const w = item as Record<string, unknown>;
       if (typeof w.text !== 'string' || w.text.trim().length === 0) continue;
       const horizon = w.horizon === '6h' || w.horizon === '24h' || w.horizon === '48h' ? w.horizon : '24h';
-      watch.push({ text: w.text.trim().slice(0, JUDGMENT_TEXT_MAX), horizon });
+      watch.push({ text: noEmDash(w.text.trim()).slice(0, JUDGMENT_TEXT_MAX), horizon });
     }
   }
 
-  return { bluf: raw.bluf.trim().slice(0, BLUF_MAX), judgments, watch, origin };
+  return { bluf: noEmDash(raw.bluf.trim()).slice(0, BLUF_MAX), judgments, watch, origin };
 }
 
 const PILLAR_LABELS: Record<string, { fr: string; en: string }> = {
@@ -252,7 +272,7 @@ const MAX_DETERMINISTIC_JUDGMENTS = 3;
 /** Jugement de repli d'une situation : son titre et son résumé sans phrase chiffrée (sous-scores du moteur, spec §4.3). */
 function situationJudgmentText(s: DetectedSituation): string {
   const plain = splitScoreSentences(s.summary).plain.join(' ');
-  return plain ? `${s.title} — ${plain}` : s.title;
+  return plain ? `${s.title} : ${plain}` : s.title;
 }
 
 /**
@@ -302,8 +322,8 @@ export function buildDeterministicBrief(
     judgments.push({
       priority: EVENT_PRIORITY[e.severity],
       text: (lang === 'fr'
-        ? `${e.title} — repris par ${e.independentCount} sources indépendantes`
-        : `${e.title} — reported by ${e.independentCount} independent sources`).slice(0, JUDGMENT_TEXT_MAX),
+        ? `${e.title} : repris par ${e.independentCount} sources indépendantes`
+        : `${e.title}: reported by ${e.independentCount} independent sources`).slice(0, JUDGMENT_TEXT_MAX),
       confidence: e.independentCount >= 3 ? 'moderate' : 'low',
       sources: e.sources.slice(0, MAX_SOURCES),
       evidence: [e.id],
@@ -314,8 +334,8 @@ export function buildDeterministicBrief(
     judgments.push({
       priority: 4,
       text: lang === 'fr'
-        ? 'Aucune corrélation multi-source active — pression diffuse de fond sans point de convergence dominant.'
-        : 'No active multi-source correlation — diffuse background pressure without a dominant convergence point.',
+        ? 'Aucune corrélation multi-source active : pression diffuse de fond sans point de convergence dominant.'
+        : 'No active multi-source correlation: diffuse background pressure without a dominant convergence point.',
       confidence: 'high',
       sources: [lang === 'fr' ? 'Moteur de situations' : 'Situation engine'],
       // Constat du moteur lui-même (absence de corrélation) : rien à citer, rien d'inventé.

@@ -1,7 +1,6 @@
 // Extracted from DeckGLMap.ts — source/layer IDs, color tables and static dictionaries.
-import maplibregl from 'maplibre-gl';
-import type { MapViewState, MeteoRiskType } from '../../types/index.ts';
-import type { IconName } from '../shared/icons.ts';
+import type maplibregl from 'maplibre-gl';
+import type { MapViewState } from '../../types/index.ts';
 
 // ─── Source & Layer IDs ───
 export const SRC = 'news-src';              // Clusterable news (excludes critical)
@@ -10,11 +9,11 @@ export const SRC_SEL = 'news-sel-src';
 export const SRC_POWER_REGIONS = 'power-regions-src';
 export const SRC_INTERCONN = 'interconn-src';
 export const SRC_WEATHER = 'weather-depts-src';
-export const SRC_HEALTH = 'health-regions-src';
-export const SRC_HEALTH_MARKERS = 'health-markers-src';
+// Santé (spec 2026-10-03 § 3) : régions (alertes Odissé), départements (urgences et APL).
+export const SRC_HEALTH_REGIONS = 'health-regions-src';
+export const SRC_HEALTH_DEPTS = 'health-depts-src';
 export const SRC_FLOODS = 'flood-segments-src';
 export const SRC_FLOODS_HIGHLIGHT = 'flood-segments-highlight-src';
-export const SRC_TOPAGE_VIS = 'topage-visual-src';     // réseau hydro décoratif (fond)
 export const SRC_FIRES = 'fires-points-src';
 export const SRC_INFRA = 'infra-src';
 export const SRC_INFRA_HIGHLIGHT = 'infra-highlight-src';
@@ -25,7 +24,6 @@ export const SRC_HYDRO_BACKBONE = 'hydro-backbone-src';
 export const SRC_WIND_TURBINES = 'wind-turbines-src';
 export const SRC_WIND_PARKS = 'wind-parks-src';
 export const SRC_TRAFFIC = 'traffic-flow-src';
-export const SRC_TRAFFIC_INCIDENTS = 'traffic-incidents-src';
 export const SRC_TRAIN_ROUTE = 'train-route-src';
 
 export const LYR_GLOW = 'news-glow';
@@ -49,27 +47,35 @@ export const LYR_WEATHER_LINE = 'weather-line';
 export const LYR_WEATHER_LINE_YELLOW = 'weather-line-yellow';
 export const LYR_WEATHER_LINE_ORANGE = 'weather-line-orange';
 export const LYR_WEATHER_LINE_RED = 'weather-line-red';
-export const LYR_WEATHER_LINE_VIOLET = 'weather-line-violet';
 export const SRC_WEATHER_ICONS = 'weather-icons-src';
 export const LYR_WEATHER_ICONS = 'weather-icons';
-export const LYR_HEALTH_FILL = 'health-fill';
-export const LYR_HEALTH_LINE = 'health-line';
-export const LYR_HEALTH_MARKERS = 'health-markers';
+export const LYR_HEALTH_ALERT_FILL = 'health-alert-fill';
+export const LYR_HEALTH_ALERT_LINE = 'health-alert-line';
+export const LYR_HEALTH_URG_FILL = 'health-urg-fill';
+export const LYR_HEALTH_URG_LINE = 'health-urg-line';
 export const LYR_HEALTH_APL_FILL = 'health-apl-fill';
 export const LYR_HEALTH_APL_LINE = 'health-apl-line';
-export const LYR_HEALTH_OSCOUR_CIRCLES = 'health-oscour-circles';
 
 export const SRC_ISNR = 'isnr-depts-src';
 export const LYR_ISNR_FILL = 'isnr-fill';
 export const LYR_ISNR_LINE = 'isnr-line';
-export const LYR_TOPAGE_VIS = 'topage-visual-line';    // réseau hydro décoratif (fond)
-export const LYR_FLOODS_RAW = 'flood-lines-raw';       // tronçons sans Topage, pointillés
 export const LYR_FLOODS = 'flood-lines';
 export const LYR_FLOODS_HIGHLIGHT = 'flood-lines-highlight';
 export const LYR_FIRES_GLOW = 'fires-glow';
 export const LYR_FIRES_POINTS = 'fires-pts';
 export const SRC_FIRES_HIGHLIGHT = 'fires-highlight-src';
 export const LYR_FIRES_HIGHLIGHT = 'fires-highlight';
+// Environnement (spec 2026-10-04 environnement § 2) : stations des tronçons en vigilance, point du profil radar, détections hors
+// de France, météo des forêts par département (option de la couche Feux).
+export const SRC_FLOOD_STATIONS = 'flood-stations-src';
+export const LYR_FLOOD_STATIONS = 'flood-stations';
+export const SRC_RADAR_PICK = 'radar-pick-src';
+export const LYR_RADAR_PICK = 'radar-pick';
+export const SRC_FIRES_ABROAD = 'fires-abroad-src';
+export const LYR_FIRES_ABROAD = 'fires-abroad';
+export const SRC_FOREST_DANGER = 'forest-danger-src';
+export const LYR_FOREST_DANGER_FILL = 'forest-danger-fill';
+export const LYR_FOREST_DANGER_LINE = 'forest-danger-line';
 export const SRC_MODIS = 'modis-overlay-src';
 export const LYR_MODIS = 'modis-overlay';
 export const SRC_SENTINEL_SCENE = 'sentinel-scene-src';
@@ -96,18 +102,6 @@ export const LYR_WIND_PARK_HALO     = 'wind-park-halo';
 export const LYR_WIND_PARK_CIRCLE   = 'wind-park-circles';
 export const LYR_WIND_PARK_LABEL    = 'wind-park-labels';
 
-export const WEATHER_RADAR_REGIONS = [
-  // RainViewer is global, but we clip the raster to keep the overlay focused.
-  // Extend the main window from France to a Europe-wide footprint so the radar
-  // remains visible when the user pans eastward.
-  { id: 'metro', bounds: [-12.0, 34.0, 45.0, 72.0] as [number, number, number, number] },
-  { id: 'guadeloupe', bounds: [-61.95, 15.75, -60.95, 16.7] as [number, number, number, number] },
-  { id: 'martinique', bounds: [-61.35, 14.2, -60.75, 15.0] as [number, number, number, number] },
-  { id: 'guyane', bounds: [-54.8, 1.8, -51.5, 6.0] as [number, number, number, number] },
-  { id: 'reunion', bounds: [55.0, -21.5, 55.95, -20.8] as [number, number, number, number] },
-  { id: 'mayotte', bounds: [44.9, -13.1, 45.4, -12.5] as [number, number, number, number] },
-] as const;
-export const WEATHER_RADAR_MAX_ZOOM = 9;
 
 export const SRC_GAS_NETWORK_GRT = 'gas-network-grt-src';
 export const SRC_GAS_NETWORK_TEREGA = 'gas-network-terega-src';
@@ -165,9 +159,6 @@ export const LYR_OIL_PIPELINES_HIT = 'oil-pipelines-hit';
 export const LYR_OIL_FLOW_ARC_HIT = 'oil-flow-arc-hit';
 export const LYR_OIL_FLOW_MARKER_HIT = 'oil-flow-marker-hit';
 export const LYR_TRAFFIC = 'traffic-flow';
-export const LYR_TRAFFIC_CLUSTER = 'traffic-incidents-cluster';
-export const LYR_TRAFFIC_CLUSTER_COUNT = 'traffic-incidents-cluster-count';
-export const LYR_TRAFFIC_INCIDENTS = 'traffic-incidents';
 export const LYR_TRAIN_ROUTE = 'train-route-line';
 export const LYR_TRAIN_STATIONS = 'train-stations';
 export const LYR_TRAIN_STATION_LABELS = 'train-station-labels';
@@ -176,12 +167,7 @@ export const LYR_METRO_LOAD_GLOW = 'metro-load-glow';
 export const LYR_METRO_LOAD_CIRCLE = 'metro-load-circles';
 export const LYR_METRO_LOAD_LABEL = 'metro-load-labels';
 
-export const SRC_MILITARY_ZONES = 'military-zones-src';
 export const SRC_MILITARY_BASES = 'military-bases-src';
-export const SRC_MILITARY_FLIGHTS = 'military-flights-src';
-export const SRC_MILITARY_FLIGHT_TRAILS = 'military-flight-trails-src';
-export const SRC_AIR_TRAFFIC = 'air-traffic-src';
-export const SRC_MILITARY_SHIPS = 'military-ships-src';
 export const SRC_MILITARY_SHIPS_HIGHLIGHT = 'military-ships-highlight-src';
 export const SRC_MILITARY_SHIPS_SELECTED = 'military-ships-selected-src';
 export const SRC_GLOBAL_TRAFFIC = 'global-traffic-src';    // Trafic AIS mondial (civils/étrangers)
@@ -191,15 +177,8 @@ export const SRC_TELECOM = 'telecom-src';
 export const SRC_POWER = 'power-src';
 export const SRC_HOSPITALS = 'hospitals-src';
 
-export const LYR_MILITARY_ZONES_FILL = 'military-zones-fill';
-export const LYR_MILITARY_ZONES_LINE = 'military-zones-line';
 export const LYR_MILITARY_BASES_CIRCLE = 'military-bases-circle';
 export const LYR_MILITARY_BASES_LABEL = 'military-bases-label';
-export const LYR_MILITARY_FLIGHT_TRAILS = 'military-flight-trails';
-export const LYR_MILITARY_FLIGHTS = 'military-flights';
-export const LYR_MILITARY_FLIGHTS_LABEL = 'military-flights-label';
-export const LYR_AIR_TRAFFIC_LABEL = 'air-traffic-label';
-export const LYR_MILITARY_SHIPS = 'military-ships';
 export const LYR_MILITARY_SHIPS_HIGHLIGHT = 'military-ships-highlight';
 export const LYR_MILITARY_SHIPS_SELECTED = 'military-ships-selected';
 // const LYR_GLOBAL_TRAFFIC = 'global-traffic-pts'; // Now rendered via Deck.gl TextLayer
@@ -208,6 +187,28 @@ export const LYR_SUBMARINE_CABLES_GLOW = 'submarine-cables-glow';
 export const LYR_SUBMARINE_CABLES_CORE = 'submarine-cables-core';
 export const LYR_SUBMARINE_CABLES_HITAREA = 'submarine-cables-hitarea';
 export const LYR_SUBMARINE_CABLES_LANDING = 'submarine-cables-landing';
+// Souveraineté (spec 2026-10-04 souveraineté § 2 ; contrats § 5) : couches de deckgl/sovereignty-map.ts.
+export const SRC_SOV_AIRCRAFT = 'sov-aircraft-src';
+export const LYR_SOV_AIRCRAFT = 'sov-aircraft';
+export const LYR_SOV_AIRCRAFT_LABEL = 'sov-aircraft-label';
+export const SRC_SOV_AIRCRAFT_ABROAD = 'sov-aircraft-abroad-src';
+export const LYR_SOV_AIRCRAFT_ABROAD = 'sov-aircraft-abroad';
+export const SRC_SOV_EMERGENCIES = 'sov-emergencies-src';
+export const LYR_SOV_EMERGENCIES = 'sov-emergencies';
+export const SRC_SOV_NAVY = 'sov-navy-src';
+export const LYR_SOV_NAVY_OBSERVED = 'sov-navy-observed';
+export const LYR_SOV_NAVY_REFERENCE = 'sov-navy-reference';
+export const SRC_SOV_OSM_WORKS = 'sov-osm-works-src';
+export const LYR_SOV_OSM_WORKS = 'sov-osm-works';
+export const SRC_SOV_CABLE_VESSELS = 'sov-cable-vessels-src';
+export const LYR_SOV_CABLE_VESSELS = 'sov-cable-vessels';
+// Souveraineté, phase B (tâche B27) : mailles GNSS du jour UTC précédent et zones drones DGAC (option de la couche Défense), deckgl/sovereignty-map-b.ts.
+export const SRC_SOV_GNSS = 'sov-gnss-src';
+export const LYR_SOV_GNSS_FILL = 'sov-gnss-fill';
+export const LYR_SOV_GNSS_LINE = 'sov-gnss-line';
+export const SRC_SOV_DRONES = 'sov-drones-src';
+export const LYR_SOV_DRONES_FILL = 'sov-drones-fill';
+export const LYR_SOV_DRONES_LINE = 'sov-drones-line';
 export const LYR_TELECOM_PTS = 'telecom-pts';
 export const LYR_POWER_FILL = 'power-fill';
 export const LYR_POWER_LINE = 'power-line';
@@ -217,8 +218,6 @@ export const LYR_CITIZEN_LINE = 'citizen-zones-line';
 export const SRC_IIP = 'iip-incidents-src';
 export const LYR_IIP_GLOW = 'iip-incidents-glow';
 export const LYR_IIP_CORE = 'iip-incidents-core';
-export const SRC_TERMINATOR = 'terminator-src';
-export const LYR_TERMINATOR = 'terminator-fill';
 export const SRC_NET_ISP = 'net-isp-src';
 export const SRC_NET_IODA = 'net-ioda-src';
 export const LYR_NET_ISP_GLOW = 'net-isp-glow';           // halo ambiant
@@ -243,48 +242,31 @@ export const LYR_IXP_CLUSTER = 'infra-ixp-cluster';
 export const LYR_IXP_CLUSTER_COUNT = 'infra-ixp-cluster-count';
 export const LYR_IXP_CIRCLE = 'infra-ixp-circle';
 export const LYR_IXP_HIGHLIGHT = 'infra-ixp-highlight';
-export const LYR_HOSPITALS_CHU = 'hospitals-chu';
-export const LYR_HOSPITALS_CH = 'hospitals-ch';
-export const LYR_HOSPITALS_LABEL = 'hospitals-label';
+export const LYR_HOSPITALS = 'hospitals-sites';
 export const SRC_MAIRES_POL = 'maires-pol-src';
 export const LYR_MAIRES_POL = 'maires-pol';
 export const LYR_MAIRES_POL_LABEL = 'maires-pol-label';
 
-// ─── Rail disruptions (SNCF) ───
-export const SRC_RAIL_ARCS = 'rail-disruptions-arcs-src';
-export const SRC_RAIL_STATIONS = 'rail-disruptions-stations-src';
-export const LYR_RAIL_ARC_GLOW = 'rail-arc-glow';
-export const LYR_RAIL_ARC = 'rail-arc';
-export const LYR_RAIL_ARC_HIT = 'rail-arc-hit';
-export const LYR_RAIL_STATION_GLOW = 'rail-station-glow';
+// ─── Trafics (spec 2026-10-03 trafics § 3) : couches MapLibre de deckgl/traffic-map.ts ───
+export const SRC_ROAD_SECTIONS = 'road-sections-src';
+export const SRC_ROAD_JAMS = 'road-jams-src';
+export const SRC_ROAD_EVENTS = 'road-events-src';
+export const LYR_ROAD_SECTIONS = 'road-sections';
+export const LYR_ROAD_JAMS = 'road-jams-line';
+export const LYR_ROAD_JAM_POINTS = 'road-jams-point';
+export const LYR_ROAD_EVENTS = 'road-events';
+export const SRC_AIRPORTS = 'airports-src';
+export const SRC_AIR_EMERGENCIES = 'air-emergencies-src';
+export const LYR_AIRPORTS = 'airports-departures';
+export const LYR_AIR_EMERGENCIES = 'air-emergencies';
+export const LYR_AIR_EMERGENCY_LABEL = 'air-emergencies-label';
+export const SRC_RAIL_STATIONS = 'rail-stations-src';
 export const LYR_RAIL_STATION = 'rail-stations-disrupted';
 export const LYR_RAIL_STATION_LABEL = 'rail-station-label';
-
-/** MapLibre match expression: ThreatLevel → hex color */
-export const RAIL_SEVERITY_COLOR: maplibregl.ExpressionSpecification = [
-  'match', ['get', 'severity'],
-  'critical', '#ff2d55',
-  'high',     '#ff6b35',
-  'medium',   '#ffcc00',
-  'low',      '#34c759',
-  /* info default */ '#5ac8fa',
-];
-
-export const RAIL_SEVERITY_HEX: Record<string, string> = {
-  critical: '#ff2d55',
-  high: '#ff6b35',
-  medium: '#ffcc00',
-  low: '#34c759',
-  info: '#5ac8fa',
-};
-
-export const RAIL_SEVERITY_TINT: Record<string, string> = {
-  critical: 'rgba(255,45,85,0.14)',
-  high: 'rgba(255,107,53,0.14)',
-  medium: 'rgba(255,204,0,0.12)',
-  low: 'rgba(52,199,89,0.12)',
-  info: 'rgba(90,200,250,0.12)',
-};
+export const SRC_ANCHORAGES = 'ais-anchorages-src';
+export const LYR_ANCHORAGES = 'ais-anchorages';
+export const SRC_AIS_SIGNALS = 'ais-signals-src';
+export const LYR_AIS_SIGNALS = 'ais-signals';
 
 // ─── Solde régional production/consommation éco2mix → couleur des régions sur la carte ───
 // PAS une vigilance : Écowatt est un signal national (voir src/services/ecowatt-official.ts).
@@ -322,33 +304,11 @@ export function regionEnergyBalance(consumptionMW: number | undefined, productio
   return 'importatrice';
 }
 
-// ─── Météo vigilance → color ───
-export const METEO_COLORS: Record<string, string> = {
-  green: 'rgba(52,199,89,0.08)',
-  yellow: 'rgba(255,204,0,0.20)',
-  orange: 'rgba(255,149,0,0.28)',
-  red: 'rgba(255,59,48,0.35)',
-  violet: 'rgba(175,82,222,0.35)',
-};
-
 export const WEATHER_HIGHLIGHT_STATE: maplibregl.ExpressionSpecification = [
   'any',
   ['boolean', ['feature-state', 'preview'], false],
   ['boolean', ['feature-state', 'selected'], false],
 ];
-
-// ─── Météo risk pictograms (icônes Lucide, rendues via fmIcon) ───
-export const WEATHER_RISK_ICONS: Record<MeteoRiskType, IconName> = {
-  'wind': 'wind',
-  'rain-flood': 'cloud-rain',
-  'thunderstorm': 'cloud-lightning',
-  'flood': 'waves',
-  'snow-ice': 'snowflake',
-  'heat': 'thermometer',
-  'cold': 'thermometer-snowflake',
-  'avalanche': 'mountain-snow',
-  'wave-surge': 'waves',
-};
 
 export const AIS_DESTINATION_ALIASES: Record<string, string> = {
   // ─── France ───
@@ -824,44 +784,6 @@ export const AIS_PORT_LOCODES: Record<string, { name: string; country: string }>
   FRLOR: { name: 'Lorient', country: 'FR' },
 };
 
-// ─── Météo department centroids [lng, lat] ───
-export const WEATHER_DEPT_CENTROIDS: Record<string, [number, number]> = {
-  '01': [5.22, 46.00], '02': [3.62, 49.47], '03': [3.19, 46.39], '04': [6.24, 44.08],
-  '05': [6.26, 44.66], '06': [7.12, 43.94], '07': [4.42, 44.75], '08': [4.62, 49.62],
-  '09': [1.60, 42.92], '10': [4.08, 48.30], '11': [2.42, 43.11], '12': [2.67, 44.28],
-  '13': [5.05, 43.54], '14': [-0.37, 49.09], '15': [2.67, 45.05], '16': [0.19, 45.72],
-  '17': [-0.83, 45.75], '18': [2.50, 47.07], '19': [1.87, 45.35], '21': [4.90, 47.42],
-  '22': [-2.97, 48.44], '23': [2.07, 46.08], '24': [0.75, 45.14], '25': [6.36, 47.17],
-  '26': [5.17, 44.68], '27': [0.97, 49.11], '28': [1.38, 48.31], '29': [-4.10, 48.26],
-  '2A': [8.92, 41.86], '2B': [9.29, 42.40], '30': [4.18, 43.99], '31': [1.18, 43.35],
-  '32': [0.45, 43.69], '33': [-0.58, 44.83], '34': [3.58, 43.59], '35': [-1.68, 48.11],
-  '36': [1.57, 46.78], '37': [0.69, 47.26], '38': [5.58, 45.26], '39': [5.69, 46.73],
-  '40': [-0.77, 43.89], '41': [1.41, 47.62], '42': [4.16, 45.73], '43': [3.85, 45.11],
-  '44': [-1.68, 47.36], '45': [2.10, 47.91], '46': [1.62, 44.62], '47': [0.46, 44.34],
-  '48': [3.50, 44.52], '49': [-0.56, 47.39], '50': [-1.32, 49.08], '51': [4.07, 48.96],
-  '52': [5.14, 48.11], '53': [-0.77, 48.07], '54': [6.17, 48.79], '55': [5.38, 49.00],
-  '56': [-2.82, 47.74], '57': [6.67, 49.04], '58': [3.50, 47.11], '59': [3.22, 50.45],
-  '60': [2.42, 49.42], '61': [0.11, 48.62], '62': [2.28, 50.51], '63': [3.13, 45.73],
-  '64': [-0.77, 43.26], '65': [0.15, 43.05], '66': [2.53, 42.60], '67': [7.55, 48.67],
-  '68': [7.21, 47.86], '69': [4.61, 45.87], '70': [6.08, 47.62], '71': [4.53, 46.64],
-  '72': [0.20, 47.93], '73': [6.39, 45.49], '74': [6.42, 46.04], '75': [2.35, 48.86],
-  '76': [0.97, 49.66], '77': [2.99, 48.62], '78': [1.83, 48.83], '79': [-0.33, 46.52],
-  '80': [2.28, 49.92], '81': [2.17, 43.79], '82': [1.29, 44.08], '83': [6.22, 43.47],
-  '84': [5.19, 44.05], '85': [-1.29, 46.68], '86': [0.46, 46.56], '87': [1.24, 45.89],
-  '88': [6.37, 48.17], '89': [3.56, 47.84], '90': [6.92, 47.63], '91': [2.24, 48.52],
-  '92': [2.24, 48.84], '93': [2.48, 48.91], '94': [2.47, 48.78], '95': [2.12, 49.08],
-  // DROM-COM
-  '971': [-61.55, 16.25], '972': [-61.02, 14.64], '973': [-53.13, 3.92],
-  '974': [55.54, -21.12], '976': [45.15, -12.84],
-};
-
-// ─── Flood vigilance → color ───
-export const FLOOD_COLORS: Record<string, string> = {
-  green: '#34c759',
-  yellow: '#ffcc00',
-  orange: '#ff9500',
-  red: '#ff3b30',
-};
 
 // ─── ISNR stability → color ───
 export const ISNR_COLORS: Record<string, string> = {
@@ -908,3 +830,16 @@ export const DEFAULT_VIEW: MapViewState = {
 
 // France center for interconnection arcs
 export const FRANCE_CENTER: [number, number] = [2.5, 46.5];
+
+// ─── Environnement, phase B (spec 2026-10-04 § 3) ───
+export const SRC_DROUGHT = 'drought-src';
+export const LYR_DROUGHT_FILL = 'drought-fill';
+export const LYR_DROUGHT_LINE = 'drought-line';
+export const SRC_AIR_QUALITY = 'air-quality-src';
+export const LYR_AIR_FILL = 'air-quality-fill';
+export const LYR_AIR_LINE = 'air-quality-line';
+export const SRC_QUAKES = 'quakes-src';
+export const LYR_QUAKES = 'quakes';
+export const LYR_QUAKE_LABEL = 'quakes-label';
+export const SRC_TIDE_GAUGES = 'tide-gauges-src';
+export const LYR_TIDE_GAUGES = 'tide-gauges';

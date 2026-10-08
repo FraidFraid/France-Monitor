@@ -1,0 +1,86 @@
+{
+ "type": "FeatureCollection",
+ "features": [
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     8.3468,
+     46.5977,
+     -1
+    ]
+   },
+   "id": "20261004_0000063",
+   "properties": {
+    "source_id": "2069240",
+    "source_catalog": "EMSC-RTS",
+    "lastupdate": "2026-10-04T04:07:10.177776Z",
+    "time": "2026-10-04T04:01:18.707421Z",
+    "flynn_region": "SWITZERLAND",
+    "lat": 46.5977,
+    "lon": 8.3468,
+    "depth": 1,
+    "evtype": "ke",
+    "auth": "ETHZ",
+    "mag": 0.5,
+    "magtype": "ml",
+    "unid": "20261004_0000063"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     7.0081,
+     45.8674,
+     -7.9
+    ]
+   },
+   "id": "20261004_0000062",
+   "properties": {
+    "source_id": "2069238",
+    "source_catalog": "EMSC-RTS",
+    "lastupdate": "2026-10-04T03:57:11.484547Z",
+    "time": "2026-10-04T03:50:59.806518Z",
+    "flynn_region": "NORTHERN ITALY",
+    "lat": 45.8674,
+    "lon": 7.0081,
+    "depth": 7.9,
+    "evtype": "ke",
+    "auth": "ETHZ",
+    "mag": 1.5,
+    "magtype": "ml",
+    "unid": "20261004_0000062"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -0.1992,
+     43.0422,
+     -4
+    ]
+   },
+   "id": "20261004_0000059",
+   "properties": {
+    "source_id": "2069235",
+    "source_catalog": "EMSC-RTS",
+    "lastupdate": "2026-10-04T03:43:01.199454Z",
+    "time": "2026-10-04T03:17:08.47Z",
+    "flynn_region": "PYRENEES",
+    "lat": 43.0422,
+    "lon": -0.1992,
+    "depth": 4,
+    "evtype": "ke",
+    "auth": "IGN",
+    "mag": 1.6,
+    "magtype": "ml",
+    "unid": "20261004_0000059"
+   }
+  }
+ ]
+}

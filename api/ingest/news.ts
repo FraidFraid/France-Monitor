@@ -563,7 +563,7 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
   }
 
   if (!hasDatabaseUrl()) {
-    json(res, 503, { error: 'DATABASE_URL not configured — news ingestion unavailable' });
+    json(res, 503, { error: 'DATABASE_URL not configured: news ingestion unavailable' });
     return;
   }
 

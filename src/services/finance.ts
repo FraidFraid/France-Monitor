@@ -4,7 +4,7 @@ import { Watchdog } from './watchdog.ts';
 Watchdog.register('finance', {
   label: 'Marchés Financiers',
   staleAfterMs: 15 * 60_000,
-  detail: 'Marketstack — CAC 40, indices, valeurs défense / énergie',
+  detail: 'Marketstack : CAC 40, indices, valeurs défense / énergie',
   freshness: 'TEMPS_REEL',
 });
 

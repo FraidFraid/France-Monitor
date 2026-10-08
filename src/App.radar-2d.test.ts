@@ -1,75 +1,88 @@
 // @vitest-environment happy-dom
-
+// Manifeste radar Météo-France lu par App.ts (spec 2026-10-04 environnement § 2.3) : image commandée par la couche Radar météo,
+// ligne « Radar Météo-France » datée par l'observation, échec nommé sans image inventée.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Radar2dManifest } from './services/radar-2d.ts';
 
-const { fetchRadar2dManifest, watchdogReport } = vi.hoisted(() => ({
-  fetchRadar2dManifest: vi.fn(),
-  watchdogReport: vi.fn(),
-}));
+const { fetchRadar2dManifest } = vi.hoisted(() => ({ fetchRadar2dManifest: vi.fn() }));
 
-vi.mock('./services/radar-2d.ts', () => ({
-  fetchRadar2dManifest,
-}));
-
-vi.mock('./services/watchdog.ts', () => ({
-  Watchdog: {
-    register: vi.fn(),
-    report: watchdogReport,
-    on: vi.fn(() => () => undefined),
-    getSnapshot: vi.fn(() => []),
-  },
-}));
+vi.mock('./services/radar-2d.ts', () => ({ fetchRadar2dManifest }));
 
 import { App } from './App.ts';
 
-describe('App radar 2D', () => {
-  beforeEach(() => {
-    fetchRadar2dManifest.mockReset();
-    watchdogReport.mockReset();
+const MANIFEST: Radar2dManifest = {
+  schemaVersion: 1, source: 'Météo-France DPRadar', observedAt: '2026-10-04T08:05:00Z', generatedAt: '2026-10-04T08:10:25Z',
+  bounds: [-9.965, 39.46785, 14.564708, 53.67], imageUrl: 'https://www.francemonitor.com/radar/rasters/radar-20261004T0805Z.webp',
+  resolutionMeters: 1000, license: 'Licence Ouverte 2.0',
+};
+
+interface RadarFields { radarManifest: unknown; radarError: string | null }
+
+function radarApp(setRadar2dOverlay: () => Promise<void>) {
+  const app = Object.create(App.prototype) as App & Record<string, unknown>;
+  const updateSource = vi.fn();
+  const setEchoTopsOverlay = vi.fn();
+  const overlay = vi.fn(setRadar2dOverlay);
+  const panelUpdate = vi.fn();
+  Object.assign(app, {
+    radarManifest: null, radarError: null, radarProfile: null, echoTopsEnabled: true,
+    mapContainer: { setRadar2dOverlay: overlay, setEchoTopsOverlay },
+    statusPanel: { updateSource, getSources: vi.fn(() => []) },
+    weatherRadarPanel: { update: panelUpdate }, firesPanel: null, mapLegend: null,
+  });
+  const load = (app as unknown as { loadRadarManifest: () => Promise<void> }).loadRadarManifest.bind(app);
+  return { app: app as unknown as RadarFields, load, updateSource, setEchoTopsOverlay, overlay, panelUpdate };
+}
+
+describe('App : manifeste radar Météo-France', () => {
+  beforeEach(() => fetchRadar2dManifest.mockReset());
+
+  it('image installée sans l’ancien interrupteur (la couche Radar la montre), sommets d’écho selon l’option, ligne datée', async () => {
+    fetchRadar2dManifest.mockResolvedValue({ configured: true, degraded: false, manifest: MANIFEST });
+    const { app, load, updateSource, setEchoTopsOverlay, overlay, panelUpdate } = radarApp(async () => undefined);
+    await load();
+    // Ouverture du panneau, puce, sommets d'écho : lecture par le cache de 2 min du service (jamais forcée).
+    expect(fetchRadar2dManifest).toHaveBeenCalledWith(false);
+    expect(overlay).toHaveBeenCalledWith(MANIFEST, false);
+    expect(setEchoTopsOverlay).toHaveBeenCalledWith(MANIFEST, true);
+    expect(updateSource).toHaveBeenCalledWith('Radar Météo-France', expect.objectContaining({ lastUpdate: new Date('2026-10-04T08:05:00Z') }));
+    expect(panelUpdate).toHaveBeenCalledWith(expect.objectContaining({ manifest: MANIFEST, echoTops: true, error: null }));
+    expect(app.radarError).toBeNull();
   });
 
-  it('publie runtime et Watchdog en erreur si la première installation échoue', async () => {
-    fetchRadar2dManifest.mockResolvedValue({
-      configured: true,
-      degraded: false,
-      manifest: {
-        imageUrl: 'https://example.test/radar.png',
-        bounds: [-5, 41, 10, 52],
-        observedAt: '2026-07-16T13:00:00Z',
-        fetchedAt: '2026-07-16T13:01:00Z',
-        source: 'Météo-France DPRadar',
-      },
-    });
-    const app = Object.create(App.prototype) as App & Record<string, unknown>;
-    Object.assign(app, {
-      radar2dRequestInFlight: false,
-      latestRadar2dManifest: null,
-      radar2dEnabled: true,
-      fireObservationRuntime: {
-        mtgFrp: { status: 'loading', observedAt: null, fetchedAt: null, source: 'EUMETSAT LSA SAF' },
-        radar2d: { status: 'loading', observedAt: null, fetchedAt: null, source: 'Météo-France DPRadar' },
-      },
-      mapContainer: {
-        setRadar2dOverlay: vi.fn(async () => { throw new Error('overlay install failed'); }),
-      },
-      firesPanel: { setObservationRuntimeState: vi.fn() },
-    });
+  it('installation en échec : échec nommé, aucune image gardée ni inventée, la lecture ne rejette pas', async () => {
+    fetchRadar2dManifest.mockResolvedValue({ configured: true, degraded: false, manifest: MANIFEST });
+    const { app, load, updateSource } = radarApp(async () => { throw new Error('overlay install failed'); });
+    await expect(load()).resolves.toBeUndefined();
+    expect(app.radarManifest).toBeNull();
+    expect(updateSource).toHaveBeenCalledWith('Radar Météo-France', expect.objectContaining({ status: 'error', error: 'lecture du manifeste radar en échec' }));
+  });
 
-    await expect(
-      (app as unknown as { loadRadar2dManifest: () => Promise<void> }).loadRadar2dManifest(),
-    ).rejects.toThrow('overlay install failed');
+  it('worker non configuré : dit tel quel', async () => {
+    fetchRadar2dManifest.mockResolvedValue({ configured: false });
+    const { load, updateSource, overlay } = radarApp(async () => undefined);
+    await load();
+    expect(overlay).toHaveBeenCalledWith(null, false);
+    expect(updateSource).toHaveBeenCalledWith('Radar Météo-France', expect.objectContaining({ status: 'error', error: 'worker radar non configuré' }));
+  });
 
-    const runtime = (app as unknown as {
-      fireObservationRuntime: { radar2d: { status: string } };
-    }).fireObservationRuntime;
-    expect(runtime.radar2d.status).toBe('error');
-    expect(watchdogReport).toHaveBeenCalledWith(
-      'fire-radar-2d',
-      expect.objectContaining({ type: 'failure', error: 'overlay install failed' }),
-    );
-    expect(watchdogReport).not.toHaveBeenCalledWith(
-      'fire-radar-2d',
-      expect.objectContaining({ type: 'success' }),
-    );
+  it('seule la relève périodique force la lecture réseau du manifeste (ouverture du panneau : cache du service)', async () => {
+    fetchRadar2dManifest.mockResolvedValue({ configured: true, degraded: false, manifest: MANIFEST });
+    const { app } = radarApp(async () => undefined);
+    let tick: (() => void) | null = null;
+    const registerPausableInterval = vi.fn((fn: () => void) => { tick = fn; return { id: 1 }; });
+    Object.assign(app, { activeLayers: { weatherRadar: true, fires: false }, environmentPolls: {}, registerPausableInterval });
+    const env = app as unknown as {
+      syncEnvironmentPolling: (key: 'weatherRadar') => void; loadEnvironmentSource: (key: 'weatherRadar') => Promise<void>;
+    };
+
+    await env.loadEnvironmentSource('weatherRadar');
+    expect(fetchRadar2dManifest).toHaveBeenLastCalledWith(false);
+
+    env.syncEnvironmentPolling('weatherRadar');
+    expect(registerPausableInterval).toHaveBeenCalledWith(expect.any(Function), 300_000);
+    (tick as unknown as () => void)();
+    await vi.waitFor(() => expect(fetchRadar2dManifest).toHaveBeenLastCalledWith(true));
+    expect(fetchRadar2dManifest).toHaveBeenCalledTimes(2);
   });
 });

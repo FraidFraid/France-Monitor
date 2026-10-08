@@ -15,8 +15,8 @@
  * l'échec du signal officiel ne fait pas échouer le mix éco2mix, et réciproquement.
  */
 
-import type { EcowattOfficial, EcowattResponse, EnergyMix, InterconnectionFlow } from '../types/index.ts';
-import { isEcowattOfficial } from './ecowatt-official.ts';
+import type { EcowattOfficial, EcowattResponse, EnergyMix, GridSnapshot, InterconnectionFlow } from '../types/index.ts';
+import { isEcowattOfficial, parisDate } from './ecowatt-official.ts';
 import { Watchdog } from './watchdog.ts';
 import { dedupe } from '../utils/inflight.ts';
 import { readPersisted, writePersisted } from '../utils/persistentCache.ts';
@@ -49,12 +49,66 @@ interface Eco2mixResponse {
     results: Eco2mixRecord[];
 }
 
-interface Eco2mixNatRecord {
+export interface Eco2mixNatRecord {
+    date_heure: string;
+    consommation: number | null;
+    prevision_j: number | null;
+    prevision_j1: number | null;
+    taux_co2: number | null;
+    nucleaire: number | null;
+    eolien: number | null;
+    solaire: number | null;
+    hydraulique: number | null;
+    gaz: number | null;
+    fioul: number | null;
+    charbon: number | null;
+    bioenergies: number | null;
+    pompage: number | null;
+    ech_physiques: number | null;
     ech_comm_angleterre: number | null;
     ech_comm_espagne: number | null;
     ech_comm_italie: number | null;
     ech_comm_suisse: number | null;
     ech_comm_allemagne_belgique: number | null;
+    hydraulique_fil_eau_eclusee?: number | null;
+    hydraulique_lacs?: number | null;
+    hydraulique_step_turbinage?: number | null;
+    eolien_terrestre?: number | null;
+    eolien_offshore?: number | null;
+}
+export interface Eco2mixDayRecord { date_heure: string; consommation: number | null; prevision_j: number | null; eolien?: number | null }
+
+const num = (v: number | null | undefined): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+const sumOrNull = (...vs: Array<number | null>): number | null =>
+    vs.every((v) => v === null) ? null : vs.reduce<number>((s, v) => s + (v ?? 0), 0);
+
+/** Réseau national au dernier quart d'heure mesuré + série de la journée de Paris (spec 2026-10-02 § 5.1). */
+export function parseGridSnapshot(nat: Eco2mixNatRecord | undefined, day: readonly Eco2mixDayRecord[], nowMs: number): GridSnapshot | null {
+    if (!nat) return null;
+    const dataTime = Date.parse(nat.date_heure);
+    if (!Number.isFinite(dataTime)) return null;
+    const today = parisDate(nowMs);
+    const points = day
+        .map((r) => ({ at: Date.parse(r.date_heure), consumptionMw: num(r.consommation), forecastMw: num(r.prevision_j), windMw: num(r.eolien) }))
+        .filter((p) => Number.isFinite(p.at) && parisDate(p.at) === today)
+        .sort((a, b) => a.at - b.at);
+    return {
+        dataTime,
+        consumptionMw: num(nat.consommation),
+        forecastMw: num(nat.prevision_j),
+        co2gPerKwh: num(nat.taux_co2),
+        netImportMw: num(nat.ech_physiques),
+        mix: {
+            nuclear: num(nat.nucleaire), hydro: num(nat.hydraulique), wind: num(nat.eolien), solar: num(nat.solaire),
+            thermal: sumOrNull(num(nat.gaz), num(nat.fioul), num(nat.charbon)), bio: num(nat.bioenergies),
+        },
+        hydroDetail: {
+            runOfRiver: num(nat.hydraulique_fil_eau_eclusee), lakes: num(nat.hydraulique_lacs),
+            stepTurbine: num(nat.hydraulique_step_turbinage), pumping: num(nat.pompage),
+        },
+        windDetail: { onshore: num(nat.eolien_terrestre), offshore: num(nat.eolien_offshore) },
+        day: points,
+    };
 }
 
 interface Eco2mixNatResponse {
@@ -65,15 +119,18 @@ interface EcowattMix {
     mixes: Record<string, EnergyMix>;
     national: EnergyMix;
     interconnections: InterconnectionFlow[];
+    grid: GridSnapshot | null;
 }
 
 /** Cache simple en mémoire */
 let cache: { data: EcowattResponse; fetchedAt: number } | null = null;
-const CACHE_TTL = 15 * 60_000; // 15 min (aligné sur la granularité des données)
+/** 4 min : strictement sous la relève de 5 min d'App.ts, sinon une relève sur deux retombe dans ce cache. */
+export const ECOWATT_TTL_MS = 4 * 60_000;
 
-/** Cache localStorage : peint le dernier signal connu au rechargement si < 10 min. */
-const PERSIST_TTL_MS = 10 * 60_000;
-const PERSIST_KEY = 'ecowatt-v2';
+/** Cache localStorage : peint le dernier signal connu au rechargement si < 5 min (même durée que le cache mémoire). */
+const PERSIST_TTL_MS = 5 * 60_000;
+/** v3 : GridSnapshot gagne hydroDetail et windDetail ; une entrée v2 relue les ignorerait */
+const PERSIST_KEY = 'ecowatt-v3';
 
 function isEcowattResponse(value: unknown): value is EcowattResponse {
     return !!value && typeof value === 'object' && 'official' in value && 'mixes' in value;
@@ -88,6 +145,7 @@ const SIGNAL_API_URL = '/api/energy/ecowatt-signal';
 function reviveEcowattDates(data: EcowattResponse): EcowattResponse {
     return {
         ...data,
+        grid: data.grid ?? null,
         national: { ...data.national, timestamp: new Date(data.national.timestamp) },
         mixes: Object.fromEntries(
             Object.entries(data.mixes).map(([code, mix]) => [code, { ...mix, timestamp: new Date(mix.timestamp) }]),
@@ -105,7 +163,7 @@ async function fetchMix(): Promise<EcowattMix> {
     const json = await dedupe(MIX_API_URL, async () => {
         const resp = await fetch(MIX_API_URL, { signal: AbortSignal.timeout(10_000) });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        return (await resp.json()) as { regional: Eco2mixResponse, national: Eco2mixNatResponse };
+        return (await resp.json()) as { regional: Eco2mixResponse, national: Eco2mixNatResponse, day?: { results: Eco2mixDayRecord[] } };
     });
     const jsonReg = json.regional;
     const jsonNat = json.national;
@@ -192,7 +250,9 @@ async function fetchMix(): Promise<EcowattMix> {
         }
     }
 
-    return { mixes, national, interconnections };
+    const grid = parseGridSnapshot(jsonNat.results?.[0], json.day?.results ?? [], Date.now());
+
+    return { mixes, national, interconnections, grid };
 }
 
 /**
@@ -226,13 +286,14 @@ function watchdogDetail(official: EcowattOfficial | null): string {
  * échanges frontaliers). Retourne EcowattResponse.
  */
 export async function fetchEcowatt(): Promise<EcowattResponse> {
-    if (cache && Date.now() - cache.fetchedAt < CACHE_TTL) return cache.data;
+    if (cache && Date.now() - cache.fetchedAt < ECOWATT_TTL_MS) return cache.data;
 
     const fallback: EcowattResponse = {
         official: null,
         mixes: {},
         national: { timestamp: new Date(), nuclear: 0, wind: 0, solar: 0, hydro: 0, gas: 0, other: 0, total: 0 },
         interconnections: [],
+        grid: null,
     };
 
     // Rechargement de page : peindre le dernier signal connu (< 10 min) avant réseau.
@@ -256,10 +317,10 @@ export async function fetchEcowatt(): Promise<EcowattResponse> {
         return cache?.data ?? fallback;
     }
 
-    const { mixes, national, interconnections } = mixSettled.value;
+    const { mixes, national, interconnections, grid } = mixSettled.value;
     const official = signalSettled.status === 'fulfilled' ? signalSettled.value : null;
 
-    const result: EcowattResponse = { official, mixes, national, interconnections };
+    const result: EcowattResponse = { official, mixes, national, interconnections, grid };
 
     cache = { data: result, fetchedAt: Date.now() };
     writePersisted(PERSIST_KEY, result);
@@ -270,7 +331,7 @@ export async function fetchEcowatt(): Promise<EcowattResponse> {
     });
 
     const nRegions = Object.keys(mixes).length;
-    console.log(`[Écowatt] ${nRegions} régions éco2mix — signal officiel: ${official ? official.source : 'indisponible'}`);
+    console.log(`[Écowatt] ${nRegions} régions éco2mix · signal officiel : ${official ? official.source : 'indisponible'}`);
 
     return result;
 }

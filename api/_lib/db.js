@@ -17,7 +17,7 @@ let _sql = null;
  */
 export function getDb() {
   if (!process.env.DATABASE_URL) {
-    throw new Error('DATABASE_URL is not set — configure the Neon Postgres connection string');
+    throw new Error('DATABASE_URL is not set: configure the Neon Postgres connection string');
   }
   if (!_sql) {
     _sql = neon(process.env.DATABASE_URL);

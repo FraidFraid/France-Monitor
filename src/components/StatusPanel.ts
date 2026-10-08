@@ -5,6 +5,7 @@
  */
 
 import type { DataSourceStatus } from '../types/index.ts';
+import { sovereigntySourceDetail } from '../config/sovereignty-sources.ts';
 import { t } from '../services/i18n.ts';
 import { fmIcon, fmStatusDot } from './shared/icons.ts';
 import type { IconName } from './shared/icons.ts';
@@ -33,6 +34,25 @@ const STATUS_LABELS: Record<string, string> = {
     loading: 'status.loading',
 };
 
+/** Suffixe de retard des périodes santé (« S39 provisoire (en retard) », spec 2026-10-03 S2). */
+const LATE_SUFFIX = /\s*\(en retard\)$/;
+
+/**
+ * Infobulle de la pastille : une source datée par sa période (semaine, millésime) ne se dit jamais « temps réel » (S1) ;
+ * en retard, elle se dit « en retard » (jamais « cache figé ») ; une lecture en échec ou incomplète nomme la partie en échec (S3).
+ */
+function statusTitle(src: DataSourceStatus): string {
+    const period = src.period;
+    if (period !== undefined && src.status === 'ok') return t('status.upToDatePeriod', { period });
+    if (period !== undefined && src.status === 'stale') {
+        const label = LATE_SUFFIX.test(period)
+            ? t('status.latePeriod', { period: period.replace(LATE_SUFFIX, '') })
+            : t('status.incompletePeriod', { period });
+        return src.error ? `${label} · ${src.error}` : label;
+    }
+    return t(STATUS_LABELS[src.status] ?? src.status);
+}
+
 const SOURCE_NAME_KEYS: Record<string, string> = {
     'RSS PQR': 'status.initialSources.rss',
     'Écowatt RTE': 'status.initialSources.ecowatt',
@@ -43,14 +63,13 @@ const SOURCE_NAME_KEYS: Record<string, string> = {
     'AIS maritime': 'status.initialSources.ais',
     'Vols militaires': 'status.initialSources.militaryFlights',
     'Trafic aérien': 'status.initialSources.airTraffic',
-    'SPF / DREES': 'status.initialSources.health',
+    'Santé publique France': 'status.initialSources.health',
     SNCF: 'status.initialSources.sncf',
 };
 
 const SOURCE_DETAIL_KEYS: Record<string, string> = {
     'API publique open data, licence Etalab': 'status.details.hubeau',
-    'adsb.fi → airplanes.live → OpenSky': 'status.details.militaryFlights',
-    'OpenSky + airplanes.live · source publique limitée': 'status.details.airTraffic',
+    'OpenSky (ADS-B), collecte du serveur': 'status.details.airTraffic',
 };
 
 function translateSourceName(name: string): string {
@@ -65,7 +84,7 @@ function translateDetail(detail: string): string {
 
 /** Format "dernière mise à jour" */
 function formatLastUpdate(date: Date | null): string {
-    if (!date) return '—';
+    if (!date) return 'n.d.';
     const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
     if (seconds < 60) return t('status.justNow');
     const minutes = Math.floor(seconds / 60);
@@ -157,9 +176,18 @@ export class StatusPanel {
             { name: 'Météo-France', lastUpdate: null, status: 'loading' },
             { name: 'Vigicrues', lastUpdate: null, status: 'loading' },
             { name: 'AIS maritime', lastUpdate: null, status: 'loading' },
-            { name: 'Vols militaires', lastUpdate: null, status: 'loading', detail: 'adsb.fi → airplanes.live → OpenSky' },
-            { name: 'Trafic aérien', lastUpdate: null, status: 'loading', detail: 'OpenSky + airplanes.live · source publique limitée' },
-            { name: 'SPF / DREES', lastUpdate: null, status: 'loading' },
+            // Souveraineté (spec 2026-10-04 souveraineté S1 ; arbitrage 22) : lignes datées par leur donnée dès la première lecture ;
+            // détail et lien de la source lus dans SOVEREIGNTY_SOURCE_DETAILS au rendu.
+            { name: 'Vols militaires', lastUpdate: null, status: 'loading' },
+            { name: 'Vigipirate (page du SGDSN)', lastUpdate: null, status: 'loading' },
+            { name: 'Câbles et AIS', lastUpdate: null, status: 'loading' },
+            { name: 'CERT-FR', lastUpdate: null, status: 'loading' },
+            { name: 'CISA KEV', lastUpdate: null, status: 'loading' },
+            { name: 'Ransomware.live', lastUpdate: null, status: 'loading' },
+            { name: 'Have I Been Pwned', lastUpdate: null, status: 'loading' },
+            { name: 'Cybermalveillance.gouv.fr', lastUpdate: null, status: 'loading' },
+            { name: 'Trafic aérien', lastUpdate: null, status: 'loading', detail: 'OpenSky (ADS-B), collecte du serveur' },
+            { name: 'Santé publique France', lastUpdate: null, status: 'loading' },
             { name: 'SNCF', lastUpdate: null, status: 'loading' },
         ]);
     }
@@ -224,9 +252,18 @@ export class StatusPanel {
             { name: 'Météo-France', lastUpdate: null, status: 'loading' },
             { name: 'Vigicrues', lastUpdate: null, status: 'loading' },
             { name: 'AIS maritime', lastUpdate: null, status: 'loading' },
-            { name: 'Vols militaires', lastUpdate: null, status: 'loading', detail: 'adsb.fi → airplanes.live → OpenSky' },
-            { name: 'Trafic aérien', lastUpdate: null, status: 'loading', detail: 'OpenSky + airplanes.live · source publique limitée' },
-            { name: 'SPF / DREES', lastUpdate: null, status: 'loading' },
+            // Souveraineté (spec 2026-10-04 souveraineté S1 ; arbitrage 22) : lignes datées par leur donnée dès la première lecture ;
+            // détail et lien de la source lus dans SOVEREIGNTY_SOURCE_DETAILS au rendu.
+            { name: 'Vols militaires', lastUpdate: null, status: 'loading' },
+            { name: 'Vigipirate (page du SGDSN)', lastUpdate: null, status: 'loading' },
+            { name: 'Câbles et AIS', lastUpdate: null, status: 'loading' },
+            { name: 'CERT-FR', lastUpdate: null, status: 'loading' },
+            { name: 'CISA KEV', lastUpdate: null, status: 'loading' },
+            { name: 'Ransomware.live', lastUpdate: null, status: 'loading' },
+            { name: 'Have I Been Pwned', lastUpdate: null, status: 'loading' },
+            { name: 'Cybermalveillance.gouv.fr', lastUpdate: null, status: 'loading' },
+            { name: 'Trafic aérien', lastUpdate: null, status: 'loading', detail: 'OpenSky (ADS-B), collecte du serveur' },
+            { name: 'Santé publique France', lastUpdate: null, status: 'loading' },
             { name: 'SNCF', lastUpdate: null, status: 'loading' },
         ]);
     }
@@ -302,7 +339,7 @@ export class StatusPanel {
         this.triggerEl.setAttribute('data-state', state);
         this.triggerEl.setAttribute(
             'aria-label',
-            `${t('status.compactLabel')} — ${summary}`,
+            `${t('status.compactLabel')} : ${summary}`,
         );
     }
 
@@ -323,6 +360,7 @@ export class StatusPanel {
                 src.status,
                 src.detail ?? '',
                 src.error ?? '',
+                src.period ?? '',
                 formatLastUpdate(src.lastUpdate),
                 formatCacheAge(src.cacheAgeMs) ?? '',
                 String((src.cacheAgeMs ?? 0) > 8 * 60_000),
@@ -372,12 +410,23 @@ export class StatusPanel {
             nameEl.textContent = translateSourceName(src.name);
             textWrap.appendChild(nameEl);
 
-            // ── Détail statique (provenance, licence…) ──
-            if (src.detail) {
-                const detailEl = document.createElement('span');
+            // ── Détail statique (provenance, licence…) ; lignes Souveraineté : la source nommée avec son lien (attributions de la spec) ──
+            const sovereign = sovereigntySourceDetail(src.name);
+            const detail = src.detail !== undefined ? translateDetail(src.detail) : sovereign?.detail ?? null;
+            if (detail) {
+                const link = sovereign?.link ?? null;
+                const detailEl = document.createElement(link ? 'a' : 'span');
                 detailEl.style.cssText = 'font-size:10px;color:var(--text-muted);max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-                detailEl.title = translateDetail(src.detail);
-                detailEl.textContent = translateDetail(src.detail);
+                detailEl.title = detail;
+                detailEl.textContent = detail;
+                if (link && detailEl instanceof HTMLAnchorElement) {
+                    detailEl.href = link;
+                    detailEl.target = '_blank';
+                    detailEl.rel = 'noopener noreferrer';
+                    detailEl.style.textDecoration = 'underline';
+                    // Le lien ouvre la source ; il n'ouvre pas le panneau de la ligne.
+                    detailEl.addEventListener('click', (e) => e.stopPropagation());
+                }
                 textWrap.appendChild(detailEl);
             }
 
@@ -455,14 +504,15 @@ export class StatusPanel {
                 right.appendChild(errEl);
             } else {
                 const timeEl = document.createElement('span');
-                timeEl.style.cssText = 'font-size:10px;color:var(--text-muted);';
-                timeEl.textContent = formatLastUpdate(src.lastUpdate);
+                timeEl.style.cssText = 'font-size:10px;color:var(--text-muted);white-space:nowrap;';
+                // Donnée hebdomadaire ou annuelle : sa période réelle, jamais un âge relatif (« il y a 143h ») (S1).
+                timeEl.textContent = src.period ?? formatLastUpdate(src.lastUpdate);
                 right.appendChild(timeEl);
             }
 
             const statusEl = document.createElement('span');
             statusEl.innerHTML = statusIconHtml(src.status);
-            statusEl.title = t(STATUS_LABELS[src.status] ?? src.status);
+            statusEl.title = statusTitle(src);
             right.appendChild(statusEl);
 
             row.appendChild(left);

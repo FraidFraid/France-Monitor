@@ -6,7 +6,7 @@ vi.mock('../../services/news-events.ts', () => ({
 }));
 
 import { fetchEventDetail } from '../../services/news-events.ts';
-import { PosteSituation, layoutFor, type PosteCallbacks, type PosteData, type PosteRoots } from './PosteSituation.ts';
+import { PosteSituation, layoutFor, type PosteCallbacks, type PosteOptions, type PosteData, type PosteRoots } from './PosteSituation.ts';
 import type {
   DetectedSituation,
   EcowattHourValue,
@@ -17,6 +17,8 @@ import type {
   StructuredBrief,
 } from '../../types/index.ts';
 import { parisDate } from '../../services/ecowatt-official.ts';
+import { nationalSummary } from '../layer-panel/veille.ts';
+import { HEALTH_NOW, surveillanceFixture } from '../layer-panel/health.fixture.ts';
 
 const NOW = Date.parse('2026-09-24T08:00:00Z');
 
@@ -82,7 +84,7 @@ function data(over: Partial<PosteData> = {}): PosteData {
   };
 }
 
-function setup(width = 1440) {
+function setup(width = 1440, storage: Pick<Storage, 'getItem' | 'setItem'> | null = null, extra: PosteOptions = {}) {
   const app = document.createElement('div');
   const make = (): HTMLElement => {
     const el = document.createElement('div');
@@ -93,9 +95,10 @@ function setup(width = 1440) {
   document.body.appendChild(app);
   const cb = {
     onThemeChange: vi.fn(), onFlyTo: vi.fn(), onActivateLayers: vi.fn(), onOpenDossier: vi.fn(() => true),
-    onOpenReport: vi.fn(), onShowFrance: vi.fn(), onFicheRendered: vi.fn(), onMapShown: vi.fn(), onSelect: vi.fn(),
+    onOpenReport: vi.fn(), onShowFrance: vi.fn(), onMapShown: vi.fn(), onSelect: vi.fn(),
+    onOpenLayerPanel: vi.fn(),
   } satisfies PosteCallbacks;
-  const poste = new PosteSituation(roots, cb, { viewportWidth: () => width });
+  const poste = new PosteSituation(roots, cb, { viewportWidth: () => width, storage, ...extra });
   poste.setEvents(eventsState());
   poste.update(data());
   return { roots, cb, poste };
@@ -203,7 +206,9 @@ describe('PosteSituation', () => {
 
   it('tablette : « Vue générale » filtre sans ouvrir de volet ; une clé theme:<id> ouvre la fiche du thème (I3)', () => {
     const { roots, poste } = setup(820);
+    expect(poste.selectedKey()).toBeNull();
     poste.select('theme:security');
+    expect(poste.selectedKey()).toBe('theme:security');
     expect(ficheKey(roots)).toBe('theme:security');
     expect(roots.app.dataset.v2Fiche).toBe('open');
     roots.themes.querySelector<HTMLButtonElement>('[data-theme="general"]')?.click();
@@ -221,18 +226,6 @@ describe('PosteSituation', () => {
     expect(ficheKey(roots)).toBe('france');
     expect(roots.app.dataset.v2Fiche).toBe('default');
     expect(document.activeElement?.classList.contains('fiche-name')).toBe(true);
-  });
-
-  it('le volet « Pourquoi ce niveau ? » ouvert le reste après vingt mises à jour', () => {
-    const { roots, poste } = setup();
-    const details = roots.fiche.querySelector('details.fiche-why');
-    expect(details).not.toBeNull();
-    details?.setAttribute('open', '');
-    details?.dispatchEvent(new Event('toggle'));
-    for (let i = 1; i <= 20; i += 1) {
-      poste.update(data({ now: NOW + i * 60_000, score: { delta24h: -i, pillarDeltas: null, series: [] } }));
-    }
-    expect(roots.fiche.querySelector('details.fiche-why')?.hasAttribute('open')).toBe(true);
   });
 
   it('une preuve E42 ouvre la fiche événement et ne charge ses articles qu’une fois', async () => {
@@ -313,7 +306,7 @@ describe('PosteSituation', () => {
           generatedAt: new Date(NOW).toISOString(),
           days: [{ date: parisDate(Date.now()), level: 'red', message: '', hours: Array(24).fill(3) as EcowattHourValue[] }],
         },
-        mixes: {}, national: mix, interconnections: [],
+        mixes: {}, national: mix, interconnections: [], grid: null,
       },
     }));
     simulateLayoutCss(roots, 'mobile');
@@ -408,19 +401,20 @@ describe('PosteSituation', () => {
     expect(roots.status.textContent).toContain('Calcul du niveau national…');
     expect(roots.themes.querySelector('.fm-vig')).toBeNull();
     expect(roots.fiche.querySelector('.fiche-head .fm-vig')).toBeNull();
-    expect(roots.fiche.textContent).toContain('niveau en cours de calcul');
-    // Relecture finale m1 : ni indice, ni jauge, ni piliers calculés sur des données absentes.
+    // En-tête Instrument en attente : ni indice, ni échelle, ni piliers calculés sur des données absentes.
     expect(roots.fiche.textContent).toContain('Calcul du niveau national…');
-    expect(roots.fiche.textContent).not.toContain('Indice de stabilité');
-    expect(roots.fiche.querySelector('.frintel-gauge, .frintel-pillars')).toBeNull();
+    expect(roots.fiche.textContent).not.toContain('/100');
+    expect(roots.fiche.querySelector('.fmk-scale, .fmk-meters--pillars')).toBeNull();
     // La fiche thème dit le chargement, jamais « Rien à traiter ».
     const energy = (): HTMLButtonElement | null => roots.themes.querySelector<HTMLButtonElement>('[data-theme="energy"]');
     energy()?.click();
     expect(ficheKey(roots)).toBe('france');
     energy()?.click();
     expect(ficheKey(roots)).toBe('theme:energy');
+    expect(roots.fiche.textContent).toContain('niveau en cours de calcul');
+    expect(roots.fiche.querySelector('.fm-vig')).toBeNull();
     expect(roots.fiche.textContent).toContain('Chargement des données…');
-    expect(roots.fiche.textContent).not.toContain('Rien à traiter');
+    expect((roots.fiche.textContent ?? '').toLowerCase()).not.toContain('rien à traiter');
   });
 });
 
@@ -484,5 +478,115 @@ describe('Échap partout (spec 2026-09-29 § 4)', () => {
     document.body.appendChild(popup);
     document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
     expect(ficheKey(roots)).toBe('event:42');
+  });
+});
+
+describe('sections de la fiche France (spec 2026-10-01 § 3.3)', () => {
+  function memoryStorage(initial: Record<string, boolean> = {}): Pick<Storage, 'getItem' | 'setItem'> & { saved: () => Record<string, boolean> } {
+    let value = JSON.stringify(initial);
+    return {
+      getItem: () => value,
+      setItem: (_key: string, next: string) => { value = next; },
+      saved: () => JSON.parse(value) as Record<string, boolean>,
+    };
+  }
+
+  it('l’ouverture d’une section est retenue, enregistrée, et survit au rafraîchissement', () => {
+    const storage = memoryStorage();
+    const { roots, poste } = setup(1440, storage);
+    const infra = roots.fiche.querySelector<HTMLDetailsElement>('details[data-section="france:infra"]');
+    if (!infra) throw new Error('section Infrastructures absente');
+    infra.open = true;
+    infra.dispatchEvent(new Event('toggle'));
+    expect(storage.saved()).toEqual({ 'france:infra': true });
+    for (let i = 1; i <= 20; i++) poste.update(data({ now: NOW + i * 60_000 }));
+    expect(roots.fiche.querySelector('details[data-section="france:infra"]')?.hasAttribute('open')).toBe(true);
+  });
+
+  it('un toggle émis au rendu n’écrit rien dans le stockage', () => {
+    const storage = memoryStorage();
+    const { roots } = setup(1440, storage);
+    roots.fiche.querySelector('details[data-section="france:note"]')?.dispatchEvent(new Event('toggle'));
+    expect(storage.saved()).toEqual({});
+  });
+
+  it('état enregistré relu au démarrage', () => {
+    const { roots } = setup(1440, memoryStorage({ 'france:note': false }));
+    expect(roots.fiche.querySelector('details[data-section="france:note"]')?.hasAttribute('open')).toBe(false);
+  });
+
+  it('« National n/100 » ouvre le panneau cyber', () => {
+    const { roots, poste } = setup();
+    const listener = vi.fn();
+    document.addEventListener('open-cyber-panel', listener);
+    poste.update(data({
+      infra: { result: { score: 96, status: 'nominal', details: { cyber: 43, cyberNational: 51 }, computedAt: new Date(0), reliable: true }, nuclear: null, eolien: null },
+    }));
+    roots.fiche.querySelector<HTMLElement>('[data-action="open-cyber"]')?.click();
+    expect(listener).toHaveBeenCalledTimes(1);
+    document.removeEventListener('open-cyber-panel', listener);
+  });
+
+  function openSection(roots: PosteRoots, key: string): void {
+    const el = roots.fiche.querySelector<HTMLDetailsElement>(`details[data-section="${key}"]`);
+    if (!el) throw new Error(`section ${key} absente`);
+    el.open = true;
+    el.dispatchEvent(new Event('toggle'));
+  }
+
+  it('une section ouverte sur un événement l’est sur les autres, et après vingt mises à jour', () => {
+    const storage = memoryStorage();
+    const { roots, poste } = setup(1440, storage);
+    poste.setEvents({ ...eventsState(), events: [event(), { ...event(), id: 43, evidenceId: 'E43', title: 'Autre événement' }] });
+    poste.select('event:42');
+    openSection(roots, 'event:42:articles');
+    expect(storage.saved()).toEqual({ 'event:articles': true });
+    poste.select('event:43');
+    expect(ficheKey(roots)).toBe('event:43');
+    expect(roots.fiche.querySelector('details[data-section="event:43:articles"]')?.hasAttribute('open')).toBe(true);
+    for (let i = 1; i <= 20; i++) poste.update(data({ now: NOW + i * 60_000 }));
+    expect(roots.fiche.querySelector('details[data-section="event:43:articles"]')?.hasAttribute('open')).toBe(true);
+  });
+
+  describe('copie de la référence', () => {
+    const select42 = (extra: PosteOptions) => {
+      const s = setup(1440, null, extra);
+      s.poste.select('event:42');
+      return s;
+    };
+    const copy = (roots: PosteRoots): void => roots.fiche.querySelector<HTMLElement>('[data-action="copy-ref"]')?.click();
+    const toast = (roots: PosteRoots): string | undefined => roots.fiche.querySelector('.fiche-toast')?.textContent ?? undefined;
+
+    it('succès : writeText reçoit la référence, « Référence copiée » s’affiche', async () => {
+      const writeText = vi.fn(async (_text: string): Promise<void> => {});
+      const { roots } = select42({ clipboard: { writeText } });
+      copy(roots);
+      expect(writeText).toHaveBeenCalledTimes(1);
+      expect(writeText.mock.calls[0]?.[0]).toContain('E42');
+      await vi.waitFor(() => expect(toast(roots)).toBe('Référence copiée'));
+    });
+
+    it('rejet : aucune exception, « Copie impossible »', async () => {
+      const { roots } = select42({ clipboard: { writeText: vi.fn(async () => { throw new Error('refusé'); }) } });
+      expect(() => copy(roots)).not.toThrow();
+      await vi.waitFor(() => expect(toast(roots)).toBe('Copie impossible'));
+    });
+
+    it('API absente : « Copie impossible »', () => {
+      const { roots } = select42({ clipboard: null });
+      expect(() => copy(roots)).not.toThrow();
+      expect(toast(roots)).toBe('Copie impossible');
+    });
+  });
+});
+
+describe('fiche thème Santé (spec 2026-10-03 § 3.5)', () => {
+  it('niveau national affiché ; un lien ouvre le panneau de la couche par App', () => {
+    const { roots, cb, poste } = setup();
+    poste.update(data({ health: nationalSummary(surveillanceFixture(), HEALTH_NOW) }));
+    poste.select('theme:health');
+    expect(roots.fiche.textContent).toContain('eaux usées en forte hausse');
+    roots.fiche.querySelector<HTMLElement>('[data-action="open-layer:healthOscour"]')?.click();
+    expect(cb.onOpenLayerPanel).toHaveBeenCalledWith('healthOscour');
   });
 });

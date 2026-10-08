@@ -1,58 +1,64 @@
+// api/_shared/air-traffic.js : trafic aérien civil, collecte serveur unique OpenSky (spec 2026-10-03 panneaux
+// trafic § 2.3, T3, T4). OpenSky authentifié seul (airplanes.live répond 403 depuis septembre 2026 : retiré,
+// avec l'en-tête de navigateur factice) ; `extended=1` (catégorie) ; `squawk` conservé.
+// Une lecture des états toutes les 2 min au plus (5 min sur le serveur de dev, qui partage le compte), partagée
+// par la carte (/api/traffic/air, relève client de 12 s) et le panneau (/api/traffic/air-overview) ; lancée par
+// la relève serveur (server/prod/traffic-collectors.mjs) ou à la demande. Seule cette lecture est attendue par
+// les routes ; à chaque lecture : journal des urgences (7 jours), échantillon de volume toutes les 10 min
+// (8 jours), trajectoires inhabituelles. Tâches de fond lancées par la lecture des états, jamais attendues par
+// un appelant, une seule de chaque à la fois : annuaires officiels de Beauvais et Bordeaux (10 min ; retards,
+// annulations, enrichissement des vols proches) et départs par aéroport toutes les 4 h (8 appels, environ
+// 240 crédits ; suspendus sous 500 crédits restants ou sans compteur lisible ; coupés sur le serveur de dev
+// sauf AIR_DEV_DEPARTURES=1). Leurs derniers résultats sont joints à chaque réponse.
+// Le « score » d'aéroport par densité est supprimé.
 import { FRANCE_AIRPORTS, matchFranceAirport } from './airports-fr.js';
+import { distanceToMetropoleKm, haversineKm, insideMetropole } from '../_lib/geo-fr.js';
+import { appendSample, isDevServer, kvReadJson, kvSetJson, readLog } from '../_lib/kv-history.js';
+import { parisParts } from '../_lib/paris-time.js';
+import { cleanText, fetchStrictHtml, fetchStrictJson, fetchStrictResponse, sourceError } from '../_lib/source-http.js';
 
-const AIRPLANES_LIVE_POINT_BASE = 'https://api.airplanes.live/v2/point';
 const OPENSKY_STATES_URL = 'https://opensky-network.org/api/states/all';
+const OPENSKY_DEPARTURES_URL = 'https://opensky-network.org/api/flights/departure';
 const OPENSKY_TOKEN_URL = 'https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token';
-const CACHE_TTL_MS = 20 * 1000;
-const OFFICIAL_AIRPORT_CACHE_TTL_MS = 10 * 60 * 1000;
-const FLIGHT_HISTORY_TTL_MS = 20 * 60 * 1000;
+
+/** Zone suivie (déborde sur les pays voisins : dit dans « Méthode »). */
+export const ZONE_BOUNDS = { minLat: 41.0, maxLat: 51.8, minLon: -5.8, maxLon: 10.2 };
+export const STATES_INTERVAL_MS = 2 * 60_000;
+/** Serveur de dev : même compte OpenSky que la production, lecture des états bridée pour tenir son budget. */
+export const DEV_STATES_INTERVAL_MS = 5 * 60_000;
+export const VOLUME_INTERVAL_MS = 10 * 60_000;
+export const DEPARTURES_INTERVAL_MS = 4 * 3_600_000;
+export const DEPARTURES_WINDOW_SEC = 2 * 3600;
+/** Sous ce nombre de crédits restants, les départs (30 crédits par appel) sont suspendus avant les états. */
+export const CREDIT_FLOOR = 500;
+export const DEPARTURE_AIRPORTS = ['LFPG', 'LFPO', 'LFMN', 'LFLL', 'LFML', 'LFBO', 'LFBD', 'LFRS'];
+export const EMERGENCY_SQUAWKS = ['7500', '7600', '7700'];
+/** Un 7700 compte s'il est au-dessus du territoire ou à moins de 40 km (approches). */
+export const APPROACH_KM = 40;
+export const EMERGENCY_LOG_KEY = 'traffic:air:emergencies';
+/**
+ * Un code revu au plus 15 min après sa dernière vue prolonge l'épisode du journal (première vue gardée) ; au-delà, nouvel
+ * épisode, vu une fois (T3 : une urgence ne colore qu'une fois vue sur deux lectures, voir src/services/traffic-levels.ts).
+ */
+export const EMERGENCY_EPISODE_GAP_MS = 15 * 60_000;
+export const VOLUME_KEY = 'traffic:air:volume';
+export const DEPARTURES_KEY = 'traffic:air:departures';
+const EMERGENCY_KEEP_MS = 7 * 86_400_000;
+const VOLUME_KEEP_MS = 8 * 86_400_000;
+const STALE_CONTACT_SEC = 300;
+const RATE_LIMIT_BACKOFF_MS = 10 * 60_000;
+const OFFICIAL_BOARD_TTL_MS = 10 * 60_000;
+const FLIGHT_HISTORY_TTL_MS = 20 * 60_000;
 const MAX_HISTORY_SAMPLES = 12;
-const FRANCE_BOUNDS = {
-  minLat: 41.0,
-  maxLat: 51.8,
-  minLon: -5.8,
-  maxLon: 10.2,
-};
 
-const AIR_TRAFFIC_AREAS = [
-  { id: 'northwest', lat: 48.9, lon: -2.4, radiusNm: 240 },
-  { id: 'northeast', lat: 48.9, lon: 4.8, radiusNm: 240 },
-  { id: 'center', lat: 46.5, lon: 2.5, radiusNm: 240 },
-  { id: 'southwest', lat: 44.4, lon: -0.9, radiusNm: 240 },
-  { id: 'southeast', lat: 43.9, lon: 5.7, radiusNm: 240 },
-];
-
-let cachedSnapshot = null;
-let cachedOpenSkyToken = null;
-const cachedOfficialFlightDirectories = new Map();
-const flightHistory = new Map();
-
-// ── Rate-limit backoff tracker (warm-instance protection) ──
-const rateLimitedUntil = new Map(); // source → timestamp
-const RATE_LIMIT_BACKOFF_MS = 60_000; // 1 min cooldown after 429
-
-function isRateLimited(source) {
-  const until = rateLimitedUntil.get(source);
-  if (!until) return false;
-  if (Date.now() < until) return true;
-  rateLimitedUntil.delete(source);
-  return false;
-}
-
-function markRateLimited(source) {
-  rateLimitedUntil.set(source, Date.now() + RATE_LIMIT_BACKOFF_MS);
-  console.warn(`[air-traffic] ${source} rate-limited, backoff ${RATE_LIMIT_BACKOFF_MS / 1000}s`);
-}
+/** Repère du tableau des vols de Bordeaux : la vraie page intègre un formulaire reCAPTCHA, ce n'est pas un défi. */
+const BORDEAUX_TABLE_MARKER = 'id="flights-list-table"';
 
 const OFFICIAL_AIRPORT_PROVIDERS = {
-  BVA: {
-    airportIata: 'BVA',
-    airportName: 'Paris Beauvais',
-    urls: ['https://www.aeroportparisbeauvais.com/en/flights/live-flight-information/find-your-flight'],
-  },
+  BVA: { name: 'Paris Beauvais', urls: ['https://www.aeroportparisbeauvais.com/en/flights/live-flight-information/find-your-flight'] },
   BOD: {
-    airportIata: 'BOD',
-    airportName: 'Bordeaux Merignac',
+    name: 'Bordeaux Mérignac',
+    contentMarker: BORDEAUX_TABLE_MARKER,
     urls: [
       'https://www.bordeaux.aeroport.fr/vols-destinations/arrivees-departs-du-jour',
       'https://www.bordeaux.aeroport.fr/vols-destinations/arrivees-departs-du-jour?w=out',
@@ -72,1065 +78,612 @@ const CALLSIGN_OPERATOR_HINTS = {
   KLM: { commercialCode: 'KL', operator: 'KLM' },
 };
 
-function getOpenSkyCredentials() {
-  const clientId = process.env.OPENSKY_CLIENT_ID?.trim();
-  const clientSecret = process.env.OPENSKY_CLIENT_SECRET?.trim();
-  if (!clientId || !clientSecret) return null;
-  return { clientId, clientSecret };
+// ── État du processus ──
+// Une lecture des états à la fois (`inflight`), seule attendue par les routes. Annuaires et départs : tâches de
+// fond, une seule de chaque à la fois (seul écrivain de leur clé) ; leurs derniers résultats sont joints aux réponses.
+let collection = null;
+let inflight = null;
+let cachedToken = null;
+let rateLimitedUntil = 0;
+const boards = new Map();
+const boardFailures = new Map();
+/** Dernier essai par annuaire : `{ board, records, error }`. */
+const boardStatus = new Map();
+let boardsJob = null;
+/** Départs : derniers connus (chargés une fois par processus depuis la clé-valeur), erreurs du dernier essai, cycle en cours. */
+const departures = { value: null, loaded: false, errors: [], job: null };
+const flightHistory = new Map();
+
+/** Réservé aux tests. */
+export function __resetAirStateForTests() {
+  collection = null;
+  inflight = null;
+  cachedToken = null;
+  rateLimitedUntil = 0;
+  boards.clear();
+  boardFailures.clear();
+  boardStatus.clear();
+  boardsJob = null;
+  departures.value = null;
+  departures.loaded = false;
+  departures.errors = [];
+  departures.job = null;
+  flightHistory.clear();
 }
 
-function buildGenericHeaders() {
-  return {
-    Accept: 'application/json',
-    'User-Agent':
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-  };
+/** Réservé aux tests : fin des tâches de fond en cours (annuaires, départs). */
+export async function __airJobsForTests() {
+  await Promise.all([boardsJob, departures.job]);
 }
 
-async function fetchOpenSkyAccessToken(fetchImpl) {
-  const credentials = getOpenSkyCredentials();
-  if (!credentials) return null;
-
-  const now = Date.now();
-  if (cachedOpenSkyToken && cachedOpenSkyToken.expiresAt > now + 30_000) {
-    return cachedOpenSkyToken.accessToken;
-  }
-
-  const body = new URLSearchParams({
-    grant_type: 'client_credentials',
-    client_id: credentials.clientId,
-    client_secret: credentials.clientSecret,
-  });
-
-  const response = await fetchImpl(OPENSKY_TOKEN_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Accept: 'application/json',
-    },
-    body,
-    signal: AbortSignal.timeout(12_000),
-  });
-
-  if (!response.ok) {
-    throw new Error(`OpenSky token HTTP ${response.status}`);
-  }
-
-  const json = await response.json();
-  const accessToken = typeof json?.access_token === 'string' ? json.access_token : '';
-  const expiresIn = Number(json?.expires_in);
-  if (!accessToken) {
-    throw new Error('OpenSky token missing access_token');
-  }
-
-  cachedOpenSkyToken = {
-    accessToken,
-    expiresAt: now + (Number.isFinite(expiresIn) ? expiresIn : 300) * 1000,
-  };
-  return accessToken;
+/** Intervalle entre deux lectures des états : 2 min, 5 min sur le serveur de dev. */
+function statesIntervalMs() {
+  return isDevServer() ? DEV_STATES_INTERVAL_MS : STATES_INTERVAL_MS;
 }
 
-async function buildOpenSkyHeaders(fetchImpl) {
-  const headers = buildGenericHeaders();
-  const accessToken = await fetchOpenSkyAccessToken(fetchImpl);
-  if (!accessToken) return headers;
+/** URL des états de la zone suivie, catégorie comprise. */
+export function statesUrl() {
+  const b = ZONE_BOUNDS;
+  return `${OPENSKY_STATES_URL}?lamin=${b.minLat}&lomin=${b.minLon}&lamax=${b.maxLat}&lomax=${b.maxLon}&extended=1`;
+}
 
-  return {
-    ...headers,
-    Authorization: `Bearer ${accessToken}`,
-  };
+/** URL des départs détectés d'un aéroport (ICAO) sur une fenêtre (secondes Unix). */
+export function departuresUrl(icao, begin, end) {
+  return `${OPENSKY_DEPARTURES_URL}?airport=${icao}&begin=${begin}&end=${end}`;
 }
 
 function toNumber(value) {
-  if (value == null) return null;
-  const num = Number(value);
-  return Number.isFinite(num) ? num : null;
+  if (value === null || value === undefined || value === '') return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
 }
 
-function normalizeCallsign(value, fallback) {
-  const trimmed = String(value ?? '').trim();
-  return trimmed || fallback;
-}
-
-function normalizeText(value) {
-  const trimmed = String(value ?? '').trim();
-  return trimmed || undefined;
-}
-
-function normalizeFlightDesignator(value) {
-  return String(value ?? '')
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, '')
-    .replace(/[^A-Z0-9]/g, '');
-}
-
-function getCallsignOperatorHint(value) {
-  const normalized = normalizeFlightDesignator(value);
-  if (normalized.length < 3) return null;
-  return CALLSIGN_OPERATOR_HINTS[normalized.slice(0, 3)] ?? null;
-}
-
-function deriveFlightLookupKeys(value) {
-  const normalized = normalizeFlightDesignator(value);
-  if (!normalized) return [];
-
-  const keys = new Set([normalized]);
-  const hint = getCallsignOperatorHint(normalized);
-  if (hint && normalized.length > 3) {
-    const suffix = normalized.slice(3);
-    if (/^\d+$/.test(suffix)) {
-      keys.add(`${hint.commercialCode}${suffix}`);
-    }
-  }
-
-  return Array.from(keys);
-}
-
-function normalizeOperatorName(value) {
-  return String(value ?? '')
-    .trim()
-    .toUpperCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^A-Z0-9]+/g, ' ')
-    .trim();
-}
-
-function decodeHtmlEntities(value) {
-  return String(value ?? '')
-    .replace(/&#(\d+);/g, (_, num) => String.fromCharCode(Number(num)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, num) => String.fromCharCode(parseInt(num, 16)))
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&#039;/g, "'")
-    .replace(/&apos;/g, "'")
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&eacute;/gi, 'e')
-    .replace(/&egrave;/gi, 'e')
-    .replace(/&ecirc;/gi, 'e')
-    .replace(/&agrave;/gi, 'a')
-    .replace(/&acirc;/gi, 'a')
-    .replace(/&ocirc;/gi, 'o')
-    .replace(/&uuml;/gi, 'u')
-    .replace(/&ccedil;/gi, 'c');
-}
-
-function stripHtml(value) {
-  return decodeHtmlEntities(
-    String(value ?? '')
-      .replace(/<br\s*\/?>/gi, ' ')
-      .replace(/<[^>]*>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-  );
-}
-
-function normalizeEta(value) {
-  if (value == null || value === '') return undefined;
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value > 1e12 ? Math.round(value) : Math.round(value * 1000);
-  }
-  const asNumber = Number(value);
-  if (Number.isFinite(asNumber) && asNumber > 0) {
-    return asNumber > 1e12 ? Math.round(asNumber) : Math.round(asNumber * 1000);
-  }
-  const parsed = Date.parse(String(value));
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function formatParisDate(date = new Date()) {
-  const formatter = new Intl.DateTimeFormat('fr-FR', {
-    timeZone: 'Europe/Paris',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  });
-  return formatter.format(date);
-}
-
-function getParisMinutesOfDay(epochMs = Date.now()) {
-  const formatter = new Intl.DateTimeFormat('fr-FR', {
-    timeZone: 'Europe/Paris',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
-  const [hours, minutes] = formatter.format(new Date(epochMs)).split(':').map(Number);
-  return (Number.isFinite(hours) ? hours : 0) * 60 + (Number.isFinite(minutes) ? minutes : 0);
-}
-
-function parseTimeToMinutes(value) {
-  const match = String(value ?? '').match(/(\d{2}):(\d{2})/);
-  if (!match) return null;
-  const hours = Number(match[1]);
-  const minutes = Number(match[2]);
-  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return null;
-  return hours * 60 + minutes;
-}
-
-function isInFranceBounds(lat, lon) {
-  return (
-    lat >= FRANCE_BOUNDS.minLat &&
-    lat <= FRANCE_BOUNDS.maxLat &&
-    lon >= FRANCE_BOUNDS.minLon &&
-    lon <= FRANCE_BOUNDS.maxLon
-  );
-}
-
-function buildUrl(area) {
-  return `${AIRPLANES_LIVE_POINT_BASE}/${area.lat}/${area.lon}/${area.radiusNm}`;
-}
-
-function normalizeAircraft(ac) {
-  const lat = toNumber(ac.lat);
-  const lon = toNumber(ac.lon);
-  if (lat == null || lon == null || !isInFranceBounds(lat, lon)) return null;
-
-  const hex = String(ac.hex ?? '').trim().toLowerCase();
-  if (!hex) return null;
-
-  const altitude =
-    ac.alt_baro === 'ground'
-      ? 0
-      : Math.round(toNumber(ac.alt_baro) ?? toNumber(ac.alt_geom) ?? 0);
-  const speed = Math.round(toNumber(ac.gs) ?? 0);
-  const heading = Math.round(toNumber(ac.track) ?? 0);
-  const seenSeconds = Math.max(0, Math.round(toNumber(ac.seen) ?? 0));
-  const lastSeen = Date.now() - seenSeconds * 1000;
-  const onGround = ac.on_ground === true || altitude === 0;
-
-  if (onGround) return null;
-  if (seenSeconds > 180) return null;
-
+/**
+ * État OpenSky (tableau de 18 éléments) → objet ; null sans position ou vu il y a plus de 5 min.
+ * @param {unknown[]} s
+ * @param {number} timeSec instant de la réponse (`time`)
+ */
+export function normalizeOpenSkyState(s, timeSec) {
+  if (!Array.isArray(s) || s.length < 17) return null;
+  const lon = toNumber(s[5]);
+  const lat = toNumber(s[6]);
+  const lastContact = toNumber(s[4]);
+  const icao24 = String(s[0] ?? '').trim().toLowerCase();
+  if (!icao24 || lat === null || lon === null) return null;
+  if (lastContact !== null && timeSec - lastContact > STALE_CONTACT_SEC) return null;
+  const squawk = s[14] === null || s[14] === undefined ? null : String(s[14]).trim() || null;
   return {
-    id: hex,
-    callsign: normalizeCallsign(ac.flight, `HEX-${hex.slice(0, 4).toUpperCase()}`),
-    latitude: lat,
-    longitude: lon,
-    altitude,
-    speed,
-    heading,
-    registration: String(ac.r ?? '').trim() || undefined,
-    aircraftType: String(ac.t ?? '').trim() || undefined,
-    aircraftModel: String(ac.desc ?? '').trim() || undefined,
-    operator: String(ac.ownOp ?? '').trim() || getCallsignOperatorHint(ac.flight)?.operator || undefined,
-    category: String(ac.category ?? ac.type ?? '').trim() || undefined,
-    originAirport: normalizeText(ac.from ?? ac.dep ?? ac.departure ?? ac.origin),
-    destinationAirport: normalizeText(ac.to ?? ac.arr ?? ac.arrival ?? ac.destination),
-    eta: normalizeEta(ac.eta ?? ac.eta_epoch ?? ac.arrival_epoch ?? ac.estArrival),
-    lastSeen,
-    onGround,
-    source: 'airplanes.live',
+    icao24,
+    callsign: String(s[1] ?? '').trim() || null,
+    originCountry: String(s[2] ?? '').trim() || null,
+    lastContact,
+    lat,
+    lon,
+    baroAltitudeM: toNumber(s[7]),
+    onGround: s[8] === true,
+    velocityMs: toNumber(s[9]),
+    heading: toNumber(s[10]),
+    verticalRate: toNumber(s[11]),
+    geoAltitudeM: toNumber(s[13]),
+    squawk,
+    category: toNumber(s[17]),
   };
 }
 
-function isAlreadyNormalized(obj) {
-  return obj && typeof obj.id === 'string' && typeof obj.latitude === 'number';
+function normalizeHeading(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  const r = n % 360;
+  return r < 0 ? r + 360 : r;
 }
 
-function mergeAircraft(aircraft) {
-  const byId = new Map();
-
-  for (const raw of aircraft) {
-    const normalized = isAlreadyNormalized(raw) ? raw : normalizeAircraft(raw);
-    if (!normalized) continue;
-
-    const existing = byId.get(normalized.id);
-    if (!existing || normalized.lastSeen > existing.lastSeen) {
-      byId.set(normalized.id, normalized);
-    }
-  }
-
-  return Array.from(byId.values()).sort((a, b) => {
-    if (b.altitude !== a.altitude) return b.altitude - a.altitude;
-    return a.callsign.localeCompare(b.callsign);
-  });
+function headingDiff(a, b) {
+  const d = Math.abs(normalizeHeading(a) - normalizeHeading(b));
+  return d > 180 ? 360 - d : d;
 }
 
-function countFlightsBySource(flights) {
-  const counts = {};
-  for (const flight of flights) {
-    const source = String(flight?.source ?? '').trim() || 'unknown';
-    counts[source] = (counts[source] ?? 0) + 1;
-  }
-  return counts;
+function normalizeFlightDesignator(value) {
+  return String(value ?? '').trim().toUpperCase().replace(/\s+/g, '').replace(/[^A-Z0-9]/g, '');
 }
 
-function parseTableRows(html) {
-  const rows = [];
-  const rowRegex = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
-  let rowMatch;
-
-  while ((rowMatch = rowRegex.exec(html))) {
-    const cells = [];
-    const cellRegex = /<td\b[^>]*>([\s\S]*?)<\/td>/gi;
-    let cellMatch;
-    while ((cellMatch = cellRegex.exec(rowMatch[1]))) {
-      cells.push(stripHtml(cellMatch[1]));
-    }
-    if (cells.length > 0) rows.push(cells);
-  }
-
-  return rows;
+function getCallsignOperatorHint(value) {
+  const n = normalizeFlightDesignator(value);
+  return n.length < 3 ? null : CALLSIGN_OPERATOR_HINTS[n.slice(0, 3)] ?? null;
 }
 
-function parseBeauvaisDirectory(html, todayDate) {
-  const records = [];
-  const arrivalsStart = html.indexOf('Arriving flights');
-  const departuresStart = html.indexOf('Departing flights');
-  if (arrivalsStart < 0 || departuresStart < 0) return records;
-
-  const arrivalsSection = html.slice(arrivalsStart, departuresStart);
-  const departuresSection = html.slice(departuresStart);
-
-  for (const cells of parseTableRows(arrivalsSection)) {
-    if (cells.length < 7) continue;
-    const dateCell = cells[0];
-    const dateMatch = dateCell.match(/(\d{2}\/\d{2}\/\d{4})/);
-    if (dateMatch && dateMatch[1] !== todayDate) continue;
-    const flightNumber = normalizeFlightDesignator(cells[1]);
-    if (!flightNumber) continue;
-
-    records.push({
-      airportIata: 'BVA',
-      flightNumber,
-      direction: 'arrival',
-      scheduledMinutes: parseTimeToMinutes(dateCell),
-      originAirport: normalizeText(cells[2]),
-      destinationAirport: 'Paris Beauvais',
-      operator: normalizeText(cells[3]),
-      terminal: normalizeText(cells[4]),
-      status: normalizeText(cells[5]),
-      sourceLabel: 'Aeroport Paris-Beauvais',
-    });
-  }
-
-  for (const cells of parseTableRows(departuresSection)) {
-    if (cells.length < 7) continue;
-    const dateCell = cells[0];
-    const dateMatch = dateCell.match(/(\d{2}\/\d{2}\/\d{4})/);
-    if (dateMatch && dateMatch[1] !== todayDate) continue;
-    const flightNumber = normalizeFlightDesignator(cells[1]);
-    if (!flightNumber) continue;
-
-    records.push({
-      airportIata: 'BVA',
-      flightNumber,
-      direction: 'departure',
-      scheduledMinutes: parseTimeToMinutes(dateCell),
-      originAirport: 'Paris Beauvais',
-      destinationAirport: normalizeText(cells[2]),
-      operator: normalizeText(cells[3]),
-      terminal: normalizeText(cells[4]),
-      status: normalizeText(cells[5]),
-      sourceLabel: 'Aeroport Paris-Beauvais',
-    });
-  }
-
-  return records;
-}
-
-function parseBordeauxDirectory(html, direction) {
-  const records = [];
-  const tableStart = html.indexOf('id="flights-list-table"');
-  const scopedHtml = tableStart >= 0 ? html.slice(tableStart) : html;
-
-  for (const cells of parseTableRows(scopedHtml)) {
-    if (direction === 'arrival' && cells.length < 5) continue;
-    if (direction === 'departure' && cells.length < 6) continue;
-    const flightNumber = normalizeFlightDesignator(cells[2]);
-    if (!flightNumber) continue;
-
-    records.push({
-      airportIata: 'BOD',
-      flightNumber,
-      direction,
-      scheduledMinutes: parseTimeToMinutes(cells[0]),
-      originAirport: direction === 'arrival' ? normalizeText(cells[1]) : 'Bordeaux Merignac',
-      destinationAirport: direction === 'departure' ? normalizeText(cells[1]) : 'Bordeaux Merignac',
-      operator: normalizeText(cells[3]),
-      terminal: direction === 'departure' ? normalizeText(cells[4]) : undefined,
-      status: normalizeText(cells[cells.length - 1]),
-      sourceLabel: 'Bordeaux Aeroport',
-    });
-  }
-
-  return records;
-}
-
-async function fetchOfficialAirportDirectory(fetchImpl, airportIata, now = Date.now()) {
-  const cached = cachedOfficialFlightDirectories.get(airportIata);
-  if (cached && now - cached.fetchedAt < OFFICIAL_AIRPORT_CACHE_TTL_MS) {
-    return cached.records;
-  }
-
-  const provider = OFFICIAL_AIRPORT_PROVIDERS[airportIata];
-  if (!provider) return [];
-
-  const headers = buildGenericHeaders();
-  const todayDate = formatParisDate(new Date(now));
-  const records = [];
-
-  for (const url of provider.urls) {
-    const response = await fetchImpl(url, {
-      headers,
-      signal: AbortSignal.timeout(20_000),
-    });
-
-    if (!response.ok) {
-      throw new Error(`${airportIata} official page HTTP ${response.status}`);
-    }
-
-    const html = await response.text();
-
-    if (airportIata === 'BVA') {
-      records.push(...parseBeauvaisDirectory(html, todayDate));
-    } else if (airportIata === 'BOD') {
-      const direction = url.includes('w=out') ? 'departure' : 'arrival';
-      records.push(...parseBordeauxDirectory(html, direction));
-    }
-  }
-
-  cachedOfficialFlightDirectories.set(airportIata, {
-    fetchedAt: now,
-    records,
-  });
-
-  return records;
-}
-
-function collectOfficialAirportCandidates(flights) {
-  const candidates = new Set();
-
-  for (const flight of flights) {
-    const nearestAirport = findNearestAirport(flight.latitude, flight.longitude, 90);
-    const linkedAirport =
-      nearestAirport?.airport ??
-      matchFranceAirport(flight.destinationAirport) ??
-      matchFranceAirport(flight.originAirport);
-    if (linkedAirport && OFFICIAL_AIRPORT_PROVIDERS[linkedAirport.iata]) {
-      candidates.add(linkedAirport.iata);
-    }
-  }
-
-  return Array.from(candidates);
-}
-
-function applyOfficialFlightDirectory(flights, directoryRecords) {
-  if (!Array.isArray(directoryRecords) || directoryRecords.length === 0) return flights;
-
-  const recordsByFlight = new Map();
-  for (const record of directoryRecords) {
-    const key = normalizeFlightDesignator(record.flightNumber);
-    if (!key) continue;
-    const current = recordsByFlight.get(key) ?? [];
-    current.push(record);
-    recordsByFlight.set(key, current);
-  }
-
-  const nowMinutes = getParisMinutesOfDay();
-
-  return flights.map((flight) => {
-    const nearestAirport = findNearestAirport(flight.latitude, flight.longitude, 90);
-    const linkedAirport =
-      nearestAirport?.airport ??
-      matchFranceAirport(flight.destinationAirport) ??
-      matchFranceAirport(flight.originAirport);
-    const likelyDirection = linkedAirport ? inferAirportDirection(flight, linkedAirport) : null;
-    const directCandidates = deriveFlightLookupKeys(flight.callsign).flatMap((key) => recordsByFlight.get(key) ?? []);
-
-    const fallbackOperator =
-      normalizeOperatorName(flight.operator) ||
-      normalizeOperatorName(getCallsignOperatorHint(flight.callsign)?.operator);
-    const fallbackCandidates =
-      linkedAirport && fallbackOperator
-        ? directoryRecords.filter((record) => {
-            if (record.airportIata !== linkedAirport.iata) return false;
-            if (normalizeOperatorName(record.operator) !== fallbackOperator) return false;
-            if (likelyDirection && record.direction !== likelyDirection) return false;
-            if (!Number.isFinite(record.scheduledMinutes)) return true;
-            return Math.abs(record.scheduledMinutes - nowMinutes) <= 180;
-          })
-        : [];
-
-    const scoredCandidates = [...new Set([...directCandidates, ...fallbackCandidates])]
-      .map((record) => {
-        let score = 0;
-        if (directCandidates.includes(record)) score += 100;
-        if (linkedAirport && record.airportIata === linkedAirport.iata) score += 20;
-        if (likelyDirection && record.direction === likelyDirection) score += 25;
-        if (
-          fallbackOperator &&
-          normalizeOperatorName(record.operator) === fallbackOperator
-        ) {
-          score += 30;
-        }
-        if (Number.isFinite(record.scheduledMinutes)) {
-          score += Math.max(0, 25 - Math.round(Math.abs(record.scheduledMinutes - nowMinutes) / 10));
-        }
-        return { record, score };
-      })
-      .sort((a, b) => b.score - a.score);
-
-    const best = scoredCandidates[0];
-    const second = scoredCandidates[1];
-    const record =
-      best &&
-      (best.score >= 100 || (best.score >= 70 && (!second || best.score - second.score >= 15)))
-        ? best.record
-        : null;
-    if (!record) return flight;
-
-    return {
-      ...flight,
-      originAirport: flight.originAirport ?? record.originAirport,
-      destinationAirport: flight.destinationAirport ?? record.destinationAirport,
-      operator:
-        flight.operator ??
-        record.operator ??
-        getCallsignOperatorHint(flight.callsign)?.operator,
-    };
-  });
-}
-
-function normalizeOpenSkyState(state) {
-  if (!Array.isArray(state) || state.length < 11) return null;
-
-  const hex = String(state[0] ?? '').trim().toLowerCase();
-  const callsign = normalizeCallsign(state[1], `HEX-${hex.slice(0, 4).toUpperCase()}`);
-  const lon = toNumber(state[5]);
-  const lat = toNumber(state[6]);
-  const altitudeMeters = toNumber(state[7]) ?? toNumber(state[13]) ?? 0;
-  const altitude = Math.round(altitudeMeters * 3.28084);
-  const onGround = state[8] === true || altitude === 0;
-  const speedMs = toNumber(state[9]) ?? 0;
-  const heading = Math.round(toNumber(state[10]) ?? 0);
-  const lastContactSec = toNumber(state[4]);
-  const lastSeen = lastContactSec != null ? lastContactSec * 1000 : Date.now();
-
-  if (!hex || lat == null || lon == null || !isInFranceBounds(lat, lon)) return null;
-  if (onGround) return null;
-  if (Date.now() - lastSeen > 5 * 60 * 1000) return null;
-
+/** Vol pour la carte (forme historique de /api/traffic/air ; altitude en pieds, vitesse en nœuds). */
+export function toMapFlight(state) {
+  const altitudeM = state.baroAltitudeM ?? state.geoAltitudeM ?? 0;
   return {
-    id: hex,
-    callsign,
-    latitude: lat,
-    longitude: lon,
-    altitude,
-    speed: Math.round(speedMs * 1.94384),
-    heading,
-    registration: undefined,
-    aircraftType: undefined,
-    aircraftModel: undefined,
-    operator: String(state[2] ?? '').trim() || getCallsignOperatorHint(callsign)?.operator || undefined,
-    category: undefined,
-    originAirport: undefined,
-    destinationAirport: undefined,
-    eta: undefined,
-    lastSeen,
-    onGround,
+    id: state.icao24,
+    callsign: state.callsign ?? `HEX-${state.icao24.slice(0, 4).toUpperCase()}`,
+    latitude: state.lat,
+    longitude: state.lon,
+    altitude: Math.round(altitudeM * 3.28084),
+    speed: Math.round((state.velocityMs ?? 0) * 1.94384),
+    heading: Math.round(state.heading ?? 0),
+    operator: getCallsignOperatorHint(state.callsign)?.operator ?? state.originCountry ?? undefined,
+    category: state.category === null ? undefined : String(state.category),
+    squawk: state.squawk ?? undefined,
+    lastSeen: (state.lastContact ?? 0) * 1000,
+    onGround: state.onGround,
     source: 'opensky',
   };
 }
 
-async function fetchArea(fetchImpl, area) {
-  const source = `airplanes.live:${area.id}`;
-  if (isRateLimited(source)) {
-    throw new Error(`Air traffic upstream rate-limited (429) for ${area.id}`);
-  }
-
-  const response = await fetchImpl(buildUrl(area), {
-    headers: buildGenericHeaders(),
-    signal: AbortSignal.timeout(12_000),
-  });
-
-  if (response.status === 429) {
-    markRateLimited(source);
-    throw new Error(`Air traffic upstream rate-limited (429) for ${area.id}`);
-  }
-
-  if (!response.ok) {
-    throw new Error(`Air traffic upstream HTTP ${response.status} for ${area.id}`);
-  }
-
-  const json = await response.json();
-  return Array.isArray(json?.ac) ? json.ac : [];
-}
-
-async function fetchOpenSky(fetchImpl) {
-  const source = 'opensky';
-  if (isRateLimited(source)) {
-    throw new Error('OpenSky rate-limited (429) — backoff actif');
-  }
-
-  const url = `${OPENSKY_STATES_URL}?lamin=${FRANCE_BOUNDS.minLat}&lomin=${FRANCE_BOUNDS.minLon}&lamax=${FRANCE_BOUNDS.maxLat}&lomax=${FRANCE_BOUNDS.maxLon}`;
-  const response = await fetchImpl(url, {
-    headers: await buildOpenSkyHeaders(fetchImpl),
-    signal: AbortSignal.timeout(12_000),
-  });
-
-  if (response.status === 429) {
-    markRateLimited(source);
-    throw new Error('OpenSky rate-limited (429) — backoff actif');
-  }
-
-  if (!response.ok) {
-    throw new Error(`OpenSky HTTP ${response.status}`);
-  }
-
-  const json = await response.json();
-  const states = Array.isArray(json?.states) ? json.states : [];
-  return states.map(normalizeOpenSkyState).filter(Boolean);
-}
-
-function haversineKm(lat1, lon1, lat2, lon2) {
-  const toRad = (value) => (value * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-function normalizeHeading(value) {
-  const num = Number(value);
-  if (!Number.isFinite(num)) return 0;
-  const normalized = num % 360;
-  return normalized < 0 ? normalized + 360 : normalized;
-}
-
-function headingDiff(a, b) {
-  const diff = Math.abs(normalizeHeading(a) - normalizeHeading(b));
-  return diff > 180 ? 360 - diff : diff;
-}
-
-function findNearestAirport(lat, lon, maxDistanceKm = 90) {
+function findNearestAirport(lat, lon, maxKm = 90) {
   let best = null;
   for (const airport of FRANCE_AIRPORTS) {
     const distanceKm = haversineKm(lat, lon, airport.lat, airport.lon);
-    if (distanceKm > maxDistanceKm) continue;
-    if (!best || distanceKm < best.distanceKm) {
-      best = { airport, distanceKm };
-    }
+    if (distanceKm <= maxKm && (!best || distanceKm < best.distanceKm)) best = { airport, distanceKm };
   }
   return best;
 }
 
 function bearingDegrees(lat1, lon1, lat2, lon2) {
-  const toRad = (value) => (value * Math.PI) / 180;
-  const toDeg = (value) => (value * 180) / Math.PI;
-  const phi1 = toRad(lat1);
-  const phi2 = toRad(lat2);
-  const lambda1 = toRad(lon1);
-  const lambda2 = toRad(lon2);
-  const y = Math.sin(lambda2 - lambda1) * Math.cos(phi2);
-  const x =
-    Math.cos(phi1) * Math.sin(phi2) -
-    Math.sin(phi1) * Math.cos(phi2) * Math.cos(lambda2 - lambda1);
-  return normalizeHeading(toDeg(Math.atan2(y, x)));
+  const toRad = (v) => (v * Math.PI) / 180;
+  const y = Math.sin(toRad(lon2 - lon1)) * Math.cos(toRad(lat2));
+  const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(toRad(lon2 - lon1));
+  return normalizeHeading((Math.atan2(y, x) * 180) / Math.PI);
 }
 
 function inferAirportDirection(flight, airport) {
-  if (!flight || !airport) return null;
-  const airportToFlightBearing = bearingDegrees(airport.lat, airport.lon, flight.latitude, flight.longitude);
-  const outboundDiff = headingDiff(flight.heading, airportToFlightBearing);
-  const inboundDiff = headingDiff(flight.heading, normalizeHeading(airportToFlightBearing + 180));
-
-  if (outboundDiff <= 65) return 'departure';
-  if (inboundDiff <= 65) return 'arrival';
+  const outward = bearingDegrees(airport.lat, airport.lon, flight.latitude, flight.longitude);
+  if (headingDiff(flight.heading, outward) <= 65) return 'departure';
+  if (headingDiff(flight.heading, normalizeHeading(outward + 180)) <= 65) return 'arrival';
   return null;
 }
 
-function pruneFlightHistory(now) {
-  for (const [flightId, samples] of flightHistory) {
-    const filtered = samples.filter((sample) => now - sample.ts <= FLIGHT_HISTORY_TTL_MS);
-    if (filtered.length === 0) {
-      flightHistory.delete(flightId);
-      continue;
-    }
-    flightHistory.set(flightId, filtered.slice(-MAX_HISTORY_SAMPLES));
-  }
-}
-
 function updateFlightHistory(flights, now) {
-  pruneFlightHistory(now);
-  for (const flight of flights) {
-    const history = flightHistory.get(flight.id) ?? [];
-    const lastSample = history[history.length - 1];
-    const nextSample = {
-      ts: now,
-      lat: flight.latitude,
-      lon: flight.longitude,
-      altitude: flight.altitude,
-      speed: flight.speed,
-      heading: normalizeHeading(flight.heading),
-    };
-
-    if (
-      !lastSample ||
-      now - lastSample.ts > 4_000 ||
-      haversineKm(lastSample.lat, lastSample.lon, nextSample.lat, nextSample.lon) > 0.5 ||
-      headingDiff(lastSample.heading, nextSample.heading) > 5 ||
-      Math.abs(lastSample.altitude - nextSample.altitude) > 250
-    ) {
-      history.push(nextSample);
-    }
-
-    flightHistory.set(flight.id, history.slice(-MAX_HISTORY_SAMPLES));
+  for (const [id, samples] of flightHistory) {
+    const kept = samples.filter((s) => now - s.ts <= FLIGHT_HISTORY_TTL_MS);
+    if (kept.length === 0) flightHistory.delete(id);
+    else flightHistory.set(id, kept.slice(-MAX_HISTORY_SAMPLES));
+  }
+  for (const f of flights) {
+    const history = flightHistory.get(f.id) ?? [];
+    history.push({ ts: now, lat: f.latitude, lon: f.longitude, altitude: f.altitude, speed: f.speed, heading: normalizeHeading(f.heading) });
+    flightHistory.set(f.id, history.slice(-MAX_HISTORY_SAMPLES));
   }
 }
 
-function getFlightHistory(flightId, now) {
-  const samples = flightHistory.get(flightId) ?? [];
-  return samples.filter((sample) => now - sample.ts <= 15 * 60 * 1000);
-}
-
-function computeCumulativeTurn(samples) {
+function cumulativeTurn(samples) {
   let total = 0;
-  for (let i = 1; i < samples.length; i += 1) {
-    total += headingDiff(samples[i - 1].heading, samples[i].heading);
-  }
+  for (let i = 1; i < samples.length; i += 1) total += headingDiff(samples[i - 1].heading, samples[i].heading);
   return total;
 }
 
-function detectTrajectoryAnomalies(flight, nearestAirport, now) {
-  const samples = getFlightHistory(flight.id, now);
-  const anomalies = [];
-  const last = samples[samples.length - 1];
-  const previous = samples[samples.length - 2];
-  const airportRef = nearestAirport?.airport ?? matchFranceAirport(flight.destinationAirport) ?? matchFranceAirport(flight.originAirport);
-  const destinationAirport = matchFranceAirport(flight.destinationAirport);
-
-  if (
-    destinationAirport &&
-    nearestAirport?.airport &&
-    nearestAirport.airport.iata !== destinationAirport.iata &&
-    nearestAirport.distanceKm <= 30 &&
-    flight.altitude <= 12000 &&
-    flight.speed >= 120 &&
-    flight.speed <= 320
-  ) {
-    anomalies.push({
-      type: 'reroute-probable',
-      label: 'Deroutement probable',
-      severity: 'medium',
-      details: `${destinationAirport.iata} cible, approche vers ${nearestAirport.airport.iata}`,
-      airportIata: destinationAirport.iata,
-    });
+/**
+ * Trajectoires inhabituelles (détection automatique, information, jamais une alerte) : déroutement probable,
+ * manœuvre brusque, circuit d'attente, approche interrompue ; sur l'historique des collectes (2 min).
+ */
+export function detectTrajectoryAnomalies(flight, now) {
+  const samples = (flightHistory.get(flight.id) ?? []).filter((s) => now - s.ts <= 15 * 60_000);
+  const nearest = findNearestAirport(flight.latitude, flight.longitude, 90);
+  const airportRef = nearest?.airport ?? matchFranceAirport(flight.destinationAirport) ?? matchFranceAirport(flight.originAirport);
+  const destination = matchFranceAirport(flight.destinationAirport);
+  const out = [];
+  if (destination && nearest && nearest.airport.iata !== destination.iata && nearest.distanceKm <= 30
+    && flight.altitude <= 12000 && flight.speed >= 120 && flight.speed <= 320) {
+    out.push({ type: 'reroute-probable', label: 'Déroutement probable', severity: 'medium', airportIata: destination.iata });
   }
-
-  if (samples.length < 2) return anomalies;
-
-  if (
-    headingDiff(last.heading, previous.heading) >= 85 &&
-    last.speed >= 180 &&
-    last.altitude >= 5000
-  ) {
-    anomalies.push({
-      type: 'rapid-manoeuvre',
-      label: 'Manoeuvre brusque',
-      severity: 'medium',
-      details: `Variation cap ${Math.round(headingDiff(last.heading, previous.heading))} deg`,
-      airportIata: airportRef?.iata,
-    });
+  if (samples.length < 2) return out;
+  const last = samples.at(-1);
+  const previous = samples.at(-2);
+  if (headingDiff(last.heading, previous.heading) >= 85 && last.speed >= 180 && last.altitude >= 5000) {
+    out.push({ type: 'rapid-manoeuvre', label: 'Manœuvre brusque', severity: 'medium', airportIata: airportRef?.iata });
   }
-
   if (airportRef) {
-    const airportSamples = samples.filter((sample) =>
-      haversineKm(sample.lat, sample.lon, airportRef.lat, airportRef.lon) <= 80
-    );
-
-    if (airportSamples.length >= 4) {
-      const lowAltitudeCount = airportSamples.filter((sample) => sample.altitude >= 2000 && sample.altitude <= 12000).length;
-      const cumulativeTurn = computeCumulativeTurn(airportSamples);
-      const first = airportSamples[0];
-      const lastAirportSample = airportSamples[airportSamples.length - 1];
-      const spanKm = haversineKm(first.lat, first.lon, lastAirportSample.lat, lastAirportSample.lon);
-      const avgSpeed = airportSamples.reduce((sum, sample) => sum + sample.speed, 0) / airportSamples.length;
-
-      if (
-        lowAltitudeCount >= 3 &&
-        cumulativeTurn >= 160 &&
-        spanKm <= 60 &&
-        avgSpeed >= 140 &&
-        avgSpeed <= 300
-      ) {
-        anomalies.push({
-          type: 'holding',
-          label: 'Circuit d attente',
-          severity: 'medium',
-          details: `${airportRef.iata} · virages repetes en zone terminale`,
-          airportIata: airportRef.iata,
-        });
+    const near = samples.filter((s) => haversineKm(s.lat, s.lon, airportRef.lat, airportRef.lon) <= 80);
+    if (near.length >= 4) {
+      const low = near.filter((s) => s.altitude >= 2000 && s.altitude <= 12000).length;
+      const span = haversineKm(near[0].lat, near[0].lon, near.at(-1).lat, near.at(-1).lon);
+      const avgSpeed = near.reduce((sum, s) => sum + s.speed, 0) / near.length;
+      if (low >= 3 && cumulativeTurn(near) >= 160 && span <= 60 && avgSpeed >= 140 && avgSpeed <= 300) {
+        out.push({ type: 'holding', label: 'Circuit d’attente', severity: 'medium', airportIata: airportRef.iata });
       }
     }
-
-    if (airportSamples.length >= 3) {
-      const minAltitude = Math.min(...airportSamples.map((sample) => sample.altitude));
-      const nearFinal = airportSamples.some((sample) =>
-        haversineKm(sample.lat, sample.lon, airportRef.lat, airportRef.lon) <= 14 && sample.altitude <= 2500
-      );
-      if (
-        nearFinal &&
-        last.altitude - minAltitude >= 1200 &&
-        last.altitude > previous.altitude + 500 &&
-        headingDiff(last.heading, previous.heading) >= 20
-      ) {
-        anomalies.push({
-          type: 'go-around',
-          label: 'Approche interrompue',
-          severity: 'high',
-          details: `${airportRef.iata} · remise des gaz probable`,
-          airportIata: airportRef.iata,
-        });
+    if (near.length >= 3) {
+      const minAltitude = Math.min(...near.map((s) => s.altitude));
+      const nearFinal = near.some((s) => haversineKm(s.lat, s.lon, airportRef.lat, airportRef.lon) <= 14 && s.altitude <= 2500);
+      if (nearFinal && last.altitude - minAltitude >= 1200 && last.altitude > previous.altitude + 500 && headingDiff(last.heading, previous.heading) >= 20) {
+        out.push({ type: 'go-around', label: 'Approche interrompue', severity: 'high', airportIata: airportRef.iata });
       }
     }
   }
-
-  const deduped = [];
-  const seen = new Set();
-  for (const anomaly of anomalies) {
-    if (seen.has(anomaly.type)) continue;
-    seen.add(anomaly.type);
-    deduped.push(anomaly);
-  }
-  return deduped;
+  return out.filter((a, i) => out.findIndex((b) => b.type === a.type) === i);
 }
 
-function severityFromAirportScore(score) {
-  if (score >= 80) return 'critical';
-  if (score >= 60) return 'high';
-  if (score >= 35) return 'medium';
-  if (score >= 15) return 'low';
-  return 'info';
+// ── Annuaires officiels de Beauvais et Bordeaux ──
+
+function parseTableRows(html) {
+  const rows = [];
+  for (const row of String(html).matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr>/gi)) {
+    const cells = [...row[1].matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/gi)].map((c) => cleanText(c[1]));
+    if (cells.length > 0) rows.push(cells);
+  }
+  return rows;
 }
 
-function buildAirportSummaries(flights) {
-  const summaries = [];
-
-  for (const airport of FRANCE_AIRPORTS) {
-    const nearbyFlights = flights.filter((flight) =>
-      haversineKm(flight.latitude, flight.longitude, airport.lat, airport.lon) <= 120
-    );
-    const terminalFlights = nearbyFlights.filter((flight) =>
-      haversineKm(flight.latitude, flight.longitude, airport.lat, airport.lon) <= 60 &&
-      flight.altitude <= 12000
-    );
-    const anomalyCount = nearbyFlights.reduce(
-      (total, flight) => total + (Array.isArray(flight.anomalies) ? flight.anomalies.length : 0),
-      0
-    );
-    const highSeverityAnomalies = nearbyFlights.reduce(
-      (total, flight) =>
-        total +
-        (Array.isArray(flight.anomalies)
-          ? flight.anomalies.filter((anomaly) => anomaly.severity === 'high' || anomaly.severity === 'critical').length
-          : 0),
-      0
-    );
-    const airportAnomalies = flights.flatMap((flight) =>
-      Array.isArray(flight.anomalies)
-        ? flight.anomalies.filter((anomaly) => anomaly.airportIata === airport.iata)
-        : []
-    );
-    const holdingCount = airportAnomalies.filter((anomaly) => anomaly.type === 'holding').length;
-    const goAroundCount = airportAnomalies.filter((anomaly) => anomaly.type === 'go-around').length;
-    const rerouteCount = airportAnomalies.filter((anomaly) => anomaly.type === 'reroute-probable').length;
-    const congestion = airport.expectedTerminal > 0 && terminalFlights.length >= airport.expectedTerminal * 2;
-    const lowActivity = airport.expectedNearby >= 3 && nearbyFlights.length <= Math.floor(airport.expectedNearby * 0.35);
-    const terminalSilence =
-      airport.expectedTerminal >= 2 &&
-      terminalFlights.length === 0 &&
-      nearbyFlights.length <= Math.max(1, Math.floor(airport.expectedNearby * 0.5));
-    const signals = [];
-    if (terminalSilence) signals.push('Silence radar terminal');
-    else if (lowActivity) signals.push('Activite anormalement faible');
-    if (congestion) signals.push("Trafic d'approche dense");
-    if (goAroundCount > 0) signals.push('Approches interrompues');
-    if (holdingCount > 0) signals.push('Circuits d attente');
-    if (rerouteCount > 0) signals.push('Deroutements probables');
-
-    let score = 0;
-    if (terminalSilence) score += 24;
-    else if (lowActivity) score += 12;
-    if (congestion) score += 18;
-    score += Math.min(30, highSeverityAnomalies * 12 + Math.max(0, anomalyCount - highSeverityAnomalies) * 6);
-    score += Math.min(18, holdingCount * 6);
-    score += Math.min(28, goAroundCount * 14);
-    score += Math.min(24, rerouteCount * 12);
-    score = Math.min(100, Math.round(score));
-
-    const reasons = [];
-    if (terminalSilence) reasons.push('Silence radar terminal');
-    else if (lowActivity) reasons.push('Activite anormalement faible');
-    if (congestion) reasons.push(`${terminalFlights.length} vol(s) en approche/depart`);
-    else if (terminalFlights.length > 0) reasons.push(`${terminalFlights.length} vol(s) en zone terminale`);
-    if (anomalyCount > 0) reasons.push(`${anomalyCount} anomalie(s) de trajectoire`);
-    if (holdingCount > 0) reasons.push(`${holdingCount} circuit(s) d attente`);
-    if (goAroundCount > 0) reasons.push(`${goAroundCount} approche(s) interrompue(s)`);
-    if (rerouteCount > 0) reasons.push(`${rerouteCount} deroutement(s) probable(s)`);
-    if (nearbyFlights.length > 8) reasons.push(`${nearbyFlights.length} vols a proximite`);
-
-    summaries.push({
-      iata: airport.iata,
-      icao: airport.icao,
-      name: airport.name,
-      city: airport.city,
-      score,
-      severity: severityFromAirportScore(score),
-      activeFlights: nearbyFlights.length,
-      terminalFlights: terminalFlights.length,
-      anomalyCount,
-      signals,
-      reasons,
-    });
-  }
-
-  return summaries.sort((a, b) => {
-    if (b.score !== a.score) return b.score - a.score;
-    if (b.anomalyCount !== a.anomalyCount) return b.anomalyCount - a.anomalyCount;
-    return b.terminalFlights - a.terminalFlights;
-  });
+function parseTimeToMinutes(value) {
+  const m = /(\d{2}):(\d{2})/.exec(String(value ?? ''));
+  return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 }
 
-function enrichFlights(flights, airportSummaries, now) {
-  const summaryByIata = new Map(airportSummaries.map((summary) => [summary.iata, summary]));
-
-  return flights.map((flight) => {
-    const nearbyAirport = findNearestAirport(flight.latitude, flight.longitude, 90);
-    const linkedAirport =
-      nearbyAirport?.airport ??
-      matchFranceAirport(flight.destinationAirport) ??
-      matchFranceAirport(flight.originAirport);
-    const anomalies = detectTrajectoryAnomalies(flight, nearbyAirport, now);
-    const airportSummary = linkedAirport ? summaryByIata.get(linkedAirport.iata) : undefined;
-
-    return {
-      ...flight,
-      anomalies,
-      nearbyAirportIata: linkedAirport?.iata,
-      nearbyAirportName: linkedAirport?.name,
-      nearbyAirportDistanceKm: nearbyAirport ? Math.round(nearbyAirport.distanceKm) : undefined,
-      airportScore: airportSummary?.score,
-      airportSeverity: airportSummary?.severity,
-      airportSignals: airportSummary?.signals ?? [],
-    };
-  });
+/** « 03/10/2026 » : jour à Paris au format de l'annuaire de Beauvais. */
+export function parisDateFr(instant) {
+  const p = parisParts(instant);
+  return `${String(p.day).padStart(2, '0')}/${String(p.month).padStart(2, '0')}/${p.year}`;
 }
 
-export async function fetchAirTrafficSnapshot(fetchImpl = fetch) {
-  const now = Date.now();
-  if (cachedSnapshot && cachedSnapshot.flights.length > 0 && now - cachedSnapshot.fetchedAt < CACHE_TTL_MS) {
-    return cachedSnapshot;
-  }
-
-  const aircraft = [];
-  const errors = [];
-  let usedOpenSky = false;
-  let usedAirplanesLive = false;
-
-  try {
-    const openSkyFlights = await fetchOpenSky(fetchImpl);
-    aircraft.push(...openSkyFlights);
-    usedOpenSky = openSkyFlights.length > 0;
-  } catch (error) {
-    errors.push({
-      area: 'opensky',
-      message: error instanceof Error ? error.message : 'OpenSky fetch failed',
-    });
-  }
-
-  const areaResults = await Promise.allSettled(
-    AIR_TRAFFIC_AREAS.map((area) => fetchArea(fetchImpl, area))
-  );
-  for (let i = 0; i < areaResults.length; i += 1) {
-    const area = AIR_TRAFFIC_AREAS[i];
-    const result = areaResults[i];
-    if (result.status === 'fulfilled') {
-      const areaAircraft = result.value;
-      aircraft.push(...areaAircraft);
-      if (areaAircraft.length > 0) usedAirplanesLive = true;
-    } else {
-      errors.push({
-        area: area.id,
-        message: result.reason instanceof Error ? result.reason.message : 'Fetch failed',
+/** Annuaire de Beauvais (anglais) : vols du jour, arrivées et départs. */
+export function parseBeauvaisDirectory(html, todayDate) {
+  const records = [];
+  const arrivals = html.indexOf('Arriving flights');
+  const departures = html.indexOf('Departing flights');
+  if (arrivals < 0 || departures < 0) throw new SyntaxError('annuaire de Beauvais : tableaux introuvables');
+  const sections = [['arrival', html.slice(arrivals, departures)], ['departure', html.slice(departures)]];
+  for (const [direction, section] of sections) {
+    for (const cells of parseTableRows(section)) {
+      if (cells.length < 7) continue;
+      const date = /(\d{2}\/\d{2}\/\d{4})/.exec(cells[0]);
+      if (date && date[1] !== todayDate) continue;
+      const flightNumber = normalizeFlightDesignator(cells[1]);
+      if (!flightNumber) continue;
+      records.push({
+        airportIata: 'BVA', flightNumber, direction, scheduledMinutes: parseTimeToMinutes(cells[0]),
+        originAirport: direction === 'arrival' ? cells[2] || undefined : 'Paris Beauvais',
+        destinationAirport: direction === 'departure' ? cells[2] || undefined : 'Paris Beauvais',
+        operator: cells[3] || undefined, status: cells[5] || '',
       });
     }
   }
+  return records;
+}
 
-  const mergedFlights = mergeAircraft(aircraft);
-  let officialDirectory = [];
-  const officialAirports = collectOfficialAirportCandidates(mergedFlights);
-  if (officialAirports.length > 0) {
-    const officialResults = await Promise.allSettled(
-      officialAirports.map((airportIata) => fetchOfficialAirportDirectory(fetchImpl, airportIata, now))
-    );
+/** Annuaire de Bordeaux (français), une page par sens. */
+export function parseBordeauxDirectory(html, direction) {
+  const start = html.indexOf(BORDEAUX_TABLE_MARKER);
+  if (start < 0) throw new SyntaxError('annuaire de Bordeaux : tableau introuvable');
+  const records = [];
+  for (const cells of parseTableRows(html.slice(start))) {
+    if (cells.length < (direction === 'arrival' ? 5 : 6)) continue;
+    const flightNumber = normalizeFlightDesignator(cells[2]);
+    if (!flightNumber) continue;
+    records.push({
+      airportIata: 'BOD', flightNumber, direction, scheduledMinutes: parseTimeToMinutes(cells[0]),
+      originAirport: direction === 'arrival' ? cells[1] || undefined : 'Bordeaux Mérignac',
+      destinationAirport: direction === 'departure' ? cells[1] || undefined : 'Bordeaux Mérignac',
+      operator: cells[3] || undefined, status: cells[cells.length - 1] || '',
+    });
+  }
+  return records;
+}
 
-    for (let i = 0; i < officialResults.length; i += 1) {
-      const airportIata = officialAirports[i];
-      const result = officialResults[i];
-      if (result.status === 'fulfilled') {
-        officialDirectory.push(...result.value);
-      } else {
-        errors.push({
-          area: `${airportIata.toLowerCase()}-official`,
-          message: result.reason instanceof Error ? result.reason.message : 'Official airport page fetch failed',
-        });
-      }
+/** Retards et annulations du jour d'un annuaire (statuts « Delayed », « Retardé », « Cancelled », « Annulé »). */
+export function boardCounts(records) {
+  return {
+    delayed: records.filter((r) => /retard|delay/i.test(r.status)).length,
+    cancelled: records.filter((r) => /annul|cancel/i.test(r.status)).length,
+  };
+}
+
+/** Annuaire du jour d'un aéroport, relu toutes les 10 min ; un échec est mémorisé 10 min (S3 : pas de relance à chaque collecte). */
+async function readBoard(iata, now) {
+  const cached = boards.get(iata);
+  if (cached && now - cached.readAt < OFFICIAL_BOARD_TTL_MS) return cached;
+  const failure = boardFailures.get(iata);
+  if (failure && now - failure.at < OFFICIAL_BOARD_TTL_MS) throw failure.error;
+  const provider = OFFICIAL_AIRPORT_PROVIDERS[iata];
+  try {
+    const records = [];
+    for (const url of provider.urls) {
+      const html = await fetchStrictHtml(url, { timeoutMs: 20_000, contentMarker: provider.contentMarker });
+      if (iata === 'BVA') records.push(...parseBeauvaisDirectory(html, parisDateFr(now)));
+      else records.push(...parseBordeauxDirectory(html, url.includes('w=out') ? 'departure' : 'arrival'));
+    }
+    const entry = { readAt: now, at: new Date(now).toISOString(), records, ...boardCounts(records) };
+    boards.set(iata, entry);
+    boardFailures.delete(iata);
+    return entry;
+  } catch (error) {
+    boardFailures.set(iata, { at: now, error });
+    throw error;
+  }
+}
+
+function applyOfficialDirectory(flights, records, now) {
+  if (records.length === 0) return flights;
+  const byFlight = new Map();
+  for (const r of records) {
+    const list = byFlight.get(r.flightNumber) ?? [];
+    list.push(r);
+    byFlight.set(r.flightNumber, list);
+  }
+  const p = parisParts(now);
+  const nowMinutes = p.hour * 60 + p.minute;
+  return flights.map((flight) => {
+    const nearest = findNearestAirport(flight.latitude, flight.longitude, 90);
+    if (!nearest || !OFFICIAL_AIRPORT_PROVIDERS[nearest.airport.iata]) return flight;
+    const keys = new Set([normalizeFlightDesignator(flight.callsign)]);
+    const hint = getCallsignOperatorHint(flight.callsign);
+    const suffix = normalizeFlightDesignator(flight.callsign).slice(3);
+    if (hint && /^\d+$/.test(suffix)) keys.add(`${hint.commercialCode}${suffix}`);
+    const direction = inferAirportDirection(flight, nearest.airport);
+    const candidates = [...keys].flatMap((k) => byFlight.get(k) ?? [])
+      .filter((r) => r.airportIata === nearest.airport.iata && (!direction || r.direction === direction))
+      .filter((r) => r.scheduledMinutes === null || Math.abs(r.scheduledMinutes - nowMinutes) <= 180);
+    const record = candidates[0];
+    if (!record) return flight;
+    return { ...flight, originAirport: record.originAirport, destinationAirport: record.destinationAirport, operator: flight.operator ?? record.operator };
+  });
+}
+
+// ── OpenSky ──
+
+function openSkyCredentials() {
+  const clientId = process.env.OPENSKY_CLIENT_ID?.trim();
+  const clientSecret = process.env.OPENSKY_CLIENT_SECRET?.trim();
+  return clientId && clientSecret ? { clientId, clientSecret } : null;
+}
+
+async function openSkyToken(now) {
+  const credentials = openSkyCredentials();
+  if (!credentials) throw new Error('identifiants OpenSky absents (OPENSKY_CLIENT_ID, OPENSKY_CLIENT_SECRET)');
+  if (cachedToken && cachedToken.expiresAt > now + 30_000) return cachedToken.value;
+  const json = await fetchStrictJson(OPENSKY_TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'client_credentials', client_id: credentials.clientId, client_secret: credentials.clientSecret }),
+    timeoutMs: 12_000,
+  });
+  if (typeof json?.access_token !== 'string' || !json.access_token) throw new Error('jeton OpenSky absent de la réponse');
+  cachedToken = { value: json.access_token, expiresAt: now + (Number(json.expires_in) || 300) * 1000 };
+  return cachedToken.value;
+}
+
+async function readStates(now) {
+  if (now < rateLimitedUntil) throw new Error(`limite de débit, reprise à ${new Date(rateLimitedUntil).toISOString()}`);
+  const token = await openSkyToken(now);
+  try {
+    const r = await fetchStrictResponse(statesUrl(), { expect: 'json', headers: { Authorization: `Bearer ${token}` }, timeoutMs: 15_000 });
+    const json = JSON.parse(r.text);
+    if (!Number.isFinite(json?.time)) throw new SyntaxError('réponse OpenSky sans « time »');
+    const remaining = toNumber(r.header('x-rate-limit-remaining'));
+    const states = (Array.isArray(json.states) ? json.states : []).map((s) => normalizeOpenSkyState(s, json.time)).filter(Boolean);
+    return { time: json.time, states, remaining };
+  } catch (err) {
+    if (err && typeof err === 'object' && 'status' in err && err.status === 429) rateLimitedUntil = now + RATE_LIMIT_BACKOFF_MS;
+    throw err;
+  }
+}
+
+async function readDepartures(now, token) {
+  const end = Math.floor(now / 1000);
+  const begin = end - DEPARTURES_WINDOW_SEC;
+  const counts = {};
+  const errors = [];
+  for (const icao of DEPARTURE_AIRPORTS) {
+    try {
+      const list = await fetchStrictJson(departuresUrl(icao, begin, end), { headers: { Authorization: `Bearer ${token}` }, timeoutMs: 20_000 });
+      counts[icao] = Array.isArray(list) ? list.length : null;
+    } catch (err) {
+      // OpenSky répond 404 quand aucun vol n'est trouvé sur la fenêtre (documentation de l'API) : zéro départ.
+      if (err && typeof err === 'object' && 'status' in err && err.status === 404) counts[icao] = 0;
+      else { counts[icao] = null; errors.push(sourceError(`OpenSky, départs ${icao}`, err)); }
     }
   }
-
-  const routeEnrichedFlights = applyOfficialFlightDirectory(mergedFlights, officialDirectory);
-  updateFlightHistory(routeEnrichedFlights, now);
-
-  const preEnrichedFlights = routeEnrichedFlights.map((flight) => {
-    const nearbyAirport = findNearestAirport(flight.latitude, flight.longitude, 90);
-    return {
-      ...flight,
-      anomalies: detectTrajectoryAnomalies(flight, nearbyAirport, now),
-    };
-  });
-
-  const airportSummaries = buildAirportSummaries(preEnrichedFlights);
-  const enrichedFlights = enrichFlights(routeEnrichedFlights, airportSummaries, now);
-
-  const source =
-    usedOpenSky && usedAirplanesLive
-      ? 'opensky+airplanes.live'
-      : usedOpenSky
-        ? 'opensky'
-        : 'airplanes.live';
-  const snapshot = {
-    source,
-    fetchedAt: now,
-    ttlMs: CACHE_TTL_MS,
-    areas: AIR_TRAFFIC_AREAS.map(({ id, lat, lon, radiusNm }) => ({ id, lat, lon, radiusNm })),
-    flights: enrichedFlights,
-    sourceCounts: countFlightsBySource(enrichedFlights),
-    topAirports: airportSummaries.filter((summary) => summary.score > 0 || summary.signals.length > 0).slice(0, 10),
-    anomalyCount: enrichedFlights.reduce(
-      (total, flight) => total + (Array.isArray(flight.anomalies) ? flight.anomalies.length : 0),
-      0
-    ),
-    signalCount: airportSummaries.reduce((total, summary) => total + summary.signals.length, 0),
+  return {
+    value: { at: new Date(now).toISOString(), begin: new Date(begin * 1000).toISOString(), end: new Date(end * 1000).toISOString(), counts },
     errors,
   };
+}
 
-  if (snapshot.flights.length > 0) {
-    cachedSnapshot = snapshot;
-    return snapshot;
+function inZone(s) {
+  const b = ZONE_BOUNDS;
+  return s.lat >= b.minLat && s.lat <= b.maxLat && s.lon >= b.minLon && s.lon <= b.maxLon;
+}
+
+/**
+ * Urgences en cours en vol (squawk 7500, 7600, 7700) ; un aéronef au sol (`on_ground`, posé avec son code) n'en est jamais une (T3).
+ * `overFrance` : territoire ou moins de 40 km (approches). Première et dernière vue : cette lecture (le journal donne l'épisode).
+ */
+export function emergenciesFrom(states, atIso) {
+  return states
+    .filter((s) => !s.onGround && EMERGENCY_SQUAWKS.includes(s.squawk ?? ''))
+    .map((s) => ({
+      icao24: s.icao24, callsign: s.callsign, squawk: s.squawk, lat: s.lat, lon: s.lon,
+      altitudeM: s.baroAltitudeM ?? s.geoAltitudeM, firstSeen: atIso, lastSeen: atIso,
+      overFrance: distanceToMetropoleKm(s.lat, s.lon, APPROACH_KM) <= APPROACH_KM,
+    }));
+}
+
+/** Échantillon de volume : en vol dans la zone suivie et au-dessus du territoire métropolitain. */
+export function volumeSample(states, atIso) {
+  const airborne = states.filter((s) => !s.onGround && inZone(s));
+  return { at: atIso, airborneZone: airborne.length, airborneFrance: airborne.filter((s) => insideMetropole(s.lat, s.lon)).length };
+}
+
+/** Vrai si l'entrée du journal est l'épisode en cours de l'urgence `e` : même aéronef, même code, revu dans l'intervalle de 15 min. */
+export function sameEmergencyEpisode(entry, e) {
+  if (!entry || entry.icao24 !== e.icao24 || entry.squawk !== e.squawk) return false;
+  const gap = Date.parse(e.lastSeen) - Date.parse(entry.lastSeen);
+  return Number.isFinite(gap) && gap <= EMERGENCY_EPISODE_GAP_MS;
+}
+
+/**
+ * Journal des urgences (7 jours), une écriture par lecture des états : l'épisode en cours garde sa première vue, sa dernière vue
+ * et sa position sont mises à jour ; un code revu après plus de 15 min ouvre un nouvel épisode, l'ancien reste au journal.
+ * `key` : journal écrit (celui du Trafic aérien par défaut ; « sov:mil:emergencies » pour les aéronefs militaires, même règle T3).
+ */
+export async function recordEmergencies(emergencies, now, key = EMERGENCY_LOG_KEY) {
+  if (emergencies.length === 0) return;
+  const log = await readLog(key, { dateOf: (x) => x.lastSeen, maxAgeMs: EMERGENCY_KEEP_MS, now });
+  for (const e of emergencies) {
+    const i = log.findIndex((x) => sameEmergencyEpisode(x, e));
+    if (i >= 0) log[i] = { ...e, firstSeen: log[i].firstSeen };
+    else log.push(e);
+  }
+  log.sort((a, b) => Date.parse(b.lastSeen) - Date.parse(a.lastSeen));
+  await kvSetJson(key, log, Math.ceil(EMERGENCY_KEEP_MS / 1000), now);
+}
+
+// ── Tâches de fond : annuaires et départs (jamais attendues par la carte ni le panneau) ──
+
+/** Annuaires officiels relus en tâche de fond (10 min, mémoire de panne de 10 min), en parallèle, une seule tâche à la fois. */
+function startBoards(now) {
+  boardsJob ??= Promise.all(Object.keys(OFFICIAL_AIRPORT_PROVIDERS).map(async (iata) => {
+    try {
+      const board = await readBoard(iata, now);
+      boardStatus.set(iata, { board: { delayed: board.delayed, cancelled: board.cancelled, at: board.at }, records: board.records, error: null });
+    } catch (err) {
+      boardStatus.set(iata, { board: null, records: [], error: sourceError(`Annuaire ${OFFICIAL_AIRPORT_PROVIDERS[iata].name}`, err) });
+    }
+  })).finally(() => { boardsJob = null; });
+}
+
+/** Lignes des annuaires lus avec succès au dernier essai (enrichissement des vols proches). */
+function boardRecords() {
+  return [...boardStatus.values()].flatMap((s) => s.records);
+}
+
+/**
+ * Cycle des départs (8 aéroports, environ 240 crédits) : lancé par la lecture des états quand aucun n'est en cours,
+ * jamais attendu ; seul écrivain de DEPARTURES_KEY. `remaining` : crédits lus avec ces états.
+ */
+function startDepartures(now, remaining) {
+  departures.job ??= runDepartures(now, remaining)
+    .catch((err) => {
+      console.error('[collecte opensky] départs interrompus', err);
+      departures.errors = [sourceError('OpenSky, départs interrompus', err)];
+    })
+    .finally(() => { departures.job = null; });
+}
+
+async function runDepartures(now, remaining) {
+  if (isDevServer() && process.env.AIR_DEV_DEPARTURES !== '1') {
+    departures.errors = ['OpenSky : départs non lus sur le serveur de dev (AIR_DEV_DEPARTURES=1 pour les lire)'];
+    return;
+  }
+  if (!departures.loaded) {
+    // Une fois par processus : derniers départs gardés (redémarrage sans nouveau cycle). Panne de Redis : aucun
+    // cycle anticipé (240 crédits), nouvel essai à la prochaine lecture des états.
+    const stored = await kvReadJson(DEPARTURES_KEY, now);
+    if (stored.failed) {
+      departures.errors = ['OpenSky : départs non relancés (stockage clé-valeur illisible)'];
+      return;
+    }
+    departures.value = stored.value;
+    departures.loaded = true;
+    // Départs relus : l'erreur d'une panne passagère de Redis ne reste pas affichée jusqu'au prochain cycle (4 h).
+    departures.errors = [];
+  }
+  const lastAt = Date.parse(departures.value?.at);
+  if (now - lastAt < DEPARTURES_INTERVAL_MS) return;
+  if (remaining === null) {
+    departures.errors = ['OpenSky : départs suspendus (crédits OpenSky illisibles)'];
+    return;
+  }
+  if (remaining < CREDIT_FLOOR) {
+    departures.errors = [`OpenSky : départs suspendus (${remaining} crédits restants, seuil ${CREDIT_FLOOR})`];
+    return;
+  }
+  const read = await readDepartures(now, await openSkyToken(now));
+  departures.value = read.value;
+  departures.errors = read.errors;
+  await kvSetJson(DEPARTURES_KEY, read.value, 86_400, now);
+}
+
+// ── Lecture des états (seule attendue par les routes) ──
+
+/** Tentative sans nouvelle donnée : dernière collecte gardée avec sa date (S1), ou collecte vide (`at` null). */
+function keepPrevious(now, errors) {
+  collection = collection
+    ? { ...collection, attemptedAt: now, errors }
+    : { at: null, attemptedAt: now, states: [], flights: [], credits: null, errors };
+  return collection;
+}
+
+async function refresh(now) {
+  let states;
+  try {
+    states = await readStates(now);
+  } catch (err) {
+    return keepPrevious(now, [sourceError('OpenSky', err)]);
+  }
+  const errors = [];
+  const atIso = new Date(states.time * 1000).toISOString();
+  const zoneStates = states.states.filter(inZone);
+  startBoards(now);
+  startDepartures(now, states.remaining);
+
+  let flights = applyOfficialDirectory(zoneStates.filter((s) => !s.onGround).map(toMapFlight), boardRecords(), now);
+  updateFlightHistory(flights, now);
+  flights = flights.map((f) => {
+    const nearest = findNearestAirport(f.latitude, f.longitude, 90);
+    return { ...f, anomalies: detectTrajectoryAnomalies(f, now), nearbyAirportIata: nearest?.airport.iata, nearbyAirportName: nearest?.airport.name, nearbyAirportDistanceKm: nearest ? Math.round(nearest.distanceKm) : undefined };
+  });
+
+  // Historique dans le stockage clé-valeur : une panne n'efface jamais des positions lues avec succès.
+  try {
+    await recordEmergencies(emergenciesFrom(zoneStates, atIso), now);
+  } catch (err) {
+    errors.push(sourceError('Journal des urgences', err));
+  }
+  try {
+    await appendSample(VOLUME_KEY, volumeSample(zoneStates, atIso), { maxAgeMs: VOLUME_KEEP_MS, minIntervalMs: VOLUME_INTERVAL_MS - 30_000, now });
+  } catch (err) {
+    errors.push(sourceError('Volume aérien', err));
   }
 
-  if (cachedSnapshot && cachedSnapshot.flights.length > 0) {
-    return {
-      ...cachedSnapshot,
-      errors: [...cachedSnapshot.errors, ...errors],
-    };
-  }
+  collection = { at: atIso, attemptedAt: now, states: zoneStates, flights, credits: states.remaining, errors };
+  return collection;
+}
 
-  cachedSnapshot = snapshot;
-  return snapshot;
+/** Collecte servie : dernière lecture des états, derniers annuaires et départs connus, erreurs des trois. */
+function served() {
+  const boardsView = {};
+  const boardErrors = [];
+  for (const iata of Object.keys(OFFICIAL_AIRPORT_PROVIDERS)) {
+    const status = boardStatus.get(iata);
+    boardsView[iata] = status?.board ?? null;
+    if (status?.error) boardErrors.push(status.error);
+  }
+  return { ...collection, boards: boardsView, departures: departures.value, errors: [...collection.errors, ...boardErrors, ...departures.errors] };
+}
+
+/**
+ * Collecte à jour : nouvelle lecture des états si la dernière tentative a 2 min ou plus (5 min en dev). Une seule à
+ * la fois : la relève, la carte et le panneau partagent la lecture en cours, seul écrivain du journal des urgences
+ * et du volume. Annuaires et départs ne sont jamais attendus. Une erreur imprévue date quand même la tentative
+ * (sinon chaque requête de la carte, toutes les 12 s, relancerait OpenSky et viderait les crédits, T4) et elle est
+ * journalisée sur le serveur.
+ */
+export async function ensureAirFresh(now = Date.now()) {
+  if (!collection || now - collection.attemptedAt >= statesIntervalMs()) {
+    inflight ??= refresh(now)
+      .catch((err) => {
+        console.error('[collecte opensky] collecte interrompue', err);
+        return keepPrevious(now, [sourceError('Collecte aérienne interrompue', err)]);
+      })
+      .finally(() => { inflight = null; });
+    await inflight;
+  }
+  return served();
+}
+
+/** Instantané de la carte (/api/traffic/air) : vols en vol de la zone suivie, date réelle des états. */
+export async function fetchAirTrafficSnapshot(now = Date.now()) {
+  const c = await ensureAirFresh(now);
+  if (c.at === null) throw new Error(c.errors[0] ?? 'OpenSky indisponible');
+  return {
+    source: 'opensky',
+    fetchedAt: Date.parse(c.at),
+    ttlMs: statesIntervalMs(),
+    areas: [],
+    flights: c.flights,
+    sourceCounts: { opensky: c.flights.length },
+    anomalyCount: c.flights.reduce((n, f) => n + f.anomalies.length, 0),
+    errors: c.errors.map((message) => ({ area: 'opensky', message })),
+  };
 }

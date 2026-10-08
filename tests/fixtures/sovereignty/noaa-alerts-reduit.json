@@ -1,0 +1,52 @@
+[
+  {
+    "product_id": "K05A",
+    "issue_datetime": "2026-10-04 14:03:28.167",
+    "message": "Space Weather Message Code: ALTK05\r\nSerial Number: 2051\r\nIssue Time: 2026 Oct 04 1403 UTC\r\n\r\nALERT: Geomagnetic K-index of 5 \nThreshold Reached: 2026 Oct 04 1402 UTC\nSynoptic Period: 1200-1500\nActive Warning: YES\nNoaa Scale: G1 - Minor\nComment: \r\n\r\nNOAA Scale: G1 - Minor\r\n\r\nNOAA Space Weather Scale descriptions can be found at\r\nwww.swpc.noaa.gov/noaa-scales-explanation\r\n\r\nPotential Impacts: Area of impact primarily poleward of 60 degrees Geomagnetic Latitude.\r\nInduced Currents - Weak power grid fluctuations can occur.\r\nSpacecraft - Minor impact on satellite operations possible.\r\nAurora - Aurora may be visible at high latitudes, i.e., northern tier of the U.S. such as northern Michigan and Maine."
+  },
+  {
+    "product_id": "K05A",
+    "issue_datetime": "2026-10-04 11:23:41.163",
+    "message": "Space Weather Message Code: ALTK05\r\nSerial Number: 2050\r\nIssue Time: 2026 Oct 04 1123 UTC\r\n\r\nALERT: Geomagnetic K-index of 5 \nThreshold Reached: 2026 Oct 04 1122 UTC\nSynoptic Period: 0900-1200\nActive Warning: YES\nNoaa Scale: G1 - Minor\nComment: \r\n\r\nNOAA Scale: G1 - Minor\r\n\r\nNOAA Space Weather Scale descriptions can be found at\r\nwww.swpc.noaa.gov/noaa-scales-explanation\r\n\r\nPotential Impacts: Area of impact primarily poleward of 60 degrees Geomagnetic Latitude.\r\nInduced Currents - Weak power grid fluctuations can occur.\r\nSpacecraft - Minor impact on satellite operations possible.\r\nAurora - Aurora may be visible at high latitudes, i.e., northern tier of the U.S. such as northern Michigan and Maine."
+  },
+  {
+    "product_id": "K05W",
+    "issue_datetime": "2026-10-04 11:07:31.433",
+    "message": "Space Weather Message Code: WARK05\r\nSerial Number: 2267\r\nIssue Time: 2026 Oct 04 1107 UTC\r\n\r\nWARNING: Geomagnetic K-index of 5 expected \nValid From: 2026 Oct 04 1110 UTC\nValid To: 2026 Oct 04 2100 UTC\nWarning Conditions: Onset\nNoaa Scale: G1 - Minor\nComment: \r\n\r\nNOAA Scale: G1 - Minor\r\n\r\nNOAA Space Weather Scale descriptions can be found at\r\nwww.swpc.noaa.gov/noaa-scales-explanation\r\n\r\nPotential Impacts: Area of impact primarily poleward of 60 degrees Geomagnetic Latitude.\r\nInduced Currents - Weak power grid fluctuations can occur.\r\nSpacecraft - Minor impact on satellite operations possible.\r\nAurora - Aurora may be visible at high latitudes, i.e., northern tier of the U.S. such as northern Michigan and Maine."
+  },
+  {
+    "product_id": "K04A",
+    "issue_datetime": "2026-10-04 08:01:06.560",
+    "message": "Space Weather Message Code: ALTK04\r\nSerial Number: 2689\r\nIssue Time: 2026 Oct 04 0801 UTC\r\n\r\nALERT: Geomagnetic K-index of 4 \nThreshold Reached: 2026 Oct 04 0757 UTC\nSynoptic Period: 0600-0900\nActive Warning: YES\nComment: \r\n\r\nNOAA Space Weather Scale descriptions can be found at\r\nwww.swpc.noaa.gov/noaa-scales-explanation\r\n\r\nPotential Impacts: Area of impact primarily poleward of 65 degrees Geomagnetic Latitude.\r\nInduced Currents - Weak power grid fluctuations can occur.\r\nAurora - Aurora may be visible at high latitudes such as Canada and Alaska."
+  },
+  {
+    "product_id": "K04W",
+    "issue_datetime": "2026-10-04 06:13:42.580",
+    "message": "Space Weather Message Code: WARK04\r\nSerial Number: 5424\r\nIssue Time: 2026 Oct 04 0613 UTC\r\n\r\nWARNING: Geomagnetic K-index of 4 expected \nValid From: 2026 Oct 04 0615 UTC\nValid To: 2026 Oct 04 2359 UTC\nWarning Conditions: Onset\nComment: \r\n\r\nNOAA Space Weather Scale descriptions can be found at\r\nwww.swpc.noaa.gov/noaa-scales-explanation\r\n\r\nPotential Impacts: Area of impact primarily poleward of 65 degrees Geomagnetic Latitude.\r\nInduced Currents - Weak power grid fluctuations can occur.\r\nAurora - Aurora may be visible at high latitudes such as Canada and Alaska."
+  },
+  {
+    "product_id": "EF3A",
+    "issue_datetime": "2026-10-01 14:30:29.700",
+    "message": "Space Weather Message Code: ALTEF3\r\nSerial Number: 3750\r\nIssue Time: 2026 Oct 01 1430 UTC\r\n\r\nCONTINUED ALERT: Electron 2MeV Integral Flux exceeded 1,000pfu\nContinuation of Serial Number: 3749\nBegin Time: 2026 Sep 30 0945 UTC\n\nYesterday Maximum 2MeV Flux: 3120 pfu\nMax time: 2026 Sep 30 1435 UTC"
+  },
+  {
+    "product_id": "A20F",
+    "issue_datetime": "2026-10-01 14:28:54.257",
+    "message": "Space Weather Message Code: WATA20\r\nSerial Number: 1128\r\nIssue Time: 2026 Oct 01 1428 UTC\r\n\r\nWATCH: Geomagnetic Storm Category G1 Predicted \nHighest Storm Level Predicted by Day:\nOct 02:  G1 (Minor)   Oct 03:  None (Below G1)   Oct 04:  G1 (Minor)   \nTHIS SUPERSEDES ANY/ALL PRIOR WATCHES IN EFFECT\nComment: \r\n\r\nNOAA Space Weather Scale descriptions can be found at\r\nwww.swpc.noaa.gov/noaa-scales-explanation\r\n\r\nPotential Impacts: Area of impact primarily poleward of 60 degrees Geomagnetic Latitude.\r\nInduced Currents - Weak power grid fluctuations can occur.\r\nSpacecraft - Minor impact on satellite operations possible.\r\nAurora - Aurora may be visible at high latitudes, i.e., northern tier of the U.S. such as northern Michigan and Maine."
+  },
+  {
+    "product_id": "EF3A",
+    "issue_datetime": "2026-09-30 10:04:50.050",
+    "message": "Space Weather Message Code: ALTEF3\r\nSerial Number: 3749\r\nIssue Time: 2026 Sep 30 1004 UTC\r\n\r\nALERT: Electron 2MeV Integral Flux exceeded 1,000pfu \nThreshold Reached: 2026 Sep 30 0945 UTC\nStation: GOES-19\nComment: Yesterday's max flux of 5,622 pfu at 29/1620 UTC.\n"
+  },
+  {
+    "product_id": "TIVA",
+    "issue_datetime": "2026-09-30 03:39:25.207",
+    "message": "Space Weather Message Code: ALTTP4\r\nSerial Number: 718\r\nIssue Time: 2026 Sep 30 0339 UTC\r\n\r\nALERT: Type IV Radio Emission \nBegin Time: 2026 Sep 30 0256 UTC\nComment: Observed by PAL\n"
+  },
+  {
+    "product_id": "TIIA",
+    "issue_datetime": "2026-09-30 03:38:29.203",
+    "message": "Space Weather Message Code: ALTTP2\r\nSerial Number: 1529\r\nIssue Time: 2026 Sep 30 0338 UTC\r\n\r\nALERT: Type II Radio Emission \nBegin Time: 2026 Sep 30 0252 UTC\nEstimate Velocity: 523 km/s\nComment: observed by PAL\n"
+  }
+]

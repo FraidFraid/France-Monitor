@@ -178,7 +178,7 @@ export default async function handler(request) {
     if (groqRes.status === 429) {
       const cooldown = parseRetrySeconds(parsedBody);
       // Un seul log par ouverture de disjoncteur (les requêtes suivantes court-circuitent).
-      console.warn('[summarize] Groq rate limited — cooldown', cooldown, 's', {
+      console.warn('[summarize] Groq rate limited : cooldown', cooldown, 's', {
         model: GROQ_MODEL,
         upstream: typeof parsedBody === 'string' ? parsedBody.slice(0, 300) : parsedBody?.error?.message,
       });

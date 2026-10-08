@@ -1,5 +1,7 @@
 import type {
   FuelFreshness,
+  FuelStation,
+  FuelStationFuelStatus,
   FuelTensionDashboard,
   FuelTensionDepartmentSummary,
   FuelTensionLevel,
@@ -19,24 +21,30 @@ const TARGET_HISTORY_DAYS = 7;
 Watchdog.register('fuel-tension', {
   label: 'Carburants temps réel',
   staleAfterMs: 6 * 60_000,
-  detail: 'API prix carburants flux instantané v2 — prix, ruptures, fraîcheur stations',
+  detail: 'API prix carburants flux instantané v2 : prix, ruptures, fraîcheur stations',
   freshness: 'TEMPS_REEL',
 });
 
-export const FUEL_TENSION_DISCLAIMER_FR = 'Tension carburants : signal quasi temps réel basé sur l’API prix carburants (Ministère de l’Économie). Il ne mesure pas les volumes livrés mais les prix, ruptures et l’actualité des stations.';
-export const FUEL_TENSION_DISCLAIMER_EN = 'Fuel tension: near real-time signal based on the public fuel prices API (Ministry of Economy). It tracks prices, outages and update freshness, not delivered volumes.';
+export const FUEL_TENSION_DISCLAIMER_FR = 'Tension carburants : signal quasi temps réel basé sur l’API prix carburants (Ministère de l’Économie). Il ne mesure pas les volumes livrés mais les ruptures déclarées par les stations et l’évolution des prix.';
+export const FUEL_TENSION_DISCLAIMER_EN = 'Fuel tension: near real-time signal based on the public fuel prices API (Ministry of Economy). It tracks station-reported outages and price changes, not delivered volumes.';
 
 export const FUEL_TENSION_THRESHOLDS = {
   priceSpikeCents: 12,
-  staleUpdateMinutes: 96 * 60,
   mediumDeltaCents: 3,
   highDeltaCents: 7,
   criticalDeltaCents: 12,
-  mediumAnomalyShare: 6,
-  highAnomalyShare: 18,
-  criticalAnomalyShare: 35,
-  freshnessEscalationMinutes: 5 * 24 * 60,
+  // Part des stations en rupture temporaire récente (décision du 08/10/2026 : fond normal 10 à 12 %).
+  mediumAnomalyShare: 15,
+  highAnomalyShare: 25,
+  criticalAnomalyShare: 40,
 } as const;
+
+/**
+ * Une rupture « temporaire » déclarée depuis 30 jours ou plus vaut carburant non vendu : le 08/10/2026,
+ * 364 stations déclaraient une rupture temporaire depuis plus d'un an. Une station à sec depuis moins
+ * longtemps reste une anomalie, pour qu'une pénurie d'un mois reste visible.
+ */
+export const STALE_RUPTURE_DAYS = 30;
 
 interface FuelTensionCacheEntry {
   data: FuelTensionDashboard;
@@ -124,7 +132,7 @@ function buildFreshness(ageMinutes: number | null, timestamp: string | null): Fu
   return { timestamp, ageMinutes, badge: 'QUASI-LIVE' };
 }
 
-function getSignalLevel(deltaCents: number | null, anomalyShare: number, avgUpdateAgeMinutes: number | null): FuelTensionLevel {
+function getSignalLevel(deltaCents: number | null, anomalyShare: number): FuelTensionLevel {
   let rank = 1;
 
   if (deltaCents !== null) {
@@ -133,13 +141,9 @@ function getSignalLevel(deltaCents: number | null, anomalyShare: number, avgUpda
     else if (deltaCents >= FUEL_TENSION_THRESHOLDS.mediumDeltaCents) rank = Math.max(rank, 2);
   }
 
-  if (anomalyShare > FUEL_TENSION_THRESHOLDS.criticalAnomalyShare) rank = Math.max(rank, 4);
+  if (anomalyShare >= FUEL_TENSION_THRESHOLDS.criticalAnomalyShare) rank = Math.max(rank, 4);
   else if (anomalyShare >= FUEL_TENSION_THRESHOLDS.highAnomalyShare) rank = Math.max(rank, 3);
   else if (anomalyShare >= FUEL_TENSION_THRESHOLDS.mediumAnomalyShare) rank = Math.max(rank, 2);
-
-  if (avgUpdateAgeMinutes !== null && avgUpdateAgeMinutes > FUEL_TENSION_THRESHOLDS.freshnessEscalationMinutes) {
-    rank = Math.min(4, rank + 1);
-  }
 
   return levelFromRank(rank);
 }
@@ -236,6 +240,7 @@ function createEmptyNationalSummary(): FuelTensionNationalSummary {
     anomalyShare: 0,
     avgUpdateAgeMinutes: null,
     medianUpdateAgeMinutes: null,
+    latestUpdateAt: null,
     tensionLevel: 'LOW',
     avgPrices: {},
     topDepartments: [],
@@ -295,7 +300,37 @@ function persistHistorySnapshot(
   return buildComparisonMap(findComparisonSnapshot(snapshots, capturedAt));
 }
 
-function buildNationalSummary(summaries: FuelTensionDepartmentSummary[], stationAnomalyCount: number): FuelTensionNationalSummary {
+/**
+ * Un carburant est vendu tant que la station n'est pas en rupture définitive (ni prix ni date dans le flux)
+ * ni en rupture temporaire depuis STALE_RUPTURE_DAYS jours ou plus.
+ */
+function isCarried(status: FuelStationFuelStatus | undefined, now: number): status is FuelStationFuelStatus {
+  if (status === undefined || status.ruptureType === 'definitive') return false;
+  if (status.ruptureType === 'temporaire' && status.ruptureSince) {
+    const since = Date.parse(status.ruptureSince);
+    if (Number.isFinite(since) && now - since >= STALE_RUPTURE_DAYS * 86_400_000) return false;
+  }
+  return true;
+}
+
+function sellsAnyMonitoredFuel(station: FuelStation, now: number): boolean {
+  return FUEL_TYPES.some((fuelType) => isCarried(station.fuels[fuelType], now));
+}
+
+/** Dernier relevé de prix du flux : fraîcheur du flux, distincte de l'âge du prix de chaque station. */
+function latestUpdateAt(stations: FuelStation[], now: number): string | null {
+  let latest = -Infinity;
+  for (const station of stations) {
+    for (const fuelType of FUEL_TYPES) {
+      const value = station.fuels[fuelType]?.updatedAt;
+      const time = value ? Date.parse(value) : NaN;
+      if (Number.isFinite(time) && time > latest) latest = Math.min(time, now);
+    }
+  }
+  return Number.isFinite(latest) ? new Date(latest).toISOString() : null;
+}
+
+function buildNationalSummary(summaries: FuelTensionDepartmentSummary[], stationAnomalyCount: number, latestUpdate: string | null): FuelTensionNationalSummary {
   const stationCount = summaries.reduce((sum, summary) => sum + summary.stationCount, 0);
   const anomalyShare = stationCount > 0 ? round((stationAnomalyCount / stationCount) * 100, 1) : 0;
   const avgUpdateAgeMinutes = average(summaries.map((summary) => summary.avgUpdateAgeMinutes), 0);
@@ -318,10 +353,10 @@ function buildNationalSummary(summaries: FuelTensionDepartmentSummary[], station
     anomalyShare,
     avgUpdateAgeMinutes,
     medianUpdateAgeMinutes: median(summaries.map((summary) => summary.avgUpdateAgeMinutes), 0),
+    latestUpdateAt: latestUpdate,
     tensionLevel: getSignalLevel(
       maxNumber(summaries.map((summary) => summary.maxDeltaPrice7d), 1),
       anomalyShare,
-      avgUpdateAgeMinutes,
     ),
     avgPrices,
     topDepartments: summaries.slice(0, 5),
@@ -333,9 +368,17 @@ export function buildDegradedFuelTensionDashboard(departmentCodes = [...NATIONAL
   return createEmptyDashboard(departmentCodes, 'error', message);
 }
 
-async function fetchFuelTensionDashboardUncached(departmentCodes?: string[]): Promise<FuelTensionDashboard> {
-  const requestedDepartmentCodes = departmentCodes?.map(normalizeDepartmentCode);
-  const stations = await fetchFuelStations(requestedDepartmentCodes);
+/**
+ * Construit le tableau de tension depuis des stations normalisées (fonction pure hors historique local).
+ * Une anomalie est un signal d'approvisionnement : seule une rupture temporaire en est une.
+ * Une rupture définitive signifie que la station ne vend pas ce carburant (aucun prix, aucune date) :
+ * elle est hors dénominateur, comme une rupture temporaire de STALE_RUPTURE_DAYS jours ou plus. Un prix inchangé depuis des jours n'est pas une anomalie.
+ */
+export function buildFuelTensionDashboardFromStations(
+  stations: FuelStation[],
+  now: number = Date.now(),
+  requestedDepartmentCodes?: string[],
+): FuelTensionDashboard {
   const availableDepartmentCodes = Array.from(new Set(stations.map((station) => station.departmentCode))).sort(compareDepartmentCodes);
   const scopeDepartmentCodes = availableDepartmentCodes.length > 0
     ? availableDepartmentCodes
@@ -347,19 +390,20 @@ async function fetchFuelTensionDashboardUncached(departmentCodes?: string[]): Pr
     return createEmptyDashboard([], 'stale');
   }
 
-  const generatedAt = new Date().toISOString();
+  const generatedAt = new Date(now).toISOString();
   const signals: FuelTensionSignal[] = [];
   const summaries: FuelTensionDepartmentSummary[] = [];
   let stationAnomalyCount = 0;
 
   for (const departmentCode of scopeDepartmentCodes) {
-    const departmentStations = stations.filter((station) => station.departmentCode === departmentCode);
-    const departmentName = departmentStations[0]?.departmentName ?? departmentCode;
+    const allDepartmentStations = stations.filter((station) => station.departmentCode === departmentCode);
+    const departmentStations = allDepartmentStations.filter((station) => sellsAnyMonitoredFuel(station, now));
+    const departmentName = allDepartmentStations[0]?.departmentName ?? departmentCode;
     const stationAnomalies = new Set<string>();
     const fuelSignals: FuelTensionSignal[] = [];
 
     for (const fuelType of FUEL_TYPES) {
-      const relevantStations = departmentStations.filter((station) => Boolean(station.fuels[fuelType]));
+      const relevantStations = departmentStations.filter((station) => isCarried(station.fuels[fuelType], now));
       const stationCount = relevantStations.length;
       const fuelAnomalies = new Set<string>();
 
@@ -381,11 +425,7 @@ async function fetchFuelTensionDashboardUncached(departmentCodes?: string[]): Pr
         const status = station.fuels[fuelType];
         if (!status) continue;
 
-        const isAnomalous =
-          status.ruptureType !== null ||
-          (status.updateAgeMinutes !== null && status.updateAgeMinutes > FUEL_TENSION_THRESHOLDS.staleUpdateMinutes);
-
-        if (isAnomalous) {
+        if (status.ruptureType === 'temporaire') {
           fuelAnomalies.add(station.id);
           stationAnomalies.add(station.id);
         }
@@ -401,7 +441,7 @@ async function fetchFuelTensionDashboardUncached(departmentCodes?: string[]): Pr
         stationCount,
         anomalyShare,
         avgUpdateAgeMinutes,
-        tensionLevel: getSignalLevel(null, anomalyShare, avgUpdateAgeMinutes),
+        tensionLevel: getSignalLevel(null, anomalyShare),
         dataFreshness: buildFreshness(avgUpdateAgeMinutes, lastUpdateTimestamp),
       });
     }
@@ -425,7 +465,7 @@ async function fetchFuelTensionDashboardUncached(departmentCodes?: string[]): Pr
       avgUpdateAgeMinutes,
       deltaPrice7d: null,
       maxDeltaPrice7d: null,
-      tensionLevel: getSignalLevel(null, anomalyShare, avgUpdateAgeMinutes),
+      tensionLevel: getSignalLevel(null, anomalyShare),
       freshness: buildFreshness(avgUpdateAgeMinutes, latestTimestamp),
       fuelSignals,
     });
@@ -441,13 +481,13 @@ async function fetchFuelTensionDashboardUncached(departmentCodes?: string[]): Pr
         : null;
 
       signal.deltaPrice7d = deltaPrice7d;
-      signal.tensionLevel = getSignalLevel(deltaPrice7d, signal.anomalyShare, signal.avgUpdateAgeMinutes);
+      signal.tensionLevel = getSignalLevel(deltaPrice7d, signal.anomalyShare);
       signals.push(signal);
     }
 
     summary.deltaPrice7d = average(summary.fuelSignals.map((signal) => signal.deltaPrice7d), 1);
     summary.maxDeltaPrice7d = maxNumber(summary.fuelSignals.map((signal) => signal.deltaPrice7d), 1);
-    summary.tensionLevel = getSignalLevel(summary.maxDeltaPrice7d, summary.anomalyShare, summary.avgUpdateAgeMinutes);
+    summary.tensionLevel = getSignalLevel(summary.maxDeltaPrice7d, summary.anomalyShare);
   }
 
   summaries.sort(compareSummaries);
@@ -457,7 +497,7 @@ async function fetchFuelTensionDashboardUncached(departmentCodes?: string[]): Pr
     departments: scopeDepartmentCodes,
     signals,
     summaries,
-    national: buildNationalSummary(summaries, stationAnomalyCount),
+    national: buildNationalSummary(summaries, stationAnomalyCount, latestUpdateAt(stations, now)),
     sourceStatus: stations.length > 0 ? 'ok' : 'stale',
     degraded: stations.length === 0,
     sourceLabel: 'API prix des carburants en France – flux instantané v2 (Ministère de l’Économie)',
@@ -465,6 +505,12 @@ async function fetchFuelTensionDashboardUncached(departmentCodes?: string[]): Pr
     disclaimerFr: FUEL_TENSION_DISCLAIMER_FR,
     disclaimerEn: FUEL_TENSION_DISCLAIMER_EN,
   };
+}
+
+async function fetchFuelTensionDashboardUncached(departmentCodes?: string[]): Promise<FuelTensionDashboard> {
+  const requestedDepartmentCodes = departmentCodes?.map(normalizeDepartmentCode);
+  const stations = await fetchFuelStations(requestedDepartmentCodes);
+  return buildFuelTensionDashboardFromStations(stations, Date.now(), requestedDepartmentCodes);
 }
 
 export async function fetchFuelTensionDashboard(departmentCodes?: string[]): Promise<FuelTensionDashboard> {

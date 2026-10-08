@@ -1,44 +1,19 @@
-import { getOrRefresh } from '../../_utils/swr-cache.js';
-import { fetchAirTrafficSnapshotFromRelay, resolveRelayBaseUrl } from '../../_shared/air-relay.js';
+// api/_handlers/traffic/air.js : positions des avions pour la carte (spec 2026-10-03 panneaux trafic § 2.3).
+// Lit la collecte serveur OpenSky partagée (2 min au plus) : la relève client de 12 s ne déclenche aucun
+// appel OpenSky de plus. Plus de relais ni d'airplanes.live.
 import { fetchAirTrafficSnapshot } from '../../_shared/air-traffic.js';
-
-// Clé unique : le snapshot ne dépend d'aucun paramètre de requête (l'ancien `?t=Date.now()`
-// côté client servait uniquement à contourner le cache HTTP, pas à faire varier la donnée).
-const CACHE_KEY = 'swr:traffic:air';
-
-async function produceSnapshot() {
-  const relayBaseUrl = resolveRelayBaseUrl();
-  if (relayBaseUrl) {
-    try {
-      return await fetchAirTrafficSnapshotFromRelay(fetch, relayBaseUrl);
-    } catch (relayError) {
-      console.warn('[air-traffic] relay failed, falling back to direct upstream', relayError);
-      return await fetchAirTrafficSnapshot(fetch);
-    }
-  }
-  return fetchAirTrafficSnapshot(fetch);
-}
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     res.status(405).json({ error: 'Method not allowed' });
     return;
   }
-
   try {
-    const { value: snapshot, cache } = await getOrRefresh(
-      CACHE_KEY,
-      { ttlSec: 20, staleSec: 120, timeoutMs: 8_000 },
-      produceSnapshot,
-    );
-    res.setHeader('Cache-Control', 'public, s-maxage=20, stale-while-revalidate=120');
-    res.setHeader('X-Cache', cache);
+    const snapshot = await fetchAirTrafficSnapshot(Date.now());
+    res.setHeader('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=120');
     res.status(200).json(snapshot);
   } catch (error) {
-    console.error('[air-traffic]', error);
     res.setHeader('Cache-Control', 'no-store');
-    res.status(502).json({
-      error: error instanceof Error ? error.message : 'Air traffic fetch failed',
-    });
+    res.status(502).json({ error: error instanceof Error ? error.message : 'OpenSky indisponible' });
   }
 }

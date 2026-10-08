@@ -2,6 +2,7 @@
 // Les articles sont regroupés en événements par le cron d'ingestion ; ce service ne fait
 // que lire, valider et ordonner. Disjoncteur : 3 échecs consécutifs → 5 min sans appel.
 
+import { noEmDash } from './typography.ts';
 import type {
   BriefEventInput,
   ChangeDigestItem,
@@ -79,7 +80,7 @@ export function parseNewsEvent(value: unknown): NewsEvent | null {
   return {
     id,
     evidenceId: `E${id}`,
-    title,
+    title: noEmDash(title),
     category: str(value.category) ?? 'general',
     severity,
     status,
@@ -88,7 +89,7 @@ export function parseNewsEvent(value: unknown): NewsEvent | null {
     articleCount: num(value.articleCount) ?? 1,
     sourceCount: num(value.sourceCount) ?? 1,
     independentCount: num(value.independentCount) ?? 1,
-    sourceNames: Array.isArray(value.sourceNames) ? value.sourceNames.filter((s): s is string => typeof s === 'string') : [],
+    sourceNames: Array.isArray(value.sourceNames) ? value.sourceNames.filter((s): s is string => typeof s === 'string').map(noEmDash) : [],
     lat: num(value.lat),
     lon: num(value.lon),
     peakSeverity: oneOf(value.peakSeverity, SEVERITIES) ?? severity,
@@ -173,7 +174,7 @@ export async function fetchEventDetail(id: number): Promise<NewsEventDetail | nu
       const title = str(a.title);
       const link = str(a.link);
       if (articleId === null || title === null || link === null) return [];
-      return [{ id: articleId, title, link, feedName: str(a.feedName), publishedAt: str(a.publishedAt) }];
+      return [{ id: articleId, title: noEmDash(title), link, feedName: str(a.feedName), publishedAt: str(a.publishedAt) }];
     })
     : [];
   const log: NewsEventDetail['log'] = Array.isArray(body.log)

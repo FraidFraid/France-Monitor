@@ -317,11 +317,16 @@ function snapshotToSample(status: DataSourceStatus): SourceSample {
 }
 
 function handleSnapshots(snapshots: WatchdogSnapshot[], nowMs: number): void {
+  recordStatusSamples(snapshots.map((snap) => snap.status), nowMs);
+}
+
+/**
+ * Échantillonne des statuts de sources dans l'historique local (même store, même throttle que le Watchdog).
+ * Sert aussi aux sources hors Watchdog (santé : statuts du panneau des sources, datés par la donnée, spec 2026-10-03).
+ */
+export function recordStatusSamples(statuses: readonly DataSourceStatus[], nowMs: number): void {
   const store = loadStore();
-  const incoming = snapshots.map((snap) => ({
-    key: snap.status.name,
-    sample: snapshotToSample(snap.status),
-  }));
+  const incoming = statuses.map((status) => ({ key: status.name, sample: snapshotToSample(status) }));
   memStore = recordSamples(store, incoming, nowMs);
   scheduleWrite();
 }

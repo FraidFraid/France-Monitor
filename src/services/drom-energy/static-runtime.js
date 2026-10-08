@@ -144,15 +144,24 @@ function buildDerivedCommuneMetrics(assets) {
   return [...byKey.values()].sort((a, b) => a.communeName.localeCompare(b.communeName, 'fr'));
 }
 
+/**
+ * Jeu de démonstration : fichier local forcé lors de l'ingestion (enregistrements « Test » du dépôt).
+ * Ses enregistrements ne sont jamais servis (spec 2026-10-02 lot 2 § 3.6).
+ */
+export function isDemoDataset(meta) {
+  return meta?.ingestion?.source === 'local_fallback_forced';
+}
+
 export function buildDromEnergyDashboardFromStaticPayloads(payloads, options = {}) {
   const datasets = normalizeDromEnergyDatasets(payloads.sources, {
     requireFetchedAt: options.requireFetchedAt === true,
   });
+  const demoIds = new Set(datasets.filter(isDemoDataset).map((d) => d.id));
   const assets = [
     ...normalizeDromEnergyAssets(payloads.substations),
     ...normalizeDromEnergyAssets(payloads.pylons),
     ...normalizeDromEnergyAssets(payloads.productionSites),
-  ];
+  ].filter((asset) => !demoIds.has(asset.sourceDatasetId));
 
   return {
     territories: normalizeDromEnergyTerritories(payloads.territories),
@@ -162,11 +171,14 @@ export function buildDromEnergyDashboardFromStaticPayloads(payloads, options = {
       ...(Array.isArray(payloads.co2Emissions) ? payloads.co2Emissions : []),
       ...(Array.isArray(payloads.efficiencyActions) ? payloads.efficiencyActions : []),
       ...buildDerivedCommuneMetrics(assets),
-    ],
-    productionLimitations: Array.isArray(payloads.productionLimitations) ? payloads.productionLimitations : [],
+    ].filter((metric) => !demoIds.has(metric.sourceDatasetId)),
+    productionLimitations: (Array.isArray(payloads.productionLimitations) ? payloads.productionLimitations : [])
+      .filter((limitation) => !demoIds.has(limitation.sourceDatasetId)),
     datasets,
     gridLines: {
-      reunionHta: normalizeDromEnergyLineFeatureCollection(payloads.reunionHtaLines),
+      reunionHta: demoIds.has('lines_hta_reunion')
+        ? emptyFeatureCollection()
+        : normalizeDromEnergyLineFeatureCollection(payloads.reunionHtaLines),
     },
     updatedAt: getDromEnergyUpdatedAt(datasets),
   };

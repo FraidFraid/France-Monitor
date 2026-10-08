@@ -42,15 +42,19 @@ interface FuelApiRecord {
   gazole_prix?: number | null;
   gazole_maj?: string | null;
   gazole_rupture_type?: string | null;
+  gazole_rupture_debut?: string | null;
   sp95_prix?: number | null;
   sp95_maj?: string | null;
   sp95_rupture_type?: string | null;
+  sp95_rupture_debut?: string | null;
   sp98_prix?: number | null;
   sp98_maj?: string | null;
   sp98_rupture_type?: string | null;
+  sp98_rupture_debut?: string | null;
   e10_prix?: number | null;
   e10_maj?: string | null;
   e10_rupture_type?: string | null;
+  e10_rupture_debut?: string | null;
 }
 
 interface FuelApiResponse {
@@ -107,15 +111,19 @@ function buildUpstreamUrl(offset: number, departmentCodes?: string[]): string {
       'gazole_prix',
       'gazole_maj',
       'gazole_rupture_type',
+      'gazole_rupture_debut',
       'sp95_prix',
       'sp95_maj',
       'sp95_rupture_type',
+      'sp95_rupture_debut',
       'sp98_prix',
       'sp98_maj',
       'sp98_rupture_type',
+      'sp98_rupture_debut',
       'e10_prix',
       'e10_maj',
       'e10_rupture_type',
+      'e10_rupture_debut',
       'carburants_disponibles',
       'carburants_indisponibles',
       'carburants_rupture_temporaire',
@@ -197,6 +205,9 @@ function buildFuelStatus(record: FuelApiRecord, fuelType: FuelType): FuelStation
     ?? (hasFuelLabel(temporaryRuptures, fuelType) ? 'temporaire' : null)
     ?? (hasFuelLabel(definitiveRuptures, fuelType) ? 'definitive' : null);
 
+  const rawRuptureSince = record[`${fuelType}_rupture_debut` as keyof FuelApiRecord];
+  const ruptureSince = ruptureType !== null && typeof rawRuptureSince === 'string' && rawRuptureSince ? rawRuptureSince : null;
+
   const isReferenced =
     price !== null ||
     updatedAt !== null ||
@@ -215,6 +226,7 @@ function buildFuelStatus(record: FuelApiRecord, fuelType: FuelType): FuelStation
     updatedAt,
     updateAgeMinutes: computeAgeMinutes(updatedAt),
     ruptureType,
+    ruptureSince,
     available: ruptureType === null && (price !== null || hasFuelLabel(availableLabels, fuelType)),
   };
 }

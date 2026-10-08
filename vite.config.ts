@@ -1,34 +1,24 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import { resolve, dirname } from 'path';
-import { readFileSync, writeFileSync } from 'fs';
+import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { brotliCompressSync, constants } from 'zlib';
 import { VitePWA } from 'vite-plugin-pwa';
 
 import { rssProxyPlugin } from './src/plugins/rss-proxy';
 import { rssJsonProxyPlugin } from './src/plugins/rss-json-proxy';
-import { sncfProxyPlugin } from './src/plugins/sncf-proxy';
-import { osmRailwaysProxyPlugin } from './src/plugins/osm-railways-proxy';
-import { ecowattProxyPlugin } from './src/plugins/ecowatt-proxy';
 import { biogasProxyPlugin } from './src/plugins/biogas-proxy';
 import { dromEnergyProxyPlugin } from './src/plugins/drom-energy-proxy';
 import { eolienProxyPlugin } from './src/plugins/eolien-proxy';
 import { financeProxyPlugin } from './src/plugins/finance-proxy';
 import { commoditiesProxyPlugin } from './src/plugins/commodities-proxy';
-import { healthProxyPlugin } from './src/plugins/health-proxy';
-import { airTrafficProxyPlugin } from './src/plugins/air-traffic-proxy';
-import { trafficRoadProxyPlugin } from './src/plugins/traffic-road-proxy';
-import { trafficFlowProxyPlugin } from './src/plugins/traffic-flow-proxy';
 import { trafficTileProxyPlugin } from './src/plugins/traffic-tile-proxy';
-import { weatherVigilanceProxyPlugin } from './src/plugins/weather-vigilance-proxy';
-import { militaryFlightsProxyPlugin } from './src/plugins/military-flights-proxy';
 import { oilProxyPlugin } from './src/plugins/oil-proxy';
 import { fuelPricesProxyPlugin } from './src/plugins/fuel-prices-proxy';
 import { internetOutagesProxyPlugin } from './src/plugins/internet-outages-proxy';
 import { infraNetworkProxyPlugin } from './src/plugins/infra-network-proxy';
 import { citizenOutagesProxyPlugin } from './src/plugins/citizen-outages-proxy';
 import { rteIipProxyPlugin } from './src/plugins/rte-iip-proxy';
-import { firesProxyPlugin } from './src/plugins/fires-proxy';
 import { elusProxyPlugin } from './src/plugins/elus-proxy';
 import { synthesisProxyPlugin } from './src/plugins/synthesis-proxy';
 import { ministersProxyPlugin } from './src/plugins/ministers-proxy';
@@ -37,12 +27,8 @@ import { sentinelNdwiProxyPlugin } from './src/plugins/sentinel-ndwi-proxy';
 import { nuclearProxyPlugin } from './src/plugins/nuclear-proxy';
 import { gasPirProxyPlugin } from './src/plugins/gas-pir-proxy';
 import { situationHistoryProxyPlugin } from './src/plugins/situation-history-proxy';
-import { threatsProxyPlugin } from './src/plugins/threats-proxy';
-import { exposureProxyPlugin } from './src/plugins/exposure-proxy';
 import { newsProxyPlugin } from './src/plugins/news-proxy';
 import { mtgFrpProxyPlugin } from './src/plugins/mtg-frp-proxy';
-import { radar2dProxyPlugin } from './src/plugins/radar-2d-proxy';
-import { radarColumnProxyPlugin } from './src/plugins/radar-column-proxy';
 import { apiRouterFallbackPlugin } from './src/plugins/api-router-fallback';
 import { startRelayServer } from './ais-relay.js';
 
@@ -127,29 +113,19 @@ export default defineConfig(({ mode }) => {
     plugins: [
       rssProxyPlugin(),
       rssJsonProxyPlugin(),
-      sncfProxyPlugin(),
-      osmRailwaysProxyPlugin(),
-      ecowattProxyPlugin(),
       biogasProxyPlugin(),
       dromEnergyProxyPlugin(),
       gasPirProxyPlugin(),
       eolienProxyPlugin(),
       financeProxyPlugin(),
       commoditiesProxyPlugin(),
-      healthProxyPlugin(),
-      airTrafficProxyPlugin(),
-      trafficRoadProxyPlugin(),
-      trafficFlowProxyPlugin(),
       trafficTileProxyPlugin(),
-      weatherVigilanceProxyPlugin(),
-      militaryFlightsProxyPlugin(),
       oilProxyPlugin(),
       fuelPricesProxyPlugin(),
       internetOutagesProxyPlugin(),
       infraNetworkProxyPlugin(),
       citizenOutagesProxyPlugin(),
       rteIipProxyPlugin(),
-      firesProxyPlugin(),
       elusProxyPlugin(),
       synthesisProxyPlugin(),
       ministersProxyPlugin(),
@@ -160,14 +136,10 @@ export default defineConfig(({ mode }) => {
         clientSecret: env.RTE_CLIENT_SECRET ?? '',
       }),
       situationHistoryProxyPlugin(),
-      threatsProxyPlugin(),
-      exposureProxyPlugin(),
       newsProxyPlugin({
         databaseUrl: env.DATABASE_URL ?? '',
       }),
       mtgFrpProxyPlugin(),
-      radar2dProxyPlugin(env.METEO_FRANCE_RADAR_MANIFEST_URL ?? ''),
-      radarColumnProxyPlugin(env.METEO_FRANCE_RADAR_MANIFEST_URL ?? ''),
       // Doit rester APRÈS tous les plugins proxy : sert en dev toute route /api/* sans plugin dédié
       // via le routeur de production (api/_utils/dispatch.js).
       apiRouterFallbackPlugin(),
@@ -233,6 +205,7 @@ export default defineConfig(({ mode }) => {
             'data/maires-politique.json',
             'data/history-dev.json', // données de démonstration du plugin de dev uniquement
             'data/drom-energy/raw/*.geojson',
+            'data/drone-restrictions.json', // zones drones DGAC (1,5 Mo), lues à l'ouverture de la couche
           ],
           // Abaissé de 3 Mo à 1 Mo : les gros GeoJSON/JSON ci-dessus sont
           // exclus explicitement du precache : ce plafond n'a plus besoin de

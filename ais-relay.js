@@ -5,13 +5,36 @@ import { fileURLToPath } from 'url';
 import { parseEnv } from 'util';
 import WebSocket, { WebSocketServer } from 'ws';
 
-import { fetchAirTrafficSnapshot } from './api/_shared/air-traffic.js';
+import { boundStatics, createAisTracker, slowVesselsResponse, snapshotResponse } from './api/_lib/ais-snapshot.js';
+import { kvReadJson, kvWriteJson } from './api/_lib/kv-history.js';
+
+// Relais AIS (VM : fm-relay.service, 127.0.0.1:8090 ; Caddy sert /relay* en retirant le préfixe).
+// - WebSocket « / » : rediffuse tel quel le flux aisstream.io aux cartes des navigateurs (inchangé).
+// - GET /snapshot : instantané maritime du panneau (spec 2026-10-03 panneaux trafic § 2.5) calculé sur les
+//   messages reçus ; en production le flux amont reste ouvert même sans navigateur connecté (`keepUpstream`),
+//   sinon l'instantané serait vide la plupart du temps.
+// - GET /slow-vessels : navires lents des eaux françaises (moins de 2 nœuds, vitesse connue) pour la veille des câbles du
+//   serveur (spec 2026-10-04 souveraineté § 2.2) ; mêmes positions que le WebSocket déjà rediffusé, cache de 30 s.
+// - GET /health : santé du processus (script de déploiement).
 
 const DEFAULT_RELAY_PORT = 8090;
 const DEFAULT_AISSTREAM_URL = 'wss://stream.aisstream.io/v0/stream';
 const CIRCUIT_BREAKER_THRESHOLD = 5;
 const CIRCUIT_BREAKER_COOLDOWN_MS = 5 * 60_000;
 const MAX_BOUNDING_BOXES_PER_SUBSCRIPTION = 5;
+const SNAPSHOT_CACHE_MS = 30_000;
+const STATICS_KEY = 'ais:statics';
+const STATICS_SAVE_MS = 30 * 60_000;
+const STATICS_KEEP_SEC = 7 * 86_400;
+const PRUNE_MS = 60_000;
+const SHUTDOWN_SAVE_TIMEOUT_MS = 5_000;
+/** Zone de chaque boîte, dans l'ordre de `BoundingBoxes` ; `metro` : boîte qui alimente l'instantané (eaux françaises métropolitaines). */
+export const BOX_COVERAGE = [
+  { label: 'Manche', metro: true }, { label: 'Atlantique', metro: true }, { label: 'golfe du Lion', metro: true }, { label: 'Corse', metro: true },
+  { label: 'Dunkerque-Calais', metro: true }, { label: 'Gironde', metro: true }, { label: 'Antilles', metro: false }, { label: 'Guyane', metro: false },
+  { label: 'La Réunion', metro: false }, { label: 'Mayotte', metro: false }, { label: 'Saint-Pierre-et-Miquelon', metro: false },
+  { label: 'Wallis-et-Futuna', metro: false }, { label: 'Polynésie', metro: false }, { label: 'Nouvelle-Calédonie', metro: false },
+];
 const SUBSCRIPTION = {
   APIKey: '',
   BoundingBoxes: [
@@ -23,6 +46,10 @@ const SUBSCRIPTION = {
     [[41.0, 1.8], [44.8, 8.2]],
     // Corse + Méditerranée proche
     [[41.0, 7.8], [43.8, 10.2]],
+    // Dunkerque et Calais (hors de la boîte Manche, relevé du 03/10/2026)
+    [[50.9, 1.0], [51.4, 2.6]],
+    // Gironde : Bordeaux, Pauillac, Le Verdon (hors de la boîte Atlantique)
+    [[44.5, -1.3], [45.4, -0.4]],
     // Antilles françaises
     [[14.0, -62.5], [19.5, -58.0]],
     // Guyane française
@@ -35,7 +62,7 @@ const SUBSCRIPTION = {
     [[46.6, -56.8], [47.4, -55.8]],
     // Wallis-et-Futuna
     [[-14.6, -178.6], [-13.0, -175.8]],
-    // Polynésie française — zone large autour des principaux archipels
+    // Polynésie française : zone large autour des principaux archipels
     [[-28.5, -155.5], [-7.0, -133.0]],
     // Nouvelle-Calédonie
     [[-23.8, 157.5], [-17.6, 173.0]],
@@ -43,7 +70,7 @@ const SUBSCRIPTION = {
   FilterMessageTypes: ['PositionReport', 'ShipStaticData', 'StandardClassBPositionReport'],
 };
 
-function chunkArray(items, size) {
+export function chunkArray(items, size) {
   const chunks = [];
   for (let i = 0; i < items.length; i += size) {
     chunks.push(items.slice(i, i + size));
@@ -51,44 +78,10 @@ function chunkArray(items, size) {
   return chunks;
 }
 
-// ── Cache + single-flight pour GET /opensky ──
-//
-// fetchAirTrafficSnapshot() a déjà son propre cache mémoire interne (20s, voir
-// api/_shared/air-traffic.js), mais sans coalescing : plusieurs requêtes concurrentes
-// arrivant avant que le premier fetch n'aboutisse déclenchent chacune leur propre calcul
-// complet du snapshot (~10s, plusieurs upstreams). Le cache ci-dessous garantit qu'un seul
-// calcul est en vol à la fois et que les appels rapprochés (10s) réutilisent son résultat.
-const OPENSKY_CACHE_TTL_MS = 10_000;
-let openskyCacheEntry = null; // { snapshot, fetchedAt }
-let openskyInflight = null; // Promise<snapshot> | null
-
-async function getOpenSkySnapshot() {
-  const now = Date.now();
-  if (openskyCacheEntry && now - openskyCacheEntry.fetchedAt < OPENSKY_CACHE_TTL_MS) {
-    return { snapshot: openskyCacheEntry.snapshot, cacheStatus: 'hit' };
-  }
-
-  if (openskyInflight) {
-    const snapshot = await openskyInflight;
-    return { snapshot, cacheStatus: 'hit' };
-  }
-
-  openskyInflight = fetchAirTrafficSnapshot(fetch).finally(() => {
-    openskyInflight = null;
-  });
-
-  try {
-    const snapshot = await openskyInflight;
-    openskyCacheEntry = { snapshot, fetchedAt: Date.now() };
-    return { snapshot, cacheStatus: 'miss' };
-  } catch (error) {
-    // En cas d'échec, on retombe sur la dernière valeur connue plutôt que de faire
-    // échouer tous les appelants concurrents.
-    if (openskyCacheEntry) {
-      return { snapshot: openskyCacheEntry.snapshot, cacheStatus: 'hit' };
-    }
-    throw error;
-  }
+/** Lots d'abonnement (5 boîtes au plus par lot). */
+export function subscriptionChunks(apiKey = '') {
+  return chunkArray(SUBSCRIPTION.BoundingBoxes, MAX_BOUNDING_BOXES_PER_SUBSCRIPTION)
+    .map((boxes) => ({ ...SUBSCRIPTION, APIKey: apiKey, BoundingBoxes: boxes }));
 }
 
 // Utilisation de global pour survivre aux rechargements HMR de Vite
@@ -122,23 +115,26 @@ function sendJson(res, statusCode, payload, extraHeaders = {}) {
 }
 
 export function getRelayHttpBaseUrl() {
-  return process.env.AIR_RELAY_URL?.trim() || `http://127.0.0.1:${process.env.RELAY_PORT || DEFAULT_RELAY_PORT}`;
+  return `http://127.0.0.1:${process.env.RELAY_PORT || DEFAULT_RELAY_PORT}`;
 }
 
+/**
+ * Démarre le relais. Options : port, aisApiKey, upstreamUrl, mode, keepUpstream (flux amont ouvert même sans
+ * navigateur ; vrai en production, ou AIS_RELAY_KEEP_UPSTREAM=1), tracker (suivi injecté par les tests).
+ */
 export function startRelayServer(options = {}) {
   if (relayInstance) return relayInstance;
 
   loadRelayEnv(options.mode);
 
-  const relayPort = Number(options.port || process.env.RELAY_PORT || DEFAULT_RELAY_PORT);
+  const relayPort = Number(options.port ?? (process.env.RELAY_PORT || DEFAULT_RELAY_PORT));
   const aisApiKey = options.aisApiKey ?? process.env.AISSTREAM_API_KEY ?? process.env.VITE_AISSTREAM_KEY ?? '';
   const upstreamUrl = options.upstreamUrl ?? process.env.AISSTREAM_UPSTREAM_URL ?? DEFAULT_AISSTREAM_URL;
-  const subscription = {
-    ...SUBSCRIPTION,
-    APIKey: aisApiKey,
-  };
-  const subscriptionChunks = chunkArray(subscription.BoundingBoxes, MAX_BOUNDING_BOXES_PER_SUBSCRIPTION)
-    .map((boxes) => ({ ...subscription, BoundingBoxes: boxes }));
+  const keepUpstream = options.keepUpstream ?? process.env.AIS_RELAY_KEEP_UPSTREAM === '1';
+  const tracker = options.tracker ?? createAisTracker();
+  const chunks = subscriptionChunks(aisApiKey);
+  let snapshotCache = null;
+  let slowCache = null;
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
@@ -148,32 +144,50 @@ export function startRelayServer(options = {}) {
         ok: true,
         ais: Boolean(aisApiKey),
         upstreamUrl,
-        opensky: Boolean(process.env.OPENSKY_CLIENT_ID && process.env.OPENSKY_CLIENT_SECRET),
       }, { 'Cache-Control': 'no-store' });
       return;
     }
 
-    if (req.method === 'GET' && url.pathname === '/opensky') {
-      try {
-        const { snapshot, cacheStatus } = await getOpenSkySnapshot();
-        sendJson(res, 200, snapshot, {
-          'Cache-Control': 'public, max-age=10',
-          'X-Relay-Source': 'local-ais-relay',
-          'X-Relay-Cache': cacheStatus,
-        });
-      } catch (error) {
-        sendJson(res, 502, {
-          error: error instanceof Error ? error.message : 'OpenSky relay failed',
-        }, { 'Cache-Control': 'no-store', 'X-Relay-Cache': 'miss' });
+    if (req.method === 'GET' && url.pathname === '/snapshot') {
+      const now = Date.now();
+      if (!snapshotCache || now - snapshotCache.at > SNAPSHOT_CACHE_MS) {
+        const upstreamOpen = upstreamStates.some((s) => s.upstream?.readyState === WebSocket.OPEN);
+        snapshotCache = { at: now, body: snapshotResponse(tracker, now, { hasKey: Boolean(aisApiKey), upstreamOpen, upstreams: upstreamLots(now) }) };
       }
+      sendJson(res, 200, snapshotCache.body, { 'Cache-Control': 'public, max-age=30', 'Access-Control-Allow-Origin': '*' });
+      return;
+    }
+
+    if (req.method === 'GET' && url.pathname === '/slow-vessels') {
+      const now = Date.now();
+      if (!slowCache || now - slowCache.at > SNAPSHOT_CACHE_MS) {
+        const upstreamOpen = upstreamStates.some((s) => s.upstream?.readyState === WebSocket.OPEN);
+        slowCache = { at: now, body: slowVesselsResponse(tracker, now, { hasKey: Boolean(aisApiKey), upstreamOpen, upstreams: upstreamLots(now) }) };
+      }
+      sendJson(res, 200, slowCache.body, { 'Cache-Control': 'public, max-age=30', 'Access-Control-Allow-Origin': '*' });
       return;
     }
 
     sendJson(res, 404, { error: 'Not found' }, { 'Cache-Control': 'no-store' });
   });
 
+  /** État de chaque connexion amont pour `snapshotResponse` et `slowVesselsResponse` : ouverte, dernier message (ou ouverture), zones et boîtes couvertes. */
+  const upstreamLots = () => upstreamStates.map((state) => {
+    const boxes = chunkStart(state.index);
+    const covered = BOX_COVERAGE.slice(boxes, boxes + state.subscription.BoundingBoxes.length);
+    return {
+      index: state.index,
+      open: state.upstream?.readyState === WebSocket.OPEN,
+      lastAt: state.lastMessageAt ?? state.openedAt,
+      labels: covered.map((c) => c.label),
+      metro: covered.some((c) => c.metro),
+      boxes: covered.map((c, i) => ({ label: c.label, metro: c.metro, box: state.subscription.BoundingBoxes[i] })),
+    };
+  });
+  const chunkStart = (index) => index * MAX_BOUNDING_BOXES_PER_SUBSCRIPTION;
+
   const wsServer = new WebSocketServer({ server });
-  const upstreamStates = subscriptionChunks.map((chunk, index) => ({
+  const upstreamStates = chunks.map((chunk, index) => ({
     index,
     subscription: chunk,
     upstream: null,
@@ -184,8 +198,12 @@ export function startRelayServer(options = {}) {
     lastUpstreamError: null,
     pingInterval: null,
     msgCount: 0,
+    openedAt: null,
+    lastMessageAt: null,
   }));
   let usingExternalRelay = false;
+  let staticsTimer = null;
+  let pruneTimer = null;
 
   const hasDownstreamClients = () => {
     for (const client of wsServer.clients) {
@@ -195,6 +213,9 @@ export function startRelayServer(options = {}) {
     }
     return false;
   };
+
+  /** Le flux amont est voulu : instantané serveur (production) ou au moins un navigateur connecté. */
+  const wantUpstream = () => keepUpstream || hasDownstreamClients();
 
   const clearReconnectTimer = (state) => {
     if (!state.reconnectTimer) return;
@@ -206,8 +227,12 @@ export function startRelayServer(options = {}) {
     upstreamStates.forEach(clearReconnectTimer);
   };
 
+  let closed = false;
   const closeLocalRelay = () => {
+    closed = true;
     clearAllReconnectTimers();
+    if (staticsTimer) clearInterval(staticsTimer);
+    if (pruneTimer) clearInterval(pruneTimer);
     for (const state of upstreamStates) {
       if (state.pingInterval) clearInterval(state.pingInterval);
       state.pingInterval = null;
@@ -228,7 +253,7 @@ export function startRelayServer(options = {}) {
   const handleListenError = (err) => {
     if (errorHandled) return;
     errorHandled = true;
-    
+
     if (err?.code === 'EADDRINUSE') {
       usingExternalRelay = true;
       console.log(`[AIS Relay] ♻️  Port ${relayPort} occupé : Réutilisation du relay en arrière-plan (clé: ${aisApiKey ? 'OK' : 'Manquante'})`);
@@ -253,8 +278,8 @@ export function startRelayServer(options = {}) {
   };
 
   const scheduleReconnect = (state) => {
-    if (state.reconnectTimer || !aisApiKey) return;
-    if (!hasDownstreamClients()) return;
+    if (closed || state.reconnectTimer || !aisApiKey) return;
+    if (!wantUpstream()) return;
 
     const now = Date.now();
     if (state.circuitBreakerUntil > now) {
@@ -263,7 +288,7 @@ export function startRelayServer(options = {}) {
         state.reconnectTimer = null;
         connectUpstream(state);
       }, waitMs);
-      console.warn(`[AIS Relay] ⏸️ Circuit breaker actif flux #${state.index + 1} — nouvelle tentative dans ${waitMs}ms`);
+      console.warn(`[AIS Relay] ⏸️ Circuit breaker actif flux #${state.index + 1} : nouvelle tentative dans ${waitMs}ms`);
       return;
     }
 
@@ -283,8 +308,8 @@ export function startRelayServer(options = {}) {
   };
 
   const connectUpstream = (state) => {
-    if (!aisApiKey) return;
-    if (!hasDownstreamClients()) return;
+    if (closed || !aisApiKey) return;
+    if (!wantUpstream()) return;
     if (state.upstream && (state.upstream.readyState === WebSocket.OPEN || state.upstream.readyState === WebSocket.CONNECTING)) {
       return;
     }
@@ -296,7 +321,9 @@ export function startRelayServer(options = {}) {
       state.consecutiveFailures = 0;
       state.circuitBreakerUntil = 0;
       state.lastUpstreamError = null;
-      console.log(`[AIS Relay] ✅ Connecté à ${upstreamUrl} — souscription #${state.index + 1}/${upstreamStates.length} envoyée (${state.subscription.BoundingBoxes.length} bbox)`);
+      state.openedAt = Date.now();
+      state.lastMessageAt = null;
+      console.log(`[AIS Relay] ✅ Connecté à ${upstreamUrl} : souscription #${state.index + 1}/${upstreamStates.length} envoyée (${state.subscription.BoundingBoxes.length} bbox)`);
       state.upstream?.send(JSON.stringify(state.subscription));
 
       // Keep connection alive
@@ -312,7 +339,10 @@ export function startRelayServer(options = {}) {
       if (state.msgCount === 1 || state.msgCount % 500 === 0) {
         console.log(`[AIS Relay] 📡 Flux #${state.index + 1} message #${state.msgCount} reçu, ${wsServer.clients.size} client(s) connecté(s)`);
       }
-      broadcast(data.toString());
+      state.lastMessageAt = Date.now();
+      const text = data.toString();
+      tracker.ingest(text);
+      broadcast(text);
     });
 
     state.upstream.on('error', (err) => {
@@ -334,8 +364,8 @@ export function startRelayServer(options = {}) {
         state.circuitBreakerUntil = Date.now() + CIRCUIT_BREAKER_COOLDOWN_MS;
       }
 
-      if (!hasDownstreamClients()) {
-        console.warn(`[AIS Relay] ⚠️ Upstream flux #${state.index + 1} déconnecté (code ${code}) — aucun client local, pause des reconnexions`);
+      if (!wantUpstream()) {
+        console.warn(`[AIS Relay] ⚠️ Upstream flux #${state.index + 1} déconnecté (code ${code}) : aucun client local, pause des reconnexions`);
         return;
       }
 
@@ -346,7 +376,7 @@ export function startRelayServer(options = {}) {
       ].filter(Boolean).join(' · ');
 
       console.warn(
-        `[AIS Relay] ⚠️ Upstream flux #${state.index + 1} déconnecté (code ${code}) — reconnexion dans ${state.reconnectDelayMs}ms${extra ? ` · ${extra}` : ''}`,
+        `[AIS Relay] ⚠️ Upstream flux #${state.index + 1} déconnecté (code ${code}) : reconnexion dans ${state.reconnectDelayMs}ms${extra ? ` · ${extra}` : ''}`,
       );
       scheduleReconnect(state);
     });
@@ -368,7 +398,7 @@ export function startRelayServer(options = {}) {
     }
 
     client.on('close', () => {
-      if (hasDownstreamClients()) return;
+      if (wantUpstream()) return;
       clearAllReconnectTimers();
       for (const state of upstreamStates) {
         if (state.upstream && (state.upstream.readyState === WebSocket.OPEN || state.upstream.readyState === WebSocket.CONNECTING)) {
@@ -383,21 +413,51 @@ export function startRelayServer(options = {}) {
   server.on('error', handleListenError);
   wsServer.on('error', handleListenError);
 
+  /**
+   * Sauvegarde la mémoire MMSI (navires vus dans les eaux françaises depuis 7 jours, champs minimaux, bornée à 900 Ko).
+   * Écriture stricte : taille et résultat sont journalisés, un échec n'est jamais avalé.
+   */
+  const saveStatics = async (reason = 'périodique') => {
+    const { list, bytes, trimmed } = boundStatics(tracker.exportStatics(Date.now()));
+    const ko = `${Math.round(bytes / 1024)} Ko`;
+    const result = await kvWriteJson(STATICS_KEY, list, STATICS_KEEP_SEC);
+    if (!result.ok) {
+      console.error(`[AIS Relay] ❌ Sauvegarde de la mémoire MMSI (${reason}) échouée : ${list.length} navires, ${ko} : ${result.error}`);
+    } else if (!result.persisted) {
+      console.warn(`[AIS Relay] ⚠️ Mémoire MMSI (${reason}) gardée en mémoire seulement : Redis non configuré (${list.length} navires, ${ko})`);
+    } else {
+      console.log(`[AIS Relay] 💾 Mémoire MMSI sauvée (${reason}) : ${list.length} navires, ${ko}${trimmed ? `, ${trimmed} plus anciens retirés` : ''}`);
+    }
+    return { ...result, count: list.length, bytes, trimmed };
+  };
+
   server.listen(relayPort, () => {
-    if (usingExternalRelay) return;
+    if (usingExternalRelay || closed) return;
     console.log(`[AIS Relay] 🚀 Nouveau relay démarré et à l’écoute sur le port ${relayPort} (clé: ${aisApiKey ? 'OK' : 'Manquante'})`);
+    // Élagage des suivis sur minuteur (sans appel HTTP, les tables ne seraient plus bornées).
+    pruneTimer = setInterval(() => tracker.prune(Date.now()), PRUNE_MS);
+    pruneTimer.unref?.();
+    if (!keepUpstream) return;
+    // Mémoire MMSI gardée d'un redémarrage à l'autre (les données statiques n'arrivent que toutes les 6 min).
+    kvReadJson(STATICS_KEY).then(({ value, failed }) => {
+      if (failed) console.error('[AIS Relay] ❌ Relecture de la mémoire MMSI impossible (Redis en panne) : démarrage sans mémoire');
+      else tracker.importStatics(value, Date.now());
+    }, (err) => console.error('[AIS Relay] ❌ Relecture de la mémoire MMSI échouée :', err instanceof Error ? err.message : String(err)));
+    staticsTimer = setInterval(() => {
+      void saveStatics();
+    }, STATICS_SAVE_MS);
+    staticsTimer.unref?.();
+    upstreamStates.forEach(connectUpstream);
   });
 
   relayInstance = {
     port: relayPort,
     server,
     wsServer,
+    tracker,
+    saveStatics,
     close() {
-      for (const state of upstreamStates) {
-        state.upstream?.close();
-      }
-      wsServer.close();
-      server.close();
+      closeLocalRelay();
       relayInstance = null;
       global.__aisRelayInstance = null;
     },
@@ -410,6 +470,21 @@ export function startRelayServer(options = {}) {
 const isEntryPoint = process.argv[1] === fileURLToPath(import.meta.url);
 
 if (isEntryPoint) {
-  startRelayServer();
-  console.log(`Relay AIS/OpenSky démarré sur ${getRelayHttpBaseUrl()} (WS sur même port)`);
+  // Production (VM) : flux amont toujours ouvert pour l'instantané /snapshot.
+  const relay = startRelayServer({ keepUpstream: true });
+  console.log(`Relais AIS démarré sur ${getRelayHttpBaseUrl()} (WS sur même port)`);
+  // Arrêt propre (systemd) : la mémoire MMSI apprise depuis la dernière sauvegarde n'est pas perdue.
+  process.once('SIGTERM', () => {
+    // Délai de 5 s : si l'écriture Redis se bloque, on journalise et on sort quand même (systemd n'a pas à tuer le relais).
+    const timeout = new Promise((resolve) => {
+      setTimeout(() => {
+        console.error('[AIS Relay] ❌ Sauvegarde de la mémoire MMSI (arrêt) sans réponse après 5 s : arrêt sans attendre');
+        resolve(null);
+      }, SHUTDOWN_SAVE_TIMEOUT_MS).unref?.();
+    });
+    Promise.race([relay.saveStatics('arrêt'), timeout]).catch(() => {}).finally(() => {
+      relay.close();
+      process.exit(0);
+    });
+  });
 }

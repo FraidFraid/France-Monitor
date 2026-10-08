@@ -16,11 +16,16 @@ function findByData(root: ParentNode, attr: 'select' | 'action', value: string):
 export class FichePanel {
   private readonly body: HTMLElement;
   private readonly closeButton: HTMLButtonElement;
+  private readonly toast: HTMLElement;
+  private toastTimer: ReturnType<typeof setTimeout> | null = null;
+  private toastSetTimer: ReturnType<typeof setTimeout> | null = null;
   private lastHtml = '';
   private currentKey: string | null = null;
   private onSelect: ((key: string) => void) | null = null;
   private onAction: ((action: string, ficheKey: string) => void) | null = null;
-  private onWhyToggle: ((ficheKey: string, open: boolean) => void) | null = null;
+  private onSectionToggle: ((sectionKey: string, open: boolean) => void) | null = null;
+  /** Ouverture de chaque section telle que rendue : un `toggle` à l'identique vient du rendu, pas de l'utilisateur. */
+  private renderedSections = new Map<string, boolean>();
   private onClose: (() => void) | null = null;
 
   constructor(root: HTMLElement) {
@@ -36,7 +41,11 @@ export class FichePanel {
     this.body.className = 'fiche-body';
     const chrome = document.createElement('div');
     chrome.className = 'fiche-chrome';
-    chrome.appendChild(this.closeButton);
+    this.toast = document.createElement('p');
+    this.toast.className = 'fiche-toast';
+    this.toast.setAttribute('role', 'status');
+    this.toast.setAttribute('aria-live', 'polite');
+    chrome.append(this.closeButton, this.toast);
     root.replaceChildren(chrome, this.body);
 
     this.closeButton.addEventListener('click', () => this.onClose?.());
@@ -44,8 +53,13 @@ export class FichePanel {
     // `toggle` ne remonte pas : écoute en capture sur le conteneur. L'attribut `open` fait foi.
     this.body.addEventListener('toggle', (e) => {
       const target = e.target;
-      if (target instanceof HTMLElement && target.matches('details.fiche-why')) {
-        this.onWhyToggle?.(target.dataset.why ?? '', target.hasAttribute('open'));
+      if (target instanceof HTMLElement && target.matches('details[data-section]')) {
+        const key = target.dataset.section ?? '';
+        const open = target.hasAttribute('open');
+        if (this.renderedSections.get(key) !== open) {
+          this.renderedSections.set(key, open);
+          this.onSectionToggle?.(key, open);
+        }
       }
     }, true);
   }
@@ -58,12 +72,36 @@ export class FichePanel {
     this.onAction = handler;
   }
 
-  setOnWhyToggle(handler: (ficheKey: string, open: boolean) => void): void {
-    this.onWhyToggle = handler;
+  setOnSectionToggle(handler: (sectionKey: string, open: boolean) => void): void {
+    this.onSectionToggle = handler;
   }
 
   setOnClose(handler: () => void): void {
     this.onClose = handler;
+  }
+
+  /** Annonce brève (copie, etc.), hors du corps de fiche : survit aux reconstructions, effacée après 2,5 s. */
+  announce(text: string): void {
+    if (this.toastTimer !== null) clearTimeout(this.toastTimer);
+    if (this.toastSetTimer !== null) clearTimeout(this.toastSetTimer);
+    const hide = (): void => {
+      this.toastTimer = setTimeout(() => {
+        this.toast.textContent = '';
+        this.toastTimer = null;
+      }, 2500);
+    };
+    if (this.toast.textContent === text) {
+      // Même message deux fois de suite : vider puis réécrire, sinon le lecteur d'écran ne le relit pas.
+      this.toast.textContent = '';
+      this.toastSetTimer = setTimeout(() => {
+        this.toast.textContent = text;
+        this.toastSetTimer = null;
+        hide();
+      }, 50);
+      return;
+    }
+    this.toast.textContent = text;
+    hide();
   }
 
   getBody(): HTMLElement {
@@ -79,6 +117,10 @@ export class FichePanel {
     const restore = this.focusTarget(sameFiche);
     const scrollTop = this.body.scrollTop;
     this.body.innerHTML = html;
+    this.renderedSections = new Map(
+      [...this.body.querySelectorAll<HTMLElement>('details[data-section]')]
+        .map((d): [string, boolean] => [d.dataset.section ?? '', d.hasAttribute('open')]),
+    );
     this.lastHtml = html;
     this.currentKey = model.key;
     // Même fiche mise à jour : garder la position de lecture ; autre fiche : repartir du haut.
@@ -105,7 +147,13 @@ export class FichePanel {
     // (même data-select/data-action) n'a aucune raison d'exister dans la nouvelle fiche ; se
     // replier directement sur son titre plutôt que de laisser le focus tomber sur <body>.
     if (!sameFiche) return () => this.body.querySelector<HTMLElement>('.fiche-name');
-    if (el.matches('.fiche-why > summary')) return () => this.body.querySelector<HTMLElement>('.fiche-why > summary');
+    if (el.matches('details[data-section] > summary')) {
+      const section = el.parentElement?.dataset.section;
+      if (section !== undefined) {
+        return () => [...this.body.querySelectorAll<HTMLElement>('details[data-section]')]
+          .find((d) => d.dataset.section === section)?.querySelector<HTMLElement>(':scope > summary') ?? null;
+      }
+    }
     const select = el.dataset.select;
     if (select !== undefined) return () => findByData(this.body, 'select', select);
     const action = el.dataset.action;

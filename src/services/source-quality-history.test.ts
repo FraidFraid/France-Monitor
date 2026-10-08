@@ -1,4 +1,4 @@
-import { describe, it } from 'vitest';
+import { afterEach, describe, it, vi } from 'vitest';
 import assert from 'node:assert/strict';
 
 import {
@@ -8,7 +8,9 @@ import {
   dateKeyUTC,
   ingestSourceSample,
   purgeOldBuckets,
+  getObservedMetrics,
   recordSamples,
+  recordStatusSamples,
   type DailyBucket,
   type SourceSample,
 } from './source-quality-history.ts';
@@ -222,5 +224,28 @@ describe('source-quality-history — recordSamples (throttle + multi-source)', (
     assert.equal(store.sources['B'], undefined);
     assert.equal(store.sources[''], undefined);
     assert.equal(Object.keys(store.sources).length, 1);
+  });
+});
+
+describe('source-quality-history : sources hors Watchdog (santé, spec 2026-10-03)', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('recordStatusSamples : échantillon du statut du panneau des sources, retenu par l’historique local', () => {
+    const stored = new Map<string, string>();
+    vi.stubGlobal('window', {
+      localStorage: {
+        getItem: (k: string) => stored.get(k) ?? null,
+        setItem: (k: string, v: string) => { stored.set(k, v); },
+      },
+    });
+    const now = Date.parse('2026-10-03T08:00:00.000Z');
+    recordStatusSamples([
+      { name: 'Odissé alertes', status: 'stale', lastUpdate: null, period: 'n.d.', error: 'Odissé, niveaux d’alerte : HTTP 429' },
+      { name: 'Sentinelles', status: 'loading', lastUpdate: null },
+    ], now);
+    const metrics = getObservedMetrics('Odissé alertes');
+    assert.equal(metrics?.samples, 1);
+    assert.equal(metrics?.uptimeRate, 0);
+    assert.equal(getObservedMetrics('Sentinelles'), null);
   });
 });

@@ -20,7 +20,7 @@ import type {
   DetectedSituation,
   EcowattResponse,
   EcowattSignal,
-  FloodSegment,
+  FloodSectionRef,
   IntelEventsState,
   MarketData,
   MeteoAlert,
@@ -59,19 +59,15 @@ function ecowatt(level: EcowattSignal | null): EcowattResponse {
     generatedAt: new Date(NOW).toISOString(),
     days: [{ date: parisDate(NOW), level, message: 'Test', hours: Array.from({ length: 24 }, () => 1) }],
   } : null;
-  return { official, mixes: {}, national: mix, interconnections: [] };
+  return { official, mixes: {}, national: mix, interconnections: [], grid: null };
 }
 
 function meteo(department: string, level: MeteoAlert['level'], risks: MeteoAlert['risks'] = []): MeteoAlert {
   return { department, departmentCode: department.slice(0, 2), level, risks };
 }
 
-function flood(name: string, level: FloodSegment['level']): FloodSegment {
-  const line = { type: 'LineString' as const, coordinates: [] };
-  return {
-    id: name, name, level, dataSource: 'live', geometryFidelity: 'raw', matchConfidence: 1,
-    rawVertexCount: 0, displayVertexCount: 0, geometry: line, rawGeometry: line, displayGeometry: line,
-  };
+function flood(name: string, level: FloodSectionRef['level']): FloodSectionRef {
+  return { id: name, name, level, geometry: { type: 'LineString' as const, coordinates: [] } };
 }
 
 function market(over: Partial<MarketLine> = {}): MarketLine {
@@ -114,6 +110,20 @@ describe('buildWorkQueue — ce qui entre (spec §7.1)', () => {
     expect(q.items.find((i) => i.key === 'alert:news-alert-2')?.theme).toBe('security');
   });
 
+  it('entrée du moniteur déjà dite par une situation (coveredAlertIds, revue de B28) : masquée ; les autres alertes restent', () => {
+    const q = buildWorkQueue(input({
+      situations: [situation({ id: 'defense-signal-elevated', type: 'DEFENSE_SIGNAL_ELEVATED', severity: 'medium', title: 'Précision GNSS dégradée', coveredAlertIds: ['gnss-degraded-24h'] })],
+      alerts: [
+        situation({ id: 'gnss-degraded-24h', type: 'GPS_JAMMING_ALERT', severity: 'medium', title: 'Précision de position GNSS dégradée' }),
+        situation({ id: 'defense-alert-1', type: 'DEFENSE_ALERT', severity: 'high', title: 'Navire près du câble' }),
+      ],
+    }));
+    expect(keys(q)).toEqual(['alert:defense-alert-1', 'situation:defense-signal-elevated']);
+    // Sans situation qui la couvre, l'entrée entre.
+    expect(keys(buildWorkQueue(input({ alerts: [situation({ id: 'gnss-degraded-24h', type: 'GPS_JAMMING_ALERT', severity: 'medium' })] }))))
+      .toEqual(['alert:gnss-degraded-24h']);
+  });
+
   it('alerte presse : dédoublonnée seulement contre un événement affiché dans la liste (relecture finale m3, §14)', () => {
     const alert = situation({ id: 'news-alert-1', type: 'NEWS_ALERT', severity: 'critical', title: 'Explosion dans une usine chimique de Seine-Mar...', category: 'security' });
     // Jumeau non corroboré (jaune, source unique) ou clos : il n'entre pas, l'alerte reste.
@@ -126,10 +136,10 @@ describe('buildWorkQueue — ce qui entre (spec §7.1)', () => {
     expect(keys(shown)).toEqual(['event:42']);
   });
 
-  it('alertes officielles orange ou rouges regroupées par source et niveau, violet compté rouge (Écowatt national : une seule entrée)', () => {
+  it('alertes officielles orange ou rouges regroupées par source et niveau (Écowatt national : une seule entrée)', () => {
     const groups = officialAlertGroups(
       ecowatt('red'),
-      [meteo('Var', 'violet', ['heat', 'thunderstorm']), meteo('Gard', 'red'), meteo('Isère', 'yellow')],
+      [meteo('Var', 'red', ['heat', 'thunderstorm']), meteo('Gard', 'red'), meteo('Isère', 'yellow')],
       [flood('Loire amont', 'orange')],
       NOW,
     );
@@ -238,8 +248,9 @@ describe('buildWorkQueue — tri et badges (spec §7.2)', () => {
 });
 
 describe('buildWorkQueue — identité de ligne de base sans le niveau (relecture finale m2)', () => {
-  const surge = (severity: DetectedSituation['severity'], suffix: string): DetectedSituation => situation({
-    id: `military-surge-concentration-${suffix}`, type: 'MILITARY_SURGE_ALERT', severity, title: 'Concentration inhabituelle de vols militaires',
+  /** Urgence militaire (moniteur d'alertes, tâche A16) : identifiant sans gravité, la même urgence monte d'un cran en se confirmant. */
+  const emergency = (severity: DetectedSituation['severity']): DetectedSituation => situation({
+    id: 'military-emergency-ae0805-7700', type: 'MILITARY_SURGE_ALERT', severity, title: '7700 (urgence) : RCH161 (C17)',
   });
 
   it('alerte officielle : même source, niveau plus haut → AGGRAVÉ, et non NOUVEAU ; clé d’affichage inchangée', () => {
@@ -261,23 +272,23 @@ describe('buildWorkQueue — identité de ligne de base sans le niveau (relectur
     });
   });
 
-  it('poussée militaire : la gravité dans l’identifiant ne fait pas un NOUVEAU ; clé d’affichage inchangée', () => {
+  it('urgence militaire vue une fois puis confirmée : même identité, AGGRAVÉ et non NOUVEAU', () => {
     const q = buildWorkQueue(input({
-      alerts: [surge('critical', 'alert')],
-      baseline: { 'alert:military-surge-concentration': 'orange' },
+      alerts: [emergency('high')],
+      baseline: { 'alert:military-emergency-ae0805-7700': 'jaune' },
     }));
-    expect(q.items.map((i) => [i.key, i.badge])).toEqual([['alert:military-surge-concentration-alert', 'aggrave']]);
+    expect(q.items.map((i) => [i.key, i.badge])).toEqual([['alert:military-emergency-ae0805-7700', 'aggrave']]);
   });
 
   it('ligne de base enregistrée par identité, au niveau le plus élevé de la source', () => {
     const q = buildWorkQueue(input({
       meteo: [meteo('Var', 'red'), meteo('Gard', 'orange')],
-      alerts: [surge('high', 'warning')],
+      alerts: [emergency('high')],
       situations: [situation()],
     }));
     expect(levelsForBaseline(q)).toEqual({
       'official:meteo': 'rouge',
-      'alert:military-surge-concentration': 'orange',
+      'alert:military-emergency-ae0805-7700': 'orange',
       'situation:energy-stress': 'orange',
     });
   });

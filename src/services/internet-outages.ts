@@ -142,7 +142,7 @@ export async function fetchNetworkOutages(): Promise<NetworkOutageState> {
 
     // Circuit breaker
     if (failureCount >= 2 && Date.now() < cooldownUntil) {
-        console.warn('[NetworkOutages] Circuit breaker ouvert — cooldown actif');
+        console.warn('[NetworkOutages] Circuit breaker ouvert : cooldown actif');
         Watchdog.report('ioda-bgp', { type: 'fallback', reason: 'circuit breaker ouvert' });
         return cache?.data ?? buildEmptyState('error');
     }
@@ -247,7 +247,7 @@ export const INTERNET_OUTAGE_SOURCES = [
         id:    'ioda',
         name:  'IODA (CAIDA)',
         url:   'https://ioda.caida.org/',
-        description: 'Détection anomalies BGP/IBR/probing — Georgia Tech',
+        description: 'Détection anomalies BGP/IBR/probing · Georgia Tech',
     },
     {
         id:    'bgpview',

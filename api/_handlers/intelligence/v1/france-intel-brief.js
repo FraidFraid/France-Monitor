@@ -37,6 +37,8 @@ export function describeStability(score, lang) {
 }
 
 function describeCyber(score, lang) {
+  // CERT-FR indisponible ou en retard : jamais « faible » (une absence n'est pas un calme).
+  if (score === null) return lang === 'fr' ? 'non évaluée (CERT-FR indisponible ou en retard)' : 'not assessed (CERT-FR unavailable or late)';
   if (score >= 75) return lang === 'fr' ? 'forte' : 'high';
   if (score >= 50) return lang === 'fr' ? 'soutenue' : 'elevated';
   if (score >= 25) return lang === 'fr' ? 'modérée' : 'moderate';
@@ -69,9 +71,133 @@ function buildCacheKey(lang, countryScore, axes, isnrComponents, cyberScore, met
   return `france-intel:brief:${lang}:${BRIEF_PROMPT_VERSION}:${hashCacheSeed(seed)}`;
 }
 
+/**
+ * Gros chiffre Défense (amendement 7, O9) : « aéronefs militaires ou d'État visibles en ADS-B au-dessus de la métropole », jamais « au-dessus
+ * de la France » ; O8 : toujours suivi de MILITARY_COUNT_NOTE (un aéronef observé n'est pas un événement).
+ */
+const MILITARY_COUNT_NOTE = { fr: 'compte habituel, pas un événement', en: 'usual count, not an event' };
+
+function militaryFigure(count, lang) {
+  if (lang === 'en') return `${count} military or state aircraft visible on ADS-B over metropolitan France`;
+  return count > 1
+    ? `${count} aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole`
+    : `${count} aéronef militaire ou d’État visible en ADS-B au-dessus de la métropole`;
+}
+
+/**
+ * Sources Souveraineté non lues (S3, V1 : une absence n'est jamais un calme) : jamais un « 0 » envoyé au modèle, toujours « non
+ * évalué ». Phase A : aucune grille GNSS, la précision GNSS est toujours « non évaluée ».
+ */
+const NOT_ASSESSED = {
+  cables: { fr: 'navires lents sur les câbles : non évalué (veille AIS muette ou en retard)', en: 'slow vessels on cables: not assessed (AIS watch mute or late)' },
+  gnss: {
+    fr: 'précision GNSS : non évaluée (grille absente, en retard, en dégradation générale, ou mesurée depuis moins de 24 h sans maille dégradée)',
+    en: 'GNSS accuracy: not assessed (grid missing, late, under general degradation, or measured for less than 24 h with no degraded cell)',
+  },
+  military: {
+    fr: 'aéronefs militaires ou d’État visibles en ADS-B : non évalué (relevé adsb.lol indisponible ou en retard)',
+    en: 'military or state aircraft visible on ADS-B: not assessed (adsb.lol reading unavailable or late)',
+  },
+  certfr: { fr: 'alertes CERT-FR : non évaluées (CERT-FR indisponible ou en retard)', en: 'CERT-FR alerts: not assessed (CERT-FR unavailable or late)' },
+  kev: { fr: 'avis citant une vulnérabilité KEV : non évalués (catalogue KEV en retard)', en: 'advisories citing a KEV vulnerability: not assessed (KEV catalogue late)' },
+};
+
+/** Compte et nom accordés (français : singulier à 0 et 1). */
+function plural(n, one, many) {
+  return `${n} ${n > 1 ? many : one}`;
+}
+
+/** Compte accordé dans la langue de l'invite (revue finale M3) : français, singulier à 0 et 1 ; anglais, singulier à 1 seulement. */
+function countIn(lang, n, one, many) {
+  return lang === 'fr' ? plural(n, one, many) : `${n} ${n === 1 ? one : many}`;
+}
+
+/** « (mesure partielle de 5 h) » après un compte de mailles positif sur une fenêtre partielle (report 10 de la revue finale) ; '' sur 24 h. */
+function gnssPartial(signalCounts, lang) {
+  const h = signalCounts.gnssPartialHours;
+  if (typeof h !== 'number' || h < 0) return '';
+  return lang === 'fr' ? ` (mesure partielle de ${h} h)` : ` (partial measurement, ${h} h)`;
+}
+
+/** Résumé situationnel, défense : navires lents confirmés sur un câble, mailles à précision GNSS dégradée ; « non évalué » si non lus. */
+function defenseSummaryLines(signalCounts, lang) {
+  const lines = [];
+  if (signalCounts.cablesUnavailable) lines.push(NOT_ASSESSED.cables[lang]);
+  else if (signalCounts.defenseAlerts > 0) {
+    lines.push(lang === 'fr'
+      ? `${plural(signalCounts.defenseAlerts, 'navire lent confirmé', 'navires lents confirmés')} sur un câble`
+      : `${plural(signalCounts.defenseAlerts, 'slow vessel', 'slow vessels')} confirmed on a cable`);
+  }
+  if (signalCounts.gnssUnavailable) lines.push(NOT_ASSESSED.gnss[lang]);
+  else if (signalCounts.jammingSignals > 0) {
+    lines.push(lang === 'fr'
+      ? `${plural(signalCounts.jammingSignals, 'maille', 'mailles')} à précision GNSS dégradée${gnssPartial(signalCounts, 'fr')}`
+      : `${plural(signalCounts.jammingSignals, 'cell', 'cells')} with degraded GNSS accuracy${gnssPartial(signalCounts, 'en')}`);
+  }
+  return lines;
+}
+
+/**
+ * Résumé situationnel, cyber et aéronefs : alertes CERT-FR en cours et avis citant une vulnérabilité KEV récente dits à part (même
+ * chiffre que la tuile) ; compte d'aéronefs toujours suivi de « compte habituel, pas un événement » (O8) ; « non évalué » si non lus.
+ */
+function cyberMilitarySummaryLines(signalCounts, lang) {
+  const lines = [];
+  if (signalCounts.cyberUnavailable) lines.push(NOT_ASSESSED.certfr[lang]);
+  else {
+    const parts = [];
+    if (signalCounts.cyberOpenAlerts > 0) {
+      parts.push(lang === 'fr'
+        ? `${plural(signalCounts.cyberOpenAlerts, 'alerte CERT-FR', 'alertes CERT-FR')} en cours`
+        : `${plural(signalCounts.cyberOpenAlerts, 'CERT-FR alert', 'CERT-FR alerts')} in progress`);
+    }
+    if (signalCounts.kevUnavailable) parts.push(NOT_ASSESSED.kev[lang]);
+    else if (signalCounts.cyberKevAdvisories > 0) {
+      parts.push(lang === 'fr'
+        ? `${signalCounts.cyberKevAdvisories} avis citant une vulnérabilité KEV ajoutée depuis moins de 7 jours`
+        : `${plural(signalCounts.cyberKevAdvisories, 'advisory', 'advisories')} citing a KEV vulnerability added in the last 7 days`);
+    }
+    if (parts.length > 0) lines.push(parts.join(lang === 'fr' ? ' ; ' : '; '));
+  }
+  // Amendement 7, O8 : un compte d'aéronefs n'est jamais transmis sans « compte habituel, pas un événement ».
+  if (signalCounts.militaryUnavailable) lines.push(NOT_ASSESSED.military[lang]);
+  else if (signalCounts.militaryFlights > 0) {
+    lines.push(lang === 'fr'
+      ? `${militaryFigure(signalCounts.militaryFlights, 'fr')} (adsb.lol) : ${MILITARY_COUNT_NOTE.fr}`
+      : `${militaryFigure(signalCounts.militaryFlights, 'en')} (adsb.lol): ${MILITARY_COUNT_NOTE.en}`);
+  }
+  return lines;
+}
+
+/** Ligne « Signaux » du contexte, part Souveraineté : jamais un « 0 » pour une source non lue (« non évalué »), O8 après tout compte d'aéronefs. */
+function sovereigntySignals(signalCounts, lang) {
+  const fr = lang === 'fr';
+  const cables = signalCounts.cablesUnavailable
+    ? (fr ? 'navires lents sur un câble non évalués' : 'slow vessels on a cable not assessed')
+    // Compte par navire (arbitrage FX2 : la veille fait une alerte par navire et par câble).
+    : (fr ? `${plural(signalCounts.defenseAlerts, 'navire lent confirmé', 'navires lents confirmés')} sur un câble`
+      : `${countIn('en', signalCounts.defenseAlerts, 'slow vessel', 'slow vessels')} confirmed on a cable`);
+  const gnss = signalCounts.gnssUnavailable
+    ? (fr ? 'précision GNSS non évaluée' : 'GNSS accuracy not assessed')
+    : (fr ? `${plural(signalCounts.jammingSignals, 'maille', 'mailles')} à précision GNSS dégradée${gnssPartial(signalCounts, 'fr')}`
+      : `${countIn('en', signalCounts.jammingSignals, 'cell', 'cells')} with degraded GNSS accuracy${gnssPartial(signalCounts, 'en')}`);
+  const military = signalCounts.militaryUnavailable
+    ? (fr ? 'aéronefs militaires ou d’État visibles en ADS-B non évalués' : 'military or state aircraft visible on ADS-B not assessed')
+    : `${militaryFigure(signalCounts.militaryFlights, lang)} (${MILITARY_COUNT_NOTE[lang]})`;
+  return `${cables}, ${gnss}, ${military}`;
+}
+
+/**
+ * Signaux immédiats faibles : aucun compte, et aucune source Souveraineté lue en défaut (câbles, aéronefs, grille GNSS, CERT-FR) ; une
+ * absence n'est jamais un calme. La grille GNSS y entre depuis son branchement (phase B, tâche B28).
+ */
 function hasLowImmediateSignals(signalCounts) {
   return (
-    signalCounts.criticalNews === 0
+    !signalCounts.cablesUnavailable
+    && !signalCounts.militaryUnavailable
+    && !signalCounts.gnssUnavailable
+    && !signalCounts.cyberUnavailable
+    && signalCounts.criticalNews === 0
     && signalCounts.highNews === 0
     && signalCounts.weatherAlerts === 0
     && signalCounts.floodAlerts === 0
@@ -164,7 +290,8 @@ function hasEnergyTension(energy) {
     || energy.fuelTensionLevel === 'MEDIUM'
     || energy.fuelTensionLevel === 'HIGH'
     || energy.fuelTensionLevel === 'CRITICAL'
-    || (energy.fuelTensionAnomalyShare ?? 0) >= 5
+    // Mêmes seuils que FUEL_TENSION_THRESHOLDS (src/services/fuel-tension.ts) : jaune 15 %, orange 25 %.
+    || (energy.fuelTensionAnomalyShare ?? 0) >= 15
     || (energy.fuelPriceDelta7dCents ?? 0) >= 8
     || (energy.fuelPriceDelta30dCents ?? 0) >= 15
   );
@@ -177,7 +304,7 @@ function hasOperationalEnergyStress(energy) {
     || energy.oilVigilanceStatus === 'critical'
     || energy.fuelTensionLevel === 'HIGH'
     || energy.fuelTensionLevel === 'CRITICAL'
-    || (energy.fuelTensionAnomalyShare ?? 0) >= 12
+    || (energy.fuelTensionAnomalyShare ?? 0) >= 25
     || (energy.fuelPriceDelta7dCents ?? 0) >= 12
     || (energy.fuelPriceDelta30dCents ?? 0) >= 20
   );
@@ -200,19 +327,21 @@ function buildSituationSummary(signalCounts, energy, lang) {
   const lines = [];
   if (lang === 'fr') {
     if (signalCounts.weatherAlerts > 0 || signalCounts.floodAlerts > 0) {
-      lines.push(`${signalCounts.weatherAlerts} alertes météo sévères + ${signalCounts.floodAlerts} alertes crues actives`);
+      lines.push(`${plural(signalCounts.weatherAlerts, 'alerte météo sévère', 'alertes météo sévères')} + `
+        + `${plural(signalCounts.floodAlerts, 'alerte crue active', 'alertes crues actives')}`);
     }
     if (hasOperationalTransportStress(signalCounts)) {
-      lines.push(`${signalCounts.railDisruptions} perturbations ferroviaires SNCF, ${signalCounts.roadIncidents} incidents routiers`);
+      lines.push(`${plural(signalCounts.railDisruptions, 'perturbation ferroviaire SNCF', 'perturbations ferroviaires SNCF')}, `
+        + `${plural(signalCounts.roadIncidents, 'incident routier', 'incidents routiers')}`);
     } else if (hasBackgroundTransportPressure(signalCounts)) {
-      lines.push(`mobilité sous bruit de fond: ${signalCounts.railDisruptions} perturbations ferroviaires, ${signalCounts.roadIncidents} incidents routiers`);
+      lines.push(`mobilité sous bruit de fond: ${plural(signalCounts.railDisruptions, 'perturbation ferroviaire', 'perturbations ferroviaires')}, `
+        + `${plural(signalCounts.roadIncidents, 'incident routier', 'incidents routiers')}`);
     }
     if (signalCounts.powerOutages > 0 || signalCounts.telecomOutages > 0) {
-      lines.push(`${signalCounts.powerOutages} coupures électriques, ${signalCounts.telecomOutages} incidents télécom`);
+      lines.push(`${plural(signalCounts.powerOutages, 'coupure électrique', 'coupures électriques')}, `
+        + `${plural(signalCounts.telecomOutages, 'incident télécom', 'incidents télécom')}`);
     }
-    if (signalCounts.defenseAlerts > 0 || signalCounts.jammingSignals > 0) {
-      lines.push(`${signalCounts.defenseAlerts} alertes défense (câbles sous-marins), ${signalCounts.jammingSignals} signaux brouillage GPS`);
-    }
+    lines.push(...defenseSummaryLines(signalCounts, 'fr'));
     if (energy && hasOperationalEnergyStress(energy)) {
       const parts = [];
       if (energy.ecowattSignal === 'red') parts.push('Ecowatt rouge');
@@ -223,24 +352,25 @@ function buildSituationSummary(signalCounts, energy, lang) {
     } else if (energy && hasBackgroundEnergyPressure(energy)) {
       lines.push('Énergie sous tension de fond sans rupture opérationnelle immédiate');
     }
-    if (signalCounts.fireDetections > 0) lines.push(`${signalCounts.fireDetections} détections de feux actifs`);
-    if (signalCounts.cyberAlerts > 0) lines.push(`${signalCounts.cyberAlerts} alertes cyber CERT-FR (30j)`);
-    if (signalCounts.militaryFlights > 0) lines.push(`${signalCounts.militaryFlights} vols militaires actifs`);
+    if (signalCounts.fireDetections > 0) lines.push(plural(signalCounts.fireDetections, 'détection de feu actif', 'détections de feux actifs'));
+    lines.push(...cyberMilitarySummaryLines(signalCounts, 'fr'));
   } else {
     if (signalCounts.weatherAlerts > 0 || signalCounts.floodAlerts > 0) {
-      lines.push(`${signalCounts.weatherAlerts} severe weather alerts + ${signalCounts.floodAlerts} active flood alerts`);
+      lines.push(`${countIn('en', signalCounts.weatherAlerts, 'severe weather alert', 'severe weather alerts')} + `
+        + `${countIn('en', signalCounts.floodAlerts, 'active flood alert', 'active flood alerts')}`);
     }
     if (hasOperationalTransportStress(signalCounts)) {
-      lines.push(`${signalCounts.railDisruptions} SNCF rail disruptions, ${signalCounts.roadIncidents} road incidents`);
+      lines.push(`${countIn('en', signalCounts.railDisruptions, 'SNCF rail disruption', 'SNCF rail disruptions')}, `
+        + `${countIn('en', signalCounts.roadIncidents, 'road incident', 'road incidents')}`);
     } else if (hasBackgroundTransportPressure(signalCounts)) {
-      lines.push(`mobility background friction: ${signalCounts.railDisruptions} rail disruptions, ${signalCounts.roadIncidents} road incidents`);
+      lines.push(`mobility background friction: ${countIn('en', signalCounts.railDisruptions, 'rail disruption', 'rail disruptions')}, `
+        + `${countIn('en', signalCounts.roadIncidents, 'road incident', 'road incidents')}`);
     }
     if (signalCounts.powerOutages > 0 || signalCounts.telecomOutages > 0) {
-      lines.push(`${signalCounts.powerOutages} power outages, ${signalCounts.telecomOutages} telecom incidents`);
+      lines.push(`${countIn('en', signalCounts.powerOutages, 'power outage', 'power outages')}, `
+        + `${countIn('en', signalCounts.telecomOutages, 'telecom incident', 'telecom incidents')}`);
     }
-    if (signalCounts.defenseAlerts > 0 || signalCounts.jammingSignals > 0) {
-      lines.push(`${signalCounts.defenseAlerts} defense alerts (subsea cables), ${signalCounts.jammingSignals} GPS jamming signals`);
-    }
+    lines.push(...defenseSummaryLines(signalCounts, 'en'));
     if (energy && hasOperationalEnergyStress(energy)) {
       const parts = [];
       if (energy.ecowattSignal === 'red') parts.push('Ecowatt red');
@@ -251,9 +381,8 @@ function buildSituationSummary(signalCounts, energy, lang) {
     } else if (energy && hasBackgroundEnergyPressure(energy)) {
       lines.push('Energy remains under background strain without immediate operational rupture.');
     }
-    if (signalCounts.fireDetections > 0) lines.push(`${signalCounts.fireDetections} active fire detections`);
-    if (signalCounts.cyberAlerts > 0) lines.push(`${signalCounts.cyberAlerts} CERT-FR cyber alerts (30d)`);
-    if (signalCounts.militaryFlights > 0) lines.push(`${signalCounts.militaryFlights} active military flights`);
+    if (signalCounts.fireDetections > 0) lines.push(countIn('en', signalCounts.fireDetections, 'active fire detection', 'active fire detections'));
+    lines.push(...cyberMilitarySummaryLines(signalCounts, 'en'));
   }
   return lines.length > 0 ? lines.join('\n') : (lang === 'fr' ? 'Aucune pression opérationnelle significative détectée.' : 'No significant operational pressure detected.');
 }
@@ -268,7 +397,7 @@ function formatSituationsBlock(situations, lang) {
     const zones = s.affectedZones.length > 0 ? ` | zones: ${s.affectedZones.join(', ')}` : '';
     const drivers = s.drivers.length > 0 ? `\n   preuves: ${s.drivers.join(' ; ')}` : '';
     const sources = s.sourceRefs.length > 0 ? `\n   sources: ${s.sourceRefs.join(', ')}` : '';
-    return `S${i + 1}. [${s.severity.toUpperCase()} conf=${s.confidence}] ${s.title} — ${s.summary}${zones}${drivers}${sources}`;
+    return `S${i + 1}. [${s.severity.toUpperCase()} conf=${s.confidence}] ${s.title} : ${s.summary}${zones}${drivers}${sources}`;
   }).join('\n');
 }
 
@@ -292,16 +421,16 @@ export function buildPrompt(countryScore, axes, isnrComponents, cyberScore, mete
 You are a senior OSINT analyst writing France's national intelligence brief. Output MUST be a single valid JSON object matching this exact schema, nothing else:
 ${schema}
 
-[CORRELATED SITUATIONS — primary facts, established by a deterministic engine; cite as S1, S2…]
+[CORRELATED SITUATIONS: primary facts, established by a deterministic engine; cite as S1, S2…]
 ${situationsBlock}
 
-[CONSOLIDATED NEWS EVENTS — articles grouped by event, with corroboration; cite as E…]
+[CONSOLIDATED NEWS EVENTS: articles grouped by event, with corroboration; cite as E…]
 ${eventsBlock}
 
 [CONTEXT DATA]
 Posture: ${stabilityLabel} | Pillars: continuity=${axes.continuity} defense=${axes.defense} security=${axes.security} signal=${axes.signal} (0–100, higher = more pressure)
 Cyber pressure: ${cyberLabel} | Severe weather alerts: ${meteoAlertCount}
-Signals: ${signalCounts.criticalNews} critical / ${signalCounts.highNews} high headlines, ${signalCounts.railDisruptions} rail, ${signalCounts.roadIncidents} road, ${signalCounts.powerOutages} power outages, ${signalCounts.telecomOutages} telecom, ${signalCounts.defenseAlerts} cable alerts, ${signalCounts.jammingSignals} GPS jamming, ${signalCounts.militaryFlights} military flights, ${signalCounts.fireDetections} fires, ${signalCounts.marketStress} stressed market lines
+Signals: ${signalCounts.criticalNews} critical / ${countIn('en', signalCounts.highNews, 'high headline', 'high headlines')}, ${signalCounts.railDisruptions} rail, ${signalCounts.roadIncidents} road, ${countIn('en', signalCounts.powerOutages, 'power outage', 'power outages')}, ${signalCounts.telecomOutages} telecom, ${sovereigntySignals(signalCounts, 'en')}, ${countIn('en', signalCounts.fireDetections, 'fire', 'fires')}, ${countIn('en', signalCounts.marketStress, 'stressed market line', 'stressed market lines')}
 Situation summary:
 ${situationSummary}
 Recent headlines (context only, NOT citable):
@@ -309,29 +438,30 @@ ${headlineList}
 
 [RULES]
 1. "bluf": 2-3 sentences, ≤ 400 chars. Overall assessment: posture, dominant pressure, whether pressures converge.
-2. "judgments": 2-4 items. Base them PRIMARILY on the correlated situations above. priority 1 = most important. Each text ≤ 280 chars, must state something actionable or falsifiable — no filler.
+2. "judgments": 2-4 items. Base them PRIMARILY on the correlated situations above. priority 1 = most important. Each text ≤ 280 chars, must state something actionable or falsifiable, no filler.
 3. "confidence": derive from the situation confidence values (≥0.75 high, ≥0.55 moderate, else low). Never exceed the engine's confidence.
 4. "evidence": 1-4 identifiers copied from the lists above (E… events, S… situations). A judgment without a valid identifier is shown as UNSUPPORTED with low confidence. Never cite a headline or a source name. An event with a single independent source cannot justify "high" confidence.
 5. "watch": 1-4 concrete indicators with a realistic horizon. Be specific ("Ecowatt D+1 signal at 17:00", not "energy situation").
 6. Calm wording (stable/calm/normal/under control) is ${calmAllowed ? 'allowed' : 'FORBIDDEN'}.
 7. Never quote numeric scores or /100 values. Never invent facts, actors or locations.
-8. If no correlated situation exists, say so honestly in the bluf and focus judgments on the strongest background signals.`;
+8. If no correlated situation exists, say so honestly in the bluf and focus judgments on the strongest background signals.
+9. Never use an em dash: prefer a colon or a comma.`;
   }
 
   return `[SYSTEM]
 Tu es un analyste OSINT senior rédigeant le brief national France. Ta sortie DOIT être un unique objet JSON valide conforme à ce schéma, rien d'autre :
 ${schema}
 
-[SITUATIONS CORRÉLÉES — faits primaires, établis par un moteur déterministe ; à citer S1, S2…]
+[SITUATIONS CORRÉLÉES : faits primaires, établis par un moteur déterministe ; à citer S1, S2…]
 ${situationsBlock}
 
-[ÉVÉNEMENTS CONSOLIDÉS — articles regroupés par événement, avec leur corroboration ; à citer E…]
+[ÉVÉNEMENTS CONSOLIDÉS : articles regroupés par événement, avec leur corroboration ; à citer E…]
 ${eventsBlock}
 
 [DONNÉES DE CONTEXTE]
 Posture : ${stabilityLabel} | Piliers : continuité=${axes.continuity} défense=${axes.defense} sécurité=${axes.security} signal=${axes.signal} (0–100, plus haut = plus de pression)
 Pression cyber : ${cyberLabel} | Alertes météo sévères : ${meteoAlertCount}
-Signaux : ${signalCounts.criticalNews} titres critiques / ${signalCounts.highNews} élevés, ${signalCounts.railDisruptions} rail, ${signalCounts.roadIncidents} route, ${signalCounts.powerOutages} coupures élec, ${signalCounts.telecomOutages} télécom, ${signalCounts.defenseAlerts} alertes câbles, ${signalCounts.jammingSignals} brouillages GPS, ${signalCounts.militaryFlights} vols militaires, ${signalCounts.fireDetections} feux, ${signalCounts.marketStress} lignes marché sous tension
+Signaux : ${plural(signalCounts.criticalNews, 'titre critique', 'titres critiques')} / ${plural(signalCounts.highNews, 'élevé', 'élevés')}, ${signalCounts.railDisruptions} rail, ${signalCounts.roadIncidents} route, ${plural(signalCounts.powerOutages, 'coupure élec', 'coupures élec')}, ${signalCounts.telecomOutages} télécom, ${sovereigntySignals(signalCounts, 'fr')}, ${plural(signalCounts.fireDetections, 'feu', 'feux')}, ${plural(signalCounts.marketStress, 'ligne marché sous tension', 'lignes marché sous tension')}
 Résumé situationnel :
 ${situationSummary}
 Actualités récentes (contexte seulement, NON citables) :
@@ -339,13 +469,14 @@ ${headlineList}
 
 [CONSIGNES]
 1. "bluf" : 2-3 phrases, ≤ 400 caractères. Évaluation d'ensemble : posture, pression dominante, convergence ou non des pressions.
-2. "judgments" : 2-4 éléments. Fonde-les EN PRIORITÉ sur les situations corrélées ci-dessus. priority 1 = le plus important. Chaque texte ≤ 280 caractères, doit affirmer quelque chose d'actionnable ou de falsifiable — aucun remplissage.
+2. "judgments" : 2-4 éléments. Fonde-les EN PRIORITÉ sur les situations corrélées ci-dessus. priority 1 = le plus important. Chaque texte ≤ 280 caractères, doit affirmer quelque chose d'actionnable ou de falsifiable, aucun remplissage.
 3. "confidence" : dérive-la des confiances du moteur (≥0.75 high, ≥0.55 moderate, sinon low). Ne dépasse jamais la confiance du moteur.
 4. "evidence" : 1 à 4 identifiants recopiés des listes ci-dessus (E… événements, S… situations). Un jugement sans identifiant valide sera affiché NON ÉTAYÉ avec une confiance faible. Ne cite jamais un titre ni un nom de source. Un événement couvert par une seule source indépendante ne peut pas justifier une confiance « high ».
 5. "watch" : 1-4 indicateurs concrets avec un horizon réaliste. Sois spécifique (« signal Ecowatt J+1 à 17h », pas « situation énergétique »).
 6. Vocabulaire calme (stable/calme/normal/sous contrôle) : ${calmAllowed ? 'autorisé' : 'INTERDIT'}.
 7. Ne cite jamais de score numérique ni de valeur /100. N'invente aucun fait, acteur ou lieu.
-8. S'il n'existe aucune situation corrélée, dis-le honnêtement dans le bluf et fonde les jugements sur les signaux de fond les plus forts.`;
+8. S'il n'existe aucune situation corrélée, dis-le honnêtement dans le bluf et fonde les jugements sur les signaux de fond les plus forts.
+9. N'utilise jamais de tiret long (cadratin) : préfère les deux-points ou une virgule.`;
 }
 
 export default async function handler(request) {
@@ -379,7 +510,7 @@ export default async function handler(request) {
     security: typeof body.axes?.security === 'number' ? Math.round(body.axes.security) : 0,
     signal: typeof body.axes?.signal === 'number' ? Math.round(body.axes.signal) : 0,
   };
-  const cyberScore = typeof body.cyberScore === 'number' ? Math.round(body.cyberScore) : 0;
+  const cyberScore = typeof body.cyberScore === 'number' ? Math.round(body.cyberScore) : null;
   const meteoAlertCount = typeof body.meteoAlertCount === 'number' ? body.meteoAlertCount : 0;
   const isnrComponents = {
     social:   typeof body.isnrComponents?.social   === 'number' ? Math.round(body.isnrComponents.social)   : 0,
@@ -403,6 +534,19 @@ export default async function handler(request) {
     defenseAlerts: typeof body.signalCounts?.defenseAlerts === 'number' ? Math.round(body.signalCounts.defenseAlerts) : 0,
     jammingSignals: typeof body.signalCounts?.jammingSignals === 'number' ? Math.round(body.signalCounts.jammingSignals) : 0,
     marketStress: typeof body.signalCounts?.marketStress === 'number' ? Math.round(body.signalCounts.marketStress) : 0,
+    // Souveraineté (O6) : alertes en cours et avis KEV récents à part ; sans ces champs, les alertes reprennent cyberAlerts.
+    cyberOpenAlerts: typeof body.signalCounts?.cyberOpenAlerts === 'number' ? Math.round(body.signalCounts.cyberOpenAlerts)
+      : typeof body.signalCounts?.cyberAlerts === 'number' ? Math.round(body.signalCounts.cyberAlerts) : 0,
+    cyberKevAdvisories: typeof body.signalCounts?.cyberKevAdvisories === 'number' ? Math.round(body.signalCounts.cyberKevAdvisories) : 0,
+    // Sources non lues (S3) : « non évalué », jamais « 0 ».
+    militaryUnavailable: body.signalCounts?.militaryUnavailable === true,
+    cablesUnavailable: body.signalCounts?.cablesUnavailable === true,
+    gnssUnavailable: body.signalCounts?.gnssUnavailable === true,
+    // Compte de mailles positif sur une mesure partielle (heures de mesure) ; null sur 24 h.
+    gnssPartialHours: typeof body.signalCounts?.gnssPartialHours === 'number' && body.signalCounts.gnssPartialHours >= 0
+      ? Math.floor(body.signalCounts.gnssPartialHours) : null,
+    cyberUnavailable: body.signalCounts?.cyberUnavailable === true,
+    kevUnavailable: body.signalCounts?.kevUnavailable === true,
   };
   const energy = body.energy ? {
     ecowattSignal: typeof body.energy.ecowattSignal === 'string' ? body.energy.ecowattSignal : null,

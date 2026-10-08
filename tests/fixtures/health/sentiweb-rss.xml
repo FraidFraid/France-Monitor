@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<rss version="2.0"  xmlns:atom="http://www.w3.org/2005/Atom">
+<channel>
+	<title>r&#233;seau Sentinelles</title>
+	<link>https://www.sentiweb.fr/</link>
+	<description>Information &#233;pid&#233;miologique</description>
+	<language>fr</language>
+	<copyright>Copyright 1984-2026, r&#233;seau Sentinelles</copyright>
+	<lastBuildDate>Sat, 03 Oct 2026 05:00:03 +0200</lastBuildDate>
+	<generator>Sentiweb</generator>
+	<docs>http://blogs.law.harvard.edu/tech/rss</docs>
+	<ttl>1440</ttl>
+	<atom:link href="https%3A%2F%2Fwww.sentiweb.fr%2Frss%2Ffr%2Ffr%2Frss%3Fw%3D202639" rel="self" type="application/rss+xml" />
+	<image>
+		<title>r&#233;seau Sentinelles</title>
+		<url>https://www.sentiweb.fr/img/logos/Sentiweb-rss.png</url>
+		<link>https://www.sentiweb.fr/</link>
+		<width>144</width>
+		<height>42</height>
+	</image>
+ 	<item>
+ 		<title><![CDATA[Semaine 202639 - Infection respiratoire aiguë (IRA) - Activité faible en médecine générale]]></title>
+		<description><![CDATA[<img src="https://www.sentiweb.fr/img/accueil/46320-small.png" align="left"><strong>Les IRA sont dues à différents virus respiratoires dont le SARS-CoV-2 (Covid-19), les virus grippaux et d'autres virus respiratoires comme le VRS, le rhinovirus, ou le métapneumovirus. La surveillance des IRA a pour objectif le suivi des épidémies dues à ces virus.</strong><br />
+<br />
+<strong>En France hexagonale</strong>, la semaine dernière (2026s39), le taux d'incidence des cas d'infection respiratoire aiguë (IRA) vus en consultation de médecine générale a été estimé à <strong>151 cas pour 100 000 habitants (IC 95% [144 ; 158])</strong><strong> </strong><em>(sources des données : Sentinelles et IQVIA (EMR))</em>.<br />
+Sous réserve de la consolidation à venir des données, ce taux est <strong>en</strong> <strong>augmentation</strong> par rapport à la semaine précédente et se situe à un <strong>niveau d'activité similaire</strong> à ceux observés habituellement en cette période (données consolidées pour 2026s38 : 103 [98 ; 109]).<br />
+<br />
+<strong>Au niveau régional</strong>, les taux d'incidence les plus élevés ont été observés en : Bourgogne-Franche-Comté (310 [259 ; 361]), Bretagne (254 [212 ; 296]) et Hauts-de-France (186 [159 ; 214]). <br />
+<br />
+<strong>Covid-19</strong> : le taux d'incidence des cas de Covid-19 vus en consultation de médecine générale pour une IRA a été estimé à <strong>13</strong> <strong>cas pour 100 000 habitants</strong> (IC 95% [9 ; 17]) <em>(source de données : Sentinelles).</em><br />
+Sous réserve de la consolidation à venir des données, ce taux est <strong>en légère augmentation </strong>par rapport aux semaines précédentes (données consolidées pour 2026s38 : 9 [7 ; 11]) et se situe à un <strong>faible niveau d'activité</strong>.<br />
+<br />
+<strong>Grippe</strong> : le taux d'incidence des cas de grippe vus en consultation de médecine générale pour une IRA a été estimé à <strong>4 cas pour 100 000 habitants</strong> (IC 95% [1 ; 7]) <em>(sources de données : Sentinelles, SOS Médecins</em> <em>et départements universitaires de médecine générale</em><em>). </em><br />
+Sous réserve de la consolidation à venir des données, ce taux est <strong>stable </strong>par rapport à la semaine précédente (données consolidées pour 2026s38 : 5 [2 ; 9]) et se situe à un <strong>faible niveau d'activité</strong>.<br />
+<br />
+<strong>Infection à VRS</strong> : le taux d'incidence des cas d'infection à VRS<strong> </strong>vus en consultation de médecine générale pour une IRA a été estimé à<strong> 0<strong> cas pour 100 000 habitants</strong> </strong>(IC 95% [0 ; 6]) <em>(sources de données : Sentinelles, SOS Médecins</em> <em>et départements universitaires de médecine générale).</em><br />
+Sous réserve de la consolidation à venir des données, ce taux est <strong>stable </strong>par rapport à la semaine précédente (données consolidées pour 2026s38 : 0 [0 ; 4]) et se situe à un <strong>faible niveau d'activité</strong>.<br />
+<br />
+<strong>Bronchiolite chez les enfants de moins d'un an</strong> : le taux d'incidence des cas de bronchiolite chez les enfants de moins d'un an vus en consultation de médecine générale a été estimé à <strong>135 cas pour 100</strong> <strong>000 habitants</strong> (IC 95% [45 ; 225]) <em>(source de données : IQVIA (EMR))</em>.<br />
+Sous réserve de la consolidation à venir des données, ce taux est <strong>stable </strong>par rapport à la semaine précédente (données consolidées pour 2026s38 : 236 [127 ; 345]) et se situe à un <strong>faible niveau d'activité</strong>.
+]]></description>
+		<link>https://www.sentiweb.fr/?site=fr</link>
+		<guid  isPermaLink="false">https://www.sentiweb.fr/accueil/46320</guid>
+		<pubDate>Mon, 21 Sep 2026 13:00:00 +0200</pubDate>
+		<category>Actualit&#233; Epid&#233;miologique</category>	</item>
+ 	<item>
+ 		<title><![CDATA[Semaine 202639 - Diarrhée aiguë - Activité faible en médecine générale]]></title>
+		<description><![CDATA[<img src="https://www.sentiweb.fr/img/accueil/46319-small.png" align="left"><strong>La surveillance des diarrhées aiguës a pour objectif le suivi des épidémies de gastro-entérites.</strong><br />
+ <br />
+<strong>En France hexagonale</strong>, la semaine dernière (2026s39), le taux d'incidence des cas de diarrhée aiguë vus en consultation de médecine générale a été estimé à <strong>50 cas pour 100</strong> <strong>000 habitants (IC 95% [46 ; 55])</strong>. <br />
+Sous réserve de la consolidation à venir des données, ce taux est <strong>stable</strong> par rapport à la semaine précédente et se situe à un <strong>niveau d'activité inférieur</strong> à ceux observés habituellement en cette période (données consolidées pour 2026s38 : 45 [41 ; 49]).<br />
+<br />
+<strong>Au niveau régional</strong>, les taux d'incidence les plus élevés ont été observés en : Corse (95 [36 ; 154]), Grand Est (66 [49 ; 83]), Hauts-de-France (63 [48 ; 79]) et Provence-Alpes-Côte d'Azur (63 [45 ; 81]).<br />
+<br />
+<strong><em>Sources de données : Sentinelles et </em></strong><strong><em>IQVIA (EMR)</em></strong>
+]]></description>
+		<link>https://www.sentiweb.fr/?site=fr</link>
+		<guid  isPermaLink="false">https://www.sentiweb.fr/accueil/46319</guid>
+		<pubDate>Mon, 21 Sep 2026 13:00:00 +0200</pubDate>
+		<category>Actualit&#233; Epid&#233;miologique</category>	</item>
+ 	<item>
+ 		<title><![CDATA[Semaine 202639 - Varicelle - Activité faible en médecine générale]]></title>
+		<description><![CDATA[<img src="https://www.sentiweb.fr/img/accueil/46321-small.png" align="left"><strong>En France hexagonale</strong>, la semaine dernière (2026s39), le taux d'incidence des cas de varicelle vus en consultation de médecine générale a été estimé à <strong>4 cas pour 100</strong> <strong>000 habitants (IC 95% [3 ; 5])</strong>. <br />
+Sous réserve de la consolidation à venir des données, ce taux est <strong>en légère augmentation</strong> par rapport à la semaine précédente et se situe à un <strong>niveau d'activité inférieur</strong> à ceux observés habituellement en cette période (données consolidées pour 2026s38 : 2 [1 ; 3]).<br />
+<br />
+<strong>Au niveau régional</strong>, les taux d'incidence les plus élevés ont été observés en : Normandie (12 [0 ; 25]) et Auvergne-Rhône-Alpes (6 [2 ; 10]).<br />
+<br />
+<strong><em>Sources de données : Sentinelles et IQVIA (EMR)</em></strong>
+]]></description>
+		<link>https://www.sentiweb.fr/?site=fr</link>
+		<guid  isPermaLink="false">https://www.sentiweb.fr/accueil/46321</guid>
+		<pubDate>Mon, 21 Sep 2026 13:00:00 +0200</pubDate>
+		<category>Actualit&#233; Epid&#233;miologique</category>	</item>
+ 	<item>
+ 		<title><![CDATA[Sentiweb Hebdo - Bulletin de la Semaine 202639]]></title>
+		<description><![CDATA[<a href="https://www.sentiweb.fr/6917.pdf">Sentiweb Hebdo - Bulletin de la Semaine</a>]]></description>
+		<link>https://www.sentiweb.fr/6917.pdf</link>
+		<guid  isPermaLink="false">swhebdo/6917</guid>
+		<pubDate>Mon, 21 Sep 2026 00:00:00 +0200</pubDate>
+		<category>Bulletin</category>	</item>
+</channel>
+</rss>

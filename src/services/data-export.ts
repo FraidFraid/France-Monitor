@@ -15,15 +15,17 @@ import type { LineString, MultiLineString } from 'geojson';
 
 import {
   RISK_LABELS,
-  type ActiveFire,
   type DetectedSituation,
-  type FloodSegment,
+  type FireDetection,
+  type FloodSectionRef,
   type MeteoAlert,
   type NewsItem,
   type PowerOutage,
+  type RoadEvent,
+  type RoadUrbanResponse,
   type TelecomOutage,
 } from '../types/index.ts';
-import type { TrafficIncident } from './traffic.ts';
+import { JAM_MAGNITUDE_WORD, ROAD_KIND_WORD, ROAD_SEVERITY_WORD } from '../components/layer-panel/traffic-format.ts';
 
 // ─── Types de sérialisation ───────────────────────────────────────────────────
 
@@ -61,7 +63,8 @@ export type ExportLayerKey =
   | 'crues'
   | 'feux'
   | 'pannes'
-  | 'trafic';
+  | 'trafic'
+  | 'bouchons';
 
 /** Couche exportable prête à l'affichage dans le menu (déjà sérialisée). */
 export interface ExportableLayer {
@@ -76,16 +79,19 @@ export interface ExportContext {
   news: NewsItem[];
   situations: DetectedSituation[];
   meteoAlerts: MeteoAlert[];
-  floods: FloodSegment[];
-  fires: ActiveFire[];
+  floods: FloodSectionRef[];
+  /** Détections en France de la dernière collecte (récurrentes comprises, dites dans une colonne). */
+  fires: FireDetection[];
   powerOutages: PowerOutage[];
   telecomOutages: TelecomOutage[];
-  trafficIncidents: TrafficIncident[];
+  roadEvents: RoadEvent[];
+  /** Dernière collecte TomTom des agglomérations (bouchons, date du relevé) ; null tant qu'elle n'est pas chargée. */
+  roadUrban: Pick<RoadUrbanResponse, 'collectedAt' | 'jams'> | null;
 }
 
 // ─── Provenance ───────────────────────────────────────────────────────────────
 
-export const EXPORT_PROVENANCE = 'France Monitor — données issues de sources ouvertes';
+export const EXPORT_PROVENANCE = 'France Monitor : données issues de sources ouvertes';
 
 // ─── CSV ──────────────────────────────────────────────────────────────────────
 
@@ -201,12 +207,6 @@ function firstCoordinate(geom: LineString | MultiLineString): [number, number] |
   return c ? [c[0], c[1]] : null;
 }
 
-/** Combine date (YYYY-MM-DD) + heure FIRMS (HHMM, UTC) en ISO 8601. */
-function fireDatetimeIso(acqDate: string, acqTime: string): string {
-  const padded = acqTime.padStart(4, '0');
-  return `${acqDate}T${padded.slice(0, 2)}:${padded.slice(2, 4)}:00Z`;
-}
-
 // ─── Sérialiseurs par couche ──────────────────────────────────────────────────
 
 /** Actualités (fils RSS classifiés). */
@@ -316,80 +316,68 @@ export function serializeMeteoAlerts(items: MeteoAlert[]): SerializedLayer {
   return { rows, columns, features: [] };
 }
 
-/** Crues (Vigicrues) — point représentatif = premier sommet du tronçon. */
-export function serializeFloods(items: FloodSegment[]): SerializedLayer {
+/** Crues (Vigicrues) : point représentatif = premier sommet du tronçon, tracé tel que publié (aucun recalage). */
+export function serializeFloods(items: FloodSectionRef[]): SerializedLayer {
   const columns: ExportColumn[] = [
+    { key: 'code', label: 'code_tronçon' },
     { key: 'nom', label: 'nom' },
     { key: 'niveau', label: 'niveau' },
-    { key: 'sourceDonnee', label: 'source_donnée' },
-    { key: 'fidelite', label: 'fidélité_géométrie' },
     { key: 'lat', label: 'latitude' },
     { key: 'lon', label: 'longitude' },
   ];
   const rows: ExportRow[] = [];
   const features: ExportFeatureInput[] = [];
   for (const s of items) {
-    const point = firstCoordinate(s.displayGeometry ?? s.geometry);
+    const point = firstCoordinate(s.geometry);
     const lon = point ? point[0] : null;
     const lat = point ? point[1] : null;
-    rows.push({
-      nom: s.name,
-      niveau: s.level,
-      sourceDonnee: s.dataSource,
-      fidelite: s.geometryFidelity,
-      lat,
-      lon,
-    });
+    rows.push({ code: s.id, nom: s.name, niveau: s.level, lat, lon });
     if (point) {
-      features.push({
-        lat: point[1],
-        lon: point[0],
-        properties: { nom: s.name, niveau: s.level, sourceDonnee: s.dataSource, fidelite: s.geometryFidelity },
-      });
+      features.push({ lat: point[1], lon: point[0], properties: { code: s.id, nom: s.name, niveau: s.level } });
     }
   }
   return { rows, columns, features };
 }
 
-/** Feux actifs (détections VIIRS / NASA FIRMS). */
-export function serializeFires(items: ActiveFire[]): SerializedLayer {
+/**
+ * Détections de feux en France (NASA FIRMS, collecte du serveur ; spec 2026-10-04 environnement § 2.4, E3) : satellite et capteur
+ * exacts, confiance publiée (lettre VIIRS ou 0 à 100 MODIS) et sa classe, FRP, département, récurrence (« oui » : source à vérifier,
+ * probablement industrielle, jamais comptée comme feu).
+ */
+export function serializeFires(items: FireDetection[]): SerializedLayer {
   const columns: ExportColumn[] = [
     { key: 'date', label: 'date_iso' },
     { key: 'satellite', label: 'satellite' },
+    { key: 'capteur', label: 'capteur' },
     { key: 'confiance', label: 'confiance' },
+    { key: 'confianceBrute', label: 'confiance_publiée' },
     { key: 'frp', label: 'puissance_radiative_mw' },
-    { key: 'temperature', label: 'température_k' },
     { key: 'jourNuit', label: 'jour_nuit' },
+    { key: 'departement', label: 'département' },
+    { key: 'recurrent', label: 'récurrent' },
     { key: 'lat', label: 'latitude' },
     { key: 'lon', label: 'longitude' },
   ];
   const rows: ExportRow[] = [];
   const features: ExportFeatureInput[] = [];
   for (const f of items) {
-    const date = fireDatetimeIso(f.acq_date, f.acq_time);
-    rows.push({
-      date,
+    const row: ExportRow = {
+      date: f.acquiredAt,
       satellite: f.satellite,
+      capteur: f.sensor,
       confiance: f.confidence,
-      frp: f.frp,
-      temperature: f.bright_ti4,
+      confianceBrute: f.confidenceRaw,
+      frp: f.frpMw,
       jourNuit: f.daynight,
-      lat: f.latitude,
-      lon: f.longitude,
-    });
-    if (Number.isFinite(f.latitude) && Number.isFinite(f.longitude)) {
-      features.push({
-        lat: f.latitude,
-        lon: f.longitude,
-        properties: {
-          date,
-          satellite: f.satellite,
-          confiance: f.confidence,
-          frp: f.frp,
-          temperature: f.bright_ti4,
-          jourNuit: f.daynight,
-        },
-      });
+      departement: f.dept,
+      recurrent: f.recurrent ? 'oui' : 'non',
+      lat: f.lat,
+      lon: f.lon,
+    };
+    rows.push(row);
+    if (Number.isFinite(f.lat) && Number.isFinite(f.lon)) {
+      const { lat: _lat, lon: _lon, ...properties } = row;
+      features.push({ lat: f.lat, lon: f.lon, properties });
     }
   }
   return { rows, columns, features };
@@ -468,53 +456,61 @@ export function serializeOutages(power: PowerOutage[], telecom: TelecomOutage[])
   return { rows, columns, features };
 }
 
-/** Incidents trafic routier (TomTom). */
-export function serializeTrafficIncidents(items: TrafficIncident[]): SerializedLayer {
+/** Événements routiers en cours du réseau national (DIR, spec 2026-10-03 trafics § 2.1) ; nature et gravité en français. */
+export function serializeRoadEvents(items: RoadEvent[]): SerializedLayer {
   const columns: ExportColumn[] = [
     { key: 'type', label: 'type' },
-    { key: 'gravite', label: 'gravité' },
-    { key: 'description', label: 'description' },
-    { key: 'retard', label: 'retard_s' },
-    { key: 'longueur', label: 'longueur_m' },
-    { key: 'routes', label: 'routes' },
-    { key: 'de', label: 'de' },
-    { key: 'vers', label: 'vers' },
+    { key: 'nature', label: 'nature' },
+    { key: 'route', label: 'route' },
+    { key: 'lieu', label: 'lieu' },
+    { key: 'sens', label: 'sens' },
+    { key: 'dir', label: 'DIR' },
     { key: 'debut', label: 'début' },
     { key: 'fin', label: 'fin' },
+    { key: 'gravite', label: 'gravité' },
+    { key: 'securite', label: 'message de sécurité' },
+    { key: 'detail', label: 'détail' },
     { key: 'lat', label: 'latitude' },
     { key: 'lon', label: 'longitude' },
   ];
   const rows: ExportRow[] = [];
   const features: ExportFeatureInput[] = [];
-  for (const i of items) {
-    const routes = i.roadNumbers?.join(', ') ?? null;
+  for (const e of items) {
     rows.push({
-      type: i.type,
-      gravite: i.severity,
-      description: i.description,
-      retard: i.delay,
-      longueur: i.length,
-      routes,
-      de: i.from ?? null,
-      vers: i.to ?? null,
-      debut: i.startTime ?? null,
-      fin: i.endTime ?? null,
-      lat: i.lat,
-      lon: i.lon,
+      type: e.label, nature: ROAD_KIND_WORD[e.kind], route: e.road, lieu: e.place, sens: e.direction, dir: e.dir, debut: e.start, fin: e.end,
+      gravite: e.severity !== null ? ROAD_SEVERITY_WORD[e.severity] : null, securite: e.safety ? 'oui' : 'non', detail: e.detail, lat: e.lat, lon: e.lon,
     });
-    if (Number.isFinite(i.lat) && Number.isFinite(i.lon)) {
-      features.push({
-        lat: i.lat,
-        lon: i.lon,
-        properties: {
-          type: i.type,
-          gravite: i.severity,
-          description: i.description,
-          retard: i.delay,
-          longueur: i.length,
-          routes,
-        },
-      });
+    if (e.lat !== null && e.lon !== null && Number.isFinite(e.lat) && Number.isFinite(e.lon)) {
+      features.push({ lat: e.lat, lon: e.lon, properties: { type: e.label, route: e.road, lieu: e.place, dir: e.dir, debut: e.start } });
+    }
+  }
+  return { rows, columns, features };
+}
+
+/** Bouchons des agglomérations (TomTom, collecte du serveur, spec 2026-10-03 trafics § 2.2) : retard et longueur, intensité en français. */
+export function serializeUrbanJams(urban: Pick<RoadUrbanResponse, 'collectedAt' | 'jams'> | null): SerializedLayer {
+  const columns: ExportColumn[] = [
+    { key: 'route', label: 'route' },
+    { key: 'de', label: 'de' },
+    { key: 'vers', label: 'vers' },
+    { key: 'retard', label: 'retard (min)' },
+    { key: 'longueur', label: 'longueur (km)' },
+    { key: 'intensite', label: 'intensité' },
+    { key: 'debut', label: 'début' },
+    { key: 'releve', label: 'relevé TomTom' },
+    { key: 'lat', label: 'latitude' },
+    { key: 'lon', label: 'longitude' },
+  ];
+  const rows: ExportRow[] = [];
+  const features: ExportFeatureInput[] = [];
+  for (const j of urban?.jams ?? []) {
+    const intensite = JAM_MAGNITUDE_WORD[j.magnitude];
+    rows.push({
+      route: j.road, de: j.from, vers: j.to, retard: j.delayMin, longueur: j.lengthKm, intensite, debut: j.start, releve: urban?.collectedAt ?? null,
+      lat: j.lat, lon: j.lon,
+    });
+    if (Number.isFinite(j.lat) && Number.isFinite(j.lon)) {
+      features.push({ lat: j.lat, lon: j.lon, properties: { route: j.road, de: j.from, vers: j.to, retard: j.delayMin, longueur: j.lengthKm, intensite } });
     }
   }
   return { rows, columns, features };
@@ -535,7 +531,8 @@ const LAYER_DEFS: LayerDef[] = [
   { key: 'crues', label: 'Crues', serialize: (c) => serializeFloods(c.floods) },
   { key: 'feux', label: 'Feux actifs', serialize: (c) => serializeFires(c.fires) },
   { key: 'pannes', label: 'Pannes réseaux', serialize: (c) => serializeOutages(c.powerOutages, c.telecomOutages) },
-  { key: 'trafic', label: 'Incidents trafic', serialize: (c) => serializeTrafficIncidents(c.trafficIncidents) },
+  { key: 'trafic', label: 'Événements routiers (DIR)', serialize: (c) => serializeRoadEvents(c.roadEvents) },
+  { key: 'bouchons', label: 'Bouchons des agglomérations (TomTom)', serialize: (c) => serializeUrbanJams(c.roadUrban) },
 ];
 
 /**

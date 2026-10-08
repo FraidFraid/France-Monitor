@@ -1,6 +1,7 @@
 // src/services/isnr-synthesis.ts
 // Frontend service: calls /api/intelligence/v1/synthesis and caches the result.
 
+import { noEmDash } from './typography.ts';
 import type { NetworkBarometerResult } from './network-barometer.ts';
 import type { FuelTensionLevel, NewsItem } from '../types/index.ts';
 
@@ -116,7 +117,7 @@ export async function fetchISNRSynthesis(
     };
 
     const result: ISNRSynthesisResult = {
-      briefing: data.briefing,
+      briefing: typeof data.briefing === 'string' ? noEmDash(data.briefing) : data.briefing,
       stabilityImpact: data.stabilityImpact,
       fromCache: data.fromCache,
       computedAt: new Date(data.computedAt),  // ISO string → Date

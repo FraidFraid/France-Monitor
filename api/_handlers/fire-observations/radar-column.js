@@ -1,5 +1,9 @@
 // Proxy colonne radar PAM. MIROIR de la validation TypeScript de
-// src/services/radar-column.ts — toute évolution se fait dans les deux.
+// src/services/radar-column.ts : toute évolution se fait dans les deux.
+// La colonne est servie par le worker radar à côté de son manifeste : URL = répertoire du manifeste + « volume/column »
+// (VM : http://localhost:8091/manifest.json donne http://localhost:8091/volume/column ; dev, manifeste de production
+// https://www.francemonitor.com/radar/manifest.json donne https://www.francemonitor.com/radar/volume/column ; l'origine seule
+// tomberait sur la page HTML de l'application). Servi aussi en dev par src/plugins/api-router-fallback.ts.
 const FETCH_TIMEOUT_MS = 10_000;
 const MAX_BODY_BYTES = 64 * 1024;
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
@@ -89,12 +93,13 @@ function isLocalHostname(hostname) {
   return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
 }
 
-function workerOrigin(configuredValue) {
+/** URL de la colonne, relative au manifeste configuré ; null si l'URL n'est pas sûre (identifiants, http hors machine locale). */
+export function columnEndpoint(configuredValue) {
   try {
     const url = new URL(configuredValue);
     if (url.username || url.password) return null;
     if (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLocalHostname(url.hostname))) return null;
-    return url.origin;
+    return new URL('volume/column', url);
   } catch {
     return null;
   }
@@ -114,8 +119,8 @@ export default async function handler(req, res) {
     sendJson(res, 200, { configured: false });
     return;
   }
-  const origin = workerOrigin(configuredValue);
-  if (!origin) {
+  const endpoint = columnEndpoint(configuredValue);
+  if (!endpoint) {
     sendJson(res, 503, { error: 'Radar column upstream is not safely configured' });
     return;
   }
@@ -126,9 +131,12 @@ export default async function handler(req, res) {
     sendJson(res, 400, { error: 'lat/lon hors métropole' });
     return;
   }
+  const target = new URL(endpoint);
+  target.searchParams.set('lat', lat.toFixed(4));
+  target.searchParams.set('lon', lon.toFixed(4));
   try {
     const upstream = await fetch(
-      `${origin}/volume/column?lat=${lat.toFixed(4)}&lon=${lon.toFixed(4)}`,
+      target.href,
       { headers: { Accept: 'application/json' }, redirect: 'error', signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) }
     );
     if (upstream.status === 404) {

@@ -39,9 +39,9 @@ export function classifierLlmConfig(env = process.env) {
 
 export const BATCH_SYSTEM_PROMPT = `Tu es analyste de veille pour un tableau de bord de situation en France (infrastructures critiques, sécurité et ordre publics, santé publique, stabilité sociale). Tu reçois une liste numérotée d'articles de presse. Pour CHACUN, réponds selon la grille ci-dessous.
 
-Gravité (entier de 0 à 4) — ce que décrit l'article pour des personnes, des services ou des infrastructures :
-0 : aucun impact opérationnel — information, annonce, analyse, statistiques, culture, sport, portrait, nécrologie.
-1 : localisé et maîtrisé — quelques personnes ou un seul site touchés, situation réglée ou en voie de l'être ; un fait divers isolé vaut 1 au plus.
+Gravité (entier de 0 à 4) : ce que décrit l'article pour des personnes, des services ou des infrastructures :
+0 : aucun impact opérationnel : information, annonce, analyse, statistiques, culture, sport, portrait, nécrologie.
+1 : localisé et maîtrisé : quelques personnes ou un seul site touchés, situation réglée ou en voie de l'être ; un fait divers isolé vaut 1 au plus.
 2 : perturbation significative en cours d'un service, d'un réseau ou d'un territoire (un département, une ville).
 3 : menace sérieuse pour des vies, une infrastructure critique ou l'ordre public à l'échelle régionale ; un projet terroriste déjoué, l'arrestation de suspects de terrorisme ou une menace crédible contre une infrastructure ou l'ordre public vaut 3, même sans victime.
 4 : crise nationale, attentat majeur, catastrophe ou panne majeure en cours.

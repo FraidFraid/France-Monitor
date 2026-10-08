@@ -10,7 +10,10 @@
  */
 
 import type {
+  CableAlert,
+  CertFrItem,
   DetectedSituation,
+  MilitaryEmergency,
   FuelTensionLevel,
   OilVigilanceStatus,
   SituationAction,
@@ -20,9 +23,18 @@ import type {
 } from '../types/index.ts';
 import { FRENCH_PORTS } from '../config/french-ports.ts';
 import type { FranceRawData } from './france-country-intel.ts';
-import { computeCyberPressureAssessment } from './cyber-threat-scoring.ts';
+import {
+  CERTFR_RECENT_DAYS, CLAIMS_RATIO_JAUNE, GNSS_SITUATION_CELLS, alertsByVessel, certfrDate, certfrExploitationText, certfrKevAdvisories,
+  claimsRatio, defenseSituationSeverity, distinctVessels, gnssPartialText, isCertFrAlertOpen, isCertFrPublishedRecently, isDefenseSituationEmergency,
+  isSovereigntyDataLate,
+} from './sovereignty-levels.ts';
+import { isEmergencyConfirmed } from './traffic-levels.ts';
+import { GNSS_MONITOR_ID } from './sovereignty-alerts.ts';
+import { SOVEREIGNTY_SOURCE_DETAILS } from '../config/sovereignty-sources.ts';
+import { DEPARTMENTS } from './stability-index.ts';
 import { ecowattToday } from './ecowatt-official.ts';
 import { formatObservationAge, selectMajorIncidents, wildfireSeverity } from './wildfire-dossier.ts';
+import { QUAKE_WINDOW_MS, magnitudeText, nextDayOf, parisDayOf, quakeInFrance, quakePlace } from './environment-levels.ts';
 
 // ─── Ordres de sévérité ──────────────────────────────────────────────────────
 
@@ -90,6 +102,11 @@ function action(
 
 // ─── Règle 1 : ENERGY_STRESS ─────────────────────────────────────────────────
 
+/** « 3,6 GW » : puissance perdue en arrêts imprévus, valeur et unité insécables. */
+function unplannedGw(mw: number): string {
+  return `${(mw / 1000).toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}\u00a0GW`;
+}
+
 function detectEnergyStress(raw: FranceRawData, nowMs: number = Date.now()): DetectedSituation | null {
   const nuclear = raw.nuclearState?.stress;
   // Écowatt est un signal NATIONAL (RTE) : le niveau du jour s'applique à toute la France, il
@@ -115,9 +132,9 @@ function detectEnergyStress(raw: FranceRawData, nowMs: number = Date.now()): Det
   const confidence = Math.min(0.95, 0.50 + confirmedBy * 0.15 + (level === 'red' ? 0.15 : 0));
 
   const drivers: string[] = [];
-  if (level === 'red') drivers.push('Écowatt rouge — signal national RTE');
-  else drivers.push('Écowatt orange — signal national RTE');
-  if (confirmedByNuclear) drivers.push(`Parc nucléaire dégradé (stress ${nuclear?.level}${nuclear ? ` — ratio ${Math.round(nuclear.stressRatio * 100)}%` : ''})`);
+  if (level === 'red') drivers.push('Écowatt rouge : signal national RTE');
+  else drivers.push('Écowatt orange : signal national RTE');
+  if (confirmedByNuclear && nuclear) drivers.push(`Parc nucléaire dégradé : ${unplannedGw(nuclear.unplannedLostMW)} perdus en arrêts imprévus`);
   if (confirmedByOutages) drivers.push(`${raw.powerOutages.length} pannes électriques signalées`);
   if (confirmedByEolien)  drivers.push(`Production éolienne très faible (< 500 MW)`);
 
@@ -178,7 +195,7 @@ function detectImportDependency(raw: FranceRawData): DetectedSituation | null {
     [
       `Import net actuel : +${Math.round(netImport)} MW`,
       `Principales sources : ${topImporters.join(', ')}`,
-      ...(raw.nuclearState?.stress ? [`Stress nucléaire : ${raw.nuclearState.stress.level}`] : []),
+      ...(raw.nuclearState?.stress ? [`Arrêts imprévus du parc nucléaire : ${unplannedGw(raw.nuclearState.stress.unplannedLostMW)}`] : []),
     ],
     [
       action('Vérifier la disponibilité du parc nucléaire (REMIT RTE)', 'Analyste énergie', 'investigate'),
@@ -284,64 +301,109 @@ export function detectWildfireIncidents(raw: FranceRawData): DetectedSituation[]
   });
 }
 
-// ─── Règle 5 : CYBER_PRESSURE ────────────────────────────────────────────────
+// ─── Règle 5 : CYBER_PRESSURE « Vigilance cyber » (spec 2026-10-04 souveraineté § 2.4 ; amendement 7, O1, O3, O4, O6, S14, S15) ───
 
-function detectCyberPressure(raw: FranceRawData): DetectedSituation | null {
-  const cyber = raw.cyberData;
-  const threatEvents = raw.threatEvents ?? [];
-  if (!cyber && threatEvents.length === 0) return null;
+/** « 30/09 » d'une date « AAAA-MM-JJ ». */
+function dayMonthOf(day: string): string {
+  return `${day.slice(8, 10)}/${day.slice(5, 7)}`;
+}
 
-  const pressure = computeCyberPressureAssessment(cyber, threatEvents, {
-    powerOutageCount: raw.powerOutages.length,
-    telecomOutageCount: raw.telecomOutages.length,
-  });
-  const score = pressure.score;
-  const criticalCVEs = pressure.criticalCVEs;
-  const ransomware30d = Math.max(cyber?.ransomware.total30d ?? 0, pressure.summary.ransomware30d);
-  const certCritical = pressure.certCritical;
-  const leaks30d = pressure.summary.leaks30d;
-  const exposure30d = pressure.summary.exposure30d;
-  const trend = cyber?.meta.trend ?? 'stable';
-  const dominantBreakdown = pressure.breakdown.filter((item) => item.score > 0).sort((a, b) => b.score - a.score);
+/** « 3 alertes » : nombre et nom collés par une espace insécable (R1). */
+function countText(n: number, one: string, many: string): string {
+  return `${n}${NBSP}${n > 1 ? many : one}`;
+}
 
-  if (score < 55 && criticalCVEs === 0 && ransomware30d === 0 && leaks30d < 5) return null;
+/** Publication la plus récente d'abord, puis référence décroissante (même ordre que la pastille, l'ordre de la réponse ne compte pas). */
+function byPublication(a: CertFrItem, b: CertFrItem): number {
+  return b.firstVersion.localeCompare(a.firstVersion) || b.ref.localeCompare(a.ref, 'fr', { numeric: true });
+}
 
+/** « CERTFR-2026-ALE-011 : Citrix NetScaler ADC et Gateway, publiée le 28/09, dernière version le 30/09, exploitation signalée par le CERT-FR ». */
+function certfrAlertDriver(a: CertFrItem): string {
+  const last = certfrDate(a);
+  const dates = last !== a.firstVersion
+    ? `publiée le ${dayMonthOf(a.firstVersion)}, dernière version le ${dayMonthOf(last)}`
+    : `publiée le ${dayMonthOf(a.firstVersion)}`;
+  const exploitation = certfrExploitationText(a);
+  return `${a.ref} : ${a.product ?? a.title}, ${dates}${exploitation === null ? '' : `, ${exploitation}`}`;
+}
+
+/**
+ * « Vigilance cyber » sur des événements, plus aucun seuil sur un stock : alertes CERT-FR au statut « en cours » repris du CERT-FR (O1),
+ * avis qui citent une vulnérabilité ajoutée au catalogue KEV depuis moins de 7 jours (O6), revendications au-delà de 1,5 fois la moyenne
+ * (fichier de ransomware.live à l'heure). Moyenne ; une alerte seule reste moyenne (S14) ; élevée pour deux alertes en cours publiées
+ * depuis moins de 7 jours. Jamais critique : des alertes restent ouvertes des semaines et figeraient l'indice national à 55 (arbitrage
+ * du contrôleur, revue d'A16). Les revendications ne dépassent jamais la gravité moyenne (O4). Situation ouverte par les seules
+ * revendications : ni action ni source du CERT-FR, la source est Ransomware.live.
+ */
+function detectCyberPressure(raw: FranceRawData, nowMs: number): DetectedSituation | null {
+  const c = raw.cyber;
+  if (!c) return null;
+  const open = c.certfr.alerts.filter(isCertFrAlertOpen).sort(byPublication);
+  const recentOpen = open.filter((a) => isCertFrPublishedRecently(a, nowMs));
+  const kevFresh = !isSovereigntyDataLate('kev', c.kev.readAt, nowMs);
+  const kevAdvisories = kevFresh ? certfrKevAdvisories(c, nowMs) : [];
+  const claimsLate = c.ransomware !== null && isSovereigntyDataLate('ransomware', c.ransomware.lastModified, nowMs);
+  const ratio = claimsLate ? null : claimsRatio(c.ransomware);
+  const claimsHigh = ratio !== null && ratio > CLAIMS_RATIO_JAUNE;
+  const certfrBacked = open.length > 0 || kevAdvisories.length > 0;
+  if (!certfrBacked && !claimsHigh) return null;
+  // Vulnérabilités citées sur 30 jours : un facteur des seules situations ouvertes par le CERT-FR (un stock, jamais un déclencheur).
+  const kevCited = kevFresh && certfrBacked ? c.kev.recent.filter((k) => k.certfrRefs.length > 0).length : 0;
+
+  const severity: SituationSeverity = recentOpen.length >= 2 ? 'high' : 'medium';
+  const exploitationSaid = open.some((a) => a.exploited === true || a.kevCves.length > 0);
+  const ratioText = ratio === null ? '' : `${ratio.toLocaleString('fr-FR', { maximumFractionDigits: 2 })}${NBSP}fois la moyenne`;
+  const advisoriesText = `${kevAdvisories.length}${NBSP}avis citant une vulnérabilité ajoutée au catalogue KEV depuis moins de ${CERTFR_RECENT_DAYS}${NBSP}jours`;
+
+  const drivers = [
+    ...open.slice(0, 3).map(certfrAlertDriver),
+    ...(kevAdvisories.length > 0 ? [`${advisoriesText} : ${kevAdvisories.slice(0, 3).map((a) => a.ref).join(', ')}`] : []),
+    ...(kevCited > 0 ? [`${countText(kevCited, 'vulnérabilité exploitée citée', 'vulnérabilités exploitées citées')} par le CERT-FR (catalogue KEV de la CISA, 30${NBSP}jours)`] : []),
+    ...(claimsHigh ? [`revendications de la semaine (revendiquées par les groupes, non confirmées) : ${ratioText} · Source : Ransomware.live`] : []),
+  ];
+  const summary = [
+    ...(open.length > 0 ? [countText(open.length, 'alerte CERT-FR en cours', 'alertes CERT-FR en cours')] : []),
+    ...(kevAdvisories.length > 0 ? [advisoriesText] : []),
+    ...(claimsHigh ? [`revendications à ${ratioText}, non confirmées`] : []),
+  ].join(' ; ');
   const outageCorrelation = raw.powerOutages.length > 0 || raw.telecomOutages.length > 0;
+  // Lien : la page CERT-FR d'abord (alerte en cours la plus récente, sinon premier avis compté) ; la source des revendications
+  // (« Source : Ransomware.live », conditions d'usage) seulement quand elles ouvrent seules la situation.
+  const certfrItem = open[0] ?? kevAdvisories[0];
+  const link = certfrItem !== undefined
+    ? { linkUrl: certfrItem.url, linkLabel: `${certfrItem.kind === 'alerte' ? 'Alerte' : 'Avis'} ${certfrItem.ref}` }
+    : { linkUrl: SOVEREIGNTY_SOURCE_DETAILS['Ransomware.live'].link, linkLabel: 'Source : Ransomware.live' };
 
-  const severity: SituationSeverity = (score >= 85 || certCritical >= 2) ? 'critical'
-    : (score >= 65 || criticalCVEs >= 3 || ransomware30d >= 10) ? 'high'
-    : 'medium';
-
-  const confidence = Math.min(0.88, 0.50 + (score / 100) * 0.30 + (outageCorrelation ? 0.10 : 0) + (certCritical * 0.04));
-
-  const drivers: string[] = [];
-  drivers.push(`Score cyber consolidé : ${score}/100 (tendance ${trend === 'rising' ? 'haussière' : trend === 'falling' ? 'baissière' : 'stable'})`);
-  if (dominantBreakdown.length > 0) {
-    drivers.push(...dominantBreakdown.slice(0, 3).map((item) => `${item.label} : ${item.score}/${item.cap}`));
-  }
-  if (certCritical > 0) drivers.push(`${certCritical} alerte(s) critique(s) CERT-FR`);
-  if (criticalCVEs > 0) drivers.push(`${criticalCVEs} CVE critique(s) actif(s) (CVSS ≥ 9)`);
-  if (ransomware30d > 10) drivers.push(`${ransomware30d} victimes ransomware FR sur 30 jours`);
-  if (leaks30d > 0) drivers.push(`${leaks30d} fuite(s) de données FR sur 30 jours`);
-  if (exposure30d > 0) drivers.push(`${exposure30d} signal(aux) d’exposition passive Shodan/Censys`);
-  if (outageCorrelation) drivers.push('Pannes réseau/telecom concomitantes (corrélation à surveiller)');
-
-  return situation(
+  const base = situation(
     'cyber-pressure',
     'CYBER_PRESSURE',
     severity,
-    confidence,
-    'Pression cyber multi-source',
-    `Baromètre cyber consolidé à ${score}/100${pressure.dominantFamily ? `, dominé par ${dominantBreakdown[0]?.label.toLowerCase()}` : ''}${certCritical > 0 ? ` — ${certCritical} alerte(s) critique(s) CERT-FR` : ''}.`,
+    exploitationSaid ? 0.85 : 0.7,
+    'Vigilance cyber',
+    `${summary.charAt(0).toUpperCase()}${summary.slice(1)}.`,
     ['France'],
     drivers,
     [
-      action('Consulter les bulletins CERT-FR pour les alertes actives', 'Analyste cyber', 'investigate', true),
-      action('Vérifier les secteurs OIV/ESS ciblés (santé, énergie, finance)', 'Analyste cyber', 'investigate'),
+      ...(open.length > 0 ? [
+        action('Lire les alertes du CERT-FR et appliquer les correctifs publiés', 'Analyste cyber', 'investigate', true),
+        action('Relayer l’alerte aux services et opérateurs concernés', 'Analyste cyber', 'escalate'),
+      ] : kevAdvisories.length > 0 ? [
+        action('Lire les avis du CERT-FR et appliquer les correctifs publiés', 'Analyste cyber', 'investigate', true),
+      ] : []),
+      ...(claimsHigh ? [
+        action('Vérifier les revendications auprès du CSIRT régional', 'Analyste cyber', 'cross-check'),
+        action('Vérifier les secteurs critiques visés (santé, énergie, administration)', 'Analyste cyber', 'investigate'),
+      ] : []),
       ...(outageCorrelation ? [action('Croiser avec les pannes réseau pour écarter une attaque coordonnée', 'IA + analyste infra', 'cross-check', true)] : []),
     ],
-    ['CERT-FR', 'RansomwareLive', 'FrenchBreaches', 'Shodan/Censys', 'NVD CVE'],
+    [
+      ...(certfrBacked ? ['CERT-FR'] : []),
+      ...(kevAdvisories.length > 0 || kevCited > 0 ? ['CISA KEV'] : []),
+      ...(claimsHigh ? ['Ransomware.live'] : []),
+    ],
   );
+  return { ...base, ...link, activateLayers: ['cyber'] };
 }
 
 // ─── Règle 6 : SOCIAL_ESCALATION ─────────────────────────────────────────────
@@ -391,20 +453,71 @@ function detectSocialEscalation(raw: FranceRawData): DetectedSituation | null {
 
 // ─── Règle 7 : TELECOM_DISRUPTION ────────────────────────────────────────────
 
-function detectTelecomDisruption(raw: FranceRawData): DetectedSituation | null {
-  const telecomCount = raw.telecomOutages.length;
-  const powerCount   = raw.powerOutages.length;
+const NBSP = '\u00a0';
+const TELECOM_RECENT_MS = 24 * 3_600_000;
+const PARIS_CLOCK = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 
-  if (telecomCount < 2) return null;
+function fmtInt(n: number): string {
+  return n.toLocaleString('fr-FR').replace(/[\u202f\u00a0 ]/g, NBSP);
+}
 
-  const combined = telecomCount + (powerCount >= 3 ? 1 : 0);
-  const severity: SituationSeverity = telecomCount >= 5 ? 'critical'
-    : combined >= 4 ? 'high'
-    : 'medium';
+/** Panne ARCEP sans département (« Inconnu » côté adaptateur, ou vide) : regroupée sous cette clé, jamais affichée telle quelle. */
+const UNKNOWN_DEPT = '';
+const UNKNOWN_DEPT_LABEL = 'département non précisé';
 
-  const confidence = Math.min(0.88, 0.55 + (telecomCount / 10) * 0.25 + (powerCount >= 3 ? 0.10 : 0));
+function telecomDeptKey(department: string | undefined): string {
+  const d = department?.trim() ?? '';
+  return d === '' || d.toLowerCase() === 'inconnu' ? UNKNOWN_DEPT : d;
+}
 
-  const zones = [...new Set(raw.telecomOutages.map(o => o.department ?? o.operator ?? 'France'))].slice(0, 3);
+function telecomDeptLabel(code: string): string {
+  if (code === UNKNOWN_DEPT) return UNKNOWN_DEPT_LABEL;
+  const name = DEPARTMENTS[code]?.name;
+  return name ? `${name} (${code})` : code;
+}
+
+/** « dans le département Nord (59) », ou « sans département précisé ». */
+function telecomDeptPhrase(code: string): string {
+  return code === UNKNOWN_DEPT ? 'sans département précisé' : `dans le département ${telecomDeptLabel(code)}`;
+}
+
+/**
+ * Le fichier ARCEP est un STOCK de sites hors service (pannes de plusieurs mois comprises), pas un
+ * flux d'événements : seules les pannes débutées dans les dernières 24 h (`since`) comptent.
+ * Sans date ou plus anciennes, elles ne déclenchent rien.
+ */
+function detectTelecomDisruption(raw: FranceRawData, nowMs: number = Date.now()): DetectedSituation | null {
+  const stock = raw.telecomOutages.length;
+  const powerCount = raw.powerOutages.length;
+
+  const byDept = new Map<string, number>();
+  let recent = 0;
+  for (const o of raw.telecomOutages) {
+    const t = o.since ? Date.parse(o.since) : NaN;
+    if (Number.isNaN(t) || t > nowMs || nowMs - t > TELECOM_RECENT_MS) continue;
+    recent += 1;
+    const dept = telecomDeptKey(o.department);
+    byDept.set(dept, (byDept.get(dept) ?? 0) + 1);
+  }
+
+  const ranked = [...byDept.entries()].sort((a, b) => b[1] - a[1]);
+  const [topDept, topCount] = ranked[0] ?? ['', 0];
+
+  const severity: SituationSeverity | null =
+    topCount >= 100 || recent >= 600 ? 'critical'
+    : topCount >= 50 || recent >= 300 ? 'high'
+    : topCount >= 20 ? 'medium'
+    : null;
+  if (!severity) return null;
+
+  // Les pannes électriques ne font que confirmer : elles ne changent pas la sévérité.
+  const powerConfirms = powerCount >= 3;
+  const confidence = Math.min(0.88, 0.55 + Math.min(0.25, topCount / 400) + (powerConfirms ? 0.05 : 0));
+
+  const zones = ranked.slice(0, 3).map(([d]) => telecomDeptLabel(d));
+  const plural = recent > 1;
+  const recentText = `${fmtInt(recent)}${NBSP}site${plural ? 's' : ''} mobile${plural ? 's' : ''} tombé${plural ? 's' : ''} en 24${NBSP}h, dont ${fmtInt(topCount)} ${telecomDeptPhrase(topDept)}`;
+  const stockText = `${fmtInt(stock)}${NBSP}site${stock > 1 ? 's' : ''} hors service au total dans le fichier ARCEP du jour, pannes anciennes comprises`;
 
   return situation(
     'telecom-disruption',
@@ -412,11 +525,12 @@ function detectTelecomDisruption(raw: FranceRawData): DetectedSituation | null {
     severity,
     confidence,
     'Perturbation télécom significative',
-    `${telecomCount} incident(s) télécom actif(s)${powerCount >= 3 ? ` avec ${powerCount} pannes électriques associées` : ''}.`,
+    `${recentText}. ${stockText}.`,
     zones.length > 0 ? zones : ['France'],
     [
-      `${telecomCount} panne(s) télécom actives`,
-      ...(powerCount >= 3 ? [`${powerCount} pannes électriques corrélées (risque cascade)`] : []),
+      recentText,
+      stockText,
+      ...(powerConfirms ? [`${powerCount} pannes électriques en parallèle (confirmation, risque cascade)`] : []),
     ],
     [
       action('Vérifier le tableau de bord ARCEP pour les incidents opérateurs', 'Analyste télécom', 'investigate', true),
@@ -435,10 +549,12 @@ function detectMaritimeAnomaly(raw: FranceRawData): DetectedSituation | null {
   const radioSilence = anomalies.filter((a) => a.type === 'radio_silence');
   const rendezvous = anomalies.filter((a) => a.type === 'rendezvous');
   const highSeverity = anomalies.filter((a) => a.severity === 'high' || a.severity === 'critical');
-  const defenseAlerts = raw.defenseAlerts.filter((a) => a.severity === 'high');
+  // Navires lents confirmés sur un câble, AIS frais et veille évaluée (contrats § 6) : un AIS muet n'en donne aucun. Comptés par navire
+  // (FX2 : la veille fait une alerte par navire et par câble).
+  const slowVessels = distinctVessels(raw.cableAlerts);
 
-  const severity: SituationSeverity = highSeverity.length >= 2 || (radioSilence.length >= 2 && defenseAlerts.length >= 1) ? 'critical'
-    : highSeverity.length >= 1 || rendezvous.length >= 2 || defenseAlerts.length >= 1 ? 'high'
+  const severity: SituationSeverity = highSeverity.length >= 2 || (radioSilence.length >= 2 && slowVessels >= 1) ? 'critical'
+    : highSeverity.length >= 1 || rendezvous.length >= 2 || slowVessels >= 1 ? 'high'
     : 'medium';
 
   const confidence = Math.min(
@@ -446,7 +562,7 @@ function detectMaritimeAnomaly(raw: FranceRawData): DetectedSituation | null {
     0.52 +
       highSeverity.length * 0.12 +
       rendezvous.length * 0.06 +
-      Math.min(defenseAlerts.length, 2) * 0.08,
+      Math.min(slowVessels, 2) * 0.08,
   );
 
   const affectedZones = [...new Set(anomalies.map((a) => nearestPortLabel(a.position)))].slice(0, 4);
@@ -458,65 +574,195 @@ function detectMaritimeAnomaly(raw: FranceRawData): DetectedSituation | null {
     severity,
     confidence,
     'Anomalie maritime AIS',
-    `${anomalies.length} anomalie(s) AIS détectée(s)${defenseAlerts.length > 0 ? ` avec ${defenseAlerts.length} alerte(s) câbles corrélée(s)` : ''}.`,
+    `${anomalies.length} anomalie(s) AIS détectée(s)${slowVessels > 0 ? ` avec ${countText(slowVessels, 'navire lent', 'navires lents')} sur un câble` : ''}.`,
     affectedZones.length > 0 ? affectedZones : ['Zone maritime française'],
     [
       ...(radioSilence.length > 0 ? [`${radioSilence.length} silence(s) radio détecté(s)`] : []),
       ...(rendezvous.length > 0 ? [`${rendezvous.length} rendez-vous(x) suspect(s)`] : []),
       ...(sampleDescriptions.length > 0 ? [`Exemples : ${sampleDescriptions.join(' ; ')}`] : []),
-      ...(defenseAlerts.length > 0 ? [`${defenseAlerts.length} alerte(s) câbles haute sévérité en appui`] : []),
+      ...(slowVessels > 0 ? [`${countText(slowVessels, 'navire lent confirmé', 'navires lents confirmés')} sur un câble en appui, à vérifier`] : []),
     ],
     [
       action('Vérifier l\'historique AIS et les pavillons des navires impliqués', 'Analyste maritime', 'investigate', true),
       action('Signaler à la préfecture maritime compétente si nécessaire', 'Analyste maritime', 'escalate'),
     ],
-    ['AIS relay', 'Ais anomaly detector', ...(defenseAlerts.length > 0 ? ['Subsea cable alerts'] : [])],
+    ['AIS relay', 'Ais anomaly detector', ...(slowVessels > 0 ? [CABLES_SOURCE] : [])],
   );
 }
 
-// ─── Règle 9 : DEFENSE_SIGNAL_ELEVATED ───────────────────────────────────────
+// ─── Règle 9 : DEFENSE_SIGNAL_ELEVATED « Signal défense » (spec 2026-10-04 souveraineté § 2.4 ; amendement 7, O7, O15, S3, S5) ───
 
-function detectDefenseSignalElevated(raw: FranceRawData): DetectedSituation | null {
-  const jamming  = raw.jammingSignals;
-  const flights  = raw.militaryFlightsCount;
+/** Code du transpondeur (S3 : « 7500 (intervention illicite) »), mêmes mots que la pastille Défense. */
+const SQUAWK_TEXT: Readonly<Record<MilitaryEmergency['squawk'], string>> = { '7500': 'intervention illicite', '7600': 'panne radio', '7700': 'urgence' };
 
-  const highJamming = jamming.filter(j => j.severity === 'high' || j.severity === 'critical');
+/** Source des alertes câbles : câbles du Shom (référence) et d'OpenStreetMap (compléments), relevés AIS (O18). */
+const CABLES_SOURCE = 'Câbles (Shom, OpenStreetMap) et AIS';
 
-  if (highJamming.length === 0 && flights < 8) return null;
+/** Indicatif (sinon immatriculation, sinon adresse), type, et « appareil français » pour le bloc France. */
+function emergencyWho(e: MilitaryEmergency): string {
+  const name = e.callsign ?? e.registration ?? `adresse ${e.icao24}`;
+  const details = [e.type, e.family === 'francais' ? 'appareil français' : null].filter((x): x is string => x !== null);
+  return `${name}${details.length > 0 ? ` (${details.join(', ')})` : ''}`;
+}
 
-  const severity: SituationSeverity = highJamming.length >= 3 ? 'critical'
-    : highJamming.length >= 1 && flights >= 10 ? 'high'
-    : highJamming.length >= 1 ? 'medium'
-    : 'watch';
+/** Lieu court (zone, ligne d'urgence) : département, mer territoriale ou approches. */
+function emergencyZone(e: MilitaryEmergency): string {
+  if (e.dept !== null) return `Dépt${NBSP}${e.dept}`;
+  return e.inFrance ? 'Mer territoriale' : 'Approches de la France';
+}
 
-  const confidence = Math.min(0.82, 0.45 + highJamming.length * 0.12 + Math.min(flights, 20) / 20 * 0.20);
+/** Lieu dans une phrase (S5 pour la mer territoriale). */
+function emergencyPlace(e: MilitaryEmergency): string {
+  if (e.dept !== null) return `au-dessus de la métropole (Dépt${NBSP}${e.dept})`;
+  return e.inFrance
+    ? `au-dessus de la mer territoriale (moins de 12${NBSP}milles de la côte)`
+    : `dans les approches de la France (moins de 40${NBSP}km)`;
+}
 
-  const jammingZones = jamming.slice(0, 3).map(j => {
-    const lat = j.position[1];
-    const lon = j.position[0];
-    const latStr = `${Math.abs(lat).toFixed(1)}°${lat >= 0 ? 'N' : 'S'}`;
-    const lonStr = `${Math.abs(lon).toFixed(1)}°${lon >= 0 ? 'E' : 'W'}`;
-    return `${latStr} ${lonStr}`;
-  });
+/** « RCH161 (C17) · Dépt 29 », « appareil d’État français · Dépt 69 » (même forme que la pastille Défense). */
+function emergencyAircraftLine(e: MilitaryEmergency): string {
+  const zone = emergencyZone(e);
+  return `${emergencyWho(e)} · ${e.dept !== null ? zone : zone.charAt(0).toLowerCase() + zone.slice(1)}`;
+}
 
-  return situation(
+/**
+ * « Signal défense » (O7) : un 7500 affiché sur deux relevés au-dessus du territoire ou à moins de 40 km, moyenne, « à confirmer par les
+ * autorités » ; trois mailles à précision GNSS dégradée sur 24 h (phase B, comptes sans lieu), moyenne, élevée seulement sur deux jours
+ * UTC complets de suite (defenseSituationSeverity). Les 7700 et 7600 restent des urgences aériennes du panneau et du moniteur d'alertes.
+ * Jamais un nombre d'aéronefs : un aéronef observé n'est pas un événement. Sur le seul GNSS, la situation s'intitule « Précision GNSS
+ * dégradée » (O15, jamais « brouillage ») et dit de signaler à la DGAC et à l'ANFR, seules à qualifier un brouillage (S15, tâche B28).
+ */
+function detectDefenseSignal(raw: FranceRawData): DetectedSituation | null {
+  const hijacks = (raw.militaryEmergencies ?? []).filter(isDefenseSituationEmergency);
+  const gnss = raw.gnssDegraded;
+  const severity = defenseSituationSeverity(hijacks, gnss);
+  if (severity === null) return null;
+  const gnssCells = gnss !== null && gnss.rolling24h >= GNSS_SITUATION_CELLS ? gnss.rolling24h : 0;
+  const lines = [
+    ...hijacks.map((e) => `code 7500 affiché par le transpondeur, à confirmer par les autorités : ${emergencyAircraftLine(e)}`),
+    // Fenêtre partielle (report 10 de la revue finale) : « (mesure partielle de N h) » au lieu de « sur 24 h ».
+    ...(gnssCells > 0 ? [`${countText(gnssCells, 'maille', 'mailles')} à précision GNSS dégradée `
+      + `${gnss?.partialHours !== undefined ? `(${gnssPartialText(gnss.partialHours)})` : `sur 24${NBSP}h`}, à vérifier`] : []),
+  ];
+  const summary = lines.join(' ; ');
+  const base = situation(
     'defense-signal-elevated',
     'DEFENSE_SIGNAL_ELEVATED',
     severity,
-    confidence,
-    'Signal défense / renseignement élevé',
-    `${highJamming.length} signal(aux) GPS jamming haute sévérité. ${flights} vols militaires actifs.`,
-    jammingZones.length > 0 ? jammingZones : ['France'],
+    hijacks.length > 0 ? 0.9 : 0.7,
+    hijacks.length > 0 ? 'Signal défense' : 'Précision GNSS dégradée',
+    `${summary.charAt(0).toUpperCase()}${summary.slice(1)}.`,
+    hijacks.length > 0 ? [...new Set(hijacks.map(emergencyZone))].slice(0, 4) : ['France'],
+    lines,
     [
-      ...(highJamming.length > 0 ? [`${highJamming.length} brouillage(s) GPS haute sévérité détecté(s)`] : []),
-      `${flights} vols militaires français trackés`,
+      ...(hijacks.length > 0 ? [
+        action('Croiser avec les communiqués officiels (préfecture, DGAC)', 'Analyste défense', 'cross-check', true),
+        action('Suivre l’aéronef sur le panneau Défense', 'Analyste défense', 'monitor'),
+      ] : []),
+      ...(gnssCells > 0 ? [action('Signaler à la DGAC et à l’ANFR, seules à qualifier un brouillage', 'Analyste défense', 'cross-check')] : []),
     ],
-    [
-      action('Corréler avec les NOTAM actifs', 'Analyste défense', 'cross-check', true),
-      action('Surveiller les communiqués EMA', 'Analyste défense', 'monitor'),
-    ],
-    ['OpenSky Network', 'GPS Pattern Detection'],
+    [...(hijacks.length > 0 ? ['adsb.lol'] : []), ...(gnssCells > 0 ? ['Grille GNSS (adsb.lol)', 'NOAA SWPC'] : [])],
   );
+  const first = hijacks[0];
+  // Entrées du moniteur déjà dites ici (liste « À traiter » : pas de doublon) : l'urgence de chaque 7500, le compte GNSS.
+  const coveredAlertIds = [...hijacks.map(militaryEmergencyAlertId), ...(gnssCells > 0 ? [GNSS_MONITOR_ID] : [])];
+  return { ...base, ...(first ? { lat: first.lat, lon: first.lon } : {}), activateLayers: ['military'], coveredAlertIds };
+}
+
+/** Identifiant de l'entrée du moniteur d'une urgence, sans gravité : l'urgence qui se confirme reste la même alerte. */
+function militaryEmergencyAlertId(e: MilitaryEmergency): string {
+  return `military-emergency-${e.icao24}-${e.squawk}`;
+}
+
+// ─── Moniteur d'alertes : urgences militaires et navires lents sur un câble (souveraineté § 2.4 ; contrats § 6) ───
+
+/**
+ * Une alerte par urgence au-dessus du territoire ou à moins de 40 km, les trois codes (O7 : les 7700 et 7600 restent ici comme urgences
+ * aériennes) : critique pour un 7500 affiché sur deux relevés, élevée pour un 7700 ou un 7600, moyenne vue une seule fois (à confirmer),
+ * comme la pastille Défense. Identifiant sans gravité : l'urgence qui se confirme reste la même alerte.
+ */
+export function militaryEmergencyAlerts(emergencies: readonly MilitaryEmergency[]): DetectedSituation[] {
+  return emergencies.map((e) => {
+    const confirmed = isEmergencyConfirmed(e);
+    const severity: SituationSeverity = !confirmed ? 'medium' : e.squawk === '7500' ? 'critical' : 'high';
+    const state = !confirmed ? 'vu une fois, à confirmer'
+      : e.squawk === '7500' ? 'affiché par le transpondeur sur deux relevés, non confirmé par les autorités'
+      : 'affiché sur deux relevés';
+    const code = `${e.squawk} (${SQUAWK_TEXT[e.squawk]})`;
+    const country = e.country ? ` ; pays du bloc OACI : ${e.country}` : '';
+    const base = situation(
+      militaryEmergencyAlertId(e),
+      'MILITARY_SURGE_ALERT',
+      severity,
+      confirmed ? 0.9 : 0.6,
+      `${code} : ${emergencyWho(e)}`,
+      `Code ${e.squawk} ${state}, ${emergencyPlace(e)}${country}.`,
+      [emergencyZone(e)],
+      [`Code ${code} ${state}`, `Aéronef : ${emergencyWho(e)}`, `Dernière lecture à ${PARIS_CLOCK.format(new Date(e.lastSeen))}`],
+      [
+        action('Suivre l’aéronef sur le panneau Défense', 'Veille défense', 'monitor', true),
+        action('Croiser avec les communiqués officiels', 'Veille défense', 'cross-check'),
+      ],
+      ['adsb.lol'],
+    );
+    const updatedAt = new Date(e.lastSeen);
+    return { ...base, entityId: `${e.icao24}:${e.squawk}`, lat: e.lat, lon: e.lon, activateLayers: ['military'], updatedAt };
+  });
+}
+
+/** Câble d'une alerte : son nom ; un câble du Shom n'en a pas (le Shom n'en publie pas). */
+function cableWord(a: CableAlert): string {
+  if (a.cableName !== null) return a.cableName;
+  return a.cableId.startsWith('shom/') ? 'câble télécom du Shom' : 'câble sans nom';
+}
+
+/** Câbles d'un navire, noms répétés comptés : « BARMAR, 2 câbles télécom du Shom » (jamais deux fois le même mot). */
+function cableWords(alerts: readonly CableAlert[]): string[] {
+  const counts = new Map<string, number>();
+  for (const a of alerts) counts.set(cableWord(a), (counts.get(cableWord(a)) ?? 0) + 1);
+  return [...counts].map(([word, n]) => (n > 1 && word.startsWith('câble ') ? `${countText(n, 'câble', 'câbles')} ${word.slice('câble '.length)}` : word));
+}
+
+/**
+ * Une entrée par navire lent confirmé sur un ou plusieurs câbles, AIS frais (arbitrage FX2 : la veille fait une alerte par navire et par
+ * câble ; le moniteur compte des navires, câbles listés) : élevée (pastille orange), « à vérifier » ; seule la préfecture maritime
+ * qualifie une infraction (O18). Position, distance et vitesse : celles du câble le plus proche.
+ */
+export function cableAlertSituations(alerts: readonly CableAlert[]): DetectedSituation[] {
+  return alertsByVessel(alerts).map(({ mmsi, alerts: own }) => {
+    const nearest = own[0];
+    const ship = nearest.name ?? `MMSI ${mmsi}`;
+    const words = cableWords(own);
+    const cables = words.join(', ');
+    const several = own.length > 1;
+    const speed = `${nearest.speedKn.toLocaleString('fr-FR', { maximumFractionDigits: 1 })}${NBSP}${nearest.speedKn >= 2 ? 'nœuds' : 'nœud'}`;
+    const base = situation(
+      `defense-alert-${mmsi}`,
+      'DEFENSE_ALERT',
+      'high',
+      0.85,
+      several ? `Navire lent près de ${countText(own.length, 'câble', 'câbles')} : ${ship} (${cables})` : `Navire lent sur un câble : ${ship} (${cables})`,
+      `À ${nearest.distanceM}${NBSP}m du ${several ? 'tracé le plus proche' : 'tracé'}, ${speed}, confirmé sur deux relevés AIS : à vérifier ; `
+        + 'seule la préfecture maritime qualifie une infraction.',
+      words,
+      [
+        `Navire : ${ship}${nearest.vesselType ? ` (${nearest.vesselType})` : ''}`,
+        ...(several ? [`Câbles : ${cables}`] : []),
+        `Distance au ${several ? 'tracé le plus proche' : 'tracé'} : ${nearest.distanceM}${NBSP}m`,
+        `Vitesse : ${speed}`,
+      ],
+      [
+        action('Vérifier l’identité et l’historique AIS du navire', 'Veille maritime', 'investigate'),
+        action('Surveiller la zone du câble', 'Sûreté des infrastructures', 'monitor', true),
+      ],
+      [CABLES_SOURCE],
+    );
+    const lastSeen = Math.max(...own.map((a) => Date.parse(a.lastSeen)).filter(Number.isFinite));
+    return {
+      ...base, lat: nearest.lat, lon: nearest.lon, activateLayers: ['subseaCables', 'trafficMaritime'],
+      updatedAt: new Date(Number.isFinite(lastSeen) ? lastSeen : Date.parse(nearest.lastSeen)),
+    };
+  });
 }
 
 // ─── Règle 10 : FUEL_SUPPLY_RISK ─────────────────────────────────────────────
@@ -567,12 +813,12 @@ function detectFuelSupplyRisk(raw: FranceRawData): DetectedSituation | null {
     severity,
     confidence,
     'Risque d\'approvisionnement carburant',
-    `Tension carburant ${fuelWord}${oilWord ? ` — stocks pétroliers ${oilWord}` : ''}. ${Math.round(anomalyShare)}% des stations en anomalie de prix.`,
+    `Tension carburant ${fuelWord}${oilWord ? ` · stocks pétroliers ${oilWord}` : ''}. ${Math.round(anomalyShare)}% des stations en rupture temporaire.`,
     topDepts.length > 0 ? topDepts : ['France'],
     [
       `Tension carburant nationale : ${fuelWord}`,
       ...(oilTense && oilWord ? [`Vigilance stocks pétroliers : ${oilWord} (score ${oilVigilance}/100)`] : []),
-      ...(anomalyShare > 5 ? [`${Math.round(anomalyShare)}% des stations en anomalie tarifaire`] : []),
+      ...(anomalyShare > 5 ? [`${Math.round(anomalyShare)}% des stations en rupture temporaire`] : []),
     ],
     [
       action('Surveiller les niveaux de stocks SPE', 'Analyste énergie', 'monitor'),
@@ -580,6 +826,73 @@ function detectFuelSupplyRisk(raw: FranceRawData): DetectedSituation | null {
     ],
     ['SDES CPDP', 'Prix carburants data.gouv.fr'],
   );
+}
+
+// ─── Règle : SEISMIC_EVENT (spec 2026-10-04 environnement § 3.3, amendements 2 et 6) ─────────
+
+const PARIS_PARTS = new Intl.DateTimeFormat('fr-FR', {
+  timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+});
+
+/** « le 04/10 à 05:10 » (heure de Paris). */
+function parisWhen(iso: string): string {
+  const p = Object.fromEntries(PARIS_PARTS.formatToParts(new Date(iso)).map((x) => [x.type, x.value]));
+  return `le ${p['day']}/${p['month']} à ${p['hour']}:${p['minute']}`;
+}
+
+/**
+ * Une situation par séisme de magnitude 4 ou plus en France (territoire ou eaux françaises) dans les 72 dernières heures :
+ * sévérité moyenne, élevée dès 5 (qui plafonne le score à 78 par CAP_ONE_HIGH). Un séisme hors de France n'en crée jamais.
+ */
+export function detectSeismicEvents(raw: FranceRawData, nowMs: number): DetectedSituation[] {
+  return (raw.quakes ?? []).flatMap((q): DetectedSituation[] => {
+    const t = Date.parse(q.at);
+    if (!quakeInFrance(q) || q.magnitude < 4 || !Number.isFinite(t) || t > nowMs || nowMs - t > QUAKE_WINDOW_MS) return [];
+    const mag = magnitudeText(q.magnitude);
+    const place = quakePlace(q);
+    const zone = q.dept !== null ? `Dépt ${q.dept}` : `en mer, à ${Math.round(q.distanceKm)}${NBSP}km des côtes`;
+    const depth = q.depthKm !== null ? `profondeur ${Math.round(q.depthKm)}${NBSP}km` : 'profondeur non publiée';
+    const status = q.status === 'revu' ? 'revu par un sismologue' : 'automatique, à confirmer';
+    const base = situation(
+      `seismic-${q.id}`, 'SEISMIC_EVENT', q.magnitude >= 5 ? 'high' : 'medium', q.status === 'revu' ? 0.9 : 0.75,
+      `Séisme de magnitude ${mag} ${place}`,
+      `Magnitude ${mag}${q.magType ? ` (${q.magType})` : ''}, ${depth}, ${parisWhen(q.at)} (heure de Paris), ${status}.`,
+      [zone],
+      [`Magnitude ${mag} ${place}`, `${depth.charAt(0).toUpperCase()}${depth.slice(1)}`, `Relevé ${status}`],
+      [
+        action('Consulter la fiche du séisme (intensité ressentie, témoignages)', 'Analyste risques naturels', 'monitor', true),
+        action('Croiser avec les communiqués de la préfecture et des secours', 'Analyste territorial', 'cross-check'),
+      ],
+      [q.source],
+    );
+    return [{ ...base, lat: q.lat, lon: q.lon, activateLayers: ['earthquakes'], ...(q.url ? { linkUrl: q.url, linkLabel: 'Fiche du séisme' } : {}) }];
+  });
+}
+
+// ─── Règle : AIR_POLLUTION_EPISODE (spec 2026-10-04 environnement § 3.2, amendement 6) ───────
+
+/** Une situation quand un épisode atteint le seuil d'alerte en J ou J+1 (jours de Paris) : sévérité moyenne, sans plafond du score. */
+export function detectAirPollution(raw: FranceRawData, nowMs: number): DetectedSituation | null {
+  const today = parisDayOf(nowMs);
+  const wanted = new Set([today, nextDayOf(today)]);
+  const alerts = (raw.airEpisodes ?? []).filter((e) => e.state === 'alerte' && wanted.has(e.date));
+  if (alerts.length === 0) return null;
+  const zones = [...new Set(alerts.map((e) => e.zone))];
+  const pollutants = [...new Set(alerts.map((e) => e.pollutant))].join(', ');
+  const when = alerts.some((e) => e.date === today) ? 'aujourd’hui' : 'demain';
+  const base = situation(
+    'air-pollution', 'AIR_POLLUTION_EPISODE', 'medium', 0.8,
+    `Épisode de pollution au seuil d’alerte : ${pollutants}`,
+    `${alerts.length} procédure${alerts.length > 1 ? 's' : ''} d’alerte (${pollutants}) ${when} ; niveaux publiés par les AASQA (Atmo France).`,
+    zones.slice(0, 4),
+    alerts.slice(0, 4).map((e) => `${e.pollutant} : alerte, ${e.zone}, le ${e.date.slice(8, 10)}/${e.date.slice(5, 7)}`),
+    [
+      action('Consulter l’arrêté préfectoral de la zone (absent du flux Atmo France)', 'Analyste territorial', 'monitor'),
+      action(`Suivre la prévision du lendemain (publiée vers 14${NBSP}h)`, 'Analyste environnement', 'monitor', true),
+    ],
+    ['Atmo France'],
+  );
+  return { ...base, activateLayers: ['airQuality'] };
 }
 
 // ─── Orchestrateur principal ──────────────────────────────────────────────────
@@ -592,8 +905,9 @@ const RULES: Array<(raw: FranceRawData, nowMs: number) => DetectedSituation | nu
   detectSocialEscalation,
   detectTelecomDisruption,
   detectMaritimeAnomaly,
-  detectDefenseSignalElevated,
+  detectDefenseSignal,
   detectFuelSupplyRisk,
+  detectAirPollution,
 ];
 
 /**
@@ -620,6 +934,13 @@ export function detectSituations(raw: FranceRawData, nowMs: number = Date.now())
     results.push(...detectWildfireIncidents(raw));
   } catch (err) {
     console.warn('[SituationEngine] Wildfire rule error:', err);
+  }
+
+  // Une situation par séisme fort (§ 3.3) ; même isolation que les autres règles.
+  try {
+    results.push(...detectSeismicEvents(raw, nowMs));
+  } catch (err) {
+    console.warn('[SituationEngine] Seismic rule error:', err);
   }
 
   const ranked = results.sort((a, b) => {

@@ -12,6 +12,7 @@
 import type { NewsItem, Feed, ThreatClassification, ThreatLevel, EventCategory } from '../types/index.ts';
 import { Watchdog } from './watchdog.ts';
 import { dropPlaceholderDrafts } from './rss-dates.ts';
+import { noEmDash } from './typography.ts';
 
 // ── Watchdog registration ──
 Watchdog.register('rss-pqr', {
@@ -168,7 +169,7 @@ function parseRSSDate(pubDateStr: string, feedRegion?: string): Date {
  * Returns null if the XML is actually an HTML page (bot-detection / redirect).
  * Returning null lets fetchFeed treat this as a failure and avoid caching empty results.
  */
-function parseRSSItems(xml: string, feed: Feed): NewsItem[] | null {
+export function parseRSSItems(xml: string, feed: Feed): NewsItem[] | null {
     // Detect HTML responses (Cloudflare challenge, paywall redirect, etc.)
     const head = xml.trimStart().slice(0, 300).toLowerCase();
     if (
@@ -177,7 +178,7 @@ function parseRSSItems(xml: string, feed: Feed): NewsItem[] | null {
         head.includes('<body') ||
         head.includes('<app-root')
     ) {
-        console.warn(`[RSS] ${feed.name}: received HTML instead of XML — likely bot-detection`);
+        console.warn(`[RSS] ${feed.name}: received HTML instead of XML : likely bot-detection`);
         return null;
     }
 
@@ -222,13 +223,13 @@ function parseRSSItems(xml: string, feed: Feed): NewsItem[] | null {
         items.push({
             id,
             source: feed.name,
-            title,
+            title: noEmDash(title),
             link,
             pubDate,
             isAlert: false,
             tier: feed.tier,
             feedRegion: feed.region, // propagate region for geocoding fallback
-            summary: description.slice(0, 200) || undefined,
+            summary: noEmDash(description.slice(0, 200)) || undefined,
             // threat, lat, lon, locationName will be filled by classifier + geocoder
         });
     }
@@ -245,6 +246,29 @@ function hashString(str: string): string {
     return Math.abs(hash).toString(36);
 }
 
+/** Élément du proxy JSON → NewsItem (titre et description sans tiret cadratin). */
+export function mapJsonProxyItem(rawItem: JsonProxyItem, feed: Feed): NewsItem | null {
+    const title = typeof rawItem.title === 'string' ? rawItem.title.trim() : '';
+    const link = typeof rawItem.link === 'string' ? rawItem.link.trim() : '';
+    if (!title || !link) return null;
+
+    const rawDate = typeof rawItem.pubDate === 'string' ? rawItem.pubDate : '';
+    const pubDate = rawDate ? parseRSSDate(rawDate, feed.region) : new Date();
+    if (isNaN(pubDate.getTime())) return null;
+
+    return {
+        id: `rss-${hashString(link)}`,
+        source: feed.name,
+        title: noEmDash(title),
+        link,
+        pubDate,
+        isAlert: false,
+        tier: feed.tier,
+        feedRegion: feed.region,
+        summary: rawItem.description ? noEmDash(rawItem.description.slice(0, 200)) : undefined,
+    };
+}
+
 async function fetchViaJsonProxy(feed: Feed): Promise<{ items: NewsItem[]; sourceFormat: 'xml' | 'html' | 'unknown' }> {
     const proxyUrl = `/api/rss?url=${encodeURIComponent(feed.url)}`;
     const resp = await fetch(proxyUrl, { signal: AbortSignal.timeout(10_000) });
@@ -258,26 +282,8 @@ async function fetchViaJsonProxy(feed: Feed): Promise<{ items: NewsItem[]; sourc
     const items: NewsItem[] = [];
 
     for (const rawItem of rawItems) {
-        const title = typeof rawItem.title === 'string' ? rawItem.title.trim() : '';
-        const link = typeof rawItem.link === 'string' ? rawItem.link.trim() : '';
-        if (!title || !link) continue;
-
-        const rawDate = typeof rawItem.pubDate === 'string' ? rawItem.pubDate : '';
-        const pubDate = rawDate ? parseRSSDate(rawDate, feed.region) : new Date();
-        if (isNaN(pubDate.getTime())) continue;
-
-        const id = `rss-${hashString(link)}`;
-        items.push({
-            id,
-            source: feed.name,
-            title,
-            link,
-            pubDate,
-            isAlert: false,
-            tier: feed.tier,
-            feedRegion: feed.region,
-            summary: rawItem.description?.slice(0, 200) || undefined,
-        });
+        const item = mapJsonProxyItem(rawItem, feed);
+        if (item) items.push(item);
     }
 
     return { items: dropPlaceholderDrafts(items), sourceFormat };
@@ -360,7 +366,7 @@ function buildServerClassification(item: IngestApiItem): ThreatClassification | 
     };
 }
 
-function mapIngestItem(raw: IngestApiItem): NewsItem | null {
+export function mapIngestItem(raw: IngestApiItem): NewsItem | null {
     const title = typeof raw.title === 'string' ? raw.title.trim() : '';
     const link = typeof raw.link === 'string' ? raw.link.trim() : '';
     if (!title || !link) return null;
@@ -374,13 +380,13 @@ function mapIngestItem(raw: IngestApiItem): NewsItem | null {
     return {
         id: `rss-${hashString(link)}`,
         source: raw.feedName ?? raw.feedId ?? 'Ingest',
-        title,
+        title: noEmDash(title),
         link,
         pubDate,
         isAlert: false,
         tier: typeof raw.tier === 'number' ? raw.tier : undefined,
         feedRegion: raw.feedRegion ?? undefined,
-        summary: typeof raw.description === 'string' ? raw.description.slice(0, 200) || undefined : undefined,
+        summary: typeof raw.description === 'string' ? noEmDash(raw.description.slice(0, 200)) || undefined : undefined,
         threat: buildServerClassification(raw),
         lat: hasCoords && typeof raw.lat === 'number' ? raw.lat : undefined,
         lon: hasCoords && typeof raw.lon === 'number' ? raw.lon : undefined,

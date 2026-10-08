@@ -26,7 +26,7 @@ env:
   # tant que la bascule vers la VM Oracle n'a pas eu lieu — voir docs/deployment-oracle.md.
   SITE: ${{ vars.SITE_URL || 'https://www.francemonitor.com' }}
   RADAR_WORKER: ${{ vars.RADAR_WORKER_URL || 'https://radar-worker-production-0c93.up.railway.app' }}
-  AIS_RELAY: ${{ vars.AIS_RELAY_URL || 'https://france-monitor.onrender.com' }}
+  AIS_RELAY: ${{ vars.AIS_RELAY_URL || 'https://www.francemonitor.com/relay' }}
 
 jobs:
   smoke:
@@ -49,13 +49,23 @@ jobs:
           routes=(
             "/api/news?limit=3;200"
             "/api/news/history;200"
-            "/api/weather/vigilance;200"
+            "/api/environment/vigilance;200"
             "/api/energy/ecowatt;200"
             "/api/energy/biogas-sites;200"
             "/api/traffic/air;200"
-            "/api/fires;200"
-            "/api/threats;200"
-            "/api/exposure;200"
+            "/api/environment/fires;200"
+            "/api/environment/floods;200"
+            "/api/environment/drought;200"
+            "/api/environment/air;200"
+            "/api/environment/earthquakes;200"
+            "/api/environment/sea-levels;200"
+            "/api/sovereignty/military;200"
+            "/api/sovereignty/cables-watch;200"
+            "/api/sovereignty/cyber;200"
+            "/api/sovereignty/vigipirate;200"
+            "/api/sovereignty/gnss;200"
+            "/api/sovereignty/connectivity;200"
+            "/api/sovereignty/sanctions;200"
             "/api/finance/market;200"
             "/api/rte-iip;200"
             "/api/arcep;200"
@@ -138,16 +148,28 @@ jobs:
             exit 1
           fi
 
-      - name: Vérifier Render (ais-relay) /health
+      - name: Vérifier le relais AIS (VM) /health
         if: always()
         run: |
           set -u
           code=$(curl -s -o /tmp/ais-health.json -w "%{http_code}" --max-time 30 "$AIS_RELAY/health") || code="000"
-          echo "Render /health -> HTTP $code"
+          echo "Relais AIS /health -> HTTP $code"
           cat /tmp/ais-health.json 2>/dev/null || true
           echo ""
-          echo "### Render ais-relay /health : HTTP $code" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+          echo "### Relais AIS /health : HTTP $code" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
           if [ "$code" != "200" ]; then
-            echo "::error::Render ais-relay /health a répondu HTTP $code"
+            echo "::error::relais AIS /health a répondu HTTP $code"
+            exit 1
+          fi
+
+      - name: Vérifier l'instantané maritime /snapshot
+        if: always()
+        run: |
+          set -u
+          code=$(curl -s -o /tmp/ais-snapshot.json -w "%{http_code}" --max-time 30 "$AIS_RELAY/snapshot") || code="000"
+          echo "Relais AIS /snapshot -> HTTP $code"
+          echo "### Relais AIS /snapshot : HTTP $code" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+          if [ "$code" != "200" ] || ! grep -q '"lastMessageAt"' /tmp/ais-snapshot.json; then
+            echo "::error::instantané maritime absent ou illisible (HTTP $code)"
             exit 1
           fi

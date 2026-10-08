@@ -1,8 +1,5 @@
 // Extracted from DeckGLMap.ts — pure formatting / labelling / conversion helpers.
-import { ISS_LEVELS } from '../../types/index.ts';
-import type { ISSLevel, MeteoRiskType, ThreatLevel } from '../../types/index.ts';
-import { WEATHER_RISK_ICONS, ISNR_COLORS } from './constants.ts';
-import type { IconName } from '../shared/icons.ts';
+import { ISNR_COLORS } from './constants.ts';
 
 export const MTG_FRP_SOURCE_ID = 'fire-mtg-frp-source';
 export const MTG_FRP_LAYER_ID = 'fire-mtg-frp-layer';
@@ -10,35 +7,6 @@ export const RADAR_2D_SOURCE_ID = 'fire-radar-2d-source';
 export const RADAR_2D_LAYER_ID = 'fire-radar-2d-layer';
 export const ECHO_TOPS_SOURCE_ID = 'fire-echo-tops-source';
 export const ECHO_TOPS_LAYER_ID = 'fire-echo-tops-layer';
-
-export function getWeatherRadarSourceId(regionId: string): string {
-  return `weather-radar-src-${regionId}`;
-}
-
-export function getWeatherRadarLayerId(regionId: string): string {
-  return `weather-radar-${regionId}`;
-}
-export function normalizeLandingPoints(value: unknown): string[] {
-  if (Array.isArray(value)) return value.map(v => String(v)).filter(Boolean);
-  if (typeof value === 'string') {
-    try {
-      const parsed = JSON.parse(value);
-      return Array.isArray(parsed) ? parsed.map(v => String(v)).filter(Boolean) : [value];
-    } catch {
-      return value.split(/[,;]+/).map(v => v.trim()).filter(Boolean);
-    }
-  }
-  return [];
-}
-
-export function toNumber(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string') {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
 
 export function escapeHtml(value: unknown): string {
   return String(value ?? '')
@@ -49,46 +17,6 @@ export function escapeHtml(value: unknown): string {
     .replaceAll("'", '&#39;');
 }
 
-/** Icône Lucide (nom) du risque météo principal */
-export function getWeatherRiskIcon(risks: MeteoRiskType[]): IconName {
-  if (risks.length === 0) return 'triangle-alert';
-  return WEATHER_RISK_ICONS[risks[0]] ?? 'triangle-alert';
-}
-
-// ─── ISS (Indice de Stress Sanitaire) → color helpers ───
-
-export function issToFillColor(iss: number): string {
-  const lvl = ISS_LEVELS.find(l => iss >= l.range[0] && iss <= l.range[1]) ?? ISS_LEVELS[0];
-  return lvl.fillColor;
-}
-
-export function issToLineColor(iss: number): string {
-  const lvl = ISS_LEVELS.find(l => iss >= l.range[0] && iss <= l.range[1]) ?? ISS_LEVELS[0];
-  return lvl.lineColor;
-}
-
-export function issToColor(iss: number): string {
-  const lvl = ISS_LEVELS.find(l => iss >= l.range[0] && iss <= l.range[1]) ?? ISS_LEVELS[0];
-  return lvl.color;
-}
-
-export function getISSSemio(iss: number): { dotLevel: ThreatLevel; name: string; label: string; color: string; level: ISSLevel } {
-  const lvl = ISS_LEVELS.find(l => iss >= l.range[0] && iss <= l.range[1]) ?? ISS_LEVELS[0];
-  return { dotLevel: lvl.dotLevel, name: lvl.name, label: lvl.label, color: lvl.color, level: lvl.level };
-}
-
-export function getHealthSourceLabel(source: string): string {
-  switch (source) {
-    case 'spf-epid': return 'Santé Publique France';
-    case 'drees': return 'DREES';
-    case 'sentinelles': return 'Sentinelles';
-    case 'composite': return 'Multi-sources';
-    case 'ansm': return 'ANSM';
-    case 'oscour': return 'OSCOUR';
-    case 'sos-medecins': return 'SOS Médecins';
-    default: return 'SPF / DREES';
-  }
-}
 
 export function scoreToISNRColor(score: number): string {
   if (score >= 80) return ISNR_COLORS.critical;

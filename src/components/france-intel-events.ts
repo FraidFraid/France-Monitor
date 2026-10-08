@@ -152,7 +152,7 @@ function renderDetail(detail: EventDetailState, lang: Lang): string {
   const articles = detail.articles.map((a) => {
     const href = safeHref(a.link);
     const title = escapeHtml(a.title);
-    const source = `${escapeHtml(a.feedName ?? '—')}${a.publishedAt ? ` · ${hhmm(a.publishedAt, lang)}` : ''}`;
+    const source = `${escapeHtml(a.feedName ?? 'n.d.')}${a.publishedAt ? ` · ${hhmm(a.publishedAt, lang)}` : ''}`;
     return `<li><span class="frintel-ev-src">${source}</span>${href ? `<a href="${href}" target="_blank" rel="noopener noreferrer">${title}</a>` : title}</li>`;
   }).join('');
   const log = detail.log.slice(0, MAX_LOG_ROWS).map((l) => {

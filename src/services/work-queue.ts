@@ -8,7 +8,7 @@ import {
   type CommodityData,
   type DetectedSituation,
   type EcowattResponse,
-  type FloodSegment,
+  type FloodSectionRef,
   type IntelEventsState,
   type MarketData,
   type MeteoAlert,
@@ -96,7 +96,7 @@ export interface WorkQueueInput {
   events: IntelEventsState | null;
   ecowatt: EcowattResponse | null;
   meteo: readonly MeteoAlert[];
-  floods: readonly FloodSegment[];
+  floods: readonly FloodSectionRef[];
   markets: readonly MarketLine[];
   /** Niveaux vus à la dernière visite ; null à la première visite. */
   baseline: VisitBaseline | null;
@@ -154,7 +154,7 @@ interface OfficialEntry {
 function officialEntries(
   ecowatt: EcowattResponse | null,
   meteo: readonly MeteoAlert[],
-  floods: readonly FloodSegment[],
+  floods: readonly FloodSectionRef[],
   nowMs: number,
 ): OfficialEntry[] {
   const out: OfficialEntry[] = [];
@@ -179,11 +179,11 @@ function officialEntries(
   return out;
 }
 
-/** Alertes officielles orange ou rouges, regroupées par source et par niveau ; violet Météo = rouge. */
+/** Alertes officielles orange ou rouges, regroupées par source et par niveau. */
 export function officialAlertGroups(
   ecowatt: EcowattResponse | null,
   meteo: readonly MeteoAlert[],
-  floods: readonly FloodSegment[],
+  floods: readonly FloodSectionRef[],
   nowMs: number = Date.now(),
 ): OfficialAlertGroup[] {
   const groups = new Map<string, OfficialAlertGroup>();
@@ -204,7 +204,7 @@ export function officialAlertGroups(
 export function officialSignals(
   ecowatt: EcowattResponse | null,
   meteo: readonly MeteoAlert[],
-  floods: readonly FloodSegment[],
+  floods: readonly FloodSectionRef[],
   nowMs: number = Date.now(),
 ): OfficialSignal[] {
   const entries = officialEntries(ecowatt, meteo, floods, nowMs);
@@ -304,21 +304,15 @@ export function eventEnters(e: NewsEvent): boolean {
   return e.independentCount >= 2 || rank >= LEVEL_RANK.orange;
 }
 
-/** Gravité en fin d'identifiant d'une poussée militaire (App.ts : `military-surge-<type>-<gravité>`). */
-const MILITARY_SURGE_SEVERITY_SUFFIX = /-(?:info|warning|alert)$/;
-
 /**
  * Identité de ligne de base d'un élément (relecture finale m2) : sa clé d'affichage, sauf quand
- * celle-ci contient le niveau — alerte officielle (« official:<source>:<niveau> » → la source,
- * « official:<source> ») et poussée militaire (« alert:military-surge-<type>-<gravité> » →
- * « alert:military-surge-<type> »). Même identité à un niveau plus haut → « AGGRAVÉ », jamais
+ * celle-ci contient le niveau : alerte officielle (« official:<source>:<niveau> » → la source,
+ * « official:<source> »). Une urgence militaire (« alert:military-emergency-<icao24>-<code> ») ne
+ * porte pas de gravité dans son identifiant. Même identité à un niveau plus haut → « AGGRAVÉ », jamais
  * « NOUVEAU ». Les clés d'affichage (et celles de la v1) ne changent pas.
  */
 export function baselineIdentity(item: Pick<WorkItem, 'key' | 'ref'>): string {
   if (item.ref.kind === 'official') return `official:${item.ref.group.source}`;
-  if (item.ref.kind === 'alert' && item.ref.situation.type === 'MILITARY_SURGE_ALERT') {
-    return item.key.replace(MILITARY_SURGE_SEVERITY_SUFFIX, '');
-  }
   return item.key;
 }
 
@@ -364,13 +358,15 @@ export function buildWorkQueue(input: WorkQueueInput): WorkQueue {
   }
 
   const situationIds = new Set(input.situations.map((s) => s.id));
+  // Revue de B28 : une situation du moteur masque les entrées du moniteur qu'elle dit déjà (compte GNSS, urgence 7500).
+  const coveredAlertIds = new Set(input.situations.flatMap((s) => s.coveredAlertIds ?? []));
   // Relecture finale m3 (§14) : seulement les événements qui entrent dans la liste — un jumeau
   // absent de la liste ne doit pas faire disparaître l'alerte.
   const eventTitles = (input.events?.events ?? []).filter(eventEnters).map((e) => normalizeTitle(e.title));
   for (const a of input.alerts) {
     // Arbitrages A2 et A3 : la météo est couverte par les lignes officielles, un incendie par la
     // situation du moteur de même identifiant, une alerte presse par l'événement de même titre.
-    if (a.type === 'WEATHER_ALERT' || situationIds.has(a.id)) continue;
+    if (a.type === 'WEATHER_ALERT' || situationIds.has(a.id) || coveredAlertIds.has(a.id)) continue;
     if (a.type === 'NEWS_ALERT' && sameStory(a.title, eventTitles)) continue;
     const key = `alert:${a.id}`;
     const level = situationLevel(a.severity);
