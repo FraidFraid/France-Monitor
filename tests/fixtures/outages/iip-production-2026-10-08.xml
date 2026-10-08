@@ -1,0 +1,674 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>RTE IIP UMMs - Production Unavailability</title>
+    <link>https://iip.cloud-rte-france.com/production-unavailability/</link>
+    <description>Web feed for the publication of the unavailability of generation and production units.</description>
+    <language>EN-US</language>
+    <pubDate>Thu, 08 Oct 2026 21:24:36 +0200</pubDate>
+    <lastBuildDate>Thu, 08 Oct 2026 21:24:37 +0200</lastBuildDate>
+    <item>
+      <title>2026-01-30T23:00Z - 2026-10-12T21:00Z - Production Unavailability-CATTENOM 4</title>
+      <link>https://iip.cloud-rte-france.com/production-unavailability/EC-EDF-05470-EDF-T-00077027</link>
+      <description>&lt;?xml version="1.0" encoding="UTF-8" standalone="yes"?&gt;
+&lt;REMITUrgentMarketMessages xmlns="http://www.acer.europa.eu/REMIT/REMITUMMElectricitySchema_V2.xsd" xmlns:ns2="http://www.acer.europa.eu/REMIT/REMITUMMCommonSchema_V1.xsd"&gt;
+  &lt;UMM&gt;
+    &lt;messageId&gt;-EDF-05470-EDF-T-00077027_031&lt;/messageId&gt;
+    &lt;event&gt;
+      &lt;eventStatus&gt;Active&lt;/eventStatus&gt;
+      &lt;eventType&gt;Production unavailability&lt;/eventType&gt;
+      &lt;eventStart&gt;2026-01-30T23:00:00+00:00&lt;/eventStart&gt;
+      &lt;eventStop&gt;2026-10-12T21:00:00+00:00&lt;/eventStop&gt;
+    &lt;/event&gt;
+    &lt;unavailabilityType&gt;Planned&lt;/unavailabilityType&gt;
+    &lt;publicationDateTime&gt;2026-10-08T19:24:36+00:00&lt;/publicationDateTime&gt;
+    &lt;capacity&gt;
+      &lt;unitMeasure&gt;MW&lt;/unitMeasure&gt;
+      &lt;installedCapacity&gt;1300&lt;/installedCapacity&gt;
+      &lt;capacityInterval&gt;
+        &lt;intervalStart&gt;2026-01-30T23:00:00+00:00&lt;/intervalStart&gt;
+        &lt;intervalStop&gt;2026-10-12T21:00:00+00:00&lt;/intervalStop&gt;
+        &lt;unavailableCapacity&gt;1300&lt;/unavailableCapacity&gt;
+        &lt;availableCapacity&gt;0&lt;/availableCapacity&gt;
+      &lt;/capacityInterval&gt;
+    &lt;/capacity&gt;
+    &lt;unavailabilityReason&gt;Complementary Information&lt;/unavailabilityReason&gt;
+    &lt;remarks&gt;Après son recouplage, la tranche remontera progressivement par palier de charge à sa pleine puissance.
+La remontée durera au moins 48h.
+Premier palier à atteindre : 275 MW
+
+-------------------------------------
+After its restart, the plant will gradually return by various load thresholds to full power.
+The ramp-up period will take at least 48 hours.
+First threshold after restart : 275 MW
+
+
+&lt;/remarks&gt;
+    &lt;fuelType&gt;Nuclear&lt;/fuelType&gt;
+    &lt;biddingZone&gt;10YFR-RTE------C&lt;/biddingZone&gt;
+    &lt;affectedAsset&gt;
+      &lt;ns2:name&gt;CATTENOM 4&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17W100P100P0105V&lt;/ns2:eic&gt;
+    &lt;/affectedAsset&gt;
+    &lt;marketParticipant&gt;
+      &lt;ns2:name&gt;EDF&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17X100A100R00182&lt;/ns2:eic&gt;
+    &lt;/marketParticipant&gt;
+  &lt;/UMM&gt;
+&lt;/REMITUrgentMarketMessages&gt;</description>
+      <pubDate>Thu, 08 Oct 2026 21:24:36 +0200</pubDate>
+    </item>
+    <item>
+      <title>2026-10-07T02:15Z - 2026-10-10T03:00Z - Production Unavailability-ST ALBAN 1</title>
+      <link>https://iip.cloud-rte-france.com/production-unavailability/EDF-05470_EDF_T_00328979</link>
+      <description>&lt;?xml version="1.0" encoding="UTF-8" standalone="yes"?&gt;
+&lt;REMITUrgentMarketMessages xmlns="http://www.acer.europa.eu/REMIT/REMITUMMElectricitySchema_V2.xsd" xmlns:ns2="http://www.acer.europa.eu/REMIT/REMITUMMCommonSchema_V1.xsd"&gt;
+  &lt;UMM&gt;
+    &lt;messageId&gt;EDF--05470_EDF_T_00328979_008&lt;/messageId&gt;
+    &lt;event&gt;
+      &lt;eventStatus&gt;Active&lt;/eventStatus&gt;
+      &lt;eventType&gt;Production unavailability&lt;/eventType&gt;
+      &lt;eventStart&gt;2026-10-07T02:15:00+00:00&lt;/eventStart&gt;
+      &lt;eventStop&gt;2026-10-10T03:00:00+00:00&lt;/eventStop&gt;
+    &lt;/event&gt;
+    &lt;unavailabilityType&gt;Planned&lt;/unavailabilityType&gt;
+    &lt;publicationDateTime&gt;2026-10-08T19:16:36+00:00&lt;/publicationDateTime&gt;
+    &lt;capacity&gt;
+      &lt;unitMeasure&gt;MW&lt;/unitMeasure&gt;
+      &lt;installedCapacity&gt;1335&lt;/installedCapacity&gt;
+      &lt;capacityInterval&gt;
+        &lt;intervalStart&gt;2026-10-07T02:15:00+00:00&lt;/intervalStart&gt;
+        &lt;intervalStop&gt;2026-10-10T03:00:00+00:00&lt;/intervalStop&gt;
+        &lt;unavailableCapacity&gt;667&lt;/unavailableCapacity&gt;
+        &lt;availableCapacity&gt;668&lt;/availableCapacity&gt;
+      &lt;/capacityInterval&gt;
+    &lt;/capacity&gt;
+    &lt;unavailabilityReason&gt;Foreseen Maintenance&lt;/unavailabilityReason&gt;
+    &lt;remarks&gt;-&lt;/remarks&gt;
+    &lt;fuelType&gt;Nuclear&lt;/fuelType&gt;
+    &lt;biddingZone&gt;10YFR-RTE------C&lt;/biddingZone&gt;
+    &lt;affectedAsset&gt;
+      &lt;ns2:name&gt;ST ALBAN 1&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17W100P100P0145J&lt;/ns2:eic&gt;
+    &lt;/affectedAsset&gt;
+    &lt;marketParticipant&gt;
+      &lt;ns2:name&gt;EDF&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17X100A100R00182&lt;/ns2:eic&gt;
+    &lt;/marketParticipant&gt;
+  &lt;/UMM&gt;
+&lt;/REMITUrgentMarketMessages&gt;</description>
+      <pubDate>Thu, 08 Oct 2026 21:16:36 +0200</pubDate>
+    </item>
+    <item>
+      <title>2026-10-07T02:15Z - 2026-10-09T01:00Z - Production Unavailability-ST ALBAN 1</title>
+      <link>https://iip.cloud-rte-france.com/production-unavailability/EDF-05470_EDF_T_00328979</link>
+      <description>&lt;?xml version="1.0" encoding="UTF-8" standalone="yes"?&gt;
+&lt;REMITUrgentMarketMessages xmlns="http://www.acer.europa.eu/REMIT/REMITUMMElectricitySchema_V2.xsd" xmlns:ns2="http://www.acer.europa.eu/REMIT/REMITUMMCommonSchema_V1.xsd"&gt;
+  &lt;UMM&gt;
+    &lt;messageId&gt;EDF--05470_EDF_T_00328979_007&lt;/messageId&gt;
+    &lt;event&gt;
+      &lt;eventStatus&gt;Active&lt;/eventStatus&gt;
+      &lt;eventType&gt;Production unavailability&lt;/eventType&gt;
+      &lt;eventStart&gt;2026-10-07T02:15:00+00:00&lt;/eventStart&gt;
+      &lt;eventStop&gt;2026-10-09T01:00:00+00:00&lt;/eventStop&gt;
+    &lt;/event&gt;
+    &lt;unavailabilityType&gt;Planned&lt;/unavailabilityType&gt;
+    &lt;publicationDateTime&gt;2026-10-08T19:03:36+00:00&lt;/publicationDateTime&gt;
+    &lt;capacity&gt;
+      &lt;unitMeasure&gt;MW&lt;/unitMeasure&gt;
+      &lt;installedCapacity&gt;1335&lt;/installedCapacity&gt;
+      &lt;capacityInterval&gt;
+        &lt;intervalStart&gt;2026-10-07T02:15:00+00:00&lt;/intervalStart&gt;
+        &lt;intervalStop&gt;2026-10-09T01:00:00+00:00&lt;/intervalStop&gt;
+        &lt;unavailableCapacity&gt;667&lt;/unavailableCapacity&gt;
+        &lt;availableCapacity&gt;668&lt;/availableCapacity&gt;
+      &lt;/capacityInterval&gt;
+    &lt;/capacity&gt;
+    &lt;unavailabilityReason&gt;Foreseen Maintenance&lt;/unavailabilityReason&gt;
+    &lt;remarks&gt;-&lt;/remarks&gt;
+    &lt;fuelType&gt;Nuclear&lt;/fuelType&gt;
+    &lt;biddingZone&gt;10YFR-RTE------C&lt;/biddingZone&gt;
+    &lt;affectedAsset&gt;
+      &lt;ns2:name&gt;ST ALBAN 1&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17W100P100P0145J&lt;/ns2:eic&gt;
+    &lt;/affectedAsset&gt;
+    &lt;marketParticipant&gt;
+      &lt;ns2:name&gt;EDF&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17X100A100R00182&lt;/ns2:eic&gt;
+    &lt;/marketParticipant&gt;
+  &lt;/UMM&gt;
+&lt;/REMITUrgentMarketMessages&gt;</description>
+      <pubDate>Thu, 08 Oct 2026 21:03:36 +0200</pubDate>
+    </item>
+    <item>
+      <title>2026-10-07T07:05Z - 2026-10-09T21:00Z - Production Unavailability-CRUAS 1</title>
+      <link>https://iip.cloud-rte-france.com/production-unavailability/EDF-05470_EDF_T_00332593</link>
+      <description>&lt;?xml version="1.0" encoding="UTF-8" standalone="yes"?&gt;
+&lt;REMITUrgentMarketMessages xmlns="http://www.acer.europa.eu/REMIT/REMITUMMElectricitySchema_V2.xsd" xmlns:ns2="http://www.acer.europa.eu/REMIT/REMITUMMCommonSchema_V1.xsd"&gt;
+  &lt;UMM&gt;
+    &lt;messageId&gt;EDF--05470_EDF_T_00332593_003&lt;/messageId&gt;
+    &lt;event&gt;
+      &lt;eventStatus&gt;Active&lt;/eventStatus&gt;
+      &lt;eventType&gt;Production unavailability&lt;/eventType&gt;
+      &lt;eventStart&gt;2026-10-07T07:05:00+00:00&lt;/eventStart&gt;
+      &lt;eventStop&gt;2026-10-09T21:00:00+00:00&lt;/eventStop&gt;
+    &lt;/event&gt;
+    &lt;unavailabilityType&gt;Unplanned&lt;/unavailabilityType&gt;
+    &lt;publicationDateTime&gt;2026-10-08T16:43:37+00:00&lt;/publicationDateTime&gt;
+    &lt;capacity&gt;
+      &lt;unitMeasure&gt;MW&lt;/unitMeasure&gt;
+      &lt;installedCapacity&gt;915&lt;/installedCapacity&gt;
+      &lt;capacityInterval&gt;
+        &lt;intervalStart&gt;2026-10-07T07:05:00+00:00&lt;/intervalStart&gt;
+        &lt;intervalStop&gt;2026-10-09T21:00:00+00:00&lt;/intervalStop&gt;
+        &lt;unavailableCapacity&gt;915&lt;/unavailableCapacity&gt;
+        &lt;availableCapacity&gt;0&lt;/availableCapacity&gt;
+      &lt;/capacityInterval&gt;
+    &lt;/capacity&gt;
+    &lt;unavailabilityReason&gt;Failure&lt;/unavailabilityReason&gt;
+    &lt;remarks&gt;-&lt;/remarks&gt;
+    &lt;fuelType&gt;Nuclear&lt;/fuelType&gt;
+    &lt;biddingZone&gt;10YFR-RTE------C&lt;/biddingZone&gt;
+    &lt;affectedAsset&gt;
+      &lt;ns2:name&gt;CRUAS 1&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17W100P100P0115S&lt;/ns2:eic&gt;
+    &lt;/affectedAsset&gt;
+    &lt;marketParticipant&gt;
+      &lt;ns2:name&gt;EDF&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17X100A100R00182&lt;/ns2:eic&gt;
+    &lt;/marketParticipant&gt;
+  &lt;/UMM&gt;
+&lt;/REMITUrgentMarketMessages&gt;</description>
+      <pubDate>Thu, 08 Oct 2026 18:43:37 +0200</pubDate>
+    </item>
+    <item>
+      <title>2026-11-03T08:00Z - 2026-11-03T16:00Z - Production Unavailability-MALGOVERT</title>
+      <link>https://iip.cloud-rte-france.com/production-unavailability/EDF-05470_EDF_H_00113391</link>
+      <description>&lt;?xml version="1.0" encoding="UTF-8" standalone="yes"?&gt;
+&lt;REMITUrgentMarketMessages xmlns="http://www.acer.europa.eu/REMIT/REMITUMMElectricitySchema_V2.xsd" xmlns:ns2="http://www.acer.europa.eu/REMIT/REMITUMMCommonSchema_V1.xsd"&gt;
+  &lt;UMM&gt;
+    &lt;messageId&gt;EDF--05470_EDF_H_00113391_003&lt;/messageId&gt;
+    &lt;event&gt;
+      &lt;eventStatus&gt;Active&lt;/eventStatus&gt;
+      &lt;eventType&gt;Production unavailability&lt;/eventType&gt;
+      &lt;eventStart&gt;2026-11-03T08:00:00+00:00&lt;/eventStart&gt;
+      &lt;eventStop&gt;2026-11-03T16:00:00+00:00&lt;/eventStop&gt;
+    &lt;/event&gt;
+    &lt;unavailabilityType&gt;Planned&lt;/unavailabilityType&gt;
+    &lt;publicationDateTime&gt;2026-10-08T15:02:36+00:00&lt;/publicationDateTime&gt;
+    &lt;capacity&gt;
+      &lt;unitMeasure&gt;MW&lt;/unitMeasure&gt;
+      &lt;installedCapacity&gt;297&lt;/installedCapacity&gt;
+      &lt;capacityInterval&gt;
+        &lt;intervalStart&gt;2026-11-03T08:00:00+00:00&lt;/intervalStart&gt;
+        &lt;intervalStop&gt;2026-11-03T16:00:00+00:00&lt;/intervalStop&gt;
+        &lt;unavailableCapacity&gt;297&lt;/unavailableCapacity&gt;
+        &lt;availableCapacity&gt;0&lt;/availableCapacity&gt;
+      &lt;/capacityInterval&gt;
+    &lt;/capacity&gt;
+    &lt;unavailabilityReason&gt;Complementary Information&lt;/unavailabilityReason&gt;
+    &lt;remarks&gt;Des variations de puissance pour essais sont possibles --- Power variations are expected due to tests&lt;/remarks&gt;
+    &lt;fuelType&gt;Hydro Water Reservoir&lt;/fuelType&gt;
+    &lt;biddingZone&gt;10YFR-RTE------C&lt;/biddingZone&gt;
+    &lt;affectedAsset&gt;
+      &lt;ns2:name&gt;MALGOVERT&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17W100P100P02853&lt;/ns2:eic&gt;
+    &lt;/affectedAsset&gt;
+    &lt;marketParticipant&gt;
+      &lt;ns2:name&gt;EDF&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17X100A100R00182&lt;/ns2:eic&gt;
+    &lt;/marketParticipant&gt;
+  &lt;/UMM&gt;
+&lt;/REMITUrgentMarketMessages&gt;</description>
+      <pubDate>Thu, 08 Oct 2026 17:02:36 +0200</pubDate>
+    </item>
+    <item>
+      <title>2028-09-29T15:00Z - 2028-10-27T15:00Z - Production Unavailability-BATHIE 3</title>
+      <link>https://iip.cloud-rte-france.com/production-unavailability/EDF-05470_EDF_H_00129944</link>
+      <description>&lt;?xml version="1.0" encoding="UTF-8" standalone="yes"?&gt;
+&lt;REMITUrgentMarketMessages xmlns="http://www.acer.europa.eu/REMIT/REMITUMMElectricitySchema_V2.xsd" xmlns:ns2="http://www.acer.europa.eu/REMIT/REMITUMMCommonSchema_V1.xsd"&gt;
+  &lt;UMM&gt;
+    &lt;messageId&gt;EDF--05470_EDF_H_00129944_002&lt;/messageId&gt;
+    &lt;event&gt;
+      &lt;eventStatus&gt;Active&lt;/eventStatus&gt;
+      &lt;eventType&gt;Production unavailability&lt;/eventType&gt;
+      &lt;eventStart&gt;2028-09-29T15:00:00+00:00&lt;/eventStart&gt;
+      &lt;eventStop&gt;2028-10-27T15:00:00+00:00&lt;/eventStop&gt;
+    &lt;/event&gt;
+    &lt;unavailabilityType&gt;Planned&lt;/unavailabilityType&gt;
+    &lt;publicationDateTime&gt;2026-10-08T15:02:35+00:00&lt;/publicationDateTime&gt;
+    &lt;capacity&gt;
+      &lt;unitMeasure&gt;MW&lt;/unitMeasure&gt;
+      &lt;installedCapacity&gt;100&lt;/installedCapacity&gt;
+      &lt;capacityInterval&gt;
+        &lt;intervalStart&gt;2028-09-29T15:00:00+00:00&lt;/intervalStart&gt;
+        &lt;intervalStop&gt;2028-10-27T15:00:00+00:00&lt;/intervalStop&gt;
+        &lt;unavailableCapacity&gt;100&lt;/unavailableCapacity&gt;
+        &lt;availableCapacity&gt;0&lt;/availableCapacity&gt;
+      &lt;/capacityInterval&gt;
+    &lt;/capacity&gt;
+    &lt;unavailabilityReason&gt;Complementary Information&lt;/unavailabilityReason&gt;
+    &lt;remarks&gt;Des variations de puissance pour essais sont possibles --- Power variations are expected due to tests&lt;/remarks&gt;
+    &lt;fuelType&gt;Hydro Water Reservoir&lt;/fuelType&gt;
+    &lt;biddingZone&gt;10YFR-RTE------C&lt;/biddingZone&gt;
+    &lt;affectedAsset&gt;
+      &lt;ns2:name&gt;BATHIE 3&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17W100P100P03582&lt;/ns2:eic&gt;
+    &lt;/affectedAsset&gt;
+    &lt;marketParticipant&gt;
+      &lt;ns2:name&gt;EDF&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17X100A100R00182&lt;/ns2:eic&gt;
+    &lt;/marketParticipant&gt;
+  &lt;/UMM&gt;
+&lt;/REMITUrgentMarketMessages&gt;</description>
+      <pubDate>Thu, 08 Oct 2026 17:02:35 +0200</pubDate>
+    </item>
+    <item>
+      <title>2026-10-28T08:00Z - 2026-10-28T11:00Z - Production Unavailability-CHASTANG 2</title>
+      <link>https://iip.cloud-rte-france.com/production-unavailability/EDF-05470_EDF_H_00116846</link>
+      <description>&lt;?xml version="1.0" encoding="UTF-8" standalone="yes"?&gt;
+&lt;REMITUrgentMarketMessages xmlns="http://www.acer.europa.eu/REMIT/REMITUMMElectricitySchema_V2.xsd" xmlns:ns2="http://www.acer.europa.eu/REMIT/REMITUMMCommonSchema_V1.xsd"&gt;
+  &lt;UMM&gt;
+    &lt;messageId&gt;EDF--05470_EDF_H_00116846_003&lt;/messageId&gt;
+    &lt;event&gt;
+      &lt;eventStatus&gt;Dismissed&lt;/eventStatus&gt;
+      &lt;eventType&gt;Production unavailability&lt;/eventType&gt;
+      &lt;eventStart&gt;2026-10-28T08:00:00+00:00&lt;/eventStart&gt;
+      &lt;eventStop&gt;2026-10-28T11:00:00+00:00&lt;/eventStop&gt;
+    &lt;/event&gt;
+    &lt;unavailabilityType&gt;Planned&lt;/unavailabilityType&gt;
+    &lt;publicationDateTime&gt;2026-10-08T14:57:36+00:00&lt;/publicationDateTime&gt;
+    &lt;capacity&gt;
+      &lt;unitMeasure&gt;MW&lt;/unitMeasure&gt;
+      &lt;installedCapacity&gt;105&lt;/installedCapacity&gt;
+      &lt;capacityInterval&gt;
+        &lt;intervalStart&gt;2026-10-28T08:00:00+00:00&lt;/intervalStart&gt;
+        &lt;intervalStop&gt;2026-10-28T11:00:00+00:00&lt;/intervalStop&gt;
+        &lt;unavailableCapacity&gt;105&lt;/unavailableCapacity&gt;
+        &lt;availableCapacity&gt;0&lt;/availableCapacity&gt;
+      &lt;/capacityInterval&gt;
+    &lt;/capacity&gt;
+    &lt;unavailabilityReason&gt;Foreseen Maintenance&lt;/unavailabilityReason&gt;
+    &lt;remarks&gt;L'indisponibilité prévue n'aura pas lieu du 28/10/2026 09:00 au 28/10/2026 12:00&lt;/remarks&gt;
+    &lt;fuelType&gt;Hydro Run-of-river and poundage&lt;/fuelType&gt;
+    &lt;biddingZone&gt;10YFR-RTE------C&lt;/biddingZone&gt;
+    &lt;affectedAsset&gt;
+      &lt;ns2:name&gt;CHASTANG 2&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17W100P100P0049F&lt;/ns2:eic&gt;
+    &lt;/affectedAsset&gt;
+    &lt;marketParticipant&gt;
+      &lt;ns2:name&gt;EDF&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17X100A100R00182&lt;/ns2:eic&gt;
+    &lt;/marketParticipant&gt;
+  &lt;/UMM&gt;
+&lt;/REMITUrgentMarketMessages&gt;</description>
+      <pubDate>Thu, 08 Oct 2026 16:57:36 +0200</pubDate>
+    </item>
+    <item>
+      <title>2026-10-30T08:00Z - 2026-10-30T11:00Z - Production Unavailability-CHASTANG 2</title>
+      <link>https://iip.cloud-rte-france.com/production-unavailability/EDF-05470_EDF_H_00116848</link>
+      <description>&lt;?xml version="1.0" encoding="UTF-8" standalone="yes"?&gt;
+&lt;REMITUrgentMarketMessages xmlns="http://www.acer.europa.eu/REMIT/REMITUMMElectricitySchema_V2.xsd" xmlns:ns2="http://www.acer.europa.eu/REMIT/REMITUMMCommonSchema_V1.xsd"&gt;
+  &lt;UMM&gt;
+    &lt;messageId&gt;EDF--05470_EDF_H_00116848_003&lt;/messageId&gt;
+    &lt;event&gt;
+      &lt;eventStatus&gt;Dismissed&lt;/eventStatus&gt;
+      &lt;eventType&gt;Production unavailability&lt;/eventType&gt;
+      &lt;eventStart&gt;2026-10-30T08:00:00+00:00&lt;/eventStart&gt;
+      &lt;eventStop&gt;2026-10-30T11:00:00+00:00&lt;/eventStop&gt;
+    &lt;/event&gt;
+    &lt;unavailabilityType&gt;Planned&lt;/unavailabilityType&gt;
+    &lt;publicationDateTime&gt;2026-10-08T14:56:41+00:00&lt;/publicationDateTime&gt;
+    &lt;capacity&gt;
+      &lt;unitMeasure&gt;MW&lt;/unitMeasure&gt;
+      &lt;installedCapacity&gt;105&lt;/installedCapacity&gt;
+      &lt;capacityInterval&gt;
+        &lt;intervalStart&gt;2026-10-30T08:00:00+00:00&lt;/intervalStart&gt;
+        &lt;intervalStop&gt;2026-10-30T11:00:00+00:00&lt;/intervalStop&gt;
+        &lt;unavailableCapacity&gt;105&lt;/unavailableCapacity&gt;
+        &lt;availableCapacity&gt;0&lt;/availableCapacity&gt;
+      &lt;/capacityInterval&gt;
+    &lt;/capacity&gt;
+    &lt;unavailabilityReason&gt;Foreseen Maintenance&lt;/unavailabilityReason&gt;
+    &lt;remarks&gt;L'indisponibilité prévue n'aura pas lieu du 30/10/2026 09:00 au 30/10/2026 12:00&lt;/remarks&gt;
+    &lt;fuelType&gt;Hydro Run-of-river and poundage&lt;/fuelType&gt;
+    &lt;biddingZone&gt;10YFR-RTE------C&lt;/biddingZone&gt;
+    &lt;affectedAsset&gt;
+      &lt;ns2:name&gt;CHASTANG 2&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17W100P100P0049F&lt;/ns2:eic&gt;
+    &lt;/affectedAsset&gt;
+    &lt;marketParticipant&gt;
+      &lt;ns2:name&gt;EDF&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17X100A100R00182&lt;/ns2:eic&gt;
+    &lt;/marketParticipant&gt;
+  &lt;/UMM&gt;
+&lt;/REMITUrgentMarketMessages&gt;</description>
+      <pubDate>Thu, 08 Oct 2026 16:56:41 +0200</pubDate>
+    </item>
+    <item>
+      <title>2026-10-08T11:30Z - 2026-10-08T15:00Z - Production Unavailability-GRAND MAISON 11</title>
+      <link>https://iip.cloud-rte-france.com/production-unavailability/EDF-05470_EDF_H_00134034</link>
+      <description>&lt;?xml version="1.0" encoding="UTF-8" standalone="yes"?&gt;
+&lt;REMITUrgentMarketMessages xmlns="http://www.acer.europa.eu/REMIT/REMITUMMElectricitySchema_V2.xsd" xmlns:ns2="http://www.acer.europa.eu/REMIT/REMITUMMCommonSchema_V1.xsd"&gt;
+  &lt;UMM&gt;
+    &lt;messageId&gt;EDF--05470_EDF_H_00134034_002&lt;/messageId&gt;
+    &lt;event&gt;
+      &lt;eventStatus&gt;Active&lt;/eventStatus&gt;
+      &lt;eventType&gt;Production unavailability&lt;/eventType&gt;
+      &lt;eventStart&gt;2026-10-08T11:30:00+00:00&lt;/eventStart&gt;
+      &lt;eventStop&gt;2026-10-08T15:00:00+00:00&lt;/eventStop&gt;
+    &lt;/event&gt;
+    &lt;unavailabilityType&gt;Planned&lt;/unavailabilityType&gt;
+    &lt;publicationDateTime&gt;2026-10-08T14:47:36+00:00&lt;/publicationDateTime&gt;
+    &lt;capacity&gt;
+      &lt;unitMeasure&gt;MW&lt;/unitMeasure&gt;
+      &lt;installedCapacity&gt;170&lt;/installedCapacity&gt;
+      &lt;capacityInterval&gt;
+        &lt;intervalStart&gt;2026-10-08T11:30:00+00:00&lt;/intervalStart&gt;
+        &lt;intervalStop&gt;2026-10-08T15:00:00+00:00&lt;/intervalStop&gt;
+        &lt;unavailableCapacity&gt;170&lt;/unavailableCapacity&gt;
+        &lt;availableCapacity&gt;0&lt;/availableCapacity&gt;
+      &lt;/capacityInterval&gt;
+    &lt;/capacity&gt;
+    &lt;unavailabilityReason&gt;Complementary Information&lt;/unavailabilityReason&gt;
+    &lt;remarks&gt;Des variations de puissance pour essais sont possibles --- Power variations are expected due to tests&lt;/remarks&gt;
+    &lt;fuelType&gt;Hydro Pumped Storage&lt;/fuelType&gt;
+    &lt;biddingZone&gt;10YFR-RTE------C&lt;/biddingZone&gt;
+    &lt;affectedAsset&gt;
+      &lt;ns2:name&gt;GRAND MAISON 11&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17W100P100P0060R&lt;/ns2:eic&gt;
+    &lt;/affectedAsset&gt;
+    &lt;marketParticipant&gt;
+      &lt;ns2:name&gt;EDF&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17X100A100R00182&lt;/ns2:eic&gt;
+    &lt;/marketParticipant&gt;
+  &lt;/UMM&gt;
+&lt;/REMITUrgentMarketMessages&gt;</description>
+      <pubDate>Thu, 08 Oct 2026 16:47:36 +0200</pubDate>
+    </item>
+    <item>
+      <title>2026-10-07T18:31Z - 2026-10-08T14:16Z - Production Unavailability-PRAGNERES</title>
+      <link>https://iip.cloud-rte-france.com/production-unavailability/EDF-05470_EDF_H_00134653</link>
+      <description>&lt;?xml version="1.0" encoding="UTF-8" standalone="yes"?&gt;
+&lt;REMITUrgentMarketMessages xmlns="http://www.acer.europa.eu/REMIT/REMITUMMElectricitySchema_V2.xsd" xmlns:ns2="http://www.acer.europa.eu/REMIT/REMITUMMCommonSchema_V1.xsd"&gt;
+  &lt;UMM&gt;
+    &lt;messageId&gt;EDF--05470_EDF_H_00134653_003&lt;/messageId&gt;
+    &lt;event&gt;
+      &lt;eventStatus&gt;Inactive&lt;/eventStatus&gt;
+      &lt;eventType&gt;Production unavailability&lt;/eventType&gt;
+      &lt;eventStart&gt;2026-10-07T18:31:00+00:00&lt;/eventStart&gt;
+      &lt;eventStop&gt;2026-10-08T14:16:00+00:00&lt;/eventStop&gt;
+    &lt;/event&gt;
+    &lt;unavailabilityType&gt;Unplanned&lt;/unavailabilityType&gt;
+    &lt;publicationDateTime&gt;2026-10-08T14:17:36+00:00&lt;/publicationDateTime&gt;
+    &lt;capacity&gt;
+      &lt;unitMeasure&gt;MW&lt;/unitMeasure&gt;
+      &lt;installedCapacity&gt;189&lt;/installedCapacity&gt;
+      &lt;capacityInterval&gt;
+        &lt;intervalStart&gt;2026-10-07T18:31:00+00:00&lt;/intervalStart&gt;
+        &lt;intervalStop&gt;2026-10-08T14:16:00+00:00&lt;/intervalStop&gt;
+        &lt;unavailableCapacity&gt;151&lt;/unavailableCapacity&gt;
+        &lt;availableCapacity&gt;38&lt;/availableCapacity&gt;
+      &lt;/capacityInterval&gt;
+    &lt;/capacity&gt;
+    &lt;unavailabilityReason&gt;Failure&lt;/unavailabilityReason&gt;
+    &lt;fuelType&gt;Hydro Water Reservoir&lt;/fuelType&gt;
+    &lt;biddingZone&gt;10YFR-RTE------C&lt;/biddingZone&gt;
+    &lt;affectedAsset&gt;
+      &lt;ns2:name&gt;PRAGNERES&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17W100P100P02918&lt;/ns2:eic&gt;
+    &lt;/affectedAsset&gt;
+    &lt;marketParticipant&gt;
+      &lt;ns2:name&gt;EDF&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17X100A100R00182&lt;/ns2:eic&gt;
+    &lt;/marketParticipant&gt;
+  &lt;/UMM&gt;
+&lt;/REMITUrgentMarketMessages&gt;</description>
+      <pubDate>Thu, 08 Oct 2026 16:17:36 +0200</pubDate>
+    </item>
+    <item>
+      <title>2026-10-08T05:12Z - 2026-10-08T12:46Z - Production Unavailability-GRAND MAISON 6</title>
+      <link>https://iip.cloud-rte-france.com/production-unavailability/EDF-05470_EDF_H_00134658</link>
+      <description>&lt;?xml version="1.0" encoding="UTF-8" standalone="yes"?&gt;
+&lt;REMITUrgentMarketMessages xmlns="http://www.acer.europa.eu/REMIT/REMITUMMElectricitySchema_V2.xsd" xmlns:ns2="http://www.acer.europa.eu/REMIT/REMITUMMCommonSchema_V1.xsd"&gt;
+  &lt;UMM&gt;
+    &lt;messageId&gt;EDF--05470_EDF_H_00134658_003&lt;/messageId&gt;
+    &lt;event&gt;
+      &lt;eventStatus&gt;Inactive&lt;/eventStatus&gt;
+      &lt;eventType&gt;Production unavailability&lt;/eventType&gt;
+      &lt;eventStart&gt;2026-10-08T05:12:00+00:00&lt;/eventStart&gt;
+      &lt;eventStop&gt;2026-10-08T12:46:00+00:00&lt;/eventStop&gt;
+    &lt;/event&gt;
+    &lt;unavailabilityType&gt;Unplanned&lt;/unavailabilityType&gt;
+    &lt;publicationDateTime&gt;2026-10-08T12:48:36+00:00&lt;/publicationDateTime&gt;
+    &lt;capacity&gt;
+      &lt;unitMeasure&gt;MW&lt;/unitMeasure&gt;
+      &lt;installedCapacity&gt;152&lt;/installedCapacity&gt;
+      &lt;capacityInterval&gt;
+        &lt;intervalStart&gt;2026-10-08T05:12:00+00:00&lt;/intervalStart&gt;
+        &lt;intervalStop&gt;2026-10-08T12:46:00+00:00&lt;/intervalStop&gt;
+        &lt;unavailableCapacity&gt;152&lt;/unavailableCapacity&gt;
+        &lt;availableCapacity&gt;0&lt;/availableCapacity&gt;
+      &lt;/capacityInterval&gt;
+    &lt;/capacity&gt;
+    &lt;unavailabilityReason&gt;Failure&lt;/unavailabilityReason&gt;
+    &lt;remarks&gt;La durée indiquée dans la première version est une durée par défaut qui sera affinée après analyse technique - The duration indicated in the first version is pre-defined and will be reassessed after technical analysis.&lt;/remarks&gt;
+    &lt;fuelType&gt;Hydro Pumped Storage&lt;/fuelType&gt;
+    &lt;biddingZone&gt;10YFR-RTE------C&lt;/biddingZone&gt;
+    &lt;affectedAsset&gt;
+      &lt;ns2:name&gt;GRAND MAISON 6&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17W100P100P0066F&lt;/ns2:eic&gt;
+    &lt;/affectedAsset&gt;
+    &lt;marketParticipant&gt;
+      &lt;ns2:name&gt;EDF&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17X100A100R00182&lt;/ns2:eic&gt;
+    &lt;/marketParticipant&gt;
+  &lt;/UMM&gt;
+&lt;/REMITUrgentMarketMessages&gt;</description>
+      <pubDate>Thu, 08 Oct 2026 14:48:36 +0200</pubDate>
+    </item>
+    <item>
+      <title>2026-10-08T12:00Z - 2026-10-08T14:00Z - Production Unavailability-SAUSSAZ</title>
+      <link>https://iip.cloud-rte-france.com/production-unavailability/EDF-05470_EDF_H_00115860</link>
+      <description>&lt;?xml version="1.0" encoding="UTF-8" standalone="yes"?&gt;
+&lt;REMITUrgentMarketMessages xmlns="http://www.acer.europa.eu/REMIT/REMITUMMElectricitySchema_V2.xsd" xmlns:ns2="http://www.acer.europa.eu/REMIT/REMITUMMCommonSchema_V1.xsd"&gt;
+  &lt;UMM&gt;
+    &lt;messageId&gt;EDF--05470_EDF_H_00115860_002&lt;/messageId&gt;
+    &lt;event&gt;
+      &lt;eventStatus&gt;Dismissed&lt;/eventStatus&gt;
+      &lt;eventType&gt;Production unavailability&lt;/eventType&gt;
+      &lt;eventStart&gt;2026-10-08T12:00:00+00:00&lt;/eventStart&gt;
+      &lt;eventStop&gt;2026-10-08T14:00:00+00:00&lt;/eventStop&gt;
+    &lt;/event&gt;
+    &lt;unavailabilityType&gt;Planned&lt;/unavailabilityType&gt;
+    &lt;publicationDateTime&gt;2026-10-08T10:42:36+00:00&lt;/publicationDateTime&gt;
+    &lt;capacity&gt;
+      &lt;unitMeasure&gt;MW&lt;/unitMeasure&gt;
+      &lt;installedCapacity&gt;150&lt;/installedCapacity&gt;
+      &lt;capacityInterval&gt;
+        &lt;intervalStart&gt;2026-10-08T12:00:00+00:00&lt;/intervalStart&gt;
+        &lt;intervalStop&gt;2026-10-08T14:00:00+00:00&lt;/intervalStop&gt;
+        &lt;unavailableCapacity&gt;150&lt;/unavailableCapacity&gt;
+        &lt;availableCapacity&gt;0&lt;/availableCapacity&gt;
+      &lt;/capacityInterval&gt;
+    &lt;/capacity&gt;
+    &lt;unavailabilityReason&gt;Foreseen Maintenance&lt;/unavailabilityReason&gt;
+    &lt;remarks&gt;L'indisponibilité prévue n'aura pas lieu du 08/10/2026 14:00 au 08/10/2026 16:00&lt;/remarks&gt;
+    &lt;fuelType&gt;Hydro Run-of-river and poundage&lt;/fuelType&gt;
+    &lt;biddingZone&gt;10YFR-RTE------C&lt;/biddingZone&gt;
+    &lt;affectedAsset&gt;
+      &lt;ns2:name&gt;SAUSSAZ&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17W100P100P0309F&lt;/ns2:eic&gt;
+    &lt;/affectedAsset&gt;
+    &lt;marketParticipant&gt;
+      &lt;ns2:name&gt;EDF&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17X100A100R00182&lt;/ns2:eic&gt;
+    &lt;/marketParticipant&gt;
+  &lt;/UMM&gt;
+&lt;/REMITUrgentMarketMessages&gt;</description>
+      <pubDate>Thu, 08 Oct 2026 12:42:36 +0200</pubDate>
+    </item>
+    <item>
+      <title>2026-10-08T06:45Z - 2026-10-08T10:00Z - Production Unavailability-CHEYLAS 2</title>
+      <link>https://iip.cloud-rte-france.com/production-unavailability/EDF-05470_EDF_H_00134674</link>
+      <description>&lt;?xml version="1.0" encoding="UTF-8" standalone="yes"?&gt;
+&lt;REMITUrgentMarketMessages xmlns="http://www.acer.europa.eu/REMIT/REMITUMMElectricitySchema_V2.xsd" xmlns:ns2="http://www.acer.europa.eu/REMIT/REMITUMMCommonSchema_V1.xsd"&gt;
+  &lt;UMM&gt;
+    &lt;messageId&gt;EDF--05470_EDF_H_00134674_002&lt;/messageId&gt;
+    &lt;event&gt;
+      &lt;eventStatus&gt;Inactive&lt;/eventStatus&gt;
+      &lt;eventType&gt;Production unavailability&lt;/eventType&gt;
+      &lt;eventStart&gt;2026-10-08T06:45:00+00:00&lt;/eventStart&gt;
+      &lt;eventStop&gt;2026-10-08T10:00:00+00:00&lt;/eventStop&gt;
+    &lt;/event&gt;
+    &lt;unavailabilityType&gt;Planned&lt;/unavailabilityType&gt;
+    &lt;publicationDateTime&gt;2026-10-08T10:09:36+00:00&lt;/publicationDateTime&gt;
+    &lt;capacity&gt;
+      &lt;unitMeasure&gt;MW&lt;/unitMeasure&gt;
+      &lt;installedCapacity&gt;259&lt;/installedCapacity&gt;
+      &lt;capacityInterval&gt;
+        &lt;intervalStart&gt;2026-10-08T06:45:00+00:00&lt;/intervalStart&gt;
+        &lt;intervalStop&gt;2026-10-08T10:00:00+00:00&lt;/intervalStop&gt;
+        &lt;unavailableCapacity&gt;259&lt;/unavailableCapacity&gt;
+        &lt;availableCapacity&gt;0&lt;/availableCapacity&gt;
+      &lt;/capacityInterval&gt;
+    &lt;/capacity&gt;
+    &lt;unavailabilityReason&gt;Foreseen Maintenance&lt;/unavailabilityReason&gt;
+    &lt;fuelType&gt;Hydro Pumped Storage&lt;/fuelType&gt;
+    &lt;biddingZone&gt;10YFR-RTE------C&lt;/biddingZone&gt;
+    &lt;affectedAsset&gt;
+      &lt;ns2:name&gt;CHEYLAS 2&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17W100P100P0057G&lt;/ns2:eic&gt;
+    &lt;/affectedAsset&gt;
+    &lt;marketParticipant&gt;
+      &lt;ns2:name&gt;EDF&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17X100A100R00182&lt;/ns2:eic&gt;
+    &lt;/marketParticipant&gt;
+  &lt;/UMM&gt;
+&lt;/REMITUrgentMarketMessages&gt;</description>
+      <pubDate>Thu, 08 Oct 2026 12:09:36 +0200</pubDate>
+    </item>
+    <item>
+      <title>2026-10-08T05:12Z - 2026-10-08T13:00Z - Production Unavailability-GRAND MAISON 6</title>
+      <link>https://iip.cloud-rte-france.com/production-unavailability/EDF-05470_EDF_H_00134658</link>
+      <description>&lt;?xml version="1.0" encoding="UTF-8" standalone="yes"?&gt;
+&lt;REMITUrgentMarketMessages xmlns="http://www.acer.europa.eu/REMIT/REMITUMMElectricitySchema_V2.xsd" xmlns:ns2="http://www.acer.europa.eu/REMIT/REMITUMMCommonSchema_V1.xsd"&gt;
+  &lt;UMM&gt;
+    &lt;messageId&gt;EDF--05470_EDF_H_00134658_002&lt;/messageId&gt;
+    &lt;event&gt;
+      &lt;eventStatus&gt;Active&lt;/eventStatus&gt;
+      &lt;eventType&gt;Production unavailability&lt;/eventType&gt;
+      &lt;eventStart&gt;2026-10-08T05:12:00+00:00&lt;/eventStart&gt;
+      &lt;eventStop&gt;2026-10-08T13:00:00+00:00&lt;/eventStop&gt;
+    &lt;/event&gt;
+    &lt;unavailabilityType&gt;Unplanned&lt;/unavailabilityType&gt;
+    &lt;publicationDateTime&gt;2026-10-08T09:30:38+00:00&lt;/publicationDateTime&gt;
+    &lt;capacity&gt;
+      &lt;unitMeasure&gt;MW&lt;/unitMeasure&gt;
+      &lt;installedCapacity&gt;152&lt;/installedCapacity&gt;
+      &lt;capacityInterval&gt;
+        &lt;intervalStart&gt;2026-10-08T05:12:00+00:00&lt;/intervalStart&gt;
+        &lt;intervalStop&gt;2026-10-08T13:00:00+00:00&lt;/intervalStop&gt;
+        &lt;unavailableCapacity&gt;152&lt;/unavailableCapacity&gt;
+        &lt;availableCapacity&gt;0&lt;/availableCapacity&gt;
+      &lt;/capacityInterval&gt;
+    &lt;/capacity&gt;
+    &lt;unavailabilityReason&gt;Failure&lt;/unavailabilityReason&gt;
+    &lt;remarks&gt;La durée indiquée dans la première version est une durée par défaut qui sera affinée après analyse technique - The duration indicated in the first version is pre-defined and will be reassessed after technical analysis.&lt;/remarks&gt;
+    &lt;fuelType&gt;Hydro Pumped Storage&lt;/fuelType&gt;
+    &lt;biddingZone&gt;10YFR-RTE------C&lt;/biddingZone&gt;
+    &lt;affectedAsset&gt;
+      &lt;ns2:name&gt;GRAND MAISON 6&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17W100P100P0066F&lt;/ns2:eic&gt;
+    &lt;/affectedAsset&gt;
+    &lt;marketParticipant&gt;
+      &lt;ns2:name&gt;EDF&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17X100A100R00182&lt;/ns2:eic&gt;
+    &lt;/marketParticipant&gt;
+  &lt;/UMM&gt;
+&lt;/REMITUrgentMarketMessages&gt;</description>
+      <pubDate>Thu, 08 Oct 2026 11:30:38 +0200</pubDate>
+    </item>
+    <item>
+      <title>2026-10-08T06:45Z - 2026-10-08T15:00Z - Production Unavailability-CHEYLAS 2</title>
+      <link>https://iip.cloud-rte-france.com/production-unavailability/EDF-05470_EDF_H_00134674</link>
+      <description>&lt;?xml version="1.0" encoding="UTF-8" standalone="yes"?&gt;
+&lt;REMITUrgentMarketMessages xmlns="http://www.acer.europa.eu/REMIT/REMITUMMElectricitySchema_V2.xsd" xmlns:ns2="http://www.acer.europa.eu/REMIT/REMITUMMCommonSchema_V1.xsd"&gt;
+  &lt;UMM&gt;
+    &lt;messageId&gt;EDF--05470_EDF_H_00134674_001&lt;/messageId&gt;
+    &lt;event&gt;
+      &lt;eventStatus&gt;Active&lt;/eventStatus&gt;
+      &lt;eventType&gt;Production unavailability&lt;/eventType&gt;
+      &lt;eventStart&gt;2026-10-08T06:45:00+00:00&lt;/eventStart&gt;
+      &lt;eventStop&gt;2026-10-08T15:00:00+00:00&lt;/eventStop&gt;
+    &lt;/event&gt;
+    &lt;unavailabilityType&gt;Planned&lt;/unavailabilityType&gt;
+    &lt;publicationDateTime&gt;2026-10-08T06:44:39+00:00&lt;/publicationDateTime&gt;
+    &lt;capacity&gt;
+      &lt;unitMeasure&gt;MW&lt;/unitMeasure&gt;
+      &lt;installedCapacity&gt;259&lt;/installedCapacity&gt;
+      &lt;capacityInterval&gt;
+        &lt;intervalStart&gt;2026-10-08T06:45:00+00:00&lt;/intervalStart&gt;
+        &lt;intervalStop&gt;2026-10-08T15:00:00+00:00&lt;/intervalStop&gt;
+        &lt;unavailableCapacity&gt;259&lt;/unavailableCapacity&gt;
+        &lt;availableCapacity&gt;0&lt;/availableCapacity&gt;
+      &lt;/capacityInterval&gt;
+    &lt;/capacity&gt;
+    &lt;unavailabilityReason&gt;Foreseen Maintenance&lt;/unavailabilityReason&gt;
+    &lt;fuelType&gt;Hydro Pumped Storage&lt;/fuelType&gt;
+    &lt;biddingZone&gt;10YFR-RTE------C&lt;/biddingZone&gt;
+    &lt;affectedAsset&gt;
+      &lt;ns2:name&gt;CHEYLAS 2&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17W100P100P0057G&lt;/ns2:eic&gt;
+    &lt;/affectedAsset&gt;
+    &lt;marketParticipant&gt;
+      &lt;ns2:name&gt;EDF&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17X100A100R00182&lt;/ns2:eic&gt;
+    &lt;/marketParticipant&gt;
+  &lt;/UMM&gt;
+&lt;/REMITUrgentMarketMessages&gt;</description>
+      <pubDate>Thu, 08 Oct 2026 08:44:39 +0200</pubDate>
+    </item>
+    <item>
+      <title>2026-10-08T05:12Z - 2026-10-08T11:13Z - Production Unavailability-GRAND MAISON 6</title>
+      <link>https://iip.cloud-rte-france.com/production-unavailability/EDF-05470_EDF_H_00134658</link>
+      <description>&lt;?xml version="1.0" encoding="UTF-8" standalone="yes"?&gt;
+&lt;REMITUrgentMarketMessages xmlns="http://www.acer.europa.eu/REMIT/REMITUMMElectricitySchema_V2.xsd" xmlns:ns2="http://www.acer.europa.eu/REMIT/REMITUMMCommonSchema_V1.xsd"&gt;
+  &lt;UMM&gt;
+    &lt;messageId&gt;EDF--05470_EDF_H_00134658_001&lt;/messageId&gt;
+    &lt;event&gt;
+      &lt;eventStatus&gt;Active&lt;/eventStatus&gt;
+      &lt;eventType&gt;Production unavailability&lt;/eventType&gt;
+      &lt;eventStart&gt;2026-10-08T05:12:00+00:00&lt;/eventStart&gt;
+      &lt;eventStop&gt;2026-10-08T11:13:00+00:00&lt;/eventStop&gt;
+    &lt;/event&gt;
+    &lt;unavailabilityType&gt;Unplanned&lt;/unavailabilityType&gt;
+    &lt;publicationDateTime&gt;2026-10-08T05:16:36+00:00&lt;/publicationDateTime&gt;
+    &lt;capacity&gt;
+      &lt;unitMeasure&gt;MW&lt;/unitMeasure&gt;
+      &lt;installedCapacity&gt;152&lt;/installedCapacity&gt;
+      &lt;capacityInterval&gt;
+        &lt;intervalStart&gt;2026-10-08T05:12:00+00:00&lt;/intervalStart&gt;
+        &lt;intervalStop&gt;2026-10-08T11:13:00+00:00&lt;/intervalStop&gt;
+        &lt;unavailableCapacity&gt;152&lt;/unavailableCapacity&gt;
+        &lt;availableCapacity&gt;0&lt;/availableCapacity&gt;
+      &lt;/capacityInterval&gt;
+    &lt;/capacity&gt;
+    &lt;unavailabilityReason&gt;Failure&lt;/unavailabilityReason&gt;
+    &lt;remarks&gt;La durée indiquée dans la première version est une durée par défaut qui sera affinée après analyse technique - The duration indicated in the first version is pre-defined and will be reassessed after technical analysis.&lt;/remarks&gt;
+    &lt;fuelType&gt;Hydro Pumped Storage&lt;/fuelType&gt;
+    &lt;biddingZone&gt;10YFR-RTE------C&lt;/biddingZone&gt;
+    &lt;affectedAsset&gt;
+      &lt;ns2:name&gt;GRAND MAISON 6&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17W100P100P0066F&lt;/ns2:eic&gt;
+    &lt;/affectedAsset&gt;
+    &lt;marketParticipant&gt;
+      &lt;ns2:name&gt;EDF&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;17X100A100R00182&lt;/ns2:eic&gt;
+    &lt;/marketParticipant&gt;
+  &lt;/UMM&gt;
+&lt;/REMITUrgentMarketMessages&gt;</description>
+      <pubDate>Thu, 08 Oct 2026 07:16:36 +0200</pubDate>
+    </item>
+  </channel>
+</rss>
