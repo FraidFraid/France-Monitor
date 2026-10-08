@@ -12,11 +12,13 @@ import { lineChart } from './chart.ts';
 import { NBSP, frNumber } from './format.ts';
 import { barRow, emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, valueHtml, type LayerView } from './frame.ts';
 import {
-  OUTAGES_THEME, OUT_LATE_VAR, OUT_LONG_VAR, OUT_MAINT_VAR, OUT_RECENT_VAR, countText, dayMonth, note, parisClock, placeOf, sinceText,
+  OUTAGES_THEME, OUT_LATE_VAR, OUT_LONG_VAR, OUT_MAINT_VAR, OUT_RECENT_VAR, countText, dayMonth, moreNote, note, parisClock, placeOf, sinceText,
 } from './outages-format.ts';
 
 export const TELECOM_TITLE = 'Télécoms mobiles';
 export const TELECOM_PAGE = 20;
+export const TELECOM_DEPT_ROWS = 12;
+export const TELECOM_MAINTENANCE_ROWS = 40;
 const ARCEP_URL = 'https://www.data.gouv.fr/datasets/5f7c7fae9cd6c79b58da3e20/';
 const DAY_MS = 86_400_000;
 const FIGURE_CAPTION = `antennes en panne imprévue depuis moins de 24${NBSP}h`;
@@ -61,10 +63,10 @@ function sections(t: TelecomOutagesResponse, input: TelecomViewInput, isLate: bo
     text: o.operator, value: countText(o.recent, 'récente', 'récentes'), ...mark,
     note: `longues${NBSP}: ${frNumber(o.long, 0)} · maintenances${NBSP}: ${frNumber(o.maintenance, 0)} · voix coupée${NBSP}: ${frNumber(o.voiceCut, 0)} · données coupées${NBSP}: ${frNumber(o.dataCut, 0)}`,
   })).join('');
-  const depts = t.byDept.slice(0, 12).map((d) => listRow({
+  const depts = t.byDept.slice(0, TELECOM_DEPT_ROWS).map((d) => listRow({
     text: placeOf(d.dept), value: countText(d.recent, 'récente', 'récentes'), ...mark,
     ...(canFocus && d.dept !== null ? { data: { dept: d.dept }, link: true } : {}),
-  })).join('');
+  })).join('') + moreNote(t.byDept.length, TELECOM_DEPT_ROWS);
   const evolution = s.newSincePrevious === null || s.resolvedSincePrevious === null || t.previousFile === null
     ? emptyLine('Fichier précédent illisible : comparaison n.d.')
     : kvRow(`Depuis le fichier du ${dayMonth(t.previousFile.day)}`, valueHtml(`${countText(s.newSincePrevious, 'nouvelle', 'nouvelles')} · ${countText(s.resolvedSincePrevious, 'rétablie', 'rétablies')}`));
@@ -76,7 +78,8 @@ function sections(t: TelecomOutagesResponse, input: TelecomViewInput, isLate: bo
   const recentRows = recent.slice(0, shown).map((x) => siteRow(x, now, canFocus, isLate)).join('')
     + (left > 0 ? `<button type="button" class="fmk-link" data-more="recentes">Afficher ${frNumber(Math.min(TELECOM_PAGE, left), 0)} de plus (${countText(left, 'restante', 'restantes')})</button>` : '');
   const maint = t.sites.filter((x) => x.cls === 'maintenance');
-  const maintRows = maint.slice(0, 40).map((x) => siteRow(x, now, canFocus, isLate)).join('')
+  const maintRows = maint.slice(0, TELECOM_MAINTENANCE_ROWS).map((x) => siteRow(x, now, canFocus, isLate)).join('')
+    + moreNote(maint.length, TELECOM_MAINTENANCE_ROWS)
     + (canFocus ? '<button type="button" class="fmk-link" data-option="maintenances">Afficher ou masquer les maintenances sur la carte</button>' : '');
   const points = t.history.map((h) => ({ at: Date.parse(`${h.day}T12:00:00Z`), value: h.recent })).filter((p) => Number.isFinite(p.at));
   const first = points[0];

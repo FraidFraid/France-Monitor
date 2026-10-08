@@ -6,9 +6,10 @@
 // corps d'infobulle calculés ici, dans les propriétés ; tout texte est échappé. Aucune vue importée.
 import type { GeoJSONSourceSpecification, LayerSpecification } from 'maplibre-gl';
 import type { PowerOutagesResponse, TelecomOutagesResponse } from '../../types/index.ts';
+import { parisDayOf } from '../../services/environment-levels.ts';
 import { isArcepFileLate, isOutagesDataLate } from '../../services/outages-levels.ts';
 import { NBSP, formatMw } from '../layer-panel/format.ts';
-import { placeOf } from '../layer-panel/outages-format.ts';
+import { dayMonth, parisClock, placeOf } from '../layer-panel/outages-format.ts';
 import { OUT_LATE_HEX, OUT_LONG_HEX, OUT_MAINT_HEX, OUT_RECENT_HEX } from '../layer-panel/outages-legend.ts';
 import {
   LYR_OUT_POWER_PLANNED, LYR_OUT_POWER_UNPLANNED, LYR_OUT_TELECOM_LONG, LYR_OUT_TELECOM_MAINT, LYR_OUT_TELECOM_RECENT, SRC_OUT_POWER, SRC_OUT_TELECOM,
@@ -41,11 +42,18 @@ const CLASS_HEX: Readonly<Record<'recente' | 'longue' | 'maintenance' | 'sans-da
   recente: OUT_RECENT_HEX, longue: OUT_LONG_HEX, 'sans-date': OUT_LONG_HEX, maintenance: OUT_MAINT_HEX,
 };
 
+/** « 08/10 à 11 h 02 » (Paris) ; « date n.d. » sans date de début lisible. */
+function sinceLabel(since: string | null): string {
+  const t = since === null ? Number.NaN : Date.parse(since);
+  return Number.isFinite(t) ? `${dayMonth(parisDayOf(t))} à ${parisClock(t)}` : 'date n.d.';
+}
+
 function telecomBody(s: TelecomOutagesResponse['sites'][number], late: boolean): string {
   const nature = s.cause === 'maintenance' ? 'maintenance' : s.cls === 'recente' ? `panne imprévue de moins de 24${NBSP}h` : 'panne imprévue';
   return head(`${s.commune ?? 'commune n.d.'} · ${s.operator}`, placeOf(s.dept))
     + row('Hors service', s.techs.join(', ') || 'technologies n.d.')
     + row('Nature', nature)
+    + row('Depuis', sinceLabel(s.since))
     + (s.detail ? note(s.detail) : '')
     + (late ? note('Fichier en retard : couleur retirée.') : '');
 }

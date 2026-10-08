@@ -2,6 +2,7 @@
 // Carte des pannes réseau (spec 2026-10-08 § 2.1, § 2.2) : entités Télécoms et Électricité, couches, infobulle.
 import { describe, expect, it } from 'vitest';
 import type { PowerOutagesResponse } from '../../types/index.ts';
+import { NBSP } from '../layer-panel/format.ts';
 import { OUTAGES_FIXTURE_NOW, powerFixtureResponse, telecomFixtureResponse } from '../layer-panel/outages.fixture.ts';
 import { OUT_LATE_HEX, OUT_LONG_HEX, OUT_MAINT_HEX, OUT_RECENT_HEX } from '../layer-panel/outages-legend.ts';
 import {
@@ -26,6 +27,18 @@ describe('carte des pannes : Télécoms', () => {
     for (const f of fc.features) colors.set(String(f.properties?.cls), String(f.properties?.color));
     expect(colors.get('maintenance')).toBe(OUT_MAINT_HEX);
     expect(colors.get('longue')).toBe(OUT_LONG_HEX);
+  });
+  it('I7 : l’infobulle donne le début de la panne (« Depuis 08/10 à 11 h 02 », heure de Paris), « date n.d. » sans début', () => {
+    const t = telecomFixtureResponse();
+    const site = t.sites.find((s) => s.since !== null) as (typeof t.sites)[number];
+    const parts = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', hour: 'numeric', minute: '2-digit', hourCycle: 'h23' }).formatToParts(Date.parse(site.since as string));
+    const get = (type: string): string => parts.find((p) => p.type === type)?.value ?? '';
+    const expected = `${get('day')}/${get('month')} à ${Number(get('hour'))}${NBSP}h${NBSP}${get('minute')}`;
+    const withSince = telecomFeatures({ ...t, sites: [site] }, OUTAGES_FIXTURE_NOW).features[0].properties?.body as string;
+    expect(withSince).toContain('<span>Depuis</span>');
+    expect(withSince).toContain(`<span>${expected}</span>`);
+    const noDate = telecomFeatures({ ...t, sites: [{ ...site, since: null }] }, OUTAGES_FIXTURE_NOW).features[0].properties?.body as string;
+    expect(noDate).toContain('<span>Depuis</span><span>date n.d.</span>');
   });
   it('fichier en retard (16 h sans nouveau fichier) : tous les points en gris', () => {
     const late = telecomFeatures(telecomFixtureResponse(), LATE_NOW);

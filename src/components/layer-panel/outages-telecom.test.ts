@@ -55,6 +55,22 @@ describe('vue Télécoms (jeu d’essai du 08/10)', () => {
     expect(count(all, /data-site="/g)).toBe(18);
     expect(all).not.toContain('data-more=');
   });
+  it('I4 : départements (12) et maintenances (40) coupés disent « et n autres. », jamais une troncature silencieuse', () => {
+    const t = telecomFixtureResponse();
+    const dept = (i: number) => ({ ...t.byDept[0], dept: String(i + 1).padStart(2, '0'), recent: 1 });
+    const manyDepts = Array.from({ length: 15 }, (_, i) => dept(i));
+    const cut = visibleText(section({ telecom: { ...t, byDept: manyDepts } }, 'departements'));
+    expect(count(section({ telecom: { ...t, byDept: manyDepts } }, 'departements'), /data-dept="/g)).toBe(12);
+    expect(cut).toContain(`et 3${NBSP}autres.`);
+    expect(visibleText(section({ telecom: { ...t, byDept: manyDepts.slice(0, 12) } }, 'departements'))).not.toContain('autres');
+    const maint = t.sites.find((x) => x.cls === 'maintenance') as TelecomSite;
+    const manyMaint = Array.from({ length: 45 }, (_, i) => ({ ...maint, id: `m${i}:Orange` }));
+    const sites = [...t.sites.filter((x) => x.cls !== 'maintenance'), ...manyMaint];
+    const m = section({ telecom: { ...t, sites } }, 'maintenances');
+    expect(count(m, /data-site="/g)).toBe(40);
+    expect(visibleText(m)).toContain(`et 5${NBSP}autres.`);
+    expect(visibleText(section({ telecom: { ...t, sites: [...t.sites.filter((x) => x.cls !== 'maintenance'), ...manyMaint.slice(0, 40)] } }, 'maintenances'))).not.toContain('autres');
+  });
   it('classes et couleurs : récentes en rouge de catégorie, maintenances en gris de catégorie, longues absentes de la liste récente', () => {
     const t = telecomFixtureResponse();
     expect(section({}, 'recentes')).toContain('var(--cat-out-recent)');
