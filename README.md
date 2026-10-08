@@ -53,7 +53,8 @@ The long-term goal is to turn the France prototype into a reusable European comm
 | Wind energy | RTE real-time éolien production by park | 5 min |
 | Hydraulic backbone | Dam levels, barrage signals, Hub'Eau hydrometry | 10 min |
 | DROM energy | Overseas territories grid data (Réunion, Martinique…) | 15 min |
-| Citizen outages | infocoupure.fr scraping — real electricity outage reports | 10 min |
+| Power outages | EDF OpenData unplanned and planned unavailabilities, RTE IIP lines, EDF SEI island signals, Ecowatt (`/api/outages/power`) | 10 min |
+| Telecom outages | ARCEP « sites indisponibles » daily file, outages classed by age and cause: recent < 24 h, long, maintenance (`/api/outages/telecom`) | 10 min |
 
 ### 🛡️ Cyber & Digital Sovereignty
 - **CyberBreachPanel** — live breach & ransomware incident map (RansomwareLive feed)
@@ -153,7 +154,7 @@ The long-term goal is to turn the France prototype into a reusable European comm
 │  ├── health/        SPF / ISS, SOS Médecins, OSCOUR             │
 │  ├── finance/       Boursorama scrape, commodities              │
 │  ├── fires/         NASA FIRMS MODIS + VIIRS                    │
-│  ├── outages/       citizen scraping, ORE, Cloudflare, IODA     │
+│  ├── outages/       power, telecom (ARCEP), Cloudflare, IODA    │
 │  ├── threats.js     Cyber OSINT aggregation (Shodan/Censys)     │
 │  ├── exposure.js    Technical exposure scoring                  │
 │  ├── intelligence/  LLM summarisation + brief v14 (Groq)        │
@@ -302,7 +303,8 @@ Copy `.env.example` to `.env.local` for local dev. On Vercel, configure in **Set
 | Rail disruptions | [SNCF Open Data](https://numerique.sncf.com/startup/api) | REST |
 | Road traffic | [TomTom](https://developer.tomtom.com) | REST + tiles |
 | Health metrics | [Santé Publique France](https://www.santepubliquefrance.fr) | REST |
-| Citizen outages | [infocoupure.fr](https://infocoupure.fr) | HTML scrape |
+| Power outages | EDF OpenData + RTE IIP + EDF SEI + Ecowatt | REST + RSS |
+| Telecom outages | [ARCEP](https://www.arcep.fr) « sites indisponibles » | Daily file |
 | Fuel prices | [data.economie.gouv.fr](https://data.economie.gouv.fr) | REST |
 | Internet outages | [IODA](https://ioda.inetintel.cc.gatech.edu) + [Cloudflare Radar](https://radar.cloudflare.com) | REST |
 | Cyber exposure | [Shodan](https://shodan.io) + [Censys](https://censys.io) | REST |
@@ -362,7 +364,7 @@ france-monitor/
 │   │   ├── NewsHeatmap.ts       # History heatmap grid (day × category)
 │   │   ├── CyberBreachPanel.ts  # Ransomware / breach map panel
 │   │   ├── NuclearPanel.ts      # Nuclear fleet status (4 tabs)
-│   │   ├── OutagesPanel.ts      # Power + telecom outages
+│   │   ├── OutagesPanel.ts      # Internet + cloud outages (power and telecom: layer panels)
 │   │   ├── FranceIntelPanel.ts  # Country Intelligence drawer (ops console) — lazy-loaded
 │   │   ├── ISNRPanel.ts         # Stability index dashboard
 │   │   ├── BarometerWidget.ts   # Multi-domain health barometer
@@ -385,7 +387,8 @@ france-monitor/
 │   │   ├── network-barometer.ts # Internet health signals
 │   │   ├── rte-iip.ts           # RTE IIP RSS (REMIT nuclear notices)
 │   │   ├── nuclear-correlation.ts   # REMIT × RTE correlation
-│   │   ├── outages-scraper.ts   # infocoupure.fr citizen outage scraper
+│   │   ├── outages-power.ts     # Power outages client (/api/outages/power)
+│   │   ├── outages-telecom.ts   # Telecom outages client (/api/outages/telecom)
 │   │   ├── watchdog.ts          # Centralised observability registry
 │   │   └── …
 │   │
