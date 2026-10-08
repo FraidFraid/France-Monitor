@@ -290,7 +290,8 @@ function hasEnergyTension(energy) {
     || energy.fuelTensionLevel === 'MEDIUM'
     || energy.fuelTensionLevel === 'HIGH'
     || energy.fuelTensionLevel === 'CRITICAL'
-    || (energy.fuelTensionAnomalyShare ?? 0) >= 5
+    // Mêmes seuils que FUEL_TENSION_THRESHOLDS (src/services/fuel-tension.ts) : jaune 15 %, orange 25 %.
+    || (energy.fuelTensionAnomalyShare ?? 0) >= 15
     || (energy.fuelPriceDelta7dCents ?? 0) >= 8
     || (energy.fuelPriceDelta30dCents ?? 0) >= 15
   );
@@ -303,7 +304,7 @@ function hasOperationalEnergyStress(energy) {
     || energy.oilVigilanceStatus === 'critical'
     || energy.fuelTensionLevel === 'HIGH'
     || energy.fuelTensionLevel === 'CRITICAL'
-    || (energy.fuelTensionAnomalyShare ?? 0) >= 12
+    || (energy.fuelTensionAnomalyShare ?? 0) >= 25
     || (energy.fuelPriceDelta7dCents ?? 0) >= 12
     || (energy.fuelPriceDelta30dCents ?? 0) >= 20
   );

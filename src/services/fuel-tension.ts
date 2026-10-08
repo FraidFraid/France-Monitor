@@ -33,10 +33,18 @@ export const FUEL_TENSION_THRESHOLDS = {
   mediumDeltaCents: 3,
   highDeltaCents: 7,
   criticalDeltaCents: 12,
-  mediumAnomalyShare: 6,
-  highAnomalyShare: 18,
-  criticalAnomalyShare: 35,
+  // Part des stations en rupture temporaire récente (décision du 08/10/2026 : fond normal 10 à 12 %).
+  mediumAnomalyShare: 15,
+  highAnomalyShare: 25,
+  criticalAnomalyShare: 40,
 } as const;
+
+/**
+ * Une rupture « temporaire » déclarée depuis 30 jours ou plus vaut carburant non vendu : le 08/10/2026,
+ * 364 stations déclaraient une rupture temporaire depuis plus d'un an. Une station à sec depuis moins
+ * longtemps reste une anomalie, pour qu'une pénurie d'un mois reste visible.
+ */
+export const STALE_RUPTURE_DAYS = 30;
 
 interface FuelTensionCacheEntry {
   data: FuelTensionDashboard;
@@ -133,7 +141,7 @@ function getSignalLevel(deltaCents: number | null, anomalyShare: number): FuelTe
     else if (deltaCents >= FUEL_TENSION_THRESHOLDS.mediumDeltaCents) rank = Math.max(rank, 2);
   }
 
-  if (anomalyShare > FUEL_TENSION_THRESHOLDS.criticalAnomalyShare) rank = Math.max(rank, 4);
+  if (anomalyShare >= FUEL_TENSION_THRESHOLDS.criticalAnomalyShare) rank = Math.max(rank, 4);
   else if (anomalyShare >= FUEL_TENSION_THRESHOLDS.highAnomalyShare) rank = Math.max(rank, 3);
   else if (anomalyShare >= FUEL_TENSION_THRESHOLDS.mediumAnomalyShare) rank = Math.max(rank, 2);
 
@@ -292,13 +300,21 @@ function persistHistorySnapshot(
   return buildComparisonMap(findComparisonSnapshot(snapshots, capturedAt));
 }
 
-/** Un carburant est vendu tant que la station n'est pas en rupture définitive (ni prix ni date dans le flux). */
-function isCarried(status: FuelStationFuelStatus | undefined): status is FuelStationFuelStatus {
-  return status !== undefined && status.ruptureType !== 'definitive';
+/**
+ * Un carburant est vendu tant que la station n'est pas en rupture définitive (ni prix ni date dans le flux)
+ * ni en rupture temporaire depuis STALE_RUPTURE_DAYS jours ou plus.
+ */
+function isCarried(status: FuelStationFuelStatus | undefined, now: number): status is FuelStationFuelStatus {
+  if (status === undefined || status.ruptureType === 'definitive') return false;
+  if (status.ruptureType === 'temporaire' && status.ruptureSince) {
+    const since = Date.parse(status.ruptureSince);
+    if (Number.isFinite(since) && now - since >= STALE_RUPTURE_DAYS * 86_400_000) return false;
+  }
+  return true;
 }
 
-function sellsAnyMonitoredFuel(station: FuelStation): boolean {
-  return FUEL_TYPES.some((fuelType) => isCarried(station.fuels[fuelType]));
+function sellsAnyMonitoredFuel(station: FuelStation, now: number): boolean {
+  return FUEL_TYPES.some((fuelType) => isCarried(station.fuels[fuelType], now));
 }
 
 /** Dernier relevé de prix du flux : fraîcheur du flux, distincte de l'âge du prix de chaque station. */
@@ -356,7 +372,7 @@ export function buildDegradedFuelTensionDashboard(departmentCodes = [...NATIONAL
  * Construit le tableau de tension depuis des stations normalisées (fonction pure hors historique local).
  * Une anomalie est un signal d'approvisionnement : seule une rupture temporaire en est une.
  * Une rupture définitive signifie que la station ne vend pas ce carburant (aucun prix, aucune date) :
- * elle est hors dénominateur. Un prix inchangé depuis des jours n'est pas une anomalie.
+ * elle est hors dénominateur, comme une rupture temporaire de STALE_RUPTURE_DAYS jours ou plus. Un prix inchangé depuis des jours n'est pas une anomalie.
  */
 export function buildFuelTensionDashboardFromStations(
   stations: FuelStation[],
@@ -381,13 +397,13 @@ export function buildFuelTensionDashboardFromStations(
 
   for (const departmentCode of scopeDepartmentCodes) {
     const allDepartmentStations = stations.filter((station) => station.departmentCode === departmentCode);
-    const departmentStations = allDepartmentStations.filter(sellsAnyMonitoredFuel);
+    const departmentStations = allDepartmentStations.filter((station) => sellsAnyMonitoredFuel(station, now));
     const departmentName = allDepartmentStations[0]?.departmentName ?? departmentCode;
     const stationAnomalies = new Set<string>();
     const fuelSignals: FuelTensionSignal[] = [];
 
     for (const fuelType of FUEL_TYPES) {
-      const relevantStations = departmentStations.filter((station) => isCarried(station.fuels[fuelType]));
+      const relevantStations = departmentStations.filter((station) => isCarried(station.fuels[fuelType], now));
       const stationCount = relevantStations.length;
       const fuelAnomalies = new Set<string>();
 

@@ -1952,6 +1952,8 @@ export interface FuelStationFuelStatus {
   updatedAt: string | null;
   updateAgeMinutes: number | null;
   ruptureType: 'temporaire' | 'definitive' | null;
+  /** Début de la rupture déclarée (`<carburant>_rupture_debut` du flux), sinon null. */
+  ruptureSince: string | null;
   available: boolean;
 }
 

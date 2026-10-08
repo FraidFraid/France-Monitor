@@ -4,6 +4,7 @@ import type {
   FuelType, OilDashboard, OilFreshnessInfo, OilFreshnessLevel, OilVigilanceStatus,
 } from '../../types/index.ts';
 import type { VigilanceLevel } from '../../services/vigilance.ts';
+import { FUEL_TENSION_THRESHOLDS } from '../../services/fuel-tension.ts';
 import {
   filterFuelPriceSeries, renderFuelPriceChartSvg, type FuelPriceChartRange,
 } from '../../utils/fuelPriceChart.ts';
@@ -323,7 +324,7 @@ function tensionSection(input: OilViewInput): FicheSection {
       .map(([f, v]) => kvRow(`Prix moyen ${FUEL_WORD[f]}`, valueHtml(formatEuro(v)))).join('')
     : '';
   const html = (stale ? staleNote(tension, now) : '')
-    + kvRow('Anomalies nationales', valueHtml(formatPct(n.anomalyShare, 1), !stale && n.anomalyShare >= 18 ? 'orange' : null))
+    + kvRow('Anomalies nationales', valueHtml(formatPct(n.anomalyShare, 1), !stale && n.anomalyShare >= FUEL_TENSION_THRESHOLDS.highAnomalyShare ? 'orange' : null))
     + kvRow('Dernier changement de prix', escapeHtml(`moyenne ${formatAge(n.avgUpdateAgeMinutes)} · médiane ${formatAge(n.medianUpdateAgeMinutes)}`))
     + averages
     + `<h4 class="fmk-eyebrow">${stale ? 'Départements (relevés anciens)' : 'Départements les plus tendus'}</h4>` + rows
