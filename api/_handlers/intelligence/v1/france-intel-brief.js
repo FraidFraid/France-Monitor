@@ -204,7 +204,6 @@ function hasLowImmediateSignals(signalCounts) {
     && signalCounts.cyberAlerts === 0
     && signalCounts.railDisruptions === 0
     && signalCounts.roadIncidents === 0
-    && signalCounts.powerOutages === 0
     && signalCounts.telecomOutages === 0
     && signalCounts.defenseAlerts === 0
     && signalCounts.jammingSignals === 0
@@ -337,9 +336,8 @@ function buildSituationSummary(signalCounts, energy, lang) {
       lines.push(`mobilité sous bruit de fond: ${plural(signalCounts.railDisruptions, 'perturbation ferroviaire', 'perturbations ferroviaires')}, `
         + `${plural(signalCounts.roadIncidents, 'incident routier', 'incidents routiers')}`);
     }
-    if (signalCounts.powerOutages > 0 || signalCounts.telecomOutages > 0) {
-      lines.push(`${plural(signalCounts.powerOutages, 'coupure électrique', 'coupures électriques')}, `
-        + `${plural(signalCounts.telecomOutages, 'incident télécom', 'incidents télécom')}`);
+    if (signalCounts.telecomOutages > 0) {
+      lines.push(plural(signalCounts.telecomOutages, 'incident télécom récent', 'incidents télécom récents'));
     }
     lines.push(...defenseSummaryLines(signalCounts, 'fr'));
     if (energy && hasOperationalEnergyStress(energy)) {
@@ -366,9 +364,8 @@ function buildSituationSummary(signalCounts, energy, lang) {
       lines.push(`mobility background friction: ${countIn('en', signalCounts.railDisruptions, 'rail disruption', 'rail disruptions')}, `
         + `${countIn('en', signalCounts.roadIncidents, 'road incident', 'road incidents')}`);
     }
-    if (signalCounts.powerOutages > 0 || signalCounts.telecomOutages > 0) {
-      lines.push(`${countIn('en', signalCounts.powerOutages, 'power outage', 'power outages')}, `
-        + `${countIn('en', signalCounts.telecomOutages, 'telecom incident', 'telecom incidents')}`);
+    if (signalCounts.telecomOutages > 0) {
+      lines.push(countIn('en', signalCounts.telecomOutages, 'recent telecom incident', 'recent telecom incidents'));
     }
     lines.push(...defenseSummaryLines(signalCounts, 'en'));
     if (energy && hasOperationalEnergyStress(energy)) {
@@ -430,7 +427,7 @@ ${eventsBlock}
 [CONTEXT DATA]
 Posture: ${stabilityLabel} | Pillars: continuity=${axes.continuity} defense=${axes.defense} security=${axes.security} signal=${axes.signal} (0–100, higher = more pressure)
 Cyber pressure: ${cyberLabel} | Severe weather alerts: ${meteoAlertCount}
-Signals: ${signalCounts.criticalNews} critical / ${countIn('en', signalCounts.highNews, 'high headline', 'high headlines')}, ${signalCounts.railDisruptions} rail, ${signalCounts.roadIncidents} road, ${countIn('en', signalCounts.powerOutages, 'power outage', 'power outages')}, ${signalCounts.telecomOutages} telecom, ${sovereigntySignals(signalCounts, 'en')}, ${countIn('en', signalCounts.fireDetections, 'fire', 'fires')}, ${countIn('en', signalCounts.marketStress, 'stressed market line', 'stressed market lines')}
+Signals: ${signalCounts.criticalNews} critical / ${countIn('en', signalCounts.highNews, 'high headline', 'high headlines')}, ${signalCounts.railDisruptions} rail, ${signalCounts.roadIncidents} road, ${signalCounts.telecomOutages} telecom, ${sovereigntySignals(signalCounts, 'en')}, ${countIn('en', signalCounts.fireDetections, 'fire', 'fires')}, ${countIn('en', signalCounts.marketStress, 'stressed market line', 'stressed market lines')}
 Situation summary:
 ${situationSummary}
 Recent headlines (context only, NOT citable):
@@ -461,7 +458,7 @@ ${eventsBlock}
 [DONNÉES DE CONTEXTE]
 Posture : ${stabilityLabel} | Piliers : continuité=${axes.continuity} défense=${axes.defense} sécurité=${axes.security} signal=${axes.signal} (0–100, plus haut = plus de pression)
 Pression cyber : ${cyberLabel} | Alertes météo sévères : ${meteoAlertCount}
-Signaux : ${plural(signalCounts.criticalNews, 'titre critique', 'titres critiques')} / ${plural(signalCounts.highNews, 'élevé', 'élevés')}, ${signalCounts.railDisruptions} rail, ${signalCounts.roadIncidents} route, ${plural(signalCounts.powerOutages, 'coupure élec', 'coupures élec')}, ${signalCounts.telecomOutages} télécom, ${sovereigntySignals(signalCounts, 'fr')}, ${plural(signalCounts.fireDetections, 'feu', 'feux')}, ${plural(signalCounts.marketStress, 'ligne marché sous tension', 'lignes marché sous tension')}
+Signaux : ${plural(signalCounts.criticalNews, 'titre critique', 'titres critiques')} / ${plural(signalCounts.highNews, 'élevé', 'élevés')}, ${signalCounts.railDisruptions} rail, ${signalCounts.roadIncidents} route, ${signalCounts.telecomOutages} télécom, ${sovereigntySignals(signalCounts, 'fr')}, ${plural(signalCounts.fireDetections, 'feu', 'feux')}, ${plural(signalCounts.marketStress, 'ligne marché sous tension', 'lignes marché sous tension')}
 Résumé situationnel :
 ${situationSummary}
 Actualités récentes (contexte seulement, NON citables) :
@@ -526,6 +523,7 @@ export default async function handler(request) {
     fireDetections: typeof body.signalCounts?.fireDetections === 'number' ? Math.round(body.signalCounts.fireDetections) : 0,
     railDisruptions: typeof body.signalCounts?.railDisruptions === 'number' ? Math.round(body.signalCounts.railDisruptions) : 0,
     roadIncidents: typeof body.signalCounts?.roadIncidents === 'number' ? Math.round(body.signalCounts.roadIncidents) : 0,
+    // Anciens clients : champ powerOutages encore envoyé, lu mais jamais cité dans le texte (arbitrage 8 du plan 2026-10-08).
     powerOutages: typeof body.signalCounts?.powerOutages === 'number' ? Math.round(body.signalCounts.powerOutages) : 0,
     telecomOutages: typeof body.signalCounts?.telecomOutages === 'number' ? Math.round(body.signalCounts.telecomOutages) : 0,
     cyberAlerts: typeof body.signalCounts?.cyberAlerts === 'number' ? Math.round(body.signalCounts.cyberAlerts) : 0,

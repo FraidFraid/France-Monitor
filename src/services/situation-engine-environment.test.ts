@@ -16,8 +16,7 @@ const NBSP = ' ';
 
 function baseRawData(overrides: Partial<FranceRawData> = {}): FranceRawData {
   return {
-    newsItems: [], isnrData: null, cyber: null, meteoAlerts: [], floodSegments: [], railTrains: [], roadEvents: [], urbanJamCount: 0, powerOutages: [],
-    telecomOutages: [], cableAlerts: [], gnssDegraded: null, militaryFlightsCount: 0, maritimeCount: 0, activeFires: [], marketData: [], ecowattResponse: null,
+    newsItems: [], isnrData: null, cyber: null, meteoAlerts: [], floodSegments: [], railTrains: [], roadEvents: [], urbanJamCount: 0, telecomOutages: null, cableAlerts: [], gnssDegraded: null, militaryFlightsCount: 0, maritimeCount: 0, activeFires: [], marketData: [], ecowattResponse: null,
     gasState: null, nuclearState: null, eolienLive: null, aisAnomalies: [], timeline: { days: [], lanes: [] }, briefLang: 'fr', oilDashboard: null,
     fuelTensionDashboard: null, ...overrides,
   };

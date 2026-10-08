@@ -6,8 +6,6 @@ import type {
   DetectedSituation,
   MeteoAlert,
   NewsItem,
-  PowerOutage,
-  TelecomOutage,
 } from '../types/index.ts';
 import {
   buildExportFilename,
@@ -27,6 +25,7 @@ import {
   type ExportContext,
 } from './data-export.ts';
 import { roadNationalFixture, roadUrbanFixture } from '../components/layer-panel/traffic.fixture.ts';
+import { telecomFixtureResponse } from '../components/layer-panel/outages.fixture.ts';
 
 // ─── Fixtures typées ──────────────────────────────────────────────────────────
 
@@ -226,36 +225,26 @@ describe('serializeMeteoAlerts', () => {
 });
 
 describe('serializeOutages', () => {
-  it('fusionne électricité (sans point) et télécom (géolocalisé)', () => {
-    const power: PowerOutage[] = [
-      {
-        departmentCode: '29',
-        departmentName: 'Finistère',
-        offGridCount: 3200,
-        totalPDL: 400000,
-        eventCause: 'Tempête Caetano',
-        trend: 'worsening',
-      },
-    ];
-    const telecom: TelecomOutage[] = [
-      {
-        id: 't1',
-        operator: 'Orange',
-        department: 'Finistère',
-        city: 'Brest',
-        voiceStatus: 'HS',
-        dataStatus: 'Degraded',
-        reason: 'Coupure fibre',
-        coordinates: [-4.49, 48.39],
-      },
-    ];
-    const { rows, features } = serializeOutages(power, telecom);
-    assert.equal(rows.length, 2);
-    assert.equal(rows[0].type, 'Électricité');
-    assert.equal(rows[0].foyers, 3200);
-    assert.equal(rows[1].type, 'Télécom');
-    assert.equal(features.length, 1, 'seul le télécom géolocalisé');
-    assert.deepEqual([features[0].lon, features[0].lat], [-4.49, 48.39]);
+  it('exporte les sites de la réponse Télécoms : commune, opérateur, département, classe, début, technologies, sans partie électrique', () => {
+    const t = telecomFixtureResponse();
+    const { rows, columns, features } = serializeOutages(t);
+    assert.equal(rows.length, t.sites.length);
+    assert.deepEqual(columns.map((c) => c.key), ['type', 'operateur', 'departement', 'commune', 'classe', 'debut', 'technologies', 'statutVoix', 'statutData', 'cause', 'lat', 'lon']);
+    const site = t.sites[0];
+    assert.equal(rows[0].type, 'Télécom');
+    assert.equal(rows[0].operateur, site.operator);
+    assert.equal(rows[0].departement, site.dept);
+    assert.equal(rows[0].commune, site.commune);
+    assert.equal(rows[0].classe, 'récente');
+    assert.equal(rows[0].debut, site.since);
+    assert.equal(rows[0].technologies, site.techs.join(', '));
+    assert.equal(features.length, t.sites.length, 'tous les sites sont géolocalisés');
+    assert.deepEqual([features[0].lon, features[0].lat], [site.lon, site.lat]);
+    assert.ok(!JSON.stringify(columns).includes('foyers'));
+    assert.ok(!rows.some((r) => r.type === 'Électricité'));
+  });
+  it('fichier non lu : aucune ligne', () => {
+    assert.deepEqual(serializeOutages(null).rows, []);
   });
 });
 
@@ -320,8 +309,7 @@ function emptyContext(): ExportContext {
     meteoAlerts: [],
     floods: [],
     fires: [],
-    powerOutages: [],
-    telecomOutages: [],
+    telecomOutages: null,
     roadEvents: [],
     roadUrban: null,
   };

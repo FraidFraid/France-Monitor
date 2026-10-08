@@ -20,8 +20,7 @@ import type {
   RoadEvent,
   ActiveFire,
   MarketData,
-  TelecomOutage,
-  PowerOutage,
+  TelecomOutagesResponse,
   EcowattResponse,
   GasNetworkState,
   NuclearState,
@@ -74,8 +73,8 @@ export interface FranceRawData {
   roadEvents: RoadEvent[];
   /** Bouchons des agglomérations collectés par le serveur (TomTom, catégorie 6, § 2.2). */
   urbanJamCount: number;
-  powerOutages: PowerOutage[];
-  telecomOutages: TelecomOutage[];
+  /** Réponse de /api/outages/telecom ; null si non lue : jamais 0 (spec 2026-10-08 § 2.3). */
+  telecomOutages: TelecomOutagesResponse | null;
   /** Navires lents confirmés sur un câble, veille évaluée et AIS frais (§ 2.2) ; AIS muet : aucun. */
   cableAlerts: CableAlert[];
   /** Mailles à précision GNSS dégradée, comptes sans lieu (O17) : phase A, null ; phase B (B28), grille mesurée sur le NACp. */
@@ -230,12 +229,9 @@ function transportPressure(signals: FranceCountrySignals): number {
   );
 }
 
+/** Pannes télécom imprévues récentes (< 24 h) ; source muette (null) : aucune entrée. */
 function telecomPressure(signals: FranceCountrySignals): number {
-  return clamp(scaleCount(signals.telecomOutages, 50_000, 75));
-}
-
-function powerPressure(signals: FranceCountrySignals): number {
-  return clamp(scaleCount(signals.powerOutages, 50_000, 75));
+  return clamp(scaleCount(signals.telecomOutages ?? 0, 50_000, 75));
 }
 
 function weatherPressure(signals: FranceCountrySignals): number {
@@ -277,8 +273,8 @@ function signalPressure(signals: FranceCountrySignals): number {
 /** Pression cyber du pilier Sécurité (arbitrage 12) : réponse cyber à l'heure et pannes du moment. */
 function cyberPressureOf(raw: FranceRawData, nowMs: number): CyberPressureAssessment {
   return computeCyberPressureAssessment(raw.cyber, {
-    powerOutageCount: raw.powerOutages.length,
-    telecomOutageCount: raw.telecomOutages.length,
+    // Pannes télécom imprévues récentes ; l'entrée électrique fabriquée est retirée (spec 2026-10-08 § 2.3).
+    telecomOutageCount: raw.telecomOutages?.summary?.recent ?? 0,
   }, nowMs);
 }
 
@@ -296,7 +292,7 @@ function computeFranceRiskPillars(
   // Continuité : énergie + transport + télécom + pannes + météo
   // (transport n'apparaît PLUS dans social pour éviter le double-comptage)
   const continuity = averageWeighted([
-    { value: Math.max(powerPressure(signals), ecowattPressure(raw, nowMs)), weight: 25 },
+    { value: ecowattPressure(raw, nowMs), weight: 25 },
     { value: fuelPressure(raw), weight: 20 },
     { value: telecomPressure(signals), weight: 15 },
     { value: transportPressure(signals), weight: 25 },
@@ -509,8 +505,7 @@ export function buildFranceSignals(raw: FranceRawData, nowMs: number = Date.now(
     railSevere: raw.railTrains.filter((t) => t.effect === 'supprime' || t.effect === 'retard').length,
     roadIncidents: raw.roadEvents.length + raw.urbanJamCount,
     // Infrastructure
-    powerOutages: raw.powerOutages.length,
-    telecomOutages: raw.telecomOutages.length,
+    telecomOutages: raw.telecomOutages?.summary?.recent ?? null,
     // Cyber (souveraineté § 2.3 ; O1, O6) : alertes CERT-FR en cours, plus les avis qui citent une vulnérabilité ajoutée au catalogue KEV
     // depuis moins de 7 jours ; vulnérabilités exploitées citées par le CERT-FR depuis 30 jours.
     cyberAlerts: cyberPressure.inputs.openAlerts + cyberPressure.inputs.kevAdvisories7d,
@@ -651,7 +646,7 @@ export function computeFranceScoreBreakdown(
 
   const componentsByPillar: Record<FranceScorePillarBreakdown['key'], Array<{ label: string; value: number }>> = {
     continuity: [
-      { label: 'Pression électrique', value: Math.max(powerPressure(signals), ecowattPressure(raw, nowMs)) },
+      { label: 'Pression électrique', value: ecowattPressure(raw, nowMs) },
       { label: 'Carburants & pétrole', value: fuelPressure(raw) },
       { label: 'Transport', value: transportPressure(signals) },
       { label: 'Télécom', value: telecomPressure(signals) },

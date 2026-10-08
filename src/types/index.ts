@@ -1053,8 +1053,8 @@ export interface FranceCountrySignals {
   railSevere: number;
   roadIncidents: number;
   // Infrastructure
-  powerOutages: number;
-  telecomOutages: number;
+  /** Pannes télécom imprévues récentes (< 24 h) du fichier ARCEP ; null : source muette (spec 2026-10-08 § 2.3). */
+  telecomOutages: number | null;
   // Cyber
   cyberAlerts: number;
   cyberCritical: number;

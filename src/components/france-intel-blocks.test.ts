@@ -17,7 +17,7 @@ import {
 function signals(over: Partial<FranceCountrySignals> = {}): FranceCountrySignals {
   return {
     criticalNews: 0, highNews: 0, topNewsCount: 0, meteoAlerts: 0, floodAlerts: 0, fireDetections: 0,
-    railDisruptions: 0, railSevere: 0, roadIncidents: 0, powerOutages: 0, telecomOutages: 0,
+    railDisruptions: 0, railSevere: 0, roadIncidents: 0, telecomOutages: 0,
     cyberAlerts: 0, cyberCritical: 0, militaryFlights: 0, maritimeTrafficFrance: 0,
     defenseAlerts: 0, defenseHigh: 0, jammingSignals: 0, marketStress: 0, ...over,
   };
@@ -26,7 +26,7 @@ function signals(over: Partial<FranceCountrySignals> = {}): FranceCountrySignals
 /** Tuile « Météo » calculée de bout en bout : entrées Environnement, signaux du score, tuiles. */
 function meteoTileFrom(env: ReturnType<typeof buildEnvironmentInputs>) {
   const raw = {
-    newsItems: [], isnrData: null, cyber: null, railTrains: [], roadEvents: [], urbanJamCount: 0, powerOutages: [], telecomOutages: [],
+    newsItems: [], isnrData: null, cyber: null, railTrains: [], roadEvents: [], urbanJamCount: 0, telecomOutages: null,
     cableAlerts: [], gnssDegraded: null, militaryFlightsCount: 0, maritimeCount: 0, marketData: [], ecowattResponse: null, gasState: null,
     nuclearState: null, eolienLive: null, aisAnomalies: [], timeline: { days: [], lanes: [] }, briefLang: 'fr', oilDashboard: null,
     fuelTensionDashboard: null, ...env,
@@ -76,7 +76,7 @@ describe('rendu v1 figé avant extraction (spec 2026-10-01, v1 inchangée)', () 
   const rich = {
     signals: signals({
       cyberAlerts: 24, cyberCritical: 20, railDisruptions: 215, railSevere: 159, militaryFlights: 36,
-      powerOutages: 6, telecomOutages: 1333, meteoAlerts: 10, fireDetections: 29, marketStress: 7, criticalNews: 2,
+      telecomOutages: 1333, meteoAlerts: 10, fireDetections: 29, marketStress: 7, criticalNews: 2,
       jammingSignals: 1,
     }),
     meteo: [
@@ -121,10 +121,21 @@ describe('données partagées des blocs (spec 2026-10-01)', () => {
     expect(DOMAIN_LEVEL).toEqual({ low: 'vert', medium: 'jaune', high: 'orange', critical: 'rouge' });
   });
 
+  it('tuile Pannes : pannes télécoms récentes seules, jamais « élec » ; n.d. et point gris sans fichier ARCEP lu', () => {
+    const tile = (n: number | null) => domainTiles(signals({ telecomOutages: n }), 'fr').find((x) => x.label === 'Pannes');
+    expect(tile(0)).toEqual({ label: 'Pannes', value: 0, meta: 'télécoms récentes', level: 'low' });
+    expect(tile(50)).toMatchObject({ value: 50, level: 'medium' });
+    expect(tile(51)).toMatchObject({ value: 51, level: 'high' });
+    expect(tile(null)).toEqual({ label: 'Pannes', value: null, meta: 'télécoms récentes', level: null });
+    expect(domainTiles(signals({ telecomOutages: 12 }), 'en').find((x) => x.label === 'Outages')?.meta).toBe('recent telecom');
+    expect(JSON.stringify(domainTiles(signals({ telecomOutages: 12 }), 'fr'))).not.toMatch(/élec/);
+    expect(renderDomainsBlock({ signals: signals({ telecomOutages: null }), meteo: [] }, 'fr')).toContain('n.d.');
+  });
+
   it('tuiles Souveraineté du 04/10 : Cyber 3 alertes en cours (pastille orange), Militaire 9 dont 4 français (O9, verte), Défense 0 ; indisponibles : n.d.', () => {
     const base = {
       newsItems: [], isnrData: null, meteoAlerts: [], floodSegments: [], activeFires: [], railTrains: [], roadEvents: [], urbanJamCount: 0,
-      powerOutages: [], telecomOutages: [], maritimeCount: 0, marketData: [], ecowattResponse: null, gasState: null, nuclearState: null,
+      telecomOutages: null, maritimeCount: 0, marketData: [], ecowattResponse: null, gasState: null, nuclearState: null,
       eolienLive: null, aisAnomalies: [], timeline: { days: [], lanes: [] }, briefLang: 'fr' as const, oilDashboard: null, fuelTensionDashboard: null,
     };
     const tile = (label: string, sov: ReturnType<typeof buildSovereigntyInputs>, lang: 'fr' | 'en' = 'fr') => {
@@ -175,7 +186,7 @@ describe('données partagées des blocs (spec 2026-10-01)', () => {
   it('tuile « Météo » du 04/10 (jeux d’essai réels) : vigilance, crues et feux distincts, jamais additionnés ; niveau le plus haut', () => {
     const env = buildEnvironmentInputs(VIGILANCE_FIXTURE(), FLOODS_FIXTURE(), FIRES_FIXTURE(), [], ENV_FIXTURE_NOW);
     const raw = {
-      newsItems: [], isnrData: null, cyber: null, railTrains: [], roadEvents: [], urbanJamCount: 0, powerOutages: [], telecomOutages: [],
+      newsItems: [], isnrData: null, cyber: null, railTrains: [], roadEvents: [], urbanJamCount: 0, telecomOutages: null,
       cableAlerts: [], gnssDegraded: null, militaryFlightsCount: 0, maritimeCount: 0, marketData: [], ecowattResponse: null, gasState: null,
       nuclearState: null, eolienLive: null, aisAnomalies: [], timeline: { days: [], lanes: [] }, briefLang: 'fr', oilDashboard: null,
       fuelTensionDashboard: null, ...env,
@@ -217,7 +228,7 @@ describe('données partagées des blocs (spec 2026-10-01)', () => {
     const now = Date.parse(FIRES_FIXTURE().readAt ?? '') + 2 * 86_400_000 + 60_000;
     const env = buildEnvironmentInputs(null, null, FIRES_FIXTURE(), [], now);
     const raw = {
-      newsItems: [], isnrData: null, cyber: null, railTrains: [], roadEvents: [], urbanJamCount: 0, powerOutages: [], telecomOutages: [],
+      newsItems: [], isnrData: null, cyber: null, railTrains: [], roadEvents: [], urbanJamCount: 0, telecomOutages: null,
       cableAlerts: [], gnssDegraded: null, militaryFlightsCount: 0, maritimeCount: 0, marketData: [], ecowattResponse: null, gasState: null,
       nuclearState: null, eolienLive: null, aisAnomalies: [], timeline: { days: [], lanes: [] }, briefLang: 'fr', oilDashboard: null,
       fuelTensionDashboard: null, ...env,

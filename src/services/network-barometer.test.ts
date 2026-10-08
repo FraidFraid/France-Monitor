@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeCyber, normalizeElec } from './network-barometer.ts';
+import { normalizeCyber, normalizeElec, normalizeTelecom } from './network-barometer.ts';
+import { telecomFixtureResponse } from '../components/layer-panel/outages.fixture.ts';
 import { parisDate } from './ecowatt-official.ts';
 import type { EcowattResponse, EcowattSignal } from '../types/index.ts';
 import { CYBER_FIXTURE, SOV_FIXTURE_NOW } from '../components/layer-panel/sovereignty.fixture.ts';
@@ -42,5 +43,22 @@ describe('normalizeElec — Écowatt national (green/orange/red), jamais un 100 
       interconnections: [], grid: null,
     };
     expect(normalizeElec(yesterday, NOW)).toBeNull();
+  });
+});
+
+describe('normalizeTelecom : 100 moins les pannes imprévues récentes divisées par 50 (arbitrage 7 du plan 2026-10-08)', () => {
+  const withRecent = (recent: number) => {
+    const t = telecomFixtureResponse();
+    return { ...t, summary: t.summary === null ? null : { ...t.summary, recent } };
+  };
+  it('0 → 100, 264 → 95, 5 000 et plus → 0 (jamais négatif)', () => {
+    expect(normalizeTelecom(withRecent(0))).toBe(100);
+    expect(normalizeTelecom(withRecent(264))).toBe(95);
+    expect(normalizeTelecom(withRecent(5000))).toBe(0);
+    expect(normalizeTelecom(withRecent(9000))).toBe(0);
+  });
+  it('source muette (fichier non lu ou sans résumé) : null, composante exclue, jamais 100 par défaut', () => {
+    expect(normalizeTelecom(null)).toBeNull();
+    expect(normalizeTelecom({ ...telecomFixtureResponse(), summary: null })).toBeNull();
   });
 });

@@ -230,7 +230,7 @@ import { fetchGasNetwork, isGasPanelEnabled } from './services/gas.ts';
 import { buildDegradedFuelTensionDashboard, fetchFuelTensionDashboard } from './services/fuel-tension.ts';
 import { readUrlState, writeUrlState } from './utils/urlState.ts';
 import { loadNewsFromCache, saveNewsToCache } from './utils/newsCache.ts';
-import type { DromLiveResponse, NewsItem, FilterState, FuelTensionDashboard, MapLayers, EcowattResponse, ISNRData, LayerConfig, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailTrain, RoadEvent, HydraulicBackboneAsset, MarketData, DetectedSituation, SituationSeverity, ThreatLevel, BiogasState, BiomethaneSite, FireObservationFeedState, CommodityData, VigilanceEcheance } from './types/index.ts';
+import type { DromLiveResponse, NewsItem, FilterState, FuelTensionDashboard, MapLayers, EcowattResponse, ISNRData, LayerConfig, OilDashboard, NetworkOutageState, InfraNetworkState, EventCategory, AisAnomaly, RailTrain, RoadEvent, HydraulicBackboneAsset, MarketData, DetectedSituation, SituationSeverity, ThreatLevel, BiogasState, BiomethaneSite, FireObservationFeedState, CommodityData, VigilanceEcheance } from './types/index.ts';
 import { fetchISNRSynthesis, type NuclearBriefingContext, type EolienBriefingContext, type OilBriefingContext } from './services/isnr-synthesis.ts';
 import type { EolienLive, EolienParkSummary } from './services/eolien/types.ts';
 import { Watchdog } from './services/watchdog.ts';
@@ -1458,9 +1458,6 @@ export class App {
   private currentNuclearState: NuclearState | null = null;
   private nuclearPanel: NuclearPanel | null = null;
   private outagesPanel: OutagesPanel | null = null;
-  /** Anciennes lectures (vides, plus jamais écrites) : gardées jusqu'à ce que la tâche A11 retire leurs lecteurs (score). */
-  private currentPowerOutages: PowerOutage[] = [];
-  private currentTelecomOutages: TelecomOutage[] = [];
   /** Pannes réseau (spec 2026-10-08 panneaux pannes) : dernières lectures des services, partagées par les panneaux, la carte et le score. */
   private currentOutTelecom: TelecomState | null = null;
   private currentOutPower: PowerState | null = null;
@@ -7446,8 +7443,7 @@ export class App {
       ...this.trafficInputs(),
       // Souveraineté : aéronefs, urgences, alertes câbles, mailles GNSS, réponse cyber, disponibilités et pastilles (contrats § 6).
       ...sov,
-      powerOutages:         this.currentPowerOutages,
-      telecomOutages:       this.currentTelecomOutages,
+      telecomOutages:       this.currentOutTelecom?.telecom.data ?? null,
       maritimeCount:        this.currentMaritimeTrafficFranceCount,
       marketData:           this.currentMarketData,
       ecowattResponse:      this.currentEcowattResponse,
@@ -7712,8 +7708,7 @@ export class App {
       ecowatt: this.currentEcowattResponse,
       railTrains: traffic.railTrains,
       roadEvents: traffic.roadEvents,
-      powerOutages: this.currentPowerOutages,
-      telecomOutages: this.currentTelecomOutages,
+      telecomOutages: this.currentOutTelecom?.telecom.data ?? null,
       newsItems: this.newsItems,
       // Sources santé : hors Watchdog, lues dans le panneau des sources avec leur période (spec 2026-10-03 S1).
       sources: [...Watchdog.getSnapshot(), ...healthReportSources(this.statusPanel?.getSources() ?? [])],
@@ -7746,8 +7741,7 @@ export class App {
       floods: env.floodSegments,
       // Toutes les détections en France de la dernière collecte, récurrentes comprises (colonne « récurrent ») : l'export dit tout.
       fires: this.currentFires?.fires.data?.detections ?? [],
-      powerOutages: this.currentPowerOutages,
-      telecomOutages: this.currentTelecomOutages,
+      telecomOutages: this.currentOutTelecom?.telecom.data ?? null,
       roadEvents: this.trafficInputs().roadEvents,
       roadUrban: this.currentRoadTraffic?.urban.data ?? null,
     };
@@ -8101,8 +8095,7 @@ export class App {
       env.floodSegments,
       this.currentEcowattResponse,
       '24h',
-      this.currentTelecomOutages,
-      this.currentPowerOutages,
+      this.currentOutTelecom?.telecom.data ?? null,
     );
 
     // Update map layer

@@ -237,7 +237,8 @@ function defenseTile(s: FranceCountrySignals, lang: Lang): DomainTile {
 }
 
 export function domainTiles(s: FranceCountrySignals, lang: Lang): DomainTile[] {
-  const outages = s.powerOutages + s.telecomOutages;
+  // Pannes télécoms imprévues de moins de 24 h ; fichier ARCEP non lu : « n.d. » et point gris, jamais 0.
+  const outages = s.telecomOutages;
   return [
     cyberTile(s, lang),
     {
@@ -253,8 +254,8 @@ export function domainTiles(s: FranceCountrySignals, lang: Lang): DomainTile[] {
     },
     {
       label: t(lang, 'Pannes', 'Outages'), value: outages,
-      meta: `${t(lang, 'élec', 'power')}\u00a0${s.powerOutages} · ${t(lang, 'télécom', 'telecom')}\u00a0${s.telecomOutages}`,
-      level: outages > 5 ? 'high' : outages > 0 ? 'medium' : 'low',
+      meta: t(lang, 'télécoms récentes', 'recent telecom'),
+      level: outages === null ? null : outages > 50 ? 'high' : outages > 0 ? 'medium' : 'low',
     },
     defenseTile(s, lang),
     meteoTile(s, lang),

@@ -66,8 +66,8 @@ export function briefSignalCounts(s: FranceCountrySignals): Record<string, numbe
     fireDetections:        s.fireDetections,
     railDisruptions:       s.railDisruptions,
     roadIncidents:         s.roadIncidents,
-    powerOutages:          s.powerOutages,
-    telecomOutages:        s.telecomOutages,
+    // Pannes télécom imprévues récentes ; source muette : 0 (le contrat serveur n'a pas d'état « non lu »). Plus de champ powerOutages (spec 2026-10-08 § 2.3).
+    telecomOutages:        s.telecomOutages ?? 0,
     cyberAlerts:           s.cyberAlerts,
     cyberOpenAlerts:       s.cyberOpenAlerts ?? s.cyberAlerts,
     cyberKevAdvisories:    s.cyberKevAdvisories ?? 0,

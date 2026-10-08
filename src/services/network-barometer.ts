@@ -10,14 +10,14 @@
  *  - Tension cyber            5%
  */
 
-import type { CyberResponse, EcowattResponse, TelecomOutage } from '../types/index.ts';
+import type { CyberResponse, EcowattResponse, TelecomOutagesResponse } from '../types/index.ts';
 import type { SpaceWeatherData } from './space-weather.ts';
 import type { InfraNetworkState } from '../types/index.ts';
 import type { EolienLive } from './eolien/types.ts';
 import { fetchEcowatt } from './ecowatt.ts';
 import { ecowattToday } from './ecowatt-official.ts';
 import { fetchNetworkOutages } from './internet-outages.ts';
-import { fetchTelecomOutages } from './outages.ts';
+import { fetchTelecom } from './outages-telecom.ts';
 import { fetchSpaceWeather } from './space-weather.ts';
 import { fetchCyber } from './sovereignty-cyber.ts';
 import { servedCyber } from './sovereignty-inputs.ts';
@@ -79,13 +79,13 @@ export function normalizeElec(data: EcowattResponse, nowMs: number = Date.now())
   return null;
 }
 
-function normalizeTelecom(outages: TelecomOutage[]): number {
-  if (outages.length === 0) return 100;
-  // ARCEP dataset contains only outage/degraded sites, NOT the full network (~50 000 antennes FR).
-  // Thresholds: 0 HS → 100, 500 HS (routine) → 90, 2500 HS → 50, 5000 HS (10% réseau) → 0.
-  // Divisor 50: 5000 / 50 = 100 points de pénalité maximum.
-  const hsSites = outages.filter(o => o.voiceStatus === 'HS' || o.dataStatus === 'HS').length;
-  return Math.max(0, Math.round(100 - (hsSites / 50)));
+/**
+ * Santé télécom : 100 moins les pannes imprévues récentes (< 24 h) du fichier ARCEP, divisées par 50 (arbitrage 7 du plan 2026-10-08).
+ * Fichier non lu : null (composante exclue), jamais un 100 « par défaut ».
+ */
+export function normalizeTelecom(r: TelecomOutagesResponse | null): number | null {
+  if (r === null || r.summary === null) return null;
+  return Math.max(0, Math.round(100 - r.summary.recent / 50));
 }
 
 /** Santé « météo spatiale » ; null si NOAA n'a jamais été lu : composante indisponible, jamais un 100 « calme » par défaut. */
@@ -169,7 +169,7 @@ export async function fetchNetworkBarometer(): Promise<NetworkBarometerResult> {
   const [ecowattRes, bgpRes, telecomRes, spaceRes, cyberRes, infraRes] = await Promise.allSettled([
     fetchEcowatt(),
     fetchNetworkOutages(),
-    fetchTelecomOutages(),
+    fetchTelecom(null),
     fetchSpaceWeather(),
     fetchCyber(null),
     fetchInfraNetwork(),
@@ -178,7 +178,8 @@ export async function fetchNetworkBarometer(): Promise<NetworkBarometerResult> {
   // Vigilance cyber : réponse de /api/sovereignty/cyber, CERT-FR lu et à l'heure (fetchCyber ne rejette jamais) ; sinon composante
   // indisponible, jamais une santé de 100 par défaut.
   const cyber = cyberRes.status === 'fulfilled' ? servedCyber(cyberRes.value.cyber.data, Date.now()) : null;
-  const telecomOutageCount = telecomRes.status === 'fulfilled' ? telecomRes.value.length : 0;
+  const telecomData = telecomRes.status === 'fulfilled' ? telecomRes.value.telecom.data : null;
+  const telecomOutageCount = telecomData?.summary?.recent ?? 0;
   const cloudIncidentCount = infraRes.status === 'fulfilled' && infraRes.value !== null
     ? infraRes.value.datacenters.filter((dc) => dc.status !== 'operational' && dc.status !== 'unknown').length
     : 0;
@@ -186,7 +187,7 @@ export async function fetchNetworkBarometer(): Promise<NetworkBarometerResult> {
   const scores: Partial<Record<WeightKey, number | null>> = {
     elec:    ecowattRes.status  === 'fulfilled' ? normalizeElec(ecowattRes.value)       : null,
     bgp:     bgpRes.status      === 'fulfilled' ? bgpRes.value.nationalScore            : null,
-    telecom: telecomRes.status  === 'fulfilled' ? normalizeTelecom(telecomRes.value)    : null,
+    telecom: normalizeTelecom(telecomData),
     cloud:   infraRes.status === 'fulfilled' && infraRes.value !== null ? normalizeCloud(infraRes.value) : null,
     space:   spaceRes.status    === 'fulfilled' ? normalizeSpace(spaceRes.value)        : null,
     cyber:   cyber !== null ? normalizeCyber(cyber, { telecomOutageCount, cloudIncidentCount }) : null,

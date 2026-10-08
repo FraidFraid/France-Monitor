@@ -29,6 +29,7 @@ import {
   isSovereigntyDataLate,
 } from './sovereignty-levels.ts';
 import { isEmergencyConfirmed } from './traffic-levels.ts';
+import { TELECOM_DISRUPTION_THRESHOLDS } from './outages-levels.ts';
 import { GNSS_MONITOR_ID } from './sovereignty-alerts.ts';
 import { SOVEREIGNTY_SOURCE_DETAILS } from '../config/sovereignty-sources.ts';
 import { DEPARTMENTS } from './stability-index.ts';
@@ -119,10 +120,9 @@ function detectEnergyStress(raw: FranceRawData, nowMs: number = Date.now()): Det
 
   // Besoin : Écowatt orange/rouge ET au moins un autre signal confirmant
   const confirmedByNuclear = nuclearTense ?? false;
-  const confirmedByOutages = raw.powerOutages.length >= 3;
   const confirmedByEolien  = (raw.eolienLive?.production ?? 9999) < 500; // faible vent
 
-  const confirmedBy = [confirmedByNuclear, confirmedByOutages, confirmedByEolien].filter(Boolean).length;
+  const confirmedBy = [confirmedByNuclear, confirmedByEolien].filter(Boolean).length;
   if (confirmedBy === 0) return null;
 
   const severity: SituationSeverity = (level === 'red' || nuclearCritique) ? 'critical'
@@ -135,7 +135,6 @@ function detectEnergyStress(raw: FranceRawData, nowMs: number = Date.now()): Det
   if (level === 'red') drivers.push('Écowatt rouge : signal national RTE');
   else drivers.push('Écowatt orange : signal national RTE');
   if (confirmedByNuclear && nuclear) drivers.push(`Parc nucléaire dégradé : ${unplannedGw(nuclear.unplannedLostMW)} perdus en arrêts imprévus`);
-  if (confirmedByOutages) drivers.push(`${raw.powerOutages.length} pannes électriques signalées`);
   if (confirmedByEolien)  drivers.push(`Production éolienne très faible (< 500 MW)`);
 
   return situation(
@@ -150,9 +149,8 @@ function detectEnergyStress(raw: FranceRawData, nowMs: number = Date.now()): Det
     [
       action('Surveiller Écowatt RTE et les prévisions J+1', 'Analyste énergie', 'monitor'),
       action('Contrôler les REMIT nucléaires en cours', 'Analyste énergie', 'investigate'),
-      action('Vérifier les pannes Enedis sur zones denses', 'Analyste infra', 'cross-check', true),
     ],
-    ['Écowatt RTE', 'REMIT RTE', 'Enedis outages'],
+    ['Écowatt RTE', 'REMIT RTE'],
   );
 }
 
@@ -367,7 +365,7 @@ function detectCyberPressure(raw: FranceRawData, nowMs: number): DetectedSituati
     ...(kevAdvisories.length > 0 ? [advisoriesText] : []),
     ...(claimsHigh ? [`revendications à ${ratioText}, non confirmées`] : []),
   ].join(' ; ');
-  const outageCorrelation = raw.powerOutages.length > 0 || raw.telecomOutages.length > 0;
+  const outageCorrelation = (raw.telecomOutages?.summary?.recent ?? 0) > 0;
   // Lien : la page CERT-FR d'abord (alerte en cours la plus récente, sinon premier avis compté) ; la source des revendications
   // (« Source : Ransomware.live », conditions d'usage) seulement quand elles ouvrent seules la situation.
   const certfrItem = open[0] ?? kevAdvisories[0];
@@ -454,70 +452,49 @@ function detectSocialEscalation(raw: FranceRawData): DetectedSituation | null {
 // ─── Règle 7 : TELECOM_DISRUPTION ────────────────────────────────────────────
 
 const NBSP = '\u00a0';
-const TELECOM_RECENT_MS = 24 * 3_600_000;
 const PARIS_CLOCK = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 
 function fmtInt(n: number): string {
   return n.toLocaleString('fr-FR').replace(/[\u202f\u00a0 ]/g, NBSP);
 }
 
-/** Panne ARCEP sans département (« Inconnu » côté adaptateur, ou vide) : regroupée sous cette clé, jamais affichée telle quelle. */
-const UNKNOWN_DEPT = '';
-const UNKNOWN_DEPT_LABEL = 'département non précisé';
-
-function telecomDeptKey(department: string | undefined): string {
-  const d = department?.trim() ?? '';
-  return d === '' || d.toLowerCase() === 'inconnu' ? UNKNOWN_DEPT : d;
-}
-
 function telecomDeptLabel(code: string): string {
-  if (code === UNKNOWN_DEPT) return UNKNOWN_DEPT_LABEL;
   const name = DEPARTMENTS[code]?.name;
   return name ? `${name} (${code})` : code;
 }
 
-/** « dans le département Nord (59) », ou « sans département précisé ». */
+/** « dans le département Nord (59) ». */
 function telecomDeptPhrase(code: string): string {
-  return code === UNKNOWN_DEPT ? 'sans département précisé' : `dans le département ${telecomDeptLabel(code)}`;
+  return `dans le département ${telecomDeptLabel(code)}`;
 }
 
 /**
- * Le fichier ARCEP est un STOCK de sites hors service (pannes de plusieurs mois comprises), pas un
- * flux d'événements : seules les pannes débutées dans les dernières 24 h (`since`) comptent.
- * Sans date ou plus anciennes, elles ne déclenchent rien.
+ * Le fichier ARCEP est un STOCK de sites hors service (pannes de plusieurs mois comprises) : seules les pannes imprévues récentes
+ * (< 24 h avant la publication du fichier, comptées par la route Télécoms) comptent. Fichier non lu : aucune situation, jamais « 0 site ».
  */
-function detectTelecomDisruption(raw: FranceRawData, nowMs: number = Date.now()): DetectedSituation | null {
-  const stock = raw.telecomOutages.length;
-  const powerCount = raw.powerOutages.length;
-
-  const byDept = new Map<string, number>();
-  let recent = 0;
-  for (const o of raw.telecomOutages) {
-    const t = o.since ? Date.parse(o.since) : NaN;
-    if (Number.isNaN(t) || t > nowMs || nowMs - t > TELECOM_RECENT_MS) continue;
-    recent += 1;
-    const dept = telecomDeptKey(o.department);
-    byDept.set(dept, (byDept.get(dept) ?? 0) + 1);
-  }
-
-  const ranked = [...byDept.entries()].sort((a, b) => b[1] - a[1]);
+function detectTelecomDisruption(raw: FranceRawData): DetectedSituation | null {
+  const t = raw.telecomOutages;
+  if (t === null || t.summary === null) return null;
+  const T = TELECOM_DISRUPTION_THRESHOLDS;
+  const recent = t.summary.recent;
+  const ranked = t.byDept.filter((d) => d.dept !== null).map((d) => [d.dept as string, d.recent] as const);
   const [topDept, topCount] = ranked[0] ?? ['', 0];
 
   const severity: SituationSeverity | null =
-    topCount >= 100 || recent >= 600 ? 'critical'
-    : topCount >= 50 || recent >= 300 ? 'high'
-    : topCount >= 20 ? 'medium'
+    topCount >= T.deptCritical || recent >= T.nationalCritical ? 'critical'
+    : topCount >= T.deptHigh || recent >= T.nationalHigh ? 'high'
+    : topCount >= T.deptMedium ? 'medium'
     : null;
   if (!severity) return null;
 
-  // Les pannes électriques ne font que confirmer : elles ne changent pas la sévérité.
-  const powerConfirms = powerCount >= 3;
-  const confidence = Math.min(0.88, 0.55 + Math.min(0.25, topCount / 400) + (powerConfirms ? 0.05 : 0));
+  const confidence = Math.min(0.88, 0.55 + Math.min(0.25, topCount / 400));
 
   const zones = ranked.slice(0, 3).map(([d]) => telecomDeptLabel(d));
   const plural = recent > 1;
-  const recentText = `${fmtInt(recent)}${NBSP}site${plural ? 's' : ''} mobile${plural ? 's' : ''} tombé${plural ? 's' : ''} en 24${NBSP}h, dont ${fmtInt(topCount)} ${telecomDeptPhrase(topDept)}`;
-  const stockText = `${fmtInt(stock)}${NBSP}site${stock > 1 ? 's' : ''} hors service au total dans le fichier ARCEP du jour, pannes anciennes comprises`;
+  const recentText = `${fmtInt(recent)}${NBSP}site${plural ? 's' : ''} mobile${plural ? 's' : ''} tombé${plural ? 's' : ''} en 24${NBSP}h`
+    + (topCount > 0 ? `, dont ${fmtInt(topCount)} ${telecomDeptPhrase(topDept)}` : '');
+  const stock = t.summary.total;
+  const stockText = `${fmtInt(stock)}${NBSP}site${stock > 1 ? 's' : ''} hors service au total dans le fichier ARCEP, pannes anciennes et maintenances comprises`;
 
   return situation(
     'telecom-disruption',
@@ -527,16 +504,12 @@ function detectTelecomDisruption(raw: FranceRawData, nowMs: number = Date.now())
     'Perturbation télécom significative',
     `${recentText}. ${stockText}.`,
     zones.length > 0 ? zones : ['France'],
-    [
-      recentText,
-      stockText,
-      ...(powerConfirms ? [`${powerCount} pannes électriques en parallèle (confirmation, risque cascade)`] : []),
-    ],
+    [recentText, stockText],
     [
       action('Vérifier le tableau de bord ARCEP pour les incidents opérateurs', 'Analyste télécom', 'investigate', true),
       action('Identifier les zones de concentration d\'incidents', 'IA + analyste télécom', 'cross-check', true),
     ],
-    ['ARCEP', 'Enedis outages', 'IODA'],
+    ['ARCEP'],
   );
 }
 

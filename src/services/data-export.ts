@@ -20,10 +20,10 @@ import {
   type FloodSectionRef,
   type MeteoAlert,
   type NewsItem,
-  type PowerOutage,
   type RoadEvent,
   type RoadUrbanResponse,
-  type TelecomOutage,
+  type TelecomOutagesResponse,
+  type TelecomSiteClass,
 } from '../types/index.ts';
 import { JAM_MAGNITUDE_WORD, ROAD_KIND_WORD, ROAD_SEVERITY_WORD } from '../components/layer-panel/traffic-format.ts';
 
@@ -82,8 +82,8 @@ export interface ExportContext {
   floods: FloodSectionRef[];
   /** Détections en France de la dernière collecte (récurrentes comprises, dites dans une colonne). */
   fires: FireDetection[];
-  powerOutages: PowerOutage[];
-  telecomOutages: TelecomOutage[];
+  /** Réponse de /api/outages/telecom ; null si non lue. */
+  telecomOutages: TelecomOutagesResponse | null;
   roadEvents: RoadEvent[];
   /** Dernière collecte TomTom des agglomérations (bouchons, date du relevé) ; null tant qu'elle n'est pas chargée. */
   roadUrban: Pick<RoadUrbanResponse, 'collectedAt' | 'jams'> | null;
@@ -383,71 +383,54 @@ export function serializeFires(items: FireDetection[]): SerializedLayer {
   return { rows, columns, features };
 }
 
-/** Pannes réseaux — électricité (départementale) + télécom (géolocalisée). */
-export function serializeOutages(power: PowerOutage[], telecom: TelecomOutage[]): SerializedLayer {
+const TELECOM_CLASS_WORD: Record<TelecomSiteClass, string> = { recente: 'récente', longue: 'longue', maintenance: 'maintenance', 'sans-date': 'sans date' };
+
+/** Pannes réseaux : sites mobiles du fichier ARCEP « sites indisponibles », classés par âge et cause, tous géolocalisés. */
+export function serializeOutages(telecom: TelecomOutagesResponse | null): SerializedLayer {
   const columns: ExportColumn[] = [
     { key: 'type', label: 'type_panne' },
     { key: 'operateur', label: 'opérateur' },
-    { key: 'departement', label: 'département' },
-    { key: 'code', label: 'code_département' },
+    { key: 'departement', label: 'code_département' },
     { key: 'commune', label: 'commune' },
-    { key: 'foyers', label: 'foyers_hors_réseau' },
-    { key: 'cause', label: 'cause' },
+    { key: 'classe', label: 'classe' },
+    { key: 'debut', label: 'début' },
+    { key: 'technologies', label: 'technologies' },
     { key: 'statutVoix', label: 'statut_voix' },
     { key: 'statutData', label: 'statut_data' },
-    { key: 'tendance', label: 'tendance' },
+    { key: 'cause', label: 'cause' },
     { key: 'lat', label: 'latitude' },
     { key: 'lon', label: 'longitude' },
   ];
   const rows: ExportRow[] = [];
   const features: ExportFeatureInput[] = [];
 
-  for (const p of power) {
-    // Pannes électriques Enedis : granularité départementale, sans point.
-    rows.push({
-      type: 'Électricité',
-      operateur: 'Enedis',
-      departement: p.departmentName,
-      code: p.departmentCode,
-      commune: null,
-      foyers: p.offGridCount,
-      cause: p.eventCause,
-      statutVoix: null,
-      statutData: null,
-      tendance: p.trend,
-      lat: null,
-      lon: null,
-    });
-  }
-
-  for (const t of telecom) {
-    const [lon, lat] = t.coordinates;
+  for (const t of telecom?.sites ?? []) {
     rows.push({
       type: 'Télécom',
       operateur: t.operator,
-      departement: t.department,
-      code: null,
-      commune: t.city,
-      foyers: null,
-      cause: t.reason,
-      statutVoix: t.voiceStatus,
-      statutData: t.dataStatus,
-      tendance: null,
-      lat,
-      lon,
+      departement: t.dept,
+      commune: t.commune,
+      classe: TELECOM_CLASS_WORD[t.cls],
+      debut: t.since,
+      technologies: t.techs.join(', '),
+      statutVoix: t.voice,
+      statutData: t.data,
+      cause: t.cause,
+      lat: t.lat,
+      lon: t.lon,
     });
-    if (Number.isFinite(lat) && Number.isFinite(lon)) {
+    if (Number.isFinite(t.lat) && Number.isFinite(t.lon)) {
       features.push({
-        lat,
-        lon,
+        lat: t.lat,
+        lon: t.lon,
         properties: {
           type: 'Télécom',
           operateur: t.operator,
-          departement: t.department,
-          commune: t.city,
-          statutVoix: t.voiceStatus,
-          statutData: t.dataStatus,
-          cause: t.reason,
+          departement: t.dept,
+          commune: t.commune,
+          classe: TELECOM_CLASS_WORD[t.cls],
+          debut: t.since,
+          technologies: t.techs.join(', '),
         },
       });
     }
@@ -530,7 +513,7 @@ const LAYER_DEFS: LayerDef[] = [
   { key: 'meteo', label: 'Vigilance météo', serialize: (c) => serializeMeteoAlerts(c.meteoAlerts) },
   { key: 'crues', label: 'Crues', serialize: (c) => serializeFloods(c.floods) },
   { key: 'feux', label: 'Feux actifs', serialize: (c) => serializeFires(c.fires) },
-  { key: 'pannes', label: 'Pannes réseaux', serialize: (c) => serializeOutages(c.powerOutages, c.telecomOutages) },
+  { key: 'pannes', label: 'Pannes réseaux', serialize: (c) => serializeOutages(c.telecomOutages) },
   { key: 'trafic', label: 'Événements routiers (DIR)', serialize: (c) => serializeRoadEvents(c.roadEvents) },
   { key: 'bouchons', label: 'Bouchons des agglomérations (TomTom)', serialize: (c) => serializeUrbanJams(c.roadUrban) },
 ];

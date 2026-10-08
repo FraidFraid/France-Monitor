@@ -3,6 +3,7 @@ import { collectSituationReportData, type SituationReportContext } from './Situa
 import type { DetectedSituation, EcowattHourValue } from '../types/index.ts';
 import { parisDate } from '../services/ecowatt-official.ts';
 import { railOverviewFixture, roadNationalFixture } from './layer-panel/traffic.fixture.ts';
+import { telecomFixtureResponse } from './layer-panel/outages.fixture.ts';
 
 function situation(over: Partial<DetectedSituation> = {}): DetectedSituation {
   return {
@@ -31,8 +32,7 @@ function ctx(over: Partial<SituationReportContext> = {}): SituationReportContext
     },
     railTrains: [],
     roadEvents: [],
-    powerOutages: [],
-    telecomOutages: [],
+    telecomOutages: null,
     newsItems: [],
     sources: [],
     version: null,
@@ -73,5 +73,26 @@ describe('note de situation : signal Transport sur les sources Trafics (spec 202
     expect(s?.level).toBe('orange');
     expect(s?.detail).toBe('7 perturbation(s) ferroviaire(s) majeure(s), 5 incident(s) routier(s) majeur(s).');
     expect(collectSituationReportData(ctx()).domainSignals.find((d) => d.domain === 'Transport')).toBeUndefined();
+  });
+});
+
+describe('note de situation : signal « Pannes réseaux » sur les pannes télécoms récentes (spec 2026-10-08 § 2.3)', () => {
+  const withRecent = (recent: number) => {
+    const t = telecomFixtureResponse();
+    return ctx({ telecomOutages: { ...t, summary: t.summary === null ? null : { ...t.summary, recent } } });
+  };
+  const signal = (c: SituationReportContext) => collectSituationReportData(c).domainSignals.find((d) => d.domain === 'Pannes réseaux');
+
+  it('antennes en panne imprévue depuis moins de 24 h, avec le jour du fichier ARCEP ; jaune sous 50, orange à partir de 50', () => {
+    expect(signal(withRecent(18))).toMatchObject({ level: 'jaune', detail: '18\u00a0antennes en panne imprévue depuis moins de 24\u00a0h (fichier ARCEP du 08/10).' });
+    expect(signal(withRecent(1))?.detail).toBe('1\u00a0antenne en panne imprévue depuis moins de 24\u00a0h (fichier ARCEP du 08/10).');
+    expect(signal(withRecent(49))?.level).toBe('jaune');
+    expect(signal(withRecent(50))?.level).toBe('orange');
+  });
+
+  it('aucune panne récente ou fichier non lu : pas de signal, jamais de ligne électrique', () => {
+    expect(signal(withRecent(0))).toBeUndefined();
+    expect(signal(ctx())).toBeUndefined();
+    expect(JSON.stringify(collectSituationReportData(withRecent(60)))).not.toMatch(/électricité|foyers|PDL/);
   });
 });

@@ -15,8 +15,7 @@ import type {
   EventCategory,
   ISNRData,
   ISNRScore,
-  TelecomOutage,
-  PowerOutage,
+  TelecomOutagesResponse,
 } from '../types/index.ts';
 import { ecowattToday } from './ecowatt-official.ts';
 
@@ -67,8 +66,7 @@ const TIME_RANGE_MS: Record<TimeRange, number> = {
 };
 
 // ═══ Départements (code → nom officiel accentué, Corse comprise) ═══
-// Noms affichés (score, pannes, situations) ; les recherches par nom passent par normalizeDepartmentName (accents, tirets et
-// apostrophes neutralisés).
+// Noms affichés (score, pannes, situations) ; les pannes télécoms sont rattachées par code de département.
 
 export const DEPARTMENTS: Record<string, { name: string; regionCode: string }> = {
   '01': { name: 'Ain', regionCode: '84' },
@@ -351,81 +349,19 @@ export function computeInfraFromEcowatt(ecowatt: EcowattResponse | null, nowMs: 
 }
 
 
-// ═══ Normalisation nom département (pour matching ARCEP fallback) ═══
+// ═══ Scoring pannes ARCEP → composante Infra ═══
 
-function normalizeDepartmentName(s: string): string {
-  return s
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/['-]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-// ═══ Scoring pannes Enedis/ARCEP → composante Infra ═══
-
+/** Pannes télécom imprévues récentes (< 24 h) du département `deptCode` (route Télécoms) ; fichier non lu : aucune composante. */
 export function computeInfraFromOutages(
   deptCode: string,
-  telecom: TelecomOutage[],
-  power: PowerOutage[],
+  telecom: TelecomOutagesResponse | null,
 ): { score: number; label: string; source: string } | null {
-  let bestScore = 0;
-  let bestLabel = '';
-  let bestSource = '';
-
-  // ── PowerOutage (Enedis) ──
-  const po = power.find(p => p.departmentCode === deptCode);
-  if (po && po.totalPDL > 0) {
-    const ratio = po.offGridCount / po.totalPDL;
-    let poScore = 0;
-    if (ratio >= 0.30) poScore = 80;
-    else if (ratio >= 0.15) poScore = 70;
-    else if (ratio >= 0.05) poScore = 50;
-
-    if (poScore > 0 && po.trend === 'worsening') {
-      poScore = Math.min(80, poScore + 10);
-    }
-
-    if (poScore > bestScore) {
-      bestScore = poScore;
-      bestLabel = 'Blackout Zone';
-      bestSource = 'Enedis';
-    }
-  }
-
-  // ── TelecomOutage (ARCEP) ──
-  const deptNorm = normalizeDepartmentName(DEPARTMENTS[deptCode]?.name ?? '');
-
-  const sitesByDept = telecom.filter(t => {
-    // 1. Matching par coordonnées (primaire)
-    if (t.coordinates[0] !== 0 || t.coordinates[1] !== 0) {
-      const resolved = findDepartmentByCoords(t.coordinates[0], t.coordinates[1]);
-      if (resolved !== null) return resolved === deptCode;
-    }
-    // 2. Fallback : matching normalisé sur le nom du département
-    return normalizeDepartmentName(t.department) === deptNorm;
-  });
-
-  const hsCount = sitesByDept.filter(
-    t => t.voiceStatus === 'HS' || t.dataStatus === 'HS',
-  ).length;
-  const degradedOrHsCount = sitesByDept.filter(
-    t => t.voiceStatus !== 'OK' || t.dataStatus !== 'OK',
-  ).length;
-
+  const n = telecom?.byDept.find((d) => d.dept === deptCode)?.recent ?? 0;
   let telecomScore = 0;
-  if (hsCount >= 5) telecomScore = 65;
-  else if (degradedOrHsCount >= 3) telecomScore = 50;
-
-  if (telecomScore > bestScore) {
-    bestScore = telecomScore;
-    bestLabel = 'Panne Réseau';
-    bestSource = 'ARCEP';
-  }
-
-  if (bestScore === 0) return null;
-  return { score: bestScore, label: bestLabel, source: bestSource };
+  if (n >= 5) telecomScore = 65;
+  else if (n >= 3) telecomScore = 50;
+  if (telecomScore === 0) return null;
+  return { score: telecomScore, label: 'Panne Réseau', source: 'ARCEP' };
 }
 
 // ═══ Calcul ISNR Principal ═══
@@ -436,8 +372,7 @@ export function computeISNR(
   floodSegments: FloodSectionRef[],
   ecowatt: EcowattResponse | null,
   timeRange: TimeRange,
-  telecomOutages: TelecomOutage[],
-  powerOutages: PowerOutage[],
+  telecomOutages: TelecomOutagesResponse | null,
   nowMs: number = Date.now(),
 ): ISNRData {
   const now = new Date(nowMs);
@@ -470,7 +405,7 @@ export function computeISNR(
     const infraFromEvents = computeDimensionScore(items, INFRA_CATEGORIES);
     const infraFromMeteo = computeInfraFromMeteo(meteoAlerts, code);
     const infraFromFlood = computeInfraFromFloods(floodSegments);
-    const infraFromOutages = computeInfraFromOutages(code, telecomOutages, powerOutages);
+    const infraFromOutages = computeInfraFromOutages(code, telecomOutages);
     const infra = Math.round(Math.min(100, Math.max(
       infraFromEvents, infraFromMeteo, infraFromFlood, infraFromEcowatt,
       infraFromOutages?.score ?? 0,

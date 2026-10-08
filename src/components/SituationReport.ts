@@ -17,12 +17,12 @@ import type {
   ISNRData,
   MeteoAlert,
   NewsItem,
-  PowerOutage,
-  TelecomOutage,
+  TelecomOutagesResponse,
   RailTrain,
   RoadEvent,
   WatchdogSnapshot,
 } from '../types/index.ts';
+import { dayMonth } from './layer-panel/format.ts';
 import { eventLevel, isnrLevel, levelVigilanceWord, situationLevel } from '../services/vigilance.ts';
 import { ecowattLevelLabel, ecowattToday } from '../services/ecowatt-official.ts';
 import {
@@ -51,8 +51,8 @@ export interface SituationReportContext {
   railTrains: RailTrain[];
   /** Événements en cours du réseau routier national (DIR, § 2.1). */
   roadEvents: RoadEvent[];
-  powerOutages: PowerOutage[];
-  telecomOutages: TelecomOutage[];
+  /** Réponse de /api/outages/telecom ; null si non lue. */
+  telecomOutages: TelecomOutagesResponse | null;
   newsItems: NewsItem[];
   sources: WatchdogSnapshot[];
   version: string | null;
@@ -168,21 +168,15 @@ function buildDomainSignals(ctx: SituationReportContext): ReportDomainSignal[] {
     });
   }
 
-  // Pannes réseaux — électricité (PDL hors réseau) et/ou télécom dégradé/HS.
-  const powerActive = ctx.powerOutages.filter((p) => p.offGridCount > 0);
-  const telecomActive = ctx.telecomOutages.filter((t) => t.voiceStatus !== 'OK' || t.dataStatus !== 'OK');
-  if (powerActive.length > 0 || telecomActive.length > 0) {
-    const totalOff = powerActive.reduce((sum, p) => sum + p.offGridCount, 0);
-    const parts: string[] = [];
-    if (powerActive.length > 0) {
-      parts.push(`${powerActive.length} département(s) touché(s) (électricité, ~${totalOff.toLocaleString('fr-FR')} foyers)`);
-    }
-    if (telecomActive.length > 0) parts.push(`${telecomActive.length} site(s) télécom dégradés/HS`);
+  // Pannes réseaux : sites mobiles tombés depuis moins de 24 h (fichier ARCEP) ; l'électricité n'a pas de source ouverte fiable.
+  const recent = ctx.telecomOutages?.summary?.recent ?? 0;
+  if (recent > 0) {
+    const file = ctx.telecomOutages?.file ?? null;
     signals.push({
       domain: 'Pannes réseaux',
       levelLabel: 'Actives',
-      level: totalOff >= 5000 || telecomActive.length >= 5 ? 'orange' : 'jaune',
-      detail: `${parts.join(', ')}.`,
+      level: recent >= 50 ? 'orange' : 'jaune',
+      detail: `${recent}\u00a0antenne${recent > 1 ? 's' : ''} en panne imprévue depuis moins de 24\u00a0h${file ? ` (fichier ARCEP du ${dayMonth(file.day)})` : ''}.`,
     });
   }
 
