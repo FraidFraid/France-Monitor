@@ -209,6 +209,14 @@ export const LYR_SOV_GNSS_LINE = 'sov-gnss-line';
 export const SRC_SOV_DRONES = 'sov-drones-src';
 export const LYR_SOV_DRONES_FILL = 'sov-drones-fill';
 export const LYR_SOV_DRONES_LINE = 'sov-drones-line';
+// ─── Pannes réseau (spec 2026-10-08) : deckgl/outages-map.ts ───
+export const SRC_OUT_TELECOM = 'out-telecom-src';
+export const SRC_OUT_POWER = 'out-power-src';
+export const LYR_OUT_TELECOM_LONG = 'out-telecom-long';
+export const LYR_OUT_TELECOM_RECENT = 'out-telecom-recent';
+export const LYR_OUT_TELECOM_MAINT = 'out-telecom-maint';
+export const LYR_OUT_POWER_PLANNED = 'out-power-planned';
+export const LYR_OUT_POWER_UNPLANNED = 'out-power-unplanned';
 export const LYR_TELECOM_PTS = 'telecom-pts';
 export const LYR_POWER_FILL = 'power-fill';
 export const LYR_POWER_LINE = 'power-line';

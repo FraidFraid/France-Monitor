@@ -46,10 +46,14 @@ import {
 } from './deckgl/sovereignty-map.ts';
 import { SOV_B_LAYERS, SOV_B_SOURCE_IDS, droneZoneFeatures, gnssCellFeatures, sovBSourceSpec } from './deckgl/sovereignty-map-b.ts';
 import {
-  SRC_SOV_AIRCRAFT, SRC_SOV_AIRCRAFT_ABROAD, SRC_SOV_CABLE_VESSELS, SRC_SOV_DRONES, SRC_SOV_EMERGENCIES, SRC_SOV_GNSS, SRC_SOV_NAVY, SRC_SOV_OSM_WORKS,
+  OUT_HOVER_LAYERS, OUT_LAYERS, OUT_LAYER_KEYS, OUT_MAINTENANCE_LAYER, OUT_SOURCE_IDS, outSourceSpec, outTooltipHtml, powerFeatures, telecomFeatures, topOutHit,
+} from './deckgl/outages-map.ts';
+import {
+  SRC_OUT_POWER, SRC_OUT_TELECOM, SRC_SOV_AIRCRAFT, SRC_SOV_AIRCRAFT_ABROAD, SRC_SOV_CABLE_VESSELS, SRC_SOV_DRONES, SRC_SOV_EMERGENCIES, SRC_SOV_GNSS, SRC_SOV_NAVY,
+  SRC_SOV_OSM_WORKS,
 } from './deckgl/constants.ts';
 import { NAVY_HEX, SOV_ABROAD_HEX } from './layer-panel/sovereignty-legend.ts';
-import type { CablesWatchResponse, DefenseOsmWorksFile, DroneZonesFile, GnssResponse, MilitaryResponse, SubseaCablesFile } from '../types/index.ts';
+import type { CablesWatchResponse, DefenseOsmWorksFile, DroneZonesFile, GnssResponse, MilitaryResponse, PowerOutagesResponse, SubseaCablesFile, TelecomOutagesResponse } from '../types/index.ts';
 import {
   VESSEL_TYPE_HEX, type VesselCategory, airAltitudeHex, vesselCategory, vesselHex, vesselTypeLabel,
 } from './layer-panel/traffic-legend.ts';
@@ -452,6 +456,10 @@ export class DeckGLMap {
   private sovHoverShown = false;
   private osmWorksVisible = false;
   private droneZonesVisible = false;
+  // Pannes réseau (spec 2026-10-08) : infobulle au survol, option des maintenances télécoms (éteinte par défaut).
+  private outHoverPopup: maplibregl.Popup | null = null;
+  private outHoverShown = false;
+  private telecomMaintenanceOn = false;
   private onSovereigntyFeatureClick: ((layerId: string, props: Record<string, unknown>) => void) | null = null;
   private sovCables: SubseaCablesFile | null = null;
   private sovCableWatch: CablesWatchResponse | null = null;
@@ -885,6 +893,8 @@ export class DeckGLMap {
     this.map.addSource(SRC_MILITARY_SHIPS_SELECTED, { type: 'geojson', data: emptyFC() });
     // Souveraineté (spec 2026-10-04 souveraineté § 2) : aéronefs, urgences, Marine nationale, ouvrages OSM, navires près d'un câble.
     for (const id of SOV_SOURCE_IDS) this.map.addSource(id, sovSourceSpec());
+    // Pannes réseau (spec 2026-10-08) : sites ARCEP et unités de production en panne.
+    for (const id of OUT_SOURCE_IDS) this.map.addSource(id, outSourceSpec());
     this.map.addSource(SRC_GLOBAL_TRAFFIC, { type: 'geojson', data: emptyFC() });
 
     // Câbles (Connectivité) : vides jusqu'à updateCablesLayer (fichier du Shom et d'OpenStreetMap), l'ancien fichier dessiné à la main n'est plus lu.
@@ -2771,6 +2781,8 @@ export class DeckGLMap {
 
     // ─── Souveraineté (contrats § 5) : couches de deckgl/sovereignty-map.ts, au-dessus des câbles, masquées jusqu'à setLayerVisibility ───
     for (const layer of SOV_LAYERS) this.map.addLayer(layer);
+    // Pannes réseau (deckgl/outages-map.ts) : même rang, masquées jusqu'à setLayerVisibility.
+    for (const layer of OUT_LAYERS) this.map.addLayer(layer);
 
     // ─── Citizen Outage Zones (crowd-sourced clusters) ───
     // Toujours violet (matching légende) — l'intensité varie selon severity
@@ -3526,6 +3538,7 @@ export class DeckGLMap {
     this.initEnvironmentInteractions();
     // Couches Souveraineté : infobulle au survol, clic transmis à App.ts (initSovereigntyInteractions).
     this.initSovereigntyInteractions();
+    this.initOutagesInteractions();
 
 
     this.map.on('mouseenter', LYR_DROM_ENERGY_POINTS, () => {
@@ -8592,7 +8605,7 @@ export class DeckGLMap {
       // Surfaces départementales exclues (comme la vigilance et la météo des forêts) : elles couvrent la carte et bloqueraient le profil radar ; séismes et marégraphes restent.
       ...ENV_HOVER_LAYERS.filter((id) => id !== LYR_WEATHER_FILL && id !== LYR_FOREST_DANGER_FILL && id !== LYR_DROUGHT_FILL && id !== LYR_AIR_FILL), LYR_WEATHER_ICONS,
       LYR_POINTS, LYR_CLUSTER_CIRCLE, LYR_TELECOM_PTS, LYR_MILITARY_BASES_CIRCLE, LYR_HOSPITALS,
-      ...Object.values(TRAFFIC_LAYER_KEYS).flat(), ...SOV_HOVER_LAYERS,
+      ...Object.values(TRAFFIC_LAYER_KEYS).flat(), ...OUT_HOVER_LAYERS, ...SOV_HOVER_LAYERS,
     ].filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
     return ids.length > 0 && map.queryRenderedFeatures(point, { layers: ids }).length > 0;
   }
@@ -9564,6 +9577,53 @@ export class DeckGLMap {
     });
   }
 
+  // ─── Pannes réseau (spec 2026-10-08 § 2.1, § 2.2) : carte WebGL seulement ───
+
+  /** Sites ARCEP du dernier fichier lu : récents en rouge, plus anciens en orange, maintenances en option ; fichier en retard : gris. */
+  updateOutagesTelecom(t: TelecomOutagesResponse | null, now: number): void {
+    (this.map?.getSource(SRC_OUT_TELECOM) as maplibregl.GeoJSONSource | undefined)?.setData(telecomFeatures(t, now));
+    this.hideOutagesHover();
+  }
+
+  /** Unités de production en arrêt imprévu ou en maintenance, placées par la liste d'emplacements (sans emplacement : non dessinées). */
+  updateOutagesPower(p: PowerOutagesResponse | null, now: number): void {
+    (this.map?.getSource(SRC_OUT_POWER) as maplibregl.GeoJSONSource | undefined)?.setData(powerFeatures(p, now));
+    this.hideOutagesHover();
+  }
+
+  /** Option « maintenances » de la couche Télécoms, éteinte par défaut : visible seulement couche active. */
+  setTelecomMaintenanceVisible(on: boolean): void {
+    this.telecomMaintenanceOn = on;
+    this.setVis(OUT_MAINTENANCE_LAYER, on && (this.currentLayers?.outagesTelecom ?? false) ? 'visible' : 'none');
+  }
+
+  private hideOutagesHover(): void {
+    if (!this.outHoverShown) return;
+    this.outHoverShown = false;
+    this.outHoverPopup?.remove();
+  }
+
+  /** Couches Pannes réseau : une infobulle préparée avec la donnée (couche du dessus, texte échappé). */
+  private initOutagesInteractions(): void {
+    const map = this.map;
+    if (!map) return;
+    map.on('mousemove', (e) => {
+      const layers = OUT_HOVER_LAYERS.filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+      const hit = topOutHit(layers.length > 0 ? map.queryRenderedFeatures(e.point, { layers }) : []);
+      const html = hit ? outTooltipHtml(hit.layer.id, hit.properties ?? {}) : null;
+      if (!html) {
+        this.hideOutagesHover();
+        return;
+      }
+      this.outHoverShown = true;
+      const popup = this.outHoverPopup
+        ?? new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12, maxWidth: '300px', className: 'dark-popup hm-hover' });
+      this.outHoverPopup = popup;
+      popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
+    });
+    map.on('mouseout', () => this.hideOutagesHover());
+  }
+
   // ─── Military Layers ───
 
   /** Mailles GNSS jaunes et orange du jour UTC précédent (hors de France en gris, dégradation générale du jour en contour seul). */
@@ -10137,6 +10197,11 @@ export class DeckGLMap {
     this.refreshAisLayers();
     // Connectivité : câbles du Shom et d'OpenStreetMap, atterrages, navires signalés ; halo animé seulement couche visible (audit 30).
     for (const id of SOV_LAYER_KEYS.subseaCables) this.setVis(id, vis(layers.subseaCables));
+    // Pannes réseau : Télécoms (sites récents et anciens ; maintenances en option) et Électricité (unités en arrêt imprévu et en maintenance).
+    for (const id of OUT_LAYER_KEYS.outagesTelecom) this.setVis(id, vis(layers.outagesTelecom));
+    for (const id of OUT_LAYER_KEYS.outagesElec) this.setVis(id, vis(layers.outagesElec));
+    this.setVis(OUT_MAINTENANCE_LAYER, vis(layers.outagesTelecom && this.telecomMaintenanceOn));
+    this.hideOutagesHover();
     if (layers.subseaCables) this.startSubseaPulseAnimation();
     else this.stopSubseaPulseAnimation();
     this.hideSovereigntyHover();

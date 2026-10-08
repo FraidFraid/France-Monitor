@@ -29,6 +29,9 @@
   --cat-secheresse-vigilance: #7fb3d5;
   /* Souveraineté, phase B (spec 2026-10-04 souveraineté § 3) : zones drones DGAC, indice Kp calme (G0), registre des gels */
   --cat-zone-drone: #5e5ce6; --cat-kp-calme: #64d2ff; --cat-gels: #ac8e68;
+  /* Pannes réseau (spec 2026-10-08) : panne imprévue de moins de 24 h, panne imprévue plus ancienne, maintenance ; jamais une couleur de
+     niveau ; valeurs reprises dans layer-panel/outages-legend.ts pour la carte (vérifié par test) */
+  --cat-out-recent: #ef4444; --cat-out-long: #f97316; --cat-out-maint: #a1a1aa;
   /* Background */
   --bg-primary: #0a0a0f;
   --bg-secondary: #12121a;

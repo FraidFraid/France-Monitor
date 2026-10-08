@@ -14,7 +14,7 @@ import type { CopernicusScene, SatelliteCollection } from '../types/index.ts';
 import type { EolienLive, EolienParkSummary } from '../services/eolien/types.ts';
 import { fetchDromEnergyDashboard, type DromEnergyAsset, type DromEnergyDashboard } from '../services/drom-energy/index.ts';
 import type { Radar2dManifest } from '../services/radar-2d.ts';
-import type { CablesWatchResponse, DefenseOsmWorksFile, DroneZonesFile, GnssResponse, MilitaryResponse, SubseaCablesFile } from '../types/index.ts';
+import type { CablesWatchResponse, DefenseOsmWorksFile, DroneZonesFile, GnssResponse, MilitaryResponse, PowerOutagesResponse, SubseaCablesFile, TelecomOutagesResponse } from '../types/index.ts';
 import type { AirQualityResponse, DroughtResponse, EarthquakesResponse, FiresResponse, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
 import type { UrgencesSyndrome } from './layer-panel/health-format.ts';
 
@@ -606,6 +606,19 @@ export class MapContainer {
 
   updateOsmWorks(file: DefenseOsmWorksFile | null): void {
     this.deckMap?.updateOsmWorks(file);
+  }
+
+  // ─── Pannes réseau (spec 2026-10-08) : carte WebGL seulement, la carte mobile n'a aucune couche panne ───
+  updateOutagesTelecom(t: TelecomOutagesResponse | null, now: number): void {
+    this.deckMap?.updateOutagesTelecom(t, now);
+  }
+
+  updateOutagesPower(p: PowerOutagesResponse | null, now: number): void {
+    this.deckMap?.updateOutagesPower(p, now);
+  }
+
+  setTelecomMaintenanceVisible(on: boolean): void {
+    this.deckMap?.setTelecomMaintenanceVisible(on);
   }
 
   setOsmWorksVisible(on: boolean): void {

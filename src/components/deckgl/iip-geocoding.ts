@@ -33,6 +33,7 @@ export const IIP_ASSET_COORDS: Record<string, [number, number]> = {
   'BAIXAS':             [2.814,  42.743],
   'ALBERTVILLE':        [6.394,  45.675],
   'VALDONNE':           [5.597,  43.695],
+  'BLENOD':             [6.066,  48.882],   // centrale de Blénod-lès-Pont-à-Mousson
 };
 
 // Build a flat lookup: normalized unit name → plant coords
@@ -87,4 +88,9 @@ export function resolveIIPCoords(inc: RTEIIPIncident): [number, number] | null {
   }
 
   return null;
+}
+
+/** Emplacement d'une unité de production par son nom (« PALUEL 1 », « BLENOD 5 ») ; null si inconnu (jamais une position inventée). */
+export function resolveAssetCoords(label: string): [number, number] | null {
+  return resolveIIPCoords({ assetLabel: label, title: label, type: 'production' } as RTEIIPIncident);
 }
