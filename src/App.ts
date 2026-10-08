@@ -7141,7 +7141,7 @@ export class App {
       // Perf audit §6 item 4: currentInfraState only feeds the outages panel
       // (App.ts 'Infra Réseau DC / IXP' / 'IODA Internet' sources) — gate the
       // recurring refresh the same way startOilPolling()/startHealthPolling() do.
-      if (!this.activeLayers.outages && this.outagesPanel?.isVisible() !== true) return;
+      if (!this.activeLayers.outagesInternet && !this.activeLayers.outagesCloud && this.outagesPanel?.isVisible() !== true) return;
       this.refreshInfraNetworkLive(true).catch((err) => console.error('[App] Infra network poll error', err));
     }, POLL_INFRA_NETWORK_MS);
   }

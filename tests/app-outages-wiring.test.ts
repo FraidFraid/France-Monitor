@@ -98,6 +98,9 @@ describe('câblage App.ts des Pannes réseau (phase A)', () => {
     const map = methodBody('initMap');
     expect(map).toMatch(/await this\.mapContainer\.init\(\);\s*\/\/[^\n]*\n\s*this\.repaintOutagesMap\('outagesTelecom'\);\s*this\.repaintOutagesMap\('outagesElec'\);/);
     expect(app).not.toContain('(0 PDL mesuré)');
+    // L'ancienne relève de l'infra réseau ne tourne pas pour Électricité ou Télécoms seuls (maître `outages` dérivé).
+    expect(methodBody('startInfraNetworkPolling')).toContain('!this.activeLayers.outagesInternet && !this.activeLayers.outagesCloud && this.outagesPanel?.isVisible() !== true');
+    expect(methodBody('startInfraNetworkPolling')).not.toContain('activeLayers.outages &&');
   });
 
   it('panneau Électricité : Écowatt, Parc nucléaire, recentrage sur une unité par son emplacement connu ; App.ts n’importe pas la carte', () => {
