@@ -61,6 +61,7 @@ export const ROUTES = {
   '/api/nuclear/rte-unavailability': () => import('./_handlers/nuclear/rte-unavailability.js'),
   '/api/oil-proxy': () => import('./_handlers/oil-proxy.js'),
   '/api/opendata-proxy': () => import('./_handlers/opendata-proxy.js'),
+  '/api/outages/power': () => import('./_handlers/outages/power.js'),
   '/api/outages/telecom': () => import('./_handlers/outages/telecom.js'),
   '/api/rss-proxy': () => import('./_handlers/rss-proxy.js'),
   '/api/rss': () => import('./_handlers/rss.js'),
