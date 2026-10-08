@@ -1,11 +1,14 @@
 // tests/outages-power.test.ts : collecteur Électricité (spec 2026-10-08 § 2.2 ; faits § 2 à 4) sur les réponses réelles du 08/10.
+import { X509Certificate } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { rootCertificates } from 'node:tls';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __resetKvForTests, __setKvClientForTests } from '../api/_lib/kv-history.js';
 import {
   EDF_BELGIAN_UNITS, IIP_PRODUCTION_URL, IIP_TRANSMISSION_URL, SEI_DATASETS, __resetPowerForTests, buildPower, edfLinesUrl, ensurePowerFresh,
   historyFromEdf, iipTransmission, iipUnits, latestVersions, mergeUnits, normalizeEdfLine, parseIipFeed, seiSignal,
 } from '../api/_lib/outages-power.js';
+import { iipCa, iipDispatcher, iipIntermediatePem } from '../api/_lib/rte-iip-agent.js';
 import { respond, sentHeader, stubFetch } from './helpers/traffic-fixtures.ts';
 
 const fx = (name: string): string => readFileSync(new URL(`./fixtures/outages/${name}`, import.meta.url), 'utf8');
@@ -98,6 +101,29 @@ describe('fusion et réponse', () => {
     expect(body.islands.map((i) => i.zone)).toEqual(['reunion', 'corse']);
     expect(log.inits.every((i) => /^FranceMonitor\//.test(sentHeader(i, 'User-Agent') ?? ''))).toBe(true);
     expect(SEI_DATASETS.map((d) => d.zone)).toEqual(['reunion', 'corse']);
+  });
+  it('IIP : lue avec l’agent dédié (intermédiaire RTE de confiance) ; aucun autre hôte n’en reçoit', async () => {
+    const log = stubFetch(route);
+    await ensurePowerFresh(NOW);
+    const calls = log.urls.map((u, i) => ({ u, init: log.inits[i] as (RequestInit & { dispatcher?: unknown }) | undefined }));
+    const iip = calls.filter((c) => c.u.startsWith('https://iip.'));
+    expect(iip).toHaveLength(2);
+    expect(iip.every((c) => c.init?.dispatcher === iipDispatcher())).toBe(true);
+    const others = calls.filter((c) => !c.u.startsWith('https://iip.'));
+    expect(others.length).toBeGreaterThan(0);
+    expect(others.every((c) => c.init?.dispatcher === undefined)).toBe(true);
+  });
+  it('agent IIP : racines de Node + intermédiaire GlobalSign R46 (certificat valide, émis par GlobalSign Root R46)', () => {
+    const cert = new X509Certificate(iipIntermediatePem().slice(iipIntermediatePem().indexOf('-----BEGIN CERTIFICATE-----')));
+    expect(cert.subject).toContain('CN=GlobalSign GCC R46 OV TLS CA 2025');
+    expect(cert.issuer).toContain('CN=GlobalSign Root R46');
+    expect(Date.parse(cert.validTo)).toBeGreaterThan(NOW);
+    const root = rootCertificates.map((r) => new X509Certificate(r)).find((r) => r.subject === cert.issuer);
+    expect(root && cert.verify(root.publicKey)).toBe(true);
+    const ca = iipCa();
+    expect(ca).toHaveLength(rootCertificates.length + 1);
+    expect(ca.slice(0, rootCertificates.length)).toEqual(rootCertificates);
+    expect(ca.at(-1)).toBe(iipIntermediatePem());
   });
   it('IIP en panne : EDF servi, transport null, erreur « RTE IIP : … »', async () => {
     stubFetch((url) => (url.startsWith('https://iip.') ? respond('panne', 503) : route(url)));

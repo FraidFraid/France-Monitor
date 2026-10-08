@@ -5,6 +5,7 @@
 // Chaque partie a sa cadence : IIP 10 min, EDF 15 min, SEI 30 min, d'après l'heure de sa dernière lecture RÉUSSIE ; une partie en échec
 // garde ses dernières données, nomme son erreur et est retentée après 5 min. Dernier relevé gardé en KV, servi daté.
 import { kvGetJson, kvSetJson } from './kv-history.js';
+import { iipDispatcher } from './rte-iip-agent.js';
 import { decodeEntities, fetchStrictJson, fetchStrictXml, sourceError } from './source-http.js';
 
 const EDF_BASE = 'https://opendata.edf.fr/data-fair/api/v1/datasets';
@@ -261,7 +262,9 @@ async function readEdf(now) {
 
 /** IIP : unités de production et ouvrages de transport en cours. Lève si un des deux flux échoue. */
 async function readIip(now) {
-  const [prodXml, transXml] = await Promise.all([fetchStrictXml(IIP_PRODUCTION_URL, { timeoutMs: 20_000 }), fetchStrictXml(IIP_TRANSMISSION_URL, { timeoutMs: 20_000 })]);
+  // Agent dédié : RTE n'envoie pas son certificat intermédiaire (voir rte-iip-agent.js) ; vérification TLS stricte conservée.
+  const opts = { timeoutMs: 20_000, dispatcher: iipDispatcher() };
+  const [prodXml, transXml] = await Promise.all([fetchStrictXml(IIP_PRODUCTION_URL, opts), fetchStrictXml(IIP_TRANSMISSION_URL, opts)]);
   return {
     publishedAt: iso(tag(prodXml, 'lastBuildDate')),
     units: iipUnits(latestVersions(parseIipFeed(prodXml)), now),
