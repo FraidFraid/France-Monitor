@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { cableAlertSituations, detectSituations, militaryEmergencyAlerts } from './situation-engine.ts';
 import {
-  CABLES_WATCH_ALERTS_FIXTURE, CYBER_FIXTURE, MILITARY_EMERGENCY_FIXTURE, MILITARY_MASKED_EMERGENCY_FIXTURE, SOV_FIXTURE_NOW,
+  CABLES_WATCH_ALERTS_FIXTURE, CYBER_FIXTURE, MILITARY_EMERGENCY_FIXTURE, MILITARY_FRENCH_EMERGENCY_FIXTURE, SOV_FIXTURE_NOW,
 } from '../components/layer-panel/sovereignty.fixture.ts';
 import { parisDate } from './ecowatt-official.ts';
 import type { FranceRawData } from './france-country-intel.ts';
@@ -382,14 +382,23 @@ describe('situation-engine · souveraineté (spec 2026-10-04 souveraineté § 2.
       assert.ok(!detectSituations(baseRawData({ militaryEmergencies: emergencies }), SOV_FIXTURE_NOW).some((x) => x.type === 'DEFENSE_SIGNAL_ELEVATED'));
     }
   });
-  it('« Signal défense » (O10) : 7500 d’un appareil d’État français ; ni indicatif, ni adresse, ni position', () => {
-    const masked = MILITARY_MASKED_EMERGENCY_FIXTURE().emergencies
+  it('« Signal défense » (décision du 08/10/2026) : 7500 d’un appareil français nommé, avec son département et sa position', () => {
+    const french = MILITARY_FRENCH_EMERGENCY_FIXTURE().emergencies
       .filter((e) => e.family === 'francais')
       .map((e) => ({ ...e, squawk: '7500' as const }));
-    const s = detectSituations(baseRawData({ militaryEmergencies: masked }), SOV_FIXTURE_NOW).find((x) => x.type === 'DEFENSE_SIGNAL_ELEVATED');
-    assert.equal(s?.summary, 'Code 7500 affiché par le transpondeur, à confirmer par les autorités : appareil d’État français · Dépt\u00a069.');
-    assert.equal(s?.lat, undefined);
-    assert.equal(s?.lon, undefined);
+    const s = detectSituations(baseRawData({ militaryEmergencies: french }), SOV_FIXTURE_NOW).find((x) => x.type === 'DEFENSE_SIGNAL_ELEVATED');
+    assert.equal(s?.summary, 'Code 7500 affiché par le transpondeur, à confirmer par les autorités : FICTIF04 (EC45, appareil français) · Dépt\u00a069.');
+    assert.deepEqual([s?.lat, s?.lon], [45.87, 4.64]);
+    assert.deepEqual(s?.coveredAlertIds, ['military-emergency-3bf004-7500']);
+  });
+  it('« Signal défense » (décision du 08/10/2026) : 7500 d’un appareil marqué PIA sans indicatif : l’adresse est nommée, avec sa position', () => {
+    const pia = MILITARY_FRENCH_EMERGENCY_FIXTURE().emergencies
+      .filter((e) => e.icao24 === '44f684')
+      .map((e) => ({ ...e, callsign: null, firstSeen: '2026-10-04T14:46:24.501Z' }));
+    assert.equal(pia.length, 1);
+    const s = detectSituations(baseRawData({ militaryEmergencies: pia }), SOV_FIXTURE_NOW).find((x) => x.type === 'DEFENSE_SIGNAL_ELEVATED');
+    assert.equal(s?.summary, 'Code 7500 affiché par le transpondeur, à confirmer par les autorités : adresse 44f684 (A400) · Dépt\u00a064.');
+    assert.deepEqual([s?.lat, s?.lon], [43.381472, -0.468554]);
   });
   it('« Précision GNSS dégradée » (O7, O15, S15, tâche B28) : 3 mailles GNSS sur 24 h, moyenne ; élevée sur deux jours UTC complets de suite ; DGAC et ANFR', () => {
     const now = detectSituations(baseRawData({ gnssDegraded: { rolling24h: 3, previousUtcDays: [3, null] } }), SOV_FIXTURE_NOW)
@@ -502,18 +511,21 @@ describe('situation-engine · souveraineté (spec 2026-10-04 souveraineté § 2.
     assert.equal(hijack?.title, '7500 (intervention illicite) : SUI7500 (PC21)');
     assert.equal(hijack?.summary, 'Code 7500 affiché par le transpondeur sur deux relevés, non confirmé par les autorités, dans les approches de la France (moins de 40\u00a0km) ; pays du bloc OACI : Suisse.');
   });
-  it('moniteur d’alertes (O10) : urgence masquée dite « appareil d’État français » et son département, sans adresse, indicatif ni position', () => {
-    const alerts = militaryEmergencyAlerts(MILITARY_MASKED_EMERGENCY_FIXTURE().emergencies);
+  it('moniteur d’alertes (décision du 08/10/2026) : urgences d’un appareil français et d’un appareil marqué PIA nommées comme les autres, avec position', () => {
+    const emergencies = MILITARY_FRENCH_EMERGENCY_FIXTURE().emergencies;
+    const alerts = militaryEmergencyAlerts(emergencies);
     assert.deepEqual(alerts.map((a) => [a.id, a.severity, a.title]), [
-      ['military-emergency-masked-7500-2026-10-04T14:48:24.501Z-64', 'medium', '7500 (intervention illicite) : appareil à identité protégée ou de nationalité inconnue · Dépt\u00a064'],
-      ['military-emergency-masked-7700-2026-10-04T14:46:24.501Z-69', 'high', '7700 (urgence) : appareil d’État français · Dépt\u00a069'],
+      ['military-emergency-44f684-7500', 'medium', '7500 (intervention illicite) : GRZLY21 (A400)'],
+      ['military-emergency-3bf004-7700', 'high', '7700 (urgence) : FICTIF04 (EC45, appareil français)'],
     ]);
-    assert.equal(alerts[1]?.summary, 'Code 7700 affiché sur deux relevés, au-dessus de la métropole (Dépt\u00a069).');
-    for (const a of alerts) {
-      assert.equal(a.lat, undefined);
-      assert.equal(a.lon, undefined);
-      assert.equal(a.entityId, undefined);
-    }
+    assert.equal(alerts[1]?.summary, 'Code 7700 affiché sur deux relevés, au-dessus de la métropole (Dépt\u00a069) ; pays du bloc OACI : France.');
+    assert.deepEqual(alerts.map((a) => [a.entityId, a.lat, a.lon]), [['44f684:7500', 43.381472, -0.468554], ['3bf004:7700', 45.87, 4.64]]);
+    // Sans indicatif : l'immatriculation, puis l'adresse.
+    const [pia, french] = emergencies;
+    assert.ok(pia && french);
+    assert.equal(militaryEmergencyAlerts([{ ...french, callsign: null }])[0]?.title, '7700 (urgence) : F-ZFIC (EC45, appareil français)');
+    assert.equal(militaryEmergencyAlerts([{ ...french, callsign: null, registration: null }])[0]?.title, '7700 (urgence) : adresse 3bf004 (EC45, appareil français)');
+    assert.equal(militaryEmergencyAlerts([{ ...pia, callsign: null, type: null }])[0]?.title, '7500 (intervention illicite) : adresse 44f684');
   });
   it('moniteur d’alertes : navire lent confirmé sur un câble, à vérifier ; seule la préfecture maritime qualifie une infraction', () => {
     const cables = cableAlertSituations(CABLES_WATCH_ALERTS_FIXTURE().alerts.filter((a) => a.confirmed));

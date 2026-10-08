@@ -1,10 +1,10 @@
 // src/services/sovereignty-inputs.test.ts
-// Entrées Souveraineté du score et des situations (spec 2026-10-04 souveraineté § 2.4 ; contrats § 6 ; amendement 7, O6, O7, O10) :
+// Entrées Souveraineté du score et des situations (spec 2026-10-04 souveraineté § 2.4 ; contrats § 6 ; amendement 7, O6, O7) :
 // adaptateurs purs, une source jamais lue ou en retard donne des listes vides et se dit indisponible. Jeux d'essai du 04/10 (tâche A9).
 import { describe, expect, it } from 'vitest';
 import {
   CABLES_WATCH_ALERTS_FIXTURE, CABLES_WATCH_FIXTURE, CABLES_WATCH_FROZEN_FIXTURE, CABLES_WATCH_ZONE_MUTED_FIXTURE, CYBER_FIXTURE,
-  MILITARY_EMERGENCY_FIXTURE, MILITARY_FIXTURE, MILITARY_MASKED_EMERGENCY_FIXTURE, SOV_FIXTURE_NOW,
+  MILITARY_EMERGENCY_FIXTURE, MILITARY_FIXTURE, MILITARY_FRENCH_EMERGENCY_FIXTURE, SOV_FIXTURE_NOW,
 } from '../components/layer-panel/sovereignty.fixture.ts';
 import { certfrKevAdvisories, isKevAddedRecently } from './sovereignty-levels.ts';
 import { buildSovereigntyInputs, monitoredMilitaryEmergencies, servedCyber } from './sovereignty-inputs.ts';
@@ -27,18 +27,24 @@ describe('entrées Souveraineté (adaptateurs purs)', () => {
   });
   it('urgences : seules les colorantes (7700 affiché sur deux relevés au-dessus du Finistère) ; le 7500 vu une fois à Genève reste au moniteur', () => {
     const s = buildSovereigntyInputs(MILITARY_EMERGENCY_FIXTURE(), CABLES_WATCH_FIXTURE(), CYBER_FIXTURE(), NOW);
-    expect(s.militaryEmergencies.map((e) => [e.masked, e.squawk, e.dept])).toEqual([[false, '7700', '29']]);
+    expect(s.militaryEmergencies.map((e) => [e.icao24, e.callsign, e.squawk, e.dept])).toEqual([['ae0805', 'RCH161', '7700', '29']]);
     expect(s.militaryFlightsCount).toBe(10);
     expect(s.defensePillLevel).toBe('orange');
     expect(monitoredMilitaryEmergencies(MILITARY_EMERGENCY_FIXTURE(), NOW).map((e) => e.squawk)).toEqual(['7700', '7500']);
   });
-  it('urgences masquées (O10) : comptées et suivies sans adresse, indicatif ni position', () => {
-    const s = buildSovereigntyInputs(MILITARY_MASKED_EMERGENCY_FIXTURE(), null, null, NOW);
-    expect(s.militaryEmergencies.map((e) => [e.masked, e.family, e.squawk, e.dept])).toEqual([[true, 'francais', '7700', '69']]);
+  it('urgences d’appareils français ou marqués PIA (décision du 08/10/2026) : comptées, suivies et montrées avec adresse, indicatif, immatriculation et position', () => {
+    const s = buildSovereigntyInputs(MILITARY_FRENCH_EMERGENCY_FIXTURE(), null, null, NOW);
+    expect(s.militaryEmergencies.map((e) => [e.icao24, e.callsign, e.registration, e.family, e.squawk, e.dept])).toEqual([
+      ['3bf004', 'FICTIF04', 'F-ZFIC', 'francais', '7700', '69'],
+    ]);
+    expect(s.militaryEmergencies[0]).toMatchObject({ lat: 45.87, lon: 4.64, type: 'EC45', country: 'France' });
     expect(s.militaryFlightsCount).toBe(9);
-    const monitored = monitoredMilitaryEmergencies(MILITARY_MASKED_EMERGENCY_FIXTURE(), NOW);
-    expect(monitored.map((e) => e.squawk)).toEqual(['7500', '7700']);
-    expect(JSON.stringify(monitored)).not.toMatch(/icao24|callsign|"lat"|"lon"/);
+    expect(s.defensePillLevel).toBe('orange');
+    const monitored = monitoredMilitaryEmergencies(MILITARY_FRENCH_EMERGENCY_FIXTURE(), NOW);
+    expect(monitored.map((e) => [e.icao24, e.callsign, e.squawk, e.family])).toEqual([
+      ['44f684', 'GRZLY21', '7500', 'autres'], ['3bf004', 'FICTIF04', '7700', 'francais'],
+    ]);
+    expect(monitored.every((e) => typeof e.lat === 'number' && typeof e.lon === 'number')).toBe(true);
   });
   it('relevé adsb.lol en retard (plus de 10 min) ou jamais lu : 0 aéronef, aucune urgence, indisponible, pastille n.d.', () => {
     const late = buildSovereigntyInputs(MILITARY_EMERGENCY_FIXTURE(), null, null, NOW + 11 * MIN);

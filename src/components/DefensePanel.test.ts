@@ -1,7 +1,7 @@
 // src/components/DefensePanel.test.ts
 // @vitest-environment happy-dom
-// Coquille du panneau Défense (spec 2026-10-04 souveraineté § 2.1 ; contrats § 4.2 ; amendement 7, O9, O10, O14) : cadre commun, clics
-// vers la carte (aéronefs d'autres nations et urgences montrées seulement), bouton des ouvrages OpenStreetMap, Marine nationale relue à
+// Coquille du panneau Défense (spec 2026-10-04 souveraineté § 2.1 ; contrats § 4.2 ; amendement 7, O9, O14 ; décision du 08/10/2026 : aucun masquage) : cadre commun, clics
+// vers la carte (tous les aéronefs et toutes les urgences), bouton des ouvrages OpenStreetMap, Marine nationale relue à
 // chaque rendu, relecture de la page Vigipirate passée à la vue ; plus de modale déplaçable ni de « Situation normale ».
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { VIGIPIRATE } from '../config/vigipirate.ts';
@@ -9,7 +9,7 @@ import type { MilitaryShip } from '../services/military-ships.ts';
 import { MILITARY_FIGURE_LABEL } from '../services/sovereignty-levels.ts';
 import type { MilitaryResponse } from '../types/index.ts';
 import {
-  CABLES_WATCH_FIXTURE, CABLES_WATCH_FROZEN_FIXTURE, MILITARY_EMERGENCY_FIXTURE, MILITARY_FIXTURE, MILITARY_MASKED_EMERGENCY_FIXTURE,
+  CABLES_WATCH_FIXTURE, CABLES_WATCH_FROZEN_FIXTURE, MILITARY_EMERGENCY_FIXTURE, MILITARY_FIXTURE, MILITARY_FRENCH_EMERGENCY_FIXTURE,
   SOV_FIXTURE_NOW, VIGIPIRATE_CHECK_CHANGED_FIXTURE, VIGIPIRATE_CHECK_FIXTURE,
 } from './layer-panel/sovereignty.fixture.ts';
 import { vigipirateBadge, type DefenseSitesSummary } from './layer-panel/defense.ts';
@@ -80,7 +80,7 @@ describe('DefensePanel', () => {
     p.update(state(MILITARY_FIXTURE(), { vigipirate: { check: { data: VIGIPIRATE_CHECK_CHANGED_FIXTURE(), error: null, fetchedAt: NOW } } }));
     expect(c.textContent).toContain('Niveau à revérifier sur sgdsn.gouv.fr (page modifiée le 05/10).');
   });
-  it('aéronef d’une autre nation, urgence montrée et bâtiment cliqués : rappels avec l’objet ; sans gestionnaire de carte, aucun aéronef cliquable', () => {
+  it('aéronef (français ou d’une autre nation), urgence et bâtiment cliqués : rappels avec l’objet ; sans gestionnaire de carte, aucun aéronef cliquable', () => {
     const { c, p } = mount();
     const onAircraft = vi.fn();
     const onEmergency = vi.fn();
@@ -89,31 +89,40 @@ describe('DefensePanel', () => {
     p.setOnFocusEmergency(onEmergency);
     p.setOnFocusNavy(onNavy);
     p.show(state(MILITARY_EMERGENCY_FIXTURE()));
-    // O10 : seuls les appareils d'autres nations ont une ligne ; les français ne sont que des comptes par département.
-    expect(c.querySelectorAll('[data-aircraft]')).toHaveLength(MILITARY_EMERGENCY_FIXTURE().others.length);
-    const first = must(MILITARY_EMERGENCY_FIXTURE().others[0]);
+    // Décision du 08/10/2026 : chaque appareil, français compris, a sa ligne cliquable.
+    expect(c.querySelectorAll('[data-aircraft]')).toHaveLength(MILITARY_EMERGENCY_FIXTURE().aircraft.length);
+    const first = must(MILITARY_EMERGENCY_FIXTURE().aircraft[0]);
+    expect(first.family).toBe('francais');
     (c.querySelector(`[data-aircraft="${first.hex}"]`) as HTMLElement).click();
-    expect(onAircraft).toHaveBeenCalledWith(expect.objectContaining({ hex: first.hex, lat: first.lat, lon: first.lon }));
+    expect(onAircraft).toHaveBeenCalledWith(expect.objectContaining({ hex: first.hex, lat: first.lat, lon: first.lon, callsign: 'FICTIF01' }));
+    const other = must(MILITARY_EMERGENCY_FIXTURE().aircraft.find((a) => a.family === 'autres'));
+    (c.querySelector(`[data-aircraft="${other.hex}"]`) as HTMLElement).click();
+    expect(onAircraft).toHaveBeenLastCalledWith(expect.objectContaining({ hex: other.hex, lat: other.lat, lon: other.lon }));
     (c.querySelector('[data-emergency="ae0805:7700"]') as HTMLElement).click();
-    expect(onEmergency).toHaveBeenCalledWith(expect.objectContaining({ icao24: 'ae0805', squawk: '7700', callsign: 'RCH161', masked: false }));
+    expect(onEmergency).toHaveBeenCalledWith(expect.objectContaining({ icao24: 'ae0805', squawk: '7700', callsign: 'RCH161' }));
     (c.querySelector('[data-navy="227802000"]') as HTMLElement).click();
     expect(onNavy).toHaveBeenCalledWith(LIVE);
     (c.querySelector('[data-navy="d650"]') as HTMLElement).click();
     expect(onNavy).toHaveBeenLastCalledWith(HOME);
-    const other = mount();
-    other.p.show(state());
-    expect(other.c.querySelector('[data-aircraft]')).toBeNull();
+    const noMap = mount();
+    noMap.p.show(state());
+    expect(noMap.c.querySelector('[data-aircraft]')).toBeNull();
   });
-  it('O10 : urgences masquées (appareil d’État français, identité protégée) jamais cliquables, sans adresse ni indicatif', () => {
+  it('urgences d’un appareil français et d’un appareil PIA : nommées, avec adresse, et cliquables', () => {
     const { c, p } = mount();
     const onEmergency = vi.fn();
     p.setOnFocusAircraft(vi.fn());
     p.setOnFocusEmergency(onEmergency);
-    p.show(state(MILITARY_MASKED_EMERGENCY_FIXTURE()));
-    expect(c.textContent).toContain('appareil d’État français · Dépt 69');
-    expect(c.querySelector('[data-emergency]')).toBeNull();
-    for (const row of c.querySelectorAll<HTMLElement>('.lp-row')) row.click();
-    expect(onEmergency).not.toHaveBeenCalled();
+    p.show(state(MILITARY_FRENCH_EMERGENCY_FIXTURE()));
+    expect(c.textContent).toContain('FICTIF04');
+    expect(c.textContent).toContain('GRZLY21');
+    expect(c.textContent).not.toContain('appareil d’État français · Dépt');
+    expect(c.querySelectorAll('[data-emergency]')).toHaveLength(MILITARY_FRENCH_EMERGENCY_FIXTURE().emergencies.length);
+    (c.querySelector('[data-emergency="3bf004:7700"]') as HTMLElement).click();
+    expect(onEmergency).toHaveBeenLastCalledWith(expect.objectContaining({ icao24: '3bf004', squawk: '7700', callsign: 'FICTIF04', registration: 'F-ZFIC', family: 'francais', lat: 45.87, lon: 4.64 }));
+    (c.querySelector('[data-emergency="44f684:7500"]') as HTMLElement).click();
+    expect(onEmergency).toHaveBeenLastCalledWith(expect.objectContaining({ icao24: '44f684', squawk: '7500', callsign: 'GRZLY21' }));
+    expect(onEmergency).toHaveBeenCalledTimes(2);
   });
   it('Marine nationale relue à chaque rendu (refreshLive) ; panneau fermé : aucun rendu', () => {
     const { c, p, live } = mount([HOME]);

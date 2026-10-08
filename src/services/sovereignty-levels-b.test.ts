@@ -52,7 +52,7 @@ function gnss(cells: GnssCell[], over: Partial<GnssResponse> = {}): GnssResponse
   };
 }
 const MILITARY: MilitaryResponse = {
-  readAt: '2026-10-04T14:48:24.000Z', sourceNow: '2026-10-04T14:48:24.501Z', frenchByDept: [], others: [], maskedOthers: 0, abroadCount: 0, abroad: [], emergencies: [],
+  readAt: '2026-10-04T14:48:24.000Z', sourceNow: '2026-10-04T14:48:24.501Z', frenchByDept: [], aircraft: [], abroadCount: 0, abroad: [], emergencies: [],
   emergencyLog: [], hourly: { hours: [], since: null }, errors: [],
 };
 

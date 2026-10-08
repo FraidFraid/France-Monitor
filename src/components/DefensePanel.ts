@@ -1,9 +1,8 @@
 // src/components/DefensePanel.ts : panneau de couche « Défense » (spec 2026-10-04 souveraineté § 2.1 ; contrats § 4.2), réécrit dans le
 // cadre commun : plus de modale déplaçable, plus de câbles (panneau Connectivité) ni de brouillage déduit des vols. Coquille DOM : contenu
 // de buildDefenseView (pur), positions de la Marine nationale lues à chaque rendu (getters de military-ships.ts, injectables en test,
-// comme MaritimePanel) ; un aéronef d'une autre nation, une urgence montrée ou un bâtiment cliqués (ou Entrée) sont recentrés sur la
-// carte ; bouton des ouvrages OpenStreetMap. Amendement 7 : un appareil français n'est qu'un compte par département (O10), jamais une
-// ligne cliquable ; une urgence masquée n'a ni position ni adresse, rien à recentrer. Posture Vigipirate vérifiée par la relecture
+// comme MaritimePanel) ; un aéronef, une urgence ou un bâtiment cliqués (ou Entrée) sont recentrés sur la carte ; bouton des ouvrages
+// OpenStreetMap. Aucun masquage des aéronefs (décision du 08/10/2026, qui remplace O10). Posture Vigipirate vérifiée par la relecture
 // quotidienne de la page du SGDSN (O14). Phase B (tâche B28) : grille GNSS et registre des gels gardés quand une mise à jour ne les donne
 // pas (règle de VigilancePanel) ; une maille du jour UTC précédent cliquée est recentrée (O17 : jamais un lieu en direct) ; bouton des
 // zones drones DGAC (option de la couche). Chaque rendu, relève AIS de 5 s comprise, met à jour sans reconstruire ce qui n'a pas changé
@@ -17,7 +16,7 @@ import type { GnssState } from '../services/sovereignty-gnss.ts';
 import type { MilitaryState } from '../services/sovereignty-military.ts';
 import type { SanctionsState } from '../services/sovereignty-sanctions.ts';
 import type { VigipirateCheckState } from '../services/sovereignty-vigipirate.ts';
-import type { MilitaryAircraft, ShownMilitaryEmergency } from '../types/index.ts';
+import type { MilitaryAircraft, MilitaryEmergency } from '../types/index.ts';
 import { buildDefenseView, type DefenseSitesSummary } from './layer-panel/defense.ts';
 import { createLayerPanelShell, isLayerPanelOpen, safeStorage, sectionOpenOf, type LayerPanelShell } from './layer-panel/frame.ts';
 import { findShipByKey } from './layer-panel/navy.ts';
@@ -60,7 +59,7 @@ export class DefensePanel {
   private shell: LayerPanelShell | null = null;
   private onClose?: () => void;
   private onFocusAircraft?: (aircraft: MilitaryAircraft) => void;
-  private onFocusEmergency?: (emergency: ShownMilitaryEmergency) => void;
+  private onFocusEmergency?: (emergency: MilitaryEmergency) => void;
   private onFocusNavy?: (ship: MilitaryShip) => void;
   private onOsmWorks?: (on: boolean) => void;
   private onDroneZones?: (on: boolean) => void;
@@ -86,7 +85,7 @@ export class DefensePanel {
   setOnClose(handler: () => void): void { this.onClose = handler; }
   /** Lignes d'aéronefs d'autres nations et d'urgences montrées cliquables seulement avec ce gestionnaire (carte WebGL, posé par App.ts). */
   setOnFocusAircraft(handler: (aircraft: MilitaryAircraft) => void): void { this.onFocusAircraft = handler; }
-  setOnFocusEmergency(handler: (emergency: ShownMilitaryEmergency) => void): void { this.onFocusEmergency = handler; }
+  setOnFocusEmergency(handler: (emergency: MilitaryEmergency) => void): void { this.onFocusEmergency = handler; }
   setOnFocusNavy(handler: (ship: MilitaryShip) => void): void { this.onFocusNavy = handler; }
   /** Bouton « Afficher les ouvrages OpenStreetMap » : App.ts lit le fichier daté à la première demande. */
   setOnOsmWorks(handler: (on: boolean) => void): void { this.onOsmWorks = handler; }
@@ -149,17 +148,15 @@ export class DefensePanel {
       return;
     }
     const m = this.state?.military?.military.data ?? null;
-    // O10 : seuls les appareils d'autres nations (`others`) ont une ligne cliquable ; les français ne sont que des comptes.
     const hex = target.closest<HTMLElement>('[data-aircraft]')?.dataset['aircraft'];
     if (hex) {
-      const aircraft = m?.others.find((a) => a.hex === hex);
+      const aircraft = m?.aircraft.find((a) => a.hex === hex);
       if (aircraft) this.onFocusAircraft?.(aircraft);
       return;
     }
-    // Urgence montrée seulement (`${icao24}:${squawk}`) : une urgence masquée n'a ni adresse ni position.
     const key = target.closest<HTMLElement>('[data-emergency]')?.dataset['emergency'];
     if (key) {
-      const emergency = m?.emergencies.find((x): x is ShownMilitaryEmergency => !x.masked && `${x.icao24}:${x.squawk}` === key);
+      const emergency = m?.emergencies.find((x) => `${x.icao24}:${x.squawk}` === key);
       if (emergency) this.onFocusEmergency?.(emergency);
       return;
     }

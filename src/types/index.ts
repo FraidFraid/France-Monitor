@@ -1069,7 +1069,7 @@ export interface FranceCountrySignals {
    * Souveraineté (spec 2026-10-04 souveraineté § 2.4, tâche A16), affichage seulement (tuiles, fiche ; S3) : la formule ne lit aucun de
    * ces champs. Absents : comportement d'avant (niveaux des tuiles par leurs anciens seuils).
    */
-  /** Aéronefs du bloc d'adresse OACI France parmi ceux visibles en ADS-B au-dessus de la métropole (O10). */
+  /** Aéronefs du bloc d'adresse OACI France parmi ceux visibles en ADS-B au-dessus de la métropole. */
   militaryFrench?: number;
   /** Source indisponible (jamais lue ou en retard) : « n.d. » et point gris, jamais un « 0 » vert. */
   militaryUnavailable?: boolean;
@@ -2726,15 +2726,16 @@ export interface OsmFileMeta {
 
 // ─── Défense : GET /api/sovereignty/military ───
 /**
- * Appareil montré un par un au-dessus de la France (amendement 7, O10) : jamais un appareil français (compté par département
- * seulement), jamais un appareil marqué PIA ou LADD (`dbFlags`), d'aucune nation, ni une adresse non OACI (« ~… », nationalité
- * inconnue, peut-être française) ; aucune immatriculation pour personne. Famille « autres » par construction.
+ * Aéronef militaire ou d'État au-dessus de la France, montré un par un avec son identité publiée par adsb.lol (décision du
+ * 08/10/2026, qui remplace la règle O10 : plus aucun masquage, appareils français, PIA, LADD et adresses non OACI compris).
  */
 export interface MilitaryAircraft {
   hex: string;                      // adresse 24 bits en minuscules (« 43c700 ») ; « ~… » : adresse non OACI, pays inconnu
   callsign: string | null;          // `flight` sans espaces de remplissage ; null si vide
+  registration: string | null;      // `r` (« F-ZFIC », fictif) ; null si non publiée
   type: string | null;              // `t` (« A400 », « A332 »)
-  country: string | null;           // pays du bloc OACI (« Royaume-Uni ») ; null hors table
+  country: string | null;           // pays du bloc OACI (« Royaume-Uni ») ; null hors table ou adresse non OACI
+  family: AircraftFamily;
   lat: number; lon: number;
   dept: string | null;              // departementAt ; null au-dessus de la mer territoriale (eaux françaises à moins de 22 km)
   altitudeFt: number | null;        // alt_baro (pieds) ; « ground » écarté avant : un aéronef au sol n'est jamais compté
@@ -2742,51 +2743,36 @@ export interface MilitaryAircraft {
   track: number | null;
   seenAt: string;                   // instant de la position : `now` d'adsb.lol moins `seen_pos` (ISO UTC)
 }
-/**
- * Position de /v2/mil dans la zone d'affichage (41 à 51,8 N ; −5,8 à 10,2 E) hors de France : dessinée en gris, jamais comptée ;
- * mêmes exclusions que MilitaryAircraft (ni français, ni PIA, ni LADD, ni adresse non OACI).
- */
+/** Position de /v2/mil dans la zone d'affichage (41 à 51,8 N ; −5,8 à 10,2 E) hors de France : dessinée en gris, jamais comptée. */
 export interface MilitaryAbroad {
-  hex: string; callsign: string | null; type: string | null; country: string | null; lat: number; lon: number;
+  hex: string; callsign: string | null; registration: string | null; type: string | null; country: string | null;
+  family: AircraftFamily; lat: number; lon: number;
 }
-/** Appareils français au-dessus de la France, comptés par département (O10) ; dept null : au-dessus de la mer territoriale. */
+/** Appareils du bloc France au-dessus de la France, comptés par département (résumé) ; dept null : au-dessus de la mer territoriale. */
 export interface MilitaryDeptCount { dept: string | null; count: number }
 /**
- * Champs communs d'une urgence militaire (règle T3 du Trafic aérien réutilisée, arbitrage 6). `overFrance` garde le sens
+ * Urgence militaire (règle T3 du Trafic aérien réutilisée, arbitrage 6), identité complète. `overFrance` garde le sens
  * d'AirEmergency : territoire ou moins de 40 km (APPROACH_KM), pour qu'emergencyColoursPill s'applique tel quel ; `inFrance` est le
  * périmètre V2.
  */
-interface MilitaryEmergencyBase extends Pick<AirEmergency, 'squawk' | 'firstSeen' | 'lastSeen' | 'overFrance'> {
+export interface MilitaryEmergency extends AirEmergency {
+  registration: string | null;
   family: AircraftFamily;
+  type: string | null;
+  country: string | null;
   emergency: string | null;         // champ `emergency` publié (« general », « nordo », « unlawful »…) ; null si seul le transpondeur
   inFrance: boolean;
   dept: string | null;              // null au-dessus de la mer territoriale ou hors de France
 }
-/** Urgence d'un appareil montré (ni français, ni PIA, ni LADD, ni adresse non OACI) : adresse, indicatif, type, pays et position. */
-export interface ShownMilitaryEmergency extends AirEmergency, MilitaryEmergencyBase {
-  masked: false;
-  family: 'autres';
-  type: string | null;
-  country: string | null;
-}
-/**
- * Urgence d'un appareil masqué (O10) : appareil français (« appareil d'État français »), appareil d'une autre nation marqué PIA ou
- * LADD, ou adresse non OACI de nationalité inconnue (famille « autres »). Ni adresse, ni indicatif, ni type, ni pays, ni position :
- * le département (ou la mer territoriale, ou les approches) seul.
- */
-export interface MaskedMilitaryEmergency extends MilitaryEmergencyBase { masked: true }
-/** Urgence militaire servie au client ; `masked` dit si l'appareil peut être nommé et dessiné. */
-export type MilitaryEmergency = ShownMilitaryEmergency | MaskedMilitaryEmergency;
-/** Aéronefs distincts (par hex) vus au-dessus de la France pendant une heure UTC, par famille, masqués compris. */
+/** Aéronefs distincts (par hex) vus au-dessus de la France pendant une heure UTC, par famille. */
 export interface MilitaryHourCount { hour: string; francais: number; autres: number }   // hour : « 2026-10-04T14 »
 export interface MilitaryResponse {
   readAt: string | null;            // dernière collecte réussie (horloge du serveur) ; null : jamais lue
   sourceNow: string | null;         // `now` d'adsb.lol de cette collecte (ms, converti en ISO)
-  frenchByDept: MilitaryDeptCount[];   // appareils du bloc OACI France au-dessus de la France (V2), PIA et LADD compris ; par département, mer en dernier
-  others: MilitaryAircraft[];       // autres appareils au-dessus de la France (V2), hors PIA, LADD et adresses non OACI ; tri par indicatif
-  maskedOthers: number;             // autres appareils au-dessus de la France marqués PIA ou LADD, ou à adresse non OACI (nationalité inconnue) : comptés, jamais montrés
-  abroadCount: number;              // aéronefs de la zone d'affichage hors de France, toutes familles : jamais comptés au-dessus de la France
-  abroad: MilitaryAbroad[];         // parmi eux, ceux qui sont dessinés (ni français, ni PIA, ni LADD, ni adresse non OACI)
+  frenchByDept: MilitaryDeptCount[];   // appareils du bloc OACI France au-dessus de la France (V2), par département, mer en dernier
+  aircraft: MilitaryAircraft[];     // tous les appareils au-dessus de la France (V2) : français d'abord, puis tri par indicatif
+  abroadCount: number;              // aéronefs de la zone d'affichage hors de France : jamais comptés au-dessus de la France
+  abroad: MilitaryAbroad[];         // ces mêmes aéronefs, dessinés en gris
   emergencies: MilitaryEmergency[]; // épisodes vus à la dernière lecture, partout dans la zone d'affichage
   emergencyLog: MilitaryEmergency[];// 7 jours, plus récent d'abord
   hourly: { hours: MilitaryHourCount[]; since: string | null };   // 7 jours au plus, plus ancien d'abord ; since : première heure gardée

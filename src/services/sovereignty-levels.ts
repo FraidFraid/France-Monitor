@@ -111,19 +111,15 @@ export function vigipiratePageChangedOn(entry: VigipirateDated, check: Vigipirat
   return !DAY_RE.test(entry.saisiLe) || day > entry.saisiLe ? day : null;
 }
 
-// ─── Défense (spec § 2.1 ; amendement 7, O7, O9, O10) ───
+// ─── Défense (spec § 2.1 ; amendement 7, O7, O9) ───
 
 /** Libellé du gros chiffre Défense (O9), repris tel quel par la légende, la tuile et la fiche. */
 export const MILITARY_FIGURE_LABEL = 'aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole';
 
-/**
- * Gros chiffre Défense (O9, O10) : appareils comptés au-dessus de la France, français par département et autres, montrés ou masqués
- * (PIA, LADD) ; jamais les appareils hors de France.
- */
-export function militaryCounts(m: Pick<MilitaryResponse, 'frenchByDept' | 'others' | 'maskedOthers'>): { francais: number; autres: number; total: number } {
-  const francais = m.frenchByDept.reduce((sum, d) => sum + d.count, 0);
-  const autres = m.others.length + m.maskedOthers;
-  return { francais, autres, total: francais + autres };
+/** Gros chiffre Défense (O9) : appareils au-dessus de la France, français et autres ; jamais les appareils hors de France. */
+export function militaryCounts(m: Pick<MilitaryResponse, 'aircraft'>): { francais: number; autres: number; total: number } {
+  const francais = m.aircraft.filter((a) => a.family === 'francais').length;
+  return { francais, autres: m.aircraft.length - francais, total: m.aircraft.length };
 }
 
 /** Code du transpondeur (S3 : « 7500 (intervention illicite) »). */
@@ -135,18 +131,14 @@ function codeWord(e: MilitaryEmergency): string {
   return `${e.squawk}\u00a0(${SQUAWK_WORD[e.squawk]})`;
 }
 
-/** Lieu d'un appareil masqué : département, mer territoriale, approches ou hors de France (jamais une position). */
-function placeWord(e: MilitaryEmergency): string {
-  if (e.dept !== null) return `Dépt\u00a0${e.dept}`;
-  if (e.inFrance) return 'mer territoriale';
-  return e.overFrance ? 'approches de la France' : 'hors de France';
+/** Indicatif, sinon immatriculation, sinon adresse ; « appareil français » devant un appareil du bloc France. */
+export function militaryAircraftName(e: Pick<MilitaryEmergency, 'callsign' | 'registration' | 'icao24' | 'family'>): string {
+  const name = e.callsign ?? e.registration ?? `adresse ${e.icao24}`;
+  return e.family === 'francais' ? `${name} (appareil français)` : name;
 }
 
-/** Indicatif, sinon adresse, d'un appareil montré ; « appareil d’État français » ou identité protégée et lieu d'un appareil masqué (O10). */
 function aircraftWord(e: MilitaryEmergency): string {
-  if (!e.masked) return e.callsign ?? `adresse ${e.icao24}`;
-  const who = e.family === 'francais' ? 'appareil d’État français' : 'appareil à identité protégée ou de nationalité inconnue';
-  return `${who} · ${placeWord(e)}`;
+  return militaryAircraftName(e);
 }
 
 /** Couleur d'une urgence : rouge 7500, orange 7700 ou 7600, si elle colore (emergencyColoursPill) ; jaune si vue une fois au-dessus

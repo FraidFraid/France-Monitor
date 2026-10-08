@@ -25,10 +25,12 @@ export function formatFeet(v: number | null | undefined): string {
   return ok(v) ? `${frNumber(v, 0)}${NBSP}ft` : ND;
 }
 
-/** Indicatif publié, sinon l'adresse OACI (« adresse 3bf004 ») : jamais une ligne sans nom. */
-export function aircraftLabel(a: { callsign: string | null; hex: string }): string {
+/** Indicatif publié, sinon l'immatriculation, sinon l'adresse OACI (« adresse 3bf004 ») : jamais une ligne sans nom. */
+export function aircraftLabel(a: { callsign: string | null; hex: string; registration?: string | null }): string {
   const callsign = a.callsign?.trim() ?? '';
-  return callsign !== '' ? callsign : `adresse ${a.hex}`;
+  if (callsign !== '') return callsign;
+  const registration = a.registration?.trim() ?? '';
+  return registration !== '' ? registration : `adresse ${a.hex}`;
 }
 
 /** Famille par le bloc d'adresse OACI (V2) : jamais une hypothèse « France ». */

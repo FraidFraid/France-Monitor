@@ -38,7 +38,7 @@ import { cablesLevel, cyberLevel, defenseLevel, militaryCounts } from '../src/se
 import { VIGIPIRATE } from '../src/config/vigipirate.ts';
 import {
   CABLES_FILE_FIXTURE, CABLES_WATCH_ALERTS_FIXTURE, CABLES_WATCH_FIXTURE, CABLES_WATCH_FROZEN_FIXTURE, CABLES_WATCH_ZONE_MUTED_FIXTURE,
-  CYBER_FIXTURE, MILITARY_EMERGENCY_FIXTURE, MILITARY_FIXTURE, MILITARY_MASKED_EMERGENCY_FIXTURE, SOV_FIXTURE_NOW, VIGIPIRATE_CHECK_CHANGED_FIXTURE,
+  CYBER_FIXTURE, MILITARY_EMERGENCY_FIXTURE, MILITARY_FIXTURE, MILITARY_FRENCH_EMERGENCY_FIXTURE, SOV_FIXTURE_NOW, VIGIPIRATE_CHECK_CHANGED_FIXTURE,
   VIGIPIRATE_CHECK_FIXTURE,
 } from '../src/components/layer-panel/sovereignty.fixture.ts';
 import { type FakeResponse, callHandler, respond, stubFetch } from './helpers/traffic-fixtures.ts';
@@ -132,13 +132,24 @@ describe('contrat Défense', () => {
     expect(wire(body)).toEqual(MILITARY_EMERGENCY_FIXTURE());
     expect(defenseLevel(body, NOW)).toEqual({ level: 'orange', reason: `7700${NBSP}(urgence) affiché sur deux relevés : RCH161` });
   });
-  it('urgences masquées (O10) : identique au jeu d’essai, acceptées sans adresse, indicatif ni position ; « appareil d’État français · Dépt 69 »', async () => {
+  it('urgences d’appareils français et PIA (décision du 08/10/2026) : identique au jeu d’essai, identité complète montrée (adresse, indicatif, immatriculation, position) ; « FICTIF04 (appareil français) »', async () => {
     const body = await twoReadings([DRAGO_7700], [DRAGO_7700, GRIZZLY_PIA_7500]);
     expect(isMilitaryResponse(wire(body))).toBe(true);
-    expect(wire(body)).toEqual(MILITARY_MASKED_EMERGENCY_FIXTURE());
-    expect(body.emergencies.every((e) => e.masked)).toBe(true);
-    for (const hidden of ['"3bf004"', '"FICTIF04"', '"44f684"', '"GRZLY21"', '45.87']) expect(JSON.stringify(body)).not.toContain(hidden);
-    expect(defenseLevel(body, NOW)).toEqual({ level: 'orange', reason: `7700${NBSP}(urgence) affiché sur deux relevés : appareil d’État français · Dépt${NBSP}69` });
+    expect(wire(body)).toEqual(MILITARY_FRENCH_EMERGENCY_FIXTURE());
+    expect(body.emergencies.every((e) => !('masked' in e))).toBe(true);
+    expect(body.emergencies.map((e) => [e.icao24, e.callsign, e.registration, e.family, e.lat, e.lon])).toEqual([
+      ['44f684', 'GRZLY21', null, 'autres', 43.381472, -0.468554], ['3bf004', 'FICTIF04', 'F-ZFIC', 'francais', 45.87, 4.64],
+    ]);
+    const text = JSON.stringify(body);
+    for (const shown of ['"3bf004"', '"FICTIF04"', '"F-ZFIC"', '"44f684"', '"GRZLY21"', '45.87']) expect(text).toContain(shown);
+    expect(defenseLevel(body, NOW)).toEqual({ level: 'orange', reason: `7700${NBSP}(urgence) affiché sur deux relevés : FICTIF04 (appareil français)` });
+  });
+  it('forme exacte de l’identité : une urgence à l’ancien format masqué (sans position, avec `masked`) est refusée par la garde du client', async () => {
+    const body = wire(await twoReadings([DRAGO_7700], [DRAGO_7700])) as MilitaryResponse;
+    expect(isMilitaryResponse(body)).toBe(true);
+    const { lat: _lat, lon: _lon, ...legacy } = body.emergencies[0];
+    expect(isMilitaryResponse({ ...body, emergencies: [legacy] })).toBe(false);
+    expect(isMilitaryResponse({ ...body, emergencies: [{ ...body.emergencies[0], masked: false }] })).toBe(false);
   });
   it('429 : 502 de même forme, accepté par la garde ; servi au client, la ligne des sources nomme la panne ; pastille n.d.', async () => {
     stubFetch(() => respond('Too Many Requests', 429));

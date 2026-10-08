@@ -1,5 +1,5 @@
 // src/services/sovereignty-inputs.ts : entrées Souveraineté du score France, des situations, de la frise, des tuiles, de la fiche et du
-// moniteur d'alertes (spec 2026-10-04 souveraineté § 2.4 ; contrats § 6 ; amendement 7, O6, O7, O10). Adaptateurs purs sur les
+// moniteur d'alertes (spec 2026-10-04 souveraineté § 2.4 ; contrats § 6 ; amendement 7, O6, O7). Adaptateurs purs sur les
 // dernières lectures des services (tâche A9), modèle environment-inputs.ts : la formule du score et ses cibles ne changent pas, seules
 // les entrées changent. Une source jamais lue ou en retard donne des listes vides et se dit indisponible ; jamais une valeur inventée
 // (V1, S3).
@@ -10,13 +10,13 @@ import { cablesLevel, cyberLevel, defenseLevel, isSovereigntyDataLate, militaryC
 import { emergencyColoursPill, type LayerLevel } from './traffic-levels.ts';
 
 export interface SovereigntyInputs {
-  /** Aéronefs militaires ou d'État visibles en ADS-B au-dessus de la métropole (O9 ; français, autres montrés et masqués) ; 0 si indisponible. */
+  /** Aéronefs militaires ou d'État visibles en ADS-B au-dessus de la métropole (O9 ; français et autres) ; 0 si indisponible. */
   militaryFlightsCount: number;
-  /** Parmi eux, ceux du bloc d'adresse OACI France, comptés par département (O10, tuile « Militaire ») ; 0 si indisponible. */
+  /** Parmi eux, ceux du bloc d'adresse OACI France (tuile « Militaire ») ; 0 si indisponible. */
   militaryFrenchCount: number;
   /**
-   * Urgences qui colorent : affichées sur deux relevés, au-dessus du territoire ou à moins de 40 km (emergencyColoursPill), montrées ou
-   * masquées (O10 : une urgence masquée n'a ni adresse, ni indicatif, ni position). Seul un 7500 ouvre « Signal défense » (O7).
+   * Urgences qui colorent : affichées sur deux relevés, au-dessus du territoire ou à moins de 40 km (emergencyColoursPill). Seul un
+   * 7500 ouvre « Signal défense » (O7).
    */
   militaryEmergencies: MilitaryEmergency[];
   /** Navires lents confirmés sur un câble, veille évaluée et AIS frais, hors zone muette ; [] sinon (AIS muet : ni score, ni situation). */

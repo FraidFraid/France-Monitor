@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CABLES_WATCH_ALERTS_FIXTURE, CABLES_WATCH_FIXTURE, CABLES_WATCH_FROZEN_FIXTURE, CYBER_FIXTURE, MILITARY_EMERGENCY_FIXTURE, MILITARY_FIXTURE,
-  MILITARY_MASKED_EMERGENCY_FIXTURE, SOV_FIXTURE_NOW,
+  MILITARY_FRENCH_EMERGENCY_FIXTURE, SOV_FIXTURE_NOW,
 } from '../components/layer-panel/sovereignty.fixture.ts';
 import type { MilitaryResponse } from '../types/index.ts';
 import { buildFranceCountrySnapshot, buildFranceSignals, computeFranceScoreBreakdown, type FranceRawData } from './france-country-intel.ts';
@@ -94,13 +94,13 @@ describe('score France : entrées Souveraineté (formule inchangée)', () => {
     expect(d[0]?.summary).toBe('Code 7500 affiché par le transpondeur, à confirmer par les autorités : RCH161 (C17) · Dépt\u00a029.');
     expect(snap.scoreBreakdown.situationCap).toBeNull();
   });
-  it('O10 : 7500 d’un appareil d’État français : ni indicatif ni position, le département seul', () => {
-    const m = MILITARY_MASKED_EMERGENCY_FIXTURE();
+  it('décision du 08/10/2026 : 7500 d’un appareil français : nommé avec son département, la carte se recentre sur sa position', () => {
+    const m = MILITARY_FRENCH_EMERGENCY_FIXTURE();
     m.emergencies = m.emergencies.map((e) => (e.family === 'francais' ? { ...e, squawk: '7500' as const } : e));
     const d = buildFranceCountrySnapshot(raw(buildSovereigntyInputs(m, null, null, NOW)), { now: NOW })
       .situations.find((x) => x.type === 'DEFENSE_SIGNAL_ELEVATED');
-    expect(d?.summary).toBe('Code 7500 affiché par le transpondeur, à confirmer par les autorités : appareil d’État français · Dépt\u00a069.');
-    expect([d?.lat, d?.lon]).toEqual([undefined, undefined]);
+    expect(d?.summary).toBe('Code 7500 affiché par le transpondeur, à confirmer par les autorités : FICTIF04 (EC45, appareil français) · Dépt\u00a069.');
+    expect([d?.lat, d?.lon]).toEqual([45.87, 4.64]);
   });
   it('sources indisponibles : listes vides au score, « n.d. » aux tuiles, jamais une valeur inventée', () => {
     const s = buildFranceSignals(raw(buildSovereigntyInputs(null, null, null, NOW)), NOW);

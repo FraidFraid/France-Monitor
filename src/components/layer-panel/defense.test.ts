@@ -1,7 +1,8 @@
 // src/components/layer-panel/defense.test.ts
-// Vue Défense (spec 2026-10-04 souveraineté § 2.1 ; contrats § 4.1 ; amendement 7 : O9, O10, O11, O13, O14, S1 à S5) sur la collecte
-// réelle du 04/10 (adsb-lol-mil.json, réponse du serveur) : 9 aéronefs au-dessus de la France, 4 français comptés par département,
-// 5 autres montrés, 3 hors de France, aucune urgence ; urgences construites ; urgences masquées du jeu d'essai ; base curée réelle.
+// Vue Défense (spec 2026-10-04 souveraineté § 2.1 ; contrats § 4.1 ; amendement 7 : O9, O11, O13, O14, S1 à S5 ; décision du 08/10/2026 :
+// aucun aéronef masqué) sur la collecte réelle du 04/10 (adsb-lol-mil.json, réponse du serveur) : 9 aéronefs au-dessus de la France, 4 français
+// et 5 autres, tous montrés avec leur identité, 3 hors de France, aucune urgence ; urgences construites ; urgences d'appareils français et PIA
+// du jeu d'essai ; base curée réelle.
 import { describe, expect, it } from 'vitest';
 import type { MilitaryAircraft, MilitaryEmergency, MilitaryResponse, VigipiratePageCheck } from '../../types/index.ts';
 import { ACTIVE_INSTALLATIONS } from '../../config/military-bases-db.ts';
@@ -9,7 +10,7 @@ import type { MilitaryShip } from '../../services/military-ships.ts';
 import { MILITARY_FIGURE_LABEL, defenseLevel } from '../../services/sovereignty-levels.ts';
 import type { SourceSlot } from '../../services/sovereignty-source.ts';
 import {
-  MILITARY_EMERGENCY_FIXTURE, MILITARY_FIXTURE, MILITARY_MASKED_EMERGENCY_FIXTURE, SOV_FIXTURE_NOW, VIGIPIRATE_CHECK_CHANGED_FIXTURE,
+  MILITARY_EMERGENCY_FIXTURE, MILITARY_FIXTURE, MILITARY_FRENCH_EMERGENCY_FIXTURE, SOV_FIXTURE_NOW, VIGIPIRATE_CHECK_CHANGED_FIXTURE,
   VIGIPIRATE_CHECK_FIXTURE, VIGIPIRATE_FIXTURE,
 } from './sovereignty.fixture.ts';
 import { NBSP, breakableValue, frNumber, visibleText } from './format.ts';
@@ -52,14 +53,14 @@ const military = (edit: (m: MilitaryResponse) => void, base: () => MilitaryRespo
   return m;
 };
 
-/** 7700 confirmé sur deux lectures au-dessus du Finistère (exemple des contrats § 6), appareil d'une autre nation montré. */
+/** 7700 confirmé sur deux lectures au-dessus du Finistère (exemple des contrats § 6), appareil d'une autre nation. */
 const E7700: MilitaryEmergency = {
-  masked: false, icao24: 'ae0805', callsign: 'RCH161', squawk: '7700', lat: 48.39, lon: -4.49, altitudeM: 7620, firstSeen: '2026-10-04T14:44:00Z',
+  icao24: 'ae0805', callsign: 'RCH161', registration: null, squawk: '7700', lat: 48.39, lon: -4.49, altitudeM: 7620, firstSeen: '2026-10-04T14:44:00Z',
   lastSeen: '2026-10-04T14:48:24Z', overFrance: true, type: 'C17', country: 'États-Unis', family: 'autres', emergency: 'general', inFrance: true, dept: '29',
 };
 /** 7500 vu une fois au-dessus de Genève : à 4,4 km de la France, dans les approches de 40 km, hors du territoire (V2). */
 const E7500: MilitaryEmergency = {
-  masked: false, icao24: '4b1814', callsign: 'ESSAI75', squawk: '7500', lat: 46.204, lon: 6.143, altitudeM: 9140, firstSeen: '2026-10-04T14:48:24Z',
+  icao24: '4b1814', callsign: 'ESSAI75', registration: null, squawk: '7500', lat: 46.204, lon: 6.143, altitudeM: 9140, firstSeen: '2026-10-04T14:48:24Z',
   lastSeen: '2026-10-04T14:48:24Z', overFrance: true, type: 'A400', country: 'Suisse', family: 'autres', emergency: 'unlawful', inFrance: false, dept: null,
 };
 
@@ -76,10 +77,12 @@ describe('vue Défense (spec 2026-10-04 souveraineté § 2.1)', () => {
     expect(v.bodyHtml).toBeUndefined();
     expect(html()).toContain('<b class="fmk-num lp-lvl lp-lvl--vert">9</b>');
   });
-  it('gros chiffre : français par département, mer territoriale et appareils masqués (PIA, LADD, adresse non OACI) comptés', () => {
-    const m = military((x) => { x.frenchByDept.push({ dept: null, count: 1 }); x.maskedOthers = 2; });
-    expect(view({ military: m }).head.figure?.value).toBe('12');
-    expect(view({ military: m }).head.figure?.caption).toBe(`${MILITARY_FIGURE_LABEL} · 5 français · 7 autres · relevé adsb.lol 16:48`);
+  it('gros chiffre : tous les appareils de la réponse comptés, mer territoriale et adresse non OACI compris', () => {
+    const m = military((x) => {
+      x.aircraft.push({ ...x.aircraft[0], hex: '3bf005', callsign: 'FICTIF05', dept: null }, { ...x.aircraft[4], hex: '~ab12cd', callsign: null, country: null });
+    });
+    expect(view({ military: m }).head.figure?.value).toBe('11');
+    expect(view({ military: m }).head.figure?.caption).toBe(`${MILITARY_FIGURE_LABEL} · 5 français · 6 autres · relevé adsb.lol 16:48`);
   });
   it('sections dans l’ordre du contrat ; urgences repliées sans urgence ; méthode en ton de référence', () => {
     const v = view();
@@ -159,39 +162,50 @@ describe('posture Vigipirate (V4, O14, S1)', () => {
   });
 });
 
-describe('aéronefs au-dessus de la France (O10, S5)', () => {
-  it('français comptés par département sans indicatif, type ni position ; autres nommés avec pays, département, altitude, vitesse, heure vue', () => {
+describe('aéronefs au-dessus de la France (S5)', () => {
+  it('français d’abord puis autres pays, tous nommés avec immatriculation, adresse OACI, pays, département, altitude, vitesse, heure vue', () => {
     const s = sectionOf('aeronefs');
     expect(s?.summary).toBe('9 en France · 3 hors de France');
     const h = s?.html ?? '';
-    expect([...h.matchAll(/data-aircraft="([^"]+)"/g)].map((x) => x[1])).toEqual(['894081', 'c2b5b7', '44f684', '43c6f6', '43c700']);
-    expect(visibleText(h)).toContain('Français : 4, comptés par département');
-    expect(h).toContain('<div class="lp-row"><span class="lp-swatch" style="background:var(--cat-mil-francais)" aria-hidden="true"></span>'
-      + '<span>Bouches-du-Rhône (13)</span><span class="lp-val fmk-num">3</span></div>');
-    expect(h).toContain('<span>Rhône (69)</span><span class="lp-val fmk-num">1</span></div>');
-    expect(visibleText(h)).toContain('Autres pays : 5');
+    expect([...h.matchAll(/data-aircraft="([^"]+)"/g)].map((x) => x[1])).toEqual(['3bf001', '3bf002', '3bf003', '3bf004', '894081', 'c2b5b7', '44f684', '43c6f6', '43c700']);
+    const t = visibleText(h);
+    expect(t).toContain('Français : 4');
+    expect(t).toContain('Autres pays : 5');
+    expect(t.indexOf('Français : 4')).toBeLessThan(t.indexOf('Autres pays : 5'));
+    expect(t).toContain(`Par département : Bouches-du-Rhône (13)${NBSP}:${NBSP}3 · Rhône (69)${NBSP}:${NBSP}1.`);
+    expect(h).toContain('<div class="lp-row is-link" tabindex="0" role="button" data-aircraft="3bf004">'
+      + '<span class="lp-swatch" style="background:var(--cat-mil-francais)" aria-hidden="true"></span><span>FICTIF04 · EC45</span>'
+      + `<span class="lp-val fmk-num">Rhône (69)</span><small>F-ZFIC · adresse 3bf004 · France · 525${NBSP}ft · 52${NBSP}nœuds · vu à 16:48</small></div>`);
     expect(h).toContain('<div class="lp-row is-link" tabindex="0" role="button" data-aircraft="43c700">'
       + '<span class="lp-swatch" style="background:var(--cat-mil-autres)" aria-hidden="true"></span><span>RRR2301 · A332</span>'
-      + `<span class="lp-val fmk-num">Puy-de-Dôme (63)</span><small>Royaume-Uni · ${frNumber(39000, 0)}${NBSP}ft · 460${NBSP}nœuds · vu à 16:48</small></div>`);
-    expect(h).not.toMatch(/F-Z|immatriculation [A-Z]/);
+      + `<span class="lp-val fmk-num">Puy-de-Dôme (63)</span><small>adresse 43c700 · Royaume-Uni · ${frNumber(39000, 0)}${NBSP}ft · 460${NBSP}nœuds · vu à 16:48</small></div>`);
+    expect(t).toContain('ZZ999 · adresse 43c6f6 · Royaume-Uni');
     expect(h).toContain('<span class="fmk-dot" aria-hidden="true"></span><span>Hors de France (approches, mer, pays voisins), jamais comptés</span><span class="lp-val fmk-num">3</span>');
-    expect(h).not.toContain('Identité protégée');
-    expect(visibleText(h)).toContain('un appareil absent du flux n’est pas absent du ciel');
-    expect(sectionOf('aeronefs', { canFocus: false })?.html).not.toContain('data-aircraft');
+    expect(t).not.toMatch(/Identité protégée|jamais montrés|comptés par département/);
+    expect(t).toContain('Clic sur un aéronef : sa position au relevé sur la carte.');
+    expect(t).toContain('un appareil absent du flux n’est pas absent du ciel');
+    const noMap = sectionOf('aeronefs', { canFocus: false })?.html ?? '';
+    expect(noMap).not.toContain('data-aircraft');
+    expect(visibleText(noMap)).not.toContain('Clic sur un aéronef');
+    expect(visibleText(noMap)).toContain('FICTIF04 · EC45');
   });
-  it('mer territoriale (S5) et appareils masqués : un compte, jamais une ligne nommée', () => {
+  it('mer territoriale (S5), adresse non OACI, appareil sans indicatif : une ligne nommée chacun, jamais un simple compte', () => {
     const m = military((x) => {
       x.frenchByDept.push({ dept: null, count: 1 });
-      x.maskedOthers = 2;
-      x.others[0] = { ...x.others[0], dept: null };
+      x.aircraft[0] = { ...x.aircraft[0], dept: null };
+      x.aircraft[4] = { ...x.aircraft[4], dept: null };
+      x.aircraft[5] = { ...x.aircraft[5], hex: '~ab12cd', callsign: null, registration: null, country: null };
+      x.aircraft[6] = { ...x.aircraft[6], callsign: null, registration: 'ZZ123' };
     });
     const h = sectionOf('aeronefs', { military: m })?.html ?? '';
     const t = visibleText(h);
-    expect(t).toContain(`Au-dessus de la mer territoriale (moins de 12${NBSP}milles de la côte)1`);
-    expect(t).toContain('Identité protégée ou nationalité inconnue (PIA, LADD, adresse non OACI) : comptés, jamais montrés2');
-    expect(t).toContain(`BAH11 · B738mer territorialeBahreïn · ${frNumber(38000, 0)}${NBSP}ft · 424${NBSP}nœuds · vu à 16:48 · au-dessus de la mer territoriale`);
-    expect(t).not.toMatch(/eaux françaises/);
-    expect(h.match(/data-aircraft=/g)).toHaveLength(5);
+    expect(t).toContain(`Par département : Bouches-du-Rhône (13)${NBSP}:${NBSP}3 · Rhône (69)${NBSP}:${NBSP}1 · au-dessus de la mer territoriale (moins de 12${NBSP}milles de la côte)${NBSP}:${NBSP}1.`);
+    expect(t).toContain(`BAH11 · B738mer territorialeadresse 894081 · Bahreïn · ${frNumber(38000, 0)}${NBSP}ft · 424${NBSP}nœuds · vu à 16:48 · au-dessus de la mer territoriale`);
+    expect(t).toContain(`FICTIF01 · DH8Dmer territorialeadresse 3bf001 · France · ${frNumber(2050, 0)}${NBSP}ft`);
+    expect(t).toContain(`adresse ~ab12cd · C30JBouches-du-Rhône (13)adresse ~ab12cd · pays non identifié · ${frNumber(2725, 0)}${NBSP}ft`);
+    expect(t).toContain('ZZ123 · A400Pyrénées-Atlantiques (64)ZZ123 · adresse 44f684 · Belgique');
+    expect(t).not.toMatch(/eaux françaises|Identité protégée/);
+    expect(h.match(/data-aircraft=/g)).toHaveLength(9);
   });
   it('courbe horaire sur 7 jours : français et autres empilés, une heure sans collecte reste un trou ; référence en construction', () => {
     const m = military((x) => {
@@ -207,13 +221,13 @@ describe('aéronefs au-dessus de la France (O10, S5)', () => {
     expect(sectionOf('aeronefs', { military: military((x) => { x.hourly = { hours: [], since: null }; }) })?.html).not.toContain('<svg');
   });
   it('aucun aéronef : absence dite sans calme inventé ; panne nommée par la réponse', () => {
-    const none = military((x) => { x.frenchByDept = []; x.others = []; x.maskedOthers = 0; });
+    const none = military((x) => { x.frenchByDept = []; x.aircraft = []; });
     expect(visibleText(sectionOf('aeronefs', { military: none })?.html ?? '')).toContain('une absence du flux n’est pas une absence d’activité');
-    const down = military((x) => { x.frenchByDept = []; x.others = []; x.errors = ['adsb.lol : HTTP 429']; });
+    const down = military((x) => { x.frenchByDept = []; x.aircraft = []; x.errors = ['adsb.lol : HTTP 429']; });
     expect(visibleText(sectionOf('aeronefs', { military: down })?.html ?? '')).toContain('Source indisponible : aéronefs adsb.lol.');
   });
   it('aucun aéronef au dernier relevé, relevé en retard : non évalué, adsb.lol muet depuis l’heure du relevé, jamais « aucun » ni « 0 »', () => {
-    const none = military((x) => { x.frenchByDept = []; x.others = []; x.maskedOthers = 0; x.errors = ['adsb.lol : HTTP 429']; });
+    const none = military((x) => { x.frenchByDept = []; x.aircraft = []; x.errors = ['adsb.lol : HTTP 429']; });
     const s = sectionOf('aeronefs', { military: none, now: NOW + 12 * MIN });
     expect(s?.summary).toBe('non évalué · adsb.lol muet depuis 16:48');
     const t = visibleText(s?.html ?? '');
@@ -236,7 +250,7 @@ describe('aéronefs au-dessus de la France (O10, S5)', () => {
   });
 });
 
-describe('urgences (T3, O10, S3)', () => {
+describe('urgences (T3, S3)', () => {
   it('7500 vu une fois au-dessus de Genève (approches) en jaune, 7700 confirmé au-dessus du Finistère en orange ; pastille orange, gros chiffre inchangé', () => {
     const m = military((x) => { x.emergencies = [E7700, E7500]; });
     const v = view({ military: m });
@@ -271,35 +285,48 @@ describe('urgences (T3, O10, S3)', () => {
     expect(h).toContain('fmk-dot--jaune');
     expect(visibleText(h)).not.toContain('Journal sur 7\u00a0jours');
   });
-  it('urgences masquées (O10) : « appareil d’État français · Dépt 69 », identité protégée ; ni adresse, ni indicatif, ni lien vers la carte', () => {
-    const v = view({ military: MILITARY_MASKED_EMERGENCY_FIXTURE() });
+  it('urgences d’un appareil français et d’un appareil PIA : nommées (indicatif, immatriculation), situées, cliquables vers la carte', () => {
+    const v = view({ military: MILITARY_FRENCH_EMERGENCY_FIXTURE() });
     expect(v.head.level).toBe('orange');
     expect(v.head.figure?.value).toBe('9');
-    expect(v.head.status[0]).toContain(`appareil d’État français · Dépt${NBSP}69`);
+    expect(v.head.status[0]).toContain('FICTIF04');
+    expect(v.head.status[0]).not.toContain('appareil d’État français');
     const s = v.sections.find((x) => x.id === 'urgences');
     expect(s?.summary).toBe('2\u00a0urgences');
+    expect(s?.open).toBe(true);
     const h = s?.html ?? '';
-    expect(h).not.toContain('data-emergency');
-    expect(h).not.toContain('is-link');
-    expect(h).toContain('<div class="lp-row"><span class="fmk-dot fmk-dot--jaune" aria-hidden="true"></span>'
-      + `<span>appareil à identité protégée ou de nationalité inconnue · Dépt${NBSP}64 · 7500 (intervention illicite)</span><span class="lp-val fmk-num">16:48</span>`);
-    expect(h).toContain(`<span class="fmk-dot fmk-dot--orange" aria-hidden="true"></span><span>appareil d’État français · Dépt${NBSP}69 · 7700 (urgence)</span>`);
+    expect(h).toContain('data-emergency="3bf004:7700"><span class="fmk-dot fmk-dot--orange" aria-hidden="true"></span><span>FICTIF04 · 7700 (urgence)</span>');
+    expect(h).toContain('data-emergency="44f684:7500"><span class="fmk-dot fmk-dot--jaune" aria-hidden="true"></span><span>GRZLY21 · 7500 (intervention illicite)</span>');
+    expect(h).toContain('class="lp-row is-link"');
     const t = visibleText(h);
-    expect(t).toContain('Rhône (69) · confirmée sur deux lectures, vue de 16:46 à 16:48');
-    expect(t).toContain('Pyrénées-Atlantiques (64) · vue une fois à 16:48, à confirmer · code affiché par le transpondeur, non confirmé par les autorités');
-    expect(t).not.toMatch(/type n\.d\.|pays non identifié|adresse /);
+    expect(t).toContain('EC45 · F-ZFIC · appareil français · Rhône (69) · confirmée sur deux lectures, vue de 16:46 à 16:48');
+    expect(t).toContain('A400 · Belgique · Pyrénées-Atlantiques (64) · vue une fois à 16:48, à confirmer · code affiché par le transpondeur, non confirmé par les autorités');
+    expect(t).not.toMatch(/appareil à identité protégée|appareil d’État français · Dépt|Dépt\u00a0\d/);
     expect(t).not.toContain('Journal sur 7\u00a0jours');
-    expect(visibleText(sectionOf('aeronefs', { military: MILITARY_MASKED_EMERGENCY_FIXTURE() })?.html ?? ''))
-      .toContain('Identité protégée ou nationalité inconnue (PIA, LADD, adresse non OACI) : comptés, jamais montrés1');
+    const noMap = visibleText(sectionOf('urgences', { military: MILITARY_FRENCH_EMERGENCY_FIXTURE(), canFocus: false })?.html ?? '');
+    expect(noMap).toContain('FICTIF04 · 7700 (urgence)');
+    expect(sectionOf('urgences', { military: MILITARY_FRENCH_EMERGENCY_FIXTURE(), canFocus: false })?.html).not.toContain('data-emergency');
   });
-  it('journal des urgences masquées : la clé code · début · département sépare deux épisodes du même instant', () => {
+  it('urgence sans indicatif : nommée par l’immatriculation, sinon par l’adresse OACI', () => {
     const m = military((x) => {
-      x.emergencyLog.push({ ...x.emergencyLog[0], dept: '13' });
-    }, MILITARY_MASKED_EMERGENCY_FIXTURE);
+      x.emergencies = [{ ...E7700, callsign: null, registration: 'ZZ123' }, { ...E7500, callsign: null, registration: null }];
+    });
+    const h = sectionOf('urgences', { military: m })?.html ?? '';
+    expect(h).toContain('<span>ZZ123 · 7700 (urgence)</span>');
+    expect(h).toContain('<span>adresse 4b1814 · 7500 (intervention illicite)</span>');
+    expect(visibleText(h)).toContain('C17 · ZZ123 · États-Unis · Finistère (29)');
+  });
+  it('journal des urgences : un épisode déjà affiché n’est pas répété, un épisode plus ancien du même appareil l’est (non cliquable)', () => {
+    const dup = military((x) => { x.emergencyLog.push({ ...x.emergencyLog[0] }); }, MILITARY_FRENCH_EMERGENCY_FIXTURE);
+    expect(visibleText(sectionOf('urgences', { military: dup })?.html ?? '')).not.toContain('Journal sur 7\u00a0jours');
+    const m = military((x) => {
+      x.emergencyLog.push({ ...x.emergencyLog[0], firstSeen: '2026-10-03T08:00:00Z', lastSeen: '2026-10-03T08:05:00Z', dept: '13' });
+    }, MILITARY_FRENCH_EMERGENCY_FIXTURE);
     const h = sectionOf('urgences', { military: m })?.html ?? '';
     expect(visibleText(h)).toContain('Journal sur 7\u00a0jours');
-    expect(h).toContain(`<span class="fmk-dot" aria-hidden="true"></span><span>appareil d’État français · Dépt${NBSP}13 · 7700 (urgence)</span>`);
-    expect(h.match(/Dépt\u00a069/g)).toHaveLength(1);
+    expect(h).toContain('<span class="fmk-dot" aria-hidden="true"></span><span>FICTIF04 · 7700 (urgence)</span>');
+    expect(h.match(/FICTIF04 · 7700/g)).toHaveLength(2);
+    expect(h.match(/data-emergency="3bf004:7700"/g)).toHaveLength(1);
   });
   it('aucune urgence : dit sans calme inventé ; journal de 7 jours en gris ; relevé en retard : non évalué', () => {
     expect(sectionOf('urgences')?.summary).toBe('aucune');
@@ -366,7 +393,7 @@ describe('sites de défense (O13)', () => {
   });
 });
 
-describe('méthode et sources (S4, S5, O9, O10)', () => {
+describe('méthode et sources (S4, S5, O9)', () => {
   it('résumé « N sources » déduit de la liste, phase B comprise (FX2) ; chaque source de la liste est nommée dans la méthode', () => {
     const s = sectionOf('methode');
     const t = visibleText(s?.html ?? '');
@@ -374,7 +401,7 @@ describe('méthode et sources (S4, S5, O9, O10)', () => {
     expect(s?.summary).toBe(`${DEFENSE_SOURCES.length}${NBSP}sources`);
     for (const name of DEFENSE_SOURCES) expect(t, name).toContain(name);
   });
-  it('adsb.lol sous ODbL, appareils d’État, mer territoriale, bloc OACI, comptes des appareils français, réponse ministérielle du JO, retard', () => {
+  it('adsb.lol sous ODbL, appareils d’État, mer territoriale, bloc OACI, identité publiée de tous les appareils, réponse ministérielle du JO, retard', () => {
     const h = sectionOf('methode')?.html ?? '';
     const t = visibleText(h);
     expect(t).toContain('Données adsb.lol, ODbL 1.0');
@@ -384,7 +411,9 @@ describe('méthode et sources (S4, S5, O9, O10)', () => {
     expect(t).toContain(`ou au-dessus de la mer territoriale (moins de 12${NBSP}milles de la côte)`);
     expect(t).not.toMatch(/22.km/);
     expect(t).toContain('bloc d’adresse OACI');
-    expect(t).toContain('comptés par département, sans indicatif, type, immatriculation ni point sur la carte');
+    expect(t).toContain('Tous les appareils sont montrés avec l’identité que publie adsb.lol (indicatif, immatriculation, adresse OACI, type, position)');
+    expect(t).toContain('appareils français, appareils marqués PIA ou LADD et adresses non OACI compris');
+    expect(t).not.toMatch(/comptés par département|jamais montrés|identité protégée/i);
     expect(t).toContain('Le ministère des Armées modifie l’adresse mode S des avions de la flotte gouvernementale');
     expect(t).toContain('(réponse ministérielle publiée au JO le 25/10/2016).');
     expect(h).toContain('href="https://www.assemblee-nationale.fr/dyn/14/questions/QANR5L14QE93414"');
@@ -432,13 +461,13 @@ describe('pannes, retards (S1 à S3, V1)', () => {
 describe('hygiène du rendu', () => {
   const variants: Array<Partial<DefenseViewInput>> = [
     {}, { now: SOV_FIXTURE_NOW + 12 * MIN }, { military: null, militaryError: 'HTTP 502' }, { military: null, militaryError: null },
-    { military: MILITARY_EMERGENCY_FIXTURE() }, { military: MILITARY_MASKED_EMERGENCY_FIXTURE() },
-    { military: military((x) => { x.frenchByDept.push({ dept: null, count: 2 }); x.maskedOthers = 3; x.others[1] = { ...x.others[1], dept: null }; }) },
+    { military: MILITARY_EMERGENCY_FIXTURE() }, { military: MILITARY_FRENCH_EMERGENCY_FIXTURE() },
+    { military: military((x) => { x.frenchByDept.push({ dept: null, count: 2 }); x.aircraft[1] = { ...x.aircraft[1], dept: null }; }) },
     { navy: { ...NAVY, lastMessageAt: SOV_FIXTURE_NOW - 6 * MIN }, aisRelay: { evaluated: false, lastMessageAt: null } },
     { vigipirate: { ...VIGIPIRATE_FIXTURE, stade: 'alerte-attentat', depuis: '2026-10-03' }, vigipirateCheck: slot(VIGIPIRATE_CHECK_CHANGED_FIXTURE()) },
     { now: Date.parse('2027-02-15T12:00:00+01:00'), vigipirateCheck: slot(VIGIPIRATE_CHECK_FIXTURE(), 'SGDSN, page Vigipirate : HTTP 503') },
     { vigipirate: { ...VIGIPIRATE_FIXTURE, stade: 'alerte-attentat', depuis: '2026-10-03' }, now: Date.parse('2026-10-16T00:30:00+02:00') },
-    { military: military((x) => { x.frenchByDept = []; x.others = []; }), now: SOV_FIXTURE_NOW + 12 * MIN },
+    { military: military((x) => { x.frenchByDept = []; x.aircraft = []; }), now: SOV_FIXTURE_NOW + 12 * MIN },
   ];
   it('aucun tiret cadratin, aucune police à chasse fixe, aucune couleur brute, jamais « temps réel », « LIVE » ni « Situation normale »', () => {
     for (const over of variants) {
@@ -447,12 +476,11 @@ describe('hygiène du rendu', () => {
       expect(visibleText(h)).not.toMatch(/temps réel|TEMPS RÉEL|\bLIVE\b|Situation normale|Aucune activité suspecte|stationn|détournement/i);
     }
   });
-  it('O10 et O11 : aucun sous-marin, aucune immatriculation, aucune ligne cliquable pour un appareil masqué', () => {
-    for (const over of variants) {
-      const h = html(over);
-      expect(visibleText(h)).not.toMatch(/SNLE|\bSNA\b|Triomphant|sous-marin|F-Z[A-Z]{3}/);
-      expect([...h.matchAll(/data-aircraft="([^"]+)"/g)].every((x) => !/^3[89ab]/i.test(x[1]))).toBe(true);
-    }
+  it('O11 : aucun sous-marin dans aucune variante ; aucun masquage : chacun des 9 appareils du relevé a sa ligne cliquable, les 4 français compris', () => {
+    for (const over of variants) expect(visibleText(html(over))).not.toMatch(/SNLE|\bSNA\b|Triomphant|sous-marin|Identité protégée ou nationalité inconnue|comptés, jamais montrés/);
+    const hexes = [...html().matchAll(/data-aircraft="([^"]+)"/g)].map((x) => x[1]);
+    expect(hexes).toHaveLength(9);
+    expect(hexes.filter((x) => /^3bf/i.test(x))).toHaveLength(4);
   });
   it('R1 : aucune valeur coupée entre nombre et unité', () => {
     for (const over of variants) {
@@ -467,10 +495,11 @@ describe('hygiène du rendu', () => {
     }
   });
   it('textes tiers échappés (indicatif et type publiés par adsb.lol)', () => {
-    const hostile: MilitaryAircraft = { ...MILITARY_FIXTURE().others[0], callsign: '<img src=x onerror=alert(1)>', type: '<b>X</b>' };
-    const h = html({ military: military((x) => { x.others = [hostile, ...x.others.slice(1)]; }) });
+    const hostile: MilitaryAircraft = { ...MILITARY_FIXTURE().aircraft[0], callsign: '<img src=x onerror=alert(1)>', registration: '<i>Y</i>', type: '<b>X</b>' };
+    const h = html({ military: military((x) => { x.aircraft = [hostile, ...x.aircraft.slice(1)]; }) });
     expect(h).not.toContain('<img src=x');
     expect(h).toContain('&lt;img src=x onerror=alert(1)&gt;');
     expect(h).not.toContain('<b>X</b>');
+    expect(h).not.toContain('<i>Y</i>');
   });
 });

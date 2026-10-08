@@ -5,8 +5,8 @@
 // échappé ; valeurs insécables (R1). Un lieu sur la carte est un lieu réel (V5) : la Vigilance cyber n'a aucun rendu. Aucune vue importée.
 import type { ExpressionSpecification, GeoJSONSourceSpecification, LayerSpecification } from 'maplibre-gl';
 import type {
-  CableAlert, CableLanding, CablesWatchResponse, DefenseOsmWorksFile, MilitaryAbroad, MilitaryAircraft, MilitaryBase, MilitaryResponse,
-  ShownMilitaryEmergency, SubseaCable, SubseaCablesFile,
+  CableAlert, CableLanding, CablesWatchResponse, DefenseOsmWorksFile, MilitaryAbroad, MilitaryAircraft, MilitaryBase, MilitaryEmergency, MilitaryResponse,
+  SubseaCable, SubseaCablesFile,
 } from '../../types/index.ts';
 import type { MilitaryShip } from '../../services/military-ships.ts';
 import { alertsByVessel, isSovereigntyDataLate, militaryEmergencyLevel, vesselAlertLevel } from '../../services/sovereignty-levels.ts';
@@ -17,7 +17,7 @@ import { isSubmarine } from '../layer-panel/navy.ts';
 import {
   BASE_TYPE_WORD, EMERGENCY_WORD, SQUAWK_CAVEAT, SQUAWK_WORD, aircraftLabel, capitalize, clockOf, dateOf, formatFeet, formatKnots, formatMeters,
 } from '../layer-panel/sovereignty-format.ts';
-import { BASE_TYPE_HEX, CABLE_HEX, MIL_AUTRES_HEX, NAVY_HEX, SOV_ABROAD_HEX } from '../layer-panel/sovereignty-legend.ts';
+import { BASE_TYPE_HEX, CABLE_HEX, MIL_AUTRES_HEX, MIL_FRANCAIS_HEX, NAVY_HEX, SOV_ABROAD_HEX } from '../layer-panel/sovereignty-legend.ts';
 import {
   LYR_MILITARY_BASES_CIRCLE, LYR_MILITARY_BASES_LABEL, LYR_SOV_AIRCRAFT, LYR_SOV_AIRCRAFT_ABROAD, LYR_SOV_DRONES_FILL, LYR_SOV_DRONES_LINE,
   LYR_SOV_GNSS_FILL, LYR_SOV_GNSS_LINE, LYR_SOV_AIRCRAFT_LABEL, LYR_SOV_CABLE_VESSELS, LYR_SOV_EMERGENCIES, LYR_SOV_NAVY_OBSERVED, LYR_SOV_NAVY_REFERENCE, LYR_SOV_OSM_WORKS,
@@ -74,22 +74,12 @@ function vigilanceHex(level: ReturnType<typeof militaryEmergencyLevel>, late: bo
   return late || level === 'gris' ? GREY : levelHex(level);
 }
 
-// ─── Aéronefs militaires (§ 2.1, V2 ; O10) ───
-// Un appareil français, un appareil marqué PIA ou LADD et une adresse non OACI (« ~… ») n'ont jamais de point : le serveur ne les envoie
-// pas (comptés par département seulement) ; les gardes d'ici ne servent qu'à ne jamais en dessiner un si une réponse en laissait passer.
-
-function drawable(a: { hex: string; country: string | null }): boolean {
-  if (a.hex === '' || a.hex.startsWith('~') || a.country === 'France') return false;
-  if (/^[0-9a-f]{6}$/iu.test(a.hex)) {
-    const n = Number.parseInt(a.hex, 16);
-    if (n >= 0x380000 && n <= 0x3bffff) return false;   // bloc OACI de la France
-  }
-  const flags = Number((a as { dbFlags?: unknown }).dbFlags);
-  return !(Number.isInteger(flags) && (flags & 12) !== 0);   // bits 4 (PIA) et 8 (LADD) de dbFlags
-}
+// ─── Aéronefs militaires (§ 2.1, V2 ; décision du 08/10/2026 : tous dessinés, aucun masquage) ───
 
 function aircraftBody(a: MilitaryAircraft, late: boolean, now: number): string {
-  return head(`${aircraftLabel(a)} · ${a.type ?? 'type n.d.'}`, 'aéronef militaire, autre pays')
+  return head(`${aircraftLabel(a)} · ${a.type ?? 'type n.d.'}`, a.family === 'francais' ? 'aéronef militaire ou d’État français' : 'aéronef militaire, autre pays')
+    + row('Immatriculation', a.registration ?? 'n.d.')
+    + row('Adresse OACI', a.hex)
     + row('Pays', a.country ?? 'non identifié (bloc OACI)')
     + row('Département', placeOf(a.dept))
     + row('Altitude', formatFeet(a.altitudeFt))
@@ -99,35 +89,37 @@ function aircraftBody(a: MilitaryAircraft, late: boolean, now: number): string {
     + (late ? note('Relevé en retard : couleur retirée.') : '');
 }
 
-/** Aéronefs d'un autre pays au-dessus de la France (V2), en rose ; relevé en retard : gris ; jamais lu : rien. Position au relevé (arbitrage 20). */
+/** Aéronefs au-dessus de la France (V2) : français en bleu, autres pays en rose ; relevé en retard : gris ; jamais lu : rien. Position au relevé (arbitrage 20). */
 export function aircraftFeatures(m: MilitaryResponse | null, now: number): Fc<GeoJSON.Point> {
   if (m === null || m.readAt === null) return fc([]);
   const late = isSovereigntyDataLate('adsb-mil', m.readAt, now);
-  return fc(m.others.filter((a) => drawable(a)).map((a): GeoJSON.Feature<GeoJSON.Point> => ({
+  return fc(m.aircraft.map((a): GeoJSON.Feature<GeoJSON.Point> => ({
     type: 'Feature', geometry: point(a.lon, a.lat),
     properties: {
-      id: a.hex, color: late ? GREY : MIL_AUTRES_HEX, label: `${aircraftLabel(a)} ${clockOf(a.seenAt, now)}`, body: aircraftBody(a, late, now),
+      id: a.hex, color: late ? GREY : a.family === 'francais' ? MIL_FRANCAIS_HEX : MIL_AUTRES_HEX, label: `${aircraftLabel(a)} ${clockOf(a.seenAt, now)}`, body: aircraftBody(a, late, now),
     },
   })));
 }
 
 function abroadBody(a: MilitaryAbroad): string {
-  return head(`${aircraftLabel(a)} · ${a.type ?? 'type n.d.'}`, 'Hors de France, jamais compté') + row('Pays', a.country ?? 'non identifié (bloc OACI)');
+  return head(`${aircraftLabel(a)} · ${a.type ?? 'type n.d.'}`, 'Hors de France, jamais compté')
+    + row('Immatriculation', a.registration ?? 'n.d.')
+    + row('Pays', a.country ?? 'non identifié (bloc OACI)');
 }
 
 /** Aéronefs de la zone d'affichage hors de France : gris clair, jamais comptés. */
 export function abroadAircraftFeatures(m: MilitaryResponse | null): Fc<GeoJSON.Point> {
   if (m === null || m.readAt === null) return fc([]);
-  return fc(m.abroad.filter((a) => drawable(a)).map((a): GeoJSON.Feature<GeoJSON.Point> => ({
+  return fc(m.abroad.map((a): GeoJSON.Feature<GeoJSON.Point> => ({
     type: 'Feature', geometry: point(a.lon, a.lat), properties: { id: a.hex, color: GREY, body: abroadBody(a) },
   })));
 }
 
-function emergencyBody(e: ShownMilitaryEmergency, late: boolean, now: number): string {
+function emergencyBody(e: MilitaryEmergency, late: boolean, now: number): string {
   const confirmed = isEmergencyConfirmed(e);
   const place = e.inFrance ? placeOf(e.dept) : e.overFrance ? 'approches de la France, hors du territoire' : 'hors de France';
   const word = e.emergency !== null ? EMERGENCY_WORD[e.emergency] ?? null : null;
-  return head(`${e.callsign ?? `adresse ${e.icao24}`} · ${e.squawk} (${SQUAWK_WORD[e.squawk]})`, confirmed ? 'Urgence confirmée (deux lectures)' : 'Vue une fois, à confirmer')
+  return head(`${aircraftLabel({ callsign: e.callsign, registration: e.registration, hex: e.icao24 })} · ${e.squawk} (${SQUAWK_WORD[e.squawk]})`, confirmed ? 'Urgence confirmée (deux lectures)' : 'Vue une fois, à confirmer')
     + row('Lieu', place)
     + row('Vue', `de ${clockOf(e.firstSeen, now)} à ${clockOf(e.lastSeen, now)}`)
     + (word !== null ? row('Publié par l’appareil', word) : '')
@@ -137,13 +129,11 @@ function emergencyBody(e: ShownMilitaryEmergency, late: boolean, now: number): s
 
 /**
  * Urgences de la dernière lecture : cercle autour de l'aéronef, couleur militaryEmergencyLevel ; hors des approches ou en retard : gris.
- * Une urgence masquée (appareil français, PIA, LADD, adresse non OACI) n'a pas de position : aucun point (O10), le panneau la compte.
  */
 export function militaryEmergencyFeatures(m: MilitaryResponse | null, now: number): Fc<GeoJSON.Point> {
   if (m === null || m.readAt === null) return fc([]);
   const late = isSovereigntyDataLate('adsb-mil', m.readAt, now);
-  const shown = m.emergencies.filter((e): e is ShownMilitaryEmergency => !e.masked);
-  return fc(shown.map((e): GeoJSON.Feature<GeoJSON.Point> => ({
+  return fc(m.emergencies.map((e): GeoJSON.Feature<GeoJSON.Point> => ({
     type: 'Feature', geometry: point(e.lon, e.lat),
     properties: { id: `${e.icao24}:${e.squawk}`, color: vigilanceHex(militaryEmergencyLevel(e), late), body: emergencyBody(e, late, now) },
   })));

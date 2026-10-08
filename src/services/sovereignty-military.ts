@@ -1,14 +1,13 @@
 // src/services/sovereignty-military.ts : lecture client de la couche Défense (spec 2026-10-04 souveraineté § 2.1 ; contrats § 3.3 ;
-// amendement 7, O10). Aéronefs militaires ou d'État au-dessus de la France (route /api/sovereignty/military) : français en compte par
-// département, autres appareils montrés sans immatriculation, appareils masqués comptés, urgences montrées ou masquées. Garde de forme
-// exacte élément par élément (un champ en trop, comme une immatriculation ou la position d'une urgence masquée, refuse la réponse),
-// lecture qui ne rejette jamais, fusion à l'écriture, statut « Vols militaires » daté par le relevé adsb.lol (S1). Ouvrages de défense
+// décision du 08/10/2026 : plus aucun masquage). Aéronefs militaires ou d'État au-dessus de la France (route /api/sovereignty/military) :
+// tous montrés avec leur identité publiée (adresse, indicatif, immatriculation, type, position), français aussi comptés par département.
+// Garde de forme exacte élément par élément (un champ en trop ou manquant refuse la réponse), lecture qui ne rejette jamais, fusion à l'écriture, statut « Vols militaires » daté par le relevé adsb.lol (S1). Ouvrages de défense
 // d'OpenStreetMap (option masquée par défaut) : fichier public daté, lu une fois par session, jamais un appel Overpass du navigateur.
 import type { DefenseOsmWorksFile, MilitaryResponse } from '../types/index.ts';
 import { readHealthJsonShared } from './health-surveillance.ts';
 import {
   describeProblems, exactly, isBool, isCount, isDate, isDateOrNull, isNum, isNumOrNull, isOneOf, isStr, isStrOrNull, isStringList, list,
-  loadSovereigntySlot, mergeSlot, record, refine, shapeOf, sovereigntySlotStatus, value, type ShapeCheck, type SourceSlot, type SovereigntyStatus,
+  loadSovereigntySlot, mergeSlot, record, shapeOf, sovereigntySlotStatus, value, type SourceSlot, type SovereigntyStatus,
 } from './sovereignty-source.ts';
 
 export const MILITARY_URL = '/api/sovereignty/military';
@@ -31,53 +30,24 @@ const count = value(isCount);
 const date = value(isDate);
 const squawk = value((v) => isOneOf(v, SQUAWKS));
 
-/** Bloc d'adresses OACI de la France (faits § 5.3, api/_lib/icao-country.js) : 380000 à 3BFFFF. */
-const FRENCH_BLOCK = { start: 0x380000, end: 0x3bffff } as const;
+const family = value((v) => isOneOf(v, FAMILIES));
 
-/** Adresse du bloc France ; une adresse non OACI (« ~… ») n'a pas de pays et n'est jamais lue comme française. */
-function isFrenchIcaoAddress(address: unknown): boolean {
-  if (typeof address !== 'string' || !/^[0-9a-f]{6}$/i.test(address)) return false;
-  const n = Number.parseInt(address, 16);
-  return n >= FRENCH_BLOCK.start && n <= FRENCH_BLOCK.end;
-}
-
-/**
- * O10 côté client : un appareil montré un par un (avec indicatif, type et position) n'est jamais français, par son pays ou par son
- * adresse, ni à adresse non OACI (nationalité inconnue, masquée par défaut) ; sinon la réponse est refusée et l'élément nommé.
- */
-const notMasked = (addressKey: string) => (v: Record<string, unknown>): boolean => {
-  const address = v[addressKey];
-  return v.country !== 'France' && !isFrenchIcaoAddress(address) && !(typeof address === 'string' && address.startsWith('~'));
-};
-const MASKED_SHOWN = 'appareil français ou à adresse non OACI montré, O10';
-
-/** Appareil montré (MilitaryAircraft) : ni immatriculation ni famille, jamais français (O10). */
-const aircraft = refine(record({
-  hex: str, callsign: strOrNull, type: strOrNull, country: strOrNull, lat: num, lon: num, dept: strOrNull, altitudeFt: numOrNull,
-  speedKt: numOrNull, track: numOrNull, seenAt: date,
-}), notMasked('hex'), MASKED_SHOWN);
-const abroad = refine(
-  record({ hex: str, callsign: strOrNull, type: strOrNull, country: strOrNull, lat: num, lon: num }), notMasked('hex'), MASKED_SHOWN,
-);
-const deptCount = record({ dept: strOrNull, count });
-/** Urgence d'un appareil montré : famille « autres » par construction, jamais un appareil français (O10). */
-const shownEmergency = refine(record({
-  icao24: str, callsign: strOrNull, squawk, lat: num, lon: num, altitudeM: numOrNull, firstSeen: date, lastSeen: date, overFrance: bool,
-  masked: exactly(false), family: exactly('autres'), type: strOrNull, country: strOrNull, emergency: strOrNull, inFrance: bool,
-  dept: strOrNull,
-}), notMasked('icao24'), MASKED_SHOWN);
-/** Urgence masquée (O10) : ni adresse, ni indicatif, ni position, ni type, ni pays. */
-const maskedEmergency = record({
-  masked: exactly(true), family: value((v) => isOneOf(v, FAMILIES)), squawk, firstSeen: date, lastSeen: date, overFrance: bool,
-  emergency: strOrNull, inFrance: bool, dept: strOrNull,
+const aircraft = record({
+  hex: str, callsign: strOrNull, registration: strOrNull, type: strOrNull, country: strOrNull, family, lat: num, lon: num,
+  dept: strOrNull, altitudeFt: numOrNull, speedKt: numOrNull, track: numOrNull, seenAt: date,
 });
-const emergency: ShapeCheck = (v, at) => (typeof v === 'object' && v !== null && 'masked' in v && v.masked === true
-  ? maskedEmergency(v, at)
-  : shownEmergency(v, at));
+const abroad = record({
+  hex: str, callsign: strOrNull, registration: strOrNull, type: strOrNull, country: strOrNull, family, lat: num, lon: num,
+});
+const deptCount = record({ dept: strOrNull, count });
+const emergency = record({
+  icao24: str, callsign: strOrNull, registration: strOrNull, squawk, lat: num, lon: num, altitudeM: numOrNull, firstSeen: date,
+  lastSeen: date, overFrance: bool, family, type: strOrNull, country: strOrNull, emergency: strOrNull, inFrance: bool, dept: strOrNull,
+});
 const hour = record({ hour: value((v) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}$/.test(v)), francais: count, autres: count });
 
 const MILITARY_SHAPE = shapeOf<MilitaryResponse>(record({
-  readAt: value(isDateOrNull), sourceNow: value(isDateOrNull), frenchByDept: list(deptCount), others: list(aircraft), maskedOthers: count,
+  readAt: value(isDateOrNull), sourceNow: value(isDateOrNull), frenchByDept: list(deptCount), aircraft: list(aircraft),
   abroadCount: count, abroad: list(abroad), emergencies: list(emergency), emergencyLog: list(emergency),
   hourly: record({ hours: list(hour), since: strOrNull }), errors: value(isStringList),
 }));

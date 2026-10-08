@@ -1,6 +1,6 @@
 // tests/app-sovereignty-panels-wiring.test.ts
-// Câblage des trois panneaux Souveraineté dans App.ts (spec 2026-10-04 souveraineté § 2 ; contrats § 4.2 à 4.4 ; amendement 7, O9, O10,
-// O14, O18). App.ts ne s'instancie pas sous vitest : ces tests lisent sa source, comme tests/app-environment-panels-wiring.test.ts.
+// Câblage des trois panneaux Souveraineté dans App.ts (spec 2026-10-04 souveraineté § 2 ; contrats § 4.2 à 4.4 ; amendement 7, O9, O14,
+// O18 ; décision du 08/10/2026 : aucun aéronef masqué). App.ts ne s'instancie pas sous vitest : ces tests lisent sa source, comme tests/app-environment-panels-wiring.test.ts.
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { SOVEREIGNTY_POLL_MS } from '../src/config/sovereignty-sources.ts';
@@ -65,8 +65,9 @@ describe('panneaux Souveraineté : un panneau par couche (contrats § 4.2 à 4.4
     const layerPanel = read('src/components/LayerPanel.ts');
     expect(layerPanel).toContain("{ key: 'subseaCables', label: 'CONNECTIVITÉ', icon: fmIcon('waves'), sublayerOf: 'sovereignty' },");
     const help = layerPanel.slice(layerPanel.indexOf("this.helpSection(fmIcon('shield'), 'Souveraineté', ["), layerPanel.indexOf("this.helpSection(fmIcon('satellite-dish'), 'Pannes réseau'"));
-    // O9 : libellé du gros chiffre ; O10 : comptes par département ; S2 : port base.
-    expect(help).toContain('Aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole (adsb.lol), comptes par département pour les appareils français');
+    // O9 : libellé du gros chiffre ; aucun masquage (décision du 08/10/2026) ; S2 : port base.
+    expect(help).toContain('Aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole (adsb.lol), tous montrés avec indicatif, immatriculation et position');
+    expect(help).not.toContain('comptes par département');
     expect(help).toContain('Marine nationale vue en AIS et ports base de référence');
     // O18 : le Shom en référence, OpenStreetMap en complément (phase B, B28 : grands réseaux et points d'échange ajoutés à la phrase).
     expect(help).toContain('Câbles télécom sous-marins du Shom et d’OpenStreetMap, atterrages en France, navires lents près d’un câble (AIS) ;');
@@ -93,14 +94,14 @@ describe('panneaux Souveraineté : un panneau par couche (contrats § 4.2 à 4.4
     expect(vis).toContain('for (const sovKey of SOVEREIGNTY_LAYER_KEYS) {');
     expect(vis).not.toMatch(/key === 'subseaCables'|key === 'threatMap'|key === 'military'|Visual-only|currentDefenseAlerts|loadThreatMapEvents/);
   });
-  it('O10 : un appareil français n’est jamais un point ni une ligne cliquable ; urgences montrées seulement recentrées', () => {
+  it('aucun masquage (décision du 08/10/2026) : tout aéronef de la réponse est une ligne cliquable, toute urgence est recentrable', () => {
     const defense = methodBody('ensureDefensePanel');
     expect(defense).toContain('panel.setOnFocusAircraft((aircraft) => this.mapContainer?.flyTo(aircraft.lon, aircraft.lat, 9));');
     expect(defense).toContain('panel.setOnFocusEmergency((emergency) => this.mapContainer?.flyTo(emergency.lon, emergency.lat, 9));');
     const shell = read('src/components/DefensePanel.ts');
-    expect(shell).toContain('m?.others.find((a) => a.hex === hex)');
-    expect(shell).toContain('!x.masked && `${x.icao24}:${x.squawk}` === key');
-    expect(shell).not.toMatch(/inFrance\.find/);
+    expect(shell).toContain('m?.aircraft.find((a) => a.hex === hex)');
+    expect(shell).toContain('m?.emergencies.find((x) => `${x.icao24}:${x.squawk}` === key)');
+    expect(shell).not.toMatch(/\.others\b|maskedOthers|\.masked\b|inFrance\.find/);
     // Les anciens flux qui poussaient des vols français avec indicatif, et les navires vers l'ancienne couche, sont coupés (A17 retire les couches).
     expect(app).not.toMatch(/updateMilitaryFlights\(|updateMilitaryShips\(|updateMilitaryBases\(/);
   });
@@ -214,7 +215,7 @@ describe('panneaux Souveraineté : un panneau par couche (contrats § 4.2 à 4.4
     expect(popup).toContain('position de référence, pas une observation');
     expect(popup).not.toMatch(/AIS LIVE|PORT D'ATTACHE/);
   });
-  it('score, frise, moniteur d’alertes et ISNR sur les entrées Souveraineté (tâche A16, contrats § 6 ; amendement 7, O7, O10)', () => {
+  it('score, frise, moniteur d’alertes et ISNR sur les entrées Souveraineté (tâche A16, contrats § 6 ; amendement 7, O7)', () => {
     expect(methodBody('sovereigntyInputs')).toContain('this.buildSovereigntyInputsB(');
     const snap = methodBody('buildFranceSnapshot');
     expect(snap).toContain('...sov,');
@@ -227,7 +228,7 @@ describe('panneaux Souveraineté : un panneau par couche (contrats § 4.2 à 4.4
     expect(methodBody('updateISNR')).not.toContain('currentThreatEvents');
     for (const name of ['loadMilitary', 'loadCables', 'loadCyber']) expect(methodBody(name)).toContain('this.refreshFranceIntelPanel();');
     expect(app).not.toMatch(/currentCyberData|currentThreatEvents|currentDefenseAlerts|currentJammingSignals|currentMilitarySurges|currentMilitaryFlights|submarineCablesData|loadDefenseAlerts|defenseSeverityToSituationSeverity/);
-    // Une urgence ouverte depuis une alerte recentre la carte sur sa position, seulement pour une urgence montrée (O10 : une urgence masquée n'en a pas).
+    // Une urgence ouverte depuis une alerte recentre la carte sur sa position, pour toute urgence (plus aucune n'est masquée).
     const dossier = methodBody('openAlertDossier');
     expect(dossier).toContain("if (situation.type === 'MILITARY_SURGE_ALERT') {");
     expect(dossier).not.toMatch(/showMilitaryFlight/);

@@ -21,7 +21,7 @@ const text = (c: LegendCategory): string =>
 const COLORS_GONE = 'En retard : couleurs retirées de la carte.';
 
 const MIL: MilitaryResponse = {
-  readAt: '2026-10-04T14:48:30Z', sourceNow: '2026-10-04T14:48:24.501Z', frenchByDept: [], others: [], maskedOthers: 0, abroadCount: 3, abroad: [], emergencies: [], emergencyLog: [],
+  readAt: '2026-10-04T14:48:30Z', sourceNow: '2026-10-04T14:48:24.501Z', frenchByDept: [], aircraft: [], abroadCount: 3, abroad: [], emergencies: [], emergencyLog: [],
   hourly: { hours: [], since: null }, errors: [],
 };
 const FILE: SubseaCablesFile = {
@@ -66,7 +66,7 @@ describe('légendes de base : sources réellement appelées, jamais « temps ré
   });
   it('Défense : hors de France en gris, urgences par niveau, ports d’attache de référence, sites ; plus de zones « ZIT » (tâche B27)', () => {
     const t = text(DEFENSE_LEGEND);
-    for (const label of ['Autres pays', 'Hors de France, jamais compté', 'Urgence confirmée (deux lectures)',
+    for (const label of ['Français (bloc OACI France)', 'Autres pays', 'Hors de France, jamais compté', 'Urgence confirmée (deux lectures)',
       'Urgence vue une fois', 'Bâtiment vu en AIS (heure en étiquette)', 'Port base : position de référence, pas une observation',
     ]) expect(t).toContain(label);
     expect(t).not.toContain('Zone interdite');
@@ -74,9 +74,12 @@ describe('légendes de base : sources réellement appelées, jamais « temps ré
     expect(t).toContain(`au-dessus de la mer territoriale (moins de 12${NBSP}milles de la côte)`);
     expect(t).not.toMatch(/22.km/);
     const color = (id: string): string | undefined => DEFENSE_LEGEND.items.find((i) => i.id === id)?.color;
-    expect(color('mil-francais')).toBeUndefined();
-    expect([color('mil-autres'), color('mil-abroad'), color('mil-emergency-confirmed'), color('mil-emergency-once')])
-      .toEqual([MIL_AUTRES_HEX, SOV_ABROAD_HEX, levelHex('orange'), levelHex('jaune')]);
+    expect([color('mil-francais'), color('mil-autres'), color('mil-abroad'), color('mil-emergency-confirmed'), color('mil-emergency-once')])
+      .toEqual([MIL_FRANCAIS_HEX, MIL_AUTRES_HEX, SOV_ABROAD_HEX, levelHex('orange'), levelHex('jaune')]);
+    // Le bleu français précède le rose des autres pays : un appareil français est dessiné, jamais masqué.
+    const ids = DEFENSE_LEGEND.items.map((i) => i.id);
+    expect(ids.indexOf('mil-francais')).toBeGreaterThan(-1);
+    expect(ids.indexOf('mil-francais')).toBeLessThan(ids.indexOf('mil-autres'));
     expect(DEFENSE_LEGEND.items[0]?.label).toBe('Aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole');
     expect(t).toContain('Un appareil absent du flux n’est pas absent du ciel.');
   });

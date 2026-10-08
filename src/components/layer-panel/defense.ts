@@ -1,8 +1,7 @@
 // src/components/layer-panel/defense.ts : vue pure du panneau Défense (spec 2026-10-04 souveraineté § 2.1 ; contrats § 4.1 ;
-// amendement 7 : O9, O10, O11, O13, O14, S1 à S5) ; aucun accès réseau ni DOM. Collecte adsb.lol du serveur (/v2/mil) ramenée au
-// territoire français (V2) : appareils français comptés par département seulement, sans indicatif, type ni position (O10) ; appareils
-// marqués PIA ou LADD et adresses non OACI comptés, jamais montrés ; autres appareils nommés avec leur pays (bloc d'adresse OACI) ;
-// urgences confirmées sur deux lectures (règle T3 du Trafic aérien), masquées au besoin ; posture Vigipirate saisie et datée (V4,
+// amendement 7 : O9, O11, O13, O14, S1 à S5) ; aucun accès réseau ni DOM. Collecte adsb.lol du serveur (/v2/mil) ramenée au
+// territoire français (V2) : tous les appareils montrés avec leur identité publiée (décision du 08/10/2026, qui remplace O10),
+// français d'abord, pays par le bloc d'adresse OACI ; urgences confirmées sur deux lectures (règle T3 du Trafic aérien) ; posture Vigipirate saisie et datée (V4,
 // hors score), vérifiée par la relecture quotidienne de la page officielle (O14) ; Marine nationale vue en AIS, les autres bâtiments
 // à leur port base comme position de référence (V1, S2), sans sous-marin (O11) ; sites de la liste interne (O13). Chaque partie porte
 // la date de sa donnée (S1) ; une panne se voit (S3) ; une absence n'est jamais un calme.
@@ -84,8 +83,6 @@ const TERRITORIAL_SEA = `au-dessus de la mer territoriale (moins de 12${NBSP}mil
 const APPROACHES = `approches de la France (moins de 40${NBSP}km)`;
 /** Gris des données en retard, de « hors de France » et du « non évalué » (jeton --cat-mil-etranger, légende Défense). */
 const LATE_GREY = 'var(--cat-mil-etranger)';
-const MASKED_FRENCH = 'appareil d’État français';
-const MASKED_OTHER = 'appareil à identité protégée ou de nationalité inconnue';
 const V1_SENTENCE = 'Couverture communautaire : un appareil absent du flux n’est pas absent du ciel (transpondeur coupé, appareils d’État souvent masqués). '
   + 'Pays déduit du bloc d’adresse OACI, pas de l’opérateur.';
 
@@ -212,31 +209,28 @@ function vigipirateSection(input: DefenseViewInput, notices: VigipirateNotices):
   return { id: 'vigipirate', title: 'Posture Vigipirate', collapsible: true, open: open('vigipirate', true), summary: escapeHtml(summary), html };
 }
 
-// ─── Aéronefs au-dessus de la France (O10) ───
+// ─── Aéronefs au-dessus de la France ───
 
 /** Valeur courte du lieu d'un appareil montré : « Rhône (69) », « mer territoriale ». */
 function placeOf(dept: string | null): string {
   return dept !== null ? `${departementName(dept)} (${dept})` : 'mer territoriale';
 }
 
-/** Appareil d'une autre nation montré un par un (ni français, ni PIA, ni LADD, ni adresse non OACI) : jamais d'immatriculation. */
+/** Appareil montré un par un, avec son immatriculation et son adresse OACI. */
 function aircraftRow(a: MilitaryAircraft, isLate: boolean, canFocus: boolean, now: number): string {
-  const parts = [a.country ?? 'pays non identifié', formatFeet(a.altitudeFt), formatKnots(a.speedKt, 0), `vu à ${clockOf(a.seenAt, now)}`,
-    a.dept === null ? TERRITORIAL_SEA : null];
+  const parts = [a.registration, `adresse ${a.hex}`, a.country ?? 'pays non identifié', formatFeet(a.altitudeFt), formatKnots(a.speedKt, 0),
+    `vu à ${clockOf(a.seenAt, now)}`, a.dept === null ? TERRITORIAL_SEA : null];
   return listRow({
     text: `${aircraftLabel(a)} · ${a.type ?? 'type n.d.'}`, value: placeOf(a.dept),
-    ...(isLate ? { level: 'gris' as const } : { color: FAMILY_COLOR.autres }),
+    ...(isLate ? { level: 'gris' as const } : { color: FAMILY_COLOR[a.family] }),
     note: parts.filter((p): p is string => p !== null && p !== '').join(' · '),
     ...(canFocus ? { data: { aircraft: a.hex }, link: true } : {}),
   });
 }
 
-/** Appareils français d'un département (ou de la mer territoriale) : un compte, sans indicatif, type ni position (O10). */
-function frenchDeptRow(d: MilitaryDeptCount, isLate: boolean): string {
-  return listRow({
-    text: d.dept !== null ? placeOf(d.dept) : capitalize(TERRITORIAL_SEA), value: formatCount(d.count),
-    ...(isLate ? { level: 'gris' as const } : { color: FAMILY_COLOR.francais }),
-  });
+/** Résumé des appareils français par département : « Rhône (69) : 2 · mer territoriale : 1 ». */
+function frenchByDeptLine(depts: readonly MilitaryDeptCount[]): string {
+  return depts.map((d) => `${d.dept !== null ? placeOf(d.dept) : TERRITORIAL_SEA}${NBSP}:${NBSP}${frNumber(d.count, 0)}`).join(' · ');
 }
 
 function subhead(text: string): string {
@@ -292,18 +286,18 @@ function aircraftSection(input: DefenseViewInput, m: MilitaryResponse | null): F
   if (m === null || m.readAt === null) return { ...base, summary: 'n.d.', html: sourceDown('aéronefs adsb.lol') };
   const isLate = late(m, now);
   const counts = militaryCounts(m);
-  const french = counts.francais > 0
-    ? subhead(`Français : ${frNumber(counts.francais, 0)}, comptés par département`) + m.frenchByDept.map((d) => frenchDeptRow(d, isLate)).join('')
+  const frenchList = m.aircraft.filter((a) => a.family === 'francais');
+  const otherList = m.aircraft.filter((a) => a.family === 'autres');
+  const french = frenchList.length > 0
+    ? subhead(`Français : ${frNumber(frenchList.length, 0)}`) + frenchList.map((a) => aircraftRow(a, isLate, canFocus, now)).join('')
+      + note(`Par département : ${frenchByDeptLine(m.frenchByDept)}.`)
     : '';
-  const others = m.others.length > 0
-    ? subhead(`Autres pays : ${frNumber(m.others.length, 0)}`) + m.others.map((a) => aircraftRow(a, isLate, canFocus, now)).join('')
-    : '';
-  const masked = m.maskedOthers > 0
-    ? listRow({ text: 'Identité protégée ou nationalité inconnue (PIA, LADD, adresse non OACI) : comptés, jamais montrés', value: formatCount(m.maskedOthers), level: 'gris' })
+  const others = otherList.length > 0
+    ? subhead(`Autres pays : ${frNumber(otherList.length, 0)}`) + otherList.map((a) => aircraftRow(a, isLate, canFocus, now)).join('')
     : '';
   // V1 : relevé en retard sans appareil : non évalué, jamais « aucun » ni « 0 » (même règle que le résumé des urgences).
   const muted = `non évalué · adsb.lol muet depuis ${clockOf(m.readAt, now)}`;
-  const rows = counts.total > 0 ? french + others + masked
+  const rows = counts.total > 0 ? french + others
     : isLate ? emptyLine(`${capitalize(muted)}.`)
       : emptyOrDown(m.errors, 'Aucun aéronef militaire ou d’État visible en ADS-B au-dessus de la métropole ; une absence du flux n’est pas une absence d’activité.', 'aéronefs adsb.lol');
   const summary = isLate && counts.total === 0 ? muted
@@ -314,33 +308,22 @@ function aircraftSection(input: DefenseViewInput, m: MilitaryResponse | null): F
     html: rows
       + listRow({ text: 'Hors de France (approches, mer, pays voisins), jamais comptés', value: formatCount(m.abroadCount), level: 'gris' })
       + hourlyChart(m, isLate, now)
-      + note('Appareils français : un compte par département, sans indicatif, type ni position ; appareils à identité protégée : un compte seulement.')
       + note(V1_SENTENCE)
-      + (canFocus && m.others.length > 0 ? note('Clic sur un aéronef d’une autre nation : sa position au relevé sur la carte.') : ''),
+      + (canFocus && counts.total > 0 ? note('Clic sur un aéronef : sa position au relevé sur la carte.') : ''),
   };
 }
 
-// ─── Urgences (règle T3 du Trafic aérien, arbitrage 6 ; O10, S3) ───
+// ─── Urgences (règle T3 du Trafic aérien, arbitrage 6 ; S3) ───
 
-/**
- * Clé d'un épisode : adresse, code et début pour un appareil montré ; code, début et département pour un appareil masqué, qui n'a
- * pas d'adresse côté client (O10).
- */
+/** Clé d'un épisode : adresse, code et début. */
 function emergencyKey(e: MilitaryEmergency): string {
-  return e.masked ? `${e.squawk}:${e.firstSeen}:${e.dept}` : `${e.icao24}:${e.squawk}:${e.firstSeen}`;
+  return `${e.icao24}:${e.squawk}:${e.firstSeen}`;
 }
 
 /** Lieu dit d'une urgence : département, mer territoriale, approches ou hors de France. */
 function emergencyPlace(e: MilitaryEmergency): string {
   if (e.inFrance) return e.dept !== null ? placeOf(e.dept) : TERRITORIAL_SEA;
   return e.overFrance ? APPROACHES : 'hors de France';
-}
-
-/** Appareil masqué (O10) : « appareil d’État français · Dépt 56 » ; jamais une adresse, un indicatif ni une position. */
-function maskedWho(e: Extract<MilitaryEmergency, { masked: true }>): string {
-  const who = e.family === 'francais' ? MASKED_FRENCH : MASKED_OTHER;
-  const where = e.dept !== null ? `Dépt${NBSP}${e.dept}` : e.inFrance ? 'mer territoriale' : e.overFrance ? 'approches de la France' : 'hors de France';
-  return `${who} · ${where}`;
 }
 
 function emergencyRow(e: MilitaryEmergency, isLate: boolean, current: boolean, canFocus: boolean, now: number): string {
@@ -350,14 +333,13 @@ function emergencyRow(e: MilitaryEmergency, isLate: boolean, current: boolean, c
   // Champ « emergency » publié, dit seulement s'il ajoute au code (« general » d'un 7700 redirait « urgence »).
   const published = e.emergency !== null ? EMERGENCY_WORD[e.emergency] ?? null : null;
   const word = published !== null && published !== SQUAWK_WORD[e.squawk] ? `statut publié : ${published}` : null;
-  const who = e.masked ? [] : [e.type ?? 'type n.d.', e.country ?? 'pays non identifié'];
+  const who = [e.type ?? 'type n.d.', e.registration, e.family === 'francais' ? 'appareil français' : e.country ?? 'pays non identifié'];
   const parts = [...who, emergencyPlace(e), word, seen, e.squawk === '7500' ? SQUAWK_CAVEAT : null];
   return listRow({
-    text: `${e.masked ? maskedWho(e) : e.callsign ?? `adresse ${e.icao24}`} · ${e.squawk} (${SQUAWK_WORD[e.squawk]})`,
+    text: `${aircraftLabel({ callsign: e.callsign, registration: e.registration, hex: e.icao24 })} · ${e.squawk} (${SQUAWK_WORD[e.squawk]})`,
     value: clockOf(e.lastSeen, now), level: isLate || !current ? 'gris' : militaryEmergencyLevel(e),
     note: parts.filter((p): p is string => p !== null && p !== '').join(' · '),
-    // Un appareil masqué n'a pas de position : rien à recentrer sur la carte (O10).
-    ...(canFocus && current && !e.masked ? { data: { emergency: `${e.icao24}:${e.squawk}` }, link: true } : {}),
+    ...(canFocus && current ? { data: { emergency: `${e.icao24}:${e.squawk}` }, link: true } : {}),
   });
 }
 
@@ -379,8 +361,7 @@ function emergenciesSection(input: DefenseViewInput, m: MilitaryResponse | null)
     + (log.length > 0 ? note(glueSovUnits('Journal sur 7 jours')) + log.map((e) => emergencyRow(e, isLate, false, false, now)).join('') : '')
     + note(`Une urgence ne colore qu’au-dessus de la France ou à moins de 40${NBSP}km, confirmée sur deux lectures (règle du Trafic aérien) ; `
       + 'vue une fois : jaune. Intervention illicite (7500) rouge ; urgence (7700) et panne radio (7600) orange. '
-      + 'Chaque code est affiché par le transpondeur, non confirmé par les autorités. Appareil français ou à identité protégée : département '
-      + 'seul, sans indicatif ni position.');
+      + 'Chaque code est affiché par le transpondeur, non confirmé par les autorités.');
   const summary = current.length > 0 ? `${glueSovUnits(plural(current.length, 'urgence'))}${isLate ? ' (en retard)' : ''}`
     : isLate ? `non évalué · adsb.lol muet depuis ${clockOf(m.readAt, now)}` : 'aucune';
   return { ...base, summary: escapeHtml(summary), html };
@@ -464,10 +445,9 @@ function methodSection(input: DefenseViewInput): FicheSection {
       + 'n’est pas l’activité militaire.')
     + note(`Au-dessus de la France : position dans un département métropolitain, ou ${TERRITORIAL_SEA}. `
       + 'Hors de France : dessiné en gris, jamais compté. Pays : bloc d’adresse OACI de l’appareil (annexe 10 de l’OACI).')
-    + `<p class="fmk-note">${escapeHtml('Appareils français (bloc d’adresse OACI France) : comptés par département, sans indicatif, type, immatriculation ni '
-      + 'point sur la carte ; appareils marqués PIA ou LADD et adresses non OACI : comptés, jamais montrés ; aucune immatriculation, pour aucun pays. '
-      + 'Le ministère des Armées modifie l’adresse mode S des avions de la flotte gouvernementale et demande aux sites de suivi de préserver la '
-      + 'confidentialité des activités militaires (')}${sourceLinkHtml('réponse ministérielle publiée au JO le 25/10/2016', JO_2016_URL)}).</p>`
+    + `<p class="fmk-note">${escapeHtml('Tous les appareils sont montrés avec l’identité que publie adsb.lol (indicatif, immatriculation, adresse OACI, '
+      + 'type, position), appareils français, appareils marqués PIA ou LADD et adresses non OACI compris. Le ministère des Armées modifie l’adresse '
+      + 'mode S des avions de la flotte gouvernementale et demande aux sites de suivi de préserver la confidentialité des activités militaires (')}${sourceLinkHtml('réponse ministérielle publiée au JO le 25/10/2016', JO_2016_URL)}).</p>`
     + note(`Position au relevé, sans trajectoire ni interpolation ; une position de plus de 2${NBSP}minutes n’est pas retenue.`)
     + note(`Urgences : code 7500, 7600 ou 7700, ou champ « emergency » publié, confirmés sur deux lectures du serveur ; ${SQUAWK_CAVEAT}.`)
     + note(`Retard : relevé de plus de 10${NBSP}min ; la pastille passe à n.d. et les couleurs sont retirées.`)

@@ -3,18 +3,18 @@
 // de la France par famille, hors de France en gris, urgences cerclées par niveau, Marine nationale vue en AIS et ports d'attache de
 // référence, sites de la liste interne, câbles OpenStreetMap, navires lents signalés ; rien pour la Vigilance cyber (V5).
 import { describe, expect, it } from 'vitest';
-import type { CableAlert, CablesWatchResponse, DefenseOsmWorksFile, MilitaryResponse, ShownMilitaryEmergency } from '../../types/index.ts';
+import type { CableAlert, CablesWatchResponse, DefenseOsmWorksFile, MilitaryEmergency, MilitaryResponse } from '../../types/index.ts';
 import { ACTIVE_INSTALLATIONS } from '../../config/military-bases-db.ts';
 import type { MilitaryShip } from '../../services/military-ships.ts';
 import { levelHex } from '../../services/vigilance.ts';
 import {
   CABLES_FILE_FIXTURE, CABLES_WATCH_ALERTS_FIXTURE, CABLES_WATCH_FROZEN_FIXTURE, CABLES_WATCH_ZONE_MUTED_FIXTURE, MILITARY_FIXTURE,
-  MILITARY_MASKED_EMERGENCY_FIXTURE, SOV_FIXTURE_NOW,
+  MILITARY_FRENCH_EMERGENCY_FIXTURE, SOV_FIXTURE_NOW,
 } from '../layer-panel/sovereignty.fixture.ts';
 import { buildConnectiviteView } from '../layer-panel/connectivite.ts';
 import { NBSP } from '../layer-panel/format.ts';
 import { formatFeet } from '../layer-panel/sovereignty-format.ts';
-import { BASE_TYPE_HEX, CABLE_HEX, MIL_AUTRES_HEX, NAVY_HEX, SOV_ABROAD_HEX } from '../layer-panel/sovereignty-legend.ts';
+import { BASE_TYPE_HEX, CABLE_HEX, MIL_AUTRES_HEX, MIL_FRANCAIS_HEX, NAVY_HEX, SOV_ABROAD_HEX } from '../layer-panel/sovereignty-legend.ts';
 import {
   LYR_MILITARY_BASES_CIRCLE, LYR_MILITARY_BASES_LABEL, LYR_SOV_AIRCRAFT, LYR_SOV_AIRCRAFT_ABROAD, LYR_SOV_DRONES_FILL, LYR_SOV_DRONES_LINE,
   LYR_SOV_GNSS_FILL, LYR_SOV_GNSS_LINE, LYR_SOV_AIRCRAFT_LABEL, LYR_SOV_CABLE_VESSELS, LYR_SOV_EMERGENCIES, LYR_SOV_NAVY_OBSERVED, LYR_SOV_NAVY_REFERENCE, LYR_SOV_OSM_WORKS,
@@ -38,49 +38,76 @@ const military = (edit: (m: MilitaryResponse) => void): MilitaryResponse => {
 const ship = (over: Partial<MilitaryShip> & Pick<MilitaryShip, 'id' | 'name'>): MilitaryShip => ({
   type: 'FREMM', role: 'Frégate multi-missions', lat: 43.12, lon: 5.92, isLive: false, port: 'Toulon', speed: 0, ...over,
 });
-const E7700: ShownMilitaryEmergency = {
-  icao24: 'ae0805', callsign: 'RCH161', squawk: '7700', lat: 48.39, lon: -4.49, altitudeM: 7620, firstSeen: '2026-10-04T14:44:00Z',
-  lastSeen: '2026-10-04T14:48:24Z', overFrance: true, type: 'C17', country: 'États-Unis', family: 'autres', emergency: 'general', inFrance: true, dept: '29', masked: false,
+const E7700: MilitaryEmergency = {
+  icao24: 'ae0805', callsign: 'RCH161', registration: null, squawk: '7700', lat: 48.39, lon: -4.49, altitudeM: 7620, firstSeen: '2026-10-04T14:44:00Z',
+  lastSeen: '2026-10-04T14:48:24Z', overFrance: true, type: 'C17', country: 'États-Unis', family: 'autres', emergency: 'general', inFrance: true, dept: '29',
 };
-const E7500: ShownMilitaryEmergency = {
-  icao24: '4b1814', callsign: 'ESSAI75', squawk: '7500', lat: 46.204, lon: 6.143, altitudeM: 9140, firstSeen: '2026-10-04T14:48:24Z',
-  lastSeen: '2026-10-04T14:48:24Z', overFrance: true, type: 'A400', country: 'Suisse', family: 'autres', emergency: 'unlawful', inFrance: false, dept: null, masked: false,
+const E7500: MilitaryEmergency = {
+  icao24: '4b1814', callsign: 'ESSAI75', registration: null, squawk: '7500', lat: 46.204, lon: 6.143, altitudeM: 9140, firstSeen: '2026-10-04T14:48:24Z',
+  lastSeen: '2026-10-04T14:48:24Z', overFrance: true, type: 'A400', country: 'Suisse', family: 'autres', emergency: 'unlawful', inFrance: false, dept: null,
 };
-const FAR: ShownMilitaryEmergency = { ...E7700, icao24: 'ae1436', callsign: 'FAZE37', lat: 51.37, lon: -0.57, overFrance: false, inFrance: false, dept: null };
+const FAR: MilitaryEmergency = { ...E7700, icao24: 'ae1436', callsign: 'FAZE37', lat: 51.37, lon: -0.57, overFrance: false, inFrance: false, dept: null };
 
-describe('aéronefs militaires : autres pays au-dessus de la France, hors de France en gris, jamais un appareil français (O10)', () => {
-  it('5 aéronefs d’autres pays du 04/10 en rose, aucun point pour les 4 français ; position au relevé [lng, lat] ; infobulle datée, sans immatriculation', () => {
+describe('aéronefs militaires : tous dessinés au-dessus de la France (français en bleu, autres en rose), hors de France en gris, aucun masquage', () => {
+  it('9 aéronefs du 04/10 dessinés : 4 français en bleu, 5 autres en rose ; position au relevé [lng, lat] ; infobulle datée, avec immatriculation et adresse OACI', () => {
     const fc = aircraftFeatures(MILITARY_FIXTURE(), NOW);
-    expect(fc.features).toHaveLength(5);
-    expect(fc.features.every((f) => props(f)['color'] === MIL_AUTRES_HEX)).toBe(true);
+    expect(fc.features).toHaveLength(9);
+    expect(fc.features.filter((f) => props(f)['color'] === MIL_FRANCAIS_HEX)).toHaveLength(4);
+    expect(fc.features.filter((f) => props(f)['color'] === MIL_AUTRES_HEX)).toHaveLength(5);
     const rrr = fc.features.find((f) => props(f)['id'] === '43c700');
     expect(rrr?.geometry.coordinates).toEqual([3.590057, 45.947059]);
     expect(props(rrr)['label']).toBe('RRR2301 16:48');
     const body = String(props(rrr)['body']);
     expect(body).toContain('<b>RRR2301 · A332</b>');
+    expect(body).toContain('aéronef militaire, autre pays');
+    expect(body).toContain('<span>Immatriculation</span><span>n.d.</span>');
+    expect(body).toContain('<span>Adresse OACI</span><span>43c700</span>');
     expect(body).toContain('<span>Pays</span><span>Royaume-Uni</span>');
     expect(body).toContain('<span>Département</span><span>Puy-de-Dôme (63)</span>');
     expect(body).toContain(`<span>Altitude</span><span>${formatFeet(39000)}</span>`);
     expect(body).toContain('<span>Vu à</span><span>16:48</span>');
     expect(body).toContain('Un appareil absent du flux n’est pas absent du ciel.');
-    expect(body).not.toMatch(/Immatriculation|français/);
     expect(body).toContain(`${NBSP}ft`);
   });
-  it('adresse non OACI : jamais un point, même si une réponse en laissait passer une', () => {
-    const m = military((r) => { r.others = [{ ...r.others[0], hex: '~ab12cd' }, r.others[1]]; r.abroad = [{ ...r.abroad[0], hex: '~ab12ce' }]; });
-    expect(aircraftFeatures(m, NOW).features.map((f) => props(f)['id'])).toEqual(['c2b5b7']);
-    expect(abroadAircraftFeatures(m).features).toHaveLength(0);
+  it('appareil français (bloc OACI France) : point bleu à sa position, infobulle avec indicatif, immatriculation, adresse et département', () => {
+    const fc = aircraftFeatures(MILITARY_FIXTURE(), NOW);
+    const fr = fc.features.find((f) => props(f)['id'] === '3bf004');
+    expect(fr?.geometry.coordinates).toEqual([4.64, 45.87]);
+    expect(props(fr)['color']).toBe(MIL_FRANCAIS_HEX);
+    expect(props(fr)['label']).toBe('FICTIF04 16:48');
+    const body = String(props(fr)['body']);
+    expect(body).toContain('<b>FICTIF04 · EC45</b>');
+    expect(body).toContain('aéronef militaire ou d’État français');
+    expect(body).toContain('<span>Immatriculation</span><span>F-ZFIC</span>');
+    expect(body).toContain('<span>Adresse OACI</span><span>3bf004</span>');
+    expect(body).toContain('<span>Pays</span><span>France</span>');
+    expect(body).toContain('<span>Département</span><span>Rhône (69)</span>');
+    expect(body).not.toMatch(/masqu|protégée|jamais montré/);
   });
-  it('défense en profondeur (O10) : un appareil français (pays ou bloc OACI) ou PIA/LADD n’a jamais de point, dans others comme dans abroad', () => {
+  it('appareil sans indicatif ni immatriculation : nommé par son adresse ; adresse non OACI (~…) dessinée, pays « non identifié »', () => {
+    const m = military((r) => {
+      r.aircraft = [{ ...r.aircraft[4], hex: '~ab12cd', callsign: null, registration: null, country: null }, { ...r.aircraft[0], callsign: null, registration: 'F-ZFIC' }];
+      r.abroad = [{ ...r.abroad[0], hex: '~ab12ce', callsign: null, registration: null, country: null }];
+    });
+    const fc = aircraftFeatures(m, NOW);
+    expect(fc.features.map((f) => props(f)['id'])).toEqual(['~ab12cd', '3bf001']);
+    expect(props(fc.features[0])['label']).toBe('adresse ~ab12cd 16:48');
+    expect(props(fc.features[0])['color']).toBe(MIL_AUTRES_HEX);
+    expect(String(props(fc.features[0])['body'])).toContain('<span>Pays</span><span>non identifié (bloc OACI)</span>');
+    expect(props(fc.features[1])['label']).toBe('F-ZFIC 16:48');
+    const abroad = abroadAircraftFeatures(m);
+    expect(abroad.features.map((f) => props(f)['id'])).toEqual(['~ab12ce']);
+    expect(String(props(abroad.features[0])['body'])).toContain('<b>adresse ~ab12ce · DH8A</b>');
+  });
+  it('aucun masquage : chaque appareil de la réponse a son point, au-dessus de la France comme hors de France', () => {
     const base = MILITARY_FIXTURE();
-    const french = { ...base.others[0], hex: '3bf004', country: 'France' };
-    const frenchBlock = { ...base.others[1], country: null, hex: '39abcd' };
-    const pia = { ...base.others[2], dbFlags: 4 };
-    const ladd = { ...base.others[3], dbFlags: '8' };
-    const ok = base.others[4];
-    const m = military((r) => { r.others = [french, frenchBlock, pia, ladd, ok]; r.abroad = [{ ...r.abroad[0], country: 'France' }, { ...r.abroad[1], hex: '3a0001' }, r.abroad[2]]; });
-    expect(aircraftFeatures(m, NOW).features.map((f) => props(f)['id'])).toEqual([ok.hex]);
-    expect(abroadAircraftFeatures(m).features.map((f) => props(f)['id'])).toEqual([base.abroad[2].hex]);
+    expect(aircraftFeatures(base, NOW).features.map((f) => props(f)['id'])).toEqual(base.aircraft.map((a) => a.hex));
+    expect(abroadAircraftFeatures(base).features.map((f) => props(f)['id'])).toEqual(base.abroad.map((a) => a.hex));
+    const m = military((r) => { r.abroad = [{ ...r.abroad[0], country: 'France', family: 'francais', hex: '3a0001', registration: 'F-ZFIC' }, r.abroad[1]]; });
+    const abroad = abroadAircraftFeatures(m);
+    expect(abroad.features.map((f) => props(f)['id'])).toEqual(['3a0001', 'ae1436']);
+    expect(String(props(abroad.features[0])['body'])).toContain('<span>Immatriculation</span><span>F-ZFIC</span>');
+    expect(abroad.features.every((f) => props(f)['color'] === SOV_ABROAD_HEX)).toBe(true);
   });
   it('relevé en retard (12 min) : gris, dit ; jamais lu : rien dessiné', () => {
     const late = aircraftFeatures(MILITARY_FIXTURE(), NOW + 12 * MIN);
@@ -95,12 +122,24 @@ describe('aéronefs militaires : autres pays au-dessus de la France, hors de Fra
     expect(fc.features.every((f) => props(f)['color'] === SOV_ABROAD_HEX)).toBe(true);
     expect(String(props(fc.features[0])['body'])).toContain('Hors de France, jamais compté');
   });
-  it('urgence masquée (appareil d’État français, PIA, LADD) : aucun point, seul le panneau la compte', () => {
-    const masked = MILITARY_MASKED_EMERGENCY_FIXTURE();
-    expect(masked.emergencies).toHaveLength(2);
-    expect(militaryEmergencyFeatures(masked, NOW).features).toHaveLength(0);
-    const mixed = military((m) => { m.emergencies = [...MILITARY_MASKED_EMERGENCY_FIXTURE().emergencies, E7700]; });
-    expect(militaryEmergencyFeatures(mixed, NOW).features.map((f) => props(f)['id'])).toEqual(['ae0805:7700']);
+  it('urgences d’un appareil français et d’un appareil PIA : montrées, nommées, avec leur position', () => {
+    const fc = militaryEmergencyFeatures(MILITARY_FRENCH_EMERGENCY_FIXTURE(), NOW);
+    expect(fc.features.map((f) => props(f)['id'])).toEqual(['44f684:7500', '3bf004:7700']);
+    const fr = fc.features.find((f) => props(f)['id'] === '3bf004:7700');
+    expect(fr?.geometry.coordinates).toEqual([4.64, 45.87]);
+    expect(props(fr)['color']).toBe(levelHex('orange'));
+    const body = String(props(fr)['body']);
+    expect(body).toContain('<b>FICTIF04 · 7700 (urgence)</b>');
+    expect(body).toContain('Urgence confirmée (deux lectures)');
+    expect(body).toContain('<span>Lieu</span><span>Rhône (69)</span>');
+    expect(props(fc.features[0])['color']).toBe(levelHex('jaune'));
+    expect(String(props(fc.features[0])['body'])).toContain('<b>GRZLY21 · 7500 (intervention illicite)</b>');
+    const noName = military((m) => { m.emergencies = [{ ...E7700, callsign: null, registration: null }, { ...E7500, callsign: null, registration: 'F-ZFIC' }]; });
+    const named = militaryEmergencyFeatures(noName, NOW);
+    expect(String(props(named.features[0])['body'])).toContain('<b>adresse ae0805 · 7700');
+    expect(String(props(named.features[1])['body'])).toContain('<b>F-ZFIC · 7500');
+    const mixed = military((m) => { m.emergencies = [...MILITARY_FRENCH_EMERGENCY_FIXTURE().emergencies, E7700]; });
+    expect(militaryEmergencyFeatures(mixed, NOW).features.map((f) => props(f)['id'])).toEqual(['44f684:7500', '3bf004:7700', 'ae0805:7700']);
   });
   it('urgences : 7700 confirmé orange, 7500 vu une fois aux approches jaune, hors des approches gris ; relevé en retard gris', () => {
     const fc = militaryEmergencyFeatures(military((m) => { m.emergencies = [E7700, E7500, FAR]; }), NOW);
@@ -293,7 +332,7 @@ describe('sources, couches, survol', () => {
     expect(SOV_HOVER_LAYERS[0]).toBe(LYR_SOV_EMERGENCIES);
     const hit = topSovHit([{ layer: { id: LYR_SUBMARINE_CABLES_HITAREA } }, { layer: { id: LYR_SOV_AIRCRAFT } }]);
     expect(hit?.layer.id).toBe(LYR_SOV_AIRCRAFT);
-    const hostile = aircraftFeatures(military((m) => { m.others = [{ ...m.others[0], callsign: '<img src=x onerror=alert(1)>' }]; }), NOW);
+    const hostile = aircraftFeatures(military((m) => { m.aircraft = [{ ...m.aircraft[0], callsign: '<img src=x onerror=alert(1)>' }]; }), NOW);
     const html = sovTooltipHtml(LYR_SOV_AIRCRAFT, props(hostile.features[0]));
     expect(html).toMatch(/^<div class="hm-tip">/);
     expect(html).not.toContain('<img');
@@ -303,6 +342,7 @@ describe('sources, couches, survol', () => {
   it('aucun tiret cadratin, jamais « temps réel » ni « stationné » dans les infobulles', () => {
     const bodies = [
       ...aircraftFeatures(MILITARY_FIXTURE(), NOW).features, ...abroadAircraftFeatures(MILITARY_FIXTURE()).features,
+      ...militaryEmergencyFeatures(MILITARY_FRENCH_EMERGENCY_FIXTURE(), NOW).features,
       ...cableFeatures(CABLES_FILE_FIXTURE()).features, ...landingFeatures(CABLES_FILE_FIXTURE()).features, ...cableAlertFeatures(CABLES_WATCH_ALERTS_FIXTURE(), NOW).features,
       ...defenseSiteFeatures(ACTIVE_INSTALLATIONS).features,
     ].map((f) => String(props(f)['body']));

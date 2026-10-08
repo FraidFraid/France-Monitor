@@ -1,11 +1,11 @@
 // src/services/sovereignty-services.test.ts : lecture client de la Souveraineté (spec 2026-10-04 souveraineté S1 à S4, V1 ; contrats
-// § 3.2, § 3.3 ; amendement 7, O5, O10, O14) sur les réponses construites par le serveur le 04/10 (sovereignty.fixture.ts) : formes
+// § 3.2, § 3.3 ; amendement 7, O5, O14) sur les réponses construites par le serveur le 04/10 (sovereignty.fixture.ts) : formes
 // exactes vérifiées élément par élément et nommées, réponse 502 de même forme nommée par ses erreurs, lignes du panneau des sources
 // datées par la donnée, mentions de la ligne Vigipirate.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   CABLES_FILE_FIXTURE, CABLES_WATCH_ALERTS_FIXTURE, CABLES_WATCH_FIXTURE, CABLES_WATCH_FROZEN_FIXTURE, CABLES_WATCH_ZONE_MUTED_FIXTURE,
-  CYBER_FIXTURE, MILITARY_EMERGENCY_FIXTURE, MILITARY_FIXTURE, MILITARY_MASKED_EMERGENCY_FIXTURE, SOV_FIXTURE_NOW, VIGIPIRATE_CHECK_CHANGED_FIXTURE,
+  CYBER_FIXTURE, MILITARY_EMERGENCY_FIXTURE, MILITARY_FIXTURE, MILITARY_FRENCH_EMERGENCY_FIXTURE, SOV_FIXTURE_NOW, VIGIPIRATE_CHECK_CHANGED_FIXTURE,
   VIGIPIRATE_CHECK_FIXTURE, VIGIPIRATE_FIXTURE,
 } from '../components/layer-panel/sovereignty.fixture.ts';
 import type { MilitaryResponse, VigipiratePageCheck } from '../types/index.ts';
@@ -50,7 +50,7 @@ function stubFetch(bodies: Record<string, unknown>, over: Record<string, Reply> 
 
 /** Corps 502 du serveur : aucune donnée lue, pannes nommées. */
 const MILITARY_502 = (errors: string[]): MilitaryResponse => ({
-  readAt: null, sourceNow: null, frenchByDept: [], others: [], maskedOthers: 0, abroadCount: 0, abroad: [], emergencies: [], emergencyLog: [],
+  readAt: null, sourceNow: null, frenchByDept: [], aircraft: [], abroadCount: 0, abroad: [], emergencies: [], emergencyLog: [],
   hourly: { hours: [], since: null }, errors,
 });
 
@@ -102,52 +102,63 @@ describe('socle : statut daté par la donnée, notes d’avancement, filtre par 
 });
 
 describe('Défense', () => {
-  it('gardes : relevé du 04/10, urgences montrées et masquées acceptés', () => {
-    expect([MILITARY_FIXTURE(), MILITARY_EMERGENCY_FIXTURE(), MILITARY_MASKED_EMERGENCY_FIXTURE()].map(isMilitaryResponse)).toEqual([true, true, true]);
+  it('gardes : relevé du 04/10, urgences d’appareils étrangers et français acceptés', () => {
+    expect([MILITARY_FIXTURE(), MILITARY_EMERGENCY_FIXTURE(), MILITARY_FRENCH_EMERGENCY_FIXTURE()].map(isMilitaryResponse)).toEqual([true, true, true]);
   });
-  it('forme exacte (O10) : immatriculation ou famille d’un appareil montré, position d’une urgence masquée, code inconnu : réponse refusée, élément nommé', () => {
+  it('forme exacte (décision du 08/10/2026) : identité complète exigée pour chaque appareil et chaque urgence, champ manquant, en trop ou inconnu : réponse refusée, élément nommé', () => {
     const registration = MILITARY_FIXTURE();
-    field(registration.others[0]).registration = 'ZZ333';
-    expect(militaryResponseProblems(registration)).toEqual(['others[0].registration (en trop)']);
+    delete field(registration.aircraft[0]).registration;
+    expect(militaryResponseProblems(registration)).toEqual(['aircraft[0].registration (absent)']);
     const family = MILITARY_FIXTURE();
-    field(family.others[2]).family = 'autres';
-    expect(militaryResponseProblems(family)).toEqual(['others[2].family (en trop)']);
-    const located = MILITARY_MASKED_EMERGENCY_FIXTURE();
-    Object.assign(field(located.emergencies[1]), { lat: 45.7, lon: 4.9, callsign: 'FICTIF04' });
-    expect(militaryResponseProblems(located)).toEqual(['emergencies[1].lat (en trop)', 'emergencies[1].lon (en trop)', 'emergencies[1].callsign (en trop)']);
+    field(family.aircraft[2]).family = 'inconnue';
+    expect(militaryResponseProblems(family)).toEqual(['aircraft[2].family']);
+    const abroadFamily = MILITARY_FIXTURE();
+    delete field(abroadFamily.abroad[1]).family;
+    expect(militaryResponseProblems(abroadFamily)).toEqual(['abroad[1].family (absent)']);
+    const extra = MILITARY_FIXTURE();
+    field(extra.aircraft[1]).masked = true;
+    expect(militaryResponseProblems(extra)).toEqual(['aircraft[1].masked (en trop)']);
+    const located = MILITARY_FRENCH_EMERGENCY_FIXTURE();
+    delete field(located.emergencies[1]).lat;
+    delete field(located.emergencies[1]).callsign;
+    expect(militaryResponseProblems(located)).toEqual(['emergencies[1].callsign (absent)', 'emergencies[1].lat (absent)']);
     const squawk = MILITARY_EMERGENCY_FIXTURE();
     field(squawk.emergencies[0]).squawk = '1200';
     expect(militaryResponseProblems(squawk)).toEqual(['emergencies[0].squawk']);
     const french = MILITARY_EMERGENCY_FIXTURE();
     field(french.emergencyLog[1]).family = 'francais';
-    expect(militaryResponseProblems(french)).toEqual(['emergencyLog[1].family']);
+    expect(isMilitaryResponse(french)).toBe(true);
     const missing = MILITARY_FIXTURE();
-    delete field(missing).maskedOthers;
-    expect([isMilitaryResponse(missing), militaryResponseProblems(missing)]).toEqual([false, ['maskedOthers (absent)']]);
+    delete field(missing).aircraft;
+    expect([isMilitaryResponse(missing), militaryResponseProblems(missing)]).toEqual([false, ['aircraft (absent)']]);
+    const old = MILITARY_FIXTURE();
+    Object.assign(field(old), { others: [], maskedOthers: 0 });
+    expect(militaryResponseProblems(old)).toEqual(['others (en trop)', 'maskedOthers (en trop)']);
   });
-  it('O10 : un appareil français (pays « France » ou adresse du bloc 380000 à 3BFFFF) ou à adresse non OACI n’est jamais montré : dans `others`, `abroad` ou une urgence montrée, la réponse est refusée et l’élément nommé', () => {
-    const O10 = '(appareil français ou à adresse non OACI montré, O10)';
+  it('décision du 08/10/2026 : appareils français (pays « France », bloc 380000 à 3BFFFF), à adresse non OACI ou marqués PIA montrés dans `aircraft`, `abroad` et les urgences, réponse acceptée', () => {
+    const french = MILITARY_FIXTURE();
+    expect(french.aircraft.filter((a) => a.family === 'francais').map((a) => [a.hex, a.callsign, a.country])).toEqual([
+      ['3bf001', 'FICTIF01', 'France'], ['3bf002', 'FICTIF02', 'France'], ['3bf003', 'FICTIF03', 'France'], ['3bf004', 'FICTIF04', 'France'],
+    ]);
+    expect(isMilitaryResponse(french)).toBe(true);
     const byCountry = MILITARY_FIXTURE();
-    field(byCountry.others[0]).country = 'France';
-    expect(militaryResponseProblems(byCountry)).toEqual([`others[0] ${O10}`]);
-    const byAddress = MILITARY_FIXTURE();
-    Object.assign(field(byAddress.others[3]), { hex: '3bf004', country: null });
-    expect(militaryResponseProblems(byAddress)).toEqual([`others[3] ${O10}`]);
-    const abroad = MILITARY_FIXTURE();
-    Object.assign(field(abroad.abroad[1]), { hex: '3a0001', country: 'France' });
-    expect(militaryResponseProblems(abroad)).toEqual([`abroad[1] ${O10}`]);
+    Object.assign(field(byCountry.aircraft[5]), { country: 'France', family: 'francais' });
+    expect(isMilitaryResponse(byCountry)).toBe(true);
     const unknown = MILITARY_FIXTURE();
-    field(unknown.abroad[2]).hex = '~4b0def';
-    expect(militaryResponseProblems(unknown)).toEqual([`abroad[2] ${O10}`]);
-    const emergency = MILITARY_EMERGENCY_FIXTURE();
-    Object.assign(field(emergency.emergencies[0]), { icao24: '3bf004', country: 'France' });
-    Object.assign(field(emergency.emergencyLog[1]), { country: 'France' });
-    expect(militaryResponseProblems(emergency)).toEqual([`emergencies[0] ${O10}`, `emergencyLog[1] ${O10}`]);
-    // Bornes du bloc France : 37FFFF et 3C0000 (Allemagne) restent montrables.
-    const edges = MILITARY_FIXTURE();
-    Object.assign(field(edges.others[0]), { hex: '37ffff', country: null });
-    Object.assign(field(edges.others[1]), { hex: '3c0000', country: 'Allemagne' });
-    expect(isMilitaryResponse(edges)).toBe(true);
+    Object.assign(field(unknown.aircraft[8]), { hex: '~4b0def', country: null });
+    expect(isMilitaryResponse(unknown)).toBe(true);
+    const abroad = MILITARY_FIXTURE();
+    Object.assign(field(abroad.abroad[1]), { hex: '3a0001', country: 'France', family: 'francais', registration: 'F-ZFIC' });
+    expect(isMilitaryResponse(abroad)).toBe(true);
+    const abroadUnknown = MILITARY_FIXTURE();
+    Object.assign(field(abroadUnknown.abroad[2]), { hex: '~4b0def', country: null });
+    expect(isMilitaryResponse(abroadUnknown)).toBe(true);
+    const emergency = MILITARY_FRENCH_EMERGENCY_FIXTURE();
+    expect(emergency.emergencies.map((e) => [e.icao24, e.callsign, e.registration, e.squawk, e.family, e.dept])).toEqual([
+      ['44f684', 'GRZLY21', null, '7500', 'autres', '64'],
+      ['3bf004', 'FICTIF04', 'F-ZFIC', '7700', 'francais', '69'],
+    ]);
+    expect(isMilitaryResponse(emergency)).toBe(true);
   });
   it('lecture sous le cache de 100 s, jamais de rejet ; échec : données gardées, panne portée', async () => {
     const f = stubFetch({ [MILITARY_URL]: MILITARY_FIXTURE() });
@@ -156,7 +167,7 @@ describe('Défense', () => {
     expect(f).toHaveBeenCalledTimes(1);
     stubFetch({}, { [MILITARY_URL]: { status: 502, body: { readAt: null } } });
     const failed = await fetchMilitary(first, NOW + MILITARY_TTL_MS);
-    expect([failed.military.error, failed.military.data?.others.length]).toEqual(['HTTP 502', 5]);
+    expect([failed.military.error, failed.military.data?.aircraft.length]).toEqual(['HTTP 502', 9]);
     expect(mergeMilitary(first, failed).military.data?.readAt).toBe('2026-10-04T14:48:30.000Z');
   });
   it('502 de même forme : la panne est nommée par le serveur ; note d’avancement seule : chargement, jamais une panne', async () => {
@@ -168,10 +179,10 @@ describe('Défense', () => {
   });
   it('réponse 200 mal formée : panne nommée par ses éléments, rien n’est gardé d’elle ; page HTML : « réponse illisible »', async () => {
     const bad = MILITARY_FIXTURE();
-    field(bad.others[1]).registration = '130615';
+    field(bad.aircraft[1]).registration = 130615;
     stubFetch({ [MILITARY_URL]: bad });
     const read = await fetchMilitary(null, NOW);
-    expect([read.military.data, read.military.error]).toEqual([null, 'réponse des vols militaires mal formée : others[1].registration (en trop)']);
+    expect([read.military.data, read.military.error]).toEqual([null, 'réponse des vols militaires mal formée : aircraft[1].registration']);
     stubFetch({}, { [MILITARY_URL]: { status: 200, html: true } });
     expect((await fetchMilitary(null, NOW)).military.error).toBe('réponse illisible');
   });

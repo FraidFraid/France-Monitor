@@ -3,11 +3,9 @@
 // le drapeau militaire est celui de la source (base communautaire adsb.lol, arbitrage 23). Périmètre V2 : un aéronef est compté
 // s'il est au-dessus d'un département ou à moins de 22 km de la côte en mer française ; le reste de la zone d'affichage est « hors de
 // France », dessiné en gris, jamais compté. Pays par bloc OACI (api/_lib/icao-country.js), jamais une hypothèse « France ».
-// Amendement 7, O10 (réponse ministérielle publiée au JO le 25/10/2016) : les appareils du bloc France sont servis en compte par
-// département seulement (ni adresse, ni indicatif, ni type, ni position) ; un appareil marqué PIA ou LADD (`dbFlags`) n'est jamais
-// montré, quelle que soit sa nation ; une adresse non OACI (« ~… ») n'a pas de nationalité connue et peut être française : masquée
-// par défaut (arbitrage du contrôleur, 04/10) ; l'immatriculation (`r`) n'est jamais lue. L'adresse d'un appareil masqué n'est écrite que dans
-// le journal des urgences du serveur, pour fusionner les lectures d'un épisode, jamais dans la réponse.
+// Décision de l'utilisateur du 08/10/2026 (remplace la règle O10) : plus aucun masquage. Tout appareil est servi avec son identité
+// publiée par adsb.lol (adresse, indicatif, immatriculation `r`, type, position), appareils du bloc France, PIA, LADD et adresses non
+// OACI compris ; les appareils français restent aussi comptés par département (résumé).
 // Urgences (7500, 7600, 7700 et champ `emergency`) : règle T3 du Trafic aérien (journal de 7 jours, confirmée sur deux lectures).
 // Historique horaire de 7 jours dans le stockage clé-valeur : des comptes seulement (aéronefs distincts par heure UTC et par
 // famille), les adresses de l'heure en cours restant en mémoire du processus ; la collecte elle-même vit en mémoire et reste servie
@@ -38,24 +36,19 @@ const KEEP_MS = 7 * 86_400_000;
 /** Une relève d'une minute peut arriver quelques millisecondes avant l'échéance : tolérance de 5 s. */
 const TICK_TOLERANCE_MS = 5_000;
 const FEET_TO_M = 0.3048;
-/** Bits de `dbFlags` (base adsb.lol) : 4 = PIA (adresse de confidentialité de la FAA), 8 = LADD (diffusion limitée). */
-const DB_FLAG_PIA = 4;
-const DB_FLAG_LADD = 8;
-/** Adresse OACI de 24 bits ; toute autre (« ~… » : TIS-B, MLAT sans adresse OACI) n'a pas de pays connu. */
-const ICAO_ADDRESS = /^[0-9a-f]{6}$/;
 
 /** Champ `emergency` d'adsb.lol ramené à un code transpondeur (arbitrage 6). */
 const EMERGENCY_TO_SQUAWK = { unlawful: '7500', nordo: '7600', general: '7700', minfuel: '7700', lifeguard: '7700', downed: '7700' };
 
 /**
- * Collecte en mémoire : `{ readAt, sourceNow, attemptedAt, frenchByDept, others, maskedOthers, abroadCount, abroad, current, errors }`
+ * Collecte en mémoire : `{ readAt, sourceNow, attemptedAt, frenchByDept, aircraft, abroadCount, abroad, current, errors }`
  * (`current` : urgences de la lecture, au format du journal, adresse comprise).
  */
 let collection = null;
 let inflight = null;
 /**
  * Adresses vues au-dessus de la France pendant l'heure UTC en cours, par famille : `{ hour, francais: Set, autres: Set }`. Mémoire
- * du processus seulement (dédoublonnage des lectures de l'heure) ; jamais écrites dans le stockage clé-valeur (O10).
+ * du processus seulement (dédoublonnage des lectures de l'heure) ; le stockage clé-valeur ne garde que des comptes.
  */
 let hourSeen = null;
 
@@ -89,22 +82,6 @@ function positionAge(ac) {
   return age ?? 0;
 }
 
-/** Vrai si la base adsb.lol marque l'appareil PIA ou LADD (O10) ; une valeur numérique en texte compte aussi. */
-function hasProtectedIdentity(ac) {
-  const flags = Number(ac.dbFlags);
-  return Number.isInteger(flags) && (flags & (DB_FLAG_PIA | DB_FLAG_LADD)) !== 0;
-}
-
-/** Vrai si l'adresse n'est pas une adresse OACI (« ~… ») : nationalité inconnue, peut-être française, donc masquée. */
-function hasUnknownNationality(hex) {
-  return !ICAO_ADDRESS.test(hex);
-}
-
-/** Vrai si l'appareil n'est jamais nommé ni dessiné (O10) : bloc France, PIA ou LADD, ou adresse non OACI. */
-function isMaskedAircraft(hex, ac) {
-  return aircraftFamily(hex) === 'francais' || hasProtectedIdentity(ac) || hasUnknownNationality(hex);
-}
-
 /** Position lisible, en vol, récente, dans la zone d'affichage ; null sinon. */
 function usablePosition(ac) {
   if (!ac || typeof ac !== 'object' || ac.alt_baro === 'ground') return null;
@@ -116,9 +93,8 @@ function usablePosition(ac) {
 }
 
 /**
- * Aéronef de /v2/mil normalisé pour le serveur, ou null : sans position, au sol (« ground »), position de plus de 120 s, hors de la
- * zone d'affichage. Champs de MilitaryAircraft, plus `family`, `protectedIdentity` (PIA ou LADD) et `unknownNationality` (adresse
- * non OACI) qui décident de ce qui est servi (splitByTerritory) ; l'immatriculation n'est jamais lue. `nowMs` : `now` d'adsb.lol (instant de la position = now moins seen_pos).
+ * Aéronef de /v2/mil normalisé (MilitaryAircraft), ou null : sans position, au sol (« ground »), position de plus de 120 s, hors de la
+ * zone d'affichage. `nowMs` : `now` d'adsb.lol (instant de la position = now moins seen_pos).
  * @param {Record<string, unknown>} ac
  * @param {number} nowMs
  */
@@ -128,11 +104,10 @@ export function normalizeMilAircraft(ac, nowMs) {
   return {
     hex: pos.hex,
     callsign: text(ac.flight),
+    registration: text(ac.r),
     type: text(ac.t),
     country: icaoCountry(pos.hex),
     family: aircraftFamily(pos.hex),
-    protectedIdentity: hasProtectedIdentity(ac),
-    unknownNationality: hasUnknownNationality(pos.hex),
     lat: pos.lat,
     lon: pos.lon,
     dept: departementAt(pos.lat, pos.lon),
@@ -143,12 +118,9 @@ export function normalizeMilAircraft(ac, nowMs) {
   };
 }
 
-/** Vrai si l'appareil normalisé peut être nommé et dessiné (O10) : ni bloc France, ni PIA, ni LADD, ni adresse non OACI. */
-function isShown(a) {
-  return a.family !== 'francais' && !a.protectedIdentity && !a.unknownNationality;
-}
-
-function byCallsignThenHex(a, b) {
+/** Français d'abord, puis par indicatif (sans indicatif en dernier), puis par adresse. */
+function byFamilyCallsignHex(a, b) {
+  if (a.family !== b.family) return a.family === 'francais' ? -1 : 1;
   if (a.callsign !== b.callsign) {
     if (a.callsign === null) return 1;
     if (b.callsign === null) return -1;
@@ -170,44 +142,38 @@ function byDeptSeaLast(a, b) {
 }
 
 /**
- * Partage V2 et règle O10, à partir des aéronefs normalisés :
- * - au-dessus de la France, les appareils du bloc France en compte par département (`frenchByDept`, PIA et LADD compris, mer en
- *   dernier), les autres montrés un par un (`others`, tri par indicatif puis adresse) ou comptés seulement (`maskedOthers` : PIA ou
- *   LADD, et adresses non OACI de nationalité inconnue) ;
- * - hors de France, toutes familles comptées (`abroadCount`), les appareils montrables seuls dessinés (`abroad`, ordre du flux) ;
- * - `seen` : adresses au-dessus de la France par famille, masqués compris, pour dédoublonner l'historique horaire en mémoire
- *   (jamais servies ni écrites).
+ * Partage V2, à partir des aéronefs normalisés :
+ * - au-dessus de la France, tous les appareils montrés un par un (`aircraft`, français d'abord puis par indicatif) et les appareils
+ *   du bloc France aussi comptés par département (`frenchByDept`, mer en dernier) ;
+ * - hors de France, comptés à part (`abroadCount`) et dessinés en gris (`abroad`, ordre du flux) ;
+ * - `seen` : adresses au-dessus de la France par famille, pour dédoublonner l'historique horaire en mémoire (jamais servies ni écrites).
  * @param {Array<ReturnType<typeof normalizeMilAircraft>>} list
  */
 export function splitByTerritory(list) {
   const french = [];
-  const others = [];
+  const aircraft = [];
   const abroad = [];
   const seen = { francais: [], autres: [] };
-  let maskedOthers = 0;
   let abroadCount = 0;
   for (const a of list) {
     if (!a) continue;
     if (!inFranceV2(a.lat, a.lon)) {
       abroadCount += 1;
-      if (isShown(a)) abroad.push({ hex: a.hex, callsign: a.callsign, type: a.type, country: a.country, lat: a.lat, lon: a.lon });
+      abroad.push({
+        hex: a.hex, callsign: a.callsign, registration: a.registration, type: a.type, country: a.country, family: a.family,
+        lat: a.lat, lon: a.lon,
+      });
       continue;
     }
     seen[a.family].push(a.hex);
     if (a.family === 'francais') french.push(a.dept);
-    else if (!isShown(a)) maskedOthers += 1;
-    else {
-      others.push({
-        hex: a.hex, callsign: a.callsign, type: a.type, country: a.country, lat: a.lat, lon: a.lon, dept: a.dept,
-        altitudeFt: a.altitudeFt, speedKt: a.speedKt, track: a.track, seenAt: a.seenAt,
-      });
-    }
+    aircraft.push(a);
   }
   const counts = new Map();
   for (const dept of french) counts.set(dept, (counts.get(dept) ?? 0) + 1);
   const frenchByDept = [...counts].map(([dept, count]) => ({ dept, count })).sort(byDeptSeaLast);
-  others.sort(byCallsignThenHex);
-  return { frenchByDept, others, maskedOthers, abroadCount, abroad, seen };
+  aircraft.sort(byFamilyCallsignHex);
+  return { frenchByDept, aircraft, abroadCount, abroad, seen };
 }
 
 /** Code d'urgence : un transpondeur 7500, 7600 ou 7700 l'emporte ; sinon le champ `emergency` ramené à un code ; null sinon. */
@@ -218,11 +184,9 @@ function emergencyCode(ac) {
 }
 
 /**
- * Urgences de la lecture, au format du journal du serveur, partout dans la zone d'affichage, aéronefs en vol seulement. Première et
- * dernière vue : cette lecture (`atIso`, now d'adsb.lol) ; le journal donne l'épisode. `overFrance` : territoire V2 ou moins de 40 km
- * (approches). Appareil montrable : ShownMilitaryEmergency. Appareil du bloc France, PIA, LADD ou à adresse non OACI (O10) :
- * MaskedMilitaryEmergency plus son adresse `icao24`, gardée pour fusionner les lectures d'un épisode et retirée de la réponse
- * (publicEmergency) ; ni indicatif, ni position, ni type, ni pays, même dans le journal.
+ * Urgences de la lecture, au format du journal du serveur (MilitaryEmergency), partout dans la zone d'affichage, aéronefs en vol
+ * seulement. Première et dernière vue : cette lecture (`atIso`, now d'adsb.lol) ; le journal donne l'épisode. `overFrance` : territoire
+ * V2 ou moins de 40 km (approches).
  * @param {Array<Record<string, unknown>>} acList
  * @param {string} atIso
  */
@@ -234,65 +198,59 @@ export function militaryEmergenciesFrom(acList, atIso) {
     const squawk = emergencyCode(ac);
     if (!squawk) continue;
     const inFrance = inFranceV2(pos.lat, pos.lon);
-    const family = aircraftFamily(pos.hex);
-    const common = {
-      squawk,
-      firstSeen: atIso,
-      lastSeen: atIso,
-      overFrance: inFrance || nearFrance(pos.lat, pos.lon, APPROACH_KM),
-      emergency: typeof ac.emergency === 'string' && ac.emergency !== 'none' ? ac.emergency : null,
-      inFrance,
-      dept: departementAt(pos.lat, pos.lon),
-    };
-    if (isMaskedAircraft(pos.hex, ac)) {
-      out.push({ icao24: pos.hex, masked: true, family, ...common });
-      continue;
-    }
     const altitudeFt = num(ac.alt_baro);
     out.push({
       icao24: pos.hex,
       callsign: text(ac.flight),
+      registration: text(ac.r),
+      squawk,
       lat: pos.lat,
       lon: pos.lon,
       altitudeM: altitudeFt === null ? null : Math.round(altitudeFt * FEET_TO_M),
-      ...common,
-      masked: false,
-      family: 'autres',
+      firstSeen: atIso,
+      lastSeen: atIso,
+      overFrance: inFrance || nearFrance(pos.lat, pos.lon, APPROACH_KM),
+      family: aircraftFamily(pos.hex),
       type: text(ac.t),
       country: icaoCountry(pos.hex),
+      emergency: typeof ac.emergency === 'string' && ac.emergency !== 'none' ? ac.emergency : null,
+      inFrance,
+      dept: departementAt(pos.lat, pos.lon),
     });
   }
   return out;
 }
 
+const strOrNull = (v) => (typeof v === 'string' ? v : null);
+const numOrNull = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+
 /**
- * Urgence servie au client (MilitaryEmergency), champs choisis un à un : une entrée masquée perd son adresse ; une entrée sans
- * `masked: false` explicite est servie masquée (aucune identité par défaut).
+ * Urgence servie au client (MilitaryEmergency), champs choisis un à un ; null pour une entrée sans position, comme celles qu'écrivait
+ * l'ancienne règle de masquage (avant le 08/10/2026) : elle n'est plus servie.
  */
 function publicEmergency(e) {
-  const common = {
+  if (!e || typeof e.icao24 !== 'string' || numOrNull(e.lat) === null || numOrNull(e.lon) === null) return null;
+  return {
+    icao24: e.icao24,
+    callsign: strOrNull(e.callsign),
+    registration: strOrNull(e.registration),
     squawk: e.squawk,
+    lat: e.lat,
+    lon: e.lon,
+    altitudeM: numOrNull(e.altitudeM),
     firstSeen: e.firstSeen,
     lastSeen: e.lastSeen,
     overFrance: e.overFrance === true,
-    emergency: typeof e.emergency === 'string' ? e.emergency : null,
+    family: e.family === 'francais' ? 'francais' : 'autres',
+    type: strOrNull(e.type),
+    country: strOrNull(e.country),
+    emergency: strOrNull(e.emergency),
     inFrance: e.inFrance === true,
-    dept: typeof e.dept === 'string' ? e.dept : null,
-  };
-  if (e.masked !== false) return { masked: true, family: e.family === 'autres' ? 'autres' : 'francais', ...common };
-  return {
-    icao24: e.icao24,
-    callsign: e.callsign ?? null,
-    lat: e.lat,
-    lon: e.lon,
-    altitudeM: e.altitudeM ?? null,
-    ...common,
-    masked: false,
-    family: 'autres',
-    type: e.type ?? null,
-    country: e.country ?? null,
+    dept: strOrNull(e.dept),
   };
 }
+
+const publicEmergencies = (list) => list.map(publicEmergency).filter((e) => e !== null);
 
 /** « 2026-10-04T14 » : heure UTC d'un instant. */
 export function hourKey(ms) {
@@ -308,8 +266,7 @@ function hourCount(v) {
 }
 
 /**
- * Historique horaire : comptes d'aéronefs distincts de l'heure (MilitaryHourCount), jamais d'adresse dans le stockage clé-valeur
- * (O10). Les adresses de l'heure en cours sont dédoublonnées en mémoire ; après un redémarrage dans l'heure, le compte gardé est le
+ * Historique horaire : comptes d'aéronefs distincts de l'heure (MilitaryHourCount), jamais d'adresse dans le stockage clé-valeur. Les adresses de l'heure en cours sont dédoublonnées en mémoire ; après un redémarrage dans l'heure, le compte gardé est le
  * plus grand du stockage et de la mémoire (borne basse, jamais un double compte). Aucune écriture quand les comptes n'augmentent
  * pas (le stockage n'est pas sollicité), sauf pour réécrire en comptes une entrée d'un ancien format qui gardait des adresses.
  */
@@ -340,7 +297,7 @@ function keepPrevious(now, errors) {
   collection = collection
     ? { ...collection, attemptedAt: now, errors }
     : {
-      readAt: null, sourceNow: null, attemptedAt: now, frenchByDept: [], others: [], maskedOthers: 0, abroadCount: 0, abroad: [],
+      readAt: null, sourceNow: null, attemptedAt: now, frenchByDept: [], aircraft: [], abroadCount: 0, abroad: [],
       current: [], errors,
     };
   return collection;
@@ -374,7 +331,7 @@ async function refresh(now) {
 
 function emptyBody(errors) {
   return {
-    readAt: null, sourceNow: null, frenchByDept: [], others: [], maskedOthers: 0, abroadCount: 0, abroad: [], emergencies: [],
+    readAt: null, sourceNow: null, frenchByDept: [], aircraft: [], abroadCount: 0, abroad: [], emergencies: [],
     emergencyLog: [], hourly: { hours: [], since: null }, errors,
   };
 }
@@ -400,18 +357,17 @@ async function served(now, extra = []) {
   } catch (err) {
     errors.push(sourceError('Historique horaire des vols militaires', err));
   }
-  // Épisode en cours : l'entrée du journal (première vue gardée), trouvée par l'adresse que seul le serveur connaît.
+  // Épisode en cours : l'entrée du journal (première vue gardée), trouvée par l'adresse.
   const emergencies = c.current.map((e) => emergencyLog.find((l) => l.icao24 === e.icao24 && l.squawk === e.squawk) ?? e);
   return {
     readAt: c.readAt,
     sourceNow: c.sourceNow,
     frenchByDept: c.frenchByDept,
-    others: c.others,
-    maskedOthers: c.maskedOthers,
+    aircraft: c.aircraft,
     abroadCount: c.abroadCount,
     abroad: c.abroad,
-    emergencies: emergencies.map(publicEmergency),
-    emergencyLog: emergencyLog.map(publicEmergency),
+    emergencies: publicEmergencies(emergencies),
+    emergencyLog: publicEmergencies(emergencyLog),
     hourly: { hours, since: hours[0]?.hour ?? null },
     errors: [...new Set(errors)],
   };

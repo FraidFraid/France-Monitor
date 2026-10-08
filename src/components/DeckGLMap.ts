@@ -9442,7 +9442,7 @@ export class DeckGLMap {
 
   // ─── Souveraineté (spec 2026-10-04 souveraineté § 2 ; contrats § 5) ───
 
-  /** Aéronefs militaires d'autres pays au-dessus de la France, hors de France en gris, urgences cerclées par niveau (O10 : jamais un appareil français) ; relevé en retard : gris. */
+  /** Aéronefs militaires au-dessus de la France (français en bleu, autres en rose), hors de France en gris, urgences cerclées par niveau ; relevé en retard : gris. */
   updateMilitaryLayer(m: MilitaryResponse | null, now: number): void {
     this.sovMilitary = m;
     if (!this.map) return;

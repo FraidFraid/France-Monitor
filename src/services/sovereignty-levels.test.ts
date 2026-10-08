@@ -4,13 +4,13 @@
 // Finistère, un 7500 vu une fois au-dessus de Genève, AIS muet, alertes CERT-FR en cours ALE-009 à ALE-011, ALE-008 close le 22/09.
 import { describe, expect, it } from 'vitest';
 import type {
-  CableAlert, CablesWatchResponse, CertFrItem, CyberResponse, MaskedMilitaryEmergency, MilitaryAircraft, MilitaryEmergency,
-  MilitaryResponse, RansomwareSummary, ShownMilitaryEmergency, VigipiratePageCheck,
+  CableAlert, CablesWatchResponse, CertFrItem, CyberResponse, MilitaryAircraft, MilitaryEmergency,
+  MilitaryResponse, RansomwareSummary, VigipiratePageCheck,
 } from '../types/index.ts';
 import {
   CABLES_WATCH_STALE_MIN, MILITARY_FIGURE_LABEL, SOVEREIGNTY_LATE_AFTER_MIN, VIGIPIRATE_ALERTE_ATTENTAT_DAYS, VIGIPIRATE_REMINDER_DAYS,
   alertsByVessel, cableAlertLevel, cablesLevel, vesselAlertLevel, certfrAgeDays, certfrDate, certfrExploitationText, certfrPublishedAgeDays, claimsRatio, cyberLevel,
-  defenseLevel, defenseSituationSeverity, isCertFrAlertOpen, isDefenseSituationEmergency, isSovereigntyDataLate, militaryCounts,
+  defenseLevel, defenseSituationSeverity, isCertFrAlertOpen, isDefenseSituationEmergency, isSovereigntyDataLate, militaryAircraftName, militaryCounts,
   militaryEmergencyLevel, vigipirateAlertEnd, vigipiratePageChangedOn, vigipirateReminderDue,
 } from './sovereignty-levels.ts';
 
@@ -102,54 +102,59 @@ describe('Vigipirate : page officielle modifiée après la saisie (O14)', () => 
 
 // ─── Défense ───
 
-/** Urgence d'un appareil montré ; `confirmed: false` : vue une seule fois (première et dernière vue identiques). */
-function emergency(over: Partial<ShownMilitaryEmergency> & { confirmed?: boolean } = {}): ShownMilitaryEmergency {
+/** Urgence d'un appareil étranger ; `confirmed: false` : vue une seule fois (première et dernière vue identiques). */
+function emergency(over: Partial<MilitaryEmergency> & { confirmed?: boolean } = {}): MilitaryEmergency {
   const { confirmed = true, ...rest } = over;
   return {
-    masked: false, icao24: 'ae0805', callsign: 'RCH161', squawk: '7700', lat: 48.2, lon: -4.1, altitudeM: 7620,
+    icao24: 'ae0805', callsign: 'RCH161', registration: null, squawk: '7700', lat: 48.2, lon: -4.1, altitudeM: 7620,
     firstSeen: confirmed ? '2026-10-04T14:46:24.501Z' : '2026-10-04T14:48:24.501Z', lastSeen: '2026-10-04T14:48:24.501Z',
     overFrance: true, type: 'C17', country: 'États-Unis', family: 'autres', emergency: 'general', inFrance: true, dept: '29', ...rest,
   };
 }
-/** Urgence d'un appareil masqué (O10) : appareil d'État français par défaut, au-dessus du Morbihan, confirmée. */
-function masked(over: Partial<MaskedMilitaryEmergency> = {}): MaskedMilitaryEmergency {
-  return {
-    masked: true, family: 'francais', squawk: '7700', firstSeen: '2026-10-04T14:46:24.501Z', lastSeen: '2026-10-04T14:48:24.501Z',
-    overFrance: true, emergency: 'general', inFrance: true, dept: '56', ...over,
-  };
+/** Urgence d'un appareil français fictif (décision du 08/10/2026 : montré comme les autres), au-dessus du Morbihan, confirmée. */
+function frenchEmergency(over: Partial<MilitaryEmergency> & { confirmed?: boolean } = {}): MilitaryEmergency {
+  return emergency({
+    icao24: '3bf004', callsign: 'FICTIF04', registration: 'F-ZFIC', lat: 47.7, lon: -2.9, altitudeM: 160, type: 'EC45', country: 'France',
+    family: 'francais', dept: '56', ...over,
+  });
 }
 /** 7500 au-dessus de Genève : hors de France (V2) mais dans les approches de 40 km (4,4 km de la frontière). */
 const GENEVE = emergency({
   icao24: '4b1a2c', callsign: 'SUI7500', squawk: '7500', lat: 46.204, lon: 6.143, country: 'Suisse', emergency: 'unlawful',
   inFrance: false, dept: null, confirmed: false,
 });
-const GENEVE_CONFIRMED: ShownMilitaryEmergency = { ...GENEVE, firstSeen: '2026-10-04T14:46:24.501Z' };
+const GENEVE_CONFIRMED: MilitaryEmergency = { ...GENEVE, firstSeen: '2026-10-04T14:46:24.501Z' };
 const BRUXELLES = emergency({ overFrance: false, inFrance: false, lat: 50.85, lon: 4.35, dept: null });
 
-function aircraft(hex: string, callsign: string, country: string, dept: string, lat: number, lon: number): MilitaryAircraft {
-  return { hex, callsign, type: 'A332', country, lat, lon, dept, altitudeFt: 38000, speedKt: 422, track: 321, seenAt: '2026-10-04T14:48:24.307Z' };
+function aircraft(hex: string, callsign: string, country: string, dept: string, lat: number, lon: number, family: MilitaryAircraft['family'] = 'autres'): MilitaryAircraft {
+  return { hex, callsign, registration: null, type: 'A332', country, family, lat, lon, dept, altitudeFt: 38000, speedKt: 422, track: 321, seenAt: '2026-10-04T14:48:24.307Z' };
 }
-/** Réponse du 04/10 : 4 français comptés (3 dans les Bouches-du-Rhône, 1 dans le Rhône), 5 autres montrés, 3 hors de France. */
+/** Réponse du 04/10 : 4 français fictifs (3 dans les Bouches-du-Rhône, 1 dans le Rhône), 5 autres, tous montrés, 3 hors de France. */
 function military(emergencies: MilitaryEmergency[] = [], readAt: string | null = '2026-10-04T14:48:30.000Z'): MilitaryResponse {
   return {
     readAt, sourceNow: readAt === null ? null : '2026-10-04T14:48:24.501Z',
     frenchByDept: [{ dept: '13', count: 3 }, { dept: '69', count: 1 }],
-    others: [
+    aircraft: [
+      aircraft('3bf001', 'FICTIF01', 'France', '13', 43.55, 5.05, 'francais'), aircraft('3bf002', 'FICTIF02', 'France', '13', 43.5, 5.15, 'francais'),
+      aircraft('3bf003', 'FICTIF03', 'France', '13', 43.6, 5.25, 'francais'), aircraft('3bf004', 'FICTIF04', 'France', '69', 45.87, 4.64, 'francais'),
       aircraft('894081', 'BAH11', 'Bahreïn', '71', 47.017, 4.423), aircraft('c2b5b7', 'CFC2902', 'Canada', '13', 43.484, 4.676),
       aircraft('44f684', 'GRZLY21', 'Belgique', '64', 43.381, -0.469), aircraft('43c6f6', 'RRR2243', 'Royaume-Uni', '62', 50.693, 1.626),
       aircraft('43c700', 'RRR2301', 'Royaume-Uni', '63', 45.947, 3.590),
     ],
-    maskedOthers: 0, abroadCount: 3, abroad: [],
+    abroadCount: 3, abroad: [],
     emergencies, emergencyLog: emergencies, hourly: { hours: [{ hour: '2026-10-04T14', francais: 4, autres: 5 }], since: '2026-10-04T14' }, errors: [],
   };
 }
 
-describe('militaryCounts et libellé du gros chiffre (O9, O10)', () => {
-  it('04/10 : 9 aéronefs, 4 français comptés par département, 5 autres ; les appareils masqués sont comptés, jamais montrés', () => {
-    expect(militaryCounts(military())).toEqual({ francais: 4, autres: 5, total: 9 });
-    expect(militaryCounts({ ...military(), maskedOthers: 2, frenchByDept: [{ dept: '13', count: 3 }, { dept: null, count: 1 }] })).toEqual({
-      francais: 4, autres: 7, total: 11,
-    });
+describe('militaryCounts et libellé du gros chiffre (O9)', () => {
+  it('04/10 : 9 aéronefs, 4 français et 5 autres, tous montrés avec leur identité (décision du 08/10/2026), jamais ceux hors de France', () => {
+    const m = military();
+    expect(militaryCounts(m)).toEqual({ francais: 4, autres: 5, total: 9 });
+    expect(m.aircraft.filter((a) => a.family === 'francais').map((a) => [a.hex, a.callsign])).toEqual([
+      ['3bf001', 'FICTIF01'], ['3bf002', 'FICTIF02'], ['3bf003', 'FICTIF03'], ['3bf004', 'FICTIF04'],
+    ]);
+    expect(militaryCounts({ aircraft: [...m.aircraft, aircraft('~4b0def', 'PIA01', 'Suisse', '25', 47.2, 6.0)] })).toEqual({ francais: 4, autres: 6, total: 10 });
+    expect(militaryCounts({ aircraft: [] })).toEqual({ francais: 0, autres: 0, total: 0 });
   });
   it('libellé « aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole »', () => {
     expect(MILITARY_FIGURE_LABEL).toBe('aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole');
@@ -167,10 +172,10 @@ describe('militaryEmergencyLevel', () => {
     expect(militaryEmergencyLevel(BRUXELLES)).toBe('gris');
     expect(militaryEmergencyLevel(emergency({ overFrance: false, inFrance: false, confirmed: false }))).toBe('gris');
   });
-  it('appareil masqué (O10) : mêmes couleurs, sans adresse ni position', () => {
-    expect(militaryEmergencyLevel(masked())).toBe('orange');
-    expect(militaryEmergencyLevel(masked({ squawk: '7500' }))).toBe('rouge');
-    expect(militaryEmergencyLevel(masked({ firstSeen: '2026-10-04T14:48:24.501Z' }))).toBe('jaune');
+  it('appareil français (décision du 08/10/2026) : mêmes couleurs que les autres, identité complète', () => {
+    expect(militaryEmergencyLevel(frenchEmergency())).toBe('orange');
+    expect(militaryEmergencyLevel(frenchEmergency({ squawk: '7500' }))).toBe('rouge');
+    expect(militaryEmergencyLevel(frenchEmergency({ confirmed: false }))).toBe('jaune');
   });
 });
 
@@ -204,23 +209,37 @@ describe('defenseLevel (pastille Défense, § 2.1)', () => {
       level: 'vert', reason: 'aucun code d’urgence au-dessus de la métropole ou de ses approches (urgence vue hors des approches)',
     });
   });
-  it('indicatif absent : l’adresse est nommée', () => {
+  it('indicatif et immatriculation absents : l’adresse est nommée', () => {
     expect(defenseLevel(military([emergency({ callsign: null })]), NOW).reason).toBe(`7700${NBSP}(urgence) affiché sur deux relevés : adresse ae0805`);
   });
-  it('appareil d’État français (O10) : jamais d’indicatif ni d’adresse, le département ou la mer territoriale', () => {
-    expect(defenseLevel(military([masked()]), NOW)).toEqual({
-      level: 'orange', reason: `7700${NBSP}(urgence) affiché sur deux relevés : appareil d’État français · Dépt${NBSP}56`,
-    });
-    expect(defenseLevel(military([masked({ dept: null })]), NOW).reason).toBe(`7700${NBSP}(urgence) affiché sur deux relevés : appareil d’État français · mer territoriale`);
-    expect(defenseLevel(military([masked({ dept: null, inFrance: false, firstSeen: '2026-10-04T14:48:24.501Z' })]), NOW).reason).toBe(
-      `7700${NBSP}(urgence) vu une fois, à confirmer : appareil d’État français · approches de la France`,
-    );
+  it('indicatif absent : l’immatriculation est nommée, puis l’adresse', () => {
+    expect(defenseLevel(military([emergency({ callsign: null, registration: 'ZZ999' })]), NOW).reason).toBe(`7700${NBSP}(urgence) affiché sur deux relevés : ZZ999`);
   });
-  it('appareil d’une autre nation marqué PIA ou LADD (O10) : identité protégée, département seul', () => {
-    expect(defenseLevel(military([masked({ family: 'autres', squawk: '7500', dept: '13' })]), NOW)).toEqual({
-      level: 'rouge',
-      reason: `7500${NBSP}(intervention${NBSP}illicite) affiché sur deux relevés, non confirmé par les autorités : appareil à identité protégée ou de nationalité inconnue · Dépt${NBSP}13`,
+  it('appareil français (décision du 08/10/2026) : indicatif, immatriculation ou adresse, suivi de « appareil français », identité complète', () => {
+    expect(defenseLevel(military([frenchEmergency()]), NOW)).toEqual({
+      level: 'orange', reason: `7700${NBSP}(urgence) affiché sur deux relevés : FICTIF04 (appareil français)`,
     });
+    expect(defenseLevel(military([frenchEmergency({ callsign: null })]), NOW).reason).toBe(`7700${NBSP}(urgence) affiché sur deux relevés : F-ZFIC (appareil français)`);
+    expect(defenseLevel(military([frenchEmergency({ callsign: null, registration: null, dept: null })]), NOW).reason).toBe(
+      `7700${NBSP}(urgence) affiché sur deux relevés : adresse 3bf004 (appareil français)`,
+    );
+    expect(defenseLevel(military([frenchEmergency({ dept: null, inFrance: false, confirmed: false })]), NOW)).toEqual({
+      level: 'jaune', reason: `7700${NBSP}(urgence) vu une fois, à confirmer : FICTIF04 (appareil français)`,
+    });
+  });
+  it('appareil d’une autre nation marqué PIA ou LADD (décision du 08/10/2026) : indicatif nommé comme les autres', () => {
+    const pia = emergency({ icao24: '44f684', callsign: 'GRZLY21', squawk: '7500', type: 'A400', country: 'Belgique', dept: '64', lat: 43.381, lon: -0.469 });
+    expect(defenseLevel(military([pia]), NOW)).toEqual({
+      level: 'rouge',
+      reason: `7500${NBSP}(intervention${NBSP}illicite) affiché sur deux relevés, non confirmé par les autorités : GRZLY21`,
+    });
+  });
+  it('militaryAircraftName : indicatif, sinon immatriculation, sinon adresse ; « (appareil français) » pour le bloc France seulement', () => {
+    expect(militaryAircraftName({ callsign: 'RCH161', registration: 'ZZ999', icao24: 'ae0805', family: 'autres' })).toBe('RCH161');
+    expect(militaryAircraftName({ callsign: null, registration: 'ZZ999', icao24: 'ae0805', family: 'autres' })).toBe('ZZ999');
+    expect(militaryAircraftName({ callsign: null, registration: null, icao24: '~4b0def', family: 'autres' })).toBe('adresse ~4b0def');
+    expect(militaryAircraftName({ callsign: 'FICTIF04', registration: 'F-ZFIC', icao24: '3bf004', family: 'francais' })).toBe('FICTIF04 (appareil français)');
+    expect(militaryAircraftName({ callsign: null, registration: null, icao24: '3bf001', family: 'francais' })).toBe('adresse 3bf001 (appareil français)');
   });
   it('adsb.lol jamais lu : n.d. ; relevé de plus de 10 min : n.d. « muet depuis 16:37 », jamais vert ni « 0 aéronef »', () => {
     expect(defenseLevel(military([], null), NOW)).toEqual({ level: 'nd', reason: 'adsb.lol indisponible' });
@@ -245,12 +264,12 @@ describe('defenseSituationSeverity (« Signal défense », O7)', () => {
     expect(defenseSituationSeverity([], null)).toBeNull();
   });
   it('7700 et 7600 sur deux relevés : aucune situation, ils restent des urgences aériennes du panneau et du moniteur', () => {
-    expect(defenseSituationSeverity([emergency(), emergency({ squawk: '7600' }), masked()], null)).toBeNull();
-    expect([emergency(), masked()].some(isDefenseSituationEmergency)).toBe(false);
+    expect(defenseSituationSeverity([emergency(), emergency({ squawk: '7600' }), frenchEmergency()], null)).toBeNull();
+    expect([emergency(), frenchEmergency()].some(isDefenseSituationEmergency)).toBe(false);
   });
   it('7500 sur deux relevés au-dessus de la France ou de ses approches : moyenne, jamais plus ; vu une fois ou hors des approches : rien', () => {
     expect(defenseSituationSeverity([GENEVE_CONFIRMED], null)).toBe('medium');
-    expect(defenseSituationSeverity([masked({ squawk: '7500' })], null)).toBe('medium');
+    expect(defenseSituationSeverity([frenchEmergency({ squawk: '7500' })], null)).toBe('medium');
     expect(defenseSituationSeverity([GENEVE], null)).toBeNull();
     expect(defenseSituationSeverity([{ ...BRUXELLES, squawk: '7500' }], null)).toBeNull();
     expect([GENEVE_CONFIRMED, GENEVE, emergency()].filter(isDefenseSituationEmergency)).toEqual([GENEVE_CONFIRMED]);
@@ -423,7 +442,7 @@ describe('statut officiel et exploitation (O1, O3)', () => {
 describe('une valeur sur une ligne (R1)', () => {
   it('aucune raison ne sépare un nombre du mot qui le suit par une espace simple', () => {
     const reasons = [
-      defenseLevel(military(), NOW, 3), defenseLevel(military(), NOW, 1), defenseLevel(military([masked()]), NOW),
+      defenseLevel(military(), NOW, 3), defenseLevel(military(), NOW, 1), defenseLevel(military([frenchEmergency()]), NOW),
       cablesLevel(watch({ alerts: [alert(), alert({ id: 'b', mmsi: '227000002' })] }), NOW), cablesLevel(watch({ alerts: [alert({ confirmed: false })] }), NOW),
       cablesLevel(watch(), NOW),
       cyberLevel(cyber([ALE_011, ALE_012]), NOW), cyberLevel(cyber([ALE_010, ALE_009]), NOW), cyberLevel(cyber([], [], 2.25), NOW),

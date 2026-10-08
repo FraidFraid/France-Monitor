@@ -1,6 +1,7 @@
 // api/_handlers/sovereignty/military.js : aéronefs militaires au-dessus de la France (spec 2026-10-04 souveraineté § 2.1 ; contrats
-// § 2.2 ; amendement 7, O10). Dernière collecte adsb.lol /v2/mil du serveur (lancée si elle est due) : appareils français en compte
-// par département, autres appareils montrés sauf PIA et LADD, urgences confirmées sur deux lectures, historique horaire de 7 jours.
+// § 2.2 ; décision du 08/10/2026 : plus aucun masquage). Dernière collecte adsb.lol /v2/mil du serveur (lancée si elle est due) :
+// tous les appareils avec leur identité publiée, français aussi comptés par département, urgences confirmées sur deux lectures,
+// historique horaire de 7 jours.
 // 200 si une collecte de moins de 2 h est servie (avec sa date) ; 502 sinon, jamais mis en cache. Échéance de 15 s : une collecte
 // plus longue (file adsb.lol occupée) continue en arrière-plan, la route sert la précédente en le disant.
 import { MIL_PENDING_NOTE, ensureMilitaryFresh, storedMilitary } from '../../_lib/military-collect.js';

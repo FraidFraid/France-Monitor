@@ -1,7 +1,7 @@
 // src/components/layer-panel/sovereignty.fixture.ts : jeux d'essai des vues, des coquilles, de la carte et du score Souveraineté (spec
 // 2026-10-04 souveraineté ; contrats § 3.3 ; amendement 7). Réponses construites par le code du serveur (tâches A3, A5, A8) à partir des
 // réponses réelles du dimanche 4 octobre 2026 : relevé adsb.lol /v2/mil de 16 h 48 (9 aéronefs au-dessus de la France : 4 français
-// comptés par département, 5 autres montrés ; 3 hors de France) ; fichier des câbles assemblé par scripts/fetch-subsea-cables.mjs sur
+// aux adresses, indicatifs et immatriculations fictifs, 5 autres ; 3 hors de France) ; fichier des câbles assemblé par scripts/fetch-subsea-cables.mjs sur
 // les relevés du Shom (câbles, zones de câbles et de mouillage des approches de Marseille) et d'OpenStreetMap (tracés éclaircis à
 // 12 points au plus par ligne et coordonnées à 4 décimales pour le jeu d'essai, atterrages inchangés et nommés par geo.api.gouv.fr,
 // date de génération fixée à 16 h 48) ; relevés du relais AIS construits (navires et MMSI fictifs) ; flux CERT-FR, page liste des
@@ -23,7 +23,7 @@ export const SOV_FIXTURE_NOW = Date.parse('2026-10-04T16:48:30+02:00');
 
 const copy = <T>(v: T): T => structuredClone(v);
 
-/** Relevé adsb.lol de 16 h 48 : 4 français (Bouches-du-Rhône 3, Rhône 1), 5 autres montrés, 3 hors de France, aucune urgence. */
+/** Relevé adsb.lol de 16 h 48 : 4 français (Bouches-du-Rhône 3, Rhône 1, adresses et indicatifs fictifs), 5 autres, 3 hors de France, aucune urgence. */
 const MILITARY: MilitaryResponse = {
   "readAt": "2026-10-04T14:48:30.000Z",
   "sourceNow": "2026-10-04T14:48:24.501Z",
@@ -31,19 +31,22 @@ const MILITARY: MilitaryResponse = {
     {"dept":"13","count":3},
     {"dept":"69","count":1}
   ],
-  "others": [
-    {"hex":"894081","callsign":"BAH11","type":"B738","country":"Bahreïn","lat":47.017273,"lon":4.422546,"dept":"71","altitudeFt":38000,"speedKt":424,"track":332.47,"seenAt":"2026-10-04T14:48:24.241Z"},
-    {"hex":"c2b5b7","callsign":"CFC2902","type":"C30J","country":"Canada","lat":43.484306,"lon":4.675729,"dept":"13","altitudeFt":2725,"speedKt":226,"track":359.24,"seenAt":"2026-10-04T14:48:24.394Z"},
-    {"hex":"44f684","callsign":"GRZLY21","type":"A400","country":"Belgique","lat":43.381472,"lon":-0.468554,"dept":"64","altitudeFt":1400,"speedKt":142,"track":270,"seenAt":"2026-10-04T14:48:24.136Z"},
-    {"hex":"43c6f6","callsign":"RRR2243","type":"A332","country":"Royaume-Uni","lat":50.693059,"lon":1.625671,"dept":"62","altitudeFt":38000,"speedKt":422.3,"track":321.83,"seenAt":"2026-10-04T14:48:24.307Z"},
-    {"hex":"43c700","callsign":"RRR2301","type":"A332","country":"Royaume-Uni","lat":45.947059,"lon":3.590057,"dept":"63","altitudeFt":39000,"speedKt":460.2,"track":143.93,"seenAt":"2026-10-04T14:48:24.420Z"}
+  "aircraft": [
+    {"hex":"3bf001","callsign":"FICTIF01","registration":null,"type":"DH8D","country":"France","family":"francais","lat":43.55,"lon":5.05,"dept":"13","altitudeFt":2050,"speedKt":227.7,"track":115.21,"seenAt":"2026-10-04T14:48:23.693Z"},
+    {"hex":"3bf002","callsign":"FICTIF02","registration":null,"type":"BE20","country":"France","family":"francais","lat":43.5,"lon":5.15,"dept":"13","altitudeFt":1200,"speedKt":196.7,"track":94.67,"seenAt":"2026-10-04T14:48:23.472Z"},
+    {"hex":"3bf003","callsign":"FICTIF03","registration":null,"type":"A332","country":"France","family":"francais","lat":43.6,"lon":5.25,"dept":"13","altitudeFt":1275,"speedKt":211.9,"track":342.42,"seenAt":"2026-10-04T14:48:24.283Z"},
+    {"hex":"3bf004","callsign":"FICTIF04","registration":"F-ZFIC","type":"EC45","country":"France","family":"francais","lat":45.87,"lon":4.64,"dept":"69","altitudeFt":525,"speedKt":51.5,"track":352.18,"seenAt":"2026-10-04T14:48:24.290Z"},
+    {"hex":"894081","callsign":"BAH11","registration":null,"type":"B738","country":"Bahreïn","family":"autres","lat":47.017273,"lon":4.422546,"dept":"71","altitudeFt":38000,"speedKt":424,"track":332.47,"seenAt":"2026-10-04T14:48:24.241Z"},
+    {"hex":"c2b5b7","callsign":"CFC2902","registration":null,"type":"C30J","country":"Canada","family":"autres","lat":43.484306,"lon":4.675729,"dept":"13","altitudeFt":2725,"speedKt":226,"track":359.24,"seenAt":"2026-10-04T14:48:24.394Z"},
+    {"hex":"44f684","callsign":"GRZLY21","registration":null,"type":"A400","country":"Belgique","family":"autres","lat":43.381472,"lon":-0.468554,"dept":"64","altitudeFt":1400,"speedKt":142,"track":270,"seenAt":"2026-10-04T14:48:24.136Z"},
+    {"hex":"43c6f6","callsign":"RRR2243","registration":"ZZ999","type":"A332","country":"Royaume-Uni","family":"autres","lat":50.693059,"lon":1.625671,"dept":"62","altitudeFt":38000,"speedKt":422.3,"track":321.83,"seenAt":"2026-10-04T14:48:24.307Z"},
+    {"hex":"43c700","callsign":"RRR2301","registration":null,"type":"A332","country":"Royaume-Uni","family":"autres","lat":45.947059,"lon":3.590057,"dept":"63","altitudeFt":39000,"speedKt":460.2,"track":143.93,"seenAt":"2026-10-04T14:48:24.420Z"}
   ],
-  "maskedOthers": 0,
   "abroadCount": 3,
   "abroad": [
-    {"hex":"c05325","callsign":"SPR106","type":"DH8A","country":"Canada","lat":50.866716,"lon":-1.051583},
-    {"hex":"ae1436","callsign":"FAZE37","type":"GLF5","country":"États-Unis","lat":51.372908,"lon":-0.572662},
-    {"hex":"ae5719","callsign":"CNV6981","type":"B737","country":"États-Unis","lat":51.620147,"lon":5.706863}
+    {"hex":"c05325","callsign":"SPR106","registration":null,"type":"DH8A","country":"Canada","family":"autres","lat":50.866716,"lon":-1.051583},
+    {"hex":"ae1436","callsign":"FAZE37","registration":null,"type":"GLF5","country":"États-Unis","family":"autres","lat":51.372908,"lon":-0.572662},
+    {"hex":"ae5719","callsign":"CNV6981","registration":null,"type":"B737","country":"États-Unis","family":"autres","lat":51.620147,"lon":5.706863}
   ],
   "emergencies": [],
   "emergencyLog": [],
@@ -67,29 +70,32 @@ const MILITARY_EMERGENCY: MilitaryResponse = {
     {"dept":"13","count":3},
     {"dept":"69","count":1}
   ],
-  "others": [
-    {"hex":"894081","callsign":"BAH11","type":"B738","country":"Bahreïn","lat":47.017273,"lon":4.422546,"dept":"71","altitudeFt":38000,"speedKt":424,"track":332.47,"seenAt":"2026-10-04T14:48:24.241Z"},
-    {"hex":"c2b5b7","callsign":"CFC2902","type":"C30J","country":"Canada","lat":43.484306,"lon":4.675729,"dept":"13","altitudeFt":2725,"speedKt":226,"track":359.24,"seenAt":"2026-10-04T14:48:24.394Z"},
-    {"hex":"44f684","callsign":"GRZLY21","type":"A400","country":"Belgique","lat":43.381472,"lon":-0.468554,"dept":"64","altitudeFt":1400,"speedKt":142,"track":270,"seenAt":"2026-10-04T14:48:24.136Z"},
-    {"hex":"ae0805","callsign":"RCH161","type":"C17","country":"États-Unis","lat":48.2,"lon":-4.1,"dept":"29","altitudeFt":39000,"speedKt":437.6,"track":150.27,"seenAt":"2026-10-04T14:48:24.161Z"},
-    {"hex":"43c6f6","callsign":"RRR2243","type":"A332","country":"Royaume-Uni","lat":50.693059,"lon":1.625671,"dept":"62","altitudeFt":38000,"speedKt":422.3,"track":321.83,"seenAt":"2026-10-04T14:48:24.307Z"},
-    {"hex":"43c700","callsign":"RRR2301","type":"A332","country":"Royaume-Uni","lat":45.947059,"lon":3.590057,"dept":"63","altitudeFt":39000,"speedKt":460.2,"track":143.93,"seenAt":"2026-10-04T14:48:24.420Z"}
+  "aircraft": [
+    {"hex":"3bf001","callsign":"FICTIF01","registration":null,"type":"DH8D","country":"France","family":"francais","lat":43.55,"lon":5.05,"dept":"13","altitudeFt":2050,"speedKt":227.7,"track":115.21,"seenAt":"2026-10-04T14:48:23.693Z"},
+    {"hex":"3bf002","callsign":"FICTIF02","registration":null,"type":"BE20","country":"France","family":"francais","lat":43.5,"lon":5.15,"dept":"13","altitudeFt":1200,"speedKt":196.7,"track":94.67,"seenAt":"2026-10-04T14:48:23.472Z"},
+    {"hex":"3bf003","callsign":"FICTIF03","registration":null,"type":"A332","country":"France","family":"francais","lat":43.6,"lon":5.25,"dept":"13","altitudeFt":1275,"speedKt":211.9,"track":342.42,"seenAt":"2026-10-04T14:48:24.283Z"},
+    {"hex":"3bf004","callsign":"FICTIF04","registration":"F-ZFIC","type":"EC45","country":"France","family":"francais","lat":45.87,"lon":4.64,"dept":"69","altitudeFt":525,"speedKt":51.5,"track":352.18,"seenAt":"2026-10-04T14:48:24.290Z"},
+    {"hex":"894081","callsign":"BAH11","registration":null,"type":"B738","country":"Bahreïn","family":"autres","lat":47.017273,"lon":4.422546,"dept":"71","altitudeFt":38000,"speedKt":424,"track":332.47,"seenAt":"2026-10-04T14:48:24.241Z"},
+    {"hex":"c2b5b7","callsign":"CFC2902","registration":null,"type":"C30J","country":"Canada","family":"autres","lat":43.484306,"lon":4.675729,"dept":"13","altitudeFt":2725,"speedKt":226,"track":359.24,"seenAt":"2026-10-04T14:48:24.394Z"},
+    {"hex":"44f684","callsign":"GRZLY21","registration":null,"type":"A400","country":"Belgique","family":"autres","lat":43.381472,"lon":-0.468554,"dept":"64","altitudeFt":1400,"speedKt":142,"track":270,"seenAt":"2026-10-04T14:48:24.136Z"},
+    {"hex":"ae0805","callsign":"RCH161","registration":null,"type":"C17","country":"États-Unis","family":"autres","lat":48.2,"lon":-4.1,"dept":"29","altitudeFt":39000,"speedKt":437.6,"track":150.27,"seenAt":"2026-10-04T14:48:24.161Z"},
+    {"hex":"43c6f6","callsign":"RRR2243","registration":"ZZ999","type":"A332","country":"Royaume-Uni","family":"autres","lat":50.693059,"lon":1.625671,"dept":"62","altitudeFt":38000,"speedKt":422.3,"track":321.83,"seenAt":"2026-10-04T14:48:24.307Z"},
+    {"hex":"43c700","callsign":"RRR2301","registration":null,"type":"A332","country":"Royaume-Uni","family":"autres","lat":45.947059,"lon":3.590057,"dept":"63","altitudeFt":39000,"speedKt":460.2,"track":143.93,"seenAt":"2026-10-04T14:48:24.420Z"}
   ],
-  "maskedOthers": 0,
   "abroadCount": 4,
   "abroad": [
-    {"hex":"c05325","callsign":"SPR106","type":"DH8A","country":"Canada","lat":50.866716,"lon":-1.051583},
-    {"hex":"ae1436","callsign":"FAZE37","type":"GLF5","country":"États-Unis","lat":51.372908,"lon":-0.572662},
-    {"hex":"ae5719","callsign":"CNV6981","type":"B737","country":"États-Unis","lat":51.620147,"lon":5.706863},
-    {"hex":"4b1a2c","callsign":"SUI7500","type":"PC21","country":"Suisse","lat":46.204,"lon":6.143}
+    {"hex":"c05325","callsign":"SPR106","registration":null,"type":"DH8A","country":"Canada","family":"autres","lat":50.866716,"lon":-1.051583},
+    {"hex":"ae1436","callsign":"FAZE37","registration":null,"type":"GLF5","country":"États-Unis","family":"autres","lat":51.372908,"lon":-0.572662},
+    {"hex":"ae5719","callsign":"CNV6981","registration":null,"type":"B737","country":"États-Unis","family":"autres","lat":51.620147,"lon":5.706863},
+    {"hex":"4b1a2c","callsign":"SUI7500","registration":null,"type":"PC21","country":"Suisse","family":"autres","lat":46.204,"lon":6.143}
   ],
   "emergencies": [
-    {"icao24":"ae0805","callsign":"RCH161","lat":48.2,"lon":-4.1,"altitudeM":11887,"squawk":"7700","firstSeen":"2026-10-04T14:46:24.501Z","lastSeen":"2026-10-04T14:48:24.501Z","overFrance":true,"emergency":"general","inFrance":true,"dept":"29","masked":false,"family":"autres","type":"C17","country":"États-Unis"},
-    {"icao24":"4b1a2c","callsign":"SUI7500","lat":46.204,"lon":6.143,"altitudeM":2743,"squawk":"7500","firstSeen":"2026-10-04T14:48:24.501Z","lastSeen":"2026-10-04T14:48:24.501Z","overFrance":true,"emergency":"unlawful","inFrance":false,"dept":null,"masked":false,"family":"autres","type":"PC21","country":"Suisse"}
+    {"icao24":"ae0805","callsign":"RCH161","registration":null,"squawk":"7700","lat":48.2,"lon":-4.1,"altitudeM":11887,"firstSeen":"2026-10-04T14:46:24.501Z","lastSeen":"2026-10-04T14:48:24.501Z","overFrance":true,"family":"autres","type":"C17","country":"États-Unis","emergency":"general","inFrance":true,"dept":"29"},
+    {"icao24":"4b1a2c","callsign":"SUI7500","registration":null,"squawk":"7500","lat":46.204,"lon":6.143,"altitudeM":2743,"firstSeen":"2026-10-04T14:48:24.501Z","lastSeen":"2026-10-04T14:48:24.501Z","overFrance":true,"family":"autres","type":"PC21","country":"Suisse","emergency":"unlawful","inFrance":false,"dept":null}
   ],
   "emergencyLog": [
-    {"icao24":"ae0805","callsign":"RCH161","lat":48.2,"lon":-4.1,"altitudeM":11887,"squawk":"7700","firstSeen":"2026-10-04T14:46:24.501Z","lastSeen":"2026-10-04T14:48:24.501Z","overFrance":true,"emergency":"general","inFrance":true,"dept":"29","masked":false,"family":"autres","type":"C17","country":"États-Unis"},
-    {"icao24":"4b1a2c","callsign":"SUI7500","lat":46.204,"lon":6.143,"altitudeM":2743,"squawk":"7500","firstSeen":"2026-10-04T14:48:24.501Z","lastSeen":"2026-10-04T14:48:24.501Z","overFrance":true,"emergency":"unlawful","inFrance":false,"dept":null,"masked":false,"family":"autres","type":"PC21","country":"Suisse"}
+    {"icao24":"ae0805","callsign":"RCH161","registration":null,"squawk":"7700","lat":48.2,"lon":-4.1,"altitudeM":11887,"firstSeen":"2026-10-04T14:46:24.501Z","lastSeen":"2026-10-04T14:48:24.501Z","overFrance":true,"family":"autres","type":"C17","country":"États-Unis","emergency":"general","inFrance":true,"dept":"29"},
+    {"icao24":"4b1a2c","callsign":"SUI7500","registration":null,"squawk":"7500","lat":46.204,"lon":6.143,"altitudeM":2743,"firstSeen":"2026-10-04T14:48:24.501Z","lastSeen":"2026-10-04T14:48:24.501Z","overFrance":true,"family":"autres","type":"PC21","country":"Suisse","emergency":"unlawful","inFrance":false,"dept":null}
   ],
   "hourly": {
     "hours": [
@@ -101,37 +107,41 @@ const MILITARY_EMERGENCY: MilitaryResponse = {
 };
 
 /**
- * Urgences masquées (O10), deux lectures (16 h 46 puis 16 h 48) : un appareil d'État français en 7700 au-dessus du Rhône, confirmé ;
- * un appareil d'une autre nation marqué PIA en 7500 au-dessus des Pyrénées-Atlantiques, vu une fois, compté sans être montré. Ni
- * adresse, ni indicatif, ni position, ni type, ni pays.
+ * Urgences d'appareils autrefois masqués (O10, remplacée le 08/10/2026), deux lectures (16 h 46 puis 16 h 48) : un appareil d'État
+ * français fictif (FICTIF04, F-ZFIC) en 7700 au-dessus du Rhône, confirmé ; un appareil d'une autre nation marqué PIA en 7500 au-dessus
+ * des Pyrénées-Atlantiques, vu une fois. Tous deux montrés avec adresse, indicatif, position, type et pays.
  */
-const MILITARY_MASKED_EMERGENCY: MilitaryResponse = {
+const MILITARY_FRENCH_EMERGENCY: MilitaryResponse = {
   "readAt": "2026-10-04T14:48:30.000Z",
   "sourceNow": "2026-10-04T14:48:24.501Z",
   "frenchByDept": [
     {"dept":"13","count":3},
     {"dept":"69","count":1}
   ],
-  "others": [
-    {"hex":"894081","callsign":"BAH11","type":"B738","country":"Bahreïn","lat":47.017273,"lon":4.422546,"dept":"71","altitudeFt":38000,"speedKt":424,"track":332.47,"seenAt":"2026-10-04T14:48:24.241Z"},
-    {"hex":"c2b5b7","callsign":"CFC2902","type":"C30J","country":"Canada","lat":43.484306,"lon":4.675729,"dept":"13","altitudeFt":2725,"speedKt":226,"track":359.24,"seenAt":"2026-10-04T14:48:24.394Z"},
-    {"hex":"43c6f6","callsign":"RRR2243","type":"A332","country":"Royaume-Uni","lat":50.693059,"lon":1.625671,"dept":"62","altitudeFt":38000,"speedKt":422.3,"track":321.83,"seenAt":"2026-10-04T14:48:24.307Z"},
-    {"hex":"43c700","callsign":"RRR2301","type":"A332","country":"Royaume-Uni","lat":45.947059,"lon":3.590057,"dept":"63","altitudeFt":39000,"speedKt":460.2,"track":143.93,"seenAt":"2026-10-04T14:48:24.420Z"}
+  "aircraft": [
+    {"hex":"3bf001","callsign":"FICTIF01","registration":null,"type":"DH8D","country":"France","family":"francais","lat":43.55,"lon":5.05,"dept":"13","altitudeFt":2050,"speedKt":227.7,"track":115.21,"seenAt":"2026-10-04T14:48:23.693Z"},
+    {"hex":"3bf002","callsign":"FICTIF02","registration":null,"type":"BE20","country":"France","family":"francais","lat":43.5,"lon":5.15,"dept":"13","altitudeFt":1200,"speedKt":196.7,"track":94.67,"seenAt":"2026-10-04T14:48:23.472Z"},
+    {"hex":"3bf003","callsign":"FICTIF03","registration":null,"type":"A332","country":"France","family":"francais","lat":43.6,"lon":5.25,"dept":"13","altitudeFt":1275,"speedKt":211.9,"track":342.42,"seenAt":"2026-10-04T14:48:24.283Z"},
+    {"hex":"3bf004","callsign":"FICTIF04","registration":"F-ZFIC","type":"EC45","country":"France","family":"francais","lat":45.87,"lon":4.64,"dept":"69","altitudeFt":525,"speedKt":51.5,"track":352.18,"seenAt":"2026-10-04T14:48:24.290Z"},
+    {"hex":"894081","callsign":"BAH11","registration":null,"type":"B738","country":"Bahreïn","family":"autres","lat":47.017273,"lon":4.422546,"dept":"71","altitudeFt":38000,"speedKt":424,"track":332.47,"seenAt":"2026-10-04T14:48:24.241Z"},
+    {"hex":"c2b5b7","callsign":"CFC2902","registration":null,"type":"C30J","country":"Canada","family":"autres","lat":43.484306,"lon":4.675729,"dept":"13","altitudeFt":2725,"speedKt":226,"track":359.24,"seenAt":"2026-10-04T14:48:24.394Z"},
+    {"hex":"44f684","callsign":"GRZLY21","registration":null,"type":"A400","country":"Belgique","family":"autres","lat":43.381472,"lon":-0.468554,"dept":"64","altitudeFt":1400,"speedKt":142,"track":270,"seenAt":"2026-10-04T14:48:24.136Z"},
+    {"hex":"43c6f6","callsign":"RRR2243","registration":"ZZ999","type":"A332","country":"Royaume-Uni","family":"autres","lat":50.693059,"lon":1.625671,"dept":"62","altitudeFt":38000,"speedKt":422.3,"track":321.83,"seenAt":"2026-10-04T14:48:24.307Z"},
+    {"hex":"43c700","callsign":"RRR2301","registration":null,"type":"A332","country":"Royaume-Uni","family":"autres","lat":45.947059,"lon":3.590057,"dept":"63","altitudeFt":39000,"speedKt":460.2,"track":143.93,"seenAt":"2026-10-04T14:48:24.420Z"}
   ],
-  "maskedOthers": 1,
   "abroadCount": 3,
   "abroad": [
-    {"hex":"c05325","callsign":"SPR106","type":"DH8A","country":"Canada","lat":50.866716,"lon":-1.051583},
-    {"hex":"ae1436","callsign":"FAZE37","type":"GLF5","country":"États-Unis","lat":51.372908,"lon":-0.572662},
-    {"hex":"ae5719","callsign":"CNV6981","type":"B737","country":"États-Unis","lat":51.620147,"lon":5.706863}
+    {"hex":"c05325","callsign":"SPR106","registration":null,"type":"DH8A","country":"Canada","family":"autres","lat":50.866716,"lon":-1.051583},
+    {"hex":"ae1436","callsign":"FAZE37","registration":null,"type":"GLF5","country":"États-Unis","family":"autres","lat":51.372908,"lon":-0.572662},
+    {"hex":"ae5719","callsign":"CNV6981","registration":null,"type":"B737","country":"États-Unis","family":"autres","lat":51.620147,"lon":5.706863}
   ],
   "emergencies": [
-    {"masked":true,"family":"autres","squawk":"7500","firstSeen":"2026-10-04T14:48:24.501Z","lastSeen":"2026-10-04T14:48:24.501Z","overFrance":true,"emergency":"unlawful","inFrance":true,"dept":"64"},
-    {"masked":true,"family":"francais","squawk":"7700","firstSeen":"2026-10-04T14:46:24.501Z","lastSeen":"2026-10-04T14:48:24.501Z","overFrance":true,"emergency":"general","inFrance":true,"dept":"69"}
+    {"icao24":"44f684","callsign":"GRZLY21","registration":null,"squawk":"7500","lat":43.381472,"lon":-0.468554,"altitudeM":427,"firstSeen":"2026-10-04T14:48:24.501Z","lastSeen":"2026-10-04T14:48:24.501Z","overFrance":true,"family":"autres","type":"A400","country":"Belgique","emergency":"unlawful","inFrance":true,"dept":"64"},
+    {"icao24":"3bf004","callsign":"FICTIF04","registration":"F-ZFIC","squawk":"7700","lat":45.87,"lon":4.64,"altitudeM":160,"firstSeen":"2026-10-04T14:46:24.501Z","lastSeen":"2026-10-04T14:48:24.501Z","overFrance":true,"family":"francais","type":"EC45","country":"France","emergency":"general","inFrance":true,"dept":"69"}
   ],
   "emergencyLog": [
-    {"masked":true,"family":"francais","squawk":"7700","firstSeen":"2026-10-04T14:46:24.501Z","lastSeen":"2026-10-04T14:48:24.501Z","overFrance":true,"emergency":"general","inFrance":true,"dept":"69"},
-    {"masked":true,"family":"autres","squawk":"7500","firstSeen":"2026-10-04T14:48:24.501Z","lastSeen":"2026-10-04T14:48:24.501Z","overFrance":true,"emergency":"unlawful","inFrance":true,"dept":"64"}
+    {"icao24":"3bf004","callsign":"FICTIF04","registration":"F-ZFIC","squawk":"7700","lat":45.87,"lon":4.64,"altitudeM":160,"firstSeen":"2026-10-04T14:46:24.501Z","lastSeen":"2026-10-04T14:48:24.501Z","overFrance":true,"family":"francais","type":"EC45","country":"France","emergency":"general","inFrance":true,"dept":"69"},
+    {"icao24":"44f684","callsign":"GRZLY21","registration":null,"squawk":"7500","lat":43.381472,"lon":-0.468554,"altitudeM":427,"firstSeen":"2026-10-04T14:48:24.501Z","lastSeen":"2026-10-04T14:48:24.501Z","overFrance":true,"family":"autres","type":"A400","country":"Belgique","emergency":"unlawful","inFrance":true,"dept":"64"}
   ],
   "hourly": {
     "hours": [
@@ -527,7 +537,7 @@ const VIGIPIRATE_CHECK_CHANGED: VigipiratePageCheck = {"readAt":"2026-10-05T14:4
 
 export function MILITARY_FIXTURE(): MilitaryResponse { return copy(MILITARY); }
 export function MILITARY_EMERGENCY_FIXTURE(): MilitaryResponse { return copy(MILITARY_EMERGENCY); }
-export function MILITARY_MASKED_EMERGENCY_FIXTURE(): MilitaryResponse { return copy(MILITARY_MASKED_EMERGENCY); }
+export function MILITARY_FRENCH_EMERGENCY_FIXTURE(): MilitaryResponse { return copy(MILITARY_FRENCH_EMERGENCY); }
 export function CABLES_FILE_FIXTURE(): SubseaCablesFile { return copy(CABLES_FILE); }
 export function CABLES_WATCH_FIXTURE(): CablesWatchResponse { return copy(CABLES_WATCH); }
 export function CABLES_WATCH_ALERTS_FIXTURE(): CablesWatchResponse { return copy(CABLES_WATCH_ALERTS); }

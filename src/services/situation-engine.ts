@@ -590,7 +590,7 @@ function detectMaritimeAnomaly(raw: FranceRawData): DetectedSituation | null {
   );
 }
 
-// ─── Règle 9 : DEFENSE_SIGNAL_ELEVATED « Signal défense » (spec 2026-10-04 souveraineté § 2.4 ; amendement 7, O7, O10, O15, S3, S5) ───
+// ─── Règle 9 : DEFENSE_SIGNAL_ELEVATED « Signal défense » (spec 2026-10-04 souveraineté § 2.4 ; amendement 7, O7, O15, S3, S5) ───
 
 /** Code du transpondeur (S3 : « 7500 (intervention illicite) »), mêmes mots que la pastille Défense. */
 const SQUAWK_TEXT: Readonly<Record<MilitaryEmergency['squawk'], string>> = { '7500': 'intervention illicite', '7600': 'panne radio', '7700': 'urgence' };
@@ -598,13 +598,14 @@ const SQUAWK_TEXT: Readonly<Record<MilitaryEmergency['squawk'], string>> = { '75
 /** Source des alertes câbles : câbles du Shom (référence) et d'OpenStreetMap (compléments), relevés AIS (O18). */
 const CABLES_SOURCE = 'Câbles (Shom, OpenStreetMap) et AIS';
 
-/** Appareil montré : indicatif (sinon adresse) et type ; appareil masqué (O10) : jamais une adresse, un indicatif ni un type. */
+/** Indicatif (sinon immatriculation, sinon adresse), type, et « appareil français » pour le bloc France. */
 function emergencyWho(e: MilitaryEmergency): string {
-  if (e.masked) return e.family === 'francais' ? 'appareil d’État français' : 'appareil à identité protégée ou de nationalité inconnue';
-  return `${e.callsign ?? `adresse ${e.icao24}`}${e.type ? ` (${e.type})` : ''}`;
+  const name = e.callsign ?? e.registration ?? `adresse ${e.icao24}`;
+  const details = [e.type, e.family === 'francais' ? 'appareil français' : null].filter((x): x is string => x !== null);
+  return `${name}${details.length > 0 ? ` (${details.join(', ')})` : ''}`;
 }
 
-/** Lieu court (zone, ligne d'urgence) : département, mer territoriale ou approches ; jamais une position. */
+/** Lieu court (zone, ligne d'urgence) : département, mer territoriale ou approches. */
 function emergencyZone(e: MilitaryEmergency): string {
   if (e.dept !== null) return `Dépt${NBSP}${e.dept}`;
   return e.inFrance ? 'Mer territoriale' : 'Approches de la France';
@@ -662,16 +663,15 @@ function detectDefenseSignal(raw: FranceRawData): DetectedSituation | null {
     ],
     [...(hijacks.length > 0 ? ['adsb.lol'] : []), ...(gnssCells > 0 ? ['Grille GNSS (adsb.lol)', 'NOAA SWPC'] : [])],
   );
-  // Position : seulement une urgence montrée (une urgence masquée n'en a pas, O10).
-  const shown = hijacks.find((e) => !e.masked);
+  const first = hijacks[0];
   // Entrées du moniteur déjà dites ici (liste « À traiter » : pas de doublon) : l'urgence de chaque 7500, le compte GNSS.
   const coveredAlertIds = [...hijacks.map(militaryEmergencyAlertId), ...(gnssCells > 0 ? [GNSS_MONITOR_ID] : [])];
-  return { ...base, ...(shown && !shown.masked ? { lat: shown.lat, lon: shown.lon } : {}), activateLayers: ['military'], coveredAlertIds };
+  return { ...base, ...(first ? { lat: first.lat, lon: first.lon } : {}), activateLayers: ['military'], coveredAlertIds };
 }
 
 /** Identifiant de l'entrée du moniteur d'une urgence, sans gravité : l'urgence qui se confirme reste la même alerte. */
 function militaryEmergencyAlertId(e: MilitaryEmergency): string {
-  return e.masked ? `military-emergency-masked-${e.squawk}-${e.firstSeen}-${e.dept ?? 'mer'}` : `military-emergency-${e.icao24}-${e.squawk}`;
+  return `military-emergency-${e.icao24}-${e.squawk}`;
 }
 
 // ─── Moniteur d'alertes : urgences militaires et navires lents sur un câble (souveraineté § 2.4 ; contrats § 6) ───
@@ -679,8 +679,7 @@ function militaryEmergencyAlertId(e: MilitaryEmergency): string {
 /**
  * Une alerte par urgence au-dessus du territoire ou à moins de 40 km, les trois codes (O7 : les 7700 et 7600 restent ici comme urgences
  * aériennes) : critique pour un 7500 affiché sur deux relevés, élevée pour un 7700 ou un 7600, moyenne vue une seule fois (à confirmer),
- * comme la pastille Défense. Identifiant sans gravité : l'urgence qui se confirme reste la même alerte. Urgence masquée (O10) : ni adresse,
- * ni indicatif, ni position, son département seul ; la carte ne se recentre que sur une urgence montrée.
+ * comme la pastille Défense. Identifiant sans gravité : l'urgence qui se confirme reste la même alerte.
  */
 export function militaryEmergencyAlerts(emergencies: readonly MilitaryEmergency[]): DetectedSituation[] {
   return emergencies.map((e) => {
@@ -690,13 +689,13 @@ export function militaryEmergencyAlerts(emergencies: readonly MilitaryEmergency[
       : e.squawk === '7500' ? 'affiché par le transpondeur sur deux relevés, non confirmé par les autorités'
       : 'affiché sur deux relevés';
     const code = `${e.squawk} (${SQUAWK_TEXT[e.squawk]})`;
-    const country = !e.masked && e.country ? ` ; pays du bloc OACI : ${e.country}` : '';
+    const country = e.country ? ` ; pays du bloc OACI : ${e.country}` : '';
     const base = situation(
       militaryEmergencyAlertId(e),
       'MILITARY_SURGE_ALERT',
       severity,
       confirmed ? 0.9 : 0.6,
-      e.masked ? `${code} : ${emergencyAircraftLine(e)}` : `${code} : ${emergencyWho(e)}`,
+      `${code} : ${emergencyWho(e)}`,
       `Code ${e.squawk} ${state}, ${emergencyPlace(e)}${country}.`,
       [emergencyZone(e)],
       [`Code ${code} ${state}`, `Aéronef : ${emergencyWho(e)}`, `Dernière lecture à ${PARIS_CLOCK.format(new Date(e.lastSeen))}`],
@@ -707,9 +706,7 @@ export function militaryEmergencyAlerts(emergencies: readonly MilitaryEmergency[
       ['adsb.lol'],
     );
     const updatedAt = new Date(e.lastSeen);
-    return e.masked
-      ? { ...base, activateLayers: ['military'], updatedAt }
-      : { ...base, entityId: `${e.icao24}:${e.squawk}`, lat: e.lat, lon: e.lon, activateLayers: ['military'], updatedAt };
+    return { ...base, entityId: `${e.icao24}:${e.squawk}`, lat: e.lat, lon: e.lon, activateLayers: ['military'], updatedAt };
   });
 }
 

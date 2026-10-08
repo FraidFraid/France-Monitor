@@ -4264,8 +4264,7 @@ export class App {
     this.defensePanelPromise ??= Promise.all([import('./components/DefensePanel.ts'), this.loadDefenseSites()]).then(([{ DefensePanel }]) => {
       const panel = new DefensePanel(container);
       panel.setOnClose(() => this.closeSovereigntyLayer('military'));
-      // Lignes recentrées sur la carte WebGL seulement (mobile : aucun rendu de la souveraineté sur la carte). O10 : aéronefs d'autres
-      // nations et urgences montrées seulement ; un appareil français ou masqué n'a pas de position.
+      // Lignes recentrées sur la carte WebGL seulement (mobile : aucun rendu de la souveraineté sur la carte) : tout aéronef et toute urgence.
       if (this.mapContainer?.canFocusMap()) {
         panel.setOnFocusAircraft((aircraft) => this.mapContainer?.flyTo(aircraft.lon, aircraft.lat, 9));
         panel.setOnFocusEmergency((emergency) => this.mapContainer?.flyTo(emergency.lon, emergency.lat, 9));
@@ -5233,8 +5232,7 @@ export class App {
     }
 
     if (situation.type === 'MILITARY_SURGE_ALERT') {
-      // Urgence militaire (souveraineté § 2.4) : sa position à la dernière lecture, seulement pour une urgence montrée (O10 : une urgence
-      // masquée n'a pas de position, aucune carte recentrée) ; le panneau Défense dit le reste.
+      // Urgence militaire (souveraineté § 2.4) : sa position à la dernière lecture ; le panneau Défense dit le reste.
       const { lon, lat } = situation;
       if (lon == null || lat == null) return false;
       if (!this.activeLayers.military) {
@@ -7426,7 +7424,7 @@ export class App {
         updatedAt: item.pubDate,
       }));
 
-    // Souveraineté (contrats § 6 ; amendement 7, O7, O10) : urgences au-dessus du territoire ou à moins de 40 km, les trois codes,
+    // Souveraineté (contrats § 6 ; amendement 7, O7) : urgences au-dessus du territoire ou à moins de 40 km, les trois codes,
     // affichées sur deux relevés ou vues une fois ; navires lents confirmés sur un câble, AIS frais ; compte de mailles GNSS (phase B).
     const sov = this.sovereigntyInputs(nowMs);
     const surgeSituations = militaryEmergencyAlerts(monitoredMilitaryEmergencies(this.currentMilitary?.military.data ?? null, nowMs))
