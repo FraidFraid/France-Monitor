@@ -5,9 +5,8 @@
 
 import type { DeckGLMap } from './DeckGLMap.ts';
 import type { Map as SVGMap } from './Map.ts';
-import type { NewsItem, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, EcowattResponse, FuelTensionDashboard, InfrastructurePoint, MapLayers, MapViewState, MilitaryBase, AirTrafficFlight, TelecomOutage, PowerOutage, ISNRScore, AlertLevelsResponse, AplDataset, AplProfession, EmergencySite, HospitalsDataset, SyndromicResponse, GasNetworkState, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, HydraulicBackboneAsset } from '../types/index.ts';
+import type { NewsItem, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, EcowattResponse, FuelTensionDashboard, InfrastructurePoint, MapLayers, MapViewState, MilitaryBase, AirTrafficFlight, ISNRScore, AlertLevelsResponse, AplDataset, AplProfession, EmergencySite, HospitalsDataset, SyndromicResponse, GasNetworkState, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, HydraulicBackboneAsset } from '../types/index.ts';
 import type { MilitaryShip } from '../services/military-ships.ts';
-import type { RTEIIPIncident } from '../services/rte-iip.ts';
 import type { EventMapPoint } from '../services/v2-map.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
 import type { CopernicusScene, SatelliteCollection } from '../types/index.ts';
@@ -297,31 +296,9 @@ export class MapContainer {
     this.deckMap?.updateGlobalTraffic(ships, navyMmsiSet);
   }
 
-  // ─── Outages (Telecom & Power) ───
-  async updateOutages(telecoms: TelecomOutage[], powers: PowerOutage[]): Promise<void> {
-    await this.deckMap?.updateOutages(telecoms, powers);
-  }
-
   // ─── Internet / BGP outages (IODA) ───
   updateNetworkOutages(state: NetworkOutageState): void {
     this.deckMap?.updateNetworkOutages(state);
-  }
-
-  updateCitizenOutageZones(zones: GeoJSON.FeatureCollection): void {
-    this.deckMap?.updateCitizenOutageZones(zones);
-  }
-
-  updateIIPIncidents(incidents: RTEIIPIncident[]): void {
-    this.deckMap?.updateIIPIncidents(incidents);
-  }
-
-
-  highlightPowerDept(deptCode: string | null): void {
-    this.deckMap?.highlightPowerDept(deptCode);
-  }
-
-  highlightCitizenZone(clusterId: number | null): void {
-    this.deckMap?.highlightCitizenZone(clusterId);
   }
 
   highlightIsp(data: { asn: string; coordinates: [number, number] } | null): void {

@@ -68,7 +68,6 @@ jobs:
             "/api/sovereignty/sanctions;200"
             "/api/finance/market;200"
             "/api/rte-iip;200"
-            "/api/arcep;200"
             "/api/ministers/composition;200"
             "/api/energy/drom;200"
             "/api/gie/agsi;200"

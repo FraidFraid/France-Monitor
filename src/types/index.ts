@@ -852,30 +852,6 @@ export interface CommodityData extends Omit<MarketData, 'history' | 'category'> 
   unit: string;       // '$/bbl', '$/oz', '$/MMBtu', '¢/bu', '$/lb'
 }
 
-// ═══ Pannes Télécoms & Électricité (ARCEP / Enedis) ═══
-
-export interface TelecomOutage {
-  id: string;
-  operator: string;
-  department: string;
-  city: string;
-  voiceStatus: 'OK' | 'HS' | 'Degraded';
-  dataStatus: 'OK' | 'HS' | 'Degraded';
-  reason: string;
-  /** Début de la panne (ISO UTC), issu du champ ARCEP `debut` (heure de Paris) ; null si absent ou illisible. */
-  since?: string | null;
-  coordinates: [number, number]; // [lon, lat]
-}
-
-export interface PowerOutage {
-  departmentCode: string;
-  departmentName: string;
-  offGridCount: number;      // Nombre de PDL (Points de Livraison) hors réseau
-  totalPDL: number;          // Total PDL (estimation)
-  eventCause: string;        // "Tempête Caetano", "Vents violents", "Neige"
-  trend: 'stable' | 'improving' | 'worsening';
-}
-
 // ═══ Data Freshness & Watchdog ═══
 
 /**
@@ -1688,57 +1664,6 @@ export interface MineGasSite {
   updatedAt?: string;
   notes?: string;
   raw?: unknown;
-}
-
-// ═══ Pannes Crowd-sourced (Signalements Citoyens) ═══
-
-/**
- * Signalement citoyen d'une panne électrique (crowd-sourced).
- * Agrégé par ville/département — pas d'adresse individuelle (privacy).
- */
-export interface CitizenOutageReport {
-  id: string;
-  source: 'infocoupure' | 'coupure-elec';
-  city: string;
-  department: string;
-  departmentCode: string;
-  reportCount: number;         // Nombre de signalements agrégés
-  timestamp: Date;
-  coordinates: [number, number]; // [lng, lat] — centroïde ville
-  type: 'electricity' | 'internet' | 'unknown';
-}
-
-/**
- * Zone de panne géographique issue du clustering DBSCAN.
- * GeoJSON Feature<Polygon> avec métadonnées.
- */
-export interface OutageZoneProperties {
-  clusterId: number;
-  density: number;             // Signalements/km²
-  totalReports: number;        // Somme des signalements dans la zone
-  sources: Array<CitizenOutageReport['source']>;
-  severity: 'low' | 'medium' | 'high' | 'critical';
-  center: [number, number];    // [lng, lat] centroïde du cluster
-  radiusKm: number;
-  createdAt: string;           // ISO timestamp
-}
-
-export type OutageZone = GeoJSON.Feature<GeoJSON.Polygon, OutageZoneProperties>;
-export type OutageZoneCollection = GeoJSON.FeatureCollection<GeoJSON.Polygon, OutageZoneProperties>;
-
-/**
- * Réponse de l'endpoint /api/outages/citizen
- */
-export interface CitizenOutageResponse {
-  zones: OutageZoneCollection;
-  reports: CitizenOutageReport[];
-  stats: {
-    totalReports: number;
-    totalZones: number;
-    criticalZones: number;
-    sourcesStatus: Record<CitizenOutageReport['source'], 'ok' | 'error' | 'stale'>;
-    fetchedAt: string;         // ISO timestamp
-  };
 }
 
 // ═══ Oil Network (CPDP / Pétrole) ═══

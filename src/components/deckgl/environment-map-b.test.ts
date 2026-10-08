@@ -207,7 +207,7 @@ describe('réaffichage à l’heure courante (S2)', () => {
 
 describe('ordre des couches : points au-dessus de toutes les surfaces (risque 7)', () => {
   it('séismes et marégraphes placés sous la première couche de points qui suit la dernière surface', () => {
-    const order = ['weather-fill', 'quakes', 'quakes-label', 'tide-gauges', 'fuel-tension-fill', 'military-zones-fill', 'citizen-fill', 'power-fill', 'telecom-pts'];
+    const order = ['weather-fill', 'quakes', 'quakes-label', 'tide-gauges', 'fuel-tension-fill', 'military-zones-fill', 'out-telecom-maint'];
     const map = {
       getLayer: (id: string): unknown => (order.includes(id) ? {} : undefined),
       moveLayer: (id: string, before?: string): void => {
@@ -217,9 +217,9 @@ describe('ordre des couches : points au-dessus de toutes les surfaces (risque 7)
     };
     placeEnvBPoints(map);
     const at = (id: string): number => order.indexOf(id);
-    for (const surface of ['fuel-tension-fill', 'military-zones-fill', 'citizen-fill', 'power-fill']) {
+    for (const surface of ['fuel-tension-fill', 'military-zones-fill']) {
       for (const point of ['quakes', 'quakes-label', 'tide-gauges']) expect(at(point)).toBeGreaterThan(at(surface));
     }
-    expect(at('tide-gauges')).toBeLessThan(at('telecom-pts'));
+    expect(at('tide-gauges')).toBeLessThan(at('out-telecom-maint'));
   });
 });

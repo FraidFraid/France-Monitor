@@ -3,8 +3,6 @@
 
 /** @type {Record<string, () => Promise<Record<string, unknown>>>} */
 export const ROUTES = {
-  '/api/arcep': () => import('./_handlers/arcep.js'),
-  '/api/citizen-outages': () => import('./_handlers/citizen-outages.js'),
   '/api/copernicus': () => import('./_handlers/copernicus.js'),
   '/api/energy/biogas-sites': () => import('./_handlers/energy/biogas-sites.js'),
   '/api/energy/biogas': () => import('./_handlers/energy/biogas.js'),
@@ -86,5 +84,4 @@ export const ROUTES = {
 
 /** @type {Record<string, string>} */
 export const ALIASES = {
-  '/api/outages/citizen': '/api/citizen-outages',
 };

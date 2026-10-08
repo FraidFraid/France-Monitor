@@ -18,7 +18,7 @@ import {
 import { CAT_SECHERESSE_VIGILANCE_HEX, DROUGHT_UNAVAILABLE_HEX, ENV_NEUTRAL_HEX, QUAKE_ABROAD_HEX, QUAKE_WEAK_HEX } from '../layer-panel/environment-legend.ts';
 import { CAT_PORT_HEX } from '../layer-panel/traffic-legend.ts';
 import {
-  LYR_AIR_FILL, LYR_AIR_LINE, LYR_DROUGHT_FILL, LYR_DROUGHT_LINE, LYR_QUAKES, LYR_QUAKE_LABEL, LYR_TELECOM_PTS, LYR_TIDE_GAUGES, LYR_WEATHER_FILL, SRC_AIR_QUALITY, SRC_DROUGHT,
+  LYR_AIR_FILL, LYR_AIR_LINE, LYR_DROUGHT_FILL, LYR_DROUGHT_LINE, LYR_QUAKES, LYR_OUT_TELECOM_MAINT, LYR_QUAKE_LABEL, LYR_TIDE_GAUGES, LYR_WEATHER_FILL, SRC_AIR_QUALITY, SRC_DROUGHT,
   SRC_QUAKES, SRC_TIDE_GAUGES,
 } from './constants.ts';
 import { escapeHtml } from './format-utils.ts';
@@ -255,11 +255,11 @@ export function envBReshowPaints(
 }
 
 /** Couche sous laquelle placer les points de la phase B : la première couche de points ajoutée après la dernière surface (fills) de la carte. */
-export const ENV_B_POINTS_ANCHOR = LYR_TELECOM_PTS;
+export const ENV_B_POINTS_ANCHOR = LYR_OUT_TELECOM_MAINT;
 
 /**
  * Place séismes et marégraphes (et l'étiquette des séismes) sous l'ancre, donc au-dessus de toutes les surfaces (tension carburants,
- * zones militaires, citoyen, réseau électrique) quand elles sont actives. À appeler une fois l'ancre ajoutée à la carte.
+ * zones militaires) quand elles sont actives. À appeler une fois l'ancre ajoutée à la carte.
  */
 export function placeEnvBPoints(map: { getLayer(id: string): unknown; moveLayer(id: string, before?: string): unknown }): void {
   if (!map.getLayer(ENV_B_POINTS_ANCHOR)) return;

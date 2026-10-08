@@ -33,6 +33,6 @@ describe('carte de la phase B', () => {
       'envBReshowPaints(was, layers, this.envB, geo, Date.now())', 'void this.repaintEnvironmentBOnShow(was, layers);', 'placeEnvBPoints(this.map);']) {
       expect(deck).toContain(part);
     }
-    expect(deck.indexOf('id: LYR_POWER_FILL')).toBeLessThan(deck.indexOf('placeEnvBPoints(this.map);'));
+    expect(deck.indexOf('for (const layer of OUT_LAYERS) this.map.addLayer(layer);')).toBeLessThan(deck.indexOf('placeEnvBPoints(this.map);'));
   });
 });

@@ -42,7 +42,6 @@ export interface CyberPressureBreakdownItem {
 }
 
 export interface CyberPressureContext {
-  powerOutageCount?: number;
   telecomOutageCount?: number;
   cloudIncidentCount?: number;
 }
@@ -136,7 +135,7 @@ export function computeCyberPressureAssessment(
   const leaksRaw = FAMILY_BASE_WEIGHTS.leaks * leaks30d * (newestLeakAge === null ? 1 : freshnessWeight(newestLeakAge, 'leaks'));
   const claimsRaw = claimsRatio === null ? 0 : (FAMILY_CAPS.ransomware * Math.max(0, claimsRatio - 1)) / 2;
   const kevRaw = kevCited.reduce((sum, age) => sum + FAMILY_BASE_WEIGHTS.vulnerabilities * EXPLOITED_FACTOR * freshnessWeight(age, 'vulnerabilities'), 0);
-  const outages = (context.powerOutageCount ?? 0) + (context.telecomOutageCount ?? 0) + (context.cloudIncidentCount ?? 0);
+  const outages = (context.telecomOutageCount ?? 0) + (context.cloudIncidentCount ?? 0);
   const correlationRaw = scaleCount(criticalSectorClaims30d, 8, 5)
     + (outages > 0 && criticalSectorClaims30d > 0 ? Math.min(3 + outages, 6) : 0);
 

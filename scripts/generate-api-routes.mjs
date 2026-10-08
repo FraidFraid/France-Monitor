@@ -11,10 +11,8 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const HANDLERS_DIR = join(ROOT, 'api', '_handlers');
 const OUT = join(ROOT, 'api', '_routes.js');
 
-// Anciennes URL publiques conservées (auparavant des rewrites vercel.json).
-const ALIASES = {
-  '/api/outages/citizen': '/api/citizen-outages',
-};
+// Anciennes URL publiques conservées (auparavant des rewrites vercel.json). Aucune pour l'instant.
+const ALIASES = {};
 
 function walk(dir, out = []) {
   for (const name of readdirSync(dir).sort()) {
