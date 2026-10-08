@@ -237,4 +237,59 @@ describe('collecte', () => {
     expect(body.file?.publishedAt).toBe('2026-10-08T12:30:00.000Z');
     expect(body.history.filter((h) => h.day === '2026-10-08')).toHaveLength(1);
   });
+  it('fichier du jour mal formé (200 sans entités) : dernières données gardées, erreur nommée, jamais 0 panne', async () => {
+    stubFetch(route);
+    const before = await ensureTelecomFresh(NOW);
+    const malformed = ['{}', '{"error":"quota"}', '{"features":[{"type":"Feature","geometry":null,"properties":{}}]}'];
+    for (const [i, bad] of malformed.entries()) {
+      const log = stubFetch((url) => (url === arcepFileUrl('2026-10-08') ? respond(bad, 200, { 'last-modified': 'Thu, 08 Oct 2026 12:30:00 GMT' }) : route(url)));
+      const body = await ensureTelecomFresh(NOW + (31 + 10 * i) * 60_000);
+      expect(log.urls.length).toBeGreaterThan(0);
+      expect(body.errors[0]).toMatch(/^ARCEP : GeoJSON sans entité/);
+      expect(body.file).toEqual(before.file);
+      expect(body.summary).toEqual(before.summary);
+      expect(body.history).toEqual(before.history);
+    }
+  });
+  it('fichier du jour mal formé et jamais lu : réponse vide, summary null, pas de point d’historique', async () => {
+    stubFetch((url) => (url === arcepFileUrl('2026-10-08') ? respond('{}', 200, { 'last-modified': 'Thu, 08 Oct 2026 09:02:20 GMT' }) : respond('introuvable', 404)));
+    const body = await ensureTelecomFresh(NOW);
+    expect(body.summary).toBeNull();
+    expect(body.file).toBeNull();
+    expect(body.history).toEqual([]);
+    expect(body.errors).toEqual(['ARCEP : GeoJSON sans entités']);
+  });
+  it('un fichier valide sans aucune panne reste un fichier lu (0 réel)', async () => {
+    stubFetch((url) => (url === arcepFileUrl('2026-10-08') ? respond('{"features":[]}', 200, { 'last-modified': 'Thu, 08 Oct 2026 09:02:20 GMT' }) : route(url)));
+    const body = await ensureTelecomFresh(NOW);
+    expect(body.summary).toMatchObject({ total: 0, recent: 0 });
+    expect(body.errors).toEqual([]);
+  });
+  it('fichier précédent mal formé : courant servi, comparaison n.d., erreur nommée', async () => {
+    stubFetch((url) => (url === arcepFileUrl('2026-10-07') ? respond('{}', 200, { 'last-modified': 'Wed, 07 Oct 2026 09:02:12 GMT' }) : route(url)));
+    const body = await ensureTelecomFresh(NOW);
+    expect(body.file?.day).toBe('2026-10-08');
+    expect(body.previousFile).toBeNull();
+    expect(body.summary).toMatchObject({ recent: 18, newSincePrevious: null, resolvedSincePrevious: null });
+    expect(body.errors).toEqual(['ARCEP, fichier précédent : GeoJSON sans entités']);
+  });
+  it('fichier précédent seul en panne (503) : courant servi, comparaison n.d., pas de relecture avant 5 min, puis précédent lu', async () => {
+    const down = (url: string) => (url === arcepFileUrl('2026-10-07') ? respond('panne', 503) : route(url));
+    const log = stubFetch(down);
+    const first = await ensureTelecomFresh(NOW);
+    expect(first.file?.day).toBe('2026-10-08');
+    expect(first.previousFile).toBeNull();
+    expect(first.summary).toMatchObject({ recent: 18, newSincePrevious: null, resolvedSincePrevious: null });
+    expect(first.errors).toEqual(['ARCEP, fichier précédent : HTTP 503']);
+    const calls = log.urls.length;
+    const early = await ensureTelecomFresh(NOW + 4 * 60_000);
+    expect(log.urls.length).toBe(calls);
+    expect(early.errors).toEqual(['ARCEP, fichier précédent : HTTP 503']);
+    const fixed = stubFetch(route);
+    const later = await ensureTelecomFresh(NOW + 6 * 60_000);
+    expect(fixed.urls).toContain(arcepFileUrl('2026-10-07'));
+    expect(later.previousFile).toEqual({ day: '2026-10-07', publishedAt: '2026-10-07T09:02:12.000Z' });
+    expect(later.summary).toMatchObject({ newSincePrevious: 23, resolvedSincePrevious: 3 });
+    expect(later.errors).toEqual([]);
+  });
 });

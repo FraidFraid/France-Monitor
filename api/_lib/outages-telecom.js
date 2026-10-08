@@ -146,8 +146,11 @@ async function readFile(ref) {
   }
   const lm = Date.parse(resp.header('last-modified') ?? ref.lastModified ?? '');
   if (!Number.isFinite(lm)) throw new Error('fichier sans date de publication');
-  const features = Array.isArray(json?.features) ? json.features : [];
+  // Une réponse 200 sans liste d'entités (corps d'erreur, schéma changé) n'est pas un fichier vide : jamais « 0 panne » (S3).
+  if (!Array.isArray(json?.features)) throw new Error('GeoJSON sans entités');
+  const features = json.features;
   const sites = dedupeSites(features.map(normalizeArcepFeature).filter((s) => s !== null));
+  if (features.length > 0 && sites.length === 0) throw new Error('GeoJSON sans entité lisible');
   return { day: ref.day, publishedAt: new Date(lm).toISOString(), publishedMs: lm, sites };
 }
 
