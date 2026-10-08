@@ -236,6 +236,11 @@ function defenseTile(s: FranceCountrySignals, lang: Lang): DomainTile {
   };
 }
 
+/** Niveau de la pastille Télécoms (vigilance L1) → niveau de tuile : même couleur que le panneau pour le même chiffre. */
+const TELECOM_TILE_LEVEL: Readonly<Record<NonNullable<FranceCountrySignals['telecomOutagesLevel']>, DomainLevel>> = {
+  vert: 'low', jaune: 'medium', orange: 'high', rouge: 'critical',
+};
+
 export function domainTiles(s: FranceCountrySignals, lang: Lang): DomainTile[] {
   // Pannes télécoms imprévues de moins de 24 h ; fichier ARCEP non lu : « n.d. » et point gris, jamais 0.
   const outages = s.telecomOutages;
@@ -255,7 +260,7 @@ export function domainTiles(s: FranceCountrySignals, lang: Lang): DomainTile[] {
     {
       label: t(lang, 'Pannes', 'Outages'), value: outages,
       meta: t(lang, 'télécoms récentes', 'recent telecom'),
-      level: outages === null ? null : outages > 50 ? 'high' : outages > 0 ? 'medium' : 'low',
+      level: s.telecomOutagesLevel === null ? null : TELECOM_TILE_LEVEL[s.telecomOutagesLevel],
     },
     defenseTile(s, lang),
     meteoTile(s, lang),

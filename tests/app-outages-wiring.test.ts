@@ -167,3 +167,20 @@ describe('câblage App.ts des Pannes réseau (phase A)', () => {
     expect(layerPanel).not.toContain('TÉLÉCOM 4G·5G');
   });
 });
+
+describe('fichier ARCEP en retard : muet pour le score, les situations, l\u2019ISNR, le brief et la note (I6)', () => {
+  it('une seule aide, telecomForScore(), qui passe par telecomIfFresh', () => {
+    expect(app).toContain("import { telecomIfFresh } from './services/outages-levels.ts';");
+    expect(methodBody('telecomForScore')).toContain('telecomIfFresh(this.currentOutTelecom?.telecom.data ?? null, Date.now())');
+  });
+  it('score et brief (buildFranceSnapshot), note de situation et ISNR lisent telecomForScore(), jamais le fichier brut', () => {
+    expect(methodBody('buildFranceSnapshot')).toContain('telecomOutages:       this.telecomForScore(),');
+    expect(methodBody('buildSituationReportContext')).toContain('telecomOutages: this.telecomForScore(),');
+    expect(app).toMatch(/computeISNR\(\s*this\.newsItems,[^;]*this\.telecomForScore\(\),\s*\);/);
+  });
+  it('seul l\u2019export garde le fichier lu (daté, il dit tout)', () => {
+    const raw = app.match(/telecomOutages:\s+this\.currentOutTelecom\?\.telecom\.data \?\? null/g) ?? [];
+    expect(raw).toHaveLength(1);
+    expect(methodBody('buildExportContext')).toContain('telecomOutages: this.currentOutTelecom?.telecom.data ?? null');
+  });
+});

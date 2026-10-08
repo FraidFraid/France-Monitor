@@ -55,6 +55,7 @@ import { computeCyberPressureAssessment, type CyberPressureAssessment } from './
 import { MILITARY_FIGURE_LABEL, distinctVessels, isSovereigntyDataLate } from './sovereignty-levels.ts';
 import { ecowattToday } from './ecowatt-official.ts';
 import { foyerLevel, isMajorFoyer } from './environment-levels.ts';
+import { telecomLevel } from './outages-levels.ts';
 
 /**
  * All raw data App.ts passes to the engine.
@@ -506,6 +507,7 @@ export function buildFranceSignals(raw: FranceRawData, nowMs: number = Date.now(
     roadIncidents: raw.roadEvents.length + raw.urbanJamCount,
     // Infrastructure
     telecomOutages: raw.telecomOutages?.summary?.recent ?? null,
+    telecomOutagesLevel: raw.telecomOutages ? telecomLevel(raw.telecomOutages) : null,
     // Cyber (souveraineté § 2.3 ; O1, O6) : alertes CERT-FR en cours, plus les avis qui citent une vulnérabilité ajoutée au catalogue KEV
     // depuis moins de 7 jours ; vulnérabilités exploitées citées par le CERT-FR depuis 30 jours.
     cyberAlerts: cyberPressure.inputs.openAlerts + cyberPressure.inputs.kevAdvisories7d,

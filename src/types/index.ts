@@ -1031,6 +1031,8 @@ export interface FranceCountrySignals {
   // Infrastructure
   /** Pannes télécom imprévues récentes (< 24 h) du fichier ARCEP ; null : source muette (spec 2026-10-08 § 2.3). */
   telecomOutages: number | null;
+  /** Niveau de la pastille Télécoms (telecomLevel) du même fichier : une seule règle de couleur pour le même chiffre ; null sans fichier. */
+  telecomOutagesLevel: 'vert' | 'jaune' | 'orange' | 'rouge' | null;
   // Cyber
   cyberAlerts: number;
   cyberCritical: number;

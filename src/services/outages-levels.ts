@@ -59,6 +59,14 @@ export function telecomLevel(r: Pick<TelecomOutagesResponse, 'summary' | 'byDept
   return 'vert';
 }
 
+/**
+ * Fichier ARCEP à verser au score, aux situations, à l'indice de stabilité et au brief : null s'il est en retard (isArcepFileLate), car son
+ * `summary.recent` se compte par rapport à sa publication et ne dit plus rien du moment. Même chemin « non évalué » que la source muette.
+ */
+export function telecomIfFresh<T extends Pick<TelecomOutagesResponse, 'file'>>(t: T | null, now: number): T | null {
+  return t !== null && t.file !== null && isArcepFileLate(t.file.day, now) ? null : t;
+}
+
 /** MW de production perdus en arrêts imprévus en cours (gros chiffre Électricité). */
 export function powerUnplannedMw(r: Pick<PowerOutagesResponse, 'unplanned'>): number {
   return Math.round(r.unplanned.reduce((sum, u) => sum + u.lostMw, 0));

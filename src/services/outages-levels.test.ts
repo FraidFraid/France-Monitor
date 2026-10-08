@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  OUTAGES_LATE_AFTER_MIN, TELECOM_DISRUPTION_THRESHOLDS, isArcepFileLate, isOutagesDataLate, powerLevel, powerUnplannedMw, telecomLevel,
+  OUTAGES_LATE_AFTER_MIN, TELECOM_DISRUPTION_THRESHOLDS, isArcepFileLate, isOutagesDataLate, powerLevel, powerUnplannedMw, telecomIfFresh, telecomLevel,
 } from './outages-levels.ts';
 import { outagesSlotStatus } from './outages-source.ts';
 import type { PowerOutagesResponse, PowerUnitOutage, TelecomOutagesResponse } from '../types/index.ts';
@@ -61,6 +61,15 @@ describe('niveaux et retards des pannes réseau', () => {
     expect(isArcepFileLate('2026-10-07', paris('2026-10-08T15:01:00+02:00'))).toBe(true);
     expect(isArcepFileLate('2026-10-06', paris('2026-10-08T09:00:00+02:00'))).toBe(true);
     expect(isArcepFileLate(null, paris('2026-10-08T09:00:00+02:00'))).toBe(true);
+  });
+  it('I6 : telecomIfFresh rend le fichier tel quel s’il n’est pas en retard, null sinon (et null pour une source muette)', () => {
+    const t = telecom(264, [['59', 30]]);   // fichier du 08/10
+    expect(telecomIfFresh(t, paris('2026-10-08T22:00:00+02:00'))).toBe(t);
+    expect(telecomIfFresh(t, paris('2026-10-09T09:00:00+02:00'))).toBe(t);       // fichier de la veille avant 15 h : normal
+    expect(telecomIfFresh(t, paris('2026-10-09T15:01:00+02:00'))).toBeNull();     // le fichier du jour manque encore après 15 h
+    expect(telecomIfFresh(t, paris('2026-10-12T09:00:00+02:00'))).toBeNull();     // plusieurs jours : jamais « récent »
+    expect(telecomIfFresh({ ...t, file: null }, paris('2026-10-12T09:00:00+02:00'))).toEqual({ ...t, file: null });
+    expect(telecomIfFresh(null, paris('2026-10-08T22:00:00+02:00'))).toBeNull();
   });
   it('statut d’une source : date de la donnée, « (en retard) », erreur nommée, jamais l’heure de lecture', () => {
     const now = Date.parse('2026-10-08T20:00:00Z');

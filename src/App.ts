@@ -46,7 +46,7 @@ import {
   getSparklineSeries,
   recordStabilitySnapshot,
 } from './utils/stability-history.ts';
-import type { BriefEventInput, FranceCountrySnapshot, FranceIntelTimelineLane, IntelEventsState, PressAlertEvent, StructuredBrief } from './types/index.ts';
+import type { BriefEventInput, FranceCountrySnapshot, FranceIntelTimelineLane, IntelEventsState, PressAlertEvent, StructuredBrief, TelecomOutagesResponse } from './types/index.ts';
 import { PressAlertSource, pruneStalePressAlerts } from './services/press-alert-source.ts';
 import { GasPanel } from './components/GasPanel.ts';
 import type { HydraulicPanel } from './components/HydraulicPanel.ts';
@@ -197,6 +197,7 @@ import {
   type OutagesLayerKey,
 } from './config/outages-sources.ts';
 import { arcepStatus, fetchTelecom, mergeTelecom, type TelecomState } from './services/outages-telecom.ts';
+import { telecomIfFresh } from './services/outages-levels.ts';
 import { edfStatus, fetchPower, iipStatus, mergePower, seiStatus, type PowerState } from './services/outages-power.ts';
 import { emptySlot } from './services/sovereignty-source.ts';
 import { powerLegend, telecomLegend } from './components/layer-panel/outages-legend.ts';
@@ -7430,6 +7431,14 @@ export class App {
     };
   }
 
+  /**
+   * Fichier ARCEP versé au score, aux situations (« Perturbation télécom »), à l'indice de stabilité, au brief et à la note : null s'il
+   * est en retard (isArcepFileLate), jamais ses comptes périmés. L'export, lui, garde le fichier lu : il est daté et dit tout.
+   */
+  private telecomForScore(): TelecomOutagesResponse | null {
+    return telecomIfFresh(this.currentOutTelecom?.telecom.data ?? null, Date.now());
+  }
+
   private buildFranceSnapshot(
     lang: 'fr' | 'en',
     options?: { brief?: StructuredBrief | null; briefFreshness?: 'fresh' | 'cached' },
@@ -7443,7 +7452,7 @@ export class App {
       ...this.trafficInputs(),
       // Souveraineté : aéronefs, urgences, alertes câbles, mailles GNSS, réponse cyber, disponibilités et pastilles (contrats § 6).
       ...sov,
-      telecomOutages:       this.currentOutTelecom?.telecom.data ?? null,
+      telecomOutages:       this.telecomForScore(),
       maritimeCount:        this.currentMaritimeTrafficFranceCount,
       marketData:           this.currentMarketData,
       ecowattResponse:      this.currentEcowattResponse,
@@ -7708,7 +7717,7 @@ export class App {
       ecowatt: this.currentEcowattResponse,
       railTrains: traffic.railTrains,
       roadEvents: traffic.roadEvents,
-      telecomOutages: this.currentOutTelecom?.telecom.data ?? null,
+      telecomOutages: this.telecomForScore(),
       newsItems: this.newsItems,
       // Sources santé : hors Watchdog, lues dans le panneau des sources avec leur période (spec 2026-10-03 S1).
       sources: [...Watchdog.getSnapshot(), ...healthReportSources(this.statusPanel?.getSources() ?? [])],
@@ -8095,7 +8104,7 @@ export class App {
       env.floodSegments,
       this.currentEcowattResponse,
       '24h',
-      this.currentOutTelecom?.telecom.data ?? null,
+      this.telecomForScore(),
     );
 
     // Update map layer

@@ -22,7 +22,8 @@ import type {
   RoadEvent,
   WatchdogSnapshot,
 } from '../types/index.ts';
-import { dayMonth } from './layer-panel/format.ts';
+import { dayMonth, frNumber } from './layer-panel/format.ts';
+import { telecomLevel } from '../services/outages-levels.ts';
 import { eventLevel, isnrLevel, levelVigilanceWord, situationLevel } from '../services/vigilance.ts';
 import { ecowattLevelLabel, ecowattToday } from '../services/ecowatt-official.ts';
 import {
@@ -169,14 +170,16 @@ function buildDomainSignals(ctx: SituationReportContext): ReportDomainSignal[] {
   }
 
   // Pannes réseaux : sites mobiles tombés depuis moins de 24 h (fichier ARCEP) ; l'électricité n'a pas de source ouverte fiable.
+  // Niveau de la pastille du panneau Télécoms (telecomLevel, seuils partagés) : seuls les états non nominaux entrent dans la note.
   const recent = ctx.telecomOutages?.summary?.recent ?? 0;
-  if (recent > 0) {
+  const telecom = ctx.telecomOutages === null ? null : telecomLevel(ctx.telecomOutages);
+  if (recent > 0 && telecom !== null && telecom !== 'vert') {
     const file = ctx.telecomOutages?.file ?? null;
     signals.push({
       domain: 'Pannes réseaux',
       levelLabel: 'Actives',
-      level: recent >= 50 ? 'orange' : 'jaune',
-      detail: `${recent}\u00a0antenne${recent > 1 ? 's' : ''} en panne imprévue depuis moins de 24\u00a0h${file ? ` (fichier ARCEP du ${dayMonth(file.day)})` : ''}.`,
+      level: telecom,
+      detail: `${frNumber(recent, 0)}\u00a0antenne${recent > 1 ? 's' : ''} en panne imprévue depuis moins de 24\u00a0h${file ? ` (fichier ARCEP du ${dayMonth(file.day)})` : ''}.`,
     });
   }
 

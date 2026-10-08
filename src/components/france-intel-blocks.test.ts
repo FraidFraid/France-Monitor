@@ -17,7 +17,7 @@ import {
 function signals(over: Partial<FranceCountrySignals> = {}): FranceCountrySignals {
   return {
     criticalNews: 0, highNews: 0, topNewsCount: 0, meteoAlerts: 0, floodAlerts: 0, fireDetections: 0,
-    railDisruptions: 0, railSevere: 0, roadIncidents: 0, telecomOutages: 0,
+    railDisruptions: 0, railSevere: 0, roadIncidents: 0, telecomOutages: 0, telecomOutagesLevel: 'vert',
     cyberAlerts: 0, cyberCritical: 0, militaryFlights: 0, maritimeTrafficFrance: 0,
     defenseAlerts: 0, defenseHigh: 0, jammingSignals: 0, marketStress: 0, ...over,
   };
@@ -76,7 +76,7 @@ describe('rendu v1 figé avant extraction (spec 2026-10-01, v1 inchangée)', () 
   const rich = {
     signals: signals({
       cyberAlerts: 24, cyberCritical: 20, railDisruptions: 215, railSevere: 159, militaryFlights: 36,
-      telecomOutages: 1333, meteoAlerts: 10, fireDetections: 29, marketStress: 7, criticalNews: 2,
+      telecomOutages: 1333, telecomOutagesLevel: 'orange', meteoAlerts: 10, fireDetections: 29, marketStress: 7, criticalNews: 2,
       jammingSignals: 1,
     }),
     meteo: [
@@ -122,14 +122,27 @@ describe('données partagées des blocs (spec 2026-10-01)', () => {
   });
 
   it('tuile Pannes : pannes télécoms récentes seules, jamais « élec » ; n.d. et point gris sans fichier ARCEP lu', () => {
-    const tile = (n: number | null) => domainTiles(signals({ telecomOutages: n }), 'fr').find((x) => x.label === 'Pannes');
-    expect(tile(0)).toEqual({ label: 'Pannes', value: 0, meta: 'télécoms récentes', level: 'low' });
-    expect(tile(50)).toMatchObject({ value: 50, level: 'medium' });
-    expect(tile(51)).toMatchObject({ value: 51, level: 'high' });
+    const tile = (n: number | null, level: 'vert' | 'jaune' | 'orange' | 'rouge' | null = null) =>
+      domainTiles(signals({ telecomOutages: n, telecomOutagesLevel: level }), 'fr').find((x) => x.label === 'Pannes');
+    expect(tile(0, 'vert')).toEqual({ label: 'Pannes', value: 0, meta: 'télécoms récentes', level: 'low' });
     expect(tile(null)).toEqual({ label: 'Pannes', value: null, meta: 'télécoms récentes', level: null });
-    expect(domainTiles(signals({ telecomOutages: 12 }), 'en').find((x) => x.label === 'Outages')?.meta).toBe('recent telecom');
-    expect(JSON.stringify(domainTiles(signals({ telecomOutages: 12 }), 'fr'))).not.toMatch(/élec/);
-    expect(renderDomainsBlock({ signals: signals({ telecomOutages: null }), meteo: [] }, 'fr')).toContain('n.d.');
+    expect(domainTiles(signals({ telecomOutages: 12, telecomOutagesLevel: 'vert' }), 'en').find((x) => x.label === 'Outages')?.meta).toBe('recent telecom');
+    expect(JSON.stringify(domainTiles(signals({ telecomOutages: 12, telecomOutagesLevel: 'vert' }), 'fr'))).not.toMatch(/élec/);
+    expect(renderDomainsBlock({ signals: signals({ telecomOutages: null, telecomOutagesLevel: null }), meteo: [] }, 'fr')).toContain('n.d.');
+  });
+
+  it('I8 : le niveau de la tuile Pannes suit la pastille Télécoms (telecomLevel), jamais ses propres seuils sur le nombre', () => {
+    const level = (n: number, pill: 'vert' | 'jaune' | 'orange' | 'rouge') =>
+      domainTiles(signals({ telecomOutages: n, telecomOutagesLevel: pill }), 'fr').find((x) => x.label === 'Pannes')?.level;
+    // 264 pannes récentes un jour ordinaire, pastille jaune (20 dans un département) : la tuile est jaune, pas « élevée ».
+    expect(level(264, 'jaune')).toBe('medium');
+    expect(level(264, 'vert')).toBe('low');
+    expect(level(310, 'orange')).toBe('high');
+    expect(level(700, 'rouge')).toBe('critical');
+    for (const [pill, tile] of [['vert', 'low'], ['jaune', 'medium'], ['orange', 'high'], ['rouge', 'critical']] as const) {
+      expect(DOMAIN_LEVEL[tile]).toBe(pill);
+      expect(level(1, pill)).toBe(tile);
+    }
   });
 
   it('tuiles Souveraineté du 04/10 : Cyber 3 alertes en cours (pastille orange), Militaire 9 dont 4 français (O9, verte), Défense 0 ; indisponibles : n.d.', () => {
