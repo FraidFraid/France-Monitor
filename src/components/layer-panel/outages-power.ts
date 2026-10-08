@@ -23,7 +23,6 @@ const FIGURE_CAPTION = 'de production perdus en arrêts imprévus en ce moment';
 const ENEDIS_URL = 'https://www.enedis.fr/panne-et-interruption';
 const EDF_URL = 'https://opendata.edf.fr/datasets/indisponibilites-des-moyens-de-production-edf-sa';
 const IIP_URL = 'https://iip.cloud-rte-france.com';
-const EDF_ERROR_PREFIX = 'EDF OpenData';
 const ECOWATT_WORD: Readonly<Record<EcowattSignal, string>> = { green: 'pas d’alerte', orange: 'système tendu', red: 'système très tendu' };
 const ECOWATT_LEVEL: Readonly<Record<EcowattSignal, VigilanceLevel>> = { green: 'vert', orange: 'orange', red: 'rouge' };
 const ISLAND_WORD = { reunion: 'La Réunion', corse: 'Corse' } as const;
@@ -145,23 +144,25 @@ export function buildPowerView(input: PowerViewInput): LayerView {
     };
   }
   const edfNever = p.edfReadAt === null;
-  const edfMute = edfNever || p.errors.some((e) => e.startsWith(EDF_ERROR_PREFIX));
   const edfLate = !edfNever && isOutagesDataLate('edf', p.edfReadAt, now);
+  const edfMute = edfNever || edfLate;
   const iipLate = p.iipPublishedAt !== null && isOutagesDataLate('iip', p.iipPublishedAt, now);
-  const f: Freshness = { edfMute, edfNever, edfGrey: edfMute || edfLate, iipGrey: iipLate };
+  const f: Freshness = { edfMute, edfNever, edfGrey: edfMute, iipGrey: iipLate };
   const updated = p.edfUpdatedAt === null ? null : Date.parse(p.edfUpdatedAt);
   const edfAt = updated !== null && Number.isFinite(updated) ? absoluteTime(updated, now, 'fr') : null;
-  const stamp = edfMute ? `EDF injoignable${edfAt === null ? '' : `, jeu du ${edfAt}`}`
+  const stamp = edfNever ? `EDF injoignable${edfAt === null ? '' : `, jeu du ${edfAt}`}`
     : `EDF ${edfAt ?? 'n.d.'}${edfLate ? ' (en retard)' : ''}`;
   const iip = p.iipPublishedAt === null ? 'RTE IIP n.d.' : `RTE IIP ${absoluteTime(Date.parse(p.iipPublishedAt), now, 'fr')}${iipLate ? ' (en retard)' : ''}`;
   // R32 : EDF muet, le total des seules lignes IIP serait partiel : « n.d. », jamais ce total.
   const figure = edfMute
     ? { value: 'n.d.', caption: FIGURE_CAPTION, level: null }
-    : { value: formatGw(powerUnplannedMw(p)), caption: FIGURE_CAPTION, ...(edfLate ? { level: null } : {}) };
-  const level = edfMute || edfLate ? 'nd' : powerLevel(p, ecowattToday(ecowatt, now));
+    : { value: formatGw(powerUnplannedMw(p)), caption: FIGURE_CAPTION };
+  const level = edfMute ? 'nd' : powerLevel(p, ecowattToday(ecowatt, now));
+  // Erreurs nommées : celle de la lecture client, puis celles du serveur (une partie en échec reste dite, même avec des données gardées).
+  const body = (error !== null ? sourceErrorCallout(p.readAt ? Date.parse(p.readAt) : null, now) : '') + p.errors.map(note).join('');
   return {
     head: { theme: OUTAGES_THEME, title: POWER_TITLE, figure, level, status: [stamp, iip] },
     sections: sections(p, input, f),
-    ...(error !== null ? { bodyHtml: sourceErrorCallout(p.readAt ? Date.parse(p.readAt) : null, now) } : {}),
+    ...(body !== '' ? { bodyHtml: body } : {}),
   };
 }

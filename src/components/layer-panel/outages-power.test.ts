@@ -86,14 +86,14 @@ describe('vue Électricité (jeu d’essai du 08/10)', () => {
 });
 
 describe('fraîcheur d’EDF', () => {
-  it('EDF en retard (dernière lecture réussie à 10 h, il est 22 h) : « (en retard) », niveau n.d., chiffre et couleurs retirés', () => {
+  it('EDF en retard (dernière lecture réussie à 10 h, il est 22 h) : « (en retard) », chiffre et pastille n.d., couleurs retirées', () => {
     const over = withPower({ edfReadAt: '2026-10-08T10:00:17.798Z' });
     const v = view(over);
     expect(v.head.level).toBe('nd');
-    expect(v.head.figure?.level).toBeNull();
-    expect(v.head.figure?.value).toBe(`2,8${NBSP}GW`);
+    expect(v.head.figure?.value).toBe('n.d.');
     expect(v.head.status.join(' ')).toContain('(en retard)');
     const h = section(over, 'imprevus');
+    expect(h).toContain('PALUEL 1');
     expect(h).not.toContain('var(--cat-out-');
     expect(h).toContain('background:var(--text-muted)');
     expect(html(over).split('<div class="lp-body')[0]).not.toMatch(/lp-lvl--/);
@@ -120,13 +120,22 @@ describe('fraîcheur d’EDF', () => {
     expect(t).toContain('EDF OpenData injoignable : maintenances n.d.');
     expect(t).not.toContain(`${frFmt(partial)}${NBSP}MW`);
   });
-  it('R32 : partie EDF en échec avec données gardées : « n.d. » aussi, lignes gardées sans couleur', () => {
+  it('R32 : relève EDF en échec, données gardées lues il y a 20 min : chiffre, pastille et couleurs gardés, erreur nommée', () => {
     const over = withPower({ errors: ['EDF OpenData : HTTP 503'] });
+    const v = view(over);
+    expect(v.head.figure?.value).toBe(`2,8${NBSP}GW`);
+    expect(v.head.level).toBe('jaune');
+    expect(v.head.status.join(' ')).not.toContain('(en retard)');
+    expect(section(over, 'imprevus')).toContain('var(--cat-out-recent)');
+    expect(visibleText(v.bodyHtml ?? '')).toContain('EDF OpenData : HTTP 503');
+  });
+  it('R32 : relève EDF en échec et dernière lecture réussie au-delà du seuil (2 h) : chiffre et pastille n.d., erreur nommée', () => {
+    const over = withPower({ errors: ['EDF OpenData : HTTP 503'], edfReadAt: '2026-10-08T17:59:00.000Z' });
     const v = view(over);
     expect(v.head.figure?.value).toBe('n.d.');
     expect(v.head.level).toBe('nd');
-    expect(section(over, 'imprevus')).toContain('PALUEL 1');
-    expect(section(over, 'imprevus')).not.toContain('var(--cat-out-');
+    expect(visibleText(v.bodyHtml ?? '')).toContain('EDF OpenData : HTTP 503');
+    expect(view(withPower({ edfReadAt: '2026-10-08T18:01:00.000Z' })).head.figure?.value).toBe(`2,8${NBSP}GW`);
   });
   it('seul RTE IIP en échec : EDF garde sa couleur, lignes du transport n.d.', () => {
     const over = withPower({ transmission: null, iipPublishedAt: null, errors: ['RTE IIP : HTTP 503'] });
