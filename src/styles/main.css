@@ -452,7 +452,11 @@ button.header-quality-link {
 }
 
 @media (max-width: 768px) {
+  /* Mobile : en bas à droite de la carte, au-dessus du bouton Légende ; en haut, la barre recouvrait
+     le bandeau « Convergences » et la liste des situations (08/10/2026). */
   .floating-panel-switcher {
+    top: auto;
+    bottom: 44px;
     max-width: calc(100% - 24px);
   }
 
