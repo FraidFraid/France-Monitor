@@ -54,7 +54,7 @@ The long-term goal is to turn the France prototype into a reusable European comm
 | Hydraulic backbone | Dam levels, barrage signals, Hub'Eau hydrometry | 10 min |
 | DROM energy | Overseas territories grid data (Réunion, Martinique…) | 15 min |
 | Power outages | EDF OpenData unplanned and planned unavailabilities, RTE IIP lines, EDF SEI island signals, Ecowatt (`/api/outages/power`) | 10 min |
-| Telecom outages | ARCEP « sites indisponibles » daily file, outages classed by age and cause: recent < 24 h, long, maintenance (`/api/outages/telecom`) | 10 min |
+| Telecom outages | ARCEP « sites indisponibles » daily file, outages classed by age and cause: recent < 24 h, long, maintenance (`/api/outages/telecom`) | 30 min |
 
 ### 🛡️ Cyber & Digital Sovereignty
 - **CyberBreachPanel** — live breach & ransomware incident map (RansomwareLive feed)

@@ -18,6 +18,21 @@ describe('retraits de la phase A (spec 2026-10-08 § 2.4)', () => {
     expect(read('.github/workflows/smoke.yml')).not.toContain('/api/arcep');
   });
 
+  it('test de fumée de production : les deux routes des pannes ; README : cadence Télécoms de 30 min, ni 10 min ni route retirée', () => {
+    const smoke = read('.github/workflows/smoke.yml');
+    expect(smoke).toContain('"/api/outages/telecom;200"');
+    expect(smoke).toContain('"/api/outages/power;200"');
+    const telecomRow = read('README.md').split('\n').find((l) => l.includes('`/api/outages/telecom`')) ?? '';
+    expect(telecomRow).toMatch(/\| 30 min \|$/);
+  });
+
+  it('/api/rte-iip : agent TLS strict dédié à l’hôte IIP, plus de rejectUnauthorized: false', () => {
+    const handler = read('api/_handlers/rte-iip.js');
+    expect(handler).toContain("import { iipDispatcher } from '../_lib/rte-iip-agent.js';");
+    expect(handler).toContain('dispatcher: iipDispatcher()');
+    expect(handler).not.toMatch(/rejectUnauthorized|getInsecureAgent/);
+  });
+
   it('plus de « PDL hors réseau » ni de total de PDL fabriqué dans le code des pannes', () => {
     for (const p of ['src/App.ts', 'src/components/DeckGLMap.ts', 'src/components/MapContainer.ts', 'src/components/OutagesPanel.ts']) {
       const t = read(p);
