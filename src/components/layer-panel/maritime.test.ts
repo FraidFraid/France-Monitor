@@ -123,7 +123,7 @@ describe('vue Trafic maritime, onglet Veille (spec 2026-10-03 trafics § 3.4)', 
     const h = s?.html ?? '';
     expect(h).toContain(`<span class="fmk-kv-k">Pétroliers à moins de 12${NBSP}milles des côtes</span><span class="fmk-kv-v fmk-num"><span class="lp-val fmk-num">21</span></span>`);
     expect(h.indexOf('PASSAGERS ESSAI 1')).toBeLessThan(h.indexOf('PETROLIER ESSAI 1'));
-    expect(h).toContain(`<span>PASSAGERS ESSAI 1</span><span class="lp-val fmk-num">1,1${NBSP}milles</span><small>navire à passagers · 50,950 N 1,820 E</small>`);
+    expect(h).toContain(`<span>PASSAGERS ESSAI 1</span><span class="lp-val fmk-num">1,1${NBSP}milles</span><small>navire à passagers · 50,950\u00a0N\u00a01,820\u00a0E</small>`);
     expect(visibleText(h)).toContain(`13${NBSP}% des navires suivis ont un type connu`);
   });
   it('méthode et sources : AIS daté, périmètre (T1), règle de la pastille, croisement (T3), retard, millésimes des listes', () => {
