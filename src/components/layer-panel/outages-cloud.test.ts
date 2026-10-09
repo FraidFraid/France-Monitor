@@ -198,13 +198,14 @@ describe('vue Cloud (jeu d’essai du 08/10)', () => {
     expect(v.bodyHtml).not.toContain('Source injoignable');
     expect(v.head.figure?.value).toBe('n.d.');
   });
-  it('erreurs du serveur nommées sous l’en-tête, sauf la note de collecte et celles déjà dites par la ligne du fournisseur', () => {
+  it('erreurs du serveur nommées sous l’en-tête, sauf la note de collecte, celles du référentiel et celles déjà dites par la ligne du fournisseur', () => {
     const v = view(withData((r) => {
       providerOf(r, 'ovhcloud').error = 'OVHcloud (network) : HTTP 503';
-      r.errors = ['OVHcloud (network) : HTTP 503', 'PeeringDB : HTTP 500', 'Cloud : collecte en cours'];
+      r.errors = ['OVHcloud (network) : HTTP 503', 'Cloud : délai dépassé', 'PeeringDB : HTTP 500', 'Cloud : collecte en cours'];
     }));
     const body = visibleText(v.bodyHtml ?? '');
-    expect(body).toContain('PeeringDB : HTTP 500');
+    expect(body).toContain('Cloud : délai dépassé');
+    expect(body).not.toContain('PeeringDB');
     expect(body).not.toContain('collecte en cours');
     expect(body).not.toContain('OVHcloud (network)');
     expect(visibleText(providerBlock(withData((r) => { providerOf(r, 'ovhcloud').error = 'OVHcloud (network) : HTTP 503'; }), 'OVHcloud'))).toContain('OVHcloud (network) : HTTP 503');
@@ -222,6 +223,24 @@ describe('vue Cloud (jeu d’essai du 08/10)', () => {
     expect(t).not.toMatch(/généré|Non qualifié|Site existant|opérationnel/i);
     expect(section({}, 'referentiel')).not.toMatch(/fmk-dot--|lp-lvl--|var\(--sev-/);
     expect(sectionText(withData((r) => { r.reference.generatedAt = null; }), 'referentiel')).toContain('relu le n.d.');
+  });
+  it('E4 : DRIEAT en panne, uMap et PeeringDB lus : référentiel daté « relu le », panne DRIEAT nommée dans le référentiel et la méthode, pas sous la pastille', () => {
+    const over = withData((r) => {
+      r.reference.generatedAt = '2026-10-08T19:40:00.000Z';
+      r.errors = ['Référentiel (DRIEAT) : page HTML reçue au lieu de données'];
+    });
+    const ref = sectionText(over, 'referentiel');
+    expect(ref).toContain(`relu le 08/10 à 21${NBSP}h${NBSP}40`);
+    expect(ref).not.toContain('n.d.');
+    expect(ref).toContain('Référentiel (DRIEAT) : page HTML reçue au lieu de données');
+    const method = sectionText(over, 'methode');
+    expect(method).toContain('DRIEAT');
+    expect(method).toContain('Référentiel (DRIEAT) : page HTML reçue au lieu de données');
+    expect(method).toContain(`au plus toutes les 6${NBSP}h`);
+    expect(visibleText(view(over).bodyHtml ?? '')).not.toContain('DRIEAT');
+    // Sans panne, la méthode décrit la source sans la dire en panne.
+    expect(sectionText({}, 'methode')).toContain('DRIEAT');
+    expect(sectionText({}, 'methode')).not.toContain('en échec');
   });
   it('référentiel vide : « aucun point d’échange » n’est pas inventé, comptes à zéro dits', () => {
     const over = withData((r) => { r.reference = { generatedAt: null, datacenters: [], exchanges: [] }; });

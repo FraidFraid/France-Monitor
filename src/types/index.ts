@@ -3032,6 +3032,6 @@ export interface CloudOutagesResponse {
   incidents: CloudIncident[];       // France, en cours d'abord, comptés une fois
   maintenances: CloudMaintenance[]; // France, en cours d'abord puis à 7 jours
   elsewhere: CloudIncident[];       // incidents des mêmes pages hors France : listés à part, jamais comptés ni colorés
-  reference: { generatedAt: string | null; datacenters: CloudReferenceSite[]; exchanges: CloudExchange[] };   // generatedAt : dernière relecture complète, null s'il n'y en a pas
+  reference: { generatedAt: string | null; datacenters: CloudReferenceSite[]; exchanges: CloudExchange[] };   // generatedAt : dernière lecture réussie d'une de ses sources (DRIEAT, uMap, PeeringDB), null si aucune
   errors: string[];
 }

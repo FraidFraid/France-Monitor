@@ -6,7 +6,7 @@
 // Un fournisseur en retard (dernière lecture + 2 h) ou muet : ses lignes sont grisées, il n'entre ni au gros chiffre ni à la pastille.
 import type { CloudIncident, CloudMaintenance, CloudOutagesResponse, CloudProvider, CloudProviderState, CloudStatus, CloudZone } from '../../types/index.ts';
 import { parisDayOf } from '../../services/environment-levels.ts';
-import { CLOUD_PENDING_NOTE } from '../../services/outages-cloud.ts';
+import { CLOUD_PENDING_NOTE, isCloudReferenceError } from '../../services/outages-cloud.ts';
 import {
   CLOUD_IMPACT_LEVEL, CLOUD_NO_INCIDENT_TEXT, CLOUD_PROVIDER_LABEL, CLOUD_STATUS_WORD, CLOUD_ZONE_LEVEL, cloudLevel, cloudLive, isDeducedZone, isOutagesDataLate,
 } from '../../services/outages-levels.ts';
@@ -126,6 +126,12 @@ function maintenanceRow(m: CloudMaintenance, ctx: Context): string {
   });
 }
 
+/** Panne nommée du jeu DRIEAT (« Référentiel (DRIEAT) : … »), null s'il a été lu. */
+function drieatError(r: CloudOutagesResponse): string | null {
+  return r.errors.find((e) => e.startsWith('Référentiel (DRIEAT)')) ?? null;
+}
+
+/** Référentiel daté par la dernière lecture réussie d'une de ses sources ; chaque source en panne nommée (jamais sous la pastille). */
 function referenceSection(r: CloudOutagesResponse): string {
   const ref = r.reference;
   const read = ref.generatedAt === null ? 'n.d.' : when(ref.generatedAt);
@@ -134,18 +140,22 @@ function referenceSection(r: CloudOutagesResponse): string {
   })).join('') + moreNote(ref.exchanges.length, CLOUD_EXCHANGE_ROWS);
   return kvRow('Centres de données', escapeHtml(countText(ref.datacenters.length, 'centre', 'centres')))
     + kvRow('Points d’échange', escapeHtml(countText(ref.exchanges.length, 'point d’échange', 'points d’échange')))
-    + note(`Référentiel relu le ${read} (instantané OpenStreetMap sans date publiée).`)
+    + note(`Référentiel relu le ${read} (dernière lecture réussie de ses sources ; instantané OpenStreetMap sans date publiée).`)
+    + r.errors.filter(isCloudReferenceError).map(note).join('')
     + note('Inventaire, pas un état : un site n’est coloré que si son fournisseur publie un état propre.')
     + exchanges;
 }
 
-function methodSection(): string {
+function methodSection(r: CloudOutagesResponse): string {
+  const drieat = drieatError(r);
   return note('Un statut mondial d’un fournisseur n’est pas un statut France : il ne colore rien et n’est pas compté. Seuls comptent les incidents qui touchent une zone française suivie.')
     + note('Un incident est compté une fois, quel que soit le nombre de zones qu’il touche.')
     + note('« En cours » : incident en investigation ou identifié, compté. « Surveillé » : correctif posé, en observation, listé et non compté.')
     + note(`Un fournisseur dont la dernière lecture date de plus de 2${NBSP}h est grisé, marqué « (en retard) » et n’est plus compté.`)
     + note('Azure ne publie aucun état par région France : il n’apparaît qu’en note.')
     + note('Equinix ne publie pas de page d’état lisible (HTTP 403) : non suivi.')
+    + note(`Référentiel : centres de données d’Île-de-France du jeu DRIEAT (data.gouv.fr), projets uMap et points d’échange PeeringDB, chacun relu au plus toutes les 6${NBSP}h.`)
+    + (drieat === null ? '' : note(`Lecture DRIEAT en échec (${drieat}) : retentée au plus toutes les 6${NBSP}h ; ses centres d’Île-de-France ne viennent que d’une lecture réussie.`))
     + `<p class="fmk-note">${PAGES.map(([label, href]) => sourceLinkHtml(label, href)).join(' · ')}</p>`;
 }
 
@@ -174,7 +184,7 @@ function sections(ctx: Context, lateAll: boolean): FicheSection[] {
       id: 'referentiel', title: 'Référentiel : centres de données et points d’échange', collapsible: true, open: open('referentiel', false), tone: 'reference',
       html: referenceSection(r),
     },
-    { id: 'methode', title: 'Méthode et sources', collapsible: true, open: open('methode', false), html: methodSection() },
+    { id: 'methode', title: 'Méthode et sources', collapsible: true, open: open('methode', false), html: methodSection(r) },
   ];
 }
 
@@ -208,10 +218,11 @@ export function buildCloudView(input: CloudViewInput): LayerView {
     `pages d’état lues à ${newest === null ? 'n.d.' : parisClock(dateOf(newest))}${lateAll ? ' (en retard)' : ''}`,
     ...(lateAll || muted.length === 0 ? [] : [`non comptés : ${muted.join(', ')}`]),
   ];
-  // Erreurs nommées : celle de la lecture client (encadré daté), puis celles du serveur que la ligne d'un fournisseur ne dit pas déjà.
+  // Erreurs nommées : celle de la lecture client (encadré daté), puis celles du serveur que la ligne d'un fournisseur ne dit pas déjà ;
+  // celles du référentiel (inventaire, jamais un état) sont dites dans sa section et dans la méthode, pas sous la pastille.
   const shown = new Set(r.providers.flatMap((p) => (p.error === null ? [] : p.error.split(' ; '))));
   const body = (error !== null ? sourceErrorCallout(newest === null ? null : dateOf(newest), now) : '')
-    + r.errors.filter((e) => e !== CLOUD_PENDING_NOTE && !shown.has(e)).map(note).join('');
+    + r.errors.filter((e) => e !== CLOUD_PENDING_NOTE && !shown.has(e) && !isCloudReferenceError(e)).map(note).join('');
   return {
     head: { theme: OUTAGES_THEME, title: CLOUD_TITLE, figure, level, status },
     sections: sections(ctx, lateAll),

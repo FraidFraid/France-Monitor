@@ -58,8 +58,8 @@ export function mergeCloud(current: CloudState | null, incoming: CloudState): Cl
   return { cloud: mergeSlot(current?.cloud, incoming.cloud) };
 }
 
-/** Pannes du référentiel (inventaire, jamais un état, P5) : n'appartiennent pas à la ligne des pages d'état. */
-const isReferenceError = (e: string): boolean => isNamedBy(e, 'Référentiel') || isNamedBy(e, 'PeeringDB');
+/** Pannes du référentiel (inventaire, jamais un état, P5) : n'appartiennent ni à la ligne des pages d'état ni à l'en-tête du panneau. */
+export const isCloudReferenceError = (e: string): boolean => isNamedBy(e, 'Référentiel') || isNamedBy(e, 'PeeringDB');
 
 /**
  * Ligne « Pages d'état cloud » : datée par la lecture la plus récente d'un fournisseur (horloge du serveur), en retard au-delà de 2 h ;
@@ -68,7 +68,7 @@ const isReferenceError = (e: string): boolean => isNamedBy(e, 'Référentiel') |
  */
 export function cloudStatus(state: CloudState, now: number): OutagesStatus {
   const { data, error } = state.cloud;
-  const keep = (e: string): boolean => e !== CLOUD_PENDING_NOTE && !isReferenceError(e);
+  const keep = (e: string): boolean => e !== CLOUD_PENDING_NOTE && !isCloudReferenceError(e);
   const own = error === null ? [] : error.split(' ; ').filter(keep);
   const slot: SourceSlot<CloudOutagesResponse> = { ...state.cloud, data: data ? { ...data, errors: data.errors.filter(keep) } : null, error: own.length > 0 ? own.join(' ; ') : null };
   const latest = data?.providers.map((p) => p.readAt).filter((at): at is string => at !== null).sort().at(-1) ?? null;
