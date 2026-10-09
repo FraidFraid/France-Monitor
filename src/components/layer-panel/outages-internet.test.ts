@@ -115,6 +115,26 @@ describe('vue Internet (jeu d’essai du 08/10)', () => {
     expect(view(over).head.status[1]).toBe('Cloudflare Radar n.d.');
     expect(sectionText(over, 'radar')).toContain('n.d.');
   });
+  it('E3 : Radar configuré, lecture en échec : la section nomme l’erreur Radar (« Cloudflare Radar : HTTP 400 »), anomalies n.d., jamais 0', () => {
+    const over = withData((r) => { r.radar = { configured: true, readAt: null, items: [] }; r.errors = ['Cloudflare Radar : HTTP 400']; });
+    const t = sectionText(over, 'radar');
+    expect(t).toContain('Cloudflare Radar : HTTP 400');
+    expect(t).toContain('n.d.');
+    expect(t).not.toMatch(/\b0\b/);
+    // Données gardées d'une lecture antérieure et relève en échec : l'erreur est aussi nommée dans la section.
+    const kept = withData((r) => { r.errors = ['Cloudflare Radar : délai dépassé', 'IODA : HTTP 503']; });
+    expect(sectionText(kept, 'radar')).toContain('Cloudflare Radar : délai dépassé');
+    expect(sectionText(kept, 'radar')).not.toContain('IODA : HTTP 503');
+  });
+  it('règle Radar : une anomalie de trafic nationale est listée en orange, jamais en rouge ; pastille orange', () => {
+    const over = withData((r) => {
+      r.events = [];
+      r.radar.items = [{ ...r.radar.items[0], kind: 'anomalie', asn: null, label: 'France', national: true, end: null }];
+    });
+    expect(section(over, 'encours')).toContain('fmk-dot--orange');
+    expect(section(over, 'encours')).not.toContain('fmk-dot--rouge');
+    expect(view(over).head.level).toBe('orange');
+  });
   it('IODA lu à 18 h UTC, il est 20 h 30 : « (en retard) », n.d., gros chiffre sans couleur, aucune couleur de niveau', () => {
     const over = withData((r) => { r.iodaReadAt = '2026-10-08T18:00:00.000Z'; r.events = [ongoingEvent({})]; });
     const v = view(over);

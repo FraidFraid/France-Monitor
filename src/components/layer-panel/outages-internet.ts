@@ -6,8 +6,9 @@
 import type { InternetEvent, InternetOutagesResponse, RadarItem } from '../../types/index.ts';
 import { parisDayOf } from '../../services/environment-levels.ts';
 import { INTERNET_PENDING_NOTE } from '../../services/outages-internet.ts';
-import { internetLevel, internetLive, internetSignalWord, isOutagesDataLate, radarPlace, type InternetLivePlace } from '../../services/outages-levels.ts';
+import { internetLevel, internetLive, internetPlaceLevel, internetSignalWord, isOutagesDataLate, radarPlace, type InternetLivePlace } from '../../services/outages-levels.ts';
 import { isSovereigntyDataLate, visibilityPctLevel } from '../../services/sovereignty-levels.ts';
+import { isNamedBy } from '../../services/sovereignty-source.ts';
 import { levelColorVar, type VigilanceLevel } from '../../services/vigilance.ts';
 import { escapeHtml } from '../france-intel-events.ts';
 import { kvRow } from '../fiche/kit.ts';
@@ -28,6 +29,7 @@ const DAY_MS = 86_400_000;
 const WEEK_MS = 7 * DAY_MS;
 const CURVE_DAYS = 30;
 const STALE_NOTE = `ouvert depuis plus de 7${NBSP}jours, probablement un recalage de référence`;
+/** Niveau d'un événement IODA terminé, par sa portée (les lieux en cours lisent internetPlaceLevel). */
 const SCOPE_LEVEL: Readonly<Record<InternetLivePlace['scope'], VigilanceLevel>> = { national: 'rouge', operateur: 'orange', departement: 'jaune', inconnu: 'orange' };
 
 type OpenFn = (sectionId: string, byDefault: boolean) => boolean;
@@ -65,7 +67,7 @@ function liveRow(p: InternetLivePlace, r: InternetOutagesResponse, input: Intern
   const start = events.length > 0 ? earliest(events.map((e) => e.start)) : item?.start ?? null;
   const detail = events.length > 0 ? unique(events.map((e) => internetSignalWord(e.signal))).join(' · ') : item?.kind === 'panne' ? 'panne signalée' : 'anomalie de trafic';
   return listRow({
-    text: label, value: sinceText(start, input.now), ...marker(SCOPE_LEVEL[p.scope], f),
+    text: label, value: sinceText(start, input.now), ...marker(internetPlaceLevel(p), f),
     note: `${detail} · ${p.source === 'ioda' ? 'IODA' : 'Cloudflare Radar'}`,
     ...(input.canFocus && p.dept !== null ? { data: { dept: p.dept }, link: true } : {}),
   });
@@ -101,15 +103,20 @@ function recentRows(r: InternetOutagesResponse, f: Freshness, readAt: number): {
 
 function radarSection(r: InternetOutagesResponse, f: Freshness, now: number): string {
   if (!r.radar.configured) return emptyLine('Cloudflare Radar non configuré : jeton absent sur le serveur.');
-  if (r.radar.readAt === null) return emptyLine('Cloudflare Radar : lecture n.d.');
-  const stamp = f.radarLate ? note(`Cloudflare Radar lu à ${parisClock(Date.parse(r.radar.readAt))} (en retard) : anomalies non comptées.`) : '';
+  // E3 : l'erreur de lecture Radar est nommée dans sa section (« Cloudflare Radar : HTTP 400 »), pas seulement sous la pastille.
+  const errors = r.errors.filter((e) => isNamedBy(e, 'Cloudflare Radar'));
+  if (r.radar.readAt === null) {
+    return errors.length > 0 ? emptyLine(`${errors.join(' ; ')} : anomalies n.d.`) : emptyLine('Cloudflare Radar : lecture n.d.');
+  }
+  const stamp = (f.radarLate ? note(`Cloudflare Radar lu à ${parisClock(Date.parse(r.radar.readAt))} (en retard) : anomalies non comptées.`) : '')
+    + errors.map(note).join('');
   const rows = r.radar.items.map((i) => {
     const kind = i.kind === 'anomalie' ? 'anomalie de trafic' : 'panne signalée';
     const cause = [i.cause, i.outageType].filter((x): x is string => x !== null && x.length > 0).join(' · ');
     const verified = i.verified === null ? null : i.verified ? 'vérifiée' : 'non vérifiée';
     const span = i.end === null ? `depuis le ${when(i.start)}, en cours` : `du ${when(i.start)} au ${when(i.end)}`;
     return listRow({
-      text: i.label, value: i.end === null ? sinceText(i.start, now) : 'terminée', level: f.radarLate || i.end !== null ? 'gris' : 'orange',
+      text: i.label, value: i.end === null ? sinceText(i.start, now) : 'terminée', level: f.radarLate || i.end !== null ? 'gris' : internetPlaceLevel(radarPlace(i)),
       note: [kind, cause, verified, span].filter((x): x is string => x !== null && x.length > 0).join(' · '),
     });
   }).join('');
