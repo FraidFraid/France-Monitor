@@ -25,6 +25,8 @@ export const STALE_OPEN_SEC = 7 * 86_400;
 export const ONGOING_SLACK_SEC = 20 * 60;
 /** Nombre d'événements par requête IODA : une liste qui l'atteint est peut-être tronquée (P32). */
 export const IODA_LIMIT = 200;
+/** Nombre d'éléments par liste Radar : une liste qui l'atteint est peut-être tronquée (même règle que P32). */
+export const RADAR_LIMIT = 50;
 const IODA_INTERVAL_MS = 10 * 60_000;
 const RADAR_INTERVAL_MS = 15 * 60_000;
 const WINDOW_SEC = 30 * 86_400;
@@ -96,10 +98,15 @@ export function normalizeRadar(anomaliesJson, outagesJson) {
     const end = o?.endDate ? isoOrNull(o.endDate) : null;
     if (!Array.isArray(o?.locations) || !o.locations.includes('FR') || start === null || (o.endDate && end === null)) continue;
     const asn = Array.isArray(o.asns) && o.asns.length === 1 && Number.isInteger(Number(o.asns[0])) ? Number(o.asns[0]) : null;
+    const type = o.outage ? TYPE_FR[o.outage.outageType] ?? String(o.outage.outageType).toLowerCase() : null;
+    // Une coupure « nationale » vue sur plusieurs pays n'est pas forcément celle de la France (P2) : nationale seulement si le pays est seul.
+    const onlyFrance = o.locations.length === 1;
+    const outageType = type === 'nationale' && !onlyFrance ? 'nationale, plusieurs pays' : type;
+    // Sans portée nommée : l'opérateur s'il y en a un, « France » seulement pour une coupure nationale de la France seule, sinon « non localisé ».
+    const label = o.scope ? String(o.scope) : asn !== null ? `${asnName(asn, o.asnsDetails?.[0]?.name)} (AS${asn})` : outageType === 'nationale' ? 'France' : 'non localisé';
     out.push({
-      id: `radar-${o.id}`, kind: 'panne', label: o.scope ? String(o.scope) : 'France', asn, start, end, verified: null,
-      cause: o.outage ? CAUSE_FR[o.outage.outageCause] ?? String(o.outage.outageCause).toLowerCase() : null,
-      outageType: o.outage ? TYPE_FR[o.outage.outageType] ?? String(o.outage.outageType).toLowerCase() : null,
+      id: `radar-${o.id}`, kind: 'panne', label, asn, start, end, verified: null,
+      cause: o.outage ? CAUSE_FR[o.outage.outageCause] ?? String(o.outage.outageCause).toLowerCase() : null, outageType,
     });
   }
   return out.sort((a, b) => (a.end === null ? 0 : 1) - (b.end === null ? 0 : 1) || b.start.localeCompare(a.start));
@@ -137,17 +144,18 @@ async function readIoda(now) {
   return { events, warning: truncated ? sourceError('IODA', new Error(`plus de ${IODA_LIMIT} événements, liste tronquée`)) : null };
 }
 
-/** Radar : anomalies et pannes de la France sur 7 jours. Lève sans jeton valide, sur une réponse en échec ou sans liste. */
+/** Radar : anomalies et pannes de la France sur 7 jours. Lève sans jeton valide, sur une réponse en échec ou sans liste ; `warning` si une liste est peut-être tronquée. */
 async function readRadar(token) {
   const headers = { Authorization: `Bearer ${token}` };
-  const q = '?location=FR&dateRange=7d&format=json&limit=50';
+  const q = `?location=FR&dateRange=7d&format=json&limit=${RADAR_LIMIT}`;
   const [anomalies, outages] = await Promise.all([
     fetchStrictJson(`${RADAR_ANOMALIES_URL}${q}`, { timeoutMs: 15_000, headers }),
     fetchStrictJson(`${RADAR_OUTAGES_URL}${q}`, { timeoutMs: 15_000, headers }),
   ]);
   if (anomalies?.success === false || outages?.success === false) throw new Error('réponse en échec');
   if (!Array.isArray(anomalies?.result?.trafficAnomalies) || !Array.isArray(outages?.result?.annotations)) throw new Error('réponse sans liste');
-  return { items: normalizeRadar(anomalies, outages) };
+  const truncated = anomalies.result.trafficAnomalies.length >= RADAR_LIMIT || outages.result.annotations.length >= RADAR_LIMIT;
+  return { items: normalizeRadar(anomalies, outages), warning: truncated ? sourceError('Cloudflare Radar', new Error(`plus de ${RADAR_LIMIT} éléments par liste, liste tronquée`)) : null };
 }
 
 /** Réponse vide (jamais lu) : listes vides, dates null, jamais « aucune panne ». `configured` : le jeton Radar est posé. */
@@ -155,14 +163,14 @@ export function emptyInternet(errors = [], configured = false) {
   return { readAt: null, iodaReadAt: null, radar: { configured, readAt: null, items: [] }, events: [], ripe: null, errors };
 }
 
-/** Rappel RIPEstat : dernier instantané du collecteur Connectivité, lu en KV sans requête ; null s'il n'y en a pas. */
+/** Rappel RIPEstat : dernier instantané du collecteur Connectivité, lu en KV sans requête ; `ripe` null s'il n'y en a pas, `error` nommée si la lecture lève. */
 async function ripePart(now) {
   try {
     const r = await storedRipe(now, '');
-    if (!r || r.snapshotAt === null) return null;
-    return { snapshotAt: r.snapshotAt, networks: (r.networks ?? []).map((n) => ({ asn: n.asn, name: n.name, visibilityPct: n.visibilityPct })) };
-  } catch {
-    return null;
+    if (!r || r.snapshotAt === null) return { ripe: null, error: null };
+    return { ripe: { snapshotAt: r.snapshotAt, networks: (r.networks ?? []).map((n) => ({ asn: n.asn, name: n.name, visibilityPct: n.visibilityPct })) }, error: null };
+  } catch (err) {
+    return { ripe: null, error: sourceError('RIPEstat', err) };
   }
 }
 
@@ -171,11 +179,11 @@ const radarDue = (part, token, now) => token !== '' && (!part?.configured || par
 const anyDue = (parts, token, now) => partDue(parts.ioda, IODA_INTERVAL_MS, now) || radarDue(parts.radar, token, now) || (token === '' && parts.radar !== undefined);
 
 /** Réponse à partir des parties lues. `readAt` : dernière lecture réussie d'une des deux sources, null si aucune. */
-function buildInternet(parts, token, ripe) {
+function buildInternet(parts, token, { ripe, error: ripeError }) {
   const ioda = parts.ioda;
   const radar = token !== '' ? parts.radar : null;
   const reads = [ioda?.readAt, radar?.readAt].filter((v) => typeof v === 'string');
-  const errors = [ioda?.error, ioda?.warning, radar?.error].filter((e) => typeof e === 'string' && e.length > 0);
+  const errors = [ioda?.error, ioda?.warning, radar?.error, radar?.warning, ripeError].filter((e) => typeof e === 'string' && e.length > 0);
   return {
     readAt: reads.length > 0 ? reads.sort().at(-1) : null, iodaReadAt: ioda?.readAt ?? null,
     radar: token === '' ? { configured: false, readAt: null, items: [] } : { configured: true, readAt: radar?.readAt ?? null, items: radar?.items ?? [] },
@@ -228,9 +236,11 @@ export function ensureInternetFresh(now = Date.now()) {
   return turn;
 }
 
-/** Relevé gardé, sans attendre la collecte en cours, avec `note`. */
+/** Relevé gardé, sans attendre la collecte en cours, avec `note`. Le jeton est relu : « configuré » ne survit pas à son retrait (P36). */
 export async function storedInternet(now, note) {
   const last = await kvGetJson(INTERNET_LAST_KEY, now);
-  const body = last?.body ?? emptyInternet([], radarTokenSet());
-  return { ...body, errors: [...body.errors, note] };
+  const tokenSet = radarTokenSet();
+  const body = last?.body && typeof last.body === 'object' && 'ripe' in last.body ? last.body : emptyInternet([], tokenSet);
+  const radar = tokenSet ? { ...body.radar, configured: true } : { configured: false, readAt: null, items: [] };
+  return { ...body, radar, errors: [...body.errors, note] };
 }

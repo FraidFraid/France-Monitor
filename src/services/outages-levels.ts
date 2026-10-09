@@ -126,10 +126,11 @@ export function internetLive(r: InternetOutagesResponse, now: number): InternetL
 
 /**
  * Pastille Internet sur les lieux en cours (internetLive) : rouge si le pays entier, orange pour un opérateur, une panne Radar ou
- * trois départements, jaune pour un ou deux départements, vert sinon ; null sans lecture IODA réussie (jamais « vert » sur une source muette).
+ * trois départements, jaune pour un ou deux départements, vert sinon ; null sans lecture IODA réussie ou si elle est en retard
+ * (jamais « vert » ni une couleur d'événements figés sur une source muette).
  */
 export function internetLevel(r: InternetOutagesResponse, now: number): VigilanceLevel | null {
-  if (r.iodaReadAt === null) return null;
+  if (isOutagesDataLate('ioda', r.iodaReadAt, now)) return null;
   const live = internetLive(r, now);
   if (live.some((p) => p.scope === 'national')) return 'rouge';
   const depts = live.filter((p) => p.scope === 'departement').length;

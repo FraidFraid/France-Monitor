@@ -6,7 +6,7 @@ import { RIPE_LAST_KEY } from '../api/_lib/ripestat.js';
 import { DEPT_NAMES } from '../api/_shared/departments.js';
 import { IODA_REGION_DEPT, IODA_UNKNOWN_REGION, deptOfIodaRegion } from '../api/_lib/ioda-regions.js';
 import {
-  IODA_BASE, RADAR_ANOMALIES_URL, RADAR_OUTAGES_URL, __resetInternetForTests, emptyInternet, ensureInternetFresh,
+  IODA_BASE, RADAR_ANOMALIES_URL, RADAR_LIMIT, RADAR_OUTAGES_URL, __resetInternetForTests, emptyInternet, ensureInternetFresh,
   normalizeIodaEvent, normalizeRadar, radarTokenSet, storedInternet,
 } from '../api/_lib/outages-internet.js';
 import { internetRoute as route, outagesFixture as fx } from './helpers/outages-b-fixtures.ts';
@@ -70,6 +70,32 @@ describe('Cloudflare Radar', () => {
       ['anomalie', 'Free (AS12322)', true], ['panne', 'Corse', false], ['anomalie', 'France', false],
     ]);
     expect(items.find((i) => i.kind === 'panne')).toMatchObject({ cause: 'coupure d’électricité', outageType: 'régionale' });
+  });
+  const annotation = (over: Record<string, unknown>): unknown => ({
+    id: 'x1', scope: null, startDate: '2026-10-08T10:00:00Z', endDate: null, asns: [], asnsDetails: [], locations: ['FR'],
+    outage: { outageCause: 'TECHNICAL_PROBLEM', outageType: 'NETWORK' }, ...over,
+  });
+  const pannes = (...list: unknown[]) => normalizeRadar({ result: { trafficAnomalies: [] } }, { result: { annotations: list } });
+  it('R40 : panne sans portée nommée : l’opérateur s’il y en a un, « non localisé » sinon, jamais « France » par défaut', () => {
+    const [byAsn, orphan] = pannes(
+      annotation({ id: 'a', asns: [3215], asnsDetails: [{ asn: '3215', name: 'ORANGE' }] }),
+      annotation({ id: 'b', outage: { outageCause: 'UNKNOWN', outageType: 'REGIONAL' } }),
+    );
+    expect([byAsn.label, byAsn.asn]).toEqual(['Orange (AS3215)', 3215]);
+    expect([orphan.label, orphan.asn, orphan.outageType]).toEqual(['non localisé', null, 'régionale']);
+  });
+  it('R40 : une portée nommée est gardée ; coupure nationale de la France seule : « France » et nationale', () => {
+    const [named, national] = pannes(
+      annotation({ id: 'a', scope: 'Corse', outage: { outageCause: 'POWER_OUTAGE', outageType: 'REGIONAL' } }),
+      annotation({ id: 'b', outage: { outageCause: 'GOVERNMENT_DIRECTED', outageType: 'NATIONWIDE' } }),
+    );
+    expect(named.label).toBe('Corse');
+    expect([national.label, national.outageType]).toEqual(['France', 'nationale']);
+  });
+  it('R40 : coupure « nationale » sur plusieurs pays : jamais nationale pour la France (P2), lieu propre non localisé', () => {
+    const [multi] = pannes(annotation({ id: 'm', locations: ['ES', 'PT', 'FR'], outage: { outageCause: 'POWER_OUTAGE', outageType: 'NATIONWIDE' } }));
+    expect(multi.outageType).not.toBe('nationale');
+    expect(multi.label).toBe('non localisé');
   });
   it('une date illisible écarte l’élément sans faire échouer les autres', () => {
     const items = normalizeRadar(
@@ -158,6 +184,58 @@ describe('collecte', () => {
     expect(body.errors[0]).toMatch(/^Cloudflare Radar : /);
     expect(body.radar).toEqual({ configured: true, readAt: null, items: [] });
     expect(body.iodaReadAt).not.toBeNull();
+  });
+});
+
+describe('R40 : Radar tronqué, RIPEstat, relevé gardé', () => {
+  it('Radar : une liste de 50 éléments est peut-être tronquée : erreur nommée, éléments lus servis', async () => {
+    vi.stubEnv('CLOUDFLARE_RADAR_TOKEN', 'jeton-de-test');
+    const many = Array.from({ length: RADAR_LIMIT }, (_, n) => ({
+      uuid: `u${n}`, status: 'VERIFIED', startDate: '2026-10-08T10:00:00Z', endDate: null, locationDetails: { code: 'FR' }, asnDetails: null,
+    }));
+    stubFetch((url) => (url.startsWith(RADAR_ANOMALIES_URL) ? respond({ success: true, result: { trafficAnomalies: many } }) : route(url)));
+    const body = await ensureInternetFresh(NOW);
+    expect(body.errors).toEqual([`Cloudflare Radar : plus de ${RADAR_LIMIT} éléments par liste, liste tronquée`]);
+    expect(body.radar.readAt).not.toBeNull();
+    expect(body.radar.items.filter((i) => i.kind === 'anomalie')).toHaveLength(RADAR_LIMIT);
+  });
+  it('Radar : 49 éléments, aucune alerte de troncature', async () => {
+    vi.stubEnv('CLOUDFLARE_RADAR_TOKEN', 'jeton-de-test');
+    const some = Array.from({ length: RADAR_LIMIT - 1 }, (_, n) => ({
+      uuid: `u${n}`, status: 'VERIFIED', startDate: '2026-10-08T10:00:00Z', endDate: null, locationDetails: { code: 'FR' }, asnDetails: null,
+    }));
+    stubFetch((url) => (url.startsWith(RADAR_ANOMALIES_URL) ? respond({ success: true, result: { trafficAnomalies: some } }) : route(url)));
+    expect((await ensureInternetFresh(NOW)).errors).toEqual([]);
+  });
+  it('Radar : réponse 200 sans liste (success vrai, result vide) = erreur nommée, jamais « aucune anomalie »', async () => {
+    vi.stubEnv('CLOUDFLARE_RADAR_TOKEN', 'jeton-de-test');
+    stubFetch((url) => (url.startsWith(RADAR_OUTAGES_URL) ? respond({ success: true, result: {} }) : route(url)));
+    const body = await ensureInternetFresh(NOW);
+    expect(body.errors).toEqual(['Cloudflare Radar : réponse sans liste']);
+    expect(body.radar).toEqual({ configured: true, readAt: null, items: [] });
+    expect(body.iodaReadAt).not.toBeNull();
+  });
+  it('storedInternet : jeton retiré depuis le relevé gardé = « non configuré » tout de suite, éléments Radar retirés', async () => {
+    vi.stubEnv('CLOUDFLARE_RADAR_TOKEN', 'jeton-de-test');
+    stubFetch(route);
+    await ensureInternetFresh(NOW);
+    vi.stubEnv('CLOUDFLARE_RADAR_TOKEN', '');
+    const kept = await storedInternet(NOW + MIN, 'Internet : collecte en cours');
+    expect(kept.radar).toEqual({ configured: false, readAt: null, items: [] });
+    expect(kept.iodaReadAt).not.toBeNull();
+  });
+  it('storedInternet : jeton posé depuis le relevé gardé = « configuré », pas encore lu', async () => {
+    vi.stubEnv('CLOUDFLARE_RADAR_TOKEN', '');
+    stubFetch(route);
+    await ensureInternetFresh(NOW);
+    vi.stubEnv('CLOUDFLARE_RADAR_TOKEN', 'jeton-de-test');
+    expect((await storedInternet(NOW + MIN, 'n')).radar).toEqual({ configured: true, readAt: null, items: [] });
+  });
+  it('storedInternet : relevé gardé de forme inconnue (sans « ripe ») = réponse vide avec la note', async () => {
+    vi.stubEnv('CLOUDFLARE_RADAR_TOKEN', '');
+    store.set('out:internet:last', JSON.stringify({ attemptedAt: '2026-10-08T20:00:00Z', parts: {}, body: { events: [{ id: 'x' }] } }));
+    const kept = await storedInternet(NOW, 'Internet : collecte en cours');
+    expect(kept).toMatchObject({ readAt: null, iodaReadAt: null, events: [], errors: ['Internet : collecte en cours'] });
   });
 });
 

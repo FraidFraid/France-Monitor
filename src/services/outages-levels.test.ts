@@ -138,6 +138,16 @@ describe('Internet : lieux en cours et pastille', () => {
   it('iodaReadAt null : null, jamais vert', () => {
     expect(internetLevel(internet([], [], { iodaReadAt: null }), NOW)).toBeNull();
   });
+  it('R40 : lecture IODA en retard (plus d’une heure) : null, jamais la couleur d’événements figés', () => {
+    const live = [event({ scope: 'national', dept: null, label: 'France' })];
+    expect(internetLevel(internet(live), NOW)).toBe('rouge');
+    expect(internetLevel(internet(live, [], { iodaReadAt: '2026-10-08T19:29:00.000Z' }), NOW)).toBeNull();
+    expect(internetLevel(internet(live, [], { iodaReadAt: '2026-10-08T19:31:00.000Z' }), NOW)).toBe('rouge');
+  });
+  it('R40 : coupure Radar « nationale » sur plusieurs pays : orange (lieu propre), jamais rouge pour la France', () => {
+    const multi = radarItem({ kind: 'panne', label: 'non localisé', asn: null, outageType: 'nationale, plusieurs pays' });
+    expect(internetLevel(internet([], [multi]), NOW)).toBe('orange');
+  });
   it('P13 : deux événements (bgp et ping-slash24) sur la Creuse comptent un seul lieu', () => {
     const r = internet([event({ signal: 'bgp' }), event({ signal: 'ping-slash24' })]);
     expect(internetLive(r, NOW)).toEqual([{ key: 'dept:23', scope: 'departement', label: 'Creuse', dept: '23', asn: null, source: 'ioda' }]);
