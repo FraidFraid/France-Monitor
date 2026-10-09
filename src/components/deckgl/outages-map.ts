@@ -202,7 +202,7 @@ function placeBody(place: Place): string {
       + (troubled.length > ZONE_ROWS ? note(`et ${countText(troubled.length - ZONE_ROWS, 'autre', 'autres')}.`) : '')
       + row('Mis à jour', newest === null ? CLOUD_NO_INCIDENT_TEXT : when(newest))
       + (p.late ? note(`${name} : page d’état en retard, couleur retirée.`) : '')
-      + (p.error ? note(`${name} : page d’état en erreur, couleur retirée.`) : '');
+      + (p.error && !p.late ? note(`${name} : une page d’état en erreur, dernières données gardées.`) : '');
   }).join('') + (place.providers.some((p) => p.zones.some((z) => z.id.startsWith('fr-par-'))) ? note('Région fr-par : région parisienne.') : '');
 }
 
@@ -210,8 +210,9 @@ function placeBody(place: Place): string {
  * Un cercle par LIEU, tous fournisseurs confondus (OVHcloud, Cloudflare, Google Cloud, AWS et Scaleway partagent le point de Paris) : le
  * statut le plus grave des seules zones dont l'état est publié colore le lieu, et l'infobulle liste chaque fournisseur et ses zones. Une zone
  * déduite de l'absence d'incident (GCP, AWS : aucun état publié par région) ne colore que lorsqu'un incident est publié pour elle ; seule, elle
- * laisse le lieu en teinte neutre. Fournisseur en retard (lecture + 2 h) ou en échec : ses zones ne colorent plus (gris si rien d'autre ne
- * colore). Zone sans coordonnées : non dessinée (V5). Le plus grave est dessiné au-dessus (circle-sort-key `rank`).
+ * laisse le lieu en teinte neutre. Fournisseur en retard (lecture + 2 h, comme cloudLive, R41) : ses zones ne colorent plus (gris si rien
+ * d'autre ne colore) ; un fournisseur à jour dont une page a échoué garde ses couleurs (ruling B7), l'erreur est dite dans l'infobulle.
+ * Zone sans coordonnées : non dessinée (V5). Le plus grave est dessiné au-dessus (circle-sort-key `rank`).
  */
 export function cloudZoneFeatures(r: CloudOutagesResponse | null, now: number): Fc {
   if (r === null) return fc([]);
@@ -232,10 +233,10 @@ export function cloudZoneFeatures(r: CloudOutagesResponse | null, now: number): 
     }
   }
   return fc([...places.values()].map((place): PointFeature => {
-    const published = place.providers.filter((p) => !p.late && !p.error)
+    const published = place.providers.filter((p) => !p.late)
       .flatMap((p) => p.zones.filter((z) => !isDeducedZone(p.provider, z)));
     const worst = worstStatus(published);
-    const grey = place.providers.some((p) => p.late || p.error);
+    const grey = place.providers.some((p) => p.late);
     const color = worst !== null ? statusHex(worst) : grey ? OUT_LATE_HEX : OUT_REF_HEX;
     const rank = worst !== null ? DRAW_RANK[worst] : grey ? DRAW_RANK.retard : DRAW_RANK.neutre;
     return {

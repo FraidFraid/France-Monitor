@@ -423,12 +423,23 @@ describe('carte des pannes : Cloud (un cercle par lieu)', () => {
     expect(at(fc, ...PARIS).properties?.color).toBe(levelHex('vert'));
     expect(at(fc, ...GRAVELINES).properties?.color).toBe(levelHex('vert'));
   });
-  it('fournisseur en erreur ou jamais lu : ses lieux propres en gris', () => {
+  it('I3 (R41, B7) : fournisseur à jour dont une page a échoué : couleurs gardées, panne d’une autre page gardée au lieu, erreur nommée', () => {
+    const err = quiet();
+    ref(err, 'ovhcloud').error = 'OVHcloud (web-cloud) : HTTP 503';
+    setStatus(err, 'ovhcloud', 'GRA7', 'major');
+    const fc = cloudZoneFeatures(err, CLOUD_FIXTURE_NOW);
+    expect(at(fc, ...GRAVELINES).properties).toMatchObject({ color: levelHex('rouge'), status: 'major' });
+    for (const [lon, lat] of [[3.18, 50.69], [7.79, 48.58]] as const) expect(at(fc, lon, lat).properties?.color).toBe(levelHex('vert'));
+    expect(body(at(fc, ...GRAVELINES))).toContain('OVHcloud : une page d’état en erreur, dernières données gardées.');
+    expect(body(at(fc, ...GRAVELINES))).not.toContain('couleur retirée');
+  });
+  it('fournisseur en erreur ET en retard (lu il y a 3 h) : gris ; jamais lu : gris', () => {
     const err = quiet();
     ref(err, 'ovhcloud').error = 'OVHcloud (network) : HTTP 503';
+    ref(err, 'ovhcloud').readAt = new Date(CLOUD_FIXTURE_NOW - 3 * 3_600_000).toISOString();
     const fc = cloudZoneFeatures(err, CLOUD_FIXTURE_NOW);
     expect(at(fc, ...GRAVELINES).properties?.color).toBe(OUT_LATE_HEX);
-    expect(body(at(fc, ...GRAVELINES))).toContain('OVHcloud : page d’état en erreur, couleur retirée.');
+    expect(body(at(fc, ...GRAVELINES))).toContain('OVHcloud : page d’état en retard, couleur retirée.');
     const never = quiet();
     ref(never, 'cloudflare').readAt = null;
     expect(at(cloudZoneFeatures(never, CLOUD_FIXTURE_NOW), 4.84, 45.76).properties?.color).toBe(OUT_LATE_HEX);
