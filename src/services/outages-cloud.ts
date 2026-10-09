@@ -1,8 +1,10 @@
 // src/services/outages-cloud.ts : lecture client du panneau Cloud (spec 2026-10-08 panneaux pannes § 2.4, § 4). Garde de forme exacte
 // élément par élément (un champ en trop ou manquant refuse la réponse, nommé par son chemin), lecture qui ne rejette jamais, fusion à
-// l'écriture, ligne « Pages d'état cloud » datée par la lecture la plus récente d'un fournisseur. Le client ne lit que /api/outages/cloud.
+// l'écriture, ligne « Pages d'état cloud » datée par la lecture la plus récente d'un fournisseur (par la plus ancienne si l'un est en
+// retard). Le client ne lit que /api/outages/cloud.
 import type { CloudOutagesResponse } from '../types/index.ts';
-import { outagesSlotStatus, type OutagesStatus } from './outages-source.ts';
+import { isOutagesDataLate } from './outages-levels.ts';
+import { outagesSlotStatus, outagesStatusOf, type OutagesStatus } from './outages-source.ts';
 import {
   isBool, isDate, isDateOrNull, isNamedBy, isNum, isOneOf, isStr, isStrOrNull, isStringList, list, loadSovereigntySlot, mergeSlot, record, shapeOf, value,
   type SourceSlot,
@@ -62,15 +64,21 @@ export function mergeCloud(current: CloudState | null, incoming: CloudState): Cl
 export const isCloudReferenceError = (e: string): boolean => isNamedBy(e, 'Référentiel') || isNamedBy(e, 'PeeringDB');
 
 /**
- * Ligne « Pages d'état cloud » : datée par la lecture la plus récente d'un fournisseur (horloge du serveur), en retard au-delà de 2 h ;
- * la panne d'une page est nommée par son fournisseur et dégrade la ligne. Ni la note d'avancement ni les pannes du référentiel
+ * Ligne « Pages d'état cloud » : datée par la lecture la plus récente d'un fournisseur (horloge du serveur) tant que tous les fournisseurs
+ * suivis sont à jour (lecture + 2 h) ; dès qu'un fournisseur suivi est en retard ou jamais lu, la ligne passe en « stale », datée par la
+ * lecture la plus ancienne, et nomme ces fournisseurs (m3). Azure, qui ne publie aucun état par région France, n'est pas suivi.
+ * La panne d'une page est nommée par son fournisseur et dégrade la ligne. Ni la note d'avancement ni les pannes du référentiel
  * (DRIEAT, uMap, PeeringDB), qui ne sont pas des pages d'état, ne la dégradent ; elles valent aussi dans l'erreur de lecture (`slot.error`).
  */
 export function cloudStatus(state: CloudState, now: number): OutagesStatus {
   const { data, error } = state.cloud;
   const keep = (e: string): boolean => e !== CLOUD_PENDING_NOTE && !isCloudReferenceError(e);
   const own = error === null ? [] : error.split(' ; ').filter(keep);
-  const slot: SourceSlot<CloudOutagesResponse> = { ...state.cloud, data: data ? { ...data, errors: data.errors.filter(keep) } : null, error: own.length > 0 ? own.join(' ; ') : null };
-  const latest = data?.providers.map((p) => p.readAt).filter((at): at is string => at !== null).sort().at(-1) ?? null;
-  return outagesSlotStatus(slot, 'cloud', latest, now);
+  const tracked = data?.providers.filter((p) => p.note === null) ?? [];
+  const reads = tracked.map((p) => p.readAt).filter((at): at is string => at !== null).sort();
+  const late = tracked.filter((p) => isOutagesDataLate('cloud', p.readAt, now)).map((p) => (p.readAt === null ? `${p.label} (n.d.)` : p.label));
+  const named = late.length > 0 ? [`fournisseurs en retard : ${late.join(', ')}`] : [];
+  const errors = [...own, ...named];
+  const slot: SourceSlot<CloudOutagesResponse> = { ...state.cloud, data: data ? { ...data, errors: data.errors.filter(keep) } : null, error: errors.length > 0 ? errors.join(' ; ') : null };
+  return late.length > 0 ? outagesStatusOf(slot, reads[0] ?? null, true, now) : outagesSlotStatus(slot, 'cloud', reads.at(-1) ?? null, now);
 }

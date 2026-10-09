@@ -341,6 +341,22 @@ describe('contrat Cloud', () => {
     expect(late.status).toBe('stale');
     expect(late.period).toMatch(/\(en retard\)$/);
   });
+  it('m3 : un fournisseur suivi en retard (lu il y a plus de 2 h) passe la ligne en « stale », datée par le plus ancien, fournisseurs en retard nommés', async () => {
+    const { status, body } = await served();
+    const edited = wire(body) as CloudOutagesResponse;
+    const ovh = edited.providers.findIndex((p) => p.provider === 'ovhcloud');
+    const aws = edited.providers.findIndex((p) => p.provider === 'aws');
+    edited.providers[ovh] = { ...edited.providers[ovh], readAt: '2026-10-08T17:30:00.000Z' };
+    edited.providers[aws] = { ...edited.providers[aws], readAt: null, zones: [] };
+    serveToClient({ [CLOUD_URL]: { status, body: edited } });
+    const st = cloudStatus(await fetchCloud(null, NOW), NOW);
+    expect(st.status).toBe('stale');
+    expect(st.lastUpdate?.toISOString()).toBe('2026-10-08T17:30:00.000Z');
+    expect(st.period).toMatch(/\(en retard\)$/);
+    expect(st.error).toBe('fournisseurs en retard : OVHcloud, AWS (n.d.)');
+    // Azure (aucune page d'état par région France) n'est pas un fournisseur suivi : jamais « en retard ».
+    expect(st.error).not.toContain('Azure');
+  });
   it('la panne d’une page d’état est nommée et dégrade la ligne sans la masquer ; la note « collecte en cours » n’est pas une panne', async () => {
     const { status, body } = await served();
     serveToClient({ [CLOUD_URL]: { status, body: { ...(wire(body) as Record<string, unknown>), errors: ['Scaleway : HTTP 503', CLOUD_PENDING_NOTE] } } });
