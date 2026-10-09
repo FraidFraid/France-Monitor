@@ -229,6 +229,7 @@ body {
   margin: -1px;
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
 }
@@ -3996,6 +3997,12 @@ button.header-quality-link {
     margin-left: auto;
   }
 
+  /* Menu Sources ancré au bloc d'état (aligné à droite de l'en-tête) et non à son bouton : à 390 px, ancré au bouton, il débordait
+     de 27 px à gauche de l'écran. */
+  .status-menu {
+    position: static;
+  }
+
   .status-menu-trigger__label {
     display: none;
   }
@@ -7515,7 +7522,10 @@ button.header-quality-link {
 
 .tb-list { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
 .tb-list::-webkit-scrollbar { display: none; }
+/* position relative : le libellé `.visually-hidden` (position absolue) reste dans le bouton, donc dans la barre défilante ; sinon il
+   élargissait la page du téléphone (446 px pour un écran de 390, contrôle à l'écran du 09/10/2026). */
 .tb-theme {
+  position: relative;
   display: inline-flex; align-items: center; gap: 6px; flex: none;
   padding: 4px 10px; border: 1px solid var(--border-color); border-radius: 6px;
   background: transparent; color: var(--text-secondary); font: inherit; font-size: 12px; white-space: nowrap; cursor: pointer;
