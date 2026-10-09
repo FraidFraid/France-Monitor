@@ -26,7 +26,7 @@ describe('tableau de qualité : sources de la phase B', () => {
   });
 });
 
-describe('tableau de qualité : sources Pannes réseau (Télécoms et Électricité)', () => {
+describe('tableau de qualité : sources Pannes réseau', () => {
   it('chaque ligne du panneau des sources Pannes réseau a son entrée, une seule fois ; plus de ligne « Télécoms »', () => {
     const registry = getSourceQualityRegistry();
     const watched = registry.flatMap((e) => e.watchdogNames);
@@ -34,9 +34,21 @@ describe('tableau de qualité : sources Pannes réseau (Télécoms et Électrici
     expect(watched).not.toContain('Télécoms');
     const byId = new Map(registry.map((e) => [e.id, e]));
     expect(['arcep', 'edf-indispo', 'rte-iip', 'edf-sei'].map((id) => byId.get(id)?.watchdogNames)).toEqual(
-      OUTAGES_SOURCE_NAMES.map((n) => [n]),
+      OUTAGES_SOURCE_NAMES.slice(0, 4).map((n) => [n]),
     );
     const text = JSON.stringify(['arcep', 'edf-indispo', 'rte-iip', 'edf-sei'].map((id) => byId.get(id)));
     expect(text).not.toMatch(/\u2014|temps réel/i);
+  });
+  it('Internet et Cloud : les sept lignes du panneau des sources ont leur entrée, IODA renommé, Radar et pages d’état ajoutés (P1)', () => {
+    const byId = new Map(getSourceQualityRegistry().map((e) => [e.id, e]));
+    const ids = ['ioda', 'cloudflare-radar', 'cloud-status'];
+    expect(ids.map((id) => [byId.get(id)?.name, byId.get(id)?.watchdogNames, byId.get(id)?.sourceType, byId.get(id)?.natureBaseline])).toEqual([
+      ['IODA', ['IODA'], 'technical', 65], ['Cloudflare Radar', ['Cloudflare Radar'], 'technical', 65], ['Pages d’état cloud', ['Pages d’état cloud'], 'technical', 60],
+    ]);
+    expect(OUTAGES_SOURCE_NAMES.slice(4)).toEqual(ids.flatMap((id) => byId.get(id)?.watchdogNames ?? []));
+    expect(getSourceQualityRegistry().flatMap((e) => e.watchdogNames)).not.toContain('IODA Internet');
+    const text = JSON.stringify(ids.map((id) => byId.get(id)));
+    expect(text).not.toMatch(/\u2014|temps réel/i);
+    expect(text).not.toMatch(/\d (?:heures|h|%|jours)\b/);
   });
 });

@@ -17,7 +17,8 @@ describe('couches et sources Pannes réseau', () => {
     expect([...OUTAGES_ALWAYS_POLLED]).toEqual(['outagesTelecom']);
   });
   it('lignes du panneau des sources, chacune avec un lien et un détail, jamais « temps réel »', () => {
-    expect(OUTAGES_STATUS_SOURCES.map(([k]) => k)).toEqual(['arcep', 'edf', 'iip', 'sei']);
+    expect(OUTAGES_STATUS_SOURCES.map(([k]) => k)).toEqual(['arcep', 'edf', 'iip', 'sei', 'ioda', 'radar', 'cloud']);
+    expect(OUTAGES_SOURCE_NAMES).toEqual(['ARCEP sites mobiles', 'EDF indisponibilités', 'RTE IIP', 'EDF SEI (îles)', 'IODA', 'Cloudflare Radar', 'Pages d’état cloud']);
     for (const name of OUTAGES_SOURCE_NAMES) {
       const d = outagesSourceDetail(name);
       expect(d?.link).toMatch(/^https:\/\//);
@@ -27,5 +28,17 @@ describe('couches et sources Pannes réseau', () => {
     expect(Object.keys(OUTAGES_SOURCE_DETAILS)).toEqual([...OUTAGES_SOURCE_NAMES]);
     expect(OUTAGES_LAYER_SOURCES.outagesElec).toEqual(['EDF indisponibilités', 'RTE IIP', 'EDF SEI (îles)']);
     expect(OUTAGES_LAYER_SOURCES.outagesTelecom).toEqual(['ARCEP sites mobiles']);
+    expect(OUTAGES_LAYER_SOURCES.outagesInternet).toEqual(['IODA', 'Cloudflare Radar']);
+    expect(OUTAGES_LAYER_SOURCES.outagesCloud).toEqual(['Pages d’état cloud']);
+  });
+  it('chaque ligne se rattache à une seule couche, et toute ligne d’une couche est une ligne du panneau', () => {
+    const owned = OUTAGES_LAYER_KEYS.flatMap((key) => OUTAGES_LAYER_SOURCES[key]);
+    expect([...owned].sort()).toEqual([...OUTAGES_SOURCE_NAMES].sort());
+  });
+  it('Radar dit son jeton (gratuit, optionnel) et IODA son périmètre, sans tiret cadratin', () => {
+    expect(outagesSourceDetail('Cloudflare Radar')?.detail).toMatch(/jeton/);
+    expect(outagesSourceDetail('IODA')?.detail).toMatch(/IODA/);
+    expect(outagesSourceDetail('Pages d’état cloud')?.link).toMatch(/^https:\/\//);
+    expect(JSON.stringify(Object.values(OUTAGES_SOURCE_DETAILS))).not.toMatch(/\u2014/);
   });
 });
