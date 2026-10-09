@@ -1,1 +1,0 @@
-export const DATACENTERMAP_FRANCE_SNAPSHOT = [];

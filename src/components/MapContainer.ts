@@ -5,7 +5,7 @@
 
 import type { DeckGLMap } from './DeckGLMap.ts';
 import type { Map as SVGMap } from './Map.ts';
-import type { NewsItem, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, EcowattResponse, FuelTensionDashboard, InfrastructurePoint, MapLayers, MapViewState, MilitaryBase, AirTrafficFlight, ISNRScore, AlertLevelsResponse, AplDataset, AplProfession, EmergencySite, HospitalsDataset, SyndromicResponse, GasNetworkState, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, HydraulicBackboneAsset } from '../types/index.ts';
+import type { NewsItem, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, EcowattResponse, FuelTensionDashboard, InfrastructurePoint, MapLayers, MapViewState, MilitaryBase, AirTrafficFlight, ISNRScore, AlertLevelsResponse, AplDataset, AplProfession, EmergencySite, HospitalsDataset, SyndromicResponse, GasNetworkState, SatelliteViewRequest, HydraulicBackboneAsset } from '../types/index.ts';
 import type { MilitaryShip } from '../services/military-ships.ts';
 import type { EventMapPoint } from '../services/v2-map.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
@@ -297,32 +297,6 @@ export class MapContainer {
     navyMmsiSet: Set<string>
   ): void {
     this.deckMap?.updateGlobalTraffic(ships, navyMmsiSet);
-  }
-
-  // ─── Internet / BGP outages (IODA) ───
-  updateNetworkOutages(state: NetworkOutageState): void {
-    this.deckMap?.updateNetworkOutages(state);
-  }
-
-  highlightIsp(data: { asn: string; coordinates: [number, number] } | null): void {
-    this.deckMap?.highlightIsp(data);
-  }
-
-  highlightIoda(data: { id: string; coordinates: [number, number] } | null): void {
-    this.deckMap?.highlightIoda(data);
-  }
-
-  highlightDc(data: { id: string; coordinates: [number, number] } | null): void {
-    this.deckMap?.highlightDc(data);
-  }
-
-  highlightIxp(data: { id: string; coordinates: [number, number] } | null): void {
-    this.deckMap?.highlightIxp(data);
-  }
-
-  // ─── Cloud infra & IXP ───
-  updateInfraNetwork(state: InfraNetworkState): void {
-    this.deckMap?.updateInfraNetwork(state);
   }
 
   // ─── Santé (spec 2026-10-03 § 3) ───

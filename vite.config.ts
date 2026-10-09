@@ -15,9 +15,6 @@ import { commoditiesProxyPlugin } from './src/plugins/commodities-proxy';
 import { trafficTileProxyPlugin } from './src/plugins/traffic-tile-proxy';
 import { oilProxyPlugin } from './src/plugins/oil-proxy';
 import { fuelPricesProxyPlugin } from './src/plugins/fuel-prices-proxy';
-import { internetOutagesProxyPlugin } from './src/plugins/internet-outages-proxy';
-import { infraNetworkProxyPlugin } from './src/plugins/infra-network-proxy';
-import { rteIipProxyPlugin } from './src/plugins/rte-iip-proxy';
 import { elusProxyPlugin } from './src/plugins/elus-proxy';
 import { synthesisProxyPlugin } from './src/plugins/synthesis-proxy';
 import { ministersProxyPlugin } from './src/plugins/ministers-proxy';
@@ -121,9 +118,6 @@ export default defineConfig(({ mode }) => {
       trafficTileProxyPlugin(),
       oilProxyPlugin(),
       fuelPricesProxyPlugin(),
-      internetOutagesProxyPlugin(),
-      infraNetworkProxyPlugin(),
-      rteIipProxyPlugin(),
       elusProxyPlugin(),
       synthesisProxyPlugin(),
       ministersProxyPlugin(),
