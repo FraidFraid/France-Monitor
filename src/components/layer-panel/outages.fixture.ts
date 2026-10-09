@@ -8,7 +8,10 @@ import {
   buildPower, iipTransmission, iipUnits, latestVersions, mergeUnits, normalizeEdfLine, parseIipFeed, seiSignal,
 } from '../../../api/_lib/outages-power.js';
 import { normalizeIodaEvent, normalizeRadar } from '../../../api/_lib/outages-internet.js';
-import type { InternetEvent, InternetOutagesResponse, PowerOutagesResponse, PowerUnitOutage, RadarItem, TelecomOutagesResponse, TelecomSite } from '../../types/index.ts';
+import {
+  buildCloud, fromAws, fromCloudflare, fromGcp, fromStatuspage, isOvhFrance, outscaleFrance, ovhTitleFrance, scalewayFrance,
+} from '../../../api/_lib/outages-cloud.js';
+import type { CloudOutagesResponse, InternetEvent, InternetOutagesResponse, PowerOutagesResponse, PowerUnitOutage, RadarItem, TelecomOutagesResponse, TelecomSite } from '../../types/index.ts';
 
 const fx = (name: string): string => readFileSync(resolve(import.meta.dirname, '../../../tests/fixtures/outages', name), 'utf8');
 
@@ -68,4 +71,41 @@ export function internetFixtureResponse(): InternetOutagesResponse {
     events, ripe: { snapshotAt: '2026-10-08T16:00:00.000Z', networks: [{ asn: 3215, name: 'Orange', visibilityPct: 100 }, { asn: 12322, name: 'Free', visibilityPct: 100 }] },
     errors: [],
   };
+}
+
+/** Heure des vues Cloud : 08/10/2026 22 h à Paris. */
+export const CLOUD_FIXTURE_NOW = Date.parse('2026-10-08T20:00:00Z');
+
+/**
+ * Réponse Cloud du 08/10/2026 : les quatre pages OVHcloud, Scaleway, Outscale, Cloudflare, Google Cloud et AWS du jeu d'essai, Azure sans
+ * état France, et un référentiel fictif (deux centres de données, deux points d'échange d'essai). Dernière lecture de chaque fournisseur
+ * lu posée à 19 h 50 UTC (le retard se mesure dessus, P8), quelle que soit la date de sa page.
+ */
+export function cloudFixtureResponse(): CloudOutagesResponse {
+  const now = CLOUD_FIXTURE_NOW;
+  const ovh = { component: isOvhFrance, title: ovhTitleFrance };
+  const pages = ['ovh-public-cloud-summary.json', 'ovh-web-cloud-summary.json', 'ovh-network-summary.json', 'ovh-bare-metal-servers-summary.json']
+    .map((name) => fromStatuspage('ovhcloud', 'OVHcloud', JSON.parse(fx(name)), ovh, now));
+  const readAt = '2026-10-08T19:50:00.000Z';
+  const built = buildCloud({
+    statuspages: [
+      ...pages,
+      fromStatuspage('scaleway', 'Scaleway', JSON.parse(fx('scaleway-summary.json')), scalewayFrance, now),
+      fromStatuspage('outscale', 'Outscale', JSON.parse(fx('outscale-summary.json')), outscaleFrance, now),
+    ],
+    cloudflare: fromCloudflare(JSON.parse(fx('cloudflare-components.json'))), gcp: fromGcp(JSON.parse(fx('gcp-incidents.json')), now), aws: fromAws(fx('aws-all.rss'), now),
+    reference: {
+      generatedAt: readAt,
+      datacenters: [
+        { id: 'essai-a', name: 'Centre de données d’essai A', operator: null, city: 'Paris', lat: 48.86, lon: 2.35, stage: 'existant', power: null, source: 'OpenStreetMap' },
+        { id: 'essai-b', name: 'Centre de données d’essai B', operator: null, city: 'Lyon', lat: 45.76, lon: 4.84, stage: 'en projet', power: null, source: 'uMap' },
+      ],
+      exchanges: [
+        { id: 1, name: 'Point d’échange d’essai 1', city: 'Paris', url: 'https://www.peeringdb.com/ix/1' },
+        { id: 2, name: 'Point d’échange d’essai 2', city: 'Lyon', url: 'https://www.peeringdb.com/ix/2' },
+      ],
+    },
+    readAt, errors: [],
+  }, now) as CloudOutagesResponse;
+  return { ...built, providers: built.providers.map((p) => (p.readAt === null ? p : { ...p, readAt })) };
 }

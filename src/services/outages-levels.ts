@@ -141,8 +141,10 @@ export function internetLevel(r: InternetOutagesResponse, now: number): Vigilanc
 export const CLOUD_PROVIDER_LABEL: Readonly<Record<CloudProvider, string>> = {
   ovhcloud: 'OVHcloud', scaleway: 'Scaleway', cloudflare: 'Cloudflare', gcp: 'Google Cloud', aws: 'AWS', outscale: 'Outscale', azure: 'Azure',
 };
-const IMPACT_LEVEL: Readonly<Record<CloudIncident['impact'], VigilanceLevel>> = { none: 'jaune', minor: 'jaune', major: 'orange', critical: 'rouge' };
-const ZONE_LEVEL: Partial<Readonly<Record<CloudStatus, VigilanceLevel>>> = { degraded: 'jaune', partial: 'orange', major: 'rouge' };
+/** Niveau d'un incident en cours selon son impact (pastille et puces de la vue Cloud). */
+export const CLOUD_IMPACT_LEVEL: Readonly<Record<CloudIncident['impact'], VigilanceLevel>> = { none: 'jaune', minor: 'jaune', major: 'orange', critical: 'rouge' };
+/** Niveau d'une zone selon son statut ; opérationnel, maintenance et inconnu n'ont pas de niveau d'alerte. */
+export const CLOUD_ZONE_LEVEL: Partial<Readonly<Record<CloudStatus, VigilanceLevel>>> = { degraded: 'jaune', partial: 'orange', major: 'rouge' };
 
 /** Ce que le panneau Cloud peut dire du moment : incidents en cours et zones des seuls fournisseurs à jour. */
 export interface CloudLive {
@@ -177,8 +179,8 @@ export function cloudLevel(r: CloudOutagesResponse, now: number): VigilanceLevel
   const live = cloudLive(r, now);
   if (live.freshProviders.length === 0) return null;
   const levels: VigilanceLevel[] = [
-    ...live.incidents.map((i) => IMPACT_LEVEL[i.impact]),
-    ...live.zones.map((z) => ZONE_LEVEL[z.status]).filter((l): l is VigilanceLevel => l !== undefined),
+    ...live.incidents.map((i) => CLOUD_IMPACT_LEVEL[i.impact]),
+    ...live.zones.map((z) => CLOUD_ZONE_LEVEL[z.status]).filter((l): l is VigilanceLevel => l !== undefined),
   ];
   return levels.reduce<VigilanceLevel>((max, l) => (LEVEL_RANK[l] > LEVEL_RANK[max] ? l : max), 'vert');
 }
