@@ -84,7 +84,7 @@ describe('deploy/oracle/set-radar-token.sh : texte du script', () => {
   });
 
   it('ni tiret cadratin ni syntaxe invalide (bash -n)', () => {
-    expect(scriptText()).not.toContain('—');
+    expect(scriptText()).not.toContain('\u2014');
     const r = spawnSync('bash', ['-n', SCRIPT], { encoding: 'utf8' });
     expect(r.status, r.stderr).toBe(0);
   });

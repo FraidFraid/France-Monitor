@@ -156,4 +156,37 @@ describe('retraits de la phase B (spec 2026-10-08 § 3.3)', () => {
       expect(types, t).not.toMatch(new RegExp(`\\b(interface|type) ${t}\\b`));
     }
   });
+
+  it('test de fumée de production : routes Internet et Cloud (P38)', () => {
+    const smoke = read('.github/workflows/smoke.yml');
+    expect(smoke).toContain('"/api/outages/internet;200"');
+    expect(smoke).toContain('"/api/outages/cloud;200"');
+  });
+
+  it('README : routes Internet et Cloud avec leurs cadences, plus de route retirée ni de BGPView', () => {
+    const readme = read('README.md');
+    const row = (route: string): string => readme.split('\n').find((l) => l.includes(`\`${route}\``)) ?? '';
+    expect(row('/api/outages/internet')).toMatch(/\| 10 min \|$/);
+    expect(row('/api/outages/cloud')).toMatch(/\| 30 min \|$/);
+    expect(readme).not.toMatch(/\/api\/internet-outages|\/api\/infra-network|BGPView|OutagesPanel\.ts/);
+    // Lignes des pannes réseau (tableaux, baromètre, jeton) : ni tiret cadratin ni « temps réel ».
+    const outageLines = readme.split('\n').filter((l) => /^\| (Power|Telecom|Internet|Cloud) outages|outage panels|Network barometer|CLOUDFLARE_RADAR_TOKEN|outages-(internet|cloud)\.ts/.test(l));
+    expect(outageLines.length).toBe(13);
+    for (const l of outageLines) expect(l).not.toMatch(/\u2014|real-time|temps réel/i);
+  });
+
+  it('documentation du jeton Cloudflare Radar : script, vérification, retrait ; exemple d’environnement qui renvoie au script', () => {
+    const doc = read('docs/deployment-oracle.md');
+    const start = doc.indexOf('## (j) Jeton Cloudflare Radar');
+    expect(start).toBeGreaterThan(-1);
+    const end = doc.indexOf('\n## ', start + 1);
+    const section = doc.slice(start, end === -1 ? undefined : end);
+    expect(section).toContain('bash deploy/oracle/set-radar-token.sh');
+    expect(section).toContain('sudo systemctl restart fm-api');
+    expect(section).not.toMatch(/temps réel/i);
+    expect(section).toContain('pbpaste | bash deploy/oracle/set-radar-token.sh');
+    expect(section).toContain('.radar.configured');
+    expect(section).not.toContain('\u2014');
+    expect(read('deploy/oracle/francemonitor.env.example')).toMatch(/Posé par deploy\/oracle\/set-radar-token\.sh/);
+  });
 });
