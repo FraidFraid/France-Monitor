@@ -54,8 +54,8 @@ const LAYER_DEFS: LayerDef[] = [
   { key: 'outages', label: 'PANNES RÉSEAU', icon: fmIcon('satellite-dish') },
   { key: 'outagesElec',     label: 'ÉLECTRICITÉ',   icon: fmIcon('zap'),   sublayerOf: 'outages' },
   { key: 'outagesTelecom',  label: 'TÉLÉCOMS MOBILES', icon: fmIcon('satellite-dish'), sublayerOf: 'outages' },
-  { key: 'outagesInternet', label: 'INTERNET / BGP', icon: fmIcon('globe'), sublayerOf: 'outages' },
-  { key: 'outagesCloud',    label: 'CLOUD / IXP',   icon: fmIcon('cloud'),   sublayerOf: 'outages' },
+  { key: 'outagesInternet', label: 'INTERNET', icon: fmIcon('globe'), sublayerOf: 'outages' },
+  { key: 'outagesCloud',    label: 'CLOUD ET HÉBERGEMENT', icon: fmIcon('cloud'), sublayerOf: 'outages' },
 ];
 
 /** Entrées affichées : « Événements en cours » n'existe que dans la v2 (la v1 ne change pas). */
@@ -665,8 +665,8 @@ export class LayerPanel {
         // Sans badge (spec 2026-10-08 panneaux pannes, R24) : chaque panneau date sa donnée.
         this.helpItem(fmIcon('zap'), 'Électricité', 'Production et transport : mégawatts perdus en arrêts imprévus des unités de production (EDF OpenData), maintenances annoncées, messages de transport de RTE (IIP), îles (EDF SEI) et tension du réseau (Écowatt RTE) ; les coupures chez les particuliers n’ont pas de source ouverte.'),
         this.helpItem(fmIcon('satellite-dish'), 'Télécoms mobiles', 'Sites mobiles indisponibles déclarés par les opérateurs (fichier ARCEP quotidien) : pannes imprévues récentes et plus anciennes, par opérateur et par département, maintenances en option sur la carte.'),
-        this.helpItem(fmIcon('globe'), 'Internet / BGP', 'Anomalies IODA et état des opérateurs (BGPView).', 'live'),
-        this.helpItem(fmIcon('cloud'), 'Cloud / IXP', 'Pannes datacenters et points d\'échange Internet (IXP) en France.', 'live'),
+        this.helpItem(fmIcon('globe'), 'Internet', 'Anomalies Internet en France : IODA (pays, départements, grands opérateurs), Cloudflare Radar si le jeton est posé, visibilité des grands réseaux (RIPEstat) ; un événement ouvert depuis plus de 7 jours est écarté.'),
+        this.helpItem(fmIcon('cloud'), 'Cloud et hébergement', 'Incidents des pages d’état touchant une zone française (OVHcloud, Scaleway, Cloudflare, Google Cloud, AWS, Outscale), comptés une fois ; maintenances ; référentiel des centres de données et points d’échange, présenté comme inventaire.'),
       ]),
     ].join('');
   }
