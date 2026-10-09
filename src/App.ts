@@ -32,7 +32,7 @@ import { eventMapPoints } from './services/v2-map.ts';
 import type { ThemeId } from './services/themes.ts';
 import { innerLayerOpen } from './services/escape-layers.ts';
 import { isUiV2, layerActivationOptions, layerStateStorage, legendStatusLabel, moduleInColumn, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
-import { restorePanelPlan, showsSwitcher, switcherPanelOffsetPx, v2ColumnVars } from './services/floating-panel-switcher.ts';
+import { restorePanelPlan, showsSwitcher, switcherPanelOffsetPx, v2ColumnVars, v2SwitcherLayout, v2TabletPanelOffsetPx } from './services/floating-panel-switcher.ts';
 import { settleWithin } from './utils/settle-within.ts';
 import {
   buildFranceCountrySnapshot as buildFranceEngine,
@@ -562,11 +562,6 @@ interface FloatingPanelDef {
 
 /** Panneaux de module : ne comptent pas comme « couche intérieure » pour Échap. */
 const MODULE_PANEL_SELECTOR = '[class*="-panel-modal"], .fm-floating-panel';
-
-/** v2 : largeur du tiroir Couches (main.css --v2-drawer-w). */
-const V2_DRAWER_PX = 300;
-/** v2 : place réservée au sélecteur Carte | Satellite, en haut à droite de la carte (main.css, 180px). */
-const V2_MAP_CONTROLS_PX = 180;
 
 const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
   { id: 'environmental', label: 'Vigilance météo', icon: 'cloud-lightning', layerKeys: ['environmental'] },
@@ -1584,8 +1579,12 @@ export class App {
   private underMapLabelEl: HTMLElement | null = null;
   private underMapExpanded = false;
   private underMapScrollLockUntil = 0;
+  /** v2 : relance la mise en page des puces de panneaux quand la zone carte change de taille. */
+  private floatingSwitcherObserver: ResizeObserver | null = null;
 
   public destroy(): void {
+    this.floatingSwitcherObserver?.disconnect();
+    this.floatingSwitcherObserver = null;
     if (this._intervalRSS !== null) { clearInterval(this._intervalRSS); this._intervalRSS = null; }
     this.removePausableInterval(this._intervalShips); this._intervalShips = null;
     if (this._intervalFinance !== null) { clearInterval(this._intervalFinance); this._intervalFinance = null; }
@@ -2669,6 +2668,12 @@ export class App {
     this.floatingPanelSwitcherEl = floatingPanelSwitcher;
     // La largeur de la carte change la place disponible (repli en icônes) et donc le décalage des panneaux.
     this.addGlobalListener(window, 'resize', () => this.layoutFloatingPanelSwitcher());
+    // v2 : la zone carte change de taille sans que la fenêtre bouge (tiroir ouvert ou fermé, onglet Carte du mobile).
+    if (this.uiV2 && typeof ResizeObserver !== 'undefined') {
+      const switcherObserver = new ResizeObserver(() => this.layoutFloatingPanelSwitcher());
+      switcherObserver.observe(mapArea);
+      this.floatingSwitcherObserver = switcherObserver;
+    }
     // v2 : Échap ferme le panneau de module (lui seul). Écouté sur `document`, donc avant le
     // gestionnaire de PosteSituation (sur `window`) qui ignore un événement déjà traité.
     this.addGlobalListener(document, 'keydown', (event) => {
@@ -5208,29 +5213,37 @@ export class App {
   private layoutFloatingPanelSwitcher(): void {
     const el = this.floatingPanelSwitcherEl;
     if (!el) return;
-    el.classList.remove('is-compact');
-    // Rangée alignée à droite : elle déborde vers la GAUCHE, ce que scrollWidth ne voit pas ; on
-    // compare donc le bord gauche du premier bouton à celui de la barre.
-    const first = el.firstElementChild;
-    if (!el.hidden && first && first.getBoundingClientRect().left < el.getBoundingClientRect().left - 1) {
-      el.classList.add('is-compact');
+    if (!this.uiV2) {
+      el.classList.remove('is-compact');
+      // Rangée alignée à droite : elle déborde vers la GAUCHE, ce que scrollWidth ne voit pas ; on
+      // compare donc le bord gauche du premier bouton à celui de la barre.
+      const first = el.firstElementChild;
+      if (!el.hidden && first && first.getBoundingClientRect().left < el.getBoundingClientRect().left - 1) {
+        el.classList.add('is-compact');
+      }
     }
-    const offset = switcherPanelOffsetPx(el.hidden ? 0 : el.offsetHeight, this.uiV2);
-    document.documentElement.style.setProperty('--map-switcher-offset', `${offset}px`);
+    // Décalage des panneaux de droite sous la barre : v1 d'après sa hauteur, v2 tablette d'après son bas (une seule pose).
+    let offset = switcherPanelOffsetPx(el.hidden ? 0 : el.offsetHeight, this.uiV2);
     if (this.uiV2) {
+      // Zone carte masquée (mobile, autre onglet) : rien à mesurer ; l'observateur de taille relance la mise en page à son retour.
       const mapWidth = el.parentElement?.clientWidth ?? 0;
-      // À côté du tiroir Couches ouvert, s'il reste moins de 150 px : icônes seules (nom en infobulle).
-      const drawerOpen = !this.container.classList.contains('sidebar-collapsed');
-      el.classList.toggle('is-icon-only', drawerOpen && mapWidth - V2_DRAWER_PX - 24 < 150);
-      // Les puces restent sur la ligne de Carte | Satellite, tiroir ouvert ou fermé ; elles ne passent
-      // dessous que si elles n'y tiennent pas sur une rangée (largeur naturelle mesurée sans plafond).
-      el.classList.add('is-measuring');
-      const chips = Array.from(el.children) as HTMLElement[];
-      const oneRow = chips.reduce((w, chip) => w + chip.offsetWidth, 0) + 8 * Math.max(0, chips.length - 1);
-      el.classList.remove('is-measuring');
-      const beside = mapWidth - (drawerOpen ? V2_DRAWER_PX : 0) - 24 - V2_MAP_CONTROLS_PX;
-      el.classList.toggle('is-below-controls', oneRow > beside);
+      if (mapWidth > 0 && !el.hidden) {
+        // Le libellé reste visible au-dessus de 768 px ; le repli en icônes ne vient que d'un manque de place
+        // réel (v2SwitcherLayout). La largeur d'une rangée se mesure donc sans repli ni plafond.
+        el.classList.remove('is-icon-only');
+        el.classList.add('is-measuring');
+        const chips = Array.from(el.children) as HTMLElement[];
+        const oneRow = chips.reduce((w, chip) => w + chip.offsetWidth, 0) + 8 * Math.max(0, chips.length - 1);
+        el.classList.remove('is-measuring');
+        const drawerOpen = !this.container.classList.contains('sidebar-collapsed');
+        const layout = v2SwitcherLayout(window.innerWidth, mapWidth, drawerOpen, oneRow);
+        el.classList.toggle('is-icon-only', layout.iconOnly);
+        el.classList.toggle('is-below-controls', layout.belowControls);
+        // Tablette : les panneaux de module flottent par-dessus la carte ; ils commencent sous les puces.
+        offset = v2TabletPanelOffsetPx(el.getBoundingClientRect().bottom, window.innerWidth, false);
+      }
     }
+    document.documentElement.style.setProperty('--map-switcher-offset', `${offset}px`);
     this.syncV2ColumnVars();
   }
 
