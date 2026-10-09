@@ -3122,3 +3122,43 @@ export interface InternetOutagesResponse {
   ripe: { snapshotAt: string | null; networks: Array<{ asn: number; name: string; visibilityPct: number }> } | null;
   errors: string[];
 }
+
+// ─── Cloud : GET /api/outages/cloud (pages d'état filtrées France, référentiel) ───
+export type CloudProvider = 'ovhcloud' | 'scaleway' | 'cloudflare' | 'gcp' | 'aws' | 'outscale' | 'azure';
+export type CloudStatus = 'operational' | 'maintenance' | 'degraded' | 'partial' | 'major' | 'unknown';
+export interface CloudZone {
+  id: string; label: string; status: CloudStatus;
+  updatedAt: string | null;         // date publiée du composant ; null : zone déduite de l'absence d'incident (GCP, AWS), jamais datée
+  lat: number | null; lon: number | null;
+}
+export interface CloudIncident {
+  id: string; provider: CloudProvider; title: string;
+  zones: string[];                  // zones françaises touchées (vide : incident rattaché à la France par son titre)
+  state: 'en-cours' | 'surveille';  // en-cours : investigating ou identified (compté) ; surveille : monitoring (listé, non compté)
+  impact: 'none' | 'minor' | 'major' | 'critical';
+  start: string; updatedAt: string | null; url: string | null;
+}
+export interface CloudMaintenance { id: string; provider: CloudProvider; title: string; zones: string[]; inProgress: boolean; start: string; end: string | null }
+export interface CloudProviderState {
+  provider: CloudProvider; label: string;
+  readAt: string | null;            // dernière lecture RÉUSSIE de la page (horloge du serveur), null : jamais lue
+  zones: CloudZone[]; note: string | null; error: string | null;
+}
+/** Centre de données du référentiel (OSM, Île-de-France, projets) : un inventaire, jamais un état de service (P5). */
+export interface CloudReferenceSite {
+  id: string; name: string; operator: string | null; city: string | null; lat: number; lon: number;
+  stage: string | null;             // état d'avancement publié (« site existant », « en projet »…), null s'il n'est pas publié
+  power: string | null;             // tranche de puissance publiée, null sinon
+  source: string;                   // source du site (OpenStreetMap, DRIEAT, uMap…)
+}
+/** Point d'échange français (PeeringDB, sans coordonnées : listé, jamais dessiné). */
+export interface CloudExchange { id: number; name: string; city: string | null; url: string }
+export interface CloudOutagesResponse {
+  readAt: string | null;            // dernière lecture réussie d'un fournisseur (horloge du serveur)
+  providers: CloudProviderState[];  // les sept fournisseurs, dans l'ordre fixe
+  incidents: CloudIncident[];       // France, en cours d'abord, comptés une fois
+  maintenances: CloudMaintenance[]; // France, en cours d'abord puis à 7 jours
+  elsewhere: CloudIncident[];       // incidents des mêmes pages hors France : listés à part, jamais comptés ni colorés
+  reference: { generatedAt: string | null; datacenters: CloudReferenceSite[]; exchanges: CloudExchange[] };   // generatedAt : dernière relecture complète, null s'il n'y en a pas
+  errors: string[];
+}

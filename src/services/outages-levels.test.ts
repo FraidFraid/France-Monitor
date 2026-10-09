@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
-  OUTAGES_LATE_AFTER_MIN, TELECOM_DISRUPTION_THRESHOLDS, internetLevel, internetLive, isArcepFileLate, isOutagesDataLate, powerLevel, powerUnplannedMw,
+  CLOUD_PROVIDER_LABEL, OUTAGES_LATE_AFTER_MIN, TELECOM_DISRUPTION_THRESHOLDS, cloudLevel, internetLevel, internetLive, isArcepFileLate, isOutagesDataLate, powerLevel, powerUnplannedMw,
   telecomIfFresh, telecomLevel,
 } from './outages-levels.ts';
 import { outagesSlotStatus } from './outages-source.ts';
-import type { InternetEvent, InternetOutagesResponse, PowerOutagesResponse, PowerUnitOutage, RadarItem, TelecomOutagesResponse } from '../types/index.ts';
+import type {
+  CloudIncident, CloudOutagesResponse, CloudProvider, CloudProviderState, CloudStatus, CloudZone, InternetEvent, InternetOutagesResponse, PowerOutagesResponse, PowerUnitOutage, RadarItem, TelecomOutagesResponse,
+} from '../types/index.ts';
 
 const paris = (iso: string): number => Date.parse(iso);   // ISO avec fuseau explicite
 
@@ -183,5 +185,53 @@ describe('Internet : lieux en cours et pastille', () => {
     expect(internetLevel(internet([], items, { radar: { configured: true, readAt: '2026-10-08T19:29:00.000Z', items } }), NOW)).toBe('vert');
     expect(internetLevel(internet([], items, { radar: { configured: true, readAt: null, items } }), NOW)).toBe('vert');
     expect(internetLive(internet([], items, { radar: { configured: true, readAt: '2026-10-08T19:29:00.000Z', items } }), NOW)).toEqual([]);
+  });
+});
+
+function cloudZone(status: CloudStatus, id = 'GRA'): CloudZone {
+  return { id, label: id, status, updatedAt: '2026-10-08T19:00:00.000Z', lat: 50.99, lon: 2.13 };
+}
+
+function cloudProvider(provider: CloudProvider, zones: CloudZone[], readAt: string | null = '2026-10-08T19:50:00.000Z'): CloudProviderState {
+  return { provider, label: CLOUD_PROVIDER_LABEL[provider], readAt, zones, note: null, error: null };
+}
+
+function cloudIncident(over: Partial<CloudIncident>): CloudIncident {
+  return { id: `c${Math.random()}`, provider: 'ovhcloud', title: '[RBX4] incident', zones: ['RBX4'], state: 'en-cours', impact: 'minor', start: '2026-10-08T18:00:00.000Z', updatedAt: null, url: null, ...over };
+}
+
+function cloud(providers: CloudProviderState[], incidents: CloudIncident[] = [], over: Partial<CloudOutagesResponse> = {}): CloudOutagesResponse {
+  return { readAt: '2026-10-08T19:50:00.000Z', providers, incidents, maintenances: [], elsewhere: [], reference: { generatedAt: null, datacenters: [], exchanges: [] }, errors: [], ...over };
+}
+
+describe('Cloud : pastille', () => {
+  it('noms des sept fournisseurs', () => {
+    expect(Object.values(CLOUD_PROVIDER_LABEL)).toEqual(['OVHcloud', 'Scaleway', 'Cloudflare', 'Google Cloud', 'AWS', 'Outscale', 'Azure']);
+  });
+  it('aucun fournisseur lu (ni lecture ni zone) : null, jamais vert', () => {
+    expect(cloudLevel(cloud([cloudProvider('ovhcloud', [], null), cloudProvider('azure', [], null)]))).toBeNull();
+  });
+  it('un fournisseur lu, rien à signaler : vert', () => {
+    expect(cloudLevel(cloud([cloudProvider('scaleway', [cloudZone('operational', 'fr-par-1')])]))).toBe('vert');
+  });
+  it('incident « surveillé » seul : vert (listé, non compté)', () => {
+    expect(cloudLevel(cloud([cloudProvider('ovhcloud', [cloudZone('operational')])], [cloudIncident({ state: 'surveille', impact: 'critical' })]))).toBe('vert');
+  });
+  it('incident en cours : jaune (minor), orange (major), rouge (critical)', () => {
+    const providers = [cloudProvider('ovhcloud', [cloudZone('operational')])];
+    expect(cloudLevel(cloud(providers, [cloudIncident({ impact: 'minor' })]))).toBe('jaune');
+    expect(cloudLevel(cloud(providers, [cloudIncident({ impact: 'major' })]))).toBe('orange');
+    expect(cloudLevel(cloud(providers, [cloudIncident({ impact: 'critical' })]))).toBe('rouge');
+  });
+  it('zone dégradée : jaune ; panne partielle : orange ; panne majeure : rouge ; le plus grave l’emporte', () => {
+    expect(cloudLevel(cloud([cloudProvider('ovhcloud', [cloudZone('degraded')])]))).toBe('jaune');
+    expect(cloudLevel(cloud([cloudProvider('ovhcloud', [cloudZone('partial')])]))).toBe('orange');
+    expect(cloudLevel(cloud([cloudProvider('ovhcloud', [cloudZone('partial')]), cloudProvider('aws', [cloudZone('major', 'eu-west-3')])]))).toBe('rouge');
+  });
+  it('maintenance ou zone inconnue : vert (ni panne ni état connu)', () => {
+    expect(cloudLevel(cloud([cloudProvider('scaleway', [cloudZone('maintenance', 'DC1'), cloudZone('unknown', 'fr-par-2')])]))).toBe('vert');
+  });
+  it('P2 : un incident « ailleurs » (hors France) ne colore pas', () => {
+    expect(cloudLevel(cloud([cloudProvider('ovhcloud', [cloudZone('operational')])], [], { elsewhere: [cloudIncident({ impact: 'critical', zones: [] })] }))).toBe('vert');
   });
 });

@@ -1,6 +1,6 @@
 // src/services/outages-levels.ts : module pur des panneaux Pannes réseau (spec 2026-10-08 panneaux pannes § 1, § 2) : sources et
 // retards (S2), seuils partagés avec la situation « Perturbation télécom », niveaux des panneaux. Aucun accès réseau ni DOM.
-import type { EcowattSignal, InternetOutagesResponse, InternetScope, PowerOutagesResponse, RadarItem, TelecomOutagesResponse } from '../types/index.ts';
+import type { CloudIncident, CloudOutagesResponse, CloudProvider, CloudStatus, EcowattSignal, InternetOutagesResponse, InternetScope, PowerOutagesResponse, RadarItem, TelecomOutagesResponse } from '../types/index.ts';
 import { parisDayOf } from './environment-levels.ts';
 import { fleetLevel } from './nuclear-fleet.ts';
 import { parisHour } from './traffic-levels.ts';
@@ -135,4 +135,25 @@ export function internetLevel(r: InternetOutagesResponse, now: number): Vigilanc
   const depts = live.filter((p) => p.scope === 'departement').length;
   if (live.some((p) => p.scope === 'operateur' || p.source === 'radar') || depts >= 3) return 'orange';
   return depts > 0 ? 'jaune' : 'vert';
+}
+
+/** Noms des sept fournisseurs (même table que le collecteur, api/_lib/outages-cloud.js : le client n'importe pas api/). */
+export const CLOUD_PROVIDER_LABEL: Readonly<Record<CloudProvider, string>> = {
+  ovhcloud: 'OVHcloud', scaleway: 'Scaleway', cloudflare: 'Cloudflare', gcp: 'Google Cloud', aws: 'AWS', outscale: 'Outscale', azure: 'Azure',
+};
+const IMPACT_LEVEL: Readonly<Record<CloudIncident['impact'], VigilanceLevel>> = { none: 'jaune', minor: 'jaune', major: 'orange', critical: 'rouge' };
+const ZONE_LEVEL: Partial<Readonly<Record<CloudStatus, VigilanceLevel>>> = { degraded: 'jaune', partial: 'orange', major: 'rouge' };
+
+/**
+ * Pastille Cloud : incidents en cours touchant la France (impact) et zones françaises (statut) ; maintenance et « surveillé » ne colorent pas,
+ * pas plus que les incidents « ailleurs » (statut mondial, P2). null si aucun fournisseur n'a été lu. Le retard (lecture + 2 h par fournisseur)
+ * est jugé par la vue, qui retire alors la couleur.
+ */
+export function cloudLevel(r: CloudOutagesResponse): VigilanceLevel | null {
+  if (r.providers.every((p) => p.readAt === null && p.zones.length === 0)) return null;
+  const levels: VigilanceLevel[] = [
+    ...r.incidents.filter((i) => i.state === 'en-cours').map((i) => IMPACT_LEVEL[i.impact]),
+    ...r.providers.flatMap((p) => p.zones).map((z) => ZONE_LEVEL[z.status]).filter((l): l is VigilanceLevel => l !== undefined),
+  ];
+  return levels.reduce<VigilanceLevel>((max, l) => (LEVEL_RANK[l] > LEVEL_RANK[max] ? l : max), 'vert');
 }
