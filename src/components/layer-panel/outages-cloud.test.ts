@@ -46,6 +46,9 @@ describe('vue Cloud (jeu d’essai du 08/10)', () => {
     expect(v.head.status).toEqual([`pages d’état lues à 21${NBSP}h${NBSP}50`]);
     expect(html()).toContain('lp-lvl--jaune');
   });
+  it('méthode : Equinix nommé, sans remplaçant (page d’état illisible, HTTP 403), non suivi (spec § 3.3)', () => {
+    expect(sectionText({}, 'methode')).toContain('Equinix ne publie pas de page d’état lisible (HTTP 403) : non suivi.');
+  });
   it('sections dans l’ordre, avec leur contenu', () => {
     expect(view().sections.map((s) => s.id)).toEqual(['incidents', 'fournisseurs', 'maintenances', 'ailleurs', 'referentiel', 'methode']);
     const inc = sectionText({}, 'incidents');

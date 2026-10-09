@@ -398,15 +398,25 @@ lecture seule ; aucune autre clé n'est nécessaire pour les pannes réseau.
    `~/.ssh/francemonitor_oracle`, surchargeables par `FM_VM_HOST` et `FM_VM_KEY`.
    `ssh` tourne en `BatchMode=yes` et `sudo` sans terminal : sans clé valable ou
    sans sudo sans mot de passe, le script échoue sans rien changer.
-4. **Vérifier** :
+4. **Vérifier** directement auprès de `fm-api` sur la VM (même adresse locale que
+   les contrôles de santé de `fm-deploy`, `127.0.0.1:3000`), ce qui contourne
+   seulement le cache de Cloudflare ; la route et ses sources sont lues comme
+   d'habitude :
 
    ```bash
-   curl -s https://www.francemonitor.com/api/outages/internet | jq '.radar.configured, .errors'
+   ssh -i ~/.ssh/francemonitor_oracle ubuntu@141.145.223.156 \
+     'curl -s http://127.0.0.1:3000/api/outages/internet' | jq '.radar.configured, .errors'
    ```
 
-   Attendu : `true`, puis, après la relève suivante (Radar est relu toutes les
-   15 min), aucune erreur commençant par « Cloudflare Radar : ». Un « HTTP 403 »
-   signale un droit manquant sur le jeton.
+   Attendu : `true` dès le redémarrage, puis, après la relève suivante (Radar est
+   relu toutes les 15 min), aucune erreur commençant par « Cloudflare Radar : ».
+   Un « HTTP 403 » signale un droit manquant sur le jeton.
+
+   Par le domaine public
+   (`curl -s https://www.francemonitor.com/api/outages/internet | jq …`), la
+   réponse peut venir du cache de Cloudflare (`s-maxage=300`,
+   `stale-while-revalidate=900`) : elle peut encore dire `false` jusqu'à
+   20 min environ après la pose, sans que la pose ait échoué.
 
 **Retirer le jeton** : supprimer la ligne `CLOUDFLARE_RADAR_TOKEN=` de
 `/etc/francemonitor/francemonitor.env` sur la VM, puis

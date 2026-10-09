@@ -186,6 +186,9 @@ describe('retraits de la phase B (spec 2026-10-08 § 3.3)', () => {
     expect(section).not.toMatch(/temps réel/i);
     expect(section).toContain('pbpaste | bash deploy/oracle/set-radar-token.sh');
     expect(section).toContain('.radar.configured');
+    // Vérification hors cache CDN : fm-api interrogé sur la VM ; le cache du domaine public est nommé.
+    expect(section).toContain("'curl -s http://127.0.0.1:3000/api/outages/internet'");
+    expect(section).toContain('s-maxage=300');
     expect(section).not.toContain('\u2014');
     expect(read('deploy/oracle/francemonitor.env.example')).toMatch(/Posé par deploy\/oracle\/set-radar-token\.sh/);
   });

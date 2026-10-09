@@ -145,6 +145,7 @@ function methodSection(): string {
     + note('« En cours » : incident en investigation ou identifié, compté. « Surveillé » : correctif posé, en observation, listé et non compté.')
     + note(`Un fournisseur dont la dernière lecture date de plus de 2${NBSP}h est grisé, marqué « (en retard) » et n’est plus compté.`)
     + note('Azure ne publie aucun état par région France : il n’apparaît qu’en note.')
+    + note('Equinix ne publie pas de page d’état lisible (HTTP 403) : non suivi.')
     + `<p class="fmk-note">${PAGES.map(([label, href]) => sourceLinkHtml(label, href)).join(' · ')}</p>`;
 }
 
