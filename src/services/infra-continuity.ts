@@ -38,7 +38,7 @@ const LABELS: Record<InfraKey, Record<'fr' | 'en', string>> = {
   nuclear: { fr: 'Nucléaire (RTE)', en: 'Nuclear (RTE)' },
   wind: { fr: 'Éolien (éCO2mix)', en: 'Wind (éCO2mix)' },
   telecom: { fr: 'Télécom (ARCEP)', en: 'Telecom (ARCEP)' },
-  cloud: { fr: 'Cloud / Web', en: 'Cloud / Web' },
+  cloud: { fr: 'Cloud (zones France)', en: 'Cloud (France zones)' },
   space: { fr: 'Météo spatiale', en: 'Space weather' },
   cyber: { fr: 'Résilience cyber infra', en: 'Infra cyber resilience' },
 };

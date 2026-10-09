@@ -414,7 +414,7 @@ export class BarometerWidget {
       ['Nucléaire (RTE)',       this.currentNuclear?.score ?? null],
       ['Éolien (éCO2mix)',      windScore],
       ['Telecom ARCEP',         details.telecom ?? null],
-      ['Cloud / Web',           details.cloud  ?? null],
+      ['Cloud (zones France)',  details.cloud  ?? null],
       ['Météo Spatiale',        details.space  ?? null],
       ['Résilience cyber infra', details.cyber  ?? null, 'cyber'],
     ];
