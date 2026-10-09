@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CLOUD_NO_INCIDENT_TEXT, CLOUD_PROVIDER_LABEL, CLOUD_STATUS_WORD, OUTAGES_LATE_AFTER_MIN, TELECOM_DISRUPTION_THRESHOLDS, cloudLevel, cloudLive, internetLevel, internetLive, internetSignalWord, isArcepFileLate, isDeducedZone, isOutagesDataLate, powerLevel, powerUnplannedMw,
+  CLOUD_NO_INCIDENT_TEXT, CLOUD_PROVIDER_LABEL, CLOUD_STATUS_WORD, OUTAGES_LATE_AFTER_MIN, TELECOM_DISRUPTION_THRESHOLDS, cloudLevel, cloudLive, internetLevel, internetLive, internetPlaceLevel, internetSignalWord, isArcepFileLate, isDeducedZone, isOutagesDataLate, powerLevel, powerUnplannedMw,
   telecomIfFresh, telecomLevel,
 } from './outages-levels.ts';
 import { outagesSlotStatus } from './outages-source.ts';
@@ -157,7 +157,7 @@ describe('Internet : lieux en cours et pastille', () => {
   });
   it('P13 : deux événements (bgp et ping-slash24) sur la Creuse comptent un seul lieu', () => {
     const r = internet([event({ signal: 'bgp' }), event({ signal: 'ping-slash24' })]);
-    expect(internetLive(r, NOW)).toEqual([{ key: 'dept:23', scope: 'departement', label: 'Creuse', dept: '23', asn: null, source: 'ioda' }]);
+    expect(internetLive(r, NOW)).toEqual([{ key: 'dept:23', scope: 'departement', label: 'Creuse', dept: '23', asn: null, source: 'ioda', radarKind: null }]);
   });
   it('P13 : une anomalie Radar d’un ASN déjà en cours chez IODA n’ajoute rien ; un ASN absent d’IODA s’ajoute', () => {
     const orange = event({ scope: 'operateur', dept: null, asn: 3215, label: 'Orange (AS3215)' });
@@ -176,11 +176,26 @@ describe('Internet : lieux en cours et pastille', () => {
     expect(internetLevel(internet([], [radarItem({ label: 'France Télécom (AS5511)', asn: 5511 })]), NOW)).toBe('orange');
     // Un événement IODA départemental nommé « France » ne rend pas rouge.
     expect(internetLevel(internet([event({ label: 'France' })]), NOW)).toBe('jaune');
-    // Anomalie Radar sans ASN (portée pays) : national, quel que soit son libellé.
-    expect(internetLevel(internet([], [radarItem({ asn: null, label: 'Pays', national: true })]), NOW)).toBe('rouge');
+    // Anomalie Radar sans ASN (portée pays) : lieu national quel que soit son libellé, mais orange (règle Radar ci-dessous).
+    expect(internetLive(internet([], [radarItem({ asn: null, label: 'Pays', national: true })]), NOW).map((p) => p.scope)).toEqual(['national']);
+  });
+  it('règle Radar (spec § 3.1) : une anomalie de trafic nationale n’est jamais rouge (orange au plus) ; seule une panne NATIONWIDE de la France seule est rouge', () => {
+    const anomaly = radarItem({ kind: 'anomalie', asn: null, label: 'France', national: true, verified: true });
+    expect(internetLevel(internet([], [anomaly]), NOW)).toBe('orange');
+    expect(internetLevel(internet([], [{ ...anomaly, verified: false }]), NOW)).toBe('orange');
+    const [place] = internetLive(internet([], [anomaly]), NOW);
+    expect(internetPlaceLevel(place)).toBe('orange');
+    const outage = radarItem({ kind: 'panne', label: 'France', asn: null, outageType: 'nationale', national: true });
+    expect(internetLevel(internet([], [outage]), NOW)).toBe('rouge');
+    expect(internetPlaceLevel(internetLive(internet([], [outage]), NOW)[0])).toBe('rouge');
+    // Un événement IODA national reste rouge, même si Radar voit aussi une anomalie nationale (IODA prime au dédoublonnage).
+    expect(internetLevel(internet([event({ scope: 'national', dept: null, label: 'France' })], [anomaly]), NOW)).toBe('rouge');
+    // Portées : opérateur orange, département jaune, lieu non localisé orange.
+    expect(internetPlaceLevel(internetLive(internet([event({})]), NOW)[0])).toBe('jaune');
+    expect(internetPlaceLevel(internetLive(internet([], [radarItem({})]), NOW)[0])).toBe('orange');
   });
   it('P14 : Radar en retard (lecture de plus d’une heure) ou jamais lu est ignoré', () => {
-    const items = [radarItem({ asn: null, label: 'France', national: true })];
+    const items = [radarItem({ kind: 'panne', asn: null, label: 'France', outageType: 'nationale', national: true })];
     expect(internetLevel(internet([], items), NOW)).toBe('rouge');
     expect(internetLevel(internet([], items, { radar: { configured: true, readAt: '2026-10-08T19:29:00.000Z', items } }), NOW)).toBe('vert');
     expect(internetLevel(internet([], items, { radar: { configured: true, readAt: null, items } }), NOW)).toBe('vert');

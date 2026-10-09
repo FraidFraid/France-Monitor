@@ -91,13 +91,26 @@ export interface InternetLivePlace {
   asn: number | null;
   /** Source qui a fait entrer le lieu ; IODA prime quand les deux le disent. */
   source: 'ioda' | 'radar';
+  /** Nature de l'élément Radar qui a fait entrer le lieu (anomalie de trafic ou panne annotée), null pour IODA. */
+  radarKind: RadarItem['kind'] | null;
 }
 
 /** Élément Radar en cours : national par sa portée structurée (`national`), jamais par son libellé ni par un texte affiché (P29). */
 export function radarPlace(item: RadarItem): InternetLivePlace {
-  if (item.national) return { key: 'national', scope: 'national', label: item.label, dept: null, asn: null, source: 'radar' };
-  if (item.asn !== null) return { key: `asn:${item.asn}`, scope: 'operateur', label: item.label, dept: null, asn: item.asn, source: 'radar' };
-  return { key: `radar:${item.id}`, scope: 'inconnu', label: item.label, dept: null, asn: null, source: 'radar' };
+  const base = { label: item.label, dept: null, source: 'radar' as const, radarKind: item.kind };
+  if (item.national) return { ...base, key: 'national', scope: 'national', asn: null };
+  if (item.asn !== null) return { ...base, key: `asn:${item.asn}`, scope: 'operateur', asn: item.asn };
+  return { ...base, key: `radar:${item.id}`, scope: 'inconnu', asn: null };
+}
+
+/**
+ * Niveau d'un lieu en cours : rouge pour le pays entier, sauf une anomalie de trafic Cloudflare Radar, jamais plus qu'orange (spec § 3.1 ;
+ * seule une panne annotée NATIONWIDE de la France seule est rouge, R40) ; orange pour un opérateur ou un lieu non localisé ; jaune pour
+ * un département. Pastille et lignes du panneau lisent cette seule règle.
+ */
+export function internetPlaceLevel(p: InternetLivePlace): VigilanceLevel {
+  if (p.scope === 'national') return p.radarKind === 'anomalie' ? 'orange' : 'rouge';
+  return p.scope === 'departement' ? 'jaune' : 'orange';
 }
 
 /**
@@ -109,9 +122,10 @@ export function internetLive(r: InternetOutagesResponse, now: number): InternetL
   const places = new Map<string, InternetLivePlace>();
   for (const e of r.events) {
     if (!e.ongoing || e.staleOpen) continue;
-    if (e.scope === 'national') places.set('national', { key: 'national', scope: 'national', label: e.label, dept: null, asn: null, source: 'ioda' });
-    else if (e.scope === 'departement' && e.dept !== null) places.set(`dept:${e.dept}`, { key: `dept:${e.dept}`, scope: 'departement', label: e.label, dept: e.dept, asn: null, source: 'ioda' });
-    else if (e.scope === 'operateur' && e.asn !== null) places.set(`asn:${e.asn}`, { key: `asn:${e.asn}`, scope: 'operateur', label: e.label, dept: null, asn: e.asn, source: 'ioda' });
+    const ioda = { label: e.label, source: 'ioda' as const, radarKind: null };
+    if (e.scope === 'national') places.set('national', { ...ioda, key: 'national', scope: 'national', dept: null, asn: null });
+    else if (e.scope === 'departement' && e.dept !== null) places.set(`dept:${e.dept}`, { ...ioda, key: `dept:${e.dept}`, scope: 'departement', dept: e.dept, asn: null });
+    else if (e.scope === 'operateur' && e.asn !== null) places.set(`asn:${e.asn}`, { ...ioda, key: `asn:${e.asn}`, scope: 'operateur', dept: null, asn: e.asn });
   }
   if (!isOutagesDataLate('radar', r.radar.readAt, now)) {
     for (const item of r.radar.items) {
@@ -124,16 +138,16 @@ export function internetLive(r: InternetOutagesResponse, now: number): InternetL
 }
 
 /**
- * Pastille Internet sur les lieux en cours (internetLive) : rouge si le pays entier, orange pour un opérateur, une panne Radar ou
- * trois départements, jaune pour un ou deux départements, vert sinon ; null sans lecture IODA réussie ou si elle est en retard
- * (jamais « vert » ni une couleur d'événements figés sur une source muette).
+ * Pastille Internet sur les lieux en cours (internetLive) : rouge si le pays entier (jamais pour une anomalie de trafic Radar :
+ * internetPlaceLevel), orange pour un opérateur, un élément Radar ou trois départements, jaune pour un ou deux départements, vert sinon ;
+ * null sans lecture IODA réussie ou si elle est en retard (jamais « vert » ni une couleur d'événements figés sur une source muette).
  */
 export function internetLevel(r: InternetOutagesResponse, now: number): VigilanceLevel | null {
   if (isOutagesDataLate('ioda', r.iodaReadAt, now)) return null;
   const live = internetLive(r, now);
-  if (live.some((p) => p.scope === 'national')) return 'rouge';
+  if (live.some((p) => internetPlaceLevel(p) === 'rouge')) return 'rouge';
   const depts = live.filter((p) => p.scope === 'departement').length;
-  if (live.some((p) => p.scope === 'operateur' || p.source === 'radar') || depts >= 3) return 'orange';
+  if (live.some((p) => internetPlaceLevel(p) === 'orange' || p.source === 'radar') || depts >= 3) return 'orange';
   return depts > 0 ? 'jaune' : 'vert';
 }
 
