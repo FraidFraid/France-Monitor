@@ -96,7 +96,7 @@ export interface V2SwitcherLayout {
  * v2 : repli des puces selon la place réelle (aucun repli « par défaut » : le libellé reste visible).
  * - ordinateur (≥ 1101 px) : le tiroir ouvert recouvre le bord gauche de la carte et lui retire sa place ;
  * - tablette (769 à 1100 px) : le tiroir est une colonne à part, la largeur de la carte l'exclut déjà ;
- * - mobile (≤ 768 px) : en bas à droite ; icône seule seulement si la rangée avec libellés ne tient pas.
+ * - mobile (≤ 768 px) : en bas à droite, icône seule toujours (taille mobile d'origine, une seule rangée).
  * @param viewportWidth  largeur de la fenêtre
  * @param mapWidth       largeur de la zone carte (0 si masquée)
  * @param drawerOpen     tiroir Couches ouvert
@@ -104,7 +104,7 @@ export interface V2SwitcherLayout {
  */
 export function v2SwitcherLayout(viewportWidth: number, mapWidth: number, drawerOpen: boolean, oneRowWidth: number): V2SwitcherLayout {
   if (viewportWidth <= V2_MOBILE_MAX_PX) {
-    return { iconOnly: oneRowWidth > mapWidth - V2_SIDE_MARGINS_PX, belowControls: false };
+    return { iconOnly: true, belowControls: false };
   }
   const drawerOverMap = drawerOpen && viewportWidth >= V2_DESKTOP_MIN_PX;
   const room = mapWidth - (drawerOverMap ? V2_DRAWER_PX : 0) - V2_SIDE_MARGINS_PX;

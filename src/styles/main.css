@@ -7909,7 +7909,7 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
    Seul le placement dépend de la largeur, plus bas. Vert de la marque (#4bfc94 : « Monitor » du logo,
    bouton de langue actif), distinct du vert de vigilance (#34c759) ; surfaces sombres. Libellé toujours
    visible au-dessus de 768 px ; l'icône seule (.is-icon-only, posée par App.layoutFloatingPanelSwitcher)
-   n'apparaît que faute de place réelle. */
+   n'apparaît que faute de place réelle. Sous 769 px : icône seule toujours, à la taille mobile d'origine. */
 #app.ui-v2 { --v2-brand: #4bfc94; --v2-brand-rgb: 75, 252, 148; --v2-drawer-w: 300px; }
 #app.ui-v2 .floating-panel-switcher {
   flex-wrap: wrap;
@@ -7920,8 +7920,6 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 /* Jamais de débordement : une puce ne dépasse pas la rangée, son libellé se coupe en « … ». */
 #app.ui-v2 .floating-panel-switcher__chip { min-width: 0; max-width: 100%; }
 #app.ui-v2 .floating-panel-switcher__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-/* Libellé visible, y compris sur mobile (la règle v1 le masque sous 769 px) ; seule l'icône seule le retire. */
-#app.ui-v2 .floating-panel-switcher:not(.is-icon-only) .floating-panel-switcher__label { display: block; }
 /* Place trop juste : icône seule, le nom reste en infobulle. */
 #app.ui-v2 .floating-panel-switcher.is-icon-only .floating-panel-switcher__chip {
   width: 36px; padding: 0; justify-content: center;
@@ -7969,6 +7967,8 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
    (≈ 165 px, en haut à droite). Sous 769 px, le placement mobile de la règle v1 (en bas à droite,
    au-dessus du bouton Légende) est conservé. */
 @media (min-width: 769px) {
+  /* Libellé visible (la règle v1 le masque sous 769 px) ; seule l'icône seule le retire. */
+  #app.ui-v2 .floating-panel-switcher:not(.is-icon-only) .floating-panel-switcher__label { display: block; }
   #app.ui-v2 .floating-panel-switcher {
     top: 12px;
     left: 12px;
@@ -7979,6 +7979,26 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
   /* Pas la place sur une rangée à côté de Carte | Satellite (classe posée par
      App.layoutFloatingPanelSwitcher) : les puces passent dessous et prennent toute la largeur libre. */
   #app.ui-v2 .floating-panel-switcher.is-below-controls { top: 60px; max-width: calc(100% - 24px); }
+}
+/* Mobile (≤ 768 px) : taille d'origine de la rangée (28 px, icône seule, une ligne au-dessus du bouton Légende),
+   avec les couleurs vertes v2 et un halo réduit à l'échelle. */
+@media (max-width: 768px) {
+  #app.ui-v2 .floating-panel-switcher { gap: 6px; flex-wrap: nowrap; }
+  #app.ui-v2 .floating-panel-switcher .floating-panel-switcher__chip,
+  #app.ui-v2 .floating-panel-switcher.is-icon-only .floating-panel-switcher__chip {
+    width: auto;
+    height: 28px;
+    padding: 0 10px;
+    gap: 6px;
+    border-radius: 14px;
+    font-size: 11px;
+    box-shadow: 0 0 0 1px rgba(var(--v2-brand-rgb), 0.14), 0 0 10px rgba(var(--v2-brand-rgb), 0.3), 0 2px 6px rgba(0, 0, 0, 0.45);
+  }
+  #app.ui-v2 .floating-panel-switcher .floating-panel-switcher__chip.is-active,
+  #app.ui-v2 .floating-panel-switcher .floating-panel-switcher__chip.is-active:hover {
+    box-shadow: 0 0 0 2px rgba(var(--v2-brand-rgb), 0.3), 0 0 14px rgba(var(--v2-brand-rgb), 0.6), 0 2px 6px rgba(0, 0, 0, 0.45);
+  }
+  #app.ui-v2 .floating-panel-switcher__icon svg { width: 12px; height: 12px; }
 }
 /* Ordinateur (≥ 1101 px) : le tiroir Couches ouvert recouvre le bord gauche de la carte ; les puces se
    placent à sa droite, à la même hauteur. En tablette (≤ 1100 px) le tiroir est une colonne à part, hors de la carte. */

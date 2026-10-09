@@ -99,9 +99,10 @@ describe('v2SwitcherLayout : repli selon la place réelle, libellé gardé sinon
     expect(v2SwitcherLayout(800, 170, false, ROW).iconOnly).toBe(true);
   });
 
-  it('mobile (≤ 768 px) : libellés si la rangée tient, sinon icône seule ; jamais sous les contrôles', () => {
-    expect(v2SwitcherLayout(390, 390, false, 300)).toEqual({ iconOnly: false, belowControls: false });
+  it('mobile (≤ 768 px) : icône seule toujours, quelle que soit la largeur de la rangée ; jamais sous les contrôles', () => {
+    expect(v2SwitcherLayout(390, 390, false, 300)).toEqual({ iconOnly: true, belowControls: false });
     expect(v2SwitcherLayout(390, 390, false, ROW)).toEqual({ iconOnly: true, belowControls: false });
+    expect(v2SwitcherLayout(768, 500, true, 100)).toEqual({ iconOnly: true, belowControls: false });
   });
 });
 

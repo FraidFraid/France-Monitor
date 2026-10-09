@@ -85,8 +85,27 @@ describe('barre « Panneaux ouverts » de la carte', () => {
     // Aucun @media de largeur ne porte l'apparence des puces ; seuls le placement et le mouvement réduit y restent.
     for (const block of media) {
       if (!block.includes('.floating-panel-switcher')) continue;
+      // Le bloc mobile (≤ 768 px) ne fait que ramener la taille à celle d'origine et réduire le halo, couleurs gardées.
+      if (/^@media \(max-width: 768px\)/.test(block)) continue;
       expect(block).not.toMatch(/--v2-brand|background:|border:|box-shadow:|border-radius:|font-size:/);
     }
     expect(css).not.toMatch(/@media \(min-width: 1101px\)\s*\{\s*#app\.ui-v2 \.floating-panel-switcher__chip/);
+  });
+
+  it('v2 : sous 769 px le libellé reste caché (règle d\u2019affichage dans @media (min-width: 769px) seulement)', () => {
+    const show = '#app.ui-v2 .floating-panel-switcher:not(.is-icon-only) .floating-panel-switcher__label { display: block; }';
+    expect(css.split(show).length - 1).toBe(1);
+    const at = css.indexOf(show);
+    const mediaStart = css.lastIndexOf('@media', at);
+    expect(css.slice(mediaStart, css.indexOf('{', mediaStart))).toContain('(min-width: 769px)');
+    // Taille mobile d'origine : 28 px de haut, rayon 14 px.
+    const mobile = /@media \(max-width: 768px\) \{\s*#app\.ui-v2 \.floating-panel-switcher \{[\s\S]*?\n\}\n/.exec(css.slice(css.indexOf('Mobile (≤ 768 px)')))?.[0] ?? '';
+    expect(mobile).toContain('height: 28px;');
+    expect(mobile).toContain('border-radius: 14px;');
+  });
+
+  it('la variable --map-switcher-offset n\u2019est posée qu\u2019une fois par mise en page', () => {
+    const body = methodBody('layoutFloatingPanelSwitcher');
+    expect(body.split("setProperty('--map-switcher-offset'").length - 1).toBe(1);
   });
 });

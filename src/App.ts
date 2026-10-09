@@ -5222,14 +5222,14 @@ export class App {
         el.classList.add('is-compact');
       }
     }
-    const offset = switcherPanelOffsetPx(el.hidden ? 0 : el.offsetHeight, this.uiV2);
-    document.documentElement.style.setProperty('--map-switcher-offset', `${offset}px`);
+    // Décalage des panneaux de droite sous la barre : v1 d'après sa hauteur, v2 tablette d'après son bas (une seule pose).
+    let offset = switcherPanelOffsetPx(el.hidden ? 0 : el.offsetHeight, this.uiV2);
     if (this.uiV2) {
       // Zone carte masquée (mobile, autre onglet) : rien à mesurer ; l'observateur de taille relance la mise en page à son retour.
       const mapWidth = el.parentElement?.clientWidth ?? 0;
       if (mapWidth > 0 && !el.hidden) {
-        // Le libellé reste visible à toutes les largeurs ; le repli en icônes ne vient que d'un manque
-        // de place réel (v2SwitcherLayout). La largeur d'une rangée se mesure donc sans repli ni plafond.
+        // Le libellé reste visible au-dessus de 768 px ; le repli en icônes ne vient que d'un manque de place
+        // réel (v2SwitcherLayout). La largeur d'une rangée se mesure donc sans repli ni plafond.
         el.classList.remove('is-icon-only');
         el.classList.add('is-measuring');
         const chips = Array.from(el.children) as HTMLElement[];
@@ -5240,12 +5240,10 @@ export class App {
         el.classList.toggle('is-icon-only', layout.iconOnly);
         el.classList.toggle('is-below-controls', layout.belowControls);
         // Tablette : les panneaux de module flottent par-dessus la carte ; ils commencent sous les puces.
-        document.documentElement.style.setProperty(
-          '--map-switcher-offset',
-          `${v2TabletPanelOffsetPx(el.getBoundingClientRect().bottom, window.innerWidth, false)}px`,
-        );
+        offset = v2TabletPanelOffsetPx(el.getBoundingClientRect().bottom, window.innerWidth, false);
       }
     }
+    document.documentElement.style.setProperty('--map-switcher-offset', `${offset}px`);
     this.syncV2ColumnVars();
   }
 
