@@ -1,4 +1,4 @@
-// api/intelligence/v1/synthesis.js — Vercel Edge Function
+// api/intelligence/v1/synthesis.js : Vercel Edge Function
 // POST { scores: NetworkBarometerResult, headlines: string[] }
 // → { briefing: string|null, stabilityImpact: number|null, fromCache: bool, computedAt: string }
 
@@ -77,7 +77,8 @@ Pétrole / carburants France :
 - Départements carburants les plus tendus : ${topDepartments}`;
 }
 
-function buildPrompt(scores, headlines, isnrNationalScore, isnrDepts, nuclear, eolien, oil) {
+/** Invite de la synthèse ; exportée pour les tests. La composante « bgp » vient de RIPEstat (network-barometer.ts normalizeBgp). */
+export function buildPrompt(scores, headlines, isnrNationalScore, isnrDepts, nuclear, eolien, oil) {
   const { details, score, status } = scores;
   const headlineList = headlines.length > 0
     ? headlines.map((h, i) => `${i + 1}. ${h}`).join('\n')
@@ -98,7 +99,7 @@ function buildPrompt(scores, headlines, isnrNationalScore, isnrDepts, nuclear, e
 
 Voici les scores techniques actuels du Baromètre Réseau France :
 - Électricité (Ecowatt) : ${details.elec ?? 'N/A'}/100
-- Internet/BGP (IODA) : ${details.bgp ?? 'N/A'}/100
+- Internet, visibilité BGP des grands réseaux (RIPEstat) : ${details.bgp ?? 'N/A'}/100
 - Télécom (ARCEP) : ${details.telecom ?? 'N/A'}/100
 - Météo Spatiale : ${details.space ?? 'N/A'}/100
 - Cyber (CERT-FR) : ${details.cyber ?? 'N/A'}/100
@@ -152,7 +153,7 @@ export default async function handler(request) {
         headers: { 'Content-Type': 'application/json' },
       });
     } catch {
-      // corrupted cache entry — fall through to AI call
+      // corrupted cache entry : fall through to AI call
     }
   }
 

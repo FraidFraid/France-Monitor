@@ -2,7 +2,7 @@
 import type { Plugin } from 'vite';
 import { GROQ_MODEL, groqModelParams, withReasoningHeadroom } from '../../api/_lib/groq-models.js';
 
-/** Redis key used by the serverless function — kept here to document the contract */
+/** Redis key used by the serverless function : kept here to document the contract */
 export const CACHE_KEY = 'isnr:synthesis:fr';
 const CACHE_TTL = 900;
 const GROQ_URL  = 'https://api.groq.com/openai/v1/chat/completions';
@@ -89,7 +89,7 @@ function buildPrompt(
 
 Voici les scores techniques actuels du Baromètre Réseau France :
 - Électricité (Ecowatt) : ${details['elec'] ?? 'N/A'}/100
-- Internet/BGP (IODA) : ${details['bgp'] ?? 'N/A'}/100
+- Internet, visibilité BGP des grands réseaux (RIPEstat) : ${details['bgp'] ?? 'N/A'}/100
 - Télécom (ARCEP) : ${details['telecom'] ?? 'N/A'}/100
 - Météo Spatiale : ${details['space'] ?? 'N/A'}/100
 - Cyber (CERT-FR) : ${details['cyber'] ?? 'N/A'}/100
