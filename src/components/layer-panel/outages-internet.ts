@@ -57,7 +57,7 @@ function eventsOf(p: InternetLivePlace, events: readonly InternetEvent[]): Inter
   return events.filter((e) => e.ongoing && !e.staleOpen && e.scope === p.scope && e.dept === p.dept && e.asn === p.asn);
 }
 function radarItemOf(p: InternetLivePlace, items: readonly RadarItem[]): RadarItem | undefined {
-  return items.find((i) => i.end === null && radarPlace(i).key === p.key);
+  return items.find((i) => i.end === null && i.kind === p.radarKind && radarPlace(i).key === p.key);
 }
 
 function liveRow(p: InternetLivePlace, r: InternetOutagesResponse, input: InternetViewInput, f: Freshness): string {

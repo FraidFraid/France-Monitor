@@ -194,6 +194,20 @@ describe('Internet : lieux en cours et pastille', () => {
     expect(internetPlaceLevel(internetLive(internet([event({})]), NOW)[0])).toBe('jaune');
     expect(internetPlaceLevel(internetLive(internet([], [radarItem({})]), NOW)[0])).toBe('orange');
   });
+  it('règle Radar : anomalie nationale et panne NATIONWIDE (France seule) en même temps : la panne l’emporte (rouge) dans les deux ordres', () => {
+    const anomaly = radarItem({ kind: 'anomalie', asn: null, label: 'France', national: true, start: '2026-10-08T19:00:00.000Z' });
+    const outage = radarItem({ kind: 'panne', asn: null, label: 'France', outageType: 'nationale', national: true, start: '2026-10-08T18:30:00.000Z' });
+    for (const items of [[anomaly, outage], [outage, anomaly]]) {
+      const r = internet([], items);
+      expect(internetLevel(r, NOW)).toBe('rouge');
+      const live = internetLive(r, NOW);
+      expect(live.map((p) => [p.key, p.radarKind])).toEqual([['national', 'panne']]);
+      expect(internetPlaceLevel(live[0])).toBe('rouge');
+    }
+    // Un événement IODA national reste prioritaire (source IODA), rouge.
+    const withIoda = internetLive(internet([event({ scope: 'national', dept: null, label: 'France' })], [anomaly, outage]), NOW);
+    expect(withIoda.map((p) => [p.key, p.source])).toEqual([['national', 'ioda']]);
+  });
   it('P14 : Radar en retard (lecture de plus d’une heure) ou jamais lu est ignoré', () => {
     const items = [radarItem({ kind: 'panne', asn: null, label: 'France', outageType: 'nationale', national: true })];
     expect(internetLevel(internet([], items), NOW)).toBe('rouge');

@@ -135,6 +135,20 @@ describe('vue Internet (jeu d’essai du 08/10)', () => {
     expect(section(over, 'encours')).not.toContain('fmk-dot--rouge');
     expect(view(over).head.level).toBe('orange');
   });
+  it('règle Radar : anomalie nationale récente et panne NATIONWIDE plus ancienne : ligne « en cours » rouge, dite « panne signalée », pastille rouge', () => {
+    for (const order of ['anomalie-first', 'panne-first']) {
+      const over = withData((r) => {
+        const base = r.radar.items[0];
+        const anomaly = { ...base, id: 'radar-a', kind: 'anomalie' as const, asn: null, label: 'France', national: true, end: null, start: '2026-10-08T19:00:00.000Z' };
+        const outage = { ...base, id: 'radar-p', kind: 'panne' as const, asn: null, label: 'France', national: true, end: null, outageType: 'nationale', start: '2026-10-08T18:30:00.000Z' };
+        r.events = [];
+        r.radar.items = order === 'anomalie-first' ? [anomaly, outage] : [outage, anomaly];
+      });
+      expect(section(over, 'encours'), order).toContain('fmk-dot--rouge');
+      expect(sectionText(over, 'encours'), order).toContain('panne signalée');
+      expect(view(over).head.level, order).toBe('rouge');
+    }
+  });
   it('IODA lu à 18 h UTC, il est 20 h 30 : « (en retard) », n.d., gros chiffre sans couleur, aucune couleur de niveau', () => {
     const over = withData((r) => { r.iodaReadAt = '2026-10-08T18:00:00.000Z'; r.events = [ongoingEvent({})]; });
     const v = view(over);

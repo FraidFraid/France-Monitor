@@ -131,7 +131,10 @@ export function internetLive(r: InternetOutagesResponse, now: number): InternetL
     for (const item of r.radar.items) {
       if (item.end !== null) continue;
       const place = radarPlace(item);
-      if (!places.has(place.key)) places.set(place.key, place);
+      const kept = places.get(place.key);
+      // Même lieu : IODA reste prioritaire ; entre deux éléments Radar, le plus grave (une panne remplace une anomalie), quel que soit
+      // l'ordre des éléments (le serveur les trie du plus récent au plus ancien).
+      if (!kept || (kept.source === 'radar' && kept.radarKind === 'anomalie' && place.radarKind === 'panne')) places.set(place.key, place);
     }
   }
   return [...places.values()];
