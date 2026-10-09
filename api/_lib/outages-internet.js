@@ -3,12 +3,12 @@
 // est écarté du « en cours » (staleOpen : probable recalage de référence). Cloudflare Radar (anomalies de trafic et pannes signalées en
 // France) si CLOUDFLARE_RADAR_TOKEN est posé, sinon « non configuré ». RIPEstat est repris du collecteur Connectivité (relevé gardé en KV,
 // aucune requête en double). Chaque partie a sa cadence : IODA 10 min, Radar 15 min, d'après l'heure de sa dernière lecture RÉUSSIE ;
-// une partie en échec garde ses dernières données, nomme son erreur et est retentée après 5 min (modèle outages-power.js). Dernier relevé
+// une partie en échec garde ses dernières données, nomme son erreur et est retentée après 5 min (outages-parts.js, modèle outages-power.js). Dernier relevé
 // gardé en KV, servi daté. Le jeton n'est ni journalisé, ni servi, ni gardé.
 import { DEPT_NAMES } from '../_shared/departments.js';
 import { deptOfIodaRegion } from './ioda-regions.js';
 import { kvGetJson, kvSetJson } from './kv-history.js';
-import { failed, partDue, succeeded } from './outages-power.js';
+import { failed, partDue, succeeded } from './outages-parts.js';
 import { storedRipe } from './ripestat.js';
 import { fetchStrictJson, sourceError } from './source-http.js';
 

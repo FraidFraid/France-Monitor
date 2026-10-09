@@ -5,6 +5,7 @@
 // Chaque partie a sa cadence : IIP 10 min, EDF 15 min, SEI 30 min, d'après l'heure de sa dernière lecture RÉUSSIE ; une partie en échec
 // garde ses dernières données, nomme son erreur et est retentée après 5 min. Dernier relevé gardé en KV, servi daté.
 import { kvGetJson, kvSetJson } from './kv-history.js';
+import { failed, partDue, succeeded } from './outages-parts.js';
 import { iipDispatcher } from './rte-iip-agent.js';
 import { decodeEntities, fetchStrictJson, fetchStrictXml, sourceError } from './source-http.js';
 
@@ -20,8 +21,6 @@ export const POWER_PENDING_NOTE = 'Électricité : collecte en cours';
 const IIP_INTERVAL_MS = 10 * 60_000;
 const EDF_INTERVAL_MS = 15 * 60_000;
 const SEI_INTERVAL_MS = 30 * 60_000;
-const MINUTE_MS = 60_000;
-const RETRY_MS = 5 * MINUTE_MS;
 const DAY_MS = 86_400_000;
 const LAST_TTL_SEC = 3 * 86_400;
 const EDF_FIELDS = 'identifiant,numero_de_version,nom,filiere,type,cause,status,date_de_debut,date_de_fin,date_de_publication,puissance_maximale_mw,puissance_disponible_mw';
@@ -252,18 +251,6 @@ export function emptyPower(errors = []) {
   return { readAt: null, edfUpdatedAt: null, edfReadAt: null, iipPublishedAt: null, iipReadAt: null, unplanned: [], planned: [], upcoming: [], transmission: null, islands: [], history: [], errors };
 }
 
-/**
- * Une partie est due si elle n'a jamais été lue, si sa dernière lecture RÉUSSIE date de l'intervalle (1 min de tolérance), ou 5 min
- * après un échec (un échec n'avance jamais la date de lecture).
- */
-export function partDue(part, interval, now) {
-  if (!part) return true;
-  const failed = part.failedAt ? Date.parse(part.failedAt) : Number.NaN;
-  if (Number.isFinite(failed)) return now - failed >= RETRY_MS;
-  const read = part.readAt ? Date.parse(part.readAt) : Number.NaN;
-  return !Number.isFinite(read) || now - read >= interval - MINUTE_MS;
-}
-
 const anyDue = (parts, now) => partDue(parts.edf, EDF_INTERVAL_MS, now) || partDue(parts.iip, IIP_INTERVAL_MS, now) || partDue(parts.sei, SEI_INTERVAL_MS, now);
 
 /** EDF : lignes en cours et à venir, date du jeu, courbe de 30 jours. Lève si une des trois requêtes échoue. */
@@ -315,14 +302,6 @@ async function readSei(now, previous) {
     }
   }
   return { signals, errors };
-}
-
-/** Partie après une tentative : réussie (lecture avancée, erreur effacée) ou en échec (données gardées, `failedAt` posé, `readAt` inchangé). */
-export function succeeded(data, attemptedAt) {
-  return { ...data, readAt: attemptedAt, failedAt: null, error: null };
-}
-export function failed(previous, empty, message, attemptedAt) {
-  return { ...(previous ?? empty), failedAt: attemptedAt, error: message };
 }
 
 /** Une collecte : chaque partie relue si elle est due ; une partie en panne garde ses dernières données et nomme son erreur. */
