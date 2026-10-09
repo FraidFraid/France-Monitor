@@ -179,13 +179,20 @@ function methodSection(): string {
     + `<p class="fmk-note">${sourceLinkHtml('IODA (Georgia Tech)', IODA_URL)} · ${sourceLinkHtml('Cloudflare Radar', RADAR_URL)} · ${sourceLinkHtml('RIPEstat', RIPE_URL)}</p>`;
 }
 
+/** Phrase « aucune anomalie » : Cloudflare Radar n'y est cité que s'il est configuré, lu et à jour (celui qui compte dans internetLive) ; sinon sa source muette est dite (l'erreur nommée est déjà affichée ailleurs). */
+function noneSentence(r: InternetOutagesResponse, f: Freshness): string {
+  const radarCounts = r.radar.configured && r.radar.readAt !== null && !f.radarLate;
+  if (radarCounts) return 'Aucune anomalie en cours vue par IODA ni Cloudflare Radar.';
+  return `Aucune anomalie en cours vue par IODA. ${r.radar.configured ? 'Cloudflare Radar n.d.' : 'Cloudflare Radar non configuré.'}`;
+}
+
 function sections(r: InternetOutagesResponse, input: InternetViewInput, f: Freshness, readAt: number): FicheSection[] {
   const { now, open } = input;
   const live = internetLive(r, now);
   const lines = live.map((p) => liveRow(p, r, input, f)).join('');
   const none = f.iodaLate
     ? emptyLine('Anomalies en cours n.d. : lecture IODA en retard.')
-    : emptyLine('Aucune anomalie en cours vue par IODA ni Cloudflare Radar.') + note('Une absence d’anomalie n’est pas une absence de panne.');
+    : emptyLine(noneSentence(r, f)) + note('Une absence d’anomalie n’est pas une absence de panne.');
   const recent = recentRows(r, f, readAt);
   return [
     { id: 'encours', title: 'Anomalies en cours', collapsible: true, open: open('encours', true), summary: escapeHtml(f.iodaLate ? 'n.d.' : frNumber(live.length, 0)), html: (lines || none) + setAsideRows(r, now) },

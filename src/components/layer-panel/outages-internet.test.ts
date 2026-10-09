@@ -276,4 +276,17 @@ describe('hygiène du rendu', () => {
     expect(sectionText(over, 'encours')).not.toMatch(/aucune anomalie/i);
     expect(sectionText(withData((r) => { r.events = []; r.radar.items = []; }), 'encours')).toContain('Aucune anomalie en cours vue par IODA ni Cloudflare Radar.');
   });
+  it('aucune anomalie : Radar n’est cité que lu et à jour ; sinon la source muette est dite (non configuré, n.d.), jamais affirmée', () => {
+    const ok = sectionText(withData((r) => { r.events = []; r.radar.items = []; }), 'encours');
+    expect(ok).toContain('Aucune anomalie en cours vue par IODA ni Cloudflare Radar.');
+    const unconfigured = sectionText(withData((r) => { r.events = []; r.radar = { configured: false, readAt: null, items: [] }; }), 'encours');
+    expect(unconfigured).toContain('Aucune anomalie en cours vue par IODA. Cloudflare Radar non configuré.');
+    expect(unconfigured).not.toContain('ni Cloudflare Radar');
+    const failed = sectionText(withData((r) => {
+      r.events = []; r.radar = { configured: true, readAt: null, items: [] }; r.errors = ['Cloudflare Radar : HTTP 400'];
+    }), 'encours');
+    expect(failed).toContain('Aucune anomalie en cours vue par IODA. Cloudflare Radar n.d.');
+    expect(failed).not.toContain('ni Cloudflare Radar');
+    expect(failed).not.toContain('HTTP 400');
+  });
 });
