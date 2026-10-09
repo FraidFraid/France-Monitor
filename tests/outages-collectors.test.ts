@@ -4,11 +4,12 @@ import { OUTAGES_COLLECTORS } from '../server/prod/outages-collectors.mjs';
 import { ensureTelecomFresh } from '../api/_lib/outages-telecom.js';
 import { ensurePowerFresh } from '../api/_lib/outages-power.js';
 import { ensureInternetFresh } from '../api/_lib/outages-internet.js';
+import { ensureCloudFresh } from '../api/_lib/outages-cloud.js';
 
 describe('collecteurs Pannes réseau', () => {
-  it('Télécoms, Électricité et Internet, mêmes fonctions que les routes', () => {
-    expect(OUTAGES_COLLECTORS.map((c) => c.name)).toEqual(['outages-telecom', 'outages-power', 'outages-internet']);
-    expect(OUTAGES_COLLECTORS.map((c) => c.run)).toEqual([ensureTelecomFresh, ensurePowerFresh, ensureInternetFresh]);
+  it('Télécoms, Électricité, Internet et Cloud, mêmes fonctions que les routes', () => {
+    expect(OUTAGES_COLLECTORS.map((c) => c.name)).toEqual(['outages-telecom', 'outages-power', 'outages-internet', 'outages-cloud']);
+    expect(OUTAGES_COLLECTORS.map((c) => c.run)).toEqual([ensureTelecomFresh, ensurePowerFresh, ensureInternetFresh, ensureCloudFresh]);
   });
   it('le serveur de production les lance avec les autres', () => {
     const server = readFileSync(new URL('../server/prod/http-server.mjs', import.meta.url), 'utf8');
