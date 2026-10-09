@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CLOUD_PROVIDER_LABEL, OUTAGES_LATE_AFTER_MIN, TELECOM_DISRUPTION_THRESHOLDS, cloudLevel, internetLevel, internetLive, isArcepFileLate, isOutagesDataLate, powerLevel, powerUnplannedMw,
+  CLOUD_PROVIDER_LABEL, OUTAGES_LATE_AFTER_MIN, TELECOM_DISRUPTION_THRESHOLDS, cloudLevel, cloudLive, internetLevel, internetLive, isArcepFileLate, isOutagesDataLate, powerLevel, powerUnplannedMw,
   telecomIfFresh, telecomLevel,
 } from './outages-levels.ts';
 import { outagesSlotStatus } from './outages-source.ts';
@@ -209,29 +209,55 @@ describe('Cloud : pastille', () => {
     expect(Object.values(CLOUD_PROVIDER_LABEL)).toEqual(['OVHcloud', 'Scaleway', 'Cloudflare', 'Google Cloud', 'AWS', 'Outscale', 'Azure']);
   });
   it('aucun fournisseur lu (ni lecture ni zone) : null, jamais vert', () => {
-    expect(cloudLevel(cloud([cloudProvider('ovhcloud', [], null), cloudProvider('azure', [], null)]))).toBeNull();
+    expect(cloudLevel(cloud([cloudProvider('ovhcloud', [], null), cloudProvider('azure', [], null)]), NOW)).toBeNull();
   });
   it('un fournisseur lu, rien à signaler : vert', () => {
-    expect(cloudLevel(cloud([cloudProvider('scaleway', [cloudZone('operational', 'fr-par-1')])]))).toBe('vert');
+    expect(cloudLevel(cloud([cloudProvider('scaleway', [cloudZone('operational', 'fr-par-1')])]), NOW)).toBe('vert');
   });
   it('incident « surveillé » seul : vert (listé, non compté)', () => {
-    expect(cloudLevel(cloud([cloudProvider('ovhcloud', [cloudZone('operational')])], [cloudIncident({ state: 'surveille', impact: 'critical' })]))).toBe('vert');
+    expect(cloudLevel(cloud([cloudProvider('ovhcloud', [cloudZone('operational')])], [cloudIncident({ state: 'surveille', impact: 'critical' })]), NOW)).toBe('vert');
   });
   it('incident en cours : jaune (minor), orange (major), rouge (critical)', () => {
     const providers = [cloudProvider('ovhcloud', [cloudZone('operational')])];
-    expect(cloudLevel(cloud(providers, [cloudIncident({ impact: 'minor' })]))).toBe('jaune');
-    expect(cloudLevel(cloud(providers, [cloudIncident({ impact: 'major' })]))).toBe('orange');
-    expect(cloudLevel(cloud(providers, [cloudIncident({ impact: 'critical' })]))).toBe('rouge');
+    expect(cloudLevel(cloud(providers, [cloudIncident({ impact: 'minor' })]), NOW)).toBe('jaune');
+    expect(cloudLevel(cloud(providers, [cloudIncident({ impact: 'major' })]), NOW)).toBe('orange');
+    expect(cloudLevel(cloud(providers, [cloudIncident({ impact: 'critical' })]), NOW)).toBe('rouge');
   });
   it('zone dégradée : jaune ; panne partielle : orange ; panne majeure : rouge ; le plus grave l’emporte', () => {
-    expect(cloudLevel(cloud([cloudProvider('ovhcloud', [cloudZone('degraded')])]))).toBe('jaune');
-    expect(cloudLevel(cloud([cloudProvider('ovhcloud', [cloudZone('partial')])]))).toBe('orange');
-    expect(cloudLevel(cloud([cloudProvider('ovhcloud', [cloudZone('partial')]), cloudProvider('aws', [cloudZone('major', 'eu-west-3')])]))).toBe('rouge');
+    expect(cloudLevel(cloud([cloudProvider('ovhcloud', [cloudZone('degraded')])]), NOW)).toBe('jaune');
+    expect(cloudLevel(cloud([cloudProvider('ovhcloud', [cloudZone('partial')])]), NOW)).toBe('orange');
+    expect(cloudLevel(cloud([cloudProvider('ovhcloud', [cloudZone('partial')]), cloudProvider('aws', [cloudZone('major', 'eu-west-3')])]), NOW)).toBe('rouge');
   });
   it('maintenance ou zone inconnue : vert (ni panne ni état connu)', () => {
-    expect(cloudLevel(cloud([cloudProvider('scaleway', [cloudZone('maintenance', 'DC1'), cloudZone('unknown', 'fr-par-2')])]))).toBe('vert');
+    expect(cloudLevel(cloud([cloudProvider('scaleway', [cloudZone('maintenance', 'DC1'), cloudZone('unknown', 'fr-par-2')])]), NOW)).toBe('vert');
   });
   it('P2 : un incident « ailleurs » (hors France) ne colore pas', () => {
-    expect(cloudLevel(cloud([cloudProvider('ovhcloud', [cloudZone('operational')])], [], { elsewhere: [cloudIncident({ impact: 'critical', zones: [] })] }))).toBe('vert');
+    expect(cloudLevel(cloud([cloudProvider('ovhcloud', [cloudZone('operational')])], [], { elsewhere: [cloudIncident({ impact: 'critical', zones: [] })] }), NOW)).toBe('vert');
+  });
+  it('P14 : fournisseur en retard (lecture de plus de 2 h) écarté : OVHcloud en panne partielle périmée, Scaleway frais : vert', () => {
+    const late = '2026-10-08T18:29:00.000Z';
+    const r = cloud([cloudProvider('ovhcloud', [cloudZone('partial')], late), cloudProvider('scaleway', [cloudZone('operational', 'fr-par-1')])]);
+    expect(cloudLevel(r, NOW)).toBe('vert');
+    // Juste sous la limite (lecture + 2 h), la couleur est gardée.
+    expect(cloudLevel(cloud([cloudProvider('ovhcloud', [cloudZone('partial')], '2026-10-08T18:31:00.000Z'), cloudProvider('scaleway', [])]), NOW)).toBe('orange');
+  });
+  it('P14 : incident en cours d’un fournisseur en retard : ni compté ni coloré ; celui d’un fournisseur à jour reste', () => {
+    const late = '2026-10-08T18:00:00.000Z';
+    const stale = cloudIncident({ provider: 'ovhcloud', impact: 'critical' });
+    const fresh = cloudIncident({ provider: 'scaleway', impact: 'major', zones: ['fr-par-1'] });
+    const r = cloud([cloudProvider('ovhcloud', [cloudZone('operational')], late), cloudProvider('scaleway', [cloudZone('operational', 'fr-par-1')])], [stale, fresh]);
+    expect(cloudLive(r, NOW).incidents).toEqual([fresh]);
+    expect(cloudLive(r, NOW).freshProviders).toEqual(['scaleway']);
+    expect(cloudLevel(r, NOW)).toBe('orange');
+  });
+  it('P14 : tous les fournisseurs en retard : null, jamais vert ni la couleur de données figées', () => {
+    const late = '2026-10-08T17:00:00.000Z';
+    const r = cloud([cloudProvider('ovhcloud', [cloudZone('major')], late), cloudProvider('aws', [cloudZone('major', 'eu-west-3')], late)], [cloudIncident({ impact: 'critical' })]);
+    expect(cloudLive(r, NOW)).toEqual({ freshProviders: [], incidents: [], zones: [] });
+    expect(cloudLevel(r, NOW)).toBeNull();
+  });
+  it('cloudLive : « surveillé » et « ailleurs » ne sont jamais en cours ; les maintenances ne comptent pas', () => {
+    const r = cloud([cloudProvider('ovhcloud', [cloudZone('maintenance')])], [cloudIncident({ state: 'surveille' })], { elsewhere: [cloudIncident({})] });
+    expect(cloudLive(r, NOW).incidents).toEqual([]);
   });
 });

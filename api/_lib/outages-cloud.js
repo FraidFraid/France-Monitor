@@ -138,16 +138,35 @@ export function fromGcp(json, nowMs) {
   return { incidents, zone: { id: 'europe-west9', label: 'Paris (europe-west9)', status: incidents.length > 0 ? 'degraded' : 'operational', updatedAt: null, lat: 48.86, lon: 2.35 } };
 }
 
-/** Éléments du flux AWS de la région Paris (`-eu-west-3_` dans le guid) publiés il y a moins de 24 h. Zone non datée, comme Google Cloud. */
+/** Un élément AWS qui dit que l'événement est terminé : « [RESOLVED] … » ou « Service is operating normally ». */
+const AWS_RESOLVED = /\[\s*RESOLVED\s*\]|operating normally|^\s*resolved\b/i;
+
+/**
+ * Événements AWS de la région Paris (`-eu-west-3_` dans le guid). Le flux publie une mise à jour par élément : les éléments d'un même
+ * événement (guid sans son horodatage final : service et région) sont regroupés et comptés UNE fois (P3). Un événement est en cours tant
+ * que son élément le plus récent ne dit pas qu'il est résolu, quel que soit son âge (un événement ouvert depuis des mois reste en cours :
+ * la zone n'est jamais dite sans incident à tort, S3, P4). `start` = élément le plus ancien du groupe, `updatedAt` = le plus récent.
+ * Zone non datée : déduite de l'absence d'incident, comme Google Cloud.
+ */
 export function fromAws(xml, nowMs) {
   const items = [...String(xml).matchAll(/<item>([\s\S]*?)<\/item>/g)].map((m) => m[1]);
   const pick = (block, tag) => { const m = new RegExp(`<${tag}[^>]*>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?</${tag}>`).exec(block); return m ? m[1].trim() : null; };
-  const incidents = items.filter((b) => /-eu-west-3_/.test(pick(b, 'guid') ?? '')).map((b) => ({ b, at: Date.parse(pick(b, 'pubDate') ?? '') }))
-    .filter((x) => Number.isFinite(x.at) && nowMs - x.at <= DAY_MS && !/operating normally|resolved/i.test(pick(x.b, 'title') ?? ''))
-    .map(({ b, at }) => ({
-      id: `aws:${pick(b, 'guid')}`, provider: 'aws', title: pick(b, 'title') ?? 'Incident AWS', zones: ['eu-west-3'], state: 'en-cours', impact: 'minor',
-      start: new Date(at).toISOString(), updatedAt: new Date(at).toISOString(), url: 'https://health.aws.amazon.com/health/status',
-    }));
+  const events = new Map();
+  for (const block of items) {
+    const guid = pick(block, 'guid') ?? '';
+    if (!/-eu-west-3_/.test(guid)) continue;
+    const at = Date.parse(pick(block, 'pubDate') ?? '');
+    if (!Number.isFinite(at)) continue;
+    const key = guid.replace(/^.*#/, '').replace(/_\d+$/, '');
+    const group = events.get(key) ?? { first: at, last: null };
+    group.first = Math.min(group.first, at);
+    if (group.last === null || at > group.last.at) group.last = { at, title: pick(block, 'title') ?? 'Incident AWS' };
+    events.set(key, group);
+  }
+  const incidents = [...events.entries()].filter(([, g]) => !AWS_RESOLVED.test(g.last.title)).map(([key, g]) => ({
+    id: `aws:${key}`, provider: 'aws', title: g.last.title, zones: ['eu-west-3'], state: 'en-cours', impact: 'minor',
+    start: new Date(g.first).toISOString(), updatedAt: new Date(g.last.at).toISOString(), url: 'https://health.aws.amazon.com/health/status',
+  })).sort((a, b) => b.start.localeCompare(a.start));
   return { incidents, zone: { id: 'eu-west-3', label: 'Paris (eu-west-3)', status: incidents.length > 0 ? 'degraded' : 'operational', updatedAt: null, lat: 48.86, lon: 2.35 } };
 }
 

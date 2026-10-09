@@ -1,6 +1,6 @@
 // src/services/outages-levels.ts : module pur des panneaux Pannes réseau (spec 2026-10-08 panneaux pannes § 1, § 2) : sources et
 // retards (S2), seuils partagés avec la situation « Perturbation télécom », niveaux des panneaux. Aucun accès réseau ni DOM.
-import type { CloudIncident, CloudOutagesResponse, CloudProvider, CloudStatus, EcowattSignal, InternetOutagesResponse, InternetScope, PowerOutagesResponse, RadarItem, TelecomOutagesResponse } from '../types/index.ts';
+import type { CloudIncident, CloudOutagesResponse, CloudProvider, CloudStatus, CloudZone, EcowattSignal, InternetOutagesResponse, InternetScope, PowerOutagesResponse, RadarItem, TelecomOutagesResponse } from '../types/index.ts';
 import { parisDayOf } from './environment-levels.ts';
 import { fleetLevel } from './nuclear-fleet.ts';
 import { parisHour } from './traffic-levels.ts';
@@ -144,16 +144,41 @@ export const CLOUD_PROVIDER_LABEL: Readonly<Record<CloudProvider, string>> = {
 const IMPACT_LEVEL: Readonly<Record<CloudIncident['impact'], VigilanceLevel>> = { none: 'jaune', minor: 'jaune', major: 'orange', critical: 'rouge' };
 const ZONE_LEVEL: Partial<Readonly<Record<CloudStatus, VigilanceLevel>>> = { degraded: 'jaune', partial: 'orange', major: 'rouge' };
 
+/** Ce que le panneau Cloud peut dire du moment : incidents en cours et zones des seuls fournisseurs à jour. */
+export interface CloudLive {
+  /** Fournisseurs dont la dernière lecture réussie date de moins de 2 h (spec § 1) ; les autres sont « en retard » et sans couleur. */
+  freshProviders: CloudProvider[];
+  /** Incidents « en cours » touchant la France (pas « surveillé », pas « ailleurs »), d'un fournisseur à jour. */
+  incidents: CloudIncident[];
+  zones: CloudZone[];
+}
+
 /**
- * Pastille Cloud : incidents en cours touchant la France (impact) et zones françaises (statut) ; maintenance et « surveillé » ne colorent pas,
- * pas plus que les incidents « ailleurs » (statut mondial, P2). null si aucun fournisseur n'a été lu. Le retard (lecture + 2 h par fournisseur)
- * est jugé par la vue, qui retire alors la couleur.
+ * Lecture du moment, fournisseur par fournisseur (P8, P14) : les pages en échec gardent leurs dernières données sans limite de durée
+ * côté serveur ; passé lecture + 2 h, leurs zones et leurs incidents ne colorent plus et ne se comptent plus. Le gros chiffre Cloud
+ * (incidents.length) et la pastille lisent cette liste.
  */
-export function cloudLevel(r: CloudOutagesResponse): VigilanceLevel | null {
-  if (r.providers.every((p) => p.readAt === null && p.zones.length === 0)) return null;
+export function cloudLive(r: CloudOutagesResponse, now: number): CloudLive {
+  const fresh = r.providers.filter((p) => !isOutagesDataLate('cloud', p.readAt, now));
+  const freshProviders = fresh.map((p) => p.provider);
+  return {
+    freshProviders,
+    incidents: r.incidents.filter((i) => i.state === 'en-cours' && freshProviders.includes(i.provider)),
+    zones: fresh.flatMap((p) => p.zones),
+  };
+}
+
+/**
+ * Pastille Cloud sur cloudLive : incidents en cours (impact) et zones françaises (statut) ; maintenance et « surveillé » ne colorent pas,
+ * pas plus que les incidents « ailleurs » (statut mondial, P2). null si aucun fournisseur n'est à jour (jamais lu ou tous en retard :
+ * jamais « vert » sur une source muette).
+ */
+export function cloudLevel(r: CloudOutagesResponse, now: number): VigilanceLevel | null {
+  const live = cloudLive(r, now);
+  if (live.freshProviders.length === 0) return null;
   const levels: VigilanceLevel[] = [
-    ...r.incidents.filter((i) => i.state === 'en-cours').map((i) => IMPACT_LEVEL[i.impact]),
-    ...r.providers.flatMap((p) => p.zones).map((z) => ZONE_LEVEL[z.status]).filter((l): l is VigilanceLevel => l !== undefined),
+    ...live.incidents.map((i) => IMPACT_LEVEL[i.impact]),
+    ...live.zones.map((z) => ZONE_LEVEL[z.status]).filter((l): l is VigilanceLevel => l !== undefined),
   ];
   return levels.reduce<VigilanceLevel>((max, l) => (LEVEL_RANK[l] > LEVEL_RANK[max] ? l : max), 'vert');
 }

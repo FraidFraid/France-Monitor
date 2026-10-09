@@ -79,10 +79,53 @@ describe('pages d’état (jeux d’essai du 08/10)', () => {
     expect(fromGcp(fx('gcp-incidents.json'), NOW).zone).toMatchObject({ id: 'europe-west9', status: 'operational', updatedAt: null });
     expect(fromAws(txt('aws-all.rss'), NOW).zone).toMatchObject({ id: 'eu-west-3', status: 'operational', updatedAt: null });
   });
-  it('AWS : un élément eu-west-3 de moins de 24 h est un incident en cours', () => {
+  it('AWS : un élément eu-west-3 non résolu est un incident en cours', () => {
     const xml = '<rss><channel><item><title><![CDATA[Increased API Error Rates]]></title><pubDate>Thu, 08 Oct 2026 11:00:00 PDT</pubDate>'
       + '<guid isPermaLink="false">https://status.aws.amazon.com/#ec2-eu-west-3_1791480000</guid><description><![CDATA[We are investigating.]]></description></item></channel></rss>';
     expect(fromAws(xml, NOW).incidents).toMatchObject([{ provider: 'aws', title: 'Increased API Error Rates', zones: ['eu-west-3'], state: 'en-cours' }]);
+  });
+  /** Flux AWS minimal : un élément par mise à jour (guid = service-région_horodatage). */
+  const awsItem = (title: string, guid: string, pubDate: string): string => `<item><title><![CDATA[${title}]]></title><pubDate>${pubDate}</pubDate><guid isPermaLink="false">https://status.aws.amazon.com/#${guid}</guid></item>`;
+  const awsFeed = (...items: string[]): string => `<rss><channel>${items.join('')}</channel></rss>`;
+
+  it('AWS, jeu d’essai : un événement ouvert depuis des mois, dernière mise à jour à 23 jours, reste en cours (jamais « aucun incident »)', () => {
+    // Le flux du 08/10 n'a pas d'événement à Paris : le même flux, région me-central-1 renommée eu-west-3 (ouvert depuis mars, mis à jour le 15/09).
+    const xml = txt('aws-all.rss').replace(/me-central-1/g, 'eu-west-3');
+    const p = fromAws(xml, NOW);
+    expect(p.incidents).toMatchObject([{ id: 'aws:multipleservices-eu-west-3', provider: 'aws', zones: ['eu-west-3'], state: 'en-cours', title: 'Service disruption: Increased Error Rates' }]);
+    expect(p.incidents[0].updatedAt).toBe('2026-09-15T10:27:10.000Z');
+    expect(p.zone.status).toBe('degraded');
+    // me-south-1, autre région du même flux : écartée.
+    expect(p.incidents).toHaveLength(1);
+  });
+  it('AWS : les mises à jour d’un même événement comptent une fois (début = la plus ancienne, mise à jour = la plus récente)', () => {
+    const p = fromAws(awsFeed(
+      awsItem('Service disruption: Increased API Error Rates', 'ec2-eu-west-3_1791470000', 'Thu, 08 Oct 2026 08:00:00 PDT'),
+      awsItem('Service disruption: Increased API Error Rates', 'ec2-eu-west-3_1791475000', 'Thu, 08 Oct 2026 09:30:00 PDT'),
+      awsItem('Service disruption: Still investigating', 'ec2-eu-west-3_1791480000', 'Thu, 08 Oct 2026 11:00:00 PDT'),
+      awsItem('Service disruption: Increased Error Rates', 'lambda-eu-west-3_1791481000', 'Thu, 08 Oct 2026 11:05:00 PDT'),
+    ), NOW);
+    expect(p.incidents.map((i) => [i.id, i.title, i.start, i.updatedAt])).toEqual([
+      ['aws:lambda-eu-west-3', 'Service disruption: Increased Error Rates', '2026-10-08T18:05:00.000Z', '2026-10-08T18:05:00.000Z'],
+      ['aws:ec2-eu-west-3', 'Service disruption: Still investigating', '2026-10-08T15:00:00.000Z', '2026-10-08T18:00:00.000Z'],
+    ]);
+  });
+  it('AWS : un événement dont l’élément le plus récent est résolu n’est pas compté (« [RESOLVED] » ou « operating normally »), la zone est sans incident', () => {
+    const p = fromAws(awsFeed(
+      awsItem('Service disruption: Increased API Error Rates', 'ec2-eu-west-3_1791470000', 'Thu, 08 Oct 2026 08:00:00 PDT'),
+      awsItem('[RESOLVED] Increased API Error Rates', 'ec2-eu-west-3_1791480000', 'Thu, 08 Oct 2026 11:00:00 PDT'),
+      awsItem('Performance issues', 'rds-eu-west-3_1791470000', 'Wed, 07 Oct 2026 08:00:00 PDT'),
+      awsItem('Service is operating normally', 'rds-eu-west-3_1791475000', 'Wed, 07 Oct 2026 09:00:00 PDT'),
+    ), NOW);
+    expect(p.incidents).toEqual([]);
+    expect(p.zone).toMatchObject({ status: 'operational', updatedAt: null });
+  });
+  it('AWS : un événement rouvert après sa résolution est de nouveau en cours', () => {
+    const p = fromAws(awsFeed(
+      awsItem('[RESOLVED] Increased API Error Rates', 'ec2-eu-west-3_1791470000', 'Thu, 08 Oct 2026 08:00:00 PDT'),
+      awsItem('Service disruption: Increased API Error Rates', 'ec2-eu-west-3_1791480000', 'Thu, 08 Oct 2026 11:00:00 PDT'),
+    ), NOW);
+    expect(p.incidents.map((i) => i.state)).toEqual(['en-cours']);
   });
   it('Outscale : eu-west-2 et cloudgouv-eu-west-1 seulement', () => {
     const p = fromStatuspage('outscale', 'Outscale', fx('outscale-summary.json'), outscaleFrance, NOW);
