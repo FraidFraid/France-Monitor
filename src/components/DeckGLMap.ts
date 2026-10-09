@@ -46,14 +46,18 @@ import {
 } from './deckgl/sovereignty-map.ts';
 import { SOV_B_LAYERS, SOV_B_SOURCE_IDS, droneZoneFeatures, gnssCellFeatures, sovBSourceSpec } from './deckgl/sovereignty-map-b.ts';
 import {
-  OUT_HOVER_LAYERS, OUT_LAYERS, OUT_LAYER_KEYS, OUT_MAINTENANCE_LAYER, OUT_SOURCE_IDS, outSourceSpec, outTooltipHtml, powerFeatures, telecomFeatures, topOutHit,
+  OUT_HOVER_LAYERS, OUT_LAYERS, OUT_LAYER_KEYS, OUT_MAINTENANCE_LAYER, OUT_SOURCE_IDS, cloudReferenceFeatures, cloudZoneFeatures, internetFeatures, outSourceSpec,
+  outTooltipHtml, powerFeatures, telecomFeatures, topOutHit,
 } from './deckgl/outages-map.ts';
 import {
-  SRC_OUT_POWER, SRC_OUT_TELECOM, SRC_SOV_AIRCRAFT, SRC_SOV_AIRCRAFT_ABROAD, SRC_SOV_CABLE_VESSELS, SRC_SOV_DRONES, SRC_SOV_EMERGENCIES, SRC_SOV_GNSS, SRC_SOV_NAVY,
+  LYR_OUT_INTERNET_FILL, SRC_OUT_CLOUD_REF, SRC_OUT_CLOUD_ZONES, SRC_OUT_INTERNET, SRC_OUT_POWER, SRC_OUT_TELECOM, SRC_SOV_AIRCRAFT, SRC_SOV_AIRCRAFT_ABROAD, SRC_SOV_CABLE_VESSELS, SRC_SOV_DRONES, SRC_SOV_EMERGENCIES, SRC_SOV_GNSS, SRC_SOV_NAVY,
   SRC_SOV_OSM_WORKS,
 } from './deckgl/constants.ts';
 import { NAVY_HEX, SOV_ABROAD_HEX } from './layer-panel/sovereignty-legend.ts';
-import type { CablesWatchResponse, DefenseOsmWorksFile, DroneZonesFile, GnssResponse, MilitaryResponse, PowerOutagesResponse, SubseaCablesFile, TelecomOutagesResponse } from '../types/index.ts';
+import type {
+  CablesWatchResponse, CloudOutagesResponse, DefenseOsmWorksFile, DroneZonesFile, GnssResponse, InternetOutagesResponse, MilitaryResponse, PowerOutagesResponse,
+  SubseaCablesFile, TelecomOutagesResponse,
+} from '../types/index.ts';
 import {
   VESSEL_TYPE_HEX, type VesselCategory, airAltitudeHex, vesselCategory, vesselHex, vesselTypeLabel,
 } from './layer-panel/traffic-legend.ts';
@@ -5903,6 +5907,8 @@ export class DeckGLMap {
       LYR_IXP_CLUSTER, LYR_IXP_CLUSTER_COUNT, LYR_IXP_CIRCLE,
       LYR_TRAFFIC, ...Object.values(TRAFFIC_LAYER_KEYS).flat(), LYR_TRAIN_ROUTE, LYR_TRAIN_STATIONS,
       ...Object.values(ENV_LAYER_KEYS).flat(), ...FOREST_DANGER_LAYERS,
+      // Pannes réseau : les quatre couches (et les maintenances télécoms) s'atténuent avec les autres au survol d'une légende.
+      ...Object.values(OUT_LAYER_KEYS).flat(), OUT_MAINTENANCE_LAYER,
     ];
 
     let activeLayers: string[] = [];
@@ -5919,15 +5925,9 @@ export class DeckGLMap {
     } else if (categoryId === 'outagesTelecom') {
       activeLayers = [...OUT_LAYER_KEYS.outagesTelecom];
     } else if (categoryId === 'outagesInternet') {
-      activeLayers = [
-        LYR_NET_IODA_CLUSTER, LYR_NET_IODA_CLUSTER_COUNT, LYR_NET_IODA_GLOW, LYR_NET_IODA_CORE,
-        LYR_NET_ISP_CLUSTER, LYR_NET_ISP_CLUSTER_COUNT, LYR_NET_ISP_GLOW, LYR_NET_ISP_RING, LYR_NET_ISP,
-      ];
+      activeLayers = [...OUT_LAYER_KEYS.outagesInternet];
     } else if (categoryId === 'outagesCloud') {
-      activeLayers = [
-        LYR_DC_CLUSTER, LYR_DC_CLUSTER_COUNT, LYR_DC_GLOW, LYR_DC_CORE,
-        LYR_IXP_CLUSTER, LYR_IXP_CLUSTER_COUNT, LYR_IXP_CIRCLE,
-      ];
+      activeLayers = [...OUT_LAYER_KEYS.outagesCloud];
     } else if (categoryId === 'trafficRoad') {
       activeLayers = [LYR_TRAFFIC, ...TRAFFIC_LAYER_KEYS.trafficRoad];
     } else if (categoryId === 'trafficAir') {
@@ -8054,9 +8054,10 @@ export class DeckGLMap {
     if (!map) return false;
     const ids = [
       // Surfaces départementales exclues (comme la vigilance et la météo des forêts) : elles couvrent la carte et bloqueraient le profil radar ; séismes et marégraphes restent.
+      // Même règle pour le remplissage des départements en anomalie Internet (le contour reste cliquable).
       ...ENV_HOVER_LAYERS.filter((id) => id !== LYR_WEATHER_FILL && id !== LYR_FOREST_DANGER_FILL && id !== LYR_DROUGHT_FILL && id !== LYR_AIR_FILL), LYR_WEATHER_ICONS,
       LYR_POINTS, LYR_CLUSTER_CIRCLE, LYR_MILITARY_BASES_CIRCLE, LYR_HOSPITALS,
-      ...Object.values(TRAFFIC_LAYER_KEYS).flat(), ...OUT_HOVER_LAYERS, ...SOV_HOVER_LAYERS,
+      ...Object.values(TRAFFIC_LAYER_KEYS).flat(), ...OUT_HOVER_LAYERS.filter((id) => id !== LYR_OUT_INTERNET_FILL), ...SOV_HOVER_LAYERS,
     ].filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
     return ids.length > 0 && map.queryRenderedFeatures(point, { layers: ids }).length > 0;
   }
@@ -9042,6 +9043,22 @@ export class DeckGLMap {
     this.hideOutagesHover();
   }
 
+  /** Départements en anomalie IODA : polygones du fichier versionné (lecture mémoïsée, qui ne rejette jamais) ; fichier illisible : collection vide. */
+  updateOutagesInternet(r: InternetOutagesResponse | null, now: number): void {
+    void loadDepartementsGeojson().then((geo) => {
+      const data = geo ? internetFeatures(r, geo, now) : internetFeatures(null, { type: 'FeatureCollection', features: [] }, now);
+      (this.map?.getSource(SRC_OUT_INTERNET) as maplibregl.GeoJSONSource | undefined)?.setData(data);
+      this.hideOutagesHover();
+    });
+  }
+
+  /** Zones des fournisseurs qui publient un état (gris si la page est en retard) et centres du référentiel en teinte neutre (inventaire). */
+  updateOutagesCloud(r: CloudOutagesResponse | null, now: number): void {
+    (this.map?.getSource(SRC_OUT_CLOUD_ZONES) as maplibregl.GeoJSONSource | undefined)?.setData(cloudZoneFeatures(r, now));
+    (this.map?.getSource(SRC_OUT_CLOUD_REF) as maplibregl.GeoJSONSource | undefined)?.setData(cloudReferenceFeatures(r));
+    this.hideOutagesHover();
+  }
+
   /** Option « maintenances » de la couche Télécoms, éteinte par défaut : visible seulement couche active. */
   setTelecomMaintenanceVisible(on: boolean): void {
     this.telecomMaintenanceOn = on;
@@ -9653,6 +9670,8 @@ export class DeckGLMap {
     // Pannes réseau : Télécoms (sites récents et anciens ; maintenances en option) et Électricité (unités en arrêt imprévu et en maintenance).
     for (const id of OUT_LAYER_KEYS.outagesTelecom) this.setVis(id, vis(layers.outagesTelecom));
     for (const id of OUT_LAYER_KEYS.outagesElec) this.setVis(id, vis(layers.outagesElec));
+    for (const id of OUT_LAYER_KEYS.outagesInternet) this.setVis(id, vis(layers.outagesInternet));
+    for (const id of OUT_LAYER_KEYS.outagesCloud) this.setVis(id, vis(layers.outagesCloud));
     this.setVis(OUT_MAINTENANCE_LAYER, vis(layers.outagesTelecom && this.telecomMaintenanceOn));
     this.hideOutagesHover();
     if (layers.subseaCables) this.startSubseaPulseAnimation();

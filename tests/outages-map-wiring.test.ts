@@ -8,6 +8,7 @@ const read = (p: string): string => readFileSync(new URL(`../${p}`, import.meta.
 const deck = read('src/components/DeckGLMap.ts');
 const container = read('src/components/MapContainer.ts');
 const constants = read('src/components/deckgl/constants.ts');
+const css = read('src/styles/main.css');
 
 describe('DeckGLMap : couches Pannes réseau de deckgl/outages-map.ts', () => {
   it('sources et couches neuves, ajoutées à côté de celles de la Souveraineté ; identifiants exportés', () => {
@@ -26,7 +27,7 @@ describe('DeckGLMap : couches Pannes réseau de deckgl/outages-map.ts', () => {
     expect(deck).toContain('this.initOutagesInteractions();');
     expect(deck).toContain('const hit = topOutHit(layers.length > 0 ? map.queryRenderedFeatures(e.point, { layers }) : []);');
     expect(deck).toContain('const html = hit ? outTooltipHtml(hit.layer.id, hit.properties ?? {}) : null;');
-    expect(deck).toContain('...OUT_HOVER_LAYERS, ...SOV_HOVER_LAYERS,\n    ].filter(');
+    expect(deck).toContain('...OUT_HOVER_LAYERS.filter((id) => id !== LYR_OUT_INTERNET_FILL), ...SOV_HOVER_LAYERS,\n    ].filter(');
   });
   it('méthodes de la carte et de son conteneur, sans champ de données inutilisé', () => {
     for (const sig of [
@@ -42,5 +43,38 @@ describe('DeckGLMap : couches Pannes réseau de deckgl/outages-map.ts', () => {
     expect(container).toContain('this.deckMap?.updateOutagesTelecom(t, now);');
     expect(container).toContain('this.deckMap?.updateOutagesPower(p, now);');
     expect(container).toContain('this.deckMap?.setTelecomMaintenanceVisible(on);');
+  });
+  it('Internet et Cloud : identifiants exportés, jeton CSS du référentiel', () => {
+    for (const id of ['SRC_OUT_INTERNET', 'SRC_OUT_CLOUD_ZONES', 'SRC_OUT_CLOUD_REF', 'LYR_OUT_INTERNET_FILL', 'LYR_OUT_INTERNET_LINE', 'LYR_OUT_CLOUD_REF',
+      'LYR_OUT_CLOUD_ZONES']) expect(constants).toContain(`export const ${id} = `);
+    expect(css).toContain('--cat-out-ref: #8b8f9a;');
+  });
+  it('Internet : les départements sont lus par loadDepartementsGeojson() avant setData ; Cloud : deux sources', () => {
+    expect(deck).toContain('void loadDepartementsGeojson().then((geo) => {');
+    expect(deck).toContain('internetFeatures(r, geo, now)');
+    expect(deck).toContain('updateOutagesInternet(r: InternetOutagesResponse | null, now: number): void');
+    expect(deck).toContain('updateOutagesCloud(r: CloudOutagesResponse | null, now: number): void');
+    expect(deck).toContain('(this.map?.getSource(SRC_OUT_CLOUD_ZONES) as maplibregl.GeoJSONSource | undefined)?.setData(cloudZoneFeatures(r, now));');
+    expect(deck).toContain('(this.map?.getSource(SRC_OUT_CLOUD_REF) as maplibregl.GeoJSONSource | undefined)?.setData(cloudReferenceFeatures(r));');
+  });
+  it('visibilité des couches Internet et Cloud par OUT_LAYER_KEYS', () => {
+    expect(deck).toContain('for (const id of OUT_LAYER_KEYS.outagesInternet) this.setVis(id, vis(layers.outagesInternet));');
+    expect(deck).toContain('for (const id of OUT_LAYER_KEYS.outagesCloud) this.setVis(id, vis(layers.outagesCloud));');
+  });
+  it('P22 : la surface Internet est exclue de clickHitsInteractiveFeature (elle bloquerait le profil radar), le contour reste', () => {
+    expect(deck).toContain('...OUT_HOVER_LAYERS.filter((id) => id !== LYR_OUT_INTERNET_FILL)');
+    expect(deck).not.toContain('...OUT_HOVER_LAYERS, ');
+  });
+  it('P37a : l’atténuation au survol de la légende couvre les quatre couches pannes ; les branches Internet et Cloud lisent OUT_LAYER_KEYS', () => {
+    const legend = deck.slice(deck.indexOf('setLegendHover(categoryId'), deck.indexOf('const applyLegendDim'));
+    expect(legend).toContain('...Object.values(OUT_LAYER_KEYS).flat(), OUT_MAINTENANCE_LAYER,');
+    expect(legend).toContain("activeLayers = [...OUT_LAYER_KEYS.outagesInternet];");
+    expect(legend).toContain("activeLayers = [...OUT_LAYER_KEYS.outagesCloud];");
+  });
+  it('le conteneur relaie updateOutagesInternet et updateOutagesCloud à la carte WebGL', () => {
+    expect(container).toContain('updateOutagesInternet(r: InternetOutagesResponse | null, now: number): void');
+    expect(container).toContain('updateOutagesCloud(r: CloudOutagesResponse | null, now: number): void');
+    expect(container).toContain('this.deckMap?.updateOutagesInternet(r, now);');
+    expect(container).toContain('this.deckMap?.updateOutagesCloud(r, now);');
   });
 });

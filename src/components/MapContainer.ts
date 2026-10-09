@@ -13,7 +13,10 @@ import type { CopernicusScene, SatelliteCollection } from '../types/index.ts';
 import type { EolienLive, EolienParkSummary } from '../services/eolien/types.ts';
 import { fetchDromEnergyDashboard, type DromEnergyAsset, type DromEnergyDashboard } from '../services/drom-energy/index.ts';
 import type { Radar2dManifest } from '../services/radar-2d.ts';
-import type { CablesWatchResponse, DefenseOsmWorksFile, DroneZonesFile, GnssResponse, MilitaryResponse, PowerOutagesResponse, SubseaCablesFile, TelecomOutagesResponse } from '../types/index.ts';
+import type {
+  CablesWatchResponse, CloudOutagesResponse, DefenseOsmWorksFile, DroneZonesFile, GnssResponse, InternetOutagesResponse, MilitaryResponse, PowerOutagesResponse,
+  SubseaCablesFile, TelecomOutagesResponse,
+} from '../types/index.ts';
 import type { AirQualityResponse, DroughtResponse, EarthquakesResponse, FiresResponse, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
 import type { UrgencesSyndrome } from './layer-panel/health-format.ts';
 
@@ -592,6 +595,14 @@ export class MapContainer {
 
   updateOutagesPower(p: PowerOutagesResponse | null, now: number): void {
     this.deckMap?.updateOutagesPower(p, now);
+  }
+
+  updateOutagesInternet(r: InternetOutagesResponse | null, now: number): void {
+    this.deckMap?.updateOutagesInternet(r, now);
+  }
+
+  updateOutagesCloud(r: CloudOutagesResponse | null, now: number): void {
+    this.deckMap?.updateOutagesCloud(r, now);
   }
 
   setTelecomMaintenanceVisible(on: boolean): void {

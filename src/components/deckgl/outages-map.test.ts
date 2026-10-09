@@ -1,12 +1,17 @@
 // src/components/deckgl/outages-map.test.ts
 // Carte des pannes réseau (spec 2026-10-08 § 2.1, § 2.2) : entités Télécoms et Électricité, couches, infobulle.
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import type { PowerOutagesResponse } from '../../types/index.ts';
-import { NBSP } from '../layer-panel/format.ts';
-import { OUTAGES_FIXTURE_NOW, powerFixtureResponse, telecomFixtureResponse } from '../layer-panel/outages.fixture.ts';
-import { OUT_LATE_HEX, OUT_LONG_HEX, OUT_MAINT_HEX, OUT_RECENT_HEX } from '../layer-panel/outages-legend.ts';
+import { levelHex } from '../../services/vigilance.ts';
+import type { CloudOutagesResponse, CloudProvider, CloudStatus, InternetEvent, InternetOutagesResponse, PowerOutagesResponse } from '../../types/index.ts';
+import { NBSP, breakableValue } from '../layer-panel/format.ts';
 import {
-  OUT_HOVER_LAYERS, OUT_LAYERS, OUT_LAYER_KEYS, OUT_MAINTENANCE_LAYER, OUT_SOURCE_IDS, outTooltipHtml, powerFeatures, telecomFeatures, topOutHit,
+  CLOUD_FIXTURE_NOW, INTERNET_FIXTURE_NOW, OUTAGES_FIXTURE_NOW, cloudFixtureResponse, internetFixtureResponse, powerFixtureResponse, telecomFixtureResponse,
+} from '../layer-panel/outages.fixture.ts';
+import { OUT_LATE_HEX, OUT_LONG_HEX, OUT_MAINT_HEX, OUT_RECENT_HEX, OUT_REF_HEX } from '../layer-panel/outages-legend.ts';
+import {
+  OUT_HOVER_LAYERS, OUT_LAYERS, OUT_LAYER_KEYS, OUT_MAINTENANCE_LAYER, OUT_SOURCE_IDS, cloudReferenceFeatures, cloudZoneFeatures, internetFeatures,
+  outTooltipHtml, powerFeatures, telecomFeatures, topOutHit,
 } from './outages-map.ts';
 import { resolveAssetCoords } from './iip-geocoding.ts';
 
@@ -96,10 +101,27 @@ describe('carte des pannes : couches et infobulle', () => {
     expect(OUT_LAYERS.every((l) => (l.layout as { visibility?: string } | undefined)?.visibility === 'none')).toBe(true);
     expect(OUT_LAYER_KEYS.outagesTelecom).toEqual(['out-telecom-long', 'out-telecom-recent']);
     expect(OUT_LAYER_KEYS.outagesElec).toEqual(['out-power-planned', 'out-power-unplanned']);
+    expect(OUT_LAYER_KEYS.outagesInternet).toEqual(['out-internet-fill', 'out-internet-line']);
+    expect(OUT_LAYER_KEYS.outagesCloud).toEqual(['out-cloud-ref', 'out-cloud-zones']);
+    expect(Object.keys(OUT_LAYER_KEYS).sort()).toEqual(['outagesCloud', 'outagesElec', 'outagesInternet', 'outagesTelecom']);
     expect(OUT_MAINTENANCE_LAYER).toBe('out-telecom-maint');
-    expect(OUT_LAYERS.map((l) => l.id).sort()).toEqual([...OUT_LAYER_KEYS.outagesTelecom, ...OUT_LAYER_KEYS.outagesElec, OUT_MAINTENANCE_LAYER].sort());
-    expect(OUT_SOURCE_IDS).toEqual(['out-telecom-src', 'out-power-src']);
+    expect(OUT_LAYERS.map((l) => l.id).sort()).toEqual([...Object.values(OUT_LAYER_KEYS).flat(), OUT_MAINTENANCE_LAYER].sort());
+    expect(OUT_SOURCE_IDS).toEqual(['out-telecom-src', 'out-power-src', 'out-internet-src', 'out-cloud-ref-src', 'out-cloud-zones-src']);
     expect([...OUT_HOVER_LAYERS].sort()).toEqual(OUT_LAYERS.map((l) => l.id).sort());
+  });
+  it('chaque couche lit une source déclarée ; le remplissage Internet ne montre que les départements en cours, le contour tous', () => {
+    for (const l of OUT_LAYERS) expect(OUT_SOURCE_IDS, l.id).toContain((l as { source: string }).source);
+    const fill = OUT_LAYERS.find((l) => l.id === 'out-internet-fill');
+    expect(fill?.type).toBe('fill');
+    expect((fill as { filter?: unknown }).filter).toEqual(['==', ['get', 'state'], 'encours']);
+    expect(OUT_LAYERS.find((l) => l.id === 'out-internet-line')?.type).toBe('line');
+    expect(OUT_LAYERS.find((l) => l.id === 'out-cloud-ref')?.type).toBe('circle');
+    expect(OUT_LAYERS.find((l) => l.id === 'out-cloud-zones')?.type).toBe('circle');
+  });
+  it('survol : points du cloud en tête, puis les couches de la phase A, les surfaces Internet en dernier (la plus basse répond en dernier)', () => {
+    expect(OUT_HOVER_LAYERS.slice(0, 2)).toEqual(['out-cloud-zones', 'out-cloud-ref']);
+    expect(OUT_HOVER_LAYERS.slice(-2)).toEqual(['out-internet-line', 'out-internet-fill']);
+    expect(topOutHit([{ layer: { id: 'out-internet-fill' } }, { layer: { id: 'out-cloud-ref' } }, { layer: { id: 'out-cloud-zones' } }])?.layer.id).toBe('out-cloud-zones');
   });
   it('infobulle : le corps préparé avec la donnée est repris dans le gabarit hm-tip ; null hors des couches survolables ou sans corps', () => {
     const fc = powerFeatures(powerFixtureResponse(), OUTAGES_FIXTURE_NOW);
@@ -132,5 +154,290 @@ describe('carte des pannes : couches et infobulle', () => {
       expect(b).not.toMatch(/\u2014|temps réel|LIVE/i);
       expect(b, b).not.toMatch(/\d (?:MW|%|km|h|min|j)\b/);
     }
+  });
+});
+
+// ─── Internet ───
+
+const GEO = JSON.parse(readFileSync(new URL('../../../public/data/departements.geojson', import.meta.url), 'utf8')) as GeoJSON.FeatureCollection;
+const DAY = 86_400_000;
+const iodaRead = (r: InternetOutagesResponse): number => Date.parse(r.iodaReadAt as string);
+/** Événement de la Creuse en cours depuis 3 jours (à la lecture IODA), modifiable par `patch`. */
+const event = (r: InternetOutagesResponse, patch: Partial<InternetEvent>): InternetEvent => ({
+  id: 'region/test:1:bgp', scope: 'departement', dept: '23', asn: null, label: 'Creuse', signal: 'bgp', start: new Date(iodaRead(r) - 3 * DAY).toISOString(),
+  end: null, durationSec: 3 * 86_400, ongoing: true, staleOpen: false, score: 1, ...patch,
+});
+const withEvents = (events: InternetEvent[], patch: Partial<InternetOutagesResponse> = {}): InternetOutagesResponse => ({ ...internetFixtureResponse(), events, ...patch });
+const body = (f: GeoJSON.Feature | undefined): string => String(f?.properties?.body ?? '');
+
+describe('carte des pannes : Internet (départements en anomalie)', () => {
+  it('jeu d’essai du 08/10 : aucune entité (quatre départements de métropole terminés depuis plus de 7 jours, Guadeloupe sans polygone, opérateur sans lieu)', () => {
+    const r = internetFixtureResponse();
+    expect(r.events.some((e) => e.dept === '971' && !e.ongoing)).toBe(true);
+    expect(internetFeatures(r, GEO, INTERNET_FIXTURE_NOW).features).toEqual([]);
+  });
+  it('outre-mer : le fichier des départements n’a pas de polygone 971, un événement récent de la Guadeloupe n’est pas dessiné (V5)', () => {
+    expect(GEO.features.some((f) => f.properties?.code === '971')).toBe(false);
+    const r = internetFixtureResponse();
+    const gp = r.events.find((e) => e.dept === '971') as InternetEvent;
+    expect(iodaRead(r) - Date.parse(gp.end as string)).toBeLessThan(7 * DAY);
+    expect(internetFeatures(withEvents([gp]), GEO, INTERNET_FIXTURE_NOW).features).toEqual([]);
+  });
+  it('un événement d’opérateur, national ou d’une région non identifiée n’a jamais d’entité, même en cours', () => {
+    const r = internetFixtureResponse();
+    const events = [
+      event(r, { scope: 'operateur', dept: null, asn: 3215, label: 'Orange (AS3215)' }), event(r, { scope: 'national', dept: null, label: 'France' }),
+      event(r, { scope: 'inconnu', dept: null, label: 'Région inconnue' }),
+    ];
+    expect(internetFeatures(withEvents(events), GEO, INTERNET_FIXTURE_NOW).features).toEqual([]);
+  });
+  it('Creuse terminée il y a 2 jours : une entité « recent », contour orange, géométrie identique à celle du fichier', () => {
+    const r = internetFixtureResponse();
+    const end = new Date(iodaRead(r) - 2 * DAY).toISOString();
+    const start = new Date(iodaRead(r) - 2 * DAY - 3_600_000).toISOString();
+    const fc = internetFeatures(withEvents([event(r, { start, end, ongoing: false, durationSec: 3600 })]), GEO, INTERNET_FIXTURE_NOW);
+    expect(fc.features).toHaveLength(1);
+    const [f] = fc.features;
+    expect(f.properties).toMatchObject({ dept: '23', state: 'recent', color: OUT_LONG_HEX });
+    expect(f.geometry).toEqual(GEO.features.find((g) => g.properties?.code === '23')?.geometry);
+  });
+  it('terminée depuis 8 jours : pas d’entité', () => {
+    const r = internetFixtureResponse();
+    const end = new Date(iodaRead(r) - 8 * DAY).toISOString();
+    expect(internetFeatures(withEvents([event(r, { end, ongoing: false })]), GEO, INTERNET_FIXTURE_NOW).features).toEqual([]);
+  });
+  it('Creuse en cours : état « encours » en rouge ; ouverte depuis plus de 7 jours (staleOpen) : pas d’entité', () => {
+    const r = internetFixtureResponse();
+    const live = internetFeatures(withEvents([event(r, {})]), GEO, INTERNET_FIXTURE_NOW);
+    expect(live.features).toHaveLength(1);
+    expect(live.features[0].properties).toMatchObject({ dept: '23', state: 'encours', color: levelHex('rouge') });
+    expect(internetFeatures(withEvents([event(r, { staleOpen: true })]), GEO, INTERNET_FIXTURE_NOW).features).toEqual([]);
+  });
+  it('deux événements (bgp, ping-slash24) sur la Creuse : une seule entité, deux lignes dans l’infobulle ; en cours l’emporte sur terminé', () => {
+    const r = internetFixtureResponse();
+    const end = new Date(iodaRead(r) - 2 * DAY).toISOString();
+    const two = withEvents([event(r, { signal: 'bgp' }), event(r, { id: 'region/test:2:ping', signal: 'ping-slash24' })]);
+    const fc = internetFeatures(two, GEO, INTERNET_FIXTURE_NOW);
+    expect(fc.features).toHaveLength(1);
+    expect(body(fc.features[0]).match(/class="hm-row"/g)).toHaveLength(2);
+    const mixed = internetFeatures(withEvents([event(r, { end, ongoing: false }), event(r, { signal: 'ping-slash24' })]), GEO, INTERNET_FIXTURE_NOW);
+    expect(mixed.features).toHaveLength(1);
+    expect(mixed.features[0].properties?.state).toBe('encours');
+  });
+  it('une entité par département touché, chacun à sa géométrie', () => {
+    const r = internetFixtureResponse();
+    const fc = internetFeatures(withEvents([event(r, {}), event(r, { dept: '87', label: 'Haute-Vienne' })]), GEO, INTERNET_FIXTURE_NOW);
+    expect(fc.features.map((f) => f.properties?.dept).sort()).toEqual(['23', '87']);
+  });
+  it('IODA en retard : gris, état gardé ; jamais lu : aucune entité', () => {
+    const r = internetFixtureResponse();
+    const events = [event(r, {})];
+    const late = internetFeatures(withEvents(events), GEO, iodaRead(r) + 2 * 3_600_000);
+    expect(late.features).toHaveLength(1);
+    expect(late.features[0].properties?.color).toBe(OUT_LATE_HEX);
+    expect(body(late.features[0])).toContain('IODA en retard : couleur retirée.');
+    expect(internetFeatures(withEvents(events, { iodaReadAt: null }), GEO, INTERNET_FIXTURE_NOW).features).toEqual([]);
+    expect(internetFeatures(null, GEO, INTERNET_FIXTURE_NOW).features).toEqual([]);
+  });
+  it('infobulle : département nommé, source IODA, signal, début à l’heure de Paris, durée ; textes échappés', () => {
+    const r = internetFixtureResponse();
+    const start = '2026-10-07T10:05:00.000Z';
+    const f = internetFeatures(withEvents([event(r, { start, durationSec: 3 * 86_400 + 4 * 3600, signal: '<b>x</b>' })]), GEO, INTERNET_FIXTURE_NOW).features[0];
+    const b = body(f);
+    expect(b).toContain('<b>Creuse (23)</b>');
+    expect(b).toContain('IODA');
+    expect(b).toContain(`07/10 à 12${NBSP}h${NBSP}05`);
+    expect(b).toContain('en cours');
+    expect(b).not.toContain('<b>x</b>');
+    expect(b).toContain('&lt;b&gt;x');
+  });
+  it('infobulle d’un événement terminé : durée en minutes, insécable', () => {
+    const r = internetFixtureResponse();
+    const end = new Date(iodaRead(r) - 2 * DAY).toISOString();
+    const f = internetFeatures(withEvents([event(r, { end, ongoing: false, durationSec: 4500 })]), GEO, INTERNET_FIXTURE_NOW).features[0];
+    expect(body(f)).toContain(`1${NBSP}h${NBSP}15`);
+    expect(breakableValue(body(f).replace(/<[^>]+>/g, ' '))).toBeNull();
+  });
+});
+
+// ─── Cloud ───
+
+const ref = (r: CloudOutagesResponse, p: CloudProvider) => r.providers.find((x) => x.provider === p) as CloudOutagesResponse['providers'][number];
+const setStatus = (r: CloudOutagesResponse, provider: CloudProvider, zoneId: string, status: CloudStatus): void => {
+  const z = ref(r, provider).zones.find((x) => x.id === zoneId);
+  if (!z) throw new Error(`zone ${zoneId} absente`);
+  z.status = status;
+};
+const place = (f: GeoJSON.Feature<GeoJSON.Point>): string => `${f.geometry.coordinates[0]},${f.geometry.coordinates[1]}`;
+const cloudBodies = (): string[] => [
+  ...cloudZoneFeatures(cloudFixtureResponse(), CLOUD_FIXTURE_NOW).features, ...cloudReferenceFeatures(cloudFixtureResponse()).features,
+].map((f) => String(f.properties?.body));
+
+describe('carte des pannes : Cloud (zones datées)', () => {
+  it('quatre points de présence Cloudflare (BOD, CDG, LYS, MRS), en [lng, lat] et en vert (opérationnels)', () => {
+    const fc = cloudZoneFeatures(cloudFixtureResponse(), CLOUD_FIXTURE_NOW);
+    const cf = fc.features.filter((f) => f.properties?.provider === 'cloudflare');
+    expect(cf).toHaveLength(4);
+    expect(cf.map(place).sort()).toEqual(['-0.58,44.84', '2.35,48.86', '4.84,45.76', '5.37,43.3'].sort());
+    expect(new Set(cf.map((f) => f.properties?.color))).toEqual(new Set([levelHex('vert')]));
+  });
+  it('OVHcloud : 24 zones sur quatre lieux (Roubaix, Strasbourg, Gravelines, Paris), un point par lieu', () => {
+    const r = cloudFixtureResponse();
+    const fc = cloudZoneFeatures(r, CLOUD_FIXTURE_NOW);
+    const ovh = fc.features.filter((f) => f.properties?.provider === 'ovhcloud');
+    expect(new Set(ovh.map(place)).size).toBe(ovh.length);
+    expect(ovh.map((f) => body(f).match(/<b>([^<]+)<\/b>/)?.[1]).sort()).toEqual(['Gravelines', 'Paris', 'Roubaix', 'Strasbourg']);
+    const withCoords = ref(r, 'ovhcloud').zones.filter((z) => z.lat !== null);
+    expect(withCoords.length).toBeGreaterThan(ovh.length);
+  });
+  it('zones Scaleway et Outscale sans coordonnées : non dessinées ; Azure sans état France : rien', () => {
+    const fc = cloudZoneFeatures(cloudFixtureResponse(), CLOUD_FIXTURE_NOW);
+    const providers = new Set(fc.features.map((f) => f.properties?.provider));
+    expect(providers.has('scaleway')).toBe(false);
+    expect(providers.has('outscale')).toBe(false);
+    expect(providers.has('azure')).toBe(false);
+    expect(providers).toEqual(new Set(['ovhcloud', 'cloudflare', 'gcp', 'aws']));
+  });
+  it('une zone OVH en panne partielle sur Gravelines colore le seul point de Gravelines en orange ; les autres lieux restent verts', () => {
+    const r = cloudFixtureResponse();
+    setStatus(r, 'ovhcloud', 'GRA7', 'partial');
+    const fc = cloudZoneFeatures(r, CLOUD_FIXTURE_NOW);
+    const ovh = fc.features.filter((f) => f.properties?.provider === 'ovhcloud');
+    const colored = ovh.filter((f) => f.properties?.color === levelHex('orange'));
+    expect(colored).toHaveLength(1);
+    expect(colored[0].geometry.coordinates).toEqual([2.13, 50.99]);
+    expect(body(colored[0])).toContain('<b>Gravelines</b>');
+    expect(body(colored[0])).toContain('panne partielle');
+    expect(body(colored[0])).toContain('Gravelines (GRA7)');
+    expect(ovh.filter((f) => f !== colored[0]).every((f) => f.properties?.color === levelHex('vert'))).toBe(true);
+  });
+  it('regroupement : statut le plus grave du lieu (majeure avant partielle avant dégradée avant maintenance avant opérationnel avant inconnu)', () => {
+    const r = cloudFixtureResponse();
+    setStatus(r, 'ovhcloud', 'GRA5', 'degraded');
+    setStatus(r, 'ovhcloud', 'GRA7', 'major');
+    setStatus(r, 'ovhcloud', 'GRA9', 'partial');
+    setStatus(r, 'ovhcloud', 'GRA11', 'unknown');
+    const gra = cloudZoneFeatures(r, CLOUD_FIXTURE_NOW).features.find((f) => f.properties?.provider === 'ovhcloud' && place(f) === '2.13,50.99');
+    expect(gra?.properties?.color).toBe(levelHex('rouge'));
+    expect(gra?.properties?.status).toBe('major');
+    const m = cloudFixtureResponse();
+    setStatus(m, 'ovhcloud', 'GRA5', 'maintenance');
+    expect(cloudZoneFeatures(m, CLOUD_FIXTURE_NOW).features.find((f) => f.properties?.provider === 'ovhcloud' && place(f) === '2.13,50.99')?.properties?.color).toBe(OUT_MAINT_HEX);
+    const u = cloudFixtureResponse();
+    setStatus(u, 'ovhcloud', 'GRA5', 'unknown');
+    expect(cloudZoneFeatures(u, CLOUD_FIXTURE_NOW).features.find((f) => f.properties?.provider === 'ovhcloud' && place(f) === '2.13,50.99')?.properties?.color).toBe(levelHex('vert'));
+  });
+  it('un statut dégradé est jaune ; un lieu entièrement inconnu est gris', () => {
+    const r = cloudFixtureResponse();
+    setStatus(r, 'cloudflare', 'CDG', 'degraded');
+    setStatus(r, 'cloudflare', 'LYS', 'unknown');
+    const cf = cloudZoneFeatures(r, CLOUD_FIXTURE_NOW).features.filter((f) => f.properties?.provider === 'cloudflare');
+    expect(cf.find((f) => place(f) === '2.35,48.86')?.properties?.color).toBe(levelHex('jaune'));
+    expect(cf.find((f) => place(f) === '4.84,45.76')?.properties?.color).toBe(OUT_LATE_HEX);
+  });
+  it('infobulle : fournisseur, état, zones suivies, zones non opérationnelles, date de mise à jour ; GCP et AWS « aucun incident publié »', () => {
+    const r = cloudFixtureResponse();
+    setStatus(r, 'ovhcloud', 'GRA7', 'partial');
+    const fc = cloudZoneFeatures(r, CLOUD_FIXTURE_NOW);
+    const gra = fc.features.find((f) => f.properties?.provider === 'ovhcloud' && place(f) === '2.13,50.99');
+    const b = body(gra);
+    expect(b).toContain('class="hm-sub">OVHcloud</div>');
+    expect(b).toContain('<span>État</span><span>panne partielle</span>');
+    expect(b).toMatch(/<span>Zones suivies<\/span><span>\d+<\/span>/);
+    expect(b).toContain('<span>Mis à jour</span>');
+    const gcp = fc.features.find((f) => f.properties?.provider === 'gcp');
+    expect(body(gcp)).toContain('<span>État</span><span>aucun incident publié</span>');
+    expect(body(gcp)).toContain('<span>Mis à jour</span><span>aucun incident publié</span>');
+  });
+  it('fournisseur en retard (lu il y a 3 h) ou en erreur : ses points en gris, les autres gardent leur couleur', () => {
+    const late = cloudFixtureResponse();
+    ref(late, 'cloudflare').readAt = new Date(CLOUD_FIXTURE_NOW - 3 * 3_600_000).toISOString();
+    setStatus(late, 'cloudflare', 'CDG', 'major');
+    const fc = cloudZoneFeatures(late, CLOUD_FIXTURE_NOW);
+    const cf = fc.features.filter((f) => f.properties?.provider === 'cloudflare');
+    expect(new Set(cf.map((f) => f.properties?.color))).toEqual(new Set([OUT_LATE_HEX]));
+    expect(body(cf[0])).toContain('Page d’état en retard : couleur retirée.');
+    expect(fc.features.filter((f) => f.properties?.provider === 'ovhcloud').every((f) => f.properties?.color !== OUT_LATE_HEX)).toBe(true);
+    const err = cloudFixtureResponse();
+    ref(err, 'ovhcloud').error = 'OVHcloud (network) : HTTP 503';
+    const ovh = cloudZoneFeatures(err, CLOUD_FIXTURE_NOW).features.filter((f) => f.properties?.provider === 'ovhcloud');
+    expect(ovh.length).toBeGreaterThan(0);
+    expect(new Set(ovh.map((f) => f.properties?.color))).toEqual(new Set([OUT_LATE_HEX]));
+    ref(err, 'aws').readAt = null;
+    expect(cloudZoneFeatures(err, CLOUD_FIXTURE_NOW).features.find((f) => f.properties?.provider === 'aws')?.properties?.color).toBe(OUT_LATE_HEX);
+  });
+  it('jamais lu : aucune entité', () => {
+    expect(cloudZoneFeatures(null, CLOUD_FIXTURE_NOW).features).toEqual([]);
+    expect(cloudReferenceFeatures(null).features).toEqual([]);
+  });
+  it('une zone sans position lisible n’est pas dessinée', () => {
+    const r = cloudFixtureResponse();
+    const cdg = ref(r, 'cloudflare').zones.find((z) => z.id === 'CDG');
+    if (cdg) cdg.lat = Number.NaN;
+    expect(cloudZoneFeatures(r, CLOUD_FIXTURE_NOW).features.filter((f) => f.properties?.provider === 'cloudflare')).toHaveLength(3);
+  });
+});
+
+describe('carte des pannes : Cloud (référentiel, inventaire)', () => {
+  it('chaque centre du référentiel est en teinte neutre, jamais une teinte de statut, même si son fournisseur est en panne', () => {
+    const r = cloudFixtureResponse();
+    for (const p of r.providers) for (const z of p.zones) z.status = 'major';
+    const fc = cloudReferenceFeatures(r);
+    expect(fc.features).toHaveLength(r.reference.datacenters.length);
+    expect(fc.features.length).toBeGreaterThan(0);
+    expect(new Set(fc.features.map((f) => f.properties?.color))).toEqual(new Set([OUT_REF_HEX]));
+    expect(fc.features[0].geometry.coordinates).toEqual([r.reference.datacenters[0].lon, r.reference.datacenters[0].lat]);
+  });
+  it('infobulle : nom, opérateur, ville, avancement, puissance si publiés ; « Inventaire, pas un état. » ; source en français', () => {
+    const r = cloudFixtureResponse();
+    r.reference.datacenters = [
+      { id: 'a', name: 'Centre <A>', operator: 'Opérateur', city: 'Paris', lat: 48.86, lon: 2.35, stage: 'en projet', power: '10 à 50 MW', source: 'static backbone' },
+      { id: 'b', name: 'Centre B', operator: null, city: null, lat: 45.76, lon: 4.84, stage: null, power: null, source: 'OpenStreetMap France datacenters snapshot' },
+    ];
+    const [a, b] = cloudReferenceFeatures(r).features.map(body);
+    expect(a).toContain('<b>Centre &lt;A&gt;</b>');
+    expect(a).toContain('<span>Ville</span><span>Paris</span>');
+    expect(a).toContain('<span>Avancement</span><span>en projet</span>');
+    expect(a).toContain('<span>Puissance</span><span>10 à 50 MW</span>');
+    expect(a).toContain('Inventaire, pas un état.');
+    expect(a).toContain('inventaire embarqué');
+    expect(a).not.toContain('static backbone');
+    expect(b).toContain('opérateur n.d.');
+    expect(b).toContain('<span>Ville</span><span>n.d.</span>');
+    expect(b).not.toContain('Avancement');
+    expect(b).not.toContain('Puissance');
+    expect(b).toContain('OpenStreetMap');
+    expect(b).not.toContain('snapshot');
+  });
+  it('un libellé de source inconnu est repris tel quel (rien d’inventé), échappé', () => {
+    const r = cloudFixtureResponse();
+    r.reference.datacenters = [{ id: 'a', name: 'A', operator: null, city: null, lat: 1, lon: 2, stage: null, power: null, source: 'Autre <i>' }];
+    expect(body(cloudReferenceFeatures(r).features[0])).toContain('Autre &lt;i&gt;');
+  });
+  it('un site sans position lisible n’est pas dessiné', () => {
+    const r = cloudFixtureResponse();
+    r.reference.datacenters = [...r.reference.datacenters, { id: 'x', name: 'X', operator: null, city: null, lat: Number.NaN, lon: 2, stage: null, power: null, source: 'uMap' }];
+    expect(cloudReferenceFeatures(r).features).toHaveLength(r.reference.datacenters.length - 1);
+  });
+});
+
+describe('carte des pannes : Internet et Cloud, hygiène des infobulles', () => {
+  it('ni tiret cadratin, ni « temps réel », ni « live » ; aucune valeur coupée entre nombre et unité', () => {
+    const r = internetFixtureResponse();
+    const internet = internetFeatures(withEvents([event(r, {}), event(r, { dept: '87', label: 'Haute-Vienne', end: new Date(iodaRead(r) - DAY).toISOString(), ongoing: false })]), GEO, INTERNET_FIXTURE_NOW);
+    const bodies = [...internet.features.map(body), ...cloudBodies()];
+    expect(bodies.length).toBeGreaterThan(6);
+    for (const b of bodies) {
+      expect(b).not.toMatch(/\u2014|temps réel|LIVE/i);
+      expect(breakableValue(b.replace(/<[^>]+>/g, ' ')), b).toBeNull();
+    }
+  });
+  it('les textes de la source sont échappés dans les zones du cloud', () => {
+    const r = cloudFixtureResponse();
+    const z = ref(r, 'cloudflare').zones.find((x) => x.id === 'CDG');
+    if (z) z.label = '<img src=x onerror=alert(1)>';
+    const html = cloudZoneFeatures(r, CLOUD_FIXTURE_NOW).features.map(body).join('');
+    expect(html).not.toContain('<img');
+    expect(html).toContain('&lt;img');
   });
 });
