@@ -290,6 +290,9 @@ describe('hygiène du rendu', () => {
       expect(visibleText(h)).not.toMatch(/temps réel|TEMPS RÉEL|\bLIVE\b/i);
     }
   });
+  it('la note de méthode dit qu’une indisponibilité RTE sans puissance publiée n’est ni comptée ni listée', () => {
+    expect(visibleText(section({}, 'methode'))).toContain('sans puissance publiée');
+  });
   it('R1 : aucune valeur coupée entre nombre et unité', () => {
     for (const over of variants) {
       const v = view(over);

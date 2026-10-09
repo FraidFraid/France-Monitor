@@ -114,7 +114,7 @@ function sections(p: PowerOutagesResponse, input: PowerViewInput, f: Freshness):
       value: (v) => formatMw(v), tick: (ms) => dayMonth(new Date(ms).toISOString().slice(0, 10)), markPeak: true,
     })
     : emptyLine('Courbe n.d.');
-  const method = note('Arrêts imprévus : indisponibilités « fortuites » publiées par EDF (version en vigueur, fenêtre contenant l’instant), puissance maximale moins puissance disponible. Les contraintes de réserve (« chroniques ») et les unités de Luminus en Belgique sont écartées. Une unité décrite par EDF et par RTE est comptée une fois.')
+  const method = note('Arrêts imprévus : indisponibilités « fortuites » publiées par EDF (version en vigueur, fenêtre contenant l’instant), puissance maximale moins puissance disponible. Les contraintes de réserve (« chroniques ») et les unités de Luminus en Belgique sont écartées. Une unité décrite par EDF et par RTE est comptée une fois. Une indisponibilité déclarée à RTE sans puissance publiée n’est ni comptée ni listée.')
     + note('Transport : messages REMIT de RTE (version la plus haute, messages annulés écartés), datés par leur publication.')
     + `<p class="fmk-note">${sourceLinkHtml('EDF OpenData (Licence Ouverte 2.0)', EDF_URL)} · ${sourceLinkHtml('RTE, plateforme IIP', IIP_URL)}</p>`;
   return [
