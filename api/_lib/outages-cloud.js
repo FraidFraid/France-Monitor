@@ -55,11 +55,12 @@ export function __resetCloudForTests() {
   queue = Promise.resolve();
 }
 
-const OVH_FR = /^(RBX\d*|SBG\d*|GRA\d*|EU-WEST-PAR(-[ABC])?|EU-WEST-(GRA|RBX|SBG)|PAR\d*|3AZ|France|Access (RBX|SBG|GRA))$/;
-const OVH_TAG_FR = /^(RBX\d*|SBG\d*|GRA\d*|EU-WEST-PAR|PAR\d*|FR|FRANCE)$/;
+/** Marqueurs France d'OVHcloud (centres, zones, régions) : une seule source pour les composants et les étiquettes de titre (m1). */
+const OVH_FR = /^(RBX\d*|SBG\d*|GRA\d*|EU-WEST-PAR(-[ABC])?|EU-WEST-(GRA|RBX|SBG)|PAR\d*|3AZ|France|Access (RBX|SBG|GRA))$/i;
 export function isOvhFrance(name) { return OVH_FR.test(String(name).trim()); }
+/** Titre étiqueté « [GRA7] », « [EU-WEST-PAR-A] »… : mêmes marqueurs que les composants, plus l'étiquette de pays « [FR] ». */
 export function ovhTitleFrance(title) {
-  return [...String(title).matchAll(/\[([^\]]+)\]/g)].some((m) => OVH_TAG_FR.test(m[1].trim().toUpperCase()));
+  return [...String(title).matchAll(/\[([^\]]+)\]/g)].some((m) => isOvhFrance(m[1]) || m[1].trim().toUpperCase() === 'FR');
 }
 export const scalewayFrance = { component: (n) => /^(fr-par-\d|DC\d)$/.test(String(n).trim()), title: (t) => /\bfr-par\b/i.test(String(t)) };
 /** Outscale : zones par leurs groupes de composants, maintenances et incidents par l'étiquette du titre (« [EU-WEST-2] », « [US-WEST-1 ] »), P6. */

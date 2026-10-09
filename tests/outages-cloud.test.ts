@@ -32,6 +32,20 @@ describe('filtres France', () => {
     expect(ovhTitleFrance('[GLOBAL][Domains] - .MG and .TL Domain Names Incident Notification')).toBe(false);
     expect(ovhTitleFrance('[LIM1][Cooling System] - Rack L114B13 maintenance notification')).toBe(false);
   });
+  it('m1 : un titre OVH reconnu par les mêmes marqueurs que les composants ([EU-WEST-GRA], [EU-WEST-PAR-A], [3AZ], [SBG5], [FR]) ; un incident sans composant ainsi étiqueté est compté France', () => {
+    for (const t of ['[EU-WEST-GRA][Compute] - incident', '[EU-WEST-PAR-A][Block Storage] - incident', '[EU-WEST-RBX][Network] - x', '[3AZ][Kubernetes] - x', '[SBG5][Rack] - x', '[FR][Domains] - x', '[France][Hosting] - x']) {
+      expect(ovhTitleFrance(t), t).toBe(true);
+    }
+    for (const t of ['[EU-SOUTH-MIL][Compute] - x', '[GLOBAL][Domains] - x', '[LIM1][Cooling System] - x', '[DE][Domains] - x']) expect(ovhTitleFrance(t), t).toBe(false);
+    const page = {
+      components: [],
+      incidents: [{ id: 'gra', name: '[EU-WEST-GRA][Instances] - Incident', status: 'investigating', impact: 'major', created_at: '2026-10-08T19:00:00Z', updated_at: null, components: [] }],
+      scheduled_maintenances: [],
+    };
+    const p = fromStatuspage('ovhcloud', 'OVHcloud', page, OVH, NOW);
+    expect(p.incidents.map((i) => i.id)).toEqual(['ovhcloud:gra']);
+    expect(p.elsewhere).toEqual([]);
+  });
   it('P6 Outscale : titres [EU-WEST-2] et [CLOUDGOUV-EU-WEST-1], avec ou sans espace dans les crochets ; les autres régions écartées', () => {
     expect(outscaleFrance.title('[EU-WEST-2] Maintenance API')).toBe(true);
     expect(outscaleFrance.title('[cloudgouv-eu-west-1 ] Network Maintenance')).toBe(true);
