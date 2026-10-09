@@ -17,7 +17,7 @@ import { fetchEcowatt } from './ecowatt.ts';
 import { ecowattToday } from './ecowatt-official.ts';
 import { fetchInternet } from './outages-internet.ts';
 import { fetchCloud } from './outages-cloud.ts';
-import { cloudLive, telecomIfFresh } from './outages-levels.ts';
+import { cloudLive, isDeducedZone, telecomIfFresh } from './outages-levels.ts';
 import { fetchTelecom } from './outages-telecom.ts';
 import { fetchSpaceWeather } from './space-weather.ts';
 import { fetchCyber } from './sovereignty-cyber.ts';
@@ -111,11 +111,16 @@ export function normalizeBgp(r: InternetOutagesResponse | null, now: number = Da
 /**
  * Santé Cloud : part des zones françaises saines (opérationnelles ou en maintenance) parmi toutes les zones suivies des fournisseurs à
  * jour (cloudLive, R41 : dernière lecture réussie de moins de 2 h ; un fournisseur en retard ou jamais lu est exclu), les zones de statut
- * inconnu comprises au dénominateur (spec § 3.2, P16), × 100 arrondi. null sans zone : jamais un 100 « par défaut ».
+ * inconnu comprises au dénominateur (spec § 3.2, P16), × 100 arrondi. Une zone sans état publié (GCP, AWS : « opérationnelle » par
+ * absence d'incident, isDeducedZone) n'est comptée nulle part ; un incident publié l'y fait entrer, non saine (ruling B9, pas de vert
+ * déduit). null sans zone : jamais un 100 « par défaut ».
  */
 export function normalizeCloud(r: CloudOutagesResponse | null, now: number = Date.now()): number | null {
   if (r === null) return null;
-  const zones = cloudLive(r, now).zones;
+  const fresh = cloudLive(r, now).freshProviders;
+  const zones = r.providers
+    .filter((p) => fresh.includes(p.provider))
+    .flatMap((p) => p.zones.filter((z) => !isDeducedZone(p.provider, z)));
   if (zones.length === 0) return null;
   const healthy = zones.filter((z) => z.status === 'operational' || z.status === 'maintenance').length;
   return Math.round((100 * healthy) / zones.length);

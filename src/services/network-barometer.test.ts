@@ -158,6 +158,31 @@ describe('normalizeCloud : part des zones françaises suivies saines (spec § 3.
     const r = cloud([provider({ provider: 'ovhcloud', error: 'OVHcloud (network) : HTTP 503', zones: [zone('GRA', 'operational'), zone('RBX', 'partial')] })]);
     expect(normalizeCloud(r, B_NOW)).toBe(50);
   });
+  // Zones GCP et AWS sans état publié (opérationnelles par absence d'incident, sans date) : ni au numérateur ni au dénominateur (ruling B9,
+  // pas de vert déduit, comme la carte B8) ; un incident publié les y fait entrer, non saines.
+  const deduced = (id: string) => ({ ...zone(id, 'operational'), updatedAt: null });
+  it('OVHcloud opérationnel et zone Google Cloud déduite : 100, la zone déduite hors du dénominateur', () => {
+    const r = cloud([provider({ provider: 'ovhcloud', zones: [zone('GRA', 'operational')] }), provider({ provider: 'gcp', zones: [deduced('europe-west9')] })]);
+    expect(normalizeCloud(r, B_NOW)).toBe(100);
+    const withPartial = cloud([
+      provider({ provider: 'ovhcloud', zones: [zone('GRA', 'operational'), zone('RBX', 'partial')] }), provider({ provider: 'gcp', zones: [deduced('europe-west9')] }),
+    ]);
+    expect(normalizeCloud(withPartial, B_NOW)).toBe(50);
+  });
+  it('zone Google Cloud dégradée (incident publié) : comptée non saine, 50', () => {
+    const r = cloud([
+      provider({ provider: 'ovhcloud', zones: [zone('GRA', 'operational')] }),
+      provider({ provider: 'gcp', zones: [{ ...zone('europe-west9', 'degraded'), updatedAt: null }] }),
+    ]);
+    expect(normalizeCloud(r, B_NOW)).toBe(50);
+  });
+  it('seuls Google Cloud et AWS à jour, sans incident publié : null (n.d.), jamais 100', () => {
+    const r = cloud([
+      provider({ provider: 'gcp', zones: [deduced('europe-west9')] }), provider({ provider: 'aws', zones: [deduced('eu-west-3')] }),
+      provider({ provider: 'ovhcloud', readAt: '2026-10-09T08:00:00Z', zones: [zone('GRA', 'operational')] }),
+    ]);
+    expect(normalizeCloud(r, B_NOW)).toBeNull();
+  });
   it('aucun fournisseur lu, aucun à jour, ou aucune zone suivie : null (jamais 100 par défaut)', () => {
     expect(normalizeCloud(null, B_NOW)).toBeNull();
     expect(normalizeCloud(cloud([]), B_NOW)).toBeNull();
