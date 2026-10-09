@@ -105,7 +105,7 @@ function event(over: Partial<InternetEvent>): InternetEvent {
 }
 
 function radarItem(over: Partial<RadarItem>): RadarItem {
-  return { id: `r${Math.random()}`, kind: 'anomalie', label: 'Free (AS12322)', asn: 12322, start: '2026-10-08T18:30:00.000Z', end: null, verified: false, cause: null, outageType: null, ...over };
+  return { id: `r${Math.random()}`, kind: 'anomalie', label: 'Free (AS12322)', asn: 12322, start: '2026-10-08T18:30:00.000Z', end: null, verified: false, cause: null, outageType: null, national: false, ...over };
 }
 
 function internet(events: InternetEvent[], items: RadarItem[] = [], over: Partial<InternetOutagesResponse> = {}): InternetOutagesResponse {
@@ -148,6 +148,11 @@ describe('Internet : lieux en cours et pastille', () => {
     const multi = radarItem({ kind: 'panne', label: 'non localisé', asn: null, outageType: 'nationale, plusieurs pays' });
     expect(internetLevel(internet([], [multi]), NOW)).toBe('orange');
   });
+  it('P29 : la portée vient du champ `national`, jamais du texte du type : un type « nationale » sans portée nationale reste un lieu propre', () => {
+    const textOnly = radarItem({ kind: 'panne', label: 'non localisé', asn: null, outageType: 'nationale', national: false });
+    expect(internetLevel(internet([], [textOnly]), NOW)).toBe('orange');
+    expect(internetLive(internet([], [textOnly]), NOW).map((p) => p.scope)).toEqual(['inconnu']);
+  });
   it('P13 : deux événements (bgp et ping-slash24) sur la Creuse comptent un seul lieu', () => {
     const r = internet([event({ signal: 'bgp' }), event({ signal: 'ping-slash24' })]);
     expect(internetLive(r, NOW)).toEqual([{ key: 'dept:23', scope: 'departement', label: 'Creuse', dept: '23', asn: null, source: 'ioda' }]);
@@ -162,7 +167,7 @@ describe('Internet : lieux en cours et pastille', () => {
     const regional = radarItem({ kind: 'panne', label: 'Corse', asn: null, outageType: 'régionale' });
     expect(internetLevel(internet([], [regional]), NOW)).toBe('orange');
     expect(internetLive(internet([], [regional]), NOW)).toHaveLength(1);
-    expect(internetLevel(internet([], [radarItem({ kind: 'panne', label: 'France entière', asn: null, outageType: 'nationale' })]), NOW)).toBe('rouge');
+    expect(internetLevel(internet([], [radarItem({ kind: 'panne', label: 'France entière', asn: null, outageType: 'nationale', national: true })]), NOW)).toBe('rouge');
   });
   it('P29 : « national » vient de la portée, jamais du libellé « France »', () => {
     // Une anomalie Radar d’un opérateur dont le libellé contiendrait « France » reste un opérateur.
@@ -170,10 +175,10 @@ describe('Internet : lieux en cours et pastille', () => {
     // Un événement IODA départemental nommé « France » ne rend pas rouge.
     expect(internetLevel(internet([event({ label: 'France' })]), NOW)).toBe('jaune');
     // Anomalie Radar sans ASN (portée pays) : national, quel que soit son libellé.
-    expect(internetLevel(internet([], [radarItem({ asn: null, label: 'Pays' })]), NOW)).toBe('rouge');
+    expect(internetLevel(internet([], [radarItem({ asn: null, label: 'Pays', national: true })]), NOW)).toBe('rouge');
   });
   it('P14 : Radar en retard (lecture de plus d’une heure) ou jamais lu est ignoré', () => {
-    const items = [radarItem({ asn: null, label: 'France' })];
+    const items = [radarItem({ asn: null, label: 'France', national: true })];
     expect(internetLevel(internet([], items), NOW)).toBe('rouge');
     expect(internetLevel(internet([], items, { radar: { configured: true, readAt: '2026-10-08T19:29:00.000Z', items } }), NOW)).toBe('vert');
     expect(internetLevel(internet([], items, { radar: { configured: true, readAt: null, items } }), NOW)).toBe('vert');

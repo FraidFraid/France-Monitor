@@ -93,10 +93,9 @@ export interface InternetLivePlace {
   source: 'ioda' | 'radar';
 }
 
-/** Élément Radar en cours : national par sa portée (anomalie du pays sans réseau, panne nationale), jamais par son libellé (P29). */
+/** Élément Radar en cours : national par sa portée structurée (`national`), jamais par son libellé ni par un texte affiché (P29). */
 function radarPlace(item: RadarItem): InternetLivePlace {
-  const national = (item.kind === 'anomalie' && item.asn === null) || (item.kind === 'panne' && item.outageType === 'nationale');
-  if (national) return { key: 'national', scope: 'national', label: item.label, dept: null, asn: null, source: 'radar' };
+  if (item.national) return { key: 'national', scope: 'national', label: item.label, dept: null, asn: null, source: 'radar' };
   if (item.asn !== null) return { key: `asn:${item.asn}`, scope: 'operateur', label: item.label, dept: null, asn: item.asn, source: 'radar' };
   return { key: `radar:${item.id}`, scope: 'inconnu', label: item.label, dept: null, asn: null, source: 'radar' };
 }

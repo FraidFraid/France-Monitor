@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __resetKvForTests, __setKvClientForTests } from '../api/_lib/kv-history.js';
 import { __resetSwrCacheForTests } from '../api/_utils/swr-cache.js';
-import { IODA_BASE, __resetInternetForTests } from '../api/_lib/outages-internet.js';
-import handler, { CACHE_CONTROL, PENDING_CACHE_CONTROL, loadInternet } from '../api/_handlers/outages/internet.js';
+import { IODA_BASE, INTERNET_PENDING_NOTE, __resetInternetForTests } from '../api/_lib/outages-internet.js';
+import { ROUTE_BUDGET_MS } from '../api/_lib/route-budget.js';
+import handler, { CACHE_CONTROL, PENDING_CACHE_CONTROL } from '../api/_handlers/outages/internet.js';
 import { internetRoute as route } from './helpers/outages-b-fixtures.ts';
 import { callHandler, respond, stubFetch } from './helpers/traffic-fixtures.ts';
 import type { InternetOutagesResponse } from '../src/types/index.ts';
@@ -39,21 +40,32 @@ describe('/api/outages/internet', () => {
     expect(body.events).toEqual([]);
     expect(body.errors[0]).toMatch(/^IODA/);
   });
-  it('échéance dépassée, rien de gardé : réponse vide avec la note, cache court, 502', async () => {
+  /** Appelle la route avec une collecte qui ne répond jamais, puis fait expirer l'échéance de 15 s. */
+  async function callPastBudget(at: number) {
+    vi.useRealTimers();
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    vi.setSystemTime(at);
     stubFetch(() => new Promise(() => {}));
-    const body = await loadInternet(NOW, { budgetMs: 5 });
+    const pending = callHandler<InternetOutagesResponse>(handler);
+    await vi.advanceTimersByTimeAsync(ROUTE_BUDGET_MS + 1);
+    return pending;
+  }
+  it('échéance de 15 s dépassée, rien de gardé : route en 502 de même forme, note « collecte en cours », jamais mise en cache', async () => {
+    const { status, body, cache } = await callPastBudget(NOW);
+    expect([status, cache]).toEqual([502, 'no-store']);
+    expect(Object.keys(body).sort()).toEqual(KEYS);
     expect(body.iodaReadAt).toBeNull();
-    expect(body.errors).toEqual(['Internet : collecte en cours']);
-    expect(PENDING_CACHE_CONTROL).toBe('s-maxage=60, stale-while-revalidate=120');
+    expect(body.errors).toEqual([INTERNET_PENDING_NOTE]);
   });
-  it('échéance dépassée, relevé gardé : relevé servi avec la note, 200 et cache court', async () => {
-    const log = stubFetch(route);
+  it('échéance de 15 s dépassée, relevé gardé : 200, relevé servi avec la note, cache court de 60 s', async () => {
+    stubFetch(route);
     await callHandler<InternetOutagesResponse>(handler);
-    expect(log.urls.length).toBeGreaterThan(0);
-    stubFetch(() => new Promise(() => {}));
-    vi.setSystemTime(NOW + 11 * 60_000);
-    const body = await loadInternet(NOW + 11 * 60_000, { budgetMs: 5 });
+    __resetSwrCacheForTests();
+    const { status, body, cache } = await callPastBudget(NOW + 11 * 60_000);
+    expect([status, cache]).toEqual([200, PENDING_CACHE_CONTROL]);
+    expect(PENDING_CACHE_CONTROL).toBe('s-maxage=60, stale-while-revalidate=120');
     expect(body.iodaReadAt).toBe('2026-10-08T20:30:00.000Z');
-    expect(body.errors).toEqual(['Internet : collecte en cours']);
+    expect(body.events.length).toBeGreaterThan(0);
+    expect(body.errors).toEqual([INTERNET_PENDING_NOTE]);
   });
 });

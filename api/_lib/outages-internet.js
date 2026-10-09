@@ -90,7 +90,7 @@ export function normalizeRadar(anomaliesJson, outagesJson) {
     if (asn !== null && !Number.isInteger(asn)) continue;
     out.push({
       id: String(a.uuid), kind: 'anomalie', label: asn !== null ? `${asnName(asn, a.asnDetails.name)} (AS${asn})` : 'France', asn, start, end,
-      verified: a.status === 'VERIFIED', cause: null, outageType: null,
+      verified: a.status === 'VERIFIED', cause: null, outageType: null, national: asn === null,
     });
   }
   for (const o of outagesJson?.result?.annotations ?? []) {
@@ -99,13 +99,14 @@ export function normalizeRadar(anomaliesJson, outagesJson) {
     if (!Array.isArray(o?.locations) || !o.locations.includes('FR') || start === null || (o.endDate && end === null)) continue;
     const asn = Array.isArray(o.asns) && o.asns.length === 1 && Number.isInteger(Number(o.asns[0])) ? Number(o.asns[0]) : null;
     const type = o.outage ? TYPE_FR[o.outage.outageType] ?? String(o.outage.outageType).toLowerCase() : null;
-    // Une coupure « nationale » vue sur plusieurs pays n'est pas forcément celle de la France (P2) : nationale seulement si le pays est seul.
-    const onlyFrance = o.locations.length === 1;
-    const outageType = type === 'nationale' && !onlyFrance ? 'nationale, plusieurs pays' : type;
-    // Sans portée nommée : l'opérateur s'il y en a un, « France » seulement pour une coupure nationale de la France seule, sinon « non localisé ».
-    const label = o.scope ? String(o.scope) : asn !== null ? `${asnName(asn, o.asnsDetails?.[0]?.name)} (AS${asn})` : outageType === 'nationale' ? 'France' : 'non localisé';
+    // Une coupure « nationale » vue sur plusieurs pays n'est pas forcément celle de la France (P2) : nationale pour la France seulement si
+    // le pays est seul. La portée est portée par `national`, jamais déduite du texte affiché.
+    const national = type === 'nationale' && o.locations.length === 1;
+    const outageType = type === 'nationale' && !national ? 'nationale, plusieurs pays' : type;
+    // Sans portée nommée : « France » si nationale, sinon l'opérateur s'il y en a un, sinon « non localisé ».
+    const label = o.scope ? String(o.scope) : national ? 'France' : asn !== null ? `${asnName(asn, o.asnsDetails?.[0]?.name)} (AS${asn})` : 'non localisé';
     out.push({
-      id: `radar-${o.id}`, kind: 'panne', label, asn, start, end, verified: null,
+      id: `radar-${o.id}`, kind: 'panne', label, asn, start, end, verified: null, national,
       cause: o.outage ? CAUSE_FR[o.outage.outageCause] ?? String(o.outage.outageCause).toLowerCase() : null, outageType,
     });
   }

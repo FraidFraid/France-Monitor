@@ -90,12 +90,24 @@ describe('Cloudflare Radar', () => {
       annotation({ id: 'b', outage: { outageCause: 'GOVERNMENT_DIRECTED', outageType: 'NATIONWIDE' } }),
     );
     expect(named.label).toBe('Corse');
-    expect([national.label, national.outageType]).toEqual(['France', 'nationale']);
+    expect([national.label, national.outageType, national.national, named.national]).toEqual(['France', 'nationale', true, false]);
+  });
+  it('R40 : coupure nationale de la France seule portant un seul ASN : libellée « France » et comptée nationale (libellé et portée cohérents)', () => {
+    const [nat, regional] = pannes(
+      annotation({ id: 'n', asns: [3215], asnsDetails: [{ asn: '3215', name: 'ORANGE' }], outage: { outageCause: 'TECHNICAL_PROBLEM', outageType: 'NATIONWIDE' } }),
+      annotation({ id: 'r', asns: [3215], asnsDetails: [{ asn: '3215', name: 'ORANGE' }], outage: { outageCause: 'TECHNICAL_PROBLEM', outageType: 'REGIONAL' } }),
+    );
+    expect([nat.label, nat.national, nat.outageType]).toEqual(['France', true, 'nationale']);
+    expect([regional.label, regional.national]).toEqual(['Orange (AS3215)', false]);
+  });
+  it('R40 : anomalie Radar sans réseau = nationale ; avec réseau = non nationale', () => {
+    const items = normalizeRadar(JSON.parse(fx('radar-traffic-anomalies-fr.json')), { result: { annotations: [] } });
+    expect(items.map((i) => [i.label, i.national])).toEqual([['Free (AS12322)', false], ['France', true]]);
   });
   it('R40 : coupure « nationale » sur plusieurs pays : jamais nationale pour la France (P2), lieu propre non localisé', () => {
     const [multi] = pannes(annotation({ id: 'm', locations: ['ES', 'PT', 'FR'], outage: { outageCause: 'POWER_OUTAGE', outageType: 'NATIONWIDE' } }));
     expect(multi.outageType).not.toBe('nationale');
-    expect(multi.label).toBe('non localisé');
+    expect([multi.label, multi.national]).toEqual(['non localisé', false]);
   });
   it('une date illisible écarte l’élément sans faire échouer les autres', () => {
     const items = normalizeRadar(

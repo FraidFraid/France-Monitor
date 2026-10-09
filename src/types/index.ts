@@ -3112,6 +3112,7 @@ export interface InternetEvent {
 export interface RadarItem {
   id: string; kind: 'anomalie' | 'panne'; label: string; asn: number | null; start: string; end: string | null;
   verified: boolean | null; cause: string | null; outageType: string | null;
+  national: boolean;                // portée du pays entier : anomalie sans réseau, ou coupure nationale de la France seule (jamais déduit du libellé, P29)
 }
 export interface InternetOutagesResponse {
   readAt: string | null;            // dernière lecture réussie d'une des deux sources (horloge du serveur)
