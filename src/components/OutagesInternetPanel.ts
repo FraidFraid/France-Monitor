@@ -30,7 +30,7 @@ export class OutagesInternetPanel {
   setOnClose(handler: () => void): void { this.onClose = handler; }
   /** Lignes de département cliquables seulement avec ce gestionnaire (carte WebGL, posé par App.ts). */
   setOnFocusDept(handler: (dept: string) => void): void { this.onFocusDept = handler; }
-  /** Bouton « Voir le panneau Connectivité » : affiché seulement avec ce gestionnaire. */
+  /** Bouton « Voir le panneau Connectivité » : affiché dès que ce gestionnaire est posé, même sans recentrage de la carte. */
   setOnOpenConnectivity(handler: () => void): void { this.onOpenConnectivity = handler; }
 
   show(state: InternetState): void {
@@ -68,7 +68,7 @@ export class OutagesInternetPanel {
     if (!this.shell || !this.state) return;
     const slot = this.state.internet;
     this.shell.patch(buildInternetView({
-      internet: slot.data, error: slot.error, canFocus: this.onFocusDept !== undefined && this.onOpenConnectivity !== undefined, now: Date.now(),
+      internet: slot.data, error: slot.error, canFocus: this.onFocusDept !== undefined, canOpenConnectivity: this.onOpenConnectivity !== undefined, now: Date.now(),
       open: sectionOpenOf(loadSectionState(this.storage), PANEL_ID),
     }));
   }

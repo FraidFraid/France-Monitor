@@ -44,14 +44,22 @@ describe('OutagesInternetPanel', () => {
     expect(connectivity).toHaveBeenCalledTimes(1);
     expect(dept).toHaveBeenCalledTimes(1);
   });
-  it('sans gestionnaire (ou avec un seul), rien de cliquable', () => {
+  it('chaque gestionnaire commande sa capacité : aucun, rien ; départements seuls, pas de bouton ; Connectivité seule, pas de ligne cliquable', () => {
     const bare = mount();
     bare.p.show(state());
     expect(bare.c.querySelector('[data-dept], [data-open-connectivity]')).toBeNull();
-    const half = mount();
-    half.p.setOnFocusDept(() => {});
-    half.p.show(state());
-    expect(half.c.querySelector('[data-dept], [data-open-connectivity]')).toBeNull();
+    const deptOnly = mount();
+    deptOnly.p.setOnFocusDept(() => {});
+    deptOnly.p.show(state());
+    expect(deptOnly.c.querySelector('[data-dept]')).not.toBeNull();
+    expect(deptOnly.c.querySelector('[data-open-connectivity]')).toBeNull();
+    const connectivityOnly = mount();
+    const connectivity = vi.fn();
+    connectivityOnly.p.setOnOpenConnectivity(connectivity);
+    connectivityOnly.p.show(state());
+    expect(connectivityOnly.c.querySelector('[data-dept]')).toBeNull();
+    (connectivityOnly.c.querySelector('[data-open-connectivity]') as HTMLElement).click();
+    expect(connectivity).toHaveBeenCalledTimes(1);
   });
   it('croix : onClose ; masquage silencieux : pas d’onClose', () => {
     const { c, p } = mount();

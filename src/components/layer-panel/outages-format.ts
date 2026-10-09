@@ -1,8 +1,9 @@
 // src/components/layer-panel/outages-format.ts : mots et formats partagés des panneaux Pannes réseau (R1 : une valeur sur une ligne).
 // Couleurs de catégorie en jetons CSS (R12 : --cat-out-* définis dans main.css), jamais en hexadécimal ; les teintes MapLibre vivent
 // dans la couche de carte, avec leur test d'égalité aux jetons.
+import { parisDayOf } from '../../services/environment-levels.ts';
 import { escapeHtml } from '../france-intel-events.ts';
-import { NBSP, frNumber, localClock } from './format.ts';
+import { NBSP, dayMonth, frNumber, localClock } from './format.ts';
 import { departementName } from './health-format.ts';
 
 export { dayMonth } from './format.ts';
@@ -35,6 +36,11 @@ export function placeOf(dept: string | null): string {
 export function parisClock(ms: number): string {
   const [h, m] = localClock(ms, PARIS).split(':');
   return `${Number(h)}${NBSP}h${NBSP}${m}`;
+}
+/** « 08/10 à 11 h 02 » (Paris) ; « n.d. » si la date est illisible. */
+export function when(iso: string | null): string {
+  const t = iso === null ? Number.NaN : Date.parse(iso);
+  return Number.isFinite(t) ? `${dayMonth(parisDayOf(t))} à ${parisClock(t)}` : 'n.d.';
 }
 /** « et 12 autres. » quand une liste est coupée : rien n'est tronqué en silence. */
 export function moreNote(total: number, shown: number): string {

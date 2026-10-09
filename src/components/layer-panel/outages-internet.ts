@@ -15,7 +15,7 @@ import type { FicheSection } from '../fiche/parts.ts';
 import { stackedDayBars, type DayStack } from './chart.ts';
 import { NBSP, formatPct, frNumber } from './format.ts';
 import { emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, valueHtml, type LayerView } from './frame.ts';
-import { OUTAGES_THEME, OUT_LATE_VAR, countText, dayMonth, formatDuration, moreNote, note, parisClock, placeOf, sinceText } from './outages-format.ts';
+import { OUTAGES_THEME, OUT_LATE_VAR, countText, dayMonth, formatDuration, moreNote, note, parisClock, placeOf, sinceText, when } from './outages-format.ts';
 
 export const INTERNET_TITLE = 'Internet';
 export const INTERNET_RECENT_ROWS = 30;
@@ -32,16 +32,11 @@ const STALE_NOTE = `ouvert depuis plus de 7${NBSP}jours, probablement un recalag
 const SCOPE_LEVEL: Readonly<Record<InternetLivePlace['scope'], VigilanceLevel>> = { national: 'rouge', operateur: 'orange', departement: 'jaune', inconnu: 'orange' };
 
 type OpenFn = (sectionId: string, byDefault: boolean) => boolean;
-export interface InternetViewInput { internet: InternetOutagesResponse | null; error: string | null; canFocus: boolean; now: number; open: OpenFn }
+/** `canFocus` : lignes de département cliquables (recentrage de la carte) ; `canOpenConnectivity` : bouton du panneau Connectivité. Deux capacités indépendantes. */
+export interface InternetViewInput { internet: InternetOutagesResponse | null; error: string | null; canFocus: boolean; canOpenConnectivity: boolean; now: number; open: OpenFn }
 
 /** Ce que chaque source peut dire : IODA en retard (plus de couleur de niveau), Radar en retard (configuré mais lu trop tôt). */
 interface Freshness { iodaLate: boolean; radarLate: boolean }
-
-/** « 08/10 à 22 h 20 » (Paris) ; « n.d. » si la date est illisible. */
-function when(iso: string | null): string {
-  const t = iso === null ? Number.NaN : Date.parse(iso);
-  return Number.isFinite(t) ? `${dayMonth(parisDayOf(t))} à ${parisClock(t)}` : 'n.d.';
-}
 
 /** Puce d'une ligne : niveau de sa portée, ou puce grise quand IODA est en retard. */
 function marker(level: VigilanceLevel, f: Freshness): { level: VigilanceLevel | 'gris' } {
@@ -148,7 +143,7 @@ function bgpSection(r: InternetOutagesResponse, input: InternetViewInput): strin
   const rows = ripe.networks.map((n) => kvRow(n.name, valueHtml(formatPct(n.visibilityPct, 0), late ? null : visibilityPctLevel(n.visibilityPct)))).join('');
   const stamp = ripe.snapshotAt === null ? 'instantané n.d.' : `instantané de ${parisClock(Date.parse(ripe.snapshotAt))}`;
   return rows + note(`${stamp}${late ? ' (en retard)' : ''}`)
-    + (input.canFocus ? '<button type="button" class="fmk-link" data-open-connectivity="1">Voir le panneau Connectivité</button>' : '');
+    + (input.canOpenConnectivity ? '<button type="button" class="fmk-link" data-open-connectivity="1">Voir le panneau Connectivité</button>' : '');
 }
 
 function curveSection(r: InternetOutagesResponse, f: Freshness, readAt: number): string {
@@ -190,7 +185,7 @@ function sections(r: InternetOutagesResponse, input: InternetViewInput, f: Fresh
     : emptyLine('Aucune anomalie en cours vue par IODA ni Cloudflare Radar.') + note('Une absence d’anomalie n’est pas une absence de panne.');
   const recent = recentRows(r, f, readAt);
   return [
-    { id: 'encours', title: 'Anomalies en cours', collapsible: true, open: open('encours', true), summary: escapeHtml(frNumber(live.length, 0)), html: (lines || none) + setAsideRows(r, now) },
+    { id: 'encours', title: 'Anomalies en cours', collapsible: true, open: open('encours', true), summary: escapeHtml(f.iodaLate ? 'n.d.' : frNumber(live.length, 0)), html: (lines || none) + setAsideRows(r, now) },
     {
       id: 'recents', title: 'Terminées, 7 derniers jours', collapsible: true, open: open('recents', true), summary: escapeHtml(frNumber(recent.total, 0)),
       html: recent.rows || emptyLine('Aucun événement IODA terminé sur les 7 derniers jours.'),
@@ -228,7 +223,8 @@ export function buildInternetView(input: InternetViewInput): LayerView {
   const f: Freshness = { iodaLate: isOutagesDataLate('ioda', r.iodaReadAt, now), radarLate: r.radar.configured && isOutagesDataLate('radar', r.radar.readAt, now) };
   const live = internetLive(r, now);
   const level = f.iodaLate ? 'nd' : internetLevel(r, now) ?? 'nd';
-  const figure = { value: frNumber(live.length, 0), caption: FIGURE_CAPTION, ...(f.iodaLate ? { level: null } : {}) };
+  // IODA en retard : « en cours » ne se dit plus au présent, le gros chiffre est « n.d. » (jamais un compte, 0 compris).
+  const figure = f.iodaLate ? { value: 'n.d.', caption: FIGURE_CAPTION, level: null } : { value: frNumber(live.length, 0), caption: FIGURE_CAPTION };
   const radar = !r.radar.configured ? 'Cloudflare Radar non configuré'
     : r.radar.readAt === null ? 'Cloudflare Radar n.d.'
     : `Cloudflare Radar lu à ${parisClock(Date.parse(r.radar.readAt))}${f.radarLate ? ' (en retard)' : ''}`;

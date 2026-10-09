@@ -15,7 +15,7 @@ import { lineChart } from './chart.ts';
 import { NBSP, formatGw, formatMw, frNumber } from './format.ts';
 import { emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, valueHtml, type LayerView } from './frame.ts';
 import {
-  OUTAGES_THEME, OUT_LATE_VAR, OUT_MAINT_VAR, OUT_RECENT_VAR, countText, dayMonth, moreNote, note, parisClock, sinceText,
+  OUTAGES_THEME, OUT_LATE_VAR, OUT_MAINT_VAR, OUT_RECENT_VAR, countText, dayMonth, moreNote, note, parisClock, sinceText, when,
 } from './outages-format.ts';
 
 export const POWER_TITLE = 'Électricité : production et transport';
@@ -36,12 +36,6 @@ export interface PowerViewInput { power: PowerOutagesResponse | null; error: str
 
 /** Ce que chaque partie peut dire : EDF muet (jamais lu ou en échec), EDF et RTE en retard. */
 interface Freshness { edfMute: boolean; edfNever: boolean; edfGrey: boolean; iipGrey: boolean }
-
-/** « 08/10 à 11 h 02 » (Paris) ; « n.d. » si la date est illisible. */
-function when(iso: string | null): string {
-  const t = iso === null ? Number.NaN : Date.parse(iso);
-  return Number.isFinite(t) ? `${dayMonth(parisDayOf(t))} à ${parisClock(t)}` : 'n.d.';
-}
 
 /** Couleur d'une ligne : catégorie, ou gris si la partie qui la fournit est en retard ou muette. */
 function colorOf(u: PowerUnitOutage, category: string, f: Freshness): string {

@@ -12,7 +12,7 @@ import { INTERNET_FIXTURE_NOW, internetFixtureResponse } from './outages.fixture
 
 const open = (): boolean => true;
 const view = (over: Partial<InternetViewInput> = {}) => buildInternetView({
-  internet: internetFixtureResponse(), error: null, canFocus: true, now: INTERNET_FIXTURE_NOW, open, ...over,
+  internet: internetFixtureResponse(), error: null, canFocus: true, canOpenConnectivity: true, now: INTERNET_FIXTURE_NOW, open, ...over,
 });
 const html = (over: Partial<InternetViewInput> = {}): string => renderLayerView('outagesInternet', view(over));
 const text = (over: Partial<InternetViewInput> = {}): string => visibleText(html(over));
@@ -70,10 +70,12 @@ describe('vue Internet (jeu d’essai du 08/10)', () => {
     expect(recents).toContain(`1${NBSP}h${NBSP}25`);
     expect(recents).not.toContain('Haute-Vienne');
   });
-  it('lignes de département et bouton Connectivité cliquables seulement avec un gestionnaire', () => {
+  it('lignes de département et bouton Connectivité commandés chacun par leur propre capacité', () => {
     expect(html()).toContain('data-dept="23"');
     expect(html({ canFocus: false })).not.toContain('data-dept=');
-    expect(html({ canFocus: false })).not.toContain('data-open-connectivity');
+    expect(html({ canFocus: false })).toContain('data-open-connectivity');
+    expect(html({ canOpenConnectivity: false })).not.toContain('data-open-connectivity');
+    expect(html({ canOpenConnectivity: false })).toContain('data-dept="23"');
   });
   it('P13 : deux signaux (bgp, ping-slash24) sur la Creuse en cours comptent un seul lieu', () => {
     const v = view(withData((r) => {
@@ -118,7 +120,8 @@ describe('vue Internet (jeu d’essai du 08/10)', () => {
     const v = view(over);
     expect(v.head.status[0]).toContain('(en retard)');
     expect(v.head.level).toBe('nd');
-    expect(v.head.figure?.level).toBeNull();
+    expect(v.head.figure).toMatchObject({ value: 'n.d.', level: null });
+    expect(visibleText(v.sections[0]?.summary ?? '')).toBe('n.d.');
     // La visibilité RIPEstat est une autre source (instantané de 18 h UTC, pas en retard) : elle garde sa couleur.
     const colored = ['encours', 'recents', 'departements', 'courbe'].map((id) => section(over, id)).join('') + renderLayerView('x', { ...v, sections: [], bodyHtml: '' });
     expect(colored).not.toContain('lp-lvl--');
@@ -204,7 +207,7 @@ describe('hygiène du rendu', () => {
     return r;
   };
   const variants: Array<Partial<InternetViewInput>> = [
-    {}, { canFocus: false }, { internet: hostile() }, { error: 'IODA : HTTP 503' }, { internet: null, error: 'IODA : HTTP 503' }, { internet: null },
+    {}, { canFocus: false }, { canOpenConnectivity: false }, { internet: hostile() }, { error: 'IODA : HTTP 503' }, { internet: null, error: 'IODA : HTTP 503' }, { internet: null },
     { now: Date.parse('2026-10-09T09:00:00Z') }, { now: Date.parse('2026-10-08T22:00:00Z') },
     withData((r) => { r.radar = { configured: false, readAt: null, items: [] }; }),
     withData((r) => { r.ripe = null; }),
@@ -233,6 +236,8 @@ describe('hygiène du rendu', () => {
   });
   it('IODA en retard et sans événement : jamais « aucune anomalie », la section dit n.d.', () => {
     const over = withData((r) => { r.iodaReadAt = '2026-10-08T18:00:00.000Z'; r.events = []; r.radar.items = []; });
+    expect(view(over).head.figure?.value).toBe('n.d.');
+    expect(view(over).sections[0]?.summary).toBe('n.d.');
     expect(sectionText(over, 'encours')).toContain('n.d.');
     expect(sectionText(over, 'encours')).not.toMatch(/aucune anomalie/i);
     expect(sectionText(withData((r) => { r.events = []; r.radar.items = []; }), 'encours')).toContain('Aucune anomalie en cours vue par IODA ni Cloudflare Radar.');
