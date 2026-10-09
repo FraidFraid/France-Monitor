@@ -46,7 +46,7 @@ import {
   getSparklineSeries,
   recordStabilitySnapshot,
 } from './utils/stability-history.ts';
-import type { BriefEventInput, FranceCountrySnapshot, FranceIntelTimelineLane, IntelEventsState, PressAlertEvent, StructuredBrief } from './types/index.ts';
+import type { BriefEventInput, FranceCountrySnapshot, FranceIntelTimelineLane, IntelEventsState, PressAlertEvent, StructuredBrief, TelecomOutagesResponse } from './types/index.ts';
 import { PressAlertSource, pruneStalePressAlerts } from './services/press-alert-source.ts';
 import { GasPanel } from './components/GasPanel.ts';
 import type { HydraulicPanel } from './components/HydraulicPanel.ts';
@@ -153,6 +153,8 @@ import {
 const isEnvironmentLayerKey = (key: keyof MapLayers): key is EnvironmentLayerKey => (ENVIRONMENT_LAYER_KEYS as readonly string[]).includes(key);
 /** Clé d'une des trois couches Souveraineté (un panneau, une relève, une légende chacune ; contrats § 4.4 point 2). */
 const isSovereigntyLayerKey = (key: keyof MapLayers): key is SovereigntyLayerKey => (SOVEREIGNTY_LAYER_KEYS as readonly string[]).includes(key);
+/** Clé d'une des quatre couches Pannes réseau (Électricité et Télécoms : un panneau, une relève, une légende chacune). */
+const isOutagesLayerKey = (key: keyof MapLayers): key is OutagesLayerKey => (OUTAGES_LAYER_KEYS as readonly string[]).includes(key);
 /** Lignes cyber du panneau des sources (arbitrage 22) : partie de la réponse qui date chaque ligne, nom affiché. */
 const CYBER_STATUS_PARTS: ReadonlyArray<readonly [CyberPart, string]> = [
   ['certfr', 'CERT-FR'], ['kev', 'CISA KEV'], ['ransomware', 'Ransomware.live'], ['hibp', 'Have I Been Pwned'],
@@ -188,8 +190,19 @@ import {
 } from './components/layer-panel/traffic-legend.ts';
 import { fetchAirTrafficSnapshot } from './services/air-traffic.ts';
 import { fetchMarketData } from './services/finance.ts';
-import { fetchTelecomOutages, fetchPowerOutages, getPowerOutagesMeta, lastArcepDataDate } from './services/outages.ts';
-import { fetchOutageZoneCollection } from './services/outages-scraper.ts';
+// Pannes réseau (spec 2026-10-08 panneaux pannes § 4) : Télécoms lu au démarrage et relevé sans arrêt (score), Électricité couche active ;
+// panneaux, carte, légendes et panneau des sources datés par leur donnée.
+import {
+  OUTAGES_ALWAYS_POLLED, OUTAGES_LAYER_KEYS, OUTAGES_LAYER_SOURCES, OUTAGES_POLL_MS, OUTAGES_SOURCE_NAMES, hasActiveOutages,
+  type OutagesLayerKey,
+} from './config/outages-sources.ts';
+import { arcepStatus, fetchTelecom, mergeTelecom, type TelecomState } from './services/outages-telecom.ts';
+import { telecomIfFresh } from './services/outages-levels.ts';
+import { edfStatus, fetchPower, iipStatus, mergePower, seiStatus, type PowerState } from './services/outages-power.ts';
+import { emptySlot } from './services/sovereignty-source.ts';
+import { powerLegend, telecomLegend } from './components/layer-panel/outages-legend.ts';
+import type { OutagesTelecomPanel } from './components/OutagesTelecomPanel.ts';
+import type { OutagesPowerPanel } from './components/OutagesPowerPanel.ts';
 import { fetchRTEIIPIncidents } from './services/rte-iip.ts';
 import { fetchNuclearUnavailabilities, buildNuclearColorMap, NUCLEAR_LEGEND_ITEMS } from './services/nuclear-rte.ts';
 import { buildNuclearState } from './services/nuclear-correlation.ts';
@@ -218,7 +231,7 @@ import { fetchGasNetwork, isGasPanelEnabled } from './services/gas.ts';
 import { buildDegradedFuelTensionDashboard, fetchFuelTensionDashboard } from './services/fuel-tension.ts';
 import { readUrlState, writeUrlState } from './utils/urlState.ts';
 import { loadNewsFromCache, saveNewsToCache } from './utils/newsCache.ts';
-import type { DromLiveResponse, NewsItem, FilterState, FuelTensionDashboard, MapLayers, EcowattResponse, ISNRData, LayerConfig, OilDashboard, PowerOutage, NetworkOutageState, InfraNetworkState, TelecomOutage, EventCategory, AisAnomaly, RailTrain, RoadEvent, HydraulicBackboneAsset, MarketData, DetectedSituation, SituationSeverity, ThreatLevel, BiogasState, BiomethaneSite, FireObservationFeedState, CommodityData, VigilanceEcheance } from './types/index.ts';
+import type { DromLiveResponse, NewsItem, FilterState, FuelTensionDashboard, MapLayers, EcowattResponse, ISNRData, LayerConfig, OilDashboard, NetworkOutageState, InfraNetworkState, EventCategory, AisAnomaly, RailTrain, RoadEvent, HydraulicBackboneAsset, MarketData, DetectedSituation, SituationSeverity, ThreatLevel, BiogasState, BiomethaneSite, FireObservationFeedState, CommodityData, VigilanceEcheance } from './types/index.ts';
 import { fetchISNRSynthesis, type NuclearBriefingContext, type EolienBriefingContext, type OilBriefingContext } from './services/isnr-synthesis.ts';
 import type { EolienLive, EolienParkSummary } from './services/eolien/types.ts';
 import { Watchdog } from './services/watchdog.ts';
@@ -583,12 +596,9 @@ const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
   { id: 'subseaCables', label: 'Connectivité', icon: 'waves', layerKeys: ['subseaCables'] },
   { id: 'cyber', label: 'Vigilance cyber', icon: 'lock-keyhole', layerKeys: ['cyber'] },
   { id: 'stability', label: 'Indice stabilité', icon: 'bar-chart-3', layerKeys: ['stability'] },
-  {
-    id: 'outagesElec',
-    label: 'Pannes réseau',
-    icon: 'satellite-dish',
-    layerKeys: ['outagesElec', 'outagesTelecom', 'outagesInternet', 'outagesCloud'],
-  },
+  { id: 'outagesElec', label: 'Électricité', icon: 'zap', layerKeys: ['outagesElec'] },
+  { id: 'outagesTelecom', label: 'Télécoms mobiles', icon: 'satellite-dish', layerKeys: ['outagesTelecom'] },
+  { id: 'outagesInternet', label: 'Pannes Internet et cloud', icon: 'globe', layerKeys: ['outagesInternet', 'outagesCloud'] },
 ];
 
 /** Lignes Souveraineté de la phase B : chacune n'est écrite que par son lecteur (tâche B28), jamais par un service de la phase A. */
@@ -627,10 +637,12 @@ const SOURCE_NAME_TO_FLOATING_PANEL: Record<string, keyof MapLayers> = {
   'Câbles et AIS': 'subseaCables',
   'RIPEstat': 'subseaCables',
   'Écowatt RTE': 'powerGrid',
-  'ARCEP Réseau Mobile': 'outagesElec',
-  'Enedis / Pannes Électricité': 'outagesElec',
-  'Infra Réseau DC / IXP': 'outagesElec',
-  'IODA Internet': 'outagesElec',
+  'ARCEP sites mobiles': 'outagesTelecom',
+  'EDF indisponibilités': 'outagesElec',
+  'RTE IIP': 'outagesElec',
+  'EDF SEI (îles)': 'outagesElec',
+  'Infra Réseau DC / IXP': 'outagesInternet',
+  'IODA Internet': 'outagesInternet',
   'Réseau Gaz / EcoGaz': 'gasNetwork',
   'Pétrole SDES / INSEE': 'oilNetwork',
   'Vols militaires': 'military',
@@ -941,40 +953,9 @@ const OIL_LEGEND: LegendCategory = {
   ],
 };
 
-// ── Pannes Électricité (Enedis / Ecowatt / Zones citoyennes) ────────────────
-const OUTAGES_ELEC_LEGEND: LegendCategory = {
-  id: 'outagesElec',
-  title: 'Pannes Électricité',
-  type: 'categorical',
-  columns: 2,
-  splitIndex: 6,
-  items: [
-    { id: 'power-col-header', label: 'PDL hors réseau / tension réseau', color: '#9898A8', isHeader: true },
-    { id: 'power-low',      label: '< 1 000 PDL hors réseau',               color: 'rgba(234,179,8,0.30)',  shape: 'zone', borderColor: '#EAB308' },
-    { id: 'power-medium',   label: '1 000 – 4 999 PDL hors réseau',         color: 'rgba(245,158,11,0.45)', shape: 'zone', borderColor: '#F59E0B' },
-    { id: 'power-high',     label: '5 000 – 9 999 PDL hors réseau',         color: 'rgba(249,115,22,0.58)', shape: 'zone', borderColor: '#F97316' },
-    { id: 'power-critical', label: '≥ 10 000 PDL hors réseau',              color: 'rgba(239,68,68,0.72)',  shape: 'zone', borderColor: '#EF4444' },
-    { id: 'power-tension',  label: 'Tension réseau Ecowatt (0 PDL mesuré)', color: 'rgba(249,115,22,0.08)', shape: 'zone', borderColor: '#F97316' },
-    { id: 'power-col-header-2', label: 'Zone de coupure / incidents HTB', color: '#9898A8', isHeader: true },
-    { id: 'zone-citizen',   label: 'Zone de coupure signalée',              color: 'rgba(180,0,255,0.20)',  shape: 'zone', borderColor: '#B400FF', borderWidth: 2 },
-    { id: 'htb-incident',   label: 'Incident HTB RTE (IIP)',                color: '#818CF8', shape: 'circle', borderColor: '#1C1917', borderWidth: 1 },
-  ],
-  source: { label: 'Enedis DataFair · Ecowatt RTE · Signalements citoyens · IIP RTE (incidents HTB)' },
-  refresh: { label: '15 min (Enedis) · 5 min (Ecowatt) · 10 min (zones citoyennes) · temps réel déclaratif (IIP RTE)' },
-};
-
-// ── Pannes Télécom 4G·5G (ARCEP) ─────────────────────────────────────────────
-const OUTAGES_TELECOM_LEGEND: LegendCategory = {
-  id: 'outagesTelecom',
-  title: 'Pannes Télécom',
-  type: 'categorical',
-  items: [
-    { id: 'telecom-hs',  label: 'Antenne HS',         color: '#EF4444', shape: 'circle', borderColor: '#0a0a0f', borderWidth: 1 },
-    { id: 'telecom-deg', label: 'Antenne dégradée',   color: '#FF8C00', shape: 'circle', borderColor: '#0a0a0f', borderWidth: 1 },
-  ],
-  source: { label: 'ARCEP : Observatoire qualité mobile' },
-  refresh: { label: 'Quotidien (J-1)' },
-};
+// ── Pannes Électricité et Télécoms (spec 2026-10-08 panneaux pannes) : légendes de outages-legend.ts, sources appelées réellement ──
+const OUTAGES_ELEC_LEGEND: LegendCategory = powerLegend();
+const OUTAGES_TELECOM_LEGEND: LegendCategory = telecomLegend();
 
 // ── Pannes Internet / BGP (IODA + BGPView) ───────────────────────────────────
 const OUTAGES_INTERNET_LEGEND: LegendCategory = {
@@ -1279,7 +1260,7 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     groupId: 'outages',
     role: 'child',
     dependsOnGroup: true,
-    label: 'Télécom 4G·5G',
+    label: 'Télécoms mobiles',
     legend: OUTAGES_TELECOM_LEGEND,
   },
   {
@@ -1478,11 +1459,14 @@ export class App {
   private currentNuclearState: NuclearState | null = null;
   private nuclearPanel: NuclearPanel | null = null;
   private outagesPanel: OutagesPanel | null = null;
-  private currentPowerOutages: PowerOutage[] = [];
-  private currentTelecomOutages: TelecomOutage[] = [];
+  /** Pannes réseau (spec 2026-10-08 panneaux pannes) : dernières lectures des services, partagées par les panneaux, la carte et le score. */
+  private currentOutTelecom: TelecomState | null = null;
+  private currentOutPower: PowerState | null = null;
+  private outagesTelecomPanel: OutagesTelecomPanel | null = null;
+  private outagesPowerPanel: OutagesPowerPanel | null = null;
+  private outagesPanelPromises: Partial<Record<OutagesLayerKey, Promise<void>>> = {};
   private currentNetworkState: NetworkOutageState | null = null;
   private currentInfraState: InfraNetworkState | null = null;
-  private currentCitizenZones: import('./types/index.ts').OutageZoneCollection | null = null;
   private defensePanel: DefensePanel | null = null;
   private connectivityPanel: ConnectivityPanel | null = null;
   /** Souveraineté (spec 2026-10-04 souveraineté) : dernières lectures des services, partagées par les panneaux, la carte et le score (A16). */
@@ -1619,6 +1603,8 @@ export class App {
   private environmentPolls: Partial<Record<EnvironmentLayerKey, PausableTimer>> = {};
   /** Relèves des couches Souveraineté : sans arrêt pour les trois (score, SOVEREIGNTY_ALWAYS_POLLED). */
   private sovereigntyPolls: Partial<Record<SovereigntyLayerKey, PausableTimer>> = {};
+  /** Relèves des couches Pannes réseau : Télécoms sans arrêt (score, OUTAGES_ALWAYS_POLLED), Électricité couche active ou panneau ouvert. */
+  private outagesPolls: Partial<Record<OutagesLayerKey, PausableTimer>> = {};
   private _intervalClock: PausableTimer | null = null;
   private networkBarometerWidget: BarometerWidget | null = null;
   private _intervalNetworkBarometer: ReturnType<typeof setInterval> | null = null;
@@ -1663,6 +1649,8 @@ export class App {
     this.environmentPolls = {};
     for (const key of SOVEREIGNTY_LAYER_KEYS) this.removePausableInterval(this.sovereigntyPolls[key] ?? null);
     this.sovereigntyPolls = {};
+    for (const key of OUTAGES_LAYER_KEYS) this.removePausableInterval(this.outagesPolls[key] ?? null);
+    this.outagesPolls = {};
     this.removePausableInterval(this._intervalClock); this._intervalClock = null;
     if (this._intervalNetworkBarometer !== null) {
       clearInterval(this._intervalNetworkBarometer);
@@ -2181,7 +2169,7 @@ export class App {
     normalized.energySystems = hasActiveEnergySystems(normalized);
     normalized.environmentGroup = hasActiveEnvironment(normalized);
     normalized.sovereignty = hasActiveSovereignty(normalized);
-    normalized.outages = normalized.outagesElec || normalized.outagesTelecom || normalized.outagesInternet || normalized.outagesCloud || normalized.outages;
+    normalized.outages = hasActiveOutages(normalized) || normalized.outages;
     return normalized;
   }
 
@@ -2283,6 +2271,8 @@ export class App {
     for (const key of ENVIRONMENT_LAYER_KEYS) this.syncEnvironmentPolling(key);
     // Relèves Souveraineté : aéronefs militaires, veille des câbles et cyber sans arrêt (score, arbitrage 21).
     for (const key of SOVEREIGNTY_LAYER_KEYS) this.syncSovereigntyPolling(key);
+    // Relèves Pannes réseau : Télécoms sans arrêt (score, R16) ; Électricité à l'activation de sa couche ou de son panneau.
+    for (const key of OUTAGES_LAYER_KEYS) this.syncOutagesPolling(key);
 
     // ── Static data — sync, instant
     this.loadStaticData();
@@ -3129,19 +3119,13 @@ export class App {
       void this.ensureConnectivityPanel().then(() => this.openSovereigntyPanel('subseaCables'));
     } else if (name === 'Écowatt RTE') {
       this.energyPanel?.show(this.currentEcowattResponse);
-    } else if (
-      name === 'ARCEP Réseau Mobile' ||
-      name === 'Enedis / Pannes Électricité' ||
-      name === 'Infra Réseau DC / IXP' ||
-      name === 'IODA Internet'
-    ) {
-      this.outagesPanel?.show(
-        this.currentPowerOutages,
-        this.currentTelecomOutages,
-        this.currentNetworkState,
-        this.currentInfraState,
-        this.currentCitizenZones ?? undefined,
-      );
+    } else if (name === 'ARCEP sites mobiles') {
+      // Panneaux Pannes réseau créés à la demande : la source peut être cliquée couche éteinte ; le panneau lit alors sa source.
+      void this.ensureOutagesLayerPanel('outagesTelecom').then(() => this.openOutagesPanel('outagesTelecom'));
+    } else if (name === 'EDF indisponibilités' || name === 'RTE IIP' || name === 'EDF SEI (îles)') {
+      void this.ensureOutagesLayerPanel('outagesElec').then(() => this.openOutagesPanel('outagesElec'));
+    } else if (name === 'Infra Réseau DC / IXP' || name === 'IODA Internet') {
+      void this.ensureOutagesPanel().then(() => this.outagesPanel?.show(this.currentNetworkState, this.currentInfraState));
     } else if (name === 'Réseau Gaz / EcoGaz') {
       if (this.currentGasData) this.gasPanel?.show(this.currentGasData, this.currentBiogasState);
     } else if (name === 'Pétrole SDES / INSEE') {
@@ -3242,6 +3226,8 @@ export class App {
     effective.environmentGroup = hasActiveEnvironment(effective);
     // Même raison pour la Souveraineté : une couche enfant seule restaurée s'affiche.
     effective.sovereignty = hasActiveSovereignty(effective);
+    // Et pour les Pannes réseau : Électricité ou Télécoms seul restauré s'affiche.
+    effective.outages = hasActiveOutages(effective);
     const groupsOn = new Set(
       LAYER_CONFIGS
         .filter(l => l.role === "groupMaster" && effective[l.id])
@@ -3383,13 +3369,7 @@ export class App {
     if (key === 'trafficRoad' || key === 'trafficMaritime' || key === 'trafficAir' || key === 'trafficRail') {
       this.syncTrafficGroupState();
     }
-    if (key === 'outagesElec' || key === 'outagesTelecom' || key === 'outagesInternet' || key === 'outagesCloud') {
-      this.activeLayers.outages =
-        this.activeLayers.outagesElec ||
-        this.activeLayers.outagesTelecom ||
-        this.activeLayers.outagesInternet ||
-        this.activeLayers.outagesCloud;
-    }
+    if (isOutagesLayerKey(key)) this.activeLayers.outages = hasActiveOutages(this.activeLayers);
     if (key === 'news' || key === 'stability' || key === 'events') {
       this.activeLayers.newsGroup = this.activeLayers.news || this.activeLayers.stability || this.activeLayers.events;
     }
@@ -3435,6 +3415,16 @@ export class App {
       } else {
         this.getFloatingPanelInstance(key)?.hide({ silent: true });
         this.syncSovereigntyPolling(key);
+      }
+    }
+    // Panneaux Pannes réseau Électricité et Télécoms (spec 2026-10-08 panneaux pannes § 4) : à l'ouverture, source lue, carte repeinte et
+    // relève réglée ; à l'extinction, masquage silencieux et relève réglée (Télécoms reste relevé pour le score, R16).
+    if (key === 'outagesElec' || key === 'outagesTelecom') {
+      if (enabled) {
+        this.openOutagesPanel(key);
+      } else {
+        this.getFloatingPanelInstance(key)?.hide({ silent: true });
+        this.syncOutagesPolling(key);
       }
     }
 
@@ -3575,30 +3565,24 @@ export class App {
     } else if (key === 'elus') {
       void this.mapContainer?.setMairesPolitiqueVisible(false);
     } else if (key === 'outages') {
-      // Group master turned off — collapse the panel
-      if (!this.activeLayers.outages) this.outagesPanel?.hide();
-    } else if (key === 'outagesElec' || key === 'outagesTelecom' || key === 'outagesInternet' || key === 'outagesCloud') {
-      if (this.activeLayers.outages) {
+      // Maître éteint : l'ancien panneau (Internet et Cloud) refermé, les panneaux Électricité et Télécoms masqués (silencieux : les
+      // couches gardent leur état), relèves réglées.
+      if (!this.activeLayers.outages) {
+        this.outagesPanel?.hide();
+        for (const outKey of ['outagesElec', 'outagesTelecom'] as const) {
+          this.getFloatingPanelInstance(outKey)?.hide({ silent: true });
+          this.syncOutagesPolling(outKey);
+        }
+      }
+    } else if (key === 'outagesInternet' || key === 'outagesCloud') {
+      if (this.activeLayers.outagesInternet || this.activeLayers.outagesCloud) {
         // Auto-switch to the active tab when exactly one sub-layer is on
-        const activeCount = [
-          this.activeLayers.outagesElec,
-          this.activeLayers.outagesTelecom,
-          this.activeLayers.outagesInternet,
-          this.activeLayers.outagesCloud,
-        ].filter(Boolean).length;
-        let autoTab: 'electric' | 'telecom' | 'internet' | 'cloud' | undefined;
-        if (activeCount === 1) {
-          if (this.activeLayers.outagesElec)          autoTab = 'electric';
-          else if (this.activeLayers.outagesTelecom)  autoTab = 'telecom';
-          else if (this.activeLayers.outagesInternet) autoTab = 'internet';
-          else if (this.activeLayers.outagesCloud)    autoTab = 'cloud';
+        let autoTab: 'internet' | 'cloud' | undefined;
+        if (this.activeLayers.outagesInternet !== this.activeLayers.outagesCloud) {
+          autoTab = this.activeLayers.outagesInternet ? 'internet' : 'cloud';
         }
         if (this.outagesLoaded) {
-          this.outagesPanel?.show(
-            this.currentPowerOutages, this.currentTelecomOutages,
-            this.currentNetworkState, this.currentInfraState,
-            this.currentCitizenZones ?? undefined, autoTab
-          );
+          this.outagesPanel?.show(this.currentNetworkState, this.currentInfraState, autoTab);
         } else {
           // Données pas encore arrivées → loader (remplacé par show() quand loadOutages
           // termine, via la branche isVisible() de loadOutages).
@@ -4355,6 +4339,152 @@ export class App {
     this.refreshFloatingPanelSwitcher();
   }
 
+  // ─── Pannes réseau (spec 2026-10-08 panneaux pannes § 4) : Électricité et Télécoms ; Internet et Cloud gardent l'ancien panneau jusqu'à B10 ───
+
+  /** État du panneau Télécoms : la dernière lecture, ou une lecture vide (le panneau dit « chargement… ») avant la première. */
+  private outagesTelecomState(): TelecomState {
+    return this.currentOutTelecom ?? { telecom: emptySlot() };
+  }
+
+  private outagesPowerState(): PowerState {
+    return this.currentOutPower ?? { power: emptySlot() };
+  }
+
+  /** Panneau d'une couche Pannes réseau, créé à la demande (Électricité, Télécoms) ; Internet et Cloud : l'ancien panneau. */
+  private ensureOutagesLayerPanel(key: OutagesLayerKey): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    if (key === 'outagesTelecom') {
+      this.outagesPanelPromises.outagesTelecom ??= import('./components/OutagesTelecomPanel.ts').then(({ OutagesTelecomPanel }) => {
+        const panel = new OutagesTelecomPanel(container);
+        panel.setOnClose(() => this.closeOutagesLayer('outagesTelecom'));
+        // Lignes recentrées sur la carte WebGL seulement ; l'option des maintenances n'existe que là.
+        if (this.mapContainer?.canFocusMap()) {
+          panel.setOnFocusSite((lat, lon) => this.mapContainer?.flyTo(lon, lat, 11));
+          panel.setOnFocusDept((dept) => this.focusDepartment(dept));
+          panel.setOnToggleMaintenance((on) => this.mapContainer?.setTelecomMaintenanceVisible(on));
+        }
+        panel.mount();
+        this.outagesTelecomPanel = panel;
+        if (this.activeLayers.outagesTelecom) panel.show(this.outagesTelecomState());
+      });
+      return this.outagesPanelPromises.outagesTelecom;
+    }
+    if (key === 'outagesElec') {
+      this.outagesPanelPromises.outagesElec ??= import('./components/OutagesPowerPanel.ts').then(({ OutagesPowerPanel }) => {
+        const panel = new OutagesPowerPanel(container);
+        panel.setOnClose(() => this.closeOutagesLayer('outagesElec'));
+        // Une tranche nucléaire ouvre le panneau Parc nucléaire (couche activée comme une case cochée).
+        panel.setOnOpenNuclear(() => {
+          this.onLayerToggle('nuclearFleet', true);
+          this.layerPanel?.updateLayers(this.activeLayers);
+        });
+        if (this.mapContainer?.canFocusMap()) panel.setOnFocusUnit((name) => this.mapContainer?.flyToAsset(name));
+        panel.mount();
+        this.outagesPowerPanel = panel;
+        if (this.activeLayers.outagesElec) panel.show(this.outagesPowerState(), this.currentEcowattResponse?.official ?? null);
+      });
+      return this.outagesPanelPromises.outagesElec;
+    }
+    return this.ensureOutagesPanel();
+  }
+
+  /** Croix d'un panneau Pannes réseau : éteint sa couche comme une case décochée ; panneau ouvert couche éteinte : relève réglée. */
+  private closeOutagesLayer(key: OutagesLayerKey): void {
+    if (this.activeLayers[key]) {
+      this.onLayerToggle(key, false);
+      this.layerPanel?.updateLayers(this.activeLayers);
+    }
+    this.syncOutagesPolling(key);
+  }
+
+  /**
+   * Ouvre le panneau d'une couche Pannes réseau sur ses dernières données, repeint la carte (rien d'autre ne la repeint à la
+   * réactivation, R35), lit aussitôt la source et règle la relève : case cochée, restauration ou ligne du panneau des sources.
+   */
+  private openOutagesPanel(key: OutagesLayerKey): void {
+    if (key === 'outagesTelecom') this.outagesTelecomPanel?.show(this.outagesTelecomState());
+    if (key === 'outagesElec') this.outagesPowerPanel?.show(this.outagesPowerState(), this.currentEcowattResponse?.official ?? null);
+    this.repaintOutagesMap(key);
+    this.loadOutagesSource(key).catch((err) => console.error(`[App] Lecture ${key} en échec`, err));
+    this.syncOutagesPolling(key);
+  }
+
+  /** Carte : sites ARCEP ou unités de production de la dernière lecture, couleurs recalculées à l'horloge courante (retard compris). */
+  private repaintOutagesMap(key: OutagesLayerKey): void {
+    const now = Date.now();
+    if (key === 'outagesTelecom' && this.currentOutTelecom) this.mapContainer?.updateOutagesTelecom(this.currentOutTelecom.telecom.data, now);
+    if (key === 'outagesElec' && this.currentOutPower) this.mapContainer?.updateOutagesPower(this.currentOutPower.power.data, now);
+  }
+
+  /** Relève voulue : Télécoms nourrit le score (OUTAGES_ALWAYS_POLLED, R16) ; Électricité couche active ou panneau ouvert ; Internet et Cloud : leur ancienne relève. */
+  private outagesPollWanted(key: OutagesLayerKey): boolean {
+    if (key !== 'outagesTelecom' && key !== 'outagesElec') return false;
+    if (OUTAGES_ALWAYS_POLLED.has(key) || this.activeLayers[key]) return true;
+    return this.getFloatingPanelInstance(key)?.isVisible?.() ?? false;
+  }
+
+  /** Démarre ou arrête la relève pausable d'une couche Pannes réseau (OUTAGES_POLL_MS), comme syncSovereigntyPolling. */
+  private syncOutagesPolling(key: OutagesLayerKey): void {
+    const timer = this.outagesPolls[key];
+    if (!this.outagesPollWanted(key)) {
+      if (timer) {
+        this.removePausableInterval(timer);
+        delete this.outagesPolls[key];
+      }
+      return;
+    }
+    if (timer) return;
+    this.outagesPolls[key] = this.registerPausableInterval(() => {
+      if (!this.outagesPollWanted(key)) {
+        this.syncOutagesPolling(key);
+        return;
+      }
+      this.loadOutagesSource(key).catch((err) => console.error(`[App] Relève ${key} en échec`, err));
+    }, OUTAGES_POLL_MS[key]);
+  }
+
+  /**
+   * Lecture d'une couche Pannes réseau : une seule à la fois par couche (démarrage, ouverture, relève : un second appelant rejoint la
+   * lecture en cours) ; panneau, carte, lignes du panneau des sources et score mis à jour ; si le service ne se charge pas, les lignes
+   * de la couche le disent (S3).
+   */
+  private loadOutagesSource(key: OutagesLayerKey): Promise<void> {
+    if (key !== 'outagesTelecom' && key !== 'outagesElec') return Promise.resolve();
+    return dedupe(`outages:${key}`, async () => {
+      try {
+        const now = Date.now();
+        if (key === 'outagesTelecom') {
+          this.currentOutTelecom = mergeTelecom(this.currentOutTelecom, await fetchTelecom(this.currentOutTelecom, now));
+          this.outagesTelecomPanel?.update(this.currentOutTelecom);
+          this.mapContainer?.updateOutagesTelecom(this.currentOutTelecom.telecom.data, now);
+          this.statusPanel?.updateSource('ARCEP sites mobiles', arcepStatus(this.currentOutTelecom, now));
+        } else {
+          this.currentOutPower = mergePower(this.currentOutPower, await fetchPower(this.currentOutPower, now));
+          this.outagesPowerPanel?.update(this.currentOutPower, this.currentEcowattResponse?.official ?? null);
+          this.mapContainer?.updateOutagesPower(this.currentOutPower.power.data, now);
+          this.statusPanel?.updateSource('EDF indisponibilités', edfStatus(this.currentOutPower, now));
+          this.statusPanel?.updateSource('RTE IIP', iipStatus(this.currentOutPower, now));
+          this.statusPanel?.updateSource('EDF SEI (îles)', seiStatus(this.currentOutPower, now));
+        }
+        recordStatusSamples(this.statusPanel?.getSources().filter((s) => OUTAGES_SOURCE_NAMES.includes(s.name)) ?? [], now);
+        this.refreshFranceIntelPanel();
+      } catch (err) {
+        this.markOutagesSourcesFailed(key, err);
+        throw err;
+      }
+    });
+  }
+
+  /** Lignes d'une couche Pannes réseau quand son service ne se charge pas : une ligne datée garde sa date (« stale »), sinon « error » (S3). */
+  private markOutagesSourcesFailed(key: OutagesLayerKey, err: unknown): void {
+    const error = err instanceof Error ? err.message : 'service de la source introuvable';
+    for (const name of OUTAGES_LAYER_SOURCES[key]) {
+      const dated = this.statusPanel?.getSources().find((s) => s.name === name)?.lastUpdate ?? null;
+      this.statusPanel?.updateSource(name, dated !== null ? { status: 'stale', error } : { status: 'error', lastUpdate: null, period: undefined, error });
+    }
+  }
+
   // ─── Souveraineté, phase B (tâche B28 ; contrats § 4.4 point 15, § 6 ; amendement 7, O7, O15, O17, S15) ───
   // Grille GNSS et météo spatiale (score : lue avec chaque lecture de la couche Défense), registre des gels (couche Défense active ou
   // panneau ouvert), grands réseaux et points d'échange (couche Connectivité active ou panneau ouvert), fichier des zones drones (une fois
@@ -4848,18 +4978,15 @@ export class App {
     if (!this.floatContainerEl) return Promise.resolve();
     this.outagesPanelPromise ??= import('./components/OutagesPanel.ts').then(({ OutagesPanel }) => {
       const panel = new OutagesPanel(this.floatContainerEl!);
+      // Internet et Cloud seulement : Électricité et Télécoms ont chacun leur panneau (closeOutagesLayer).
       panel.setOnClose(() => {
-        this.activeLayers.outages = false;
-        this.activeLayers.outagesElec = false;
-        this.activeLayers.outagesTelecom = false;
         this.activeLayers.outagesInternet = false;
         this.activeLayers.outagesCloud = false;
+        this.activeLayers.outages = hasActiveOutages(this.activeLayers);
         this.mapContainer?.setLayerVisibility(this.getEffectiveLayers());
         this.layerPanel?.updateLayers(this.activeLayers);
         this.refreshFloatingPanelSwitcher();
       });
-      panel.setOnDeptHover((code) => this.mapContainer?.highlightPowerDept(code));
-      panel.setOnZoneHover((id) => this.mapContainer?.highlightCitizenZone(id));
       panel.setOnIspHover((data) => this.mapContainer?.highlightIsp(data));
       panel.setOnIodaHover((data) => this.mapContainer?.highlightIoda(data));
       panel.setOnDcHover((data) => this.mapContainer?.highlightDc(data));
@@ -4874,10 +5001,9 @@ export class App {
       panel.setOnIxpClick((data) => this.mapContainer?.flyTo(data.coordinates[0], data.coordinates[1], 13));
       panel.mount();
       this.outagesPanel = panel;
-      panel.setEcowattNational(ecowattToday(this.currentEcowattResponse?.official, Date.now()));
-      if (this.activeLayers.outages) {
+      if (this.activeLayers.outagesInternet || this.activeLayers.outagesCloud) {
         if (this.outagesLoaded) {
-          panel.show(this.currentPowerOutages, this.currentTelecomOutages, this.currentNetworkState, this.currentInfraState, this.currentCitizenZones ?? undefined);
+          panel.show(this.currentNetworkState, this.currentInfraState);
         } else {
           panel.showLoading();
         }
@@ -4930,12 +5056,15 @@ export class App {
       case 'sovereignty': return [this.ensureDefensePanel(), this.ensureConnectivityPanel(), this.ensureCyberPanel()];
       case 'oilNetwork': return [this.ensureOilPanel()];
       case 'nuclearFleet': return [this.ensureNuclearPanel()];
-      case 'outages':
+      // Pannes réseau : un panneau par couche Électricité et Télécoms ; l'ancien panneau pour Internet et Cloud (jusqu'à B10).
       case 'outagesElec':
       case 'outagesTelecom':
+        return [this.ensureOutagesLayerPanel(key)];
       case 'outagesInternet':
       case 'outagesCloud':
         return [this.ensureOutagesPanel()];
+      case 'outages':
+        return [this.ensureOutagesPanel(), this.ensureOutagesLayerPanel('outagesElec'), this.ensureOutagesLayerPanel('outagesTelecom')];
       default:
         return [];
     }
@@ -4951,7 +5080,7 @@ export class App {
 
   private getFloatingPanelInstance(key: keyof MapLayers): { hide(opts?: { silent?: boolean }): void; isVisible?(): boolean } | null {
     // Accepts either a def's representative `id` or any of its `layerKeys`
-    // members (e.g. 'outagesTelecom' resolves to the same panel as 'outagesElec'):
+    // members (e.g. 'outagesCloud' resolves to the same panel as 'outagesInternet'):
     // callers like activateLayerSilently() pass the exact key that was just
     // toggled, which isn't always the representative one.
     const id = this.floatingPanelIdForLayerKey(key) ?? key;
@@ -4983,7 +5112,9 @@ export class App {
       case 'military': return this.defensePanel;
       case 'subseaCables': return this.connectivityPanel;
       case 'stability': return this.isnrPanel;
-      case 'outagesElec': return this.outagesPanel;
+      case 'outagesElec': return this.outagesPowerPanel;
+      case 'outagesTelecom': return this.outagesTelecomPanel;
+      case 'outagesInternet': return this.outagesPanel;
       default: return null;
     }
   }
@@ -5339,6 +5470,9 @@ export class App {
     });
 
     await this.mapContainer.init();
+    // Pannes réseau : les sources de la carte n'existaient pas quand le premier relevé (Télécoms, au démarrage) a répondu ; repeinture (R35).
+    this.repaintOutagesMap('outagesTelecom');
+    this.repaintOutagesMap('outagesElec');
     // v2 (?ui=v2) : alertes, convergences et situations passent dans la liste « À traiter » et
     // leurs fiches ; les trois panneaux flottants ne sont créés que pour l'interface par défaut.
     if (!this.uiV2) {
@@ -5958,8 +6092,8 @@ export class App {
       this.energyPanel.show(this.currentEcowattResponse);
       this.layoutEnergyFloatingPanels();
     }
-    // La tension réseau est nationale (Écowatt) : le panneau des pannes l'affiche en une ligne.
-    this.outagesPanel?.setEcowattNational(ecowattToday(this.currentEcowattResponse.official, Date.now()));
+    // La tension réseau est nationale (Écowatt) : le panneau Électricité l'affiche en une ligne.
+    if (this.currentOutPower) this.outagesPowerPanel?.update(this.currentOutPower, this.currentEcowattResponse.official ?? null);
     this.eolienPanel?.setGrid(this.currentEcowattResponse.grid);
 
     await this.refreshHydraulicLayer();
@@ -6730,60 +6864,33 @@ export class App {
     this.metroLoadPanel?.update(metropoles);
   }
 
+  /**
+   * Internet et Cloud (ancien panneau, jusqu'à B10) : réseau et infrastructure numérique. Électricité et Télécoms ont leurs lectures
+   * (loadOutagesSource) ; l'IIP RTE, les zones citoyennes et les anciennes lignes « Télécoms » n'existent plus ici.
+   */
   private async loadOutages(): Promise<void> {
-    this.statusPanel?.updateSource('Télécoms', { status: 'loading', lastUpdate: null });
-
-    // ── Sources rapides (<2s) : télécom, électrique, réseau, infra, IIP RTE ──
-    const [telecoms, powers, network, infra, iipResult] = await Promise.all([
-      fetchTelecomOutages(),
-      fetchPowerOutages(),
+    const [network, infra] = await Promise.all([
       fetchNetworkOutages(),
       fetchInfraNetwork(),
-      fetchRTEIIPIncidents().catch(() => null),
     ]).catch((err) => {
       this.outagesLoaded = true; // settle même en erreur → le loader laisse place au contenu
       throw err;
     });
     this.outagesLoaded = true;
-    this.currentTelecomOutages = telecoms;
-    this.currentPowerOutages = powers;
     this.currentNetworkState = network;
     if (infra) this.currentInfraState = infra;
-    await this.mapContainer?.updateOutages(telecoms, powers);
     this.mapContainer?.updateNetworkOutages(network);
     if (infra) this.mapContainer?.updateInfraNetwork(infra);
 
-    if (iipResult) {
-      this.outagesPanel?.setRTEIIP(iipResult);
-      this.mapContainer?.updateIIPIncidents(iipResult.incidents);
-    }
-
-    this.outagesPanel?.setArcepFetchedDate(lastArcepDataDate ?? new Date());
-    this.outagesPanel?.setOutagesMeta(getPowerOutagesMeta());
-
     // ── Afficher le panel immédiatement avec les données rapides ─────────────
     if (this.outagesPanel?.isVisible()) {
-      this.outagesPanel.show(this.currentPowerOutages, this.currentTelecomOutages, this.currentNetworkState, this.currentInfraState, this.currentCitizenZones ?? undefined);
+      this.outagesPanel.show(this.currentNetworkState, this.currentInfraState);
     }
-    this.statusPanel?.updateSource('Télécoms', { status: 'ok', lastUpdate: new Date() });
     this.statusPanel?.updateSource('IODA Internet', {
       status: network.sourcesStatus.ioda === 'ok' ? 'ok' : 'stale',
       lastUpdate: network.lastUpdate,
     });
     this.refreshFranceIntelPanel();
-
-    // ── Zones citoyennes fire-and-forget (scraping HTML ~8-15s) ─────────────
-    // Le panel s'est déjà affiché ; on met à jour les zones quand elles arrivent.
-    fetchOutageZoneCollection()
-      .then(zones => {
-        this.currentCitizenZones = zones;
-        this.mapContainer?.updateCitizenOutageZones(zones);
-        if (this.outagesPanel?.isVisible()) {
-          this.outagesPanel.show(this.currentPowerOutages, this.currentTelecomOutages, this.currentNetworkState, this.currentInfraState, zones);
-        }
-        this.refreshFranceIntelPanel();
-      })
-      .catch(() => {});
   }
 
   /** Veille sanitaire (spec 2026-10-03 § 2, § 3.1, § 3.2) : panneaux, niveau national de la fiche thème, panneau des sources daté (S1). */
@@ -7018,13 +7125,7 @@ export class App {
     this.mapContainer?.updateInfraNetwork(infra);
 
     if (this.outagesPanel?.isVisible()) {
-      this.outagesPanel.show(
-        this.currentPowerOutages,
-        this.currentTelecomOutages,
-        this.currentNetworkState,
-        this.currentInfraState,
-        this.currentCitizenZones ?? undefined,
-      );
+      this.outagesPanel.show(this.currentNetworkState, this.currentInfraState);
     }
 
     this.refreshFranceIntelPanel();
@@ -7038,7 +7139,7 @@ export class App {
       // Perf audit §6 item 4: currentInfraState only feeds the outages panel
       // (App.ts 'Infra Réseau DC / IXP' / 'IODA Internet' sources) — gate the
       // recurring refresh the same way startOilPolling()/startHealthPolling() do.
-      if (!this.activeLayers.outages && this.outagesPanel?.isVisible() !== true) return;
+      if (!this.activeLayers.outagesInternet && !this.activeLayers.outagesCloud && this.outagesPanel?.isVisible() !== true) return;
       this.refreshInfraNetworkLive(true).catch((err) => console.error('[App] Infra network poll error', err));
     }, POLL_INFRA_NETWORK_MS);
   }
@@ -7199,9 +7300,13 @@ export class App {
         })
       },
       {
-        name: 'outages', task: this.loadOutages().catch(() => {
-          this.statusPanel?.updateSource('Télécoms', { status: 'error', lastUpdate: new Date() });
+        name: 'outages', task: this.loadOutages().catch((err) => {
+          console.error('[App] Pannes Internet et cloud en échec', err);
         })
+      },
+      {
+        // Télécoms nourrit le score : lu une fois au démarrage, couche éteinte aussi (R16) ; les lignes disent l'échec (markOutagesSourcesFailed).
+        name: 'outagesTelecom', task: this.loadOutagesSource('outagesTelecom'),
       },
     ];
 
@@ -7326,6 +7431,14 @@ export class App {
     };
   }
 
+  /**
+   * Fichier ARCEP versé au score, aux situations (« Perturbation télécom »), à l'indice de stabilité, au brief et à la note : null s'il
+   * est en retard (isArcepFileLate), jamais ses comptes périmés. L'export, lui, garde le fichier lu : il est daté et dit tout.
+   */
+  private telecomForScore(): TelecomOutagesResponse | null {
+    return telecomIfFresh(this.currentOutTelecom?.telecom.data ?? null, Date.now());
+  }
+
   private buildFranceSnapshot(
     lang: 'fr' | 'en',
     options?: { brief?: StructuredBrief | null; briefFreshness?: 'fresh' | 'cached' },
@@ -7339,8 +7452,7 @@ export class App {
       ...this.trafficInputs(),
       // Souveraineté : aéronefs, urgences, alertes câbles, mailles GNSS, réponse cyber, disponibilités et pastilles (contrats § 6).
       ...sov,
-      powerOutages:         this.currentPowerOutages,
-      telecomOutages:       this.currentTelecomOutages,
+      telecomOutages:       this.telecomForScore(),
       maritimeCount:        this.currentMaritimeTrafficFranceCount,
       marketData:           this.currentMarketData,
       ecowattResponse:      this.currentEcowattResponse,
@@ -7605,8 +7717,7 @@ export class App {
       ecowatt: this.currentEcowattResponse,
       railTrains: traffic.railTrains,
       roadEvents: traffic.roadEvents,
-      powerOutages: this.currentPowerOutages,
-      telecomOutages: this.currentTelecomOutages,
+      telecomOutages: this.telecomForScore(),
       newsItems: this.newsItems,
       // Sources santé : hors Watchdog, lues dans le panneau des sources avec leur période (spec 2026-10-03 S1).
       sources: [...Watchdog.getSnapshot(), ...healthReportSources(this.statusPanel?.getSources() ?? [])],
@@ -7639,8 +7750,7 @@ export class App {
       floods: env.floodSegments,
       // Toutes les détections en France de la dernière collecte, récurrentes comprises (colonne « récurrent ») : l'export dit tout.
       fires: this.currentFires?.fires.data?.detections ?? [],
-      powerOutages: this.currentPowerOutages,
-      telecomOutages: this.currentTelecomOutages,
+      telecomOutages: this.currentOutTelecom?.telecom.data ?? null,
       roadEvents: this.trafficInputs().roadEvents,
       roadUrban: this.currentRoadTraffic?.urban.data ?? null,
     };
@@ -7994,8 +8104,7 @@ export class App {
       env.floodSegments,
       this.currentEcowattResponse,
       '24h',
-      this.currentTelecomOutages,
-      this.currentPowerOutages,
+      this.telecomForScore(),
     );
 
     // Update map layer

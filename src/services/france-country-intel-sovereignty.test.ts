@@ -17,7 +17,7 @@ const NOW = SOV_FIXTURE_NOW;
 function raw(over: Partial<FranceRawData> = {}): FranceRawData {
   return {
     newsItems: [], isnrData: null, cyber: null, meteoAlerts: [], floodSegments: [], railTrains: [], roadEvents: [], urbanJamCount: 0,
-    powerOutages: [], telecomOutages: [], cableAlerts: [], gnssDegraded: null, militaryFlightsCount: 0, maritimeCount: 0, activeFires: [],
+    telecomOutages: null, cableAlerts: [], gnssDegraded: null, militaryFlightsCount: 0, maritimeCount: 0, activeFires: [],
     marketData: [], ecowattResponse: null, gasState: null, nuclearState: null, eolienLive: null, aisAnomalies: [], timeline: { days: [], lanes: [] },
     briefLang: 'fr', oilDashboard: null, fuelTensionDashboard: null, ...over,
   };

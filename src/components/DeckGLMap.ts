@@ -10,7 +10,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import { COORDINATE_SYSTEM } from '@deck.gl/core';
-import type { MapViewState, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, NewsItem, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, AirTrafficFlight, EcowattResponse, TelecomOutage, PowerOutage, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, HydraulicBackboneAsset } from '../types/index.ts';
+import type { MapViewState, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, NewsItem, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, AirTrafficFlight, EcowattResponse, AisShipData, OilDashboard, NetworkOutageState, InfraNetworkState, SatelliteViewRequest, HydraulicBackboneAsset } from '../types/index.ts';
 import type { AirQualityResponse, DroughtResponse, EarthquakesResponse, FiresResponse, FloodSection, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
 import { ecowattToday, ecowattLevelLabel } from '../services/ecowatt-official.ts';
 import { DATA_FRESHNESS_LABELS } from '../types/index.ts';
@@ -46,10 +46,14 @@ import {
 } from './deckgl/sovereignty-map.ts';
 import { SOV_B_LAYERS, SOV_B_SOURCE_IDS, droneZoneFeatures, gnssCellFeatures, sovBSourceSpec } from './deckgl/sovereignty-map-b.ts';
 import {
-  SRC_SOV_AIRCRAFT, SRC_SOV_AIRCRAFT_ABROAD, SRC_SOV_CABLE_VESSELS, SRC_SOV_DRONES, SRC_SOV_EMERGENCIES, SRC_SOV_GNSS, SRC_SOV_NAVY, SRC_SOV_OSM_WORKS,
+  OUT_HOVER_LAYERS, OUT_LAYERS, OUT_LAYER_KEYS, OUT_MAINTENANCE_LAYER, OUT_SOURCE_IDS, outSourceSpec, outTooltipHtml, powerFeatures, telecomFeatures, topOutHit,
+} from './deckgl/outages-map.ts';
+import {
+  SRC_OUT_POWER, SRC_OUT_TELECOM, SRC_SOV_AIRCRAFT, SRC_SOV_AIRCRAFT_ABROAD, SRC_SOV_CABLE_VESSELS, SRC_SOV_DRONES, SRC_SOV_EMERGENCIES, SRC_SOV_GNSS, SRC_SOV_NAVY,
+  SRC_SOV_OSM_WORKS,
 } from './deckgl/constants.ts';
 import { NAVY_HEX, SOV_ABROAD_HEX } from './layer-panel/sovereignty-legend.ts';
-import type { CablesWatchResponse, DefenseOsmWorksFile, DroneZonesFile, GnssResponse, MilitaryResponse, SubseaCablesFile } from '../types/index.ts';
+import type { CablesWatchResponse, DefenseOsmWorksFile, DroneZonesFile, GnssResponse, MilitaryResponse, PowerOutagesResponse, SubseaCablesFile, TelecomOutagesResponse } from '../types/index.ts';
 import {
   VESSEL_TYPE_HEX, type VesselCategory, airAltitudeHex, vesselCategory, vesselHex, vesselTypeLabel,
 } from './layer-panel/traffic-legend.ts';
@@ -57,7 +61,6 @@ import { identifyFrenchCallsign, identifyAlliedCallsign } from '../config/milita
 import { getAllLiveTraffic, type MilitaryShip } from '../services/military-ships.ts';
 import { findShipByKey, isSubmarine } from './layer-panel/navy.ts';
 import { OIL_PIPELINE_COLORS } from '../config/oil-infrastructure.ts';
-import type { RTEIIPIncident } from '../services/rte-iip.ts';
 import { resolveFlowDirection, resolveGasFlowDirection } from '../utils/flow-direction.ts';
 import { formatUpdateTime } from '../utils/format-date.ts';
 import { buildSparklineSVG } from '../utils/sparkline.ts';
@@ -74,7 +77,7 @@ import { loadDepartementsGeojson } from '../services/departements-geojson.ts';
 
 
 // ─── Extracted deckgl modules (constants & pure helpers) ───
-import { resolveIIPCoords } from './deckgl/iip-geocoding.ts';
+import { resolveAssetCoords } from './deckgl/iip-geocoding.ts';
 import { LYR_SATELLITE, getFrenchStyle } from './deckgl/base-style.ts';
 import { ELECTRIC_FLOW_STYLE, getElectricFlowConfig, GAS_FLOW_STYLE, OIL_FLOW_STYLE } from './deckgl/flow-styles.ts';
 export { ELECTRIC_FLOW_STYLE, setElectricFlowConfig, getElectricFlowConfig, GAS_FLOW_STYLE, OIL_FLOW_STYLE } from './deckgl/flow-styles.ts';
@@ -92,7 +95,7 @@ import {
   ECHO_TOPS_LAYER_ID,
   ECHO_TOPS_SOURCE_ID,
 } from './deckgl/format-utils.ts';
-import { fmIcon, fmStatusDot, type FmDotLevel, type IconName } from './shared/icons.ts';
+import { fmIcon, fmStatusDot, type IconName } from './shared/icons.ts';
 import {
   dromEnergyAssetFromProperties,
   renderDromEnergyTooltipHtml,
@@ -257,8 +260,6 @@ import {
   SRC_GLOBAL_TRAFFIC,
   SRC_SUBMARINE_CABLES,
   SRC_SUBMARINE_CABLES_LANDINGS,
-  SRC_TELECOM,
-  SRC_POWER,
   SRC_HOSPITALS,
   LYR_MILITARY_BASES_CIRCLE,
   LYR_MILITARY_BASES_LABEL,
@@ -269,15 +270,6 @@ import {
   LYR_SUBMARINE_CABLES_CORE,
   LYR_SUBMARINE_CABLES_HITAREA,
   LYR_SUBMARINE_CABLES_LANDING,
-  LYR_TELECOM_PTS,
-  LYR_POWER_FILL,
-  LYR_POWER_LINE,
-  SRC_CITIZEN_ZONES,
-  LYR_CITIZEN_FILL,
-  LYR_CITIZEN_LINE,
-  SRC_IIP,
-  LYR_IIP_GLOW,
-  LYR_IIP_CORE,
   SRC_NET_ISP,
   SRC_NET_IODA,
   LYR_NET_ISP_GLOW,
@@ -452,6 +444,10 @@ export class DeckGLMap {
   private sovHoverShown = false;
   private osmWorksVisible = false;
   private droneZonesVisible = false;
+  // Pannes réseau (spec 2026-10-08) : infobulle au survol, option des maintenances télécoms (éteinte par défaut).
+  private outHoverPopup: maplibregl.Popup | null = null;
+  private outHoverShown = false;
+  private telecomMaintenanceOn = false;
   private onSovereigntyFeatureClick: ((layerId: string, props: Record<string, unknown>) => void) | null = null;
   private sovCables: SubseaCablesFile | null = null;
   private sovCableWatch: CablesWatchResponse | null = null;
@@ -490,13 +486,12 @@ export class DeckGLMap {
   // fetched the first time the gas layer is switched on.
   private gasNetworkSourcesPromise: Promise<void> | null = null;
   // Perf audit §6 item 2: departements.geojson (3.3 MB) is memoized inside
-  // getDepartmentsGeojson(), but updateISNR/updateOutages used to trigger it
+  // getDepartmentsGeojson(), but updateISNR used to trigger it
   // unconditionally regardless of layer visibility. These two fields (the health layers use healthRegionsDirty/healthDeptsDirty,
   // the vigilance envVigilancePending) hold the most recent args passed while the
   // corresponding layer was inactive, so setLayerVisibility() can replay the
   // same call (cheap: memoized fetch, or first real one) once it's switched on.
   private _pendingIsnrScores: import('../types/index.ts').ISNRScore[] | null = null;
-  private _pendingOutagesArgs: { telecoms: TelecomOutage[]; powers: PowerOutage[] } | null = null;
   // Couches santé (spec 2026-10-03 § 3) : dernières données reçues, syndrome et profession choisis dans les panneaux.
   private healthAlerts: AlertLevelsResponse | null = null;
   /** Instant de la dernière relève : règle « en saison » des alertes et retard des urgences (S2). */
@@ -852,10 +847,6 @@ export class DeckGLMap {
     this.map.addSource(SRC_METRO_LOAD, { type: 'geojson', data: emptyFC() });
 
     // Outages (Telecom endpoints & Power regions)
-    this.map.addSource(SRC_TELECOM, { type: 'geojson', data: emptyFC() });
-    this.map.addSource(SRC_POWER, { type: 'geojson', data: emptyFC() });
-    this.map.addSource(SRC_CITIZEN_ZONES, { type: 'geojson', data: emptyFC() });
-    this.map.addSource(SRC_IIP, { type: 'geojson', data: emptyFC() });
     // Internet/BGP outages (IODA + ISP BGP) — clustering activé pour éviter le chevauchement à faible zoom
     this.map.addSource(SRC_NET_ISP, {
       type: 'geojson', data: emptyFC(),
@@ -885,6 +876,8 @@ export class DeckGLMap {
     this.map.addSource(SRC_MILITARY_SHIPS_SELECTED, { type: 'geojson', data: emptyFC() });
     // Souveraineté (spec 2026-10-04 souveraineté § 2) : aéronefs, urgences, Marine nationale, ouvrages OSM, navires près d'un câble.
     for (const id of SOV_SOURCE_IDS) this.map.addSource(id, sovSourceSpec());
+    // Pannes réseau (spec 2026-10-08) : sites ARCEP et unités de production en panne.
+    for (const id of OUT_SOURCE_IDS) this.map.addSource(id, outSourceSpec());
     this.map.addSource(SRC_GLOBAL_TRAFFIC, { type: 'geojson', data: emptyFC() });
 
     // Câbles (Connectivité) : vides jusqu'à updateCablesLayer (fichier du Shom et d'OpenStreetMap), l'ancien fichier dessiné à la main n'est plus lu.
@@ -2771,72 +2764,9 @@ export class DeckGLMap {
 
     // ─── Souveraineté (contrats § 5) : couches de deckgl/sovereignty-map.ts, au-dessus des câbles, masquées jusqu'à setLayerVisibility ───
     for (const layer of SOV_LAYERS) this.map.addLayer(layer);
+    // Pannes réseau (deckgl/outages-map.ts) : même rang, masquées jusqu'à setLayerVisibility.
+    for (const layer of OUT_LAYERS) this.map.addLayer(layer);
 
-    // ─── Citizen Outage Zones (crowd-sourced clusters) ───
-    // Toujours violet (matching légende) — l'intensité varie selon severity
-    this.map.addLayer({
-      id: LYR_CITIZEN_FILL,
-      type: 'fill',
-      source: SRC_CITIZEN_ZONES,
-      paint: {
-        'fill-color': '#b400ff',
-        'fill-opacity': [
-          'match', ['get', 'severity'],
-          'critical', 0.40,
-          'high', 0.30,
-          'medium', 0.22,
-          /* low */ 0.15,
-        ],
-      },
-    });
-    this.map.addLayer({
-      id: LYR_CITIZEN_LINE,
-      type: 'line',
-      source: SRC_CITIZEN_ZONES,
-      paint: {
-        'line-color': '#b400ff',
-        'line-width': 2,
-        'line-opacity': 0.9,
-        'line-dasharray': [3, 2],
-      },
-    });
-
-    // ─── Outages (Telecom & Power) ───
-    this.map.addLayer({
-      id: LYR_POWER_FILL,
-      type: 'fill',
-      source: SRC_POWER,
-      paint: {
-        'fill-color': ['get', 'fillColor'],
-        'fill-opacity': ['get', 'fillOpacity'],
-      },
-    });
-    this.map.addLayer({
-      id: LYR_POWER_LINE,
-      type: 'line',
-      source: SRC_POWER,
-      paint: {
-        'line-color': ['get', 'lineColor'],
-        'line-width': 1.5,
-      },
-    });
-    this.map.addLayer({
-      id: LYR_TELECOM_PTS,
-      type: 'circle',
-      source: SRC_TELECOM,
-      paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 3, 10, 5],
-        'circle-color': [
-          'match',
-          ['get', 'status'],
-          'HS', '#EF4444',  // rouge vif — antenne hors service
-          'Degraded', '#FF8C00',  // orange saturé — antenne dégradée
-          '#2D1A0E'               // très sombre — antenne OK (discret)
-        ],
-        'circle-stroke-width': 1,
-        'circle-stroke-color': '#0a0a0f',
-      },
-    });
     // Séismes et marégraphes (phase B) au-dessus de toutes les surfaces : ajoutés ici, sous la première couche de points qui suit la dernière surface.
     placeEnvBPoints(this.map);
 
@@ -3209,42 +3139,6 @@ export class DeckGLMap {
 
 
 
-    // ─── Incidents HTB RTE IIP ───
-    this.map.addLayer({
-      id: LYR_IIP_GLOW,
-      type: 'circle',
-      source: SRC_IIP,
-      paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 14, 10, 22],
-        'circle-color': '#6c8cff',
-        'circle-opacity': 0.18,
-        'circle-blur': 0.7,
-      },
-    });
-    this.map.addLayer({
-      id: LYR_IIP_CORE,
-      type: 'circle',
-      source: SRC_IIP,
-      paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 6, 10, 10],
-        'circle-color': [
-          'match', ['get', 'incidentType'],
-          'transmission', '#a0b4ff',
-          /* production */ '#6c8cff',
-        ],
-        'circle-opacity': 0.9,
-        'circle-stroke-width': 1.5,
-        'circle-stroke-color': '#ffffff',
-        'circle-stroke-opacity': 0.6,
-      },
-    });
-
-    // ─── Citizen zones au-dessus de tous les calques ───
-    // moveLayer sans beforeId = déplace au sommet du stack MapLibre
-    this.map.moveLayer(LYR_CITIZEN_FILL);
-    this.map.moveLayer(LYR_CITIZEN_LINE);
-    this.map.moveLayer(LYR_IIP_GLOW);
-    this.map.moveLayer(LYR_IIP_CORE);
 
     // ═══════════════════════════════════════════════════════════════
     // EVENT HANDLERS
@@ -3258,7 +3152,7 @@ export class DeckGLMap {
         [e.point.x - pad, e.point.y - pad],
         [e.point.x + pad, e.point.y + pad],
       ];
-      const features = this.map.queryRenderedFeatures(bbox, { layers: [LYR_POINTS, 'news-critical-pts', LYR_TELECOM_PTS] });
+      const features = this.map.queryRenderedFeatures(bbox, { layers: [LYR_POINTS, 'news-critical-pts'] });
 
       // Clear previous hover state
       if (this.hoveredId !== null) {
@@ -3460,54 +3354,6 @@ export class DeckGLMap {
 
     });
 
-    // ─── Telecom Outages Interactions ───
-    this.map.on('mouseenter', LYR_TELECOM_PTS, () => {
-      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
-    });
-    this.map.on('mouseleave', LYR_TELECOM_PTS, () => {
-      if (this.map) this.map.getCanvas().style.cursor = '';
-    });
-    this.map.on('click', LYR_TELECOM_PTS, (e) => {
-      if (!this.map || !e.features || e.features.length === 0) return;
-      const feat = e.features[0];
-      const p = feat.properties || {};
-      const coords = (feat.geometry as GeoJSON.Point).coordinates as [number, number];
-
-      const html = `
-        <div style="color:#e8e8ec; font-family:sans-serif; min-width:180px;">
-          <h4 style="margin:0 0 2px; font-weight:700; font-size: 15px; color: #ffffff;">
-            ${p.city && p.city !== 'null' ? p.city : 'Ville Inconnue'} <span style="font-size:12px; font-weight:normal; color:#9898a8;">${p.department && p.department !== 'null' && p.department !== 'Inconnu' ? `(${p.department.trim()})` : ''}</span>
-          </h4>
-          <div style="margin:0 0 8px; display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size: 13px; font-weight: 600; color: #6c8cff;">${p.operator}</span>
-            <span style="font-size:10px; padding:2px 6px; border-radius:4px; font-weight:700; color:white; background:${p.status === 'HS' ? '#ff3b30' : '#ff9f0a'}">${p.status}</span>
-          </div>
-          
-          <div style="font-size:12px; margin-bottom: 8px;">
-            <div style="display:flex; justify-content:space-between; margin-bottom:4px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 4px;">
-              <span style="color:#9898a8">Voix (2G/3G) :</span>
-              <span style="font-weight:600; color:${p.voiceStatus === 'OK' ? '#34c759' : (p.voiceStatus === 'HS' ? '#ff3b30' : '#ff9f0a')}">
-                ${p.voiceStatus === 'HS' ? 'Hors Service' : (p.voiceStatus === 'Degraded' ? 'Dégradé' : 'OK')}
-              </span>
-            </div>
-            <div style="display:flex; justify-content:space-between;">
-              <span style="color:#9898a8">Internet (4G/5G) :</span>
-              <span style="font-weight:600; color:${p.dataStatus === 'OK' ? '#34c759' : (p.dataStatus === 'HS' ? '#ff3b30' : '#ff9f0a')}">
-                ${p.dataStatus === 'HS' ? 'Hors Service' : (p.dataStatus === 'Degraded' ? 'Dégradé' : 'OK')}
-              </span>
-            </div>
-          </div>
-          
-          ${p.reason && p.reason !== 'null' && p.reason.trim() !== '' ? `<p style="margin:6px 0 0 0; font-size: 11px; opacity: 0.8; color:#a1a1aa; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 6px;"><i>${p.reason}</i></p>` : ''}
-        </div>
-      `;
-
-      new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '300px', className: 'dark-popup' })
-        .setLngLat(coords)
-        .setHTML(html)
-        .addTo(this.map);
-    });
-
     // ─── Feux : curseur sur une détection ; infobulle (satellite exact, confiance, FRP, âge) de initEnvironmentInteractions ───
     this.map.on('mouseenter', LYR_FIRES_POINTS, () => {
       if (this.map) this.map.getCanvas().style.cursor = 'pointer';
@@ -3526,6 +3372,7 @@ export class DeckGLMap {
     this.initEnvironmentInteractions();
     // Couches Souveraineté : infobulle au survol, clic transmis à App.ts (initSovereigntyInteractions).
     this.initSovereigntyInteractions();
+    this.initOutagesInteractions();
 
 
     this.map.on('mouseenter', LYR_DROM_ENERGY_POINTS, () => {
@@ -3570,183 +3417,6 @@ export class DeckGLMap {
       const html = renderDromEnergyTooltipHtml(asset);
 
       new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '280px', className: 'dark-popup' })
-        .setLngLat(e.lngLat)
-        .setHTML(html)
-        .addTo(this.map);
-    });
-
-    // ─── Citizen outage zone — hover tooltip élargi ───
-    let citizenHoverPopup: maplibregl.Popup | null = null;
-
-    const severityMeta: Record<string, { label: string; color: string }> = {
-      critical: { label: 'Critique', color: '#b400ff' },
-      high: { label: 'Élevé', color: '#c060ff' },
-      medium: { label: 'Modéré', color: '#9b30e8' },
-      low: { label: 'Faible', color: '#7a22c8' },
-    };
-
-    this.map.on('mousemove', LYR_CITIZEN_FILL, (e) => {
-      if (!this.map || !e.features || e.features.length === 0) return;
-      this.map.getCanvas().style.cursor = 'crosshair';
-
-      const p = e.features[0].properties;
-      if (!p) return;
-
-      const sev = severityMeta[p.severity] ?? { label: p.severity, color: '#888' };
-      const sevLevel: FmDotLevel = (p.severity === 'critical' || p.severity === 'high' || p.severity === 'medium' || p.severity === 'low') ? p.severity : 'info';
-      let sources: string[];
-      try { sources = Array.isArray(p.sources) ? p.sources : JSON.parse(p.sources ?? '[]'); } catch { sources = []; }
-
-      const radiusKm = Number(p.radiusKm ?? 0).toFixed(1);
-      const density = Number(p.density ?? 0).toFixed(2);
-      const reports = Number(p.totalReports ?? 0);
-      const updatedAt = p.createdAt ? new Date(p.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : 'n.d.';
-      const areaKm2 = Math.round(Math.PI * Math.pow(Number(p.radiusKm ?? 0), 2));
-
-      const html = `
-        <div style="font-family:var(--font-sans,sans-serif);color:#e8e8ec;min-width:240px;max-width:300px;">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.1);">
-            <span style="font-size:13px;font-weight:700;color:#fff;">${fmStatusDot(sevLevel)} Zone de coupures : ${sev.label}</span>
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 12px;font-size:12px;margin-bottom:10px;">
-            <div>
-              <div style="color:#9898a8;font-size:10px;text-transform:uppercase;letter-spacing:.05em;">Signalements</div>
-              <div style="font-size:16px;font-weight:800;color:${sev.color};">${reports}</div>
-            </div>
-            <div>
-              <div style="color:#9898a8;font-size:10px;text-transform:uppercase;letter-spacing:.05em;">Densité</div>
-              <div style="font-size:16px;font-weight:800;color:${sev.color};">${density}<span style="font-size:11px;font-weight:400;color:#9898a8;">/km²</span></div>
-            </div>
-            <div>
-              <div style="color:#9898a8;font-size:10px;text-transform:uppercase;letter-spacing:.05em;">Rayon estimé</div>
-              <div style="font-weight:600;">~${radiusKm} km</div>
-            </div>
-            <div>
-              <div style="color:#9898a8;font-size:10px;text-transform:uppercase;letter-spacing:.05em;">Surface</div>
-              <div style="font-weight:600;">~${areaKm2} km²</div>
-            </div>
-          </div>
-          ${sources.length > 0 ? `<div style="font-size:10px;color:#9898a8;margin-bottom:5px;">Sources : ${sources.map((s: string) => `<span style="background:rgba(255,255,255,0.08);padding:1px 5px;border-radius:4px;">${s}</span>`).join(' ')}</div>` : ''}
-          <div style="font-size:10px;color:#9898a8;">${fmIcon('hourglass')} Mis à jour ${updatedAt}</div>
-        </div>`;
-
-      if (!citizenHoverPopup) {
-        citizenHoverPopup = new maplibregl.Popup({
-          closeButton: false,
-          closeOnClick: false,
-          maxWidth: '320px',
-          className: 'dark-popup',
-          offset: 12,
-        }).addTo(this.map);
-      }
-      citizenHoverPopup.setLngLat(e.lngLat).setHTML(html);
-    });
-
-    this.map.on('mouseleave', LYR_CITIZEN_FILL, () => {
-      if (this.map) this.map.getCanvas().style.cursor = '';
-      citizenHoverPopup?.remove();
-      citizenHoverPopup = null;
-    });
-
-    // ─── IIP incidents — hover tooltip ───
-    let iipHoverPopup: maplibregl.Popup | null = null;
-    this.map.on('mousemove', LYR_IIP_CORE, (e) => {
-      if (!this.map || !e.features || e.features.length === 0) return;
-      this.map.getCanvas().style.cursor = 'crosshair';
-      const p = e.features[0].properties;
-      if (!p) return;
-
-      const typeLabel = p.incidentType === 'transmission' ? 'Réseau HTB' : 'Production';
-      const typeColor = p.incidentType === 'transmission' ? '#a0b4ff' : '#6c8cff';
-      const statusLabel = p.status === 'active' ? '● Actif' : p.status === 'inactive' ? '◯ Terminé' : '⊘ Retiré';
-      const statusColor = p.status === 'active' ? '#f97316' : p.status === 'inactive' ? '#6b7280' : '#6b7280';
-      const startFmt = p.startDate ? new Date(p.startDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'n.d.';
-      const endFmt   = p.endDate   ? new Date(p.endDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'n.d.';
-
-      const html = `
-        <div style="font-family:var(--font-sans,sans-serif);color:#e8e8ec;min-width:240px;max-width:320px;">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,0.1);">
-            <span style="font-size:13px;font-weight:700;color:#fff;line-height:1.3;">${p.assetLabel ?? p.title}</span>
-            <span style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;background:${typeColor}22;color:${typeColor};white-space:nowrap;">${typeLabel}</span>
-          </div>
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;font-size:12px;">
-            <span style="color:${statusColor};font-weight:600;">${statusLabel}</span>
-            ${p.cause ? `<span style="color:#9898a8;">· ${p.cause}</span>` : ''}
-            ${p.capacityMW ? `<span style="color:#9898a8;">· <strong style="color:#fff;">${p.capacityMW} MW</strong></span>` : ''}
-          </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:11px;color:#9898a8;margin-bottom:8px;">
-            <div>Début <strong style="color:#e8e8ec;">${startFmt}</strong></div>
-            <div>Fin prév. <strong style="color:#e8e8ec;">${endFmt}</strong></div>
-          </div>
-          <div style="font-size:10px;color:#6b7280;border-top:1px solid rgba(255,255,255,0.08);padding-top:6px;">IIP RTE · REMIT · Temps réel</div>
-        </div>`;
-
-      if (!iipHoverPopup) {
-        iipHoverPopup = new maplibregl.Popup({
-          closeButton: false,
-          closeOnClick: false,
-          maxWidth: '340px',
-          className: 'dark-popup',
-          offset: 14,
-        }).addTo(this.map);
-      }
-      iipHoverPopup.setLngLat(e.lngLat).setHTML(html);
-    });
-
-    this.map.on('mouseleave', LYR_IIP_CORE, () => {
-      if (this.map) this.map.getCanvas().style.cursor = '';
-      iipHoverPopup?.remove();
-      iipHoverPopup = null;
-    });
-
-    [LYR_POWER_FILL].forEach(lyr => {
-      this.map!.on('mouseenter', lyr, () => { if (this.map) this.map.getCanvas().style.cursor = 'pointer'; });
-      this.map!.on('mouseleave', lyr, () => { if (this.map) this.map.getCanvas().style.cursor = ''; });
-    });
-    this.map.on('click', LYR_POWER_FILL, (e) => {
-      if (!this.map || !e.features || e.features.length === 0) return;
-      const feat = e.features[0];
-      const pStr = feat.properties?.powerOutage;
-      let p;
-      try {
-        p = typeof pStr === 'string' ? JSON.parse(pStr) : pStr;
-      } catch (e) {
-        return;
-      }
-      if (!p) return;
-
-      // Couleur identique à computePowerOutageStyle pour cohérence visuelle
-      const count = p.offGridCount || 0;
-      const deptColor = count >= 10000 ? '#EF4444' : count >= 5000 ? '#F97316' : count >= 1000 ? '#F59E0B' : '#EAB308';
-      const pdlPct = Math.round((count / (p.totalPDL || 1)) * 100);
-      const trendColor = p.trend === 'improving' ? '#34c759' : p.trend === 'worsening' ? '#ff3b30' : '#9898a8';
-      const trendLabel = p.trend === 'improving' ? `${fmIcon('trending-down')} Amélioration` : p.trend === 'worsening' ? `${fmIcon('trending-up')} Aggravation` : '→ Stable';
-
-      const html = `
-        <div style="color:#e8e8ec; font-family:sans-serif; min-width:220px;">
-          <h4 style="margin:0 0 4px; font-weight:700; font-size:15px; color:#fff; display:flex; justify-content:space-between; align-items:center;">
-            ${p.departmentName || 'Département'} <span style="font-size:12px; font-weight:normal; color:#9898a8;">(${p.departmentCode})</span>
-          </h4>
-          <div style="margin:0 0 10px; font-size:12px; font-weight:600; color:${deptColor};">${fmIcon('zap')} Tension réseau électrique</div>
-          <div style="font-size:13px; margin-bottom:8px;">
-            <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-              <span style="color:#9898a8">PDL hors réseau :</span>
-              <span style="font-weight:700; color:${deptColor};">${count.toLocaleString('fr-FR')}</span>
-            </div>
-            <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-              <span style="color:#9898a8">Part du département :</span>
-              <span style="font-weight:600; color:${deptColor};">${pdlPct} %</span>
-            </div>
-            <div style="display:flex; justify-content:space-between;">
-              <span style="color:#9898a8">Tendance :</span>
-              <span style="font-weight:600; color:${trendColor};">${trendLabel}</span>
-            </div>
-          </div>
-          ${p.eventCause ? `<p style="margin:8px 0 0; font-size:11px; color:#a1a1aa; border-top:1px solid rgba(255,255,255,0.06); padding-top:8px; line-height:1.5;"><i>${p.eventCause}</i></p>` : ''}
-        </div>
-      `;
-
-      new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '300px', className: 'dark-popup' })
         .setLngLat(e.lngLat)
         .setHTML(html)
         .addTo(this.map);
@@ -6227,9 +5897,6 @@ export class DeckGLMap {
       LYR_HEALTH_URG_FILL, LYR_HEALTH_URG_LINE,
       LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE,
       LYR_HOSPITALS,
-      LYR_POWER_FILL, LYR_POWER_LINE,
-      LYR_CITIZEN_FILL, LYR_CITIZEN_LINE,
-      LYR_TELECOM_PTS,
       LYR_NET_IODA_CLUSTER, LYR_NET_IODA_CLUSTER_COUNT, LYR_NET_IODA_GLOW, LYR_NET_IODA_CORE,
       LYR_NET_ISP_CLUSTER, LYR_NET_ISP_CLUSTER_COUNT, LYR_NET_ISP_GLOW, LYR_NET_ISP_RING, LYR_NET_ISP,
       LYR_DC_CLUSTER, LYR_DC_CLUSTER_COUNT, LYR_DC_GLOW, LYR_DC_CORE,
@@ -6248,9 +5915,9 @@ export class DeckGLMap {
     } else if (categoryId === 'hospitals') {
       activeLayers = [LYR_HOSPITALS];
     } else if (categoryId === 'outagesElec') {
-      activeLayers = [LYR_POWER_FILL, LYR_POWER_LINE, LYR_CITIZEN_FILL, LYR_CITIZEN_LINE];
+      activeLayers = [...OUT_LAYER_KEYS.outagesElec];
     } else if (categoryId === 'outagesTelecom') {
-      activeLayers = [LYR_TELECOM_PTS];
+      activeLayers = [...OUT_LAYER_KEYS.outagesTelecom];
     } else if (categoryId === 'outagesInternet') {
       activeLayers = [
         LYR_NET_IODA_CLUSTER, LYR_NET_IODA_CLUSTER_COUNT, LYR_NET_IODA_GLOW, LYR_NET_IODA_CORE,
@@ -8011,170 +7678,6 @@ export class DeckGLMap {
       .addTo(this.map);
   }
 
-  // ─── Outages (Telecom & Power) ───
-  async updateOutages(telecoms: TelecomOutage[], powers: PowerOutage[]): Promise<void> {
-    if (!this.map) return;
-
-    // 1. Telecom GEOJSON
-    const telecomFC = emptyFC();
-    telecomFC.features = telecoms.map(t => ({
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: t.coordinates },
-      properties: {
-        id: t.id,
-        operator: t.operator,
-        city: t.city,
-        department: t.department,
-        status: t.voiceStatus === 'HS' || t.dataStatus === 'HS' ? 'HS' : 'Degraded',
-        voiceStatus: t.voiceStatus,
-        dataStatus: t.dataStatus,
-        reason: t.reason
-      }
-    }));
-    (this.map.getSource(SRC_TELECOM) as maplibregl.GeoJSONSource)?.setData(telecomFC);
-
-    // 2. Power GEOJSON with data-driven styling
-    // Perf audit §6 item 2: skip the departments.geojson-backed power/tension
-    // choropleths while the outages layer is hidden — the telecom points
-    // above still render regardless. Replayed by setLayerVisibility() once
-    // the layer is switched on.
-    if (!this.currentLayers?.outages) {
-      this._pendingOutagesArgs = { telecoms, powers };
-      return;
-    }
-    this._pendingOutagesArgs = null;
-
-    const powersByCode = new Map<string, PowerOutage>();
-    for (const p of powers) powersByCode.set(p.departmentCode, p);
-
-    try {
-      const baseGeojson = await this.getDepartmentsGeojson();
-      if (!baseGeojson) return;
-      const geojson = this.cloneDepartmentsGeojson(baseGeojson);
-
-      // Filter to departments with actual measured outages only
-      geojson.features = geojson.features.filter(f => {
-        const code = (f.properties?.code as string) ?? '';
-        const pout = powersByCode.get(code);
-        return !!pout && pout.offGridCount > 0;
-      });
-
-      for (const feat of geojson.features) {
-        const code = (feat.properties?.code as string) ?? '';
-        const pout = powersByCode.get(code);
-        if (!pout) continue;
-
-        // Data-driven styling based on affected count and source
-        const { fillColor, lineColor, opacity } = this.computePowerOutageStyle(pout);
-
-        feat.properties = {
-          ...feat.properties,
-          fillColor,
-          fillOpacity: opacity,
-          lineColor,
-          // Store outage data for tooltip
-          powerOutage: pout,
-          affectedCount: pout.offGridCount,
-          isRealtime: pout.eventCause.includes('temps réel'),
-          severity: this.computePowerSeverity(pout.offGridCount),
-        };
-      }
-
-      const powerSrc = this.map.getSource(SRC_POWER) as maplibregl.GeoJSONSource;
-      powerSrc?.setData(geojson);
-    } catch (e) {
-      console.warn('[DeckGLMap] Error mapping power outages', e);
-    }
-  }
-
-  /** Render citizen outage zones (crowd-sourced DBSCAN clusters) on the map. */
-  updateCitizenOutageZones(zones: GeoJSON.FeatureCollection): void {
-    (this.map?.getSource(SRC_CITIZEN_ZONES) as maplibregl.GeoJSONSource)?.setData(zones);
-  }
-
-  /** Render IIP RTE HTB incidents as blue points on the map. */
-  updateIIPIncidents(incidents: RTEIIPIncident[]): void {
-    const features: GeoJSON.Feature[] = [];
-    for (const inc of incidents) {
-      const coords = resolveIIPCoords(inc);
-      if (!coords) continue;
-      features.push({
-        type: 'Feature',
-        geometry: { type: 'Point', coordinates: coords },
-        properties: {
-          id: inc.id,
-          assetLabel: inc.assetLabel,
-          title: inc.title,
-          incidentType: inc.type,
-          status: inc.status,
-          cause: inc.cause,
-          capacityMW: inc.capacityMW,
-          startDate: inc.startDate?.toISOString() ?? null,
-          endDate: inc.endDate?.toISOString() ?? null,
-        },
-      });
-    }
-    (this.map?.getSource(SRC_IIP) as maplibregl.GeoJSONSource)?.setData({
-      type: 'FeatureCollection',
-      features,
-    });
-  }
-
-  /** Highlight/unhighlight an IIP incident point by id (no fly-to). */
-  highlightIIPIncident(id: string | null): void {
-    if (!this.map) return;
-    if (id !== null) {
-      this.map.setPaintProperty(LYR_IIP_CORE, 'circle-stroke-color', [
-        'case', ['==', ['get', 'id'], id], '#ffffff', '#ffffff',
-      ]);
-      this.map.setPaintProperty(LYR_IIP_CORE, 'circle-stroke-width', [
-        'case', ['==', ['get', 'id'], id], 3, 1.5,
-      ]);
-      this.map.setPaintProperty(LYR_IIP_CORE, 'circle-stroke-opacity', [
-        'case', ['==', ['get', 'id'], id], 1, 0.6,
-      ]);
-    } else {
-      this.map.setPaintProperty(LYR_IIP_CORE, 'circle-stroke-width', 1.5);
-      this.map.setPaintProperty(LYR_IIP_CORE, 'circle-stroke-opacity', 0.6);
-    }
-  }
-
-  /** Highlight a specific department on the power outages layer. */
-  highlightPowerDept(deptCode: string | null): void {
-    if (!this.map) return;
-    if (deptCode) {
-      this.map.setPaintProperty(LYR_POWER_FILL, 'fill-color', [
-        'case', ['==', ['get', 'code'], deptCode], 'rgba(255,255,255,0.35)', ['get', 'fillColor'],
-      ]);
-      this.map.setPaintProperty(LYR_POWER_LINE, 'line-color', [
-        'case', ['==', ['get', 'code'], deptCode], '#FFFFFF', ['get', 'lineColor'],
-      ]);
-    } else {
-      this.map.setPaintProperty(LYR_POWER_FILL, 'fill-color', ['get', 'fillColor']);
-      this.map.setPaintProperty(LYR_POWER_LINE, 'line-color', ['get', 'lineColor']);
-    }
-  }
-
-  /** Highlight a specific citizen outage zone by clusterId. */
-  highlightCitizenZone(clusterId: number | null): void {
-    if (!this.map) return;
-    if (clusterId !== null) {
-      this.map.setPaintProperty(LYR_CITIZEN_FILL, 'fill-color', [
-        'case', ['==', ['get', 'clusterId'], clusterId],
-        'rgba(255,255,255,0.25)',
-        'rgba(180,0,255,0.15)',
-      ]);
-      this.map.setPaintProperty(LYR_CITIZEN_LINE, 'line-color', [
-        'case', ['==', ['get', 'clusterId'], clusterId],
-        '#FFFFFF',
-        '#b400ff',
-      ]);
-    } else {
-      this.map.setPaintProperty(LYR_CITIZEN_FILL, 'fill-color', 'rgba(180,0,255,0.15)');
-      this.map.setPaintProperty(LYR_CITIZEN_LINE, 'line-color', '#b400ff');
-    }
-  }
-
   /** Highlight a specific ISP point and fly to it. */
   highlightIsp(data: { asn: string; coordinates: [number, number] } | null): void {
     if (!this.map) return;
@@ -8366,45 +7869,6 @@ export class DeckGLMap {
     (this.map.getSource(SRC_IXP) as maplibregl.GeoJSONSource)?.setData(ixpFC);
   }
 
-  /**
-   * Compute fill/line color and opacity for power outages.
-   * Uses an amber → orange → red severity scale to distinguish electricity
-   * clearly from other network types (télécom=blue, internet=teal, cloud=purple).
-   */
-  private computePowerOutageStyle(outage: PowerOutage): {
-    fillColor: string;
-    lineColor: string;
-    opacity: number;
-  } {
-    const count = outage.offGridCount;
-
-    let fillColor: string;
-    let lineColor: string;
-    let opacity: number;
-
-    if (count >= 10000) {
-      fillColor = '#EF4444'; lineColor = '#EF4444'; opacity = 0.70; // rouge critique
-    } else if (count >= 5000) {
-      fillColor = '#F97316'; lineColor = '#F97316'; opacity = 0.55; // orange élevé
-    } else if (count >= 1000) {
-      fillColor = '#F59E0B'; lineColor = '#F59E0B'; opacity = 0.42; // ambre modéré
-    } else {
-      fillColor = '#EAB308'; lineColor = '#EAB308'; opacity = 0.28; // jaune-ambre faible
-    }
-
-    return { fillColor, lineColor, opacity };
-  }
-
-  /**
-   * Compute severity level for power outage (used in tooltips/legends).
-   */
-  private computePowerSeverity(count: number): 'critical' | 'high' | 'medium' | 'low' {
-    if (count >= 10000) return 'critical';
-    if (count >= 5000) return 'high';
-    if (count >= 1000) return 'medium';
-    return 'low';
-  }
-
 
 
   private _highlightedFloodSegmentId: string | null = null;
@@ -8591,8 +8055,8 @@ export class DeckGLMap {
     const ids = [
       // Surfaces départementales exclues (comme la vigilance et la météo des forêts) : elles couvrent la carte et bloqueraient le profil radar ; séismes et marégraphes restent.
       ...ENV_HOVER_LAYERS.filter((id) => id !== LYR_WEATHER_FILL && id !== LYR_FOREST_DANGER_FILL && id !== LYR_DROUGHT_FILL && id !== LYR_AIR_FILL), LYR_WEATHER_ICONS,
-      LYR_POINTS, LYR_CLUSTER_CIRCLE, LYR_TELECOM_PTS, LYR_MILITARY_BASES_CIRCLE, LYR_HOSPITALS,
-      ...Object.values(TRAFFIC_LAYER_KEYS).flat(), ...SOV_HOVER_LAYERS,
+      LYR_POINTS, LYR_CLUSTER_CIRCLE, LYR_MILITARY_BASES_CIRCLE, LYR_HOSPITALS,
+      ...Object.values(TRAFFIC_LAYER_KEYS).flat(), ...OUT_HOVER_LAYERS, ...SOV_HOVER_LAYERS,
     ].filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
     return ids.length > 0 && map.queryRenderedFeatures(point, { layers: ids }).length > 0;
   }
@@ -9564,6 +9028,59 @@ export class DeckGLMap {
     });
   }
 
+  // ─── Pannes réseau (spec 2026-10-08 § 2.1, § 2.2) : carte WebGL seulement ───
+
+  /** Sites ARCEP du dernier fichier lu : récents en rouge, plus anciens en orange, maintenances en option ; fichier en retard : gris. */
+  updateOutagesTelecom(t: TelecomOutagesResponse | null, now: number): void {
+    (this.map?.getSource(SRC_OUT_TELECOM) as maplibregl.GeoJSONSource | undefined)?.setData(telecomFeatures(t, now));
+    this.hideOutagesHover();
+  }
+
+  /** Unités de production en arrêt imprévu ou en maintenance, placées par la liste d'emplacements (sans emplacement : non dessinées). */
+  updateOutagesPower(p: PowerOutagesResponse | null, now: number): void {
+    (this.map?.getSource(SRC_OUT_POWER) as maplibregl.GeoJSONSource | undefined)?.setData(powerFeatures(p, now));
+    this.hideOutagesHover();
+  }
+
+  /** Option « maintenances » de la couche Télécoms, éteinte par défaut : visible seulement couche active. */
+  setTelecomMaintenanceVisible(on: boolean): void {
+    this.telecomMaintenanceOn = on;
+    this.setVis(OUT_MAINTENANCE_LAYER, on && (this.currentLayers?.outagesTelecom ?? false) ? 'visible' : 'none');
+  }
+
+  /** Unité de production cliquée dans le panneau Électricité : la carte se centre sur son emplacement connu, sinon rien (jamais une position inventée). */
+  flyToAsset(label: string): void {
+    const coords = resolveAssetCoords(label);
+    if (coords) this.flyTo(coords[0], coords[1], 9);
+  }
+
+  private hideOutagesHover(): void {
+    if (!this.outHoverShown) return;
+    this.outHoverShown = false;
+    this.outHoverPopup?.remove();
+  }
+
+  /** Couches Pannes réseau : une infobulle préparée avec la donnée (couche du dessus, texte échappé). */
+  private initOutagesInteractions(): void {
+    const map = this.map;
+    if (!map) return;
+    map.on('mousemove', (e) => {
+      const layers = OUT_HOVER_LAYERS.filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+      const hit = topOutHit(layers.length > 0 ? map.queryRenderedFeatures(e.point, { layers }) : []);
+      const html = hit ? outTooltipHtml(hit.layer.id, hit.properties ?? {}) : null;
+      if (!html) {
+        this.hideOutagesHover();
+        return;
+      }
+      this.outHoverShown = true;
+      const popup = this.outHoverPopup
+        ?? new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12, maxWidth: '300px', className: 'dark-popup hm-hover' });
+      this.outHoverPopup = popup;
+      popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
+    });
+    map.on('mouseout', () => this.hideOutagesHover());
+  }
+
   // ─── Military Layers ───
 
   /** Mailles GNSS jaunes et orange du jour UTC précédent (hors de France en gris, dégradation générale du jour en contour seul). */
@@ -9964,7 +9481,7 @@ export class DeckGLMap {
     }
 
     // Perf audit §6 item 2: replay any department-choropleth update that was
-    // skipped (vigilance, updateISNR/updateOutages below ; health layers through their dirty flags)
+    // skipped (vigilance, updateISNR below ; health layers through their dirty flags)
     // while its layer was hidden, now that it's visible again.
     if (layers.environmental && this.envVigilancePending && this.envVigilance) {
       // Rejeu à l'heure courante (S2) : une carte devenue en retard pendant que la couche était masquée repasse en gris.
@@ -9978,10 +9495,6 @@ export class DeckGLMap {
     if (layers.stability && this._pendingIsnrScores !== null) {
       const scores = this._pendingIsnrScores;
       void this.updateISNR(scores);
-    }
-    if (layers.outages && this._pendingOutagesArgs) {
-      const { telecoms, powers } = this._pendingOutagesArgs;
-      void this.updateOutages(telecoms, powers);
     }
 
     const vis = (visible: boolean) => visible ? 'visible' : 'none';
@@ -10137,16 +9650,14 @@ export class DeckGLMap {
     this.refreshAisLayers();
     // Connectivité : câbles du Shom et d'OpenStreetMap, atterrages, navires signalés ; halo animé seulement couche visible (audit 30).
     for (const id of SOV_LAYER_KEYS.subseaCables) this.setVis(id, vis(layers.subseaCables));
+    // Pannes réseau : Télécoms (sites récents et anciens ; maintenances en option) et Électricité (unités en arrêt imprévu et en maintenance).
+    for (const id of OUT_LAYER_KEYS.outagesTelecom) this.setVis(id, vis(layers.outagesTelecom));
+    for (const id of OUT_LAYER_KEYS.outagesElec) this.setVis(id, vis(layers.outagesElec));
+    this.setVis(OUT_MAINTENANCE_LAYER, vis(layers.outagesTelecom && this.telecomMaintenanceOn));
+    this.hideOutagesHover();
     if (layers.subseaCables) this.startSubseaPulseAnimation();
     else this.stopSubseaPulseAnimation();
     this.hideSovereigntyHover();
-    this.setVis(LYR_POWER_FILL, vis(layers.outagesElec));
-    this.setVis(LYR_POWER_LINE, vis(layers.outagesElec));
-    this.setVis(LYR_CITIZEN_FILL, vis(layers.outagesElec));
-    this.setVis(LYR_CITIZEN_LINE, vis(layers.outagesElec));
-    this.setVis(LYR_IIP_GLOW, vis(layers.outagesElec));
-    this.setVis(LYR_IIP_CORE, vis(layers.outagesElec));
-    this.setVis(LYR_TELECOM_PTS, vis(layers.outagesTelecom));
     this.setVis(LYR_NET_IODA_CLUSTER,       vis(layers.outagesInternet));
     this.setVis(LYR_NET_IODA_CLUSTER_COUNT, vis(layers.outagesInternet));
     this.setVis(LYR_NET_IODA_GLOW,          vis(layers.outagesInternet));

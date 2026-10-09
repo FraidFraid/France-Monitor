@@ -35,7 +35,7 @@ describe('validateBriefShape v14', () => {
 
 describe('buildPrompt v14', () => {
   it('liste les preuves citables E… et S… et déclare les titres non citables', () => {
-    const signals = { criticalNews: 0, highNews: 0, weatherAlerts: 0, floodAlerts: 0, fireDetections: 0, railDisruptions: 0, roadIncidents: 0, powerOutages: 0, telecomOutages: 0, cyberAlerts: 0, militaryFlights: 0, maritimeTrafficFrance: 0, defenseAlerts: 0, jammingSignals: 0, marketStress: 0 };
+    const signals = { criticalNews: 0, highNews: 0, weatherAlerts: 0, floodAlerts: 0, fireDetections: 0, railDisruptions: 0, roadIncidents: 0, telecomOutages: 0, cyberAlerts: 0, militaryFlights: 0, maritimeTrafficFrance: 0, defenseAlerts: 0, jammingSignals: 0, marketStress: 0 };
     const prompt = buildPrompt(72, { continuity: 30, defense: 5, security: 20, signal: 10 }, { social: 0, security: 0, infra: 0 }, 20, 1, ['Un titre'], signals, null, SITUATIONS, sanitizeEvents(EVENTS), 'fr');
     expect(prompt).toContain('S1. [HIGH conf=0.8] Tension énergétique');
     expect(prompt).toContain('E42 [weather/high, 3 source(s), 2 indépendante(s), active] Gironde');
@@ -43,7 +43,7 @@ describe('buildPrompt v14', () => {
     expect(prompt).toContain('"evidence": ["E123", "S1"]');
   });
   it('souveraineté (arbitrage 25 ; amendement 7, O6, O8, O9, O15) : compte d’aéronefs jamais sans « compte habituel, pas un événement »', () => {
-    const signals = { criticalNews: 0, highNews: 0, weatherAlerts: 0, floodAlerts: 0, fireDetections: 0, railDisruptions: 0, roadIncidents: 0, powerOutages: 0, telecomOutages: 0, cyberAlerts: 6, cyberOpenAlerts: 3, cyberKevAdvisories: 3, militaryFlights: 9, maritimeTrafficFrance: 0, defenseAlerts: 1, jammingSignals: 2, marketStress: 0 };
+    const signals = { criticalNews: 0, highNews: 0, weatherAlerts: 0, floodAlerts: 0, fireDetections: 0, railDisruptions: 0, roadIncidents: 0, telecomOutages: 0, cyberAlerts: 6, cyberOpenAlerts: 3, cyberKevAdvisories: 3, militaryFlights: 9, maritimeTrafficFrance: 0, defenseAlerts: 1, jammingSignals: 2, marketStress: 0 };
     const fr = buildPrompt(72, { continuity: 30, defense: 5, security: 20, signal: 10 }, { social: 0, security: 0, infra: 0 }, 28, 0, [], signals, null, [], [], 'fr');
     expect(fr).toContain('9 aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole (adsb.lol) : compte habituel, pas un événement');
     expect(fr).toContain('1 navire lent confirmé sur un câble, 2 mailles à précision GNSS dégradée, 9 aéronefs militaires ou d’État visibles en ADS-B au-dessus de la métropole (compte habituel, pas un événement)');
@@ -62,24 +62,24 @@ describe('buildPrompt v14', () => {
     expect(en).not.toMatch(/military flights|GPS jamming|defense alerts|over France\b/);
   });
   it('accords de l’invite (revue finale M3) : « 1 maille », « 1 titre critique », « 1 feu » ; anglais au pluriel à 0', () => {
-    const signals = { criticalNews: 1, highNews: 1, weatherAlerts: 1, floodAlerts: 2, fireDetections: 1, railDisruptions: 1, roadIncidents: 1, powerOutages: 1, telecomOutages: 1, cyberAlerts: 0, cyberOpenAlerts: 0, cyberKevAdvisories: 0, militaryFlights: 1, maritimeTrafficFrance: 0, defenseAlerts: 0, jammingSignals: 1, marketStress: 1 };
+    const signals = { criticalNews: 1, highNews: 1, weatherAlerts: 1, floodAlerts: 2, fireDetections: 1, railDisruptions: 1, roadIncidents: 1, telecomOutages: 1, cyberAlerts: 0, cyberOpenAlerts: 0, cyberKevAdvisories: 0, militaryFlights: 1, maritimeTrafficFrance: 0, defenseAlerts: 0, jammingSignals: 1, marketStress: 1 };
     const axes = { continuity: 10, defense: 5, security: 10, signal: 10 };
     const isnr = { social: 0, security: 0, infra: 0 };
     const fr = buildPrompt(80, axes, isnr, 0, 1, [], signals, null, [], [], 'fr');
     for (const text of [
-      'Signaux : 1 titre critique / 1 élevé, 1 rail, 1 route, 1 coupure élec, 1 télécom, 0 navire lent confirmé sur un câble, 1 maille à précision GNSS dégradée',
-      '1 feu, 1 ligne marché sous tension', '1 alerte météo sévère + 2 alertes crues actives', '1 coupure électrique, 1 incident télécom',
+      'Signaux : 1 titre critique / 1 élevé, 1 rail, 1 route, 1 télécom, 0 navire lent confirmé sur un câble, 1 maille à précision GNSS dégradée',
+      '1 feu, 1 ligne marché sous tension', '1 alerte météo sévère + 2 alertes crues actives', '1 incident télécom récent',
       '1 détection de feu actif', '1 maille à précision GNSS dégradée\n',
     ]) expect(fr).toContain(text);
     expect(fr).not.toMatch(/\b1 (?:mailles|titres|feux|coupures|lignes|alertes|incidents|détections|perturbations)\b/);
     const en = buildPrompt(80, axes, isnr, 0, 1, [], signals, null, [], [], 'en');
     for (const text of [
-      '1 critical / 1 high headline, 1 rail, 1 road, 1 power outage, 1 telecom, 0 slow vessels confirmed on a cable, 1 cell with degraded GNSS accuracy',
+      '1 critical / 1 high headline, 1 rail, 1 road, 1 telecom, 0 slow vessels confirmed on a cable, 1 cell with degraded GNSS accuracy',
       '1 fire, 1 stressed market line', '1 severe weather alert + 2 active flood alerts', '1 active fire detection',
     ]) expect(en).toContain(text);
   });
   it('sources Souveraineté non lues (S3) : « non évalué », jamais « 0 » envoyé au modèle ; aucun mot calme permis', () => {
-    const signals = { criticalNews: 0, highNews: 0, weatherAlerts: 0, floodAlerts: 0, fireDetections: 0, railDisruptions: 0, roadIncidents: 0, powerOutages: 0, telecomOutages: 0, cyberAlerts: 0, cyberOpenAlerts: 0, cyberKevAdvisories: 0, militaryFlights: 0, maritimeTrafficFrance: 0, defenseAlerts: 0, jammingSignals: 0, marketStress: 0, militaryUnavailable: true, cablesUnavailable: true, gnssUnavailable: true, cyberUnavailable: true, kevUnavailable: true };
+    const signals = { criticalNews: 0, highNews: 0, weatherAlerts: 0, floodAlerts: 0, fireDetections: 0, railDisruptions: 0, roadIncidents: 0, telecomOutages: 0, cyberAlerts: 0, cyberOpenAlerts: 0, cyberKevAdvisories: 0, militaryFlights: 0, maritimeTrafficFrance: 0, defenseAlerts: 0, jammingSignals: 0, marketStress: 0, militaryUnavailable: true, cablesUnavailable: true, gnssUnavailable: true, cyberUnavailable: true, kevUnavailable: true };
     const axes = { continuity: 0, defense: 0, security: 0, signal: 0 };
     const isnr = { social: 0, security: 0, infra: 0 };
     const fr = buildPrompt(95, axes, isnr, null, 0, [], signals, null, [], [], 'fr');
@@ -130,7 +130,7 @@ describe('buildPrompt v14', () => {
     expect(sent).toContain('Pression cyber : non évaluée');
   });
   it('mailles comptées sur une mesure partielle (report 10 de la revue finale) : « (mesure partielle de N h) », lu par le gestionnaire', async () => {
-    const signals = { criticalNews: 0, highNews: 0, weatherAlerts: 0, floodAlerts: 0, fireDetections: 0, railDisruptions: 0, roadIncidents: 0, powerOutages: 0, telecomOutages: 0, cyberAlerts: 0, militaryFlights: 0, maritimeTrafficFrance: 0, defenseAlerts: 0, jammingSignals: 3, marketStress: 0, gnssPartialHours: 5 };
+    const signals = { criticalNews: 0, highNews: 0, weatherAlerts: 0, floodAlerts: 0, fireDetections: 0, railDisruptions: 0, roadIncidents: 0, telecomOutages: 0, cyberAlerts: 0, militaryFlights: 0, maritimeTrafficFrance: 0, defenseAlerts: 0, jammingSignals: 3, marketStress: 0, gnssPartialHours: 5 };
     const axes = { continuity: 0, defense: 0, security: 0, signal: 0 };
     const isnr = { social: 0, security: 0, infra: 0 };
     const fr = buildPrompt(80, axes, isnr, 0, 0, [], signals, null, [], [], 'fr');
@@ -156,8 +156,38 @@ describe('buildPrompt v14', () => {
     }
     expect(sent).toContain('3 mailles à précision GNSS dégradée (mesure partielle de 5 h)');
   });
+  it('pannes (spec 2026-10-08 § 2.3) : 18 pannes télécom récentes dites « 18 incidents télécom », sans électricité ; un ancien client qui envoie powerOutages n’y change rien', () => {
+    const base = { criticalNews: 0, highNews: 0, weatherAlerts: 0, floodAlerts: 0, fireDetections: 0, railDisruptions: 0, roadIncidents: 0, telecomOutages: 18, cyberAlerts: 0, militaryFlights: 0, maritimeTrafficFrance: 0, defenseAlerts: 0, jammingSignals: 0, marketStress: 0 };
+    const axes = { continuity: 10, defense: 5, security: 10, signal: 10 };
+    const isnr = { social: 0, security: 0, infra: 0 };
+    for (const signals of [base, { ...base, powerOutages: 7 }]) {
+      const fr = buildPrompt(80, axes, isnr, 0, 0, [], signals, null, [], [], 'fr');
+      expect(fr).toContain('18 incidents télécom');
+      expect(fr).not.toMatch(/coupure/);
+      const en = buildPrompt(80, axes, isnr, 0, 0, [], signals, null, [], [], 'en');
+      expect(en).toContain('18 recent telecom incidents');
+      expect(en).not.toMatch(/power outage/);
+    }
+  });
+  it('télécom non lu (S3) : « télécom non évalué » / « telecom not assessed », jamais « 0 télécom », et pas un signal calme', () => {
+    const signals = { criticalNews: 0, highNews: 0, weatherAlerts: 0, floodAlerts: 0, fireDetections: 0, railDisruptions: 0, roadIncidents: 0, telecomOutages: 0, telecomUnavailable: true, cyberAlerts: 0, militaryFlights: 0, maritimeTrafficFrance: 0, defenseAlerts: 0, jammingSignals: 0, marketStress: 0 };
+    const axes = { continuity: 10, defense: 5, security: 10, signal: 10 };
+    const isnr = { social: 0, security: 0, infra: 0 };
+    const fr = buildPrompt(80, axes, isnr, 0, 0, [], signals, null, [], [], 'fr');
+    expect(fr).toContain('télécom non évalué');
+    expect(fr).not.toContain('0 télécom');
+    const en = buildPrompt(80, axes, isnr, 0, 0, [], signals, null, [], [], 'en');
+    expect(en).toContain('telecom not assessed');
+    expect(en).not.toMatch(/0 telecom/);
+    // Lu à 0 : « 0 télécom » reste dit.
+    expect(buildPrompt(80, axes, isnr, 0, 0, [], { ...signals, telecomUnavailable: false }, null, [], [], 'fr')).toContain('0 télécom');
+    // Le vocabulaire calme n'est autorisé que si le télécom a été lu à 0.
+    const calmAxes = { continuity: 0, defense: 0, security: 0, signal: 0 };
+    expect(buildPrompt(95, calmAxes, isnr, 0, 0, [], { ...signals, telecomUnavailable: false }, null, [], [], 'fr')).toContain('autorisé');
+    expect(buildPrompt(95, calmAxes, isnr, 0, 0, [], signals, null, [], [], 'fr')).toContain('INTERDIT');
+  });
   it('CERT-FR indisponible ou en retard : pression cyber « non évaluée », jamais « faible » (une absence n’est pas un calme)', () => {
-    const signals = { criticalNews: 0, highNews: 0, weatherAlerts: 0, floodAlerts: 0, fireDetections: 0, railDisruptions: 0, roadIncidents: 0, powerOutages: 0, telecomOutages: 0, cyberAlerts: 0, militaryFlights: 0, maritimeTrafficFrance: 0, defenseAlerts: 0, jammingSignals: 0, marketStress: 0 };
+    const signals = { criticalNews: 0, highNews: 0, weatherAlerts: 0, floodAlerts: 0, fireDetections: 0, railDisruptions: 0, roadIncidents: 0, telecomOutages: 0, cyberAlerts: 0, militaryFlights: 0, maritimeTrafficFrance: 0, defenseAlerts: 0, jammingSignals: 0, marketStress: 0 };
     const axes = { continuity: 0, defense: 0, security: 0, signal: 0 };
     const isnr = { social: 0, security: 0, infra: 0 };
     expect(buildPrompt(95, axes, isnr, null, 0, [], signals, null, [], [], 'fr')).toContain('Pression cyber : non évaluée (CERT-FR indisponible ou en retard)');

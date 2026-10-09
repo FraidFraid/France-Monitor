@@ -852,30 +852,6 @@ export interface CommodityData extends Omit<MarketData, 'history' | 'category'> 
   unit: string;       // '$/bbl', '$/oz', '$/MMBtu', '¢/bu', '$/lb'
 }
 
-// ═══ Pannes Télécoms & Électricité (ARCEP / Enedis) ═══
-
-export interface TelecomOutage {
-  id: string;
-  operator: string;
-  department: string;
-  city: string;
-  voiceStatus: 'OK' | 'HS' | 'Degraded';
-  dataStatus: 'OK' | 'HS' | 'Degraded';
-  reason: string;
-  /** Début de la panne (ISO UTC), issu du champ ARCEP `debut` (heure de Paris) ; null si absent ou illisible. */
-  since?: string | null;
-  coordinates: [number, number]; // [lon, lat]
-}
-
-export interface PowerOutage {
-  departmentCode: string;
-  departmentName: string;
-  offGridCount: number;      // Nombre de PDL (Points de Livraison) hors réseau
-  totalPDL: number;          // Total PDL (estimation)
-  eventCause: string;        // "Tempête Caetano", "Vents violents", "Neige"
-  trend: 'stable' | 'improving' | 'worsening';
-}
-
 // ═══ Data Freshness & Watchdog ═══
 
 /**
@@ -1053,8 +1029,10 @@ export interface FranceCountrySignals {
   railSevere: number;
   roadIncidents: number;
   // Infrastructure
-  powerOutages: number;
-  telecomOutages: number;
+  /** Pannes télécom imprévues récentes (< 24 h) du fichier ARCEP ; null : source muette (spec 2026-10-08 § 2.3). */
+  telecomOutages: number | null;
+  /** Niveau de la pastille Télécoms (telecomLevel) du même fichier : une seule règle de couleur pour le même chiffre ; null sans fichier. */
+  telecomOutagesLevel: 'vert' | 'jaune' | 'orange' | 'rouge' | null;
   // Cyber
   cyberAlerts: number;
   cyberCritical: number;
@@ -1688,57 +1666,6 @@ export interface MineGasSite {
   updatedAt?: string;
   notes?: string;
   raw?: unknown;
-}
-
-// ═══ Pannes Crowd-sourced (Signalements Citoyens) ═══
-
-/**
- * Signalement citoyen d'une panne électrique (crowd-sourced).
- * Agrégé par ville/département — pas d'adresse individuelle (privacy).
- */
-export interface CitizenOutageReport {
-  id: string;
-  source: 'infocoupure' | 'coupure-elec';
-  city: string;
-  department: string;
-  departmentCode: string;
-  reportCount: number;         // Nombre de signalements agrégés
-  timestamp: Date;
-  coordinates: [number, number]; // [lng, lat] — centroïde ville
-  type: 'electricity' | 'internet' | 'unknown';
-}
-
-/**
- * Zone de panne géographique issue du clustering DBSCAN.
- * GeoJSON Feature<Polygon> avec métadonnées.
- */
-export interface OutageZoneProperties {
-  clusterId: number;
-  density: number;             // Signalements/km²
-  totalReports: number;        // Somme des signalements dans la zone
-  sources: Array<CitizenOutageReport['source']>;
-  severity: 'low' | 'medium' | 'high' | 'critical';
-  center: [number, number];    // [lng, lat] centroïde du cluster
-  radiusKm: number;
-  createdAt: string;           // ISO timestamp
-}
-
-export type OutageZone = GeoJSON.Feature<GeoJSON.Polygon, OutageZoneProperties>;
-export type OutageZoneCollection = GeoJSON.FeatureCollection<GeoJSON.Polygon, OutageZoneProperties>;
-
-/**
- * Réponse de l'endpoint /api/outages/citizen
- */
-export interface CitizenOutageResponse {
-  zones: OutageZoneCollection;
-  reports: CitizenOutageReport[];
-  stats: {
-    totalReports: number;
-    totalZones: number;
-    criticalZones: number;
-    sourcesStatus: Record<CitizenOutageReport['source'], 'ok' | 'error' | 'stale'>;
-    fetchedAt: string;         // ISO timestamp
-  };
 }
 
 // ═══ Oil Network (CPDP / Pétrole) ═══
@@ -3081,4 +3008,88 @@ export interface DroneZonesFile {
   licence: string;                        // « CGU cartes.gouv.fr »
   counts: { volInterdit: number; agglomerations: number; kept: number };
   zones: DroneZone[];
+}
+
+// ═══ Pannes réseau (spec 2026-10-08 panneaux pannes ; faits .superpowers/sdd/panneaux-couches-pannes/facts.md) ═══
+
+// ─── Télécoms : GET /api/outages/telecom (fichier ARCEP « sites indisponibles » classé par âge et cause) ───
+/** Tranche d'âge d'une panne imprévue longue, relative à la publication du fichier. */
+export type TelecomAgeBand = '1-3j' | '3-7j' | '7-30j' | '30j+';
+/** recente : incident commencé moins de 24 h avant la publication ; longue : plus ancien ; sans-date : incident sans début lisible ou au début futur. */
+export type TelecomSiteClass = 'recente' | 'longue' | 'maintenance' | 'sans-date';
+export type TelecomTech = '2G' | '3G' | '4G' | '5G';
+export interface TelecomSite {
+  id: string;                       // « station_anfr:opérateur »
+  operator: string;                 // « Orange », « SFR », « Bouygues Telecom », « Free »
+  dept: string | null;              // espace final retiré ; null si non renseigné
+  commune: string | null;
+  insee: string | null;
+  lat: number; lon: number;
+  techs: TelecomTech[];             // technologies hors service (2G : voix2g ; 3G : voix3g ou data3g ; 4G : voix4g ou data4g ; 5G : data5g)
+  voice: 'HS' | 'OK' | null;        // agrégat `voix` de l'ARCEP, lu tel quel
+  data: 'HS' | 'OK' | null;         // agrégat `data` de l'ARCEP, lu tel quel
+  cause: 'incident' | 'maintenance' | null;
+  since: string | null;             // `debut` (heure de Paris) en ISO UTC
+  detail: string | null;
+  cls: TelecomSiteClass;
+  band: TelecomAgeBand | null;      // pour cls === 'longue' seulement
+}
+export interface TelecomOperatorCount { operator: string; recent: number; long: number; maintenance: number; voiceCut: number; dataCut: number }
+/** Pannes récentes d'un département ; dept null : département non renseigné. */
+export interface TelecomDeptCount { dept: string | null; recent: number }
+/** Fichier ARCEP : jour (« 2026-10-08 ») et heure de publication (Last-Modified, ISO UTC). */
+export interface TelecomFileRef { day: string; publishedAt: string }
+export interface TelecomOutagesResponse {
+  readAt: string | null;            // dernière lecture réussie (horloge du serveur)
+  file: TelecomFileRef | null;      // fichier servi ; null : jamais lu
+  previousFile: TelecomFileRef | null;
+  summary: {
+    total: number; recent: number; long: number; maintenance: number; undated: number;
+    bands: Record<TelecomAgeBand, number>;
+    newSincePrevious: number | null; resolvedSincePrevious: number | null;   // null : fichier précédent illisible
+  } | null;
+  byOperator: TelecomOperatorCount[];   // ordre : récentes décroissantes, puis nom
+  byDept: TelecomDeptCount[];           // départements avec au moins une panne récente, décroissant, null en dernier
+  sites: TelecomSite[];                 // tous les sites, récentes d'abord
+  history: Array<{ day: string; recent: number }>;  // 30 jours au plus, plus ancien d'abord
+  errors: string[];
+}
+
+// ─── Électricité : GET /api/outages/power (EDF OpenData, RTE IIP, EDF SEI) ───
+export type PowerKind = 'imprevue' | 'planifiee';
+export interface PowerUnitOutage {
+  id: string;                       // identifiant EDF, ou messageId IIP sans version
+  name: string;                     // « PALUEL 1 »
+  sector: string;                   // filière en français (« Nucléaire », « Gaz fossile »…)
+  nuclear: boolean;
+  kind: PowerKind;
+  lostMw: number;                   // EDF : puissance maximale − disponible ; IIP : capacité indisponible de l'intervalle en cours
+  maxMw: number | null;
+  start: string; end: string | null;   // ISO UTC
+  publishedAt: string | null;
+  cause: string | null;             // « Défaillance », « Maintenance prévisionnelle »…
+  source: 'edf' | 'rte';
+}
+export interface TransmissionOutage {
+  id: string;                       // messageId sans sens ni version (« 90259 »)
+  asset: string;                    // « Mandarins-Sellindge 1 »
+  kind: PowerKind;
+  start: string; end: string | null; publishedAt: string; reason: string | null;
+  directions: Array<{ label: string; unavailableMw: number | null; installedMw: number | null }>;   // « France → Royaume-Uni »
+}
+/** Signal horaire des îles (EDF SEI) : conseil de consommation, jamais un niveau de vigilance. */
+export interface IslandPowerSignal { zone: 'reunion' | 'corse'; at: string; color: string; text: string; cyclone: boolean }
+export interface PowerOutagesResponse {
+  readAt: string | null;
+  edfUpdatedAt: string | null;      // `dataUpdatedAt` du jeu EDF
+  edfReadAt: string | null;         // dernière lecture réussie du jeu EDF (horloge du serveur) : le retard EDF se mesure dessus
+  iipPublishedAt: string | null;    // `lastBuildDate` du flux production (ISO UTC), affiché comme date de la donnée
+  iipReadAt: string | null;         // dernière lecture réussie de l'IIP (horloge du serveur) : le retard IIP se mesure dessus
+  unplanned: PowerUnitOutage[];     // en cours, MW décroissants
+  planned: PowerUnitOutage[];       // en cours, MW décroissants
+  upcoming: PowerUnitOutage[];      // début dans les 7 jours, plus proche d'abord
+  transmission: { unplanned: TransmissionOutage[]; planned: TransmissionOutage[] } | null;   // null : IIP illisible
+  islands: IslandPowerSignal[];
+  history: Array<{ day: string; unplannedMw: number }>;   // 30 jours, MW à 12 h Paris
+  errors: string[];
 }

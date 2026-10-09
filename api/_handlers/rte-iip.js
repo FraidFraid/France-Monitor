@@ -10,6 +10,9 @@
  * Output : { production: { items, sourceFormat }, transmission: { items, sourceFormat } }
  */
 
+// Agent TLS strict dédié à l'hôte IIP (chaîne de RTE incomplète : intermédiaire de confiance ajouté, vérification conservée).
+import { iipDispatcher } from '../_lib/rte-iip-agent.js';
+
 const IIP_FEEDS = [
   {
     url: 'https://iip.cloud-rte-france.com/data/rss/production_unavailability/production_unavailability.xml',
@@ -85,26 +88,14 @@ export default async function handler(req, res) {
   }
 }
 
-// Agent TLS permissif — iip.cloud-rte-france.com a une chaîne de certificats
-// incomplète (UNABLE_TO_VERIFY_LEAF_SIGNATURE) qui fait échouer la vérif Node.js.
-// On accepte le risque puisque c'est un flux REMIT public, non sensible.
-let _insecureAgent = null;
-async function getInsecureAgent() {
-  if (_insecureAgent) return _insecureAgent;
-  const { Agent } = await import('undici');
-  _insecureAgent = new Agent({ connect: { rejectUnauthorized: false } });
-  return _insecureAgent;
-}
-
 async function fetchAndParse(url, type) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
   try {
-    const dispatcher = await getInsecureAgent();
     const resp = await fetch(url, {
       signal: controller.signal,
-      dispatcher,
+      dispatcher: iipDispatcher(),
       headers: {
         'User-Agent': USER_AGENT,
         'Accept': 'application/rss+xml, application/xml, text/xml, */*',

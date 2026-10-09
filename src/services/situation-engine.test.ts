@@ -7,7 +7,8 @@ import {
 } from '../components/layer-panel/sovereignty.fixture.ts';
 import { parisDate } from './ecowatt-official.ts';
 import type { FranceRawData } from './france-country-intel.ts';
-import type { EcowattOfficial, EcowattSignal } from '../types/index.ts';
+import type { EcowattOfficial, EcowattSignal, TelecomOutagesResponse } from '../types/index.ts';
+import { telecomFixtureResponse } from '../components/layer-panel/outages.fixture.ts';
 
 // 24/09/2026 10 h à Paris (CEST, UTC+2).
 const NOW = Date.parse('2026-09-24T08:00:00Z');
@@ -35,8 +36,7 @@ function baseRawData(overrides: Partial<FranceRawData> = {}): FranceRawData {
     railTrains: [],
     roadEvents: [],
     urbanJamCount: 0,
-    powerOutages: [],
-    telecomOutages: [],
+    telecomOutages: null,
     cableAlerts: [],
     gnssDegraded: null,
     militaryFlightsCount: 0,
@@ -179,21 +179,15 @@ function socialFixture(): FranceRawData {
   });
 }
 
-type Telecom = FranceRawData['telecomOutages'][number];
-
-/** `count` pannes du département `dept`, débutées `ageH` heures avant NOW (null = sans date). */
-function telecomBatch(dept: string, count: number, ageH: number | null): Telecom[] {
-  const since = ageH === null ? null : new Date(NOW - ageH * 3_600_000).toISOString();
-  return Array.from({ length: count }, (_, i) =>
-    typed<Telecom>({ id: `tel-${dept}-${ageH}-${i}`, department: dept, operator: 'Orange', since }));
+/** Réponse Télécoms du 08/10 dont le compte des pannes récentes et leur répartition par département sont posés (le reste du jeu d'essai est gardé). */
+function telecomResponse(byDept: Array<[string | null, number]>, recent: number = byDept.reduce((n, [, c]) => n + c, 0)): TelecomOutagesResponse {
+  const t = telecomFixtureResponse();
+  assert.ok(t.summary);
+  return { ...t, summary: { ...t.summary, recent }, byDept: byDept.map(([dept, count]) => ({ dept, recent: count })) };
 }
 
-function telecomRaw(outages: Telecom[], powerCount = 0): FranceRawData {
-  return baseRawData({
-    telecomOutages: outages,
-    powerOutages: Array.from({ length: powerCount }, (_, i) =>
-      typed<FranceRawData['powerOutages'][number]>({ id: `pow-${i}` })),
-  });
+function telecomRaw(t: TelecomOutagesResponse | null): FranceRawData {
+  return baseRawData({ telecomOutages: t });
 }
 
 function telecomSituation(raw: FranceRawData) {
@@ -281,66 +275,95 @@ describe('situation-engine · detectSituations', () => {
   });
 
   it('telecom : seuils par département (20 medium, 50 high, 100 critical)', () => {
-    assert.equal(telecomSituation(telecomRaw(telecomBatch('59', 19, 2))), undefined);
-    assert.equal(telecomSituation(telecomRaw(telecomBatch('59', 20, 2)))?.severity, 'medium');
-    assert.equal(telecomSituation(telecomRaw(telecomBatch('59', 49, 2)))?.severity, 'medium');
-    assert.equal(telecomSituation(telecomRaw(telecomBatch('59', 50, 2)))?.severity, 'high');
-    assert.equal(telecomSituation(telecomRaw(telecomBatch('59', 99, 2)))?.severity, 'high');
-    assert.equal(telecomSituation(telecomRaw(telecomBatch('59', 100, 2)))?.severity, 'critical');
+    const one = (count: number) => telecomSituation(telecomRaw(telecomResponse([['59', count]])));
+    assert.equal(one(19), undefined);
+    assert.equal(one(20)?.severity, 'medium');
+    assert.equal(one(49)?.severity, 'medium');
+    assert.equal(one(50)?.severity, 'high');
+    assert.equal(one(99)?.severity, 'high');
+    assert.equal(one(100)?.severity, 'critical');
   });
 
   it('telecom : seuils nationaux (300 high, 600 critical) sans concentration', () => {
-    const spread = (total: number): Telecom[] =>
-      Array.from({ length: total / 10 }, (_, i) => telecomBatch(String(i + 1).padStart(2, '0'), 10, 3)).flat();
-    assert.equal(telecomSituation(telecomRaw(spread(290))), undefined);
-    assert.equal(telecomSituation(telecomRaw(spread(300)))?.severity, 'high');
-    assert.equal(telecomSituation(telecomRaw(spread(600)))?.severity, 'critical');
+    const spread = (total: number) =>
+      telecomRaw(telecomResponse(Array.from({ length: total / 10 }, (_, i) => [String(i + 1).padStart(2, '0'), 10] as [string, number])));
+    assert.equal(telecomSituation(spread(290)), undefined);
+    assert.equal(telecomSituation(spread(300))?.severity, 'high');
+    assert.equal(telecomSituation(spread(600))?.severity, 'critical');
   });
 
-  it('telecom : frontière des 24 h', () => {
-    assert.equal(telecomSituation(telecomRaw(telecomBatch('59', 20, 24)))?.severity, 'medium');
-    const justOver = telecomBatch('59', 20, 24).map((o) => ({ ...o, since: new Date(NOW - 24 * 3_600_000 - 1).toISOString() }));
-    assert.equal(telecomSituation(telecomRaw(justOver)), undefined);
+  it('telecom : 264 sites tombés en 24 h dont 28 en Haute-Corse : sévérité moyenne, phrase du résumé', () => {
+    const t = telecomResponse([['2B', 28]], 264);
+    assert.ok(t.summary);
+    const s = telecomSituation(telecomRaw(t));
+    assert.ok(s);
+    assert.equal(s.severity, 'medium');
+    assert.ok(s.summary.includes('264\u00a0sites mobiles tombés en 24\u00a0h, dont 28 dans le département Haute-Corse (2B)'), s.summary);
+    assert.ok(s.summary.includes(`${t.summary.total.toLocaleString('fr-FR').replace(/[\u202f\u00a0 ]/g, '\u00a0')}\u00a0sites hors service au total dans le fichier ARCEP, pannes anciennes et maintenances comprises`), s.summary);
+    assert.deepEqual(s.affectedZones, ['Haute-Corse (2B)']);
+    assert.deepEqual(s.sourceRefs, ['ARCEP']);
   });
 
-  it('telecom : sans date, ne compte pas', () => {
-    assert.equal(telecomSituation(telecomRaw(telecomBatch('59', 500, null))), undefined);
+  it('telecom : fichier non lu (null) ou sans résumé : aucune situation, jamais « 0 site »', () => {
+    assert.equal(telecomSituation(telecomRaw(null)), undefined);
+    const t = telecomResponse([['59', 500]]);
+    assert.equal(telecomSituation(telecomRaw({ ...t, summary: null })), undefined);
   });
 
-  it('telecom : un gros stock ancien seul ne donne aucune situation', () => {
-    const old = [...telecomBatch('59', 400, 30), ...telecomBatch('34', 300, 24 * 10), ...telecomBatch('75', 300, 24 * 60)];
-    assert.equal(telecomSituation(telecomRaw(old)), undefined);
+  it('telecom : un gros stock ancien seul ne donne aucune situation (aucune panne récente)', () => {
+    const t = telecomResponse([], 0);
+    assert.ok(t.summary);
+    assert.equal(telecomSituation(telecomRaw({ ...t, summary: { ...t.summary, total: 1056, long: 900, maintenance: 156 } })), undefined);
   });
 
   it('telecom : résumé avec récent, département et stock, sans tiret cadratin', () => {
-    const raw = telecomRaw([...telecomBatch('59', 43, 5), ...telecomBatch('34', 10, 5), ...telecomBatch('75', 6, 400)]);
-    const s = telecomSituation(raw);
+    const t = telecomResponse([['59', 43], ['34', 10]]);
+    assert.ok(t.summary);
+    const s = telecomSituation(telecomRaw({ ...t, summary: { ...t.summary, recent: 53, total: 59 } }));
     assert.ok(s);
     assert.ok(s.summary.includes('53\u00a0sites mobiles tombés en 24\u00a0h, dont 43 dans le département Nord (59)'), s.summary);
-    assert.ok(s.summary.includes('59\u00a0sites hors service au total dans le fichier ARCEP du jour, pannes anciennes comprises'), s.summary);
+    assert.ok(s.summary.includes('59\u00a0sites hors service au total dans le fichier ARCEP, pannes anciennes et maintenances comprises'), s.summary);
     assert.deepEqual(s.affectedZones.slice(0, 2), ['Nord (59)', 'Hérault (34)']);
     assert.ok(!s.summary.includes('\u2014'));
   });
 
-  it('telecom : départements accentués, Corse (2A, 2B), département absent dit « département non précisé », jamais « Inconnu »', () => {
-    const corse = telecomSituation(telecomRaw([...telecomBatch('2A', 25, 3), ...telecomBatch('2B', 4, 3), ...telecomBatch('07', 2, 3)]));
+  it('telecom : départements accentués, Corse (2A, 2B) ; un département non renseigné n’est jamais classé ni affiché', () => {
+    const corse = telecomSituation(telecomRaw(telecomResponse([['2A', 25], ['2B', 4], ['07', 2], [null, 30]])));
     assert.ok(corse);
     assert.deepEqual(corse.affectedZones, ['Corse-du-Sud (2A)', 'Haute-Corse (2B)', 'Ardèche (07)']);
     assert.ok(corse.summary.includes('dont 25 dans le département Corse-du-Sud (2A)'), corse.summary);
-    // ARCEP sans département : « Inconnu » côté adaptateur (outages.ts), ou vide.
-    const unknown = telecomSituation(telecomRaw([...telecomBatch('Inconnu', 22, 2), ...telecomBatch('', 3, 2), ...telecomBatch('34', 4, 2)]));
-    assert.ok(unknown);
-    assert.ok(unknown.summary.includes('29\u00a0sites mobiles tombés en 24\u00a0h, dont 25 sans département précisé'), unknown.summary);
-    assert.deepEqual(unknown.affectedZones, ['département non précisé', 'Hérault (34)']);
-    assert.ok(!JSON.stringify(unknown).includes('Inconnu'));
+    assert.ok(!JSON.stringify(corse).includes('Inconnu'));
+    assert.ok(!JSON.stringify(corse).includes('non précisé'));
   });
 
-  it('telecom : les pannes électriques confirment sans escalader', () => {
-    const base = telecomSituation(telecomRaw(telecomBatch('59', 20, 2)));
-    const withPower = telecomSituation(telecomRaw(telecomBatch('59', 20, 2), 5));
-    assert.equal(withPower?.severity, 'medium');
-    assert.ok((withPower?.confidence ?? 0) > (base?.confidence ?? 1));
-    assert.equal(telecomSituation(telecomRaw(telecomBatch('59', 19, 2), 9)), undefined);
+  it('telecom : sévérité nationale sans département classé : phrase sans « dont »', () => {
+    const s = telecomSituation(telecomRaw(telecomResponse([[null, 320]])));
+    assert.equal(s?.severity, 'high');
+    assert.ok(!s?.summary.includes('dont'), s?.summary);
+    assert.deepEqual(s?.affectedZones, ['France']);
+  });
+
+  it('telecom : les pannes électriques n’interviennent plus (ni dans les motifs, ni dans la confiance)', () => {
+    const s = telecomSituation(telecomRaw(telecomResponse([['59', 20]])));
+    assert.equal(s?.severity, 'medium');
+    assert.equal(s?.drivers.length, 2);
+    assert.ok(!JSON.stringify(s).includes('électrique'));
+  });
+
+  it('énergie : Écowatt orange sans nucléaire tendu ni vent faible : « Tension énergétique » ne s’ouvre plus (plus de confirmation par des pannes électriques)', () => {
+    const raw = baseRawData({
+      ecowattResponse: typed<FranceRawData['ecowattResponse']>({
+        official: ecowattOfficial('orange'), mixes: {}, national: { timestamp: new Date(), nuclear: 30, wind: 8, solar: 1, hydro: 1, gas: 5, other: 2, total: 47 }, interconnections: [],
+      }),
+    });
+    assert.ok(!detectSituations(raw, NOW).some((s) => s.type === 'ENERGY_STRESS'));
+  });
+
+  it('énergie : avec nucléaire tendu, elle s’ouvre et ne cite aucune panne électrique', () => {
+    const s = detectSituations(energyStressFixture(), NOW).find((x) => x.type === 'ENERGY_STRESS');
+    assert.ok(s);
+    assert.ok(s.drivers.some((d) => d.includes('Parc nucléaire dégradé')));
+    assert.ok(!JSON.stringify(s).includes('panne'));
   });
 
   it('AIS anomaly fixture emits MARITIME_ANOMALY', () => {

@@ -66,8 +66,10 @@ export function briefSignalCounts(s: FranceCountrySignals): Record<string, numbe
     fireDetections:        s.fireDetections,
     railDisruptions:       s.railDisruptions,
     roadIncidents:         s.roadIncidents,
-    powerOutages:          s.powerOutages,
-    telecomOutages:        s.telecomOutages,
+    // Pannes télécom imprévues récentes (plus de champ powerOutages, spec 2026-10-08 § 2.3) ; fichier ARCEP non lu : un nombre n'est envoyé
+    // que s'il est lu (0 sinon, ignoré), le drapeau fait écrire « non évalué » au serveur et jamais « 0 ».
+    telecomOutages:        s.telecomOutages ?? 0,
+    telecomUnavailable:    s.telecomOutages === null,
     cyberAlerts:           s.cyberAlerts,
     cyberOpenAlerts:       s.cyberOpenAlerts ?? s.cyberAlerts,
     cyberKevAdvisories:    s.cyberKevAdvisories ?? 0,

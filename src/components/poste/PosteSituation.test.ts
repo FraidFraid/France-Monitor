@@ -38,7 +38,7 @@ function breakdown(): FranceScoreBreakdown {
 function signals(): FranceCountrySignals {
   return {
     criticalNews: 0, highNews: 0, topNewsCount: 0, meteoAlerts: 0, floodAlerts: 0, fireDetections: 0,
-    railDisruptions: 0, railSevere: 0, roadIncidents: 0, powerOutages: 0, telecomOutages: 0,
+    railDisruptions: 0, railSevere: 0, roadIncidents: 0, telecomOutages: 0, telecomOutagesLevel: 'vert',
     cyberAlerts: 0, cyberCritical: 0, militaryFlights: 0, maritimeTrafficFrance: 0,
     defenseAlerts: 0, defenseHigh: 0, jammingSignals: 0, marketStress: 0,
   };

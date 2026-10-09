@@ -138,10 +138,10 @@ async function readCappedBody(resp, url, timeoutMs, maxBytes) {
  * `headers` complète les en-têtes envoyés (Authorization, Content-Type…) ; le User-Agent reste fixe.
  * `contentMarker` : repère du contenu attendu (voir isChallengePage). `maxBytes` : plafond du corps en octets (readCappedBody).
  * @param {string} url
- * @param {{ expect?: 'json' | 'xml' | 'html' | 'text', timeoutMs?: number, headers?: Record<string, string>, method?: string, body?: BodyInit, contentMarker?: string, maxBytes?: number }} [options]
+ * @param {{ expect?: 'json' | 'xml' | 'html' | 'text', timeoutMs?: number, headers?: Record<string, string>, method?: string, body?: BodyInit, contentMarker?: string, maxBytes?: number, dispatcher?: object }} [options]
  * @returns {Promise<{ text: string, status: number, header(name: string): string | null }>}
  */
-export async function fetchStrictResponse(url, { expect = 'text', timeoutMs = DEFAULT_TIMEOUT_MS, headers = {}, method = 'GET', body, contentMarker, maxBytes } = {}) {
+export async function fetchStrictResponse(url, { expect = 'text', timeoutMs = DEFAULT_TIMEOUT_MS, headers = {}, method = 'GET', body, contentMarker, maxBytes, dispatcher } = {}) {
   let resp;
   try {
     resp = await fetch(url, {
@@ -149,6 +149,7 @@ export async function fetchStrictResponse(url, { expect = 'text', timeoutMs = DE
       body,
       headers: { Accept: ACCEPT[expect] ?? ACCEPT.text, ...headers, 'User-Agent': HEALTH_USER_AGENT },
       signal: AbortSignal.timeout(timeoutMs),
+      ...(dispatcher ? { dispatcher } : {}),
     });
   } catch (err) {
     const name = errorName(err);
@@ -202,9 +203,9 @@ export async function fetchStrictJson(url, { timeoutMs = DEFAULT_TIMEOUT_MS, hea
   }
 }
 
-/** XML (RSS, DATEX II, SIRI) d'une URL, lu strictement. */
-export function fetchStrictXml(url, { timeoutMs = DEFAULT_TIMEOUT_MS, headers } = {}) {
-  return fetchStrictText(url, { expect: 'xml', timeoutMs, headers });
+/** XML (RSS, DATEX II, SIRI) d'une URL, lu strictement (`dispatcher` : agent undici propre à un hôte, voir rte-iip-agent.js). */
+export function fetchStrictXml(url, { timeoutMs = DEFAULT_TIMEOUT_MS, headers, dispatcher } = {}) {
+  return fetchStrictText(url, { expect: 'xml', timeoutMs, headers, dispatcher });
 }
 
 /** Page HTML d'une URL, lue strictement (page de défi refusée ; `contentMarker` : voir isChallengePage). */

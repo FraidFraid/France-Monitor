@@ -1,0 +1,287 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>RTE IIP UMMs - Transmission Unavailability</title>
+    <link>https://iip.cloud-rte-france.com/transmission-unavailability/</link>
+    <description>Web feed for the publication of the unavailability of the transmission network.</description>
+    <language>EN-US</language>
+    <pubDate>Thu, 08 Oct 2026 08:21:19 +0200</pubDate>
+    <lastBuildDate>Thu, 08 Oct 2026 08:21:22 +0200</lastBuildDate>
+    <item>
+      <title>2026-10-05T05:30Z - 2026-10-30T16:00Z - Transmission Network-Villarodin-Venaus</title>
+      <link>https://iip.cloud-rte-france.com/transmission-unavailability/Indispo_FR_IT_76875</link>
+      <description>&lt;?xml version="1.0" encoding="UTF-8" standalone="yes"?&gt;
+&lt;REMITUrgentMarketMessages xmlns="http://www.acer.europa.eu/REMIT/REMITUMMElectricitySchema_V2.xsd" xmlns:ns2="http://www.acer.europa.eu/REMIT/REMITUMMCommonSchema_V1.xsd"&gt;
+  &lt;UMM&gt;
+    &lt;messageId&gt;Indispo_FR_IT_76875_00000_023&lt;/messageId&gt;
+    &lt;event&gt;
+      &lt;eventStatus&gt;Active&lt;/eventStatus&gt;
+      &lt;eventType&gt;Transmission unavailability&lt;/eventType&gt;
+      &lt;eventStart&gt;2026-10-05T05:30:00+00:00&lt;/eventStart&gt;
+      &lt;eventStop&gt;2026-10-30T16:00:00+00:00&lt;/eventStop&gt;
+    &lt;/event&gt;
+    &lt;unavailabilityType&gt;Planned&lt;/unavailabilityType&gt;
+    &lt;publicationDateTime&gt;2026-10-08T06:21:19+00:00&lt;/publicationDateTime&gt;
+    &lt;capacity&gt;
+      &lt;unitMeasure&gt;MW&lt;/unitMeasure&gt;
+      &lt;installedCapacity&gt;3011&lt;/installedCapacity&gt;
+      &lt;capacityInterval&gt;
+        &lt;intervalStart&gt;2026-10-05T05:30:00+00:00&lt;/intervalStart&gt;
+        &lt;intervalStop&gt;2026-10-05T06:00:00+00:00&lt;/intervalStop&gt;
+        &lt;unavailableCapacity&gt;520&lt;/unavailableCapacity&gt;
+        &lt;availableCapacity&gt;2491&lt;/availableCapacity&gt;
+      &lt;/capacityInterval&gt;
+      &lt;capacityInterval&gt;
+        &lt;intervalStart&gt;2026-10-08T16:00:00+00:00&lt;/intervalStart&gt;
+        &lt;intervalStop&gt;2026-10-08T21:00:00+00:00&lt;/intervalStop&gt;
+        &lt;unavailableCapacity&gt;11&lt;/unavailableCapacity&gt;
+        &lt;availableCapacity&gt;3000&lt;/availableCapacity&gt;
+      &lt;/capacityInterval&gt;
+    &lt;/capacity&gt;
+    &lt;unavailabilityReason&gt;Foreseen Maintenance&lt;/unavailabilityReason&gt;
+    &lt;biddingZone&gt;10YFR-RTE------C&lt;/biddingZone&gt;
+    &lt;biddingZone&gt;10YIT-GRTN-----B&lt;/biddingZone&gt;
+    &lt;affectedAsset&gt;
+      &lt;ns2:name&gt;Villarodin-Venaus&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;10T-FR-IT-00003Q&lt;/ns2:eic&gt;
+    &lt;/affectedAsset&gt;
+    &lt;marketParticipant&gt;
+      &lt;ns2:name&gt;RTE&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;10XFR-RTE------Q&lt;/ns2:eic&gt;
+    &lt;/marketParticipant&gt;
+  &lt;/UMM&gt;
+&lt;/REMITUrgentMarketMessages&gt;</description>
+      <pubDate>Thu, 08 Oct 2026 08:21:19 +0200</pubDate>
+    </item>
+    <item>
+      <title>2026-10-05T05:30Z - 2026-10-30T16:00Z - Transmission Network-Villarodin-Venaus</title>
+      <link>https://iip.cloud-rte-france.com/transmission-unavailability/Indispo_IT_FR_76875</link>
+      <description>&lt;?xml version="1.0" encoding="UTF-8" standalone="yes"?&gt;
+&lt;REMITUrgentMarketMessages xmlns="http://www.acer.europa.eu/REMIT/REMITUMMElectricitySchema_V2.xsd" xmlns:ns2="http://www.acer.europa.eu/REMIT/REMITUMMCommonSchema_V1.xsd"&gt;
+  &lt;UMM&gt;
+    &lt;messageId&gt;Indispo_IT_FR_76875_00000_023&lt;/messageId&gt;
+    &lt;event&gt;
+      &lt;eventStatus&gt;Active&lt;/eventStatus&gt;
+      &lt;eventType&gt;Transmission unavailability&lt;/eventType&gt;
+      &lt;eventStart&gt;2026-10-05T05:30:00+00:00&lt;/eventStart&gt;
+      &lt;eventStop&gt;2026-10-30T16:00:00+00:00&lt;/eventStop&gt;
+    &lt;/event&gt;
+    &lt;unavailabilityType&gt;Planned&lt;/unavailabilityType&gt;
+    &lt;publicationDateTime&gt;2026-10-08T06:21:19+00:00&lt;/publicationDateTime&gt;
+    &lt;capacity&gt;
+      &lt;unitMeasure&gt;MW&lt;/unitMeasure&gt;
+      &lt;installedCapacity&gt;2160&lt;/installedCapacity&gt;
+      &lt;capacityInterval&gt;
+        &lt;intervalStart&gt;2026-10-05T05:30:00+00:00&lt;/intervalStart&gt;
+        &lt;intervalStop&gt;2026-10-05T13:00:00+00:00&lt;/intervalStop&gt;
+        &lt;unavailableCapacity&gt;165&lt;/unavailableCapacity&gt;
+        &lt;availableCapacity&gt;1995&lt;/availableCapacity&gt;
+      &lt;/capacityInterval&gt;
+      &lt;capacityInterval&gt;
+        &lt;intervalStart&gt;2026-10-08T17:00:00+00:00&lt;/intervalStart&gt;
+        &lt;intervalStop&gt;2026-10-08T21:00:00+00:00&lt;/intervalStop&gt;
+        &lt;unavailableCapacity&gt;165&lt;/unavailableCapacity&gt;
+        &lt;availableCapacity&gt;1995&lt;/availableCapacity&gt;
+      &lt;/capacityInterval&gt;
+    &lt;/capacity&gt;
+    &lt;unavailabilityReason&gt;Foreseen Maintenance&lt;/unavailabilityReason&gt;
+    &lt;biddingZone&gt;10YIT-GRTN-----B&lt;/biddingZone&gt;
+    &lt;biddingZone&gt;10YFR-RTE------C&lt;/biddingZone&gt;
+    &lt;affectedAsset&gt;
+      &lt;ns2:name&gt;Villarodin-Venaus&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;10T-FR-IT-00003Q&lt;/ns2:eic&gt;
+    &lt;/affectedAsset&gt;
+    &lt;marketParticipant&gt;
+      &lt;ns2:name&gt;RTE&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;10XFR-RTE------Q&lt;/ns2:eic&gt;
+    &lt;/marketParticipant&gt;
+  &lt;/UMM&gt;
+&lt;/REMITUrgentMarketMessages&gt;</description>
+      <pubDate>Thu, 08 Oct 2026 08:21:19 +0200</pubDate>
+    </item>
+    <item>
+      <title>2026-10-05T05:30Z - 2026-10-30T16:00Z - Transmission Network-Villarodin-Venaus</title>
+      <link>https://iip.cloud-rte-france.com/transmission-unavailability/Indispo_FR_IT_76875</link>
+      <description>&lt;?xml version="1.0" encoding="UTF-8" standalone="yes"?&gt;
+&lt;REMITUrgentMarketMessages xmlns="http://www.acer.europa.eu/REMIT/REMITUMMElectricitySchema_V2.xsd" xmlns:ns2="http://www.acer.europa.eu/REMIT/REMITUMMCommonSchema_V1.xsd"&gt;
+  &lt;UMM&gt;
+    &lt;messageId&gt;Indispo_FR_IT_76875_00000_022&lt;/messageId&gt;
+    &lt;event&gt;
+      &lt;eventStatus&gt;Active&lt;/eventStatus&gt;
+      &lt;eventType&gt;Transmission unavailability&lt;/eventType&gt;
+      &lt;eventStart&gt;2026-10-05T05:30:00+00:00&lt;/eventStart&gt;
+      &lt;eventStop&gt;2026-10-30T16:00:00+00:00&lt;/eventStop&gt;
+    &lt;/event&gt;
+    &lt;unavailabilityType&gt;Planned&lt;/unavailabilityType&gt;
+    &lt;publicationDateTime&gt;2026-10-08T03:47:19+00:00&lt;/publicationDateTime&gt;
+    &lt;capacity&gt;
+      &lt;unitMeasure&gt;MW&lt;/unitMeasure&gt;
+      &lt;installedCapacity&gt;3011&lt;/installedCapacity&gt;
+      &lt;capacityInterval&gt;
+        &lt;intervalStart&gt;2026-10-05T05:30:00+00:00&lt;/intervalStart&gt;
+        &lt;intervalStop&gt;2026-10-05T06:00:00+00:00&lt;/intervalStop&gt;
+        &lt;unavailableCapacity&gt;520&lt;/unavailableCapacity&gt;
+        &lt;availableCapacity&gt;2491&lt;/availableCapacity&gt;
+      &lt;/capacityInterval&gt;
+      &lt;capacityInterval&gt;
+        &lt;intervalStart&gt;2026-10-08T16:00:00+00:00&lt;/intervalStart&gt;
+        &lt;intervalStop&gt;2026-10-08T21:00:00+00:00&lt;/intervalStop&gt;
+        &lt;unavailableCapacity&gt;11&lt;/unavailableCapacity&gt;
+        &lt;availableCapacity&gt;3000&lt;/availableCapacity&gt;
+      &lt;/capacityInterval&gt;
+    &lt;/capacity&gt;
+    &lt;unavailabilityReason&gt;Foreseen Maintenance&lt;/unavailabilityReason&gt;
+    &lt;biddingZone&gt;10YFR-RTE------C&lt;/biddingZone&gt;
+    &lt;biddingZone&gt;10YIT-GRTN-----B&lt;/biddingZone&gt;
+    &lt;affectedAsset&gt;
+      &lt;ns2:name&gt;Villarodin-Venaus&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;10T-FR-IT-00003Q&lt;/ns2:eic&gt;
+    &lt;/affectedAsset&gt;
+    &lt;marketParticipant&gt;
+      &lt;ns2:name&gt;RTE&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;10XFR-RTE------Q&lt;/ns2:eic&gt;
+    &lt;/marketParticipant&gt;
+  &lt;/UMM&gt;
+&lt;/REMITUrgentMarketMessages&gt;</description>
+      <pubDate>Thu, 08 Oct 2026 05:47:19 +0200</pubDate>
+    </item>
+    <item>
+      <title>2026-10-05T05:30Z - 2026-10-30T16:00Z - Transmission Network-Villarodin-Venaus</title>
+      <link>https://iip.cloud-rte-france.com/transmission-unavailability/Indispo_IT_FR_76875</link>
+      <description>&lt;?xml version="1.0" encoding="UTF-8" standalone="yes"?&gt;
+&lt;REMITUrgentMarketMessages xmlns="http://www.acer.europa.eu/REMIT/REMITUMMElectricitySchema_V2.xsd" xmlns:ns2="http://www.acer.europa.eu/REMIT/REMITUMMCommonSchema_V1.xsd"&gt;
+  &lt;UMM&gt;
+    &lt;messageId&gt;Indispo_IT_FR_76875_00000_022&lt;/messageId&gt;
+    &lt;event&gt;
+      &lt;eventStatus&gt;Active&lt;/eventStatus&gt;
+      &lt;eventType&gt;Transmission unavailability&lt;/eventType&gt;
+      &lt;eventStart&gt;2026-10-05T05:30:00+00:00&lt;/eventStart&gt;
+      &lt;eventStop&gt;2026-10-30T16:00:00+00:00&lt;/eventStop&gt;
+    &lt;/event&gt;
+    &lt;unavailabilityType&gt;Planned&lt;/unavailabilityType&gt;
+    &lt;publicationDateTime&gt;2026-10-08T03:47:19+00:00&lt;/publicationDateTime&gt;
+    &lt;capacity&gt;
+      &lt;unitMeasure&gt;MW&lt;/unitMeasure&gt;
+      &lt;installedCapacity&gt;2160&lt;/installedCapacity&gt;
+      &lt;capacityInterval&gt;
+        &lt;intervalStart&gt;2026-10-05T05:30:00+00:00&lt;/intervalStart&gt;
+        &lt;intervalStop&gt;2026-10-05T13:00:00+00:00&lt;/intervalStop&gt;
+        &lt;unavailableCapacity&gt;165&lt;/unavailableCapacity&gt;
+        &lt;availableCapacity&gt;1995&lt;/availableCapacity&gt;
+      &lt;/capacityInterval&gt;
+      &lt;capacityInterval&gt;
+        &lt;intervalStart&gt;2026-10-08T05:00:00+00:00&lt;/intervalStart&gt;
+        &lt;intervalStop&gt;2026-10-08T21:00:00+00:00&lt;/intervalStop&gt;
+        &lt;unavailableCapacity&gt;165&lt;/unavailableCapacity&gt;
+        &lt;availableCapacity&gt;1995&lt;/availableCapacity&gt;
+      &lt;/capacityInterval&gt;
+    &lt;/capacity&gt;
+    &lt;unavailabilityReason&gt;Foreseen Maintenance&lt;/unavailabilityReason&gt;
+    &lt;biddingZone&gt;10YIT-GRTN-----B&lt;/biddingZone&gt;
+    &lt;biddingZone&gt;10YFR-RTE------C&lt;/biddingZone&gt;
+    &lt;affectedAsset&gt;
+      &lt;ns2:name&gt;Villarodin-Venaus&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;10T-FR-IT-00003Q&lt;/ns2:eic&gt;
+    &lt;/affectedAsset&gt;
+    &lt;marketParticipant&gt;
+      &lt;ns2:name&gt;RTE&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;10XFR-RTE------Q&lt;/ns2:eic&gt;
+    &lt;/marketParticipant&gt;
+  &lt;/UMM&gt;
+&lt;/REMITUrgentMarketMessages&gt;</description>
+      <pubDate>Thu, 08 Oct 2026 05:47:19 +0200</pubDate>
+    </item>
+    <item>
+      <title>2026-08-19T15:00Z - 2026-10-24T07:00Z - Transmission Network-Mandarins-Sellindge 1</title>
+      <link>https://iip.cloud-rte-france.com/transmission-unavailability/Indispo_FR_UK_90259</link>
+      <description>&lt;?xml version="1.0" encoding="UTF-8" standalone="yes"?&gt;
+&lt;REMITUrgentMarketMessages xmlns="http://www.acer.europa.eu/REMIT/REMITUMMElectricitySchema_V2.xsd" xmlns:ns2="http://www.acer.europa.eu/REMIT/REMITUMMCommonSchema_V1.xsd"&gt;
+  &lt;UMM&gt;
+    &lt;messageId&gt;Indispo_FR_UK_90259_00000_076&lt;/messageId&gt;
+    &lt;event&gt;
+      &lt;eventStatus&gt;Active&lt;/eventStatus&gt;
+      &lt;eventType&gt;Transmission unavailability&lt;/eventType&gt;
+      &lt;eventStart&gt;2026-08-19T15:00:00+00:00&lt;/eventStart&gt;
+      &lt;eventStop&gt;2026-10-24T07:00:00+00:00&lt;/eventStop&gt;
+    &lt;/event&gt;
+    &lt;unavailabilityType&gt;Unplanned&lt;/unavailabilityType&gt;
+    &lt;publicationDateTime&gt;2026-10-08T00:57:20+00:00&lt;/publicationDateTime&gt;
+    &lt;capacity&gt;
+      &lt;unitMeasure&gt;MW&lt;/unitMeasure&gt;
+      &lt;installedCapacity&gt;2000&lt;/installedCapacity&gt;
+      &lt;capacityInterval&gt;
+        &lt;intervalStart&gt;2026-08-19T15:00:00+00:00&lt;/intervalStart&gt;
+        &lt;intervalStop&gt;2026-08-19T16:00:00+00:00&lt;/intervalStop&gt;
+        &lt;unavailableCapacity&gt;1000&lt;/unavailableCapacity&gt;
+        &lt;availableCapacity&gt;1000&lt;/availableCapacity&gt;
+      &lt;/capacityInterval&gt;
+      &lt;capacityInterval&gt;
+        &lt;intervalStart&gt;2026-09-29T22:00:00+00:00&lt;/intervalStart&gt;
+        &lt;intervalStop&gt;2026-10-24T07:00:00+00:00&lt;/intervalStop&gt;
+        &lt;unavailableCapacity&gt;0&lt;/unavailableCapacity&gt;
+        &lt;availableCapacity&gt;2000&lt;/availableCapacity&gt;
+      &lt;/capacityInterval&gt;
+    &lt;/capacity&gt;
+    &lt;unavailabilityReason&gt;Failure&lt;/unavailabilityReason&gt;
+    &lt;biddingZone&gt;10YFR-RTE------C&lt;/biddingZone&gt;
+    &lt;biddingZone&gt;10Y1001C--00098F&lt;/biddingZone&gt;
+    &lt;affectedAsset&gt;
+      &lt;ns2:name&gt;Mandarins-Sellindge 1&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;10T-FR-GB-000017&lt;/ns2:eic&gt;
+    &lt;/affectedAsset&gt;
+    &lt;marketParticipant&gt;
+      &lt;ns2:name&gt;RTE&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;10XFR-RTE------Q&lt;/ns2:eic&gt;
+    &lt;/marketParticipant&gt;
+  &lt;/UMM&gt;
+&lt;/REMITUrgentMarketMessages&gt;</description>
+      <pubDate>Thu, 08 Oct 2026 02:57:20 +0200</pubDate>
+    </item>
+    <item>
+      <title>2026-08-19T15:00Z - 2026-10-24T07:00Z - Transmission Network-Mandarins-Sellindge 1</title>
+      <link>https://iip.cloud-rte-france.com/transmission-unavailability/Indispo_UK_FR_90259</link>
+      <description>&lt;?xml version="1.0" encoding="UTF-8" standalone="yes"?&gt;
+&lt;REMITUrgentMarketMessages xmlns="http://www.acer.europa.eu/REMIT/REMITUMMElectricitySchema_V2.xsd" xmlns:ns2="http://www.acer.europa.eu/REMIT/REMITUMMCommonSchema_V1.xsd"&gt;
+  &lt;UMM&gt;
+    &lt;messageId&gt;Indispo_UK_FR_90259_00000_076&lt;/messageId&gt;
+    &lt;event&gt;
+      &lt;eventStatus&gt;Active&lt;/eventStatus&gt;
+      &lt;eventType&gt;Transmission unavailability&lt;/eventType&gt;
+      &lt;eventStart&gt;2026-08-19T15:00:00+00:00&lt;/eventStart&gt;
+      &lt;eventStop&gt;2026-10-24T07:00:00+00:00&lt;/eventStop&gt;
+    &lt;/event&gt;
+    &lt;unavailabilityType&gt;Unplanned&lt;/unavailabilityType&gt;
+    &lt;publicationDateTime&gt;2026-10-08T00:57:20+00:00&lt;/publicationDateTime&gt;
+    &lt;capacity&gt;
+      &lt;unitMeasure&gt;MW&lt;/unitMeasure&gt;
+      &lt;installedCapacity&gt;1000&lt;/installedCapacity&gt;
+      &lt;capacityInterval&gt;
+        &lt;intervalStart&gt;2026-08-19T15:00:00+00:00&lt;/intervalStart&gt;
+        &lt;intervalStop&gt;2026-08-19T16:00:00+00:00&lt;/intervalStop&gt;
+        &lt;unavailableCapacity&gt;0&lt;/unavailableCapacity&gt;
+        &lt;availableCapacity&gt;1000&lt;/availableCapacity&gt;
+      &lt;/capacityInterval&gt;
+      &lt;capacityInterval&gt;
+        &lt;intervalStart&gt;2026-10-08T16:00:00+00:00&lt;/intervalStart&gt;
+        &lt;intervalStop&gt;2026-10-08T21:00:00+00:00&lt;/intervalStop&gt;
+        &lt;unavailableCapacity&gt;1000&lt;/unavailableCapacity&gt;
+        &lt;availableCapacity&gt;0&lt;/availableCapacity&gt;
+      &lt;/capacityInterval&gt;
+    &lt;/capacity&gt;
+    &lt;unavailabilityReason&gt;Failure&lt;/unavailabilityReason&gt;
+    &lt;biddingZone&gt;10Y1001C--00098F&lt;/biddingZone&gt;
+    &lt;biddingZone&gt;10YFR-RTE------C&lt;/biddingZone&gt;
+    &lt;affectedAsset&gt;
+      &lt;ns2:name&gt;Mandarins-Sellindge 1&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;10T-FR-GB-000017&lt;/ns2:eic&gt;
+    &lt;/affectedAsset&gt;
+    &lt;marketParticipant&gt;
+      &lt;ns2:name&gt;RTE&lt;/ns2:name&gt;
+      &lt;ns2:eic&gt;10XFR-RTE------Q&lt;/ns2:eic&gt;
+    &lt;/marketParticipant&gt;
+  &lt;/UMM&gt;
+&lt;/REMITUrgentMarketMessages&gt;</description>
+      <pubDate>Thu, 08 Oct 2026 02:57:20 +0200</pubDate>
+    </item>
+  </channel>
+</rss>

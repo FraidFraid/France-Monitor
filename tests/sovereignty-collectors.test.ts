@@ -22,6 +22,6 @@ describe('collecteurs Souveraineté (phases A et B)', () => {
   it('le serveur de production les lance avec ceux des Trafics et de l’Environnement', () => {
     const server = readFileSync(new URL('../server/prod/http-server.mjs', import.meta.url), 'utf8');
     expect(server).toContain("import { SOVEREIGNTY_COLLECTORS } from './sovereignty-collectors.mjs';");
-    expect(server).toContain('startTrafficCollectors({ collectors: [...COLLECTORS, ...ENVIRONMENT_COLLECTORS, ...SOVEREIGNTY_COLLECTORS] })');
+    expect(server).toContain('startTrafficCollectors({ collectors: [...COLLECTORS, ...ENVIRONMENT_COLLECTORS, ...SOVEREIGNTY_COLLECTORS, ...OUTAGES_COLLECTORS] })');
   });
 });

@@ -3,6 +3,7 @@ import { collectSituationReportData, type SituationReportContext } from './Situa
 import type { DetectedSituation, EcowattHourValue } from '../types/index.ts';
 import { parisDate } from '../services/ecowatt-official.ts';
 import { railOverviewFixture, roadNationalFixture } from './layer-panel/traffic.fixture.ts';
+import { telecomFixtureResponse } from './layer-panel/outages.fixture.ts';
 
 function situation(over: Partial<DetectedSituation> = {}): DetectedSituation {
   return {
@@ -31,8 +32,7 @@ function ctx(over: Partial<SituationReportContext> = {}): SituationReportContext
     },
     railTrains: [],
     roadEvents: [],
-    powerOutages: [],
-    telecomOutages: [],
+    telecomOutages: null,
     newsItems: [],
     sources: [],
     version: null,
@@ -73,5 +73,40 @@ describe('note de situation : signal Transport sur les sources Trafics (spec 202
     expect(s?.level).toBe('orange');
     expect(s?.detail).toBe('7 perturbation(s) ferroviaire(s) majeure(s), 5 incident(s) routier(s) majeur(s).');
     expect(collectSituationReportData(ctx()).domainSignals.find((d) => d.domain === 'Transport')).toBeUndefined();
+  });
+});
+
+describe('note de situation : signal « Pannes réseaux » sur les pannes télécoms récentes (spec 2026-10-08 § 2.3)', () => {
+  const withRecent = (recent: number) => {
+    const t = telecomFixtureResponse();
+    return ctx({ telecomOutages: { ...t, summary: t.summary === null ? null : { ...t.summary, recent } } });
+  };
+  const signal = (c: SituationReportContext) => collectSituationReportData(c).domainSignals.find((d) => d.domain === 'Pannes réseaux');
+
+  it('antennes en panne imprévue depuis moins de 24 h, avec le jour du fichier ARCEP ; niveau de la pastille Télécoms (telecomLevel)', () => {
+    // Jeu d'essai : 6 pannes au plus par département. Sous 20 par département et 300 au national, la pastille est verte : état nominal.
+    const withTop = (recent: number, top: number) => {
+      const t = telecomFixtureResponse();
+      const byDept = t.byDept.map((d, i) => (i === 0 ? { ...d, recent: top } : d));
+      return ctx({ telecomOutages: { ...t, byDept, summary: t.summary === null ? null : { ...t.summary, recent } } });
+    };
+    expect(signal(withTop(18, 20))).toMatchObject({ level: 'jaune', detail: '18\u00a0antennes en panne imprévue depuis moins de 24\u00a0h (fichier ARCEP du 08/10).' });
+    expect(signal(withTop(1, 20))?.detail).toBe('1\u00a0antenne en panne imprévue depuis moins de 24\u00a0h (fichier ARCEP du 08/10).');
+    expect(signal(withTop(264, 19))).toBeUndefined();   // 264 un jour ordinaire, pastille verte : pas un état non nominal
+    expect(signal(withTop(264, 20))?.level).toBe('jaune');
+    expect(signal(withTop(300, 19))?.level).toBe('orange');
+    expect(signal(withTop(49, 50))?.level).toBe('orange');
+    expect(signal(withTop(600, 19))?.level).toBe('rouge');
+  });
+  it('un nombre au-delà de 999 est écrit avec le séparateur de milliers français, insécable', () => {
+    const t = telecomFixtureResponse();
+    const c = ctx({ telecomOutages: { ...t, summary: t.summary === null ? null : { ...t.summary, recent: 1330 } } });
+    expect(signal(c)?.detail).toContain('1\u202F330\u00a0antennes');
+  });
+
+  it('aucune panne récente ou fichier non lu : pas de signal, jamais de ligne électrique', () => {
+    expect(signal(withRecent(0))).toBeUndefined();
+    expect(signal(ctx())).toBeUndefined();
+    expect(JSON.stringify(collectSituationReportData(withRecent(60)))).not.toMatch(/électricité|foyers|PDL/);
   });
 });

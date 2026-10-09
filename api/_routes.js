@@ -3,8 +3,6 @@
 
 /** @type {Record<string, () => Promise<Record<string, unknown>>>} */
 export const ROUTES = {
-  '/api/arcep': () => import('./_handlers/arcep.js'),
-  '/api/citizen-outages': () => import('./_handlers/citizen-outages.js'),
   '/api/copernicus': () => import('./_handlers/copernicus.js'),
   '/api/energy/biogas-sites': () => import('./_handlers/energy/biogas-sites.js'),
   '/api/energy/biogas': () => import('./_handlers/energy/biogas.js'),
@@ -61,6 +59,8 @@ export const ROUTES = {
   '/api/nuclear/rte-unavailability': () => import('./_handlers/nuclear/rte-unavailability.js'),
   '/api/oil-proxy': () => import('./_handlers/oil-proxy.js'),
   '/api/opendata-proxy': () => import('./_handlers/opendata-proxy.js'),
+  '/api/outages/power': () => import('./_handlers/outages/power.js'),
+  '/api/outages/telecom': () => import('./_handlers/outages/telecom.js'),
   '/api/rss-proxy': () => import('./_handlers/rss-proxy.js'),
   '/api/rss': () => import('./_handlers/rss.js'),
   '/api/rte-iip': () => import('./_handlers/rte-iip.js'),
@@ -84,5 +84,4 @@ export const ROUTES = {
 
 /** @type {Record<string, string>} */
 export const ALIASES = {
-  '/api/outages/citizen': '/api/citizen-outages',
 };
