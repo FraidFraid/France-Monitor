@@ -3093,3 +3093,31 @@ export interface PowerOutagesResponse {
   history: Array<{ day: string; unplannedMw: number }>;   // 30 jours, MW à 12 h Paris
   errors: string[];
 }
+
+// ─── Internet : GET /api/outages/internet (IODA, Cloudflare Radar, rappel RIPEstat) ───
+export type InternetScope = 'national' | 'departement' | 'operateur' | 'inconnu';
+export interface InternetEvent {
+  id: string;                       // « region/1157:1789083000:bgp »
+  scope: InternetScope;
+  dept: string | null;              // département (scope departement)
+  asn: number | null;               // opérateur (scope operateur)
+  label: string;                    // « Haute-Vienne », « Scaleway (AS12876) », « France »
+  signal: string;                   // datasource IODA : « bgp », « ping-slash24 », « merit-nt », « gtr »
+  start: string; end: string | null;   // end null : en cours
+  durationSec: number;
+  ongoing: boolean;
+  staleOpen: boolean;               // en cours depuis plus de 7 jours : écarté du « en cours » (probable recalage)
+  score: number;
+}
+export interface RadarItem {
+  id: string; kind: 'anomalie' | 'panne'; label: string; asn: number | null; start: string; end: string | null;
+  verified: boolean | null; cause: string | null; outageType: string | null;
+}
+export interface InternetOutagesResponse {
+  readAt: string | null;            // dernière lecture réussie d'une des deux sources (horloge du serveur)
+  iodaReadAt: string | null;        // instant `until` de la dernière lecture IODA réussie
+  radar: { configured: boolean; readAt: string | null; items: RadarItem[] };
+  events: InternetEvent[];          // 30 jours, en cours d'abord puis plus récents
+  ripe: { snapshotAt: string | null; networks: Array<{ asn: number; name: string; visibilityPct: number }> } | null;
+  errors: string[];
+}

@@ -1,6 +1,6 @@
 // src/services/outages-levels.ts : module pur des panneaux Pannes réseau (spec 2026-10-08 panneaux pannes § 1, § 2) : sources et
 // retards (S2), seuils partagés avec la situation « Perturbation télécom », niveaux des panneaux. Aucun accès réseau ni DOM.
-import type { EcowattSignal, PowerOutagesResponse, TelecomOutagesResponse } from '../types/index.ts';
+import type { EcowattSignal, InternetOutagesResponse, InternetScope, PowerOutagesResponse, RadarItem, TelecomOutagesResponse } from '../types/index.ts';
 import { parisDayOf } from './environment-levels.ts';
 import { fleetLevel } from './nuclear-fleet.ts';
 import { parisHour } from './traffic-levels.ts';
@@ -79,4 +79,60 @@ export function powerLevel(r: Pick<PowerOutagesResponse, 'unplanned'>, ecowatt: 
   const own = fleetLevel(powerUnplannedMw(r));
   const signal = ecowatt === null ? 'vert' : ECOWATT_LEVEL[ecowatt];
   return LEVEL_RANK[signal] > LEVEL_RANK[own] ? signal : own;
+}
+
+/** Lieu touché en ce moment (un seul par lieu, quel que soit le nombre de signaux ou de sources qui le disent). */
+export interface InternetLivePlace {
+  /** Clé de dédoublonnage : « national », « dept:23 », « asn:3215 », « radar:<id> » (panne Radar localisée sans réseau). */
+  key: string;
+  scope: InternetScope;
+  label: string;
+  dept: string | null;
+  asn: number | null;
+  /** Source qui a fait entrer le lieu ; IODA prime quand les deux le disent. */
+  source: 'ioda' | 'radar';
+}
+
+/** Élément Radar en cours : national par sa portée (anomalie du pays sans réseau, panne nationale), jamais par son libellé (P29). */
+function radarPlace(item: RadarItem): InternetLivePlace {
+  const national = (item.kind === 'anomalie' && item.asn === null) || (item.kind === 'panne' && item.outageType === 'nationale');
+  if (national) return { key: 'national', scope: 'national', label: item.label, dept: null, asn: null, source: 'radar' };
+  if (item.asn !== null) return { key: `asn:${item.asn}`, scope: 'operateur', label: item.label, dept: null, asn: item.asn, source: 'radar' };
+  return { key: `radar:${item.id}`, scope: 'inconnu', label: item.label, dept: null, asn: null, source: 'radar' };
+}
+
+/**
+ * Lieux en cours, dédoublonnés (P13) : IODA publie un événement par source de signal (bgp, ping-slash24, merit-nt…) et une même panne
+ * d'opérateur peut figurer chez IODA et chez Radar. Écartés : événements terminés, « ouverts depuis plus de 7 jours » (probables
+ * recalages), régions IODA sans département, et tout Radar en retard ou jamais lu (P14). Gros chiffre et pastille Internet lisent cette liste.
+ */
+export function internetLive(r: InternetOutagesResponse, now: number): InternetLivePlace[] {
+  const places = new Map<string, InternetLivePlace>();
+  for (const e of r.events) {
+    if (!e.ongoing || e.staleOpen) continue;
+    if (e.scope === 'national') places.set('national', { key: 'national', scope: 'national', label: e.label, dept: null, asn: null, source: 'ioda' });
+    else if (e.scope === 'departement' && e.dept !== null) places.set(`dept:${e.dept}`, { key: `dept:${e.dept}`, scope: 'departement', label: e.label, dept: e.dept, asn: null, source: 'ioda' });
+    else if (e.scope === 'operateur' && e.asn !== null) places.set(`asn:${e.asn}`, { key: `asn:${e.asn}`, scope: 'operateur', label: e.label, dept: null, asn: e.asn, source: 'ioda' });
+  }
+  if (!isOutagesDataLate('radar', r.radar.readAt, now)) {
+    for (const item of r.radar.items) {
+      if (item.end !== null) continue;
+      const place = radarPlace(item);
+      if (!places.has(place.key)) places.set(place.key, place);
+    }
+  }
+  return [...places.values()];
+}
+
+/**
+ * Pastille Internet sur les lieux en cours (internetLive) : rouge si le pays entier, orange pour un opérateur, une panne Radar ou
+ * trois départements, jaune pour un ou deux départements, vert sinon ; null sans lecture IODA réussie (jamais « vert » sur une source muette).
+ */
+export function internetLevel(r: InternetOutagesResponse, now: number): VigilanceLevel | null {
+  if (r.iodaReadAt === null) return null;
+  const live = internetLive(r, now);
+  if (live.some((p) => p.scope === 'national')) return 'rouge';
+  const depts = live.filter((p) => p.scope === 'departement').length;
+  if (live.some((p) => p.scope === 'operateur' || p.source === 'radar') || depts >= 3) return 'orange';
+  return depts > 0 ? 'jaune' : 'vert';
 }

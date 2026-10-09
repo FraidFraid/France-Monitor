@@ -256,7 +256,7 @@ export function emptyPower(errors = []) {
  * Une partie est due si elle n'a jamais été lue, si sa dernière lecture RÉUSSIE date de l'intervalle (1 min de tolérance), ou 5 min
  * après un échec (un échec n'avance jamais la date de lecture).
  */
-function partDue(part, interval, now) {
+export function partDue(part, interval, now) {
   if (!part) return true;
   const failed = part.failedAt ? Date.parse(part.failedAt) : Number.NaN;
   if (Number.isFinite(failed)) return now - failed >= RETRY_MS;
@@ -318,10 +318,10 @@ async function readSei(now, previous) {
 }
 
 /** Partie après une tentative : réussie (lecture avancée, erreur effacée) ou en échec (données gardées, `failedAt` posé, `readAt` inchangé). */
-function succeeded(data, attemptedAt) {
+export function succeeded(data, attemptedAt) {
   return { ...data, readAt: attemptedAt, failedAt: null, error: null };
 }
-function failed(previous, empty, message, attemptedAt) {
+export function failed(previous, empty, message, attemptedAt) {
   return { ...(previous ?? empty), failedAt: attemptedAt, error: message };
 }
 

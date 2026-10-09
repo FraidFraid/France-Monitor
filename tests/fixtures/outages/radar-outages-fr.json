@@ -1,0 +1,3 @@
+{"success":true,"errors":[],"messages":[],"result":{"annotations":[
+{"id":"9001","dataSource":"ALL","description":"Coupure d'alimentation électrique régionale","scope":"Corse","startDate":"2026-10-07T21:10:00Z","endDate":"2026-10-08T01:40:00Z","asns":[],"asnsDetails":[],"locations":["FR"],"geoIds":[],"entities":[],"locationsDetails":[{"code":"FR","name":"France"}],"origins":[],"originsDetails":[],"eventType":"OUTAGE","tags":[],"linkedUrl":null,"outage":{"outageCause":"POWER_OUTAGE","outageType":"REGIONAL"}}
+]}}

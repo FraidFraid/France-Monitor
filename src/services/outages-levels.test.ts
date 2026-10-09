@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
-  OUTAGES_LATE_AFTER_MIN, TELECOM_DISRUPTION_THRESHOLDS, isArcepFileLate, isOutagesDataLate, powerLevel, powerUnplannedMw, telecomIfFresh, telecomLevel,
+  OUTAGES_LATE_AFTER_MIN, TELECOM_DISRUPTION_THRESHOLDS, internetLevel, internetLive, isArcepFileLate, isOutagesDataLate, powerLevel, powerUnplannedMw,
+  telecomIfFresh, telecomLevel,
 } from './outages-levels.ts';
 import { outagesSlotStatus } from './outages-source.ts';
-import type { PowerOutagesResponse, PowerUnitOutage, TelecomOutagesResponse } from '../types/index.ts';
+import type { InternetEvent, InternetOutagesResponse, PowerOutagesResponse, PowerUnitOutage, RadarItem, TelecomOutagesResponse } from '../types/index.ts';
 
 const paris = (iso: string): number => Date.parse(iso);   // ISO avec fuseau explicite
 
@@ -90,5 +91,82 @@ describe('niveaux et retards des pannes réseau', () => {
     expect(outagesSlotStatus({ data, error: null, fetchedAt: now }, 'edf', '2026-10-08T19:30:00Z', now, '2026-10-08T15:00:00Z').status).toBe('stale');
     const partial = outagesSlotStatus({ data: { errors: ['RTE IIP : HTTP 503'] }, error: null, fetchedAt: now }, 'edf', '2026-10-08T19:30:00Z', now);
     expect(partial).toMatchObject({ status: 'stale', error: 'RTE IIP : HTTP 503' });
+  });
+});
+
+// ─── Internet (B1) ───
+const NOW = Date.parse('2026-10-08T20:30:00Z');
+
+function event(over: Partial<InternetEvent>): InternetEvent {
+  return {
+    id: `e${Math.random()}`, scope: 'departement', dept: '23', asn: null, label: 'Creuse', signal: 'bgp', start: '2026-10-08T19:00:00.000Z', end: null,
+    durationSec: 5400, ongoing: true, staleOpen: false, score: 10, ...over,
+  };
+}
+
+function radarItem(over: Partial<RadarItem>): RadarItem {
+  return { id: `r${Math.random()}`, kind: 'anomalie', label: 'Free (AS12322)', asn: 12322, start: '2026-10-08T18:30:00.000Z', end: null, verified: false, cause: null, outageType: null, ...over };
+}
+
+function internet(events: InternetEvent[], items: RadarItem[] = [], over: Partial<InternetOutagesResponse> = {}): InternetOutagesResponse {
+  return {
+    readAt: '2026-10-08T20:25:00.000Z', iodaReadAt: '2026-10-08T20:25:00.000Z',
+    radar: { configured: true, readAt: '2026-10-08T20:20:00.000Z', items }, events, ripe: null, errors: [], ...over,
+  };
+}
+
+const scaleway = (): InternetEvent => event({ scope: 'operateur', dept: null, asn: 12876, label: 'Scaleway (AS12876)', durationSec: 631_292, staleOpen: true, start: '2026-10-01T13:05:00.000Z' });
+
+describe('Internet : lieux en cours et pastille', () => {
+  it('seul l’événement Scaleway « ouvert depuis plus de 7 jours » : vert, aucun lieu en cours', () => {
+    const r = internet([scaleway()]);
+    expect(internetLive(r, NOW)).toEqual([]);
+    expect(internetLevel(r, NOW)).toBe('vert');
+  });
+  it('un département en cours : jaune ; trois : orange ; un opérateur non périmé : orange ; national : rouge', () => {
+    expect(internetLevel(internet([event({})]), NOW)).toBe('jaune');
+    expect(internetLevel(internet([event({ dept: '23' }), event({ dept: '09', label: 'Ariège' }), event({ dept: '87', label: 'Haute-Vienne' })]), NOW)).toBe('orange');
+    expect(internetLevel(internet([event({ dept: '23' }), event({ dept: '09', label: 'Ariège' })]), NOW)).toBe('jaune');
+    expect(internetLevel(internet([event({ scope: 'operateur', dept: null, asn: 3215, label: 'Orange (AS3215)' })]), NOW)).toBe('orange');
+    expect(internetLevel(internet([event({ scope: 'national', dept: null, label: 'France' })]), NOW)).toBe('rouge');
+  });
+  it('événement terminé : ne compte pas ; région inconnue en cours : pas de lieu', () => {
+    const r = internet([event({ ongoing: false, end: '2026-10-08T19:10:00.000Z' }), event({ scope: 'inconnu', dept: null, label: 'région non identifiée' })]);
+    expect(internetLive(r, NOW)).toEqual([]);
+    expect(internetLevel(r, NOW)).toBe('vert');
+  });
+  it('iodaReadAt null : null, jamais vert', () => {
+    expect(internetLevel(internet([], [], { iodaReadAt: null }), NOW)).toBeNull();
+  });
+  it('P13 : deux événements (bgp et ping-slash24) sur la Creuse comptent un seul lieu', () => {
+    const r = internet([event({ signal: 'bgp' }), event({ signal: 'ping-slash24' })]);
+    expect(internetLive(r, NOW)).toEqual([{ key: 'dept:23', scope: 'departement', label: 'Creuse', dept: '23', asn: null, source: 'ioda' }]);
+  });
+  it('P13 : une anomalie Radar d’un ASN déjà en cours chez IODA n’ajoute rien ; un ASN absent d’IODA s’ajoute', () => {
+    const orange = event({ scope: 'operateur', dept: null, asn: 3215, label: 'Orange (AS3215)' });
+    const r = internet([orange], [radarItem({ asn: 3215, label: 'Orange (AS3215)' }), radarItem({ asn: 12322, label: 'Free (AS12322)' })]);
+    expect(internetLive(r, NOW).map((p) => [p.key, p.source])).toEqual([['asn:3215', 'ioda'], ['asn:12322', 'radar']]);
+  });
+  it('Radar : élément terminé ignoré ; panne régionale en cours = lieu propre (orange) ; panne nationale = rouge', () => {
+    expect(internetLevel(internet([], [radarItem({ end: '2026-10-08T19:00:00.000Z' })]), NOW)).toBe('vert');
+    const regional = radarItem({ kind: 'panne', label: 'Corse', asn: null, outageType: 'régionale' });
+    expect(internetLevel(internet([], [regional]), NOW)).toBe('orange');
+    expect(internetLive(internet([], [regional]), NOW)).toHaveLength(1);
+    expect(internetLevel(internet([], [radarItem({ kind: 'panne', label: 'France entière', asn: null, outageType: 'nationale' })]), NOW)).toBe('rouge');
+  });
+  it('P29 : « national » vient de la portée, jamais du libellé « France »', () => {
+    // Une anomalie Radar d’un opérateur dont le libellé contiendrait « France » reste un opérateur.
+    expect(internetLevel(internet([], [radarItem({ label: 'France Télécom (AS5511)', asn: 5511 })]), NOW)).toBe('orange');
+    // Un événement IODA départemental nommé « France » ne rend pas rouge.
+    expect(internetLevel(internet([event({ label: 'France' })]), NOW)).toBe('jaune');
+    // Anomalie Radar sans ASN (portée pays) : national, quel que soit son libellé.
+    expect(internetLevel(internet([], [radarItem({ asn: null, label: 'Pays' })]), NOW)).toBe('rouge');
+  });
+  it('P14 : Radar en retard (lecture de plus d’une heure) ou jamais lu est ignoré', () => {
+    const items = [radarItem({ asn: null, label: 'France' })];
+    expect(internetLevel(internet([], items), NOW)).toBe('rouge');
+    expect(internetLevel(internet([], items, { radar: { configured: true, readAt: '2026-10-08T19:29:00.000Z', items } }), NOW)).toBe('vert');
+    expect(internetLevel(internet([], items, { radar: { configured: true, readAt: null, items } }), NOW)).toBe('vert');
+    expect(internetLive(internet([], items, { radar: { configured: true, readAt: '2026-10-08T19:29:00.000Z', items } }), NOW)).toEqual([]);
   });
 });

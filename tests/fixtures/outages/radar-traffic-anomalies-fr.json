@@ -1,0 +1,5 @@
+{"success":true,"errors":[],"messages":[],"result":{"trafficAnomalies":[
+{"uuid":"00000000-0000-4000-8000-000000000001","type":"LOCATION","status":"VERIFIED","startDate":"2026-10-06T07:15:00Z","endDate":"2026-10-06T09:45:00Z","visibleInDataSources":["HTTP"],"locationDetails":{"code":"FR","name":"France"},"asnDetails":null,"originDetails":null},
+{"uuid":"00000000-0000-4000-8000-000000000002","type":"AS","status":"UNVERIFIED","startDate":"2026-10-08T18:30:00Z","endDate":null,"visibleInDataSources":["HTTP"],"locationDetails":null,"asnDetails":{"asn":"12322","name":"PROXAD","location":{"code":"FR","name":"France"}},"originDetails":null},
+{"uuid":"00000000-0000-4000-8000-000000000003","type":"AS","status":"UNVERIFIED","startDate":"2026-10-08T17:00:00Z","endDate":null,"visibleInDataSources":["HTTP"],"locationDetails":null,"asnDetails":{"asn":"3320","name":"DTAG","location":{"code":"DE","name":"Germany"}},"originDetails":null}
+]}}
