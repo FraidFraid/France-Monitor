@@ -41,6 +41,9 @@ describe('vue Électricité (jeu d’essai du 08/10)', () => {
     expect(view({ ecowatt: official('red') }).head.level).toBe('rouge');
     expect(view({ ecowatt: null }).head.level).toBe('jaune');
   });
+  it('la note de méthode dit qu’une unité de production déclarée à RTE sans puissance publiée n’est ni comptée ni listée', () => {
+    expect(visibleText(section({}, 'methode'))).toContain('sans puissance publiée');
+  });
   it('sections dans l’ordre ; unités, lignes, maintenances, annonces, îles, ligne fixe Enedis', () => {
     expect(view().sections.map((s) => s.id)).toEqual(['imprevus', 'transport', 'maintenances', 'annonces', 'ecowatt', 'iles', 'particuliers', 'courbe', 'methode']);
     const t = text();
@@ -289,9 +292,6 @@ describe('hygiène du rendu', () => {
       expect(h).not.toMatch(/\u2014|&mdash;|#[0-9a-fA-F]{6}\b|rgba?\(/);
       expect(visibleText(h)).not.toMatch(/temps réel|TEMPS RÉEL|\bLIVE\b/i);
     }
-  });
-  it('la note de méthode dit qu’une indisponibilité RTE sans puissance publiée n’est ni comptée ni listée', () => {
-    expect(visibleText(section({}, 'methode'))).toContain('sans puissance publiée');
   });
   it('R1 : aucune valeur coupée entre nombre et unité', () => {
     for (const over of variants) {
