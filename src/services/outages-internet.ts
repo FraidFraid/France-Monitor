@@ -54,15 +54,20 @@ export function mergeInternet(current: InternetState | null, incoming: InternetS
   return { internet: mergeSlot(current?.internet, incoming.internet) };
 }
 
+/** Sources que la route nomme dans ses erreurs. */
+const NAMED_SOURCES = ['IODA', 'Internet', 'Cloudflare Radar', 'RIPEstat'] as const;
+
 /**
- * Garde seulement les erreurs que `keep` retient, dans la réponse (`data.errors`) ET dans l'erreur de lecture (`slot.error`, qui joint par
- * « ; » les pannes nommées d'un 502) : une panne Radar ou RIPEstat ne dégrade pas la ligne IODA, et inversement ; jamais l'erreur d'une
- * autre source sur une ligne.
+ * Garde les erreurs d'une ligne, dans la réponse (`data.errors`) ET dans l'erreur de lecture (`slot.error`, qui joint par « ; » les
+ * pannes nommées d'un 502). `keep` retient celles que la ligne possède : une panne Radar ou RIPEstat ne dégrade pas la ligne IODA, et
+ * inversement. Un segment qui ne nomme aucune source (« source injoignable », « délai dépassé », « HTTP 503 », « réponse illisible »,
+ * « réponse … mal formée ») est une panne de la route elle-même : il vaut pour TOUTES les lignes.
  */
 function only(state: InternetState, keep: (error: string) => boolean): InternetState {
   const { data, error } = state.internet;
-  const own = error === null ? [] : error.split(' ; ').filter(keep);
-  return { internet: { ...state.internet, data: data ? { ...data, errors: data.errors.filter(keep) } : null, error: own.length > 0 ? own.join(' ; ') : null } };
+  const mine = (e: string): boolean => keep(e) || !NAMED_SOURCES.some((name) => isNamedBy(e, name));
+  const own = error === null ? [] : error.split(' ; ').filter(mine);
+  return { internet: { ...state.internet, data: data ? { ...data, errors: data.errors.filter(mine) } : null, error: own.length > 0 ? own.join(' ; ') : null } };
 }
 
 /** Ligne « IODA » : datée par la dernière lecture IODA (`iodaReadAt`), en retard au-delà de 60 min. Les notes d'avancement ne sont pas des pannes. */

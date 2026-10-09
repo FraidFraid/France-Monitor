@@ -264,6 +264,37 @@ describe('contrat Internet', () => {
     expect(radarStatus(radarDown, NOW + 22 * 60_000)).toMatchObject({ status: 'stale', error: 'Cloudflare Radar : HTTP 401' });
     expect(iodaStatus(radarDown, NOW + 22 * 60_000).error).toBeUndefined();
   });
+  it('panne de la route elle-même (réseau coupé, HTTP 500, réponse illisible ou mal formée) : valable pour IODA et pour Radar, texte affiché', async () => {
+    // Sans donnée : les deux lignes sont en erreur, avec le texte de la route.
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
+    const down = await fetchInternet(null, NOW);
+    expect(iodaStatus(down, NOW)).toMatchObject({ status: 'error', error: 'source injoignable' });
+    expect(radarStatus(down, NOW)).toMatchObject({ status: 'error', error: 'source injoignable' });
+    resetSovereigntySourceCache();
+    serveToClient({ [INTERNET_URL]: { status: 500, body: 'x' } });
+    expect(radarStatus(await fetchInternet(null, NOW), NOW)).toMatchObject({ status: 'error', error: 'HTTP 500' });
+    // Avec des données gardées et un jeton : réponse mal formée, les deux lignes passent « stale » avec ce texte.
+    const { status, body } = await served('jeton-de-test');
+    resetSovereigntySourceCache();
+    serveToClient({ [INTERNET_URL]: { status, body } });
+    const first = await fetchInternet(null, NOW);
+    resetSovereigntySourceCache();
+    serveToClient({ [INTERNET_URL]: { status: 200, body: { ...(wire(body) as Record<string, unknown>), events: 'x' } } });
+    const kept = mergeInternet(first, await fetchInternet(first, NOW + 11 * 60_000));
+    const later = NOW + 11 * 60_000;
+    expect(iodaStatus(kept, later)).toMatchObject({ status: 'stale', error: 'réponse des pannes Internet mal formée : events' });
+    expect(radarStatus(kept, later)).toMatchObject({ status: 'stale', error: 'réponse des pannes Internet mal formée : events' });
+    // Sans jeton, Radar reste « non configuré » même quand la route est en panne.
+    const noToken = await served('');
+    resetSovereigntySourceCache();
+    serveToClient({ [INTERNET_URL]: { status: noToken.status, body: noToken.body } });
+    const firstNoToken = await fetchInternet(null, NOW);
+    resetSovereigntySourceCache();
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
+    const keptNoToken = mergeInternet(firstNoToken, await fetchInternet(firstNoToken, NOW + 11 * 60_000));
+    expect(radarStatus(keptNoToken, later)).toEqual({ status: 'ok', lastUpdate: null, error: undefined, period: 'non configuré' });
+    expect(iodaStatus(keptNoToken, later)).toMatchObject({ status: 'stale', error: 'source injoignable' });
+  });
   it('Radar avec jeton mais jamais lu : « error » nommé par sa propre panne, n.d. sans date', async () => {
     const { status, body } = await served('jeton-de-test');
     const unread = wire(body) as InternetOutagesResponse;
@@ -332,6 +363,19 @@ describe('contrat Cloud', () => {
     resetSovereigntySourceCache();
     serveToClient({ [CLOUD_URL]: { status: 502, body: { ...(wire(body) as Record<string, unknown>), errors: refErrors } } });
     expect(cloudStatus(mergeCloud(first, await fetchCloud(first, NOW + 60 * 60_000)), NOW + 60 * 60_000).error).toBeUndefined();
+  });
+  it('panne de la route elle-même (réseau coupé, réponse mal formée) : atteint la ligne des pages d’état, sans donnée comme avec données gardées', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('Failed to fetch'); }));
+    expect(cloudStatus(await fetchCloud(null, NOW), NOW)).toMatchObject({ status: 'error', error: 'source injoignable' });
+    resetSovereigntySourceCache();
+    const { status, body } = await served();
+    serveToClient({ [CLOUD_URL]: { status, body } });
+    const first = await fetchCloud(null, NOW);
+    resetSovereigntySourceCache();
+    serveToClient({ [CLOUD_URL]: { status: 200, body: { ...(wire(body) as Record<string, unknown>), incidents: 'x' } } });
+    const kept = mergeCloud(first, await fetchCloud(first, NOW + 30 * 60_000));
+    expect(kept.cloud.data).toEqual(first.cloud.data);
+    expect(cloudStatus(kept, NOW + 30 * 60_000)).toMatchObject({ status: 'stale', error: 'réponse des pages d’état cloud mal formée : incidents' });
   });
   it('un incident avec un champ en trop est refusé et nommé (incidents[0].…) ; zone, maintenance, référentiel et point d’échange sont exacts', async () => {
     const { body } = await served();
