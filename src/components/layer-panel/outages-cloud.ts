@@ -15,7 +15,7 @@ import { kvRow } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
 import { NBSP, frNumber } from './format.ts';
 import { emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, type LayerView } from './frame.ts';
-import { OUTAGES_THEME, OUT_MAINT_VAR, countText, moreNote, note, parisClock, sinceText, when } from './outages-format.ts';
+import { OUTAGES_THEME, OUT_MAINT_VAR, OUT_REF_VAR, countText, moreNote, note, parisClock, sinceText, when } from './outages-format.ts';
 
 export const CLOUD_TITLE = 'Cloud et hébergement';
 /** Au-delà de ce nombre de zones, un fournisseur est résumé (comptes par statut) et seules ses zones non opérationnelles sont listées. */
@@ -80,7 +80,9 @@ function incidentRow(i: CloudIncident, ctx: Context, elsewhere: boolean): string
 
 function zoneRow(z: CloudZone, p: CloudProviderState, late: boolean, ctx: Context): string {
   const deduced = isDeducedZone(p.provider, z);
+  // Zone sans état publié (déduite de l'absence d'incident) : teinte neutre, jamais « vert » (P4, P5 ; même règle que la carte).
   const marker = late ? { level: 'gris' as const }
+    : deduced ? { color: OUT_REF_VAR }
     : z.status === 'maintenance' ? { color: OUT_MAINT_VAR }
     : z.status === 'unknown' ? { level: 'gris' as const }
     : { level: z.status === 'operational' ? 'vert' as const : CLOUD_ZONE_LEVEL[z.status] ?? ('gris' as const) };

@@ -122,6 +122,18 @@ describe('vue Cloud (jeu d’essai du 08/10)', () => {
     }
     expect(visibleText(providerBlock({}, 'Cloudflare'))).toContain('opérationnel');
   });
+  it('I2 : zone déduite GCP/AWS (aucun état publié) : puce neutre du référentiel, comme la carte, jamais verte', () => {
+    for (const label of ['Google Cloud', 'AWS']) {
+      const block = providerBlock({}, label);
+      expect(block, label).toContain('var(--cat-out-ref)');
+      expect(block, label).not.toContain('fmk-dot--vert');
+    }
+    // Un incident publié la colore (zone dégradée : jaune).
+    const over = withData((r) => { providerOf(r, 'gcp').zones[0].status = 'degraded'; });
+    expect(providerBlock(over, 'Google Cloud')).toContain('fmk-dot--jaune');
+    // Une zone dont l'état est publié opérationnel reste verte (Cloudflare).
+    expect(providerBlock({}, 'Cloudflare')).toContain('fmk-dot--vert');
+  });
   it('une date de zone d’une autre année porte son année', () => {
     expect(visibleText(providerBlock({}, 'Outscale'))).toContain('13/05/2024');
     expect(visibleText(providerBlock({}, 'Cloudflare'))).not.toContain('/2026');

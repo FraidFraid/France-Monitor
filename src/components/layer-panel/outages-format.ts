@@ -13,6 +13,8 @@ export const OUTAGES_THEME = 'Pannes réseau';
 export const OUT_RECENT_VAR = 'var(--cat-out-recent)';
 export const OUT_LONG_VAR = 'var(--cat-out-long)';
 export const OUT_MAINT_VAR = 'var(--cat-out-maint)';
+/** Teinte neutre de l'inventaire et des zones sans état publié (GCP, AWS) : jamais une couleur de niveau (P4, P5), comme la carte. */
+export const OUT_REF_VAR = 'var(--cat-out-ref)';
 /** Gris d'une donnée en retard : plus aucune couleur de catégorie ni de niveau. */
 export const OUT_LATE_VAR = 'var(--text-muted)';
 const HOUR_MS = 3_600_000;
