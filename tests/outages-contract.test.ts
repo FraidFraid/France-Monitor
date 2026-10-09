@@ -239,6 +239,36 @@ describe('contrat Internet', () => {
     expect(state.internet.data).toBeNull();
     expect(state.internet.error).toMatch(/^IODA/);
     expect(iodaStatus(state, NOW)).toMatchObject({ status: 'error', lastUpdate: null });
+    // Radar n'est pas en panne parce qu'IODA est muet : jamais « error », jamais le texte d'IODA, jamais inventé « non configuré ».
+    const radar = radarStatus(state, NOW);
+    expect(radar.status).not.toBe('error');
+    expect(radar.error).toBeUndefined();
+    expect(radar.period).toBe('n.d.');
+  });
+  it('502 d’IODA avec des données gardées et Radar à jour : la ligne IODA nomme sa panne, la ligne Radar reste ok sans le texte d’IODA', async () => {
+    const { status, body } = await served('jeton-de-test');
+    serveToClient({ [INTERNET_URL]: { status, body } });
+    const first = await fetchInternet(null, NOW);
+    resetSovereigntySourceCache();
+    serveToClient({ [INTERNET_URL]: { status: 502, body: { ...(wire(body) as Record<string, unknown>), errors: ['IODA : HTTP 503', 'RIPEstat : délai dépassé'] } } });
+    const kept = mergeInternet(first, await fetchInternet(first, NOW + 11 * 60_000));
+    expect(kept.internet.data).not.toBeNull();
+    expect(iodaStatus(kept, NOW + 11 * 60_000)).toMatchObject({ status: 'stale', error: 'IODA : HTTP 503' });
+    const radar = radarStatus(kept, NOW + 11 * 60_000);
+    expect(radar.status).toBe('ok');
+    expect(radar.error).toBeUndefined();
+    // Et la panne de Radar seul n'est pas dite sur la ligne IODA.
+    resetSovereigntySourceCache();
+    serveToClient({ [INTERNET_URL]: { status: 502, body: { ...(wire(body) as Record<string, unknown>), errors: ['Cloudflare Radar : HTTP 401'] } } });
+    const radarDown = mergeInternet(first, await fetchInternet(first, NOW + 22 * 60_000));
+    expect(radarStatus(radarDown, NOW + 22 * 60_000)).toMatchObject({ status: 'stale', error: 'Cloudflare Radar : HTTP 401' });
+    expect(iodaStatus(radarDown, NOW + 22 * 60_000).error).toBeUndefined();
+  });
+  it('Radar avec jeton mais jamais lu : « error » nommé par sa propre panne, n.d. sans date', async () => {
+    const { status, body } = await served('jeton-de-test');
+    const unread = wire(body) as InternetOutagesResponse;
+    serveToClient({ [INTERNET_URL]: { status, body: { ...unread, radar: { configured: true, readAt: null, items: [] }, errors: ['Cloudflare Radar : HTTP 401'] } } });
+    expect(radarStatus(await fetchInternet(null, NOW), NOW)).toMatchObject({ status: 'error', lastUpdate: null, error: 'Cloudflare Radar : HTTP 401', period: 'n.d.' });
   });
   it('réponse mal formée : jamais acceptée, l’écart est nommé, les dernières données sont gardées', async () => {
     const { status, body } = await served('');
@@ -288,6 +318,20 @@ describe('contrat Cloud', () => {
     resetSovereigntySourceCache();
     serveToClient({ [CLOUD_URL]: { status, body: { ...(wire(body) as Record<string, unknown>), errors: [CLOUD_PENDING_NOTE] } } });
     expect(cloudStatus(await fetchCloud(null, NOW), NOW)).toMatchObject({ status: 'ok', error: undefined });
+  });
+  it('les pannes du référentiel (DRIEAT, uMap, PeeringDB) ne dégradent pas la ligne des pages d’état, dans la réponse comme dans l’erreur de lecture', async () => {
+    const { status, body } = await served();
+    const refErrors = ['Référentiel (DRIEAT) : HTTP 500', 'Référentiel (uMap) : délai dépassé', 'PeeringDB : HTTP 503'];
+    serveToClient({ [CLOUD_URL]: { status, body: { ...(wire(body) as Record<string, unknown>), errors: refErrors } } });
+    const first = await fetchCloud(null, NOW);
+    expect(cloudStatus(first, NOW)).toMatchObject({ status: 'ok', error: undefined });
+    resetSovereigntySourceCache();
+    serveToClient({ [CLOUD_URL]: { status: 502, body: { ...(wire(body) as Record<string, unknown>), errors: [...refErrors, 'Scaleway : HTTP 503'] } } });
+    const kept = mergeCloud(first, await fetchCloud(first, NOW + 30 * 60_000));
+    expect(cloudStatus(kept, NOW + 30 * 60_000)).toMatchObject({ status: 'stale', error: 'Scaleway : HTTP 503' });
+    resetSovereigntySourceCache();
+    serveToClient({ [CLOUD_URL]: { status: 502, body: { ...(wire(body) as Record<string, unknown>), errors: refErrors } } });
+    expect(cloudStatus(mergeCloud(first, await fetchCloud(first, NOW + 60 * 60_000)), NOW + 60 * 60_000).error).toBeUndefined();
   });
   it('un incident avec un champ en trop est refusé et nommé (incidents[0].…) ; zone, maintenance, référentiel et point d’échange sont exacts', async () => {
     const { body } = await served();

@@ -54,10 +54,15 @@ export function mergeInternet(current: InternetState | null, incoming: InternetS
   return { internet: mergeSlot(current?.internet, incoming.internet) };
 }
 
-/** Garde seulement les erreurs que `keep` retient : une panne Radar ou RIPEstat ne dégrade pas la ligne IODA, et inversement. */
+/**
+ * Garde seulement les erreurs que `keep` retient, dans la réponse (`data.errors`) ET dans l'erreur de lecture (`slot.error`, qui joint par
+ * « ; » les pannes nommées d'un 502) : une panne Radar ou RIPEstat ne dégrade pas la ligne IODA, et inversement ; jamais l'erreur d'une
+ * autre source sur une ligne.
+ */
 function only(state: InternetState, keep: (error: string) => boolean): InternetState {
-  const d = state.internet.data;
-  return { internet: { ...state.internet, data: d ? { ...d, errors: d.errors.filter(keep) } : null } };
+  const { data, error } = state.internet;
+  const own = error === null ? [] : error.split(' ; ').filter(keep);
+  return { internet: { ...state.internet, data: data ? { ...data, errors: data.errors.filter(keep) } : null, error: own.length > 0 ? own.join(' ; ') : null } };
 }
 
 /** Ligne « IODA » : datée par la dernière lecture IODA (`iodaReadAt`), en retard au-delà de 60 min. Les notes d'avancement ne sont pas des pannes. */
@@ -74,5 +79,7 @@ export function radarStatus(state: InternetState, now: number): OutagesStatus {
   const d = state.internet.data;
   if (d !== null && !d.radar.configured) return { status: 'ok', lastUpdate: null, error: undefined, period: RADAR_NOT_CONFIGURED_PERIOD };
   const own = only(state, (e) => isNamedBy(e, 'Cloudflare Radar'));
+  // Sans réponse lisible, on ignore si le jeton est posé : la panne d'une autre source (IODA muet) n'est pas une erreur Radar (n.d.).
+  if (d === null && own.internet.error === null) return { status: 'loading', lastUpdate: null, error: undefined, period: 'n.d.' };
   return outagesSlotStatus(own.internet, 'radar', d?.radar.readAt ?? null, now);
 }

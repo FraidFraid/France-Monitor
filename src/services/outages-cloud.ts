@@ -4,7 +4,7 @@
 import type { CloudOutagesResponse } from '../types/index.ts';
 import { outagesSlotStatus, type OutagesStatus } from './outages-source.ts';
 import {
-  isBool, isDate, isDateOrNull, isNum, isOneOf, isStr, isStrOrNull, isStringList, list, loadSovereigntySlot, mergeSlot, record, shapeOf, value,
+  isBool, isDate, isDateOrNull, isNamedBy, isNum, isOneOf, isStr, isStrOrNull, isStringList, list, loadSovereigntySlot, mergeSlot, record, shapeOf, value,
   type SourceSlot,
 } from './sovereignty-source.ts';
 
@@ -58,13 +58,19 @@ export function mergeCloud(current: CloudState | null, incoming: CloudState): Cl
   return { cloud: mergeSlot(current?.cloud, incoming.cloud) };
 }
 
+/** Pannes du référentiel (inventaire, jamais un état, P5) : n'appartiennent pas à la ligne des pages d'état. */
+const isReferenceError = (e: string): boolean => isNamedBy(e, 'Référentiel') || isNamedBy(e, 'PeeringDB');
+
 /**
  * Ligne « Pages d'état cloud » : datée par la lecture la plus récente d'un fournisseur (horloge du serveur), en retard au-delà de 2 h ;
- * la panne d'une page est nommée par son fournisseur et dégrade la ligne. La note d'avancement n'est pas une panne.
+ * la panne d'une page est nommée par son fournisseur et dégrade la ligne. Ni la note d'avancement ni les pannes du référentiel
+ * (DRIEAT, uMap, PeeringDB), qui ne sont pas des pages d'état, ne la dégradent ; elles valent aussi dans l'erreur de lecture (`slot.error`).
  */
 export function cloudStatus(state: CloudState, now: number): OutagesStatus {
-  const d = state.cloud.data;
-  const own: CloudState = { cloud: { ...state.cloud, data: d ? { ...d, errors: d.errors.filter((e) => e !== CLOUD_PENDING_NOTE) } : null } };
-  const latest = d?.providers.map((p) => p.readAt).filter((at): at is string => at !== null).sort().at(-1) ?? null;
-  return outagesSlotStatus(own.cloud, 'cloud', latest, now);
+  const { data, error } = state.cloud;
+  const keep = (e: string): boolean => e !== CLOUD_PENDING_NOTE && !isReferenceError(e);
+  const own = error === null ? [] : error.split(' ; ').filter(keep);
+  const slot: SourceSlot<CloudOutagesResponse> = { ...state.cloud, data: data ? { ...data, errors: data.errors.filter(keep) } : null, error: own.length > 0 ? own.join(' ; ') : null };
+  const latest = data?.providers.map((p) => p.readAt).filter((at): at is string => at !== null).sort().at(-1) ?? null;
+  return outagesSlotStatus(slot, 'cloud', latest, now);
 }
