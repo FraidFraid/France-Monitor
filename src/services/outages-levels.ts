@@ -94,7 +94,7 @@ export interface InternetLivePlace {
 }
 
 /** Élément Radar en cours : national par sa portée structurée (`national`), jamais par son libellé ni par un texte affiché (P29). */
-function radarPlace(item: RadarItem): InternetLivePlace {
+export function radarPlace(item: RadarItem): InternetLivePlace {
   if (item.national) return { key: 'national', scope: 'national', label: item.label, dept: null, asn: null, source: 'radar' };
   if (item.asn !== null) return { key: `asn:${item.asn}`, scope: 'operateur', label: item.label, dept: null, asn: item.asn, source: 'radar' };
   return { key: `radar:${item.id}`, scope: 'inconnu', label: item.label, dept: null, asn: null, source: 'radar' };

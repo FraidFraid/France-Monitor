@@ -7,7 +7,8 @@ import { classifyTelecom, dedupeSites, normalizeArcepFeature, summarizeTelecom }
 import {
   buildPower, iipTransmission, iipUnits, latestVersions, mergeUnits, normalizeEdfLine, parseIipFeed, seiSignal,
 } from '../../../api/_lib/outages-power.js';
-import type { PowerOutagesResponse, PowerUnitOutage, TelecomOutagesResponse, TelecomSite } from '../../types/index.ts';
+import { normalizeIodaEvent, normalizeRadar } from '../../../api/_lib/outages-internet.js';
+import type { InternetEvent, InternetOutagesResponse, PowerOutagesResponse, PowerUnitOutage, RadarItem, TelecomOutagesResponse, TelecomSite } from '../../types/index.ts';
 
 const fx = (name: string): string => readFileSync(resolve(import.meta.dirname, '../../../tests/fixtures/outages', name), 'utf8');
 
@@ -45,4 +46,26 @@ export function powerFixtureResponse(): PowerOutagesResponse {
     history: [{ day: '2026-10-03', unplannedMw: 6340 }, { day: '2026-10-08', unplannedMw: 2985 }], errors: [],
   }, now) as PowerOutagesResponse;
   return { ...built, edfUpdatedAt: '2026-10-08T19:00:00.000Z', edfReadAt: '2026-10-08T19:40:00.000Z', iipPublishedAt: '2026-10-08T19:24:36.000Z', iipReadAt: '2026-10-08T19:50:00.000Z' };
+}
+
+/** Heure des vues Internet : 08/10/2026 22 h 30 à Paris. */
+export const INTERNET_FIXTURE_NOW = Date.parse('2026-10-08T20:30:00Z');
+
+/**
+ * Réponse Internet du 08/10/2026 : événements IODA du jeu d'essai (Scaleway ouvert depuis plus de 7 jours, six départements terminés),
+ * anomalies Cloudflare Radar (une en cours : Free, AS12322) et rappel RIPEstat de 16 h UTC. Lecture IODA à 20 h 26 UTC, Radar à 20 h 20.
+ */
+export function internetFixtureResponse(): InternetOutagesResponse {
+  const until = 1791491192;
+  const raw = [...(JSON.parse(fx('ioda-events-as12876-30j.json')) as { data: unknown[] }).data, ...(JSON.parse(fx('ioda-events-regions-30j.json')) as { data: unknown[] }).data];
+  const events = raw.map((e) => normalizeIodaEvent(e, until) as InternetEvent | null).filter((e): e is InternetEvent => e !== null);
+  return {
+    readAt: '2026-10-08T20:26:32.000Z', iodaReadAt: '2026-10-08T20:26:32.000Z',
+    radar: {
+      configured: true, readAt: '2026-10-08T20:20:00.000Z',
+      items: normalizeRadar(JSON.parse(fx('radar-traffic-anomalies-fr.json')), JSON.parse(fx('radar-outages-fr.json'))) as RadarItem[],
+    },
+    events, ripe: { snapshotAt: '2026-10-08T16:00:00.000Z', networks: [{ asn: 3215, name: 'Orange', visibilityPct: 100 }, { asn: 12322, name: 'Free', visibilityPct: 100 }] },
+    errors: [],
+  };
 }

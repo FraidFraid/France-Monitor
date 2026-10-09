@@ -49,3 +49,13 @@ export function sinceText(iso: string | null, now: number): string {
   if (age < 2 * DAY_MS) return `depuis ${frNumber(Math.floor(age / HOUR_MS), 0)}${NBSP}h`;
   return `depuis ${frNumber(Math.floor(age / DAY_MS), 0)}${NBSP}j`;
 }
+/** Durée d'un événement : « 15 min », « 1 h 05 » (moins de 48 h), « 7 j 7 h » au-delà ; « durée n.d. » si elle est illisible ou négative. */
+export function formatDuration(sec: number): string {
+  if (!Number.isFinite(sec) || sec < 0) return 'durée n.d.';
+  const minutes = Math.floor(sec / 60);
+  if (minutes < 60) return `${frNumber(minutes, 0)}${NBSP}min`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `${frNumber(hours, 0)}${NBSP}h${NBSP}${String(minutes % 60).padStart(2, '0')}`;
+  const days = Math.floor(hours / 24);
+  return `${frNumber(days, 0)}${NBSP}j${NBSP}${frNumber(hours % 24, 0)}${NBSP}h`;
+}
