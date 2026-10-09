@@ -1355,133 +1355,6 @@ export interface AisShipData {
   trail?: Array<[number, number]>; // Dernières positions [lon, lat] (max 80 points)
 }
 
-// ═══ Pannes Internet & BGP (IODA / CAIDA + BGPView) ═══
-
-export interface IodaOutageEvent {
-  id: string;
-  entityCode: string;        // 'FR', '3215', etc.
-  entityName: string;        // 'France', 'Orange France', etc.
-  entityType: 'country' | 'asn' | 'region';
-  startTime: Date;
-  endTime: Date | null;
-  duration: number;           // seconds, 0 if ongoing
-  score: number;              // IODA severity score (0-100+)
-  datasources: string[];      // ['bgp', 'ibr', 'active-probing']
-  isOngoing: boolean;
-  coordinates: [number, number]; // [lon, lat] for map display
-}
-
-export interface IspBgpStatus {
-  asn: string;                // e.g. '3215'
-  ispName: string;            // 'Orange France'
-  prefixCount: number;        // currently visible BGP prefixes
-  prefixCountNormal: number;  // baseline prefix count
-  visibility: number;         // 0-100 % visibility
-  status: 'normal' | 'degraded' | 'outage';
-  coordinates: [number, number]; // [lon, lat] ISP HQ
-  lastUpdated: Date;
-  // Enrichissement OSINT
-  trafficEstimation: string | null;  // ex: "100-200 Gbps"
-  lookingGlass: string | null;       // URL looking glass
-  ixList: string[];                  // noms des IX (France-IX, DE-CIX…)
-  peerCount: number;                 // nombre de pairs BGP (v4+v6)
-  prefixV4: number;                  // préfixes IPv4 annoncés
-  prefixV6: number;                  // préfixes IPv6 annoncés
-  networkType: string;               // "Opérateur national", "Cloud"…
-  peeringPolicy: string;             // "Open", "Selective", "Restrictive"
-  arcepFiber: string | null;         // couverture fibre ARCEP
-  mobile: string | null;             // "5G NR", "N/A"
-  noc: string | null;                // contact NOC
-  ipv6Label: string | null;          // description IPv6
-}
-
-export interface NetworkOutageState {
-  iodaEvents: IodaOutageEvent[];
-  ispStatus: IspBgpStatus[];
-  nationalScore: number;       // 0-100 internet health (100 = healthy, 0 = crisis)
-  sourcesStatus: {
-    ioda: 'ok' | 'stale' | 'error';
-    bgpview: 'ok' | 'stale' | 'error';
-  };
-  lastUpdate: Date;
-}
-
-// ═══ Infrastructure Cloud & IXP ═══
-
-export type InfraStatusLevel =
-  | 'operational'
-  | 'degraded'
-  | 'partial'
-  | 'outage'
-  | 'maintenance'
-  | 'unknown';
-
-export interface InfraIncident {
-  title: string;
-  severity: 'minor' | 'major' | 'critical';
-  startedAt: string; // ISO
-}
-
-export interface DatacenterStatus {
-  id: string;
-  name: string;
-  provider: string;               // 'OVH' | 'Scaleway' | 'AWS' | 'Google' | 'Cloudflare'
-  region: string;                 // 'Roubaix' | 'Paris' | 'eu-west-3' | …
-  city?: string;
-  address?: string;
-  coordinates: [number, number];  // [lng, lat]
-  status: InfraStatusLevel;
-  incidents: InfraIncident[];
-  operationalState?: string;
-  operationalStateKey?: string;
-  powerBand?: string;
-  powerDetail?: string;
-  detailSummary?: string;
-  rawSource?: string;
-  sourceUrl?: string;
-  source?: string;
-  sourceUpdatedAt?: string;
-  lastUpdated: string;            // ISO
-}
-
-export interface IxpStatus {
-  id: string;
-  name: string;
-  city: string;
-  coordinates: [number, number];
-  peersCount: number;
-  speedGbps: number;
-  status: InfraStatusLevel;
-  lastUpdated: string; // ISO
-}
-
-export interface CloudflareRadarAnomaly {
-  id: string;           // uuid from API
-  type: string;         // 'LOCATION' | 'AS' | 'ORIGIN'
-  startDate: string;    // ISO
-  endDate?: string;
-  status: string;       // 'VERIFIED' | 'UNVERIFIED' per Cloudflare Radar API
-  locationDetails?: { code: string; name: string };
-  asnDetails?: { asn: string; name: string; locations?: { code: string; name: string } };
-  originDetails?: { name: string; origin: string };
-}
-
-export interface InfraNetworkState {
-  datacenters: DatacenterStatus[];
-  ixps: IxpStatus[];
-  cloudflareAnomalies: CloudflareRadarAnomaly[];
-  sourcesStatus: {
-    ovh:        'ok' | 'stale' | 'error';
-    scaleway:   'ok' | 'stale' | 'error';
-    aws:        'ok' | 'stale' | 'error';
-    google:     'ok' | 'stale' | 'error';
-    cloudflare: 'ok' | 'stale' | 'error';
-    peeringdb:  'ok' | 'stale' | 'error';
-    radar:      'ok' | 'stale' | 'error';
-  };
-  lastUpdate: Date;
-}
-
 // ═══ ORE Incidents (Electricity/Gas) ═══
 
 export interface OreIncident {
@@ -3091,5 +2964,74 @@ export interface PowerOutagesResponse {
   transmission: { unplanned: TransmissionOutage[]; planned: TransmissionOutage[] } | null;   // null : IIP illisible
   islands: IslandPowerSignal[];
   history: Array<{ day: string; unplannedMw: number }>;   // 30 jours, MW à 12 h Paris
+  errors: string[];
+}
+
+// ─── Internet : GET /api/outages/internet (IODA, Cloudflare Radar, rappel RIPEstat) ───
+export type InternetScope = 'national' | 'departement' | 'operateur' | 'inconnu';
+export interface InternetEvent {
+  id: string;                       // « region/1157:1789083000:bgp »
+  scope: InternetScope;
+  dept: string | null;              // département (scope departement)
+  asn: number | null;               // opérateur (scope operateur)
+  label: string;                    // « Haute-Vienne », « Scaleway (AS12876) », « France »
+  signal: string;                   // datasource IODA : « bgp », « ping-slash24 », « merit-nt », « gtr »
+  start: string; end: string | null;   // end null : en cours
+  durationSec: number;
+  ongoing: boolean;
+  staleOpen: boolean;               // en cours depuis plus de 7 jours : écarté du « en cours » (probable recalage)
+  score: number;
+}
+export interface RadarItem {
+  id: string; kind: 'anomalie' | 'panne'; label: string; asn: number | null; start: string; end: string | null;
+  verified: boolean | null; cause: string | null; outageType: string | null;
+  national: boolean;                // portée du pays entier : anomalie sans réseau, ou coupure nationale de la France seule (jamais déduit du libellé, P29)
+}
+export interface InternetOutagesResponse {
+  readAt: string | null;            // dernière lecture réussie d'une des deux sources (horloge du serveur)
+  iodaReadAt: string | null;        // instant `until` de la dernière lecture IODA réussie
+  radar: { configured: boolean; readAt: string | null; items: RadarItem[] };
+  events: InternetEvent[];          // 30 jours, en cours d'abord puis plus récents
+  ripe: { snapshotAt: string | null; networks: Array<{ asn: number; name: string; visibilityPct: number }> } | null;
+  errors: string[];
+}
+
+// ─── Cloud : GET /api/outages/cloud (pages d'état filtrées France, référentiel) ───
+export type CloudProvider = 'ovhcloud' | 'scaleway' | 'cloudflare' | 'gcp' | 'aws' | 'outscale' | 'azure';
+export type CloudStatus = 'operational' | 'maintenance' | 'degraded' | 'partial' | 'major' | 'unknown';
+export interface CloudZone {
+  id: string; label: string; status: CloudStatus;
+  updatedAt: string | null;         // date publiée du composant ; null : zone déduite de l'absence d'incident (GCP, AWS), jamais datée
+  lat: number | null; lon: number | null;
+}
+export interface CloudIncident {
+  id: string; provider: CloudProvider; title: string;
+  zones: string[];                  // zones françaises touchées (vide : incident rattaché à la France par son titre)
+  state: 'en-cours' | 'surveille';  // en-cours : investigating ou identified (compté) ; surveille : monitoring (listé, non compté)
+  impact: 'none' | 'minor' | 'major' | 'critical';
+  start: string; updatedAt: string | null; url: string | null;
+}
+export interface CloudMaintenance { id: string; provider: CloudProvider; title: string; zones: string[]; inProgress: boolean; start: string; end: string | null }
+export interface CloudProviderState {
+  provider: CloudProvider; label: string;
+  readAt: string | null;            // dernière lecture RÉUSSIE de la page (horloge du serveur), null : jamais lue
+  zones: CloudZone[]; note: string | null; error: string | null;
+}
+/** Centre de données du référentiel (OSM, Île-de-France, projets) : un inventaire, jamais un état de service (P5). */
+export interface CloudReferenceSite {
+  id: string; name: string; operator: string | null; city: string | null; lat: number; lon: number;
+  stage: string | null;             // état d'avancement publié (« site existant », « en projet »…), null s'il n'est pas publié
+  power: string | null;             // tranche de puissance publiée, null sinon
+  source: string;                   // source du site (OpenStreetMap, DRIEAT, uMap…)
+}
+/** Point d'échange français (PeeringDB, sans coordonnées : listé, jamais dessiné). */
+export interface CloudExchange { id: number; name: string; city: string | null; url: string }
+export interface CloudOutagesResponse {
+  readAt: string | null;            // dernière lecture réussie d'un fournisseur (horloge du serveur)
+  providers: CloudProviderState[];  // les sept fournisseurs, dans l'ordre fixe
+  incidents: CloudIncident[];       // France, en cours d'abord, comptés une fois
+  maintenances: CloudMaintenance[]; // France, en cours d'abord puis à 7 jours
+  elsewhere: CloudIncident[];       // incidents des mêmes pages hors France : listés à part, jamais comptés ni colorés
+  reference: { generatedAt: string | null; datacenters: CloudReferenceSite[]; exchanges: CloudExchange[] };   // generatedAt : dernière lecture réussie d'une de ses sources (DRIEAT, uMap, PeeringDB), null si aucune
   errors: string[];
 }

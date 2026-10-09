@@ -15,7 +15,7 @@ import { lineChart } from './chart.ts';
 import { NBSP, formatGw, formatMw, frNumber } from './format.ts';
 import { emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, valueHtml, type LayerView } from './frame.ts';
 import {
-  OUTAGES_THEME, OUT_LATE_VAR, OUT_MAINT_VAR, OUT_RECENT_VAR, countText, dayMonth, moreNote, note, parisClock, sinceText,
+  OUTAGES_THEME, OUT_LATE_VAR, OUT_MAINT_VAR, OUT_RECENT_VAR, countText, dayMonth, moreNote, note, parisClock, sinceText, when,
 } from './outages-format.ts';
 
 export const POWER_TITLE = 'Électricité : production et transport';
@@ -36,12 +36,6 @@ export interface PowerViewInput { power: PowerOutagesResponse | null; error: str
 
 /** Ce que chaque partie peut dire : EDF muet (jamais lu ou en échec), EDF et RTE en retard. */
 interface Freshness { edfMute: boolean; edfNever: boolean; edfGrey: boolean; iipGrey: boolean }
-
-/** « 08/10 à 11 h 02 » (Paris) ; « n.d. » si la date est illisible. */
-function when(iso: string | null): string {
-  const t = iso === null ? Number.NaN : Date.parse(iso);
-  return Number.isFinite(t) ? `${dayMonth(parisDayOf(t))} à ${parisClock(t)}` : 'n.d.';
-}
 
 /** Couleur d'une ligne : catégorie, ou gris si la partie qui la fournit est en retard ou muette. */
 function colorOf(u: PowerUnitOutage, category: string, f: Freshness): string {
@@ -120,7 +114,7 @@ function sections(p: PowerOutagesResponse, input: PowerViewInput, f: Freshness):
       value: (v) => formatMw(v), tick: (ms) => dayMonth(new Date(ms).toISOString().slice(0, 10)), markPeak: true,
     })
     : emptyLine('Courbe n.d.');
-  const method = note('Arrêts imprévus : indisponibilités « fortuites » publiées par EDF (version en vigueur, fenêtre contenant l’instant), puissance maximale moins puissance disponible. Les contraintes de réserve (« chroniques ») et les unités de Luminus en Belgique sont écartées. Une unité décrite par EDF et par RTE est comptée une fois.')
+  const method = note('Arrêts imprévus : indisponibilités « fortuites » publiées par EDF (version en vigueur, fenêtre contenant l’instant), puissance maximale moins puissance disponible. Les contraintes de réserve (« chroniques ») et les unités de Luminus en Belgique sont écartées. Une unité décrite par EDF et par RTE est comptée une fois. Une unité de production déclarée à RTE sans puissance publiée n’est ni comptée ni listée.')
     + note('Transport : messages REMIT de RTE (version la plus haute, messages annulés écartés), datés par leur publication.')
     + `<p class="fmk-note">${sourceLinkHtml('EDF OpenData (Licence Ouverte 2.0)', EDF_URL)} · ${sourceLinkHtml('RTE, plateforme IIP', IIP_URL)}</p>`;
   return [

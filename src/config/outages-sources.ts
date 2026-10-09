@@ -21,6 +21,7 @@ export const OUTAGES_ALWAYS_POLLED: ReadonlySet<OutagesLayerKey> = new Set<Outag
 
 export const OUTAGES_STATUS_SOURCES = [
   ['arcep', 'ARCEP sites mobiles'], ['edf', 'EDF indisponibilités'], ['iip', 'RTE IIP'], ['sei', 'EDF SEI (îles)'],
+  ['ioda', 'IODA'], ['radar', 'Cloudflare Radar'], ['cloud', 'Pages d’état cloud'],
 ] as const satisfies ReadonlyArray<readonly [OutagesSource, string]>;
 
 export type OutagesSourceName = (typeof OUTAGES_STATUS_SOURCES)[number][1];
@@ -37,6 +38,18 @@ export const OUTAGES_SOURCE_DETAILS: Readonly<Record<OutagesSourceName, { detail
   },
   'RTE IIP': { detail: 'RTE, plateforme de transparence IIP, messages REMIT de production et de transport, date de publication', link: 'https://iip.cloud-rte-france.com' },
   'EDF SEI (îles)': { detail: 'EDF SEI, météo de l’électricité de La Réunion et eCorsicaWatt, signal horaire · Licence Ouverte 2.0', link: 'https://opendata.edf.fr' },
+  IODA: {
+    detail: 'IODA (Georgia Tech), coupures Internet détectées sur la France, ses départements et ses opérateurs, signal indirect (BGP, sondes, trafic)',
+    link: 'https://ioda.inetintel.cc.gatech.edu',
+  },
+  'Cloudflare Radar': {
+    detail: 'Cloudflare Radar, anomalies de trafic et coupures vérifiées en France · jeton gratuit à poser ; sans lui, « non configuré »',
+    link: 'https://radar.cloudflare.com/outage-center',
+  },
+  'Pages d’état cloud': {
+    detail: 'Pages d’état publiées par OVHcloud, Scaleway, Outscale, Cloudflare, Google Cloud et AWS, filtrées sur la France ; Azure ne publie pas d’état par région',
+    link: 'https://public-cloud.status-ovhcloud.com',
+  },
 };
 
 export function outagesSourceDetail(name: string): { detail: string; link: string } | null {
@@ -44,10 +57,10 @@ export function outagesSourceDetail(name: string): { detail: string; link: strin
   return found ? OUTAGES_SOURCE_DETAILS[found[1]] : null;
 }
 
-/** Lignes mises en erreur si le service d'une couche ne se charge pas (B5 complète Internet et Cloud). */
+/** Lignes mises en erreur si le service d'une couche ne se charge pas. */
 export const OUTAGES_LAYER_SOURCES: Readonly<Record<OutagesLayerKey, readonly OutagesSourceName[]>> = {
   outagesElec: ['EDF indisponibilités', 'RTE IIP', 'EDF SEI (îles)'],
   outagesTelecom: ['ARCEP sites mobiles'],
-  outagesInternet: [],
-  outagesCloud: [],
+  outagesInternet: ['IODA', 'Cloudflare Radar'],
+  outagesCloud: ['Pages d’état cloud'],
 };

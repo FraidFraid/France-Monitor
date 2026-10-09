@@ -26,6 +26,7 @@ Voir aussi `docs/deployment.md` (topologie actuelle Vercel/Railway/Render) et
 11. Mettre hors service Vercel, Railway, Render une fois la VM stable (§g).
 12. Connaître le retour arrière si besoin (§h).
 13. Sauvegarde de la base Neon : installée par `setup.sh`, restauration décrite en §i.
+14. Jeton Cloudflare Radar (facultatif, gratuit) : `! pbpaste | bash deploy/oracle/set-radar-token.sh` depuis le poste (§j).
 
 ---
 
@@ -368,6 +369,58 @@ Récupérer une copie sur un poste :
 (Neon garde les données) ; perdre Neon et la VM en même temps n'est pas couvert.
 Une copie hors VM reste possible gratuitement (Oracle Object Storage Always Free,
 20 Go), non faite.
+
+---
+
+## (j) Jeton Cloudflare Radar
+
+Le panneau Internet lit Cloudflare Radar (pannes et anomalies Internet signalées
+pour la France) seulement si `CLOUDFLARE_RADAR_TOKEN` est posé dans
+`/etc/francemonitor/francemonitor.env`. Sans lui, la section Radar dit « non
+configuré » et rien d'autre ne change : IODA et RIPEstat restent servis par
+`/api/outages/internet`, aucune erreur n'est levée. Le jeton est gratuit et en
+lecture seule ; aucune autre clé n'est nécessaire pour les pannes réseau.
+
+1. **Créer le jeton** sur le tableau de bord Cloudflare : profil, « Jetons d'API »,
+   « Créer un jeton », jeton personnalisé avec un seul droit, la lecture Radar au
+   niveau du compte (« Account · Radar · Read » en anglais ; libellé exact à
+   confirmer à l'écran). Aucun droit de zone, aucun autre droit.
+2. **Le copier** (Cloudflare ne le montre qu'une fois).
+3. **Le poser** depuis le dépôt cloné sur le poste :
+   - depuis Claude Code (pas de terminal) : `! pbpaste | bash deploy/oracle/set-radar-token.sh`
+   - depuis un terminal : `bash deploy/oracle/set-radar-token.sh` (saisie masquée)
+
+   Le script contrôle la forme du texte sans le répéter, le transmet à la VM par
+   l'entrée standard de `ssh` (jamais sur une ligne de commande, dans un journal ni
+   à l'écran), remplace l'ancienne ligne `CLOUDFLARE_RADAR_TOKEN=` du fichier
+   d'environnement (gardé `root:fm`, `640`, autres lignes inchangées) puis
+   redémarre `fm-api`. Hôte et clé par défaut : `ubuntu@141.145.223.156` et
+   `~/.ssh/francemonitor_oracle`, surchargeables par `FM_VM_HOST` et `FM_VM_KEY`.
+   `ssh` tourne en `BatchMode=yes` et `sudo` sans terminal : sans clé valable ou
+   sans sudo sans mot de passe, le script échoue sans rien changer.
+4. **Vérifier** directement auprès de `fm-api` sur la VM (même adresse locale que
+   les contrôles de santé de `fm-deploy`, `127.0.0.1:3000`), ce qui contourne
+   seulement le cache de Cloudflare ; la route et ses sources sont lues comme
+   d'habitude :
+
+   ```bash
+   ssh -i ~/.ssh/francemonitor_oracle ubuntu@141.145.223.156 \
+     'curl -s http://127.0.0.1:3000/api/outages/internet' | jq '.radar.configured, .errors'
+   ```
+
+   Attendu : `true` dès le redémarrage, puis, après la relève suivante (Radar est
+   relu toutes les 15 min), aucune erreur commençant par « Cloudflare Radar : ».
+   Un « HTTP 403 » signale un droit manquant sur le jeton.
+
+   Par le domaine public
+   (`curl -s https://www.francemonitor.com/api/outages/internet | jq …`), la
+   réponse peut venir du cache de Cloudflare (`s-maxage=300`,
+   `stale-while-revalidate=900`) : elle peut encore dire `false` jusqu'à
+   20 min environ après la pose, sans que la pose ait échoué.
+
+**Retirer le jeton** : supprimer la ligne `CLOUDFLARE_RADAR_TOKEN=` de
+`/etc/francemonitor/francemonitor.env` sur la VM, puis
+`sudo systemctl restart fm-api` ; la section Radar repasse à « non configuré ».
 
 ---
 

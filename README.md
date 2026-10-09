@@ -55,13 +55,15 @@ The long-term goal is to turn the France prototype into a reusable European comm
 | DROM energy | Overseas territories grid data (Réunion, Martinique…) | 15 min |
 | Power outages | EDF OpenData unplanned and planned unavailabilities, RTE IIP lines, EDF SEI island signals, Ecowatt (`/api/outages/power`) | 10 min |
 | Telecom outages | ARCEP « sites indisponibles » daily file, outages classed by age and cause: recent < 24 h, long, maintenance (`/api/outages/telecom`) | 30 min |
+| Internet outages | IODA signals for France by department and operator (read every 10 min), Cloudflare Radar outages and anomalies for France (every 15 min, only with `CLOUDFLARE_RADAR_TOKEN`, otherwise « non configuré »), RIPEstat BGP visibility of French networks (`/api/outages/internet`) | 10 min |
+| Cloud outages | Status pages of OVHcloud, Scaleway, Outscale, Cloudflare, Google Cloud and AWS filtered on French zones, each incident counted once, maintenances within 7 days; reference inventory of data centres and PeeringDB exchange points, refreshed every 6 h, never shown as a state (`/api/outages/cloud`) | 30 min |
 
 ### 🛡️ Cyber & Digital Sovereignty
 - **CyberBreachPanel** — live breach & ransomware incident map (RansomwareLive feed)
 - **Exposure scoring** — Shodan + Censys OSINT aggregation of exposed French infrastructure
 - **Threat scoring engine** — composite cyber pressure index per source/domain
-- **Network barometer** — Cloudflare Radar + IODA internet anomaly detection
-- **Internet outages** — ISP-level connectivity monitoring (ARCEP / IODA)
+- **Network barometer**: Ecowatt, BGP visibility (RIPEstat), recent telecom outages (ARCEP), French cloud zones (status pages), space weather, cyber pressure; a silent source reads « n.d. »
+- **Internet and Cloud outage panels**: see the Internet outages and Cloud outages rows above (layer panels, map of departments and French cloud zones)
 - Cyber incident feed with severity classification
 
 ### 🌦️ Environment
@@ -154,7 +156,7 @@ The long-term goal is to turn the France prototype into a reusable European comm
 │  ├── health/        SPF / ISS, SOS Médecins, OSCOUR             │
 │  ├── finance/       Boursorama scrape, commodities              │
 │  ├── fires/         NASA FIRMS MODIS + VIIRS                    │
-│  ├── outages/       power, telecom (ARCEP), Cloudflare, IODA    │
+│  ├── outages/       power, telecom, internet, cloud             │
 │  ├── threats.js     Cyber OSINT aggregation (Shodan/Censys)     │
 │  ├── exposure.js    Technical exposure scoring                  │
 │  ├── intelligence/  LLM summarisation + brief v14 (Groq)        │
@@ -279,7 +281,7 @@ Copy `.env.example` to `.env.local` for local dev. On Vercel, configure in **Set
 | `CRON_SECRET` | Vercel Cron auth token | Cron endpoint returns 401 |
 | `SHODAN_API_KEY` | Shodan OSINT (cyber exposure) | Cyber panel degraded |
 | `CENSYS_API_ID / SECRET` | Censys OSINT | Cyber panel degraded |
-| `CLOUDFLARE_RADAR_TOKEN` | Cloudflare Radar anomalies | Layer disabled |
+| `CLOUDFLARE_RADAR_TOKEN` | Cloudflare Radar outages and anomalies (Internet panel); set on the VM by `deploy/oracle/set-radar-token.sh` | Radar section « non configuré », IODA and RIPEstat still served |
 | `CDSE_CLIENT_ID / SECRET` | Copernicus Sentinel-2 imagery | Satellite overlay disabled |
 | `SCRAPLING_PROXY_URL` | Python Scrapling sidecar URL | Direct fetch (may hit CF) |
 
@@ -306,7 +308,8 @@ Copy `.env.example` to `.env.local` for local dev. On Vercel, configure in **Set
 | Power outages | EDF OpenData + RTE IIP + EDF SEI + Ecowatt | REST + RSS |
 | Telecom outages | [ARCEP](https://www.arcep.fr) « sites indisponibles » | Daily file |
 | Fuel prices | [data.economie.gouv.fr](https://data.economie.gouv.fr) | REST |
-| Internet outages | [IODA](https://ioda.inetintel.cc.gatech.edu) + [Cloudflare Radar](https://radar.cloudflare.com) | REST |
+| Internet outages | [IODA](https://ioda.inetintel.cc.gatech.edu) + [Cloudflare Radar](https://radar.cloudflare.com) + [RIPEstat](https://stat.ripe.net) | REST |
+| Cloud outages | OVHcloud, Scaleway, Outscale, Cloudflare and Google Cloud status pages, AWS RSS, [PeeringDB](https://www.peeringdb.com) | REST + RSS |
 | Cyber exposure | [Shodan](https://shodan.io) + [Censys](https://censys.io) | REST |
 | Ransomware breaches | [RansomwareLive](https://data.ransomware.live/posts.json) | REST (public) |
 | Finance | Boursorama (server-side proxy) | HTML scrape |
@@ -364,7 +367,7 @@ france-monitor/
 │   │   ├── NewsHeatmap.ts       # History heatmap grid (day × category)
 │   │   ├── CyberBreachPanel.ts  # Ransomware / breach map panel
 │   │   ├── NuclearPanel.ts      # Nuclear fleet status (4 tabs)
-│   │   ├── OutagesPanel.ts      # Internet + cloud outages (power and telecom: layer panels)
+│   │   ├── Outages*Panel.ts     # Outage layer panels: Power, Telecom, Internet, Cloud
 │   │   ├── FranceIntelPanel.ts  # Country Intelligence drawer (ops console) — lazy-loaded
 │   │   ├── ISNRPanel.ts         # Stability index dashboard
 │   │   ├── BarometerWidget.ts   # Multi-domain health barometer
@@ -389,6 +392,8 @@ france-monitor/
 │   │   ├── nuclear-correlation.ts   # REMIT × RTE correlation
 │   │   ├── outages-power.ts     # Power outages client (/api/outages/power)
 │   │   ├── outages-telecom.ts   # Telecom outages client (/api/outages/telecom)
+│   │   ├── outages-internet.ts  # Internet outages client (/api/outages/internet)
+│   │   ├── outages-cloud.ts     # Cloud outages client (/api/outages/cloud)
 │   │   ├── watchdog.ts          # Centralised observability registry
 │   │   └── …
 │   │

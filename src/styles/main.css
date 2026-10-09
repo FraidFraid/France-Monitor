@@ -30,8 +30,9 @@
   /* Souveraineté, phase B (spec 2026-10-04 souveraineté § 3) : zones drones DGAC, indice Kp calme (G0), registre des gels */
   --cat-zone-drone: #5e5ce6; --cat-kp-calme: #64d2ff; --cat-gels: #ac8e68;
   /* Pannes réseau (spec 2026-10-08) : panne imprévue de moins de 24 h, panne imprévue plus ancienne, maintenance ; jamais une couleur de
-     niveau ; valeurs reprises dans layer-panel/outages-legend.ts pour la carte (vérifié par test) */
-  --cat-out-recent: #ef4444; --cat-out-long: #f97316; --cat-out-maint: #a1a1aa;
+     niveau ; valeurs reprises dans layer-panel/outages-legend.ts pour la carte (vérifié par test) ; --cat-out-ref : site du référentiel
+     Cloud (inventaire neutre, jamais un état) */
+  --cat-out-recent: #ef4444; --cat-out-long: #f97316; --cat-out-maint: #a1a1aa; --cat-out-ref: #8b8f9a;
   /* Background */
   --bg-primary: #0a0a0f;
   --bg-secondary: #12121a;
@@ -228,6 +229,7 @@ body {
   margin: -1px;
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
   white-space: nowrap;
   border: 0;
 }
@@ -3995,6 +3997,12 @@ button.header-quality-link {
     margin-left: auto;
   }
 
+  /* Menu Sources ancré au bloc d'état (aligné à droite de l'en-tête) et non à son bouton : à 390 px, ancré au bouton, il débordait
+     de 27 px à gauche de l'écran. */
+  .status-menu {
+    position: static;
+  }
+
   .status-menu-trigger__label {
     display: none;
   }
@@ -5810,6 +5818,8 @@ button.header-quality-link {
   .connectivity-panel-modal,
   .outages-telecom-panel-modal,
   .outages-power-panel-modal,
+  .outages-internet-panel-modal,
+  .outages-cloud-panel-modal,
   .energy-panel-modal,
   .vigilance-panel-modal,
   .floods-panel-modal,
@@ -5857,6 +5867,8 @@ button.header-quality-link {
   .connectivity-panel-modal::before,
   .outages-telecom-panel-modal::before,
   .outages-power-panel-modal::before,
+  .outages-internet-panel-modal::before,
+  .outages-cloud-panel-modal::before,
   .energy-panel-modal::before,
   .vigilance-panel-modal::before,
   .floods-panel-modal::before,
@@ -7510,7 +7522,10 @@ button.header-quality-link {
 
 .tb-list { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
 .tb-list::-webkit-scrollbar { display: none; }
+/* position relative : le libellé `.visually-hidden` (position absolue) reste dans le bouton, donc dans la barre défilante ; sinon il
+   élargissait la page du téléphone (446 px pour un écran de 390, contrôle à l'écran du 09/10/2026). */
 .tb-theme {
+  position: relative;
   display: inline-flex; align-items: center; gap: 6px; flex: none;
   padding: 4px 10px; border: 1px solid var(--border-color); border-radius: 6px;
   background: transparent; color: var(--text-secondary); font: inherit; font-size: 12px; white-space: nowrap; cursor: pointer;
@@ -7804,6 +7819,8 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
   #app.ui-v2 .connectivity-panel-modal,
   #app.ui-v2 .outages-telecom-panel-modal,
   #app.ui-v2 .outages-power-panel-modal,
+  #app.ui-v2 .outages-internet-panel-modal,
+  #app.ui-v2 .outages-cloud-panel-modal,
   #app.ui-v2 .energy-panel-modal,
   #app.ui-v2 .vigilance-panel-modal,
   #app.ui-v2 .floods-panel-modal,
@@ -7815,7 +7832,6 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
   #app.ui-v2 .gas-panel-modal,
   #app.ui-v2 .nuclear-panel-modal,
   #app.ui-v2 .oil-panel-modal,
-  #app.ui-v2 .outages-panel-modal,
   #app.ui-v2 .eolien-panel-modal,
   #app.ui-v2 .hydraulic-panel-modal,
   #app.ui-v2 .drom-energy-panel-modal,
@@ -8072,15 +8088,15 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 /* Méthode et sources des panneaux Santé, Trafics et Environnement : la ligne porte une phrase de source datée, pas une valeur ; libellé à largeur fixe, phrase qui passe à la ligne sans recouvrir le libellé. Les panneaux Énergie gardent leurs valeurs alignées à droite (règle du kit). Spécificité d'identifiant (#app) : au-dessus de la règle du kit. */
 #app :is(.veille-panel-modal, .urgences-panel-modal, .acces-soins-panel-modal, .hopitaux-panel-modal, .traffic-panel-modal, .air-traffic-panel-modal, .transport-panel-modal, .maritime-panel-modal, .vigilance-panel-modal, .floods-panel-modal, .radar-panel-modal, .fires-panel-modal, .drought-panel-modal, .air-panel-modal, .quakes-panel-modal) .fmk .fmk-sec--ref .fmk-kv { grid-template-columns: 8rem minmax(0, 1fr); }
 #app :is(.veille-panel-modal, .urgences-panel-modal, .acces-soins-panel-modal, .hopitaux-panel-modal, .traffic-panel-modal, .air-traffic-panel-modal, .transport-panel-modal, .maritime-panel-modal, .vigilance-panel-modal, .floods-panel-modal, .radar-panel-modal, .fires-panel-modal, .drought-panel-modal, .air-panel-modal, .quakes-panel-modal) .fmk .fmk-sec--ref .fmk-kv-v { overflow-wrap: anywhere; }
-/* Panneaux Souveraineté (spec 2026-10-04 souveraineté) et Pannes réseau Télécoms et Électricité (spec 2026-10-08) : ligne de niveau qui passe à la ligne, méthode et sources en phrases (mêmes
+/* Panneaux Souveraineté (spec 2026-10-04 souveraineté) et Pannes réseau (spec 2026-10-08) : ligne de niveau qui passe à la ligne, méthode et sources en phrases (mêmes
    règles que les panneaux Trafics et Environnement). */
-:is(.defense-panel-modal, .connectivity-panel-modal, .cyber-panel-modal, .outages-telecom-panel-modal, .outages-power-panel-modal).lp .fmk-level .fmk-ctx { white-space: normal; }
-#app :is(.defense-panel-modal, .connectivity-panel-modal, .cyber-panel-modal, .outages-telecom-panel-modal, .outages-power-panel-modal) .fmk .fmk-sec--ref .fmk-kv { grid-template-columns: 8rem minmax(0, 1fr); }
-#app :is(.defense-panel-modal, .connectivity-panel-modal, .cyber-panel-modal, .outages-telecom-panel-modal, .outages-power-panel-modal) .fmk .fmk-sec--ref .fmk-kv-v { overflow-wrap: anywhere; }
+:is(.defense-panel-modal, .connectivity-panel-modal, .cyber-panel-modal, .outages-telecom-panel-modal, .outages-power-panel-modal, .outages-internet-panel-modal, .outages-cloud-panel-modal).lp .fmk-level .fmk-ctx { white-space: normal; }
+#app :is(.defense-panel-modal, .connectivity-panel-modal, .cyber-panel-modal, .outages-telecom-panel-modal, .outages-power-panel-modal, .outages-internet-panel-modal, .outages-cloud-panel-modal) .fmk .fmk-sec--ref .fmk-kv { grid-template-columns: 8rem minmax(0, 1fr); }
+#app :is(.defense-panel-modal, .connectivity-panel-modal, .cyber-panel-modal, .outages-telecom-panel-modal, .outages-power-panel-modal, .outages-internet-panel-modal, .outages-cloud-panel-modal) .fmk .fmk-sec--ref .fmk-kv-v { overflow-wrap: anywhere; }
 /* Libellé et valeur en phrase (accents de la posture Vigipirate, jours UTC de la grille GNSS) se partagent la largeur et passent à la
    ligne chacun dans sa colonne, sans jamais se recouvrir ; une valeur courte reste calée à droite (captures du 05/10 : « Accents »
    recouvert par sa valeur). */
-#app :is(.defense-panel-modal, .connectivity-panel-modal, .cyber-panel-modal, .outages-telecom-panel-modal, .outages-power-panel-modal) .fmk .fmk-kv { grid-template-columns: auto auto; justify-content: space-between; }
+#app :is(.defense-panel-modal, .connectivity-panel-modal, .cyber-panel-modal, .outages-telecom-panel-modal, .outages-power-panel-modal, .outages-internet-panel-modal, .outages-cloud-panel-modal) .fmk .fmk-kv { grid-template-columns: auto auto; justify-content: space-between; }
 /* Légende de carte Défense : les notes (légende officielle des zones drones, renvoi au SIA) passent à la ligne dans la largeur des
    éléments au lieu d'élargir la carte (capture du 05/10 : 2 172 px de large, colonnes de droite hors de l'écran). */
 .legend-card[data-category="military"] .legend-footer { width: 0; min-width: 100%; }

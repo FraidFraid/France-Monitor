@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 const read = (p: string): string => readFileSync(new URL(`../${p}`, import.meta.url), 'utf8');
@@ -34,7 +34,7 @@ describe('retraits de la phase A (spec 2026-10-08 § 2.4)', () => {
   });
 
   it('plus de « PDL hors réseau » ni de total de PDL fabriqué dans le code des pannes', () => {
-    for (const p of ['src/App.ts', 'src/components/DeckGLMap.ts', 'src/components/MapContainer.ts', 'src/components/OutagesPanel.ts']) {
+    for (const p of ['src/App.ts', 'src/components/DeckGLMap.ts', 'src/components/MapContainer.ts']) {
       const t = read(p);
       expect(t, p).not.toContain('offGridCount');
       expect(t, p).not.toContain('totalPDL');
@@ -44,8 +44,9 @@ describe('retraits de la phase A (spec 2026-10-08 § 2.4)', () => {
 
   it('jamais de badge « TEMPS RÉEL » dans le code des pannes (S1)', () => {
     for (const p of [
-      'src/App.ts', 'src/components/DeckGLMap.ts', 'src/components/MapContainer.ts', 'src/components/OutagesPanel.ts',
-      'src/components/OutagesTelecomPanel.ts', 'src/components/OutagesPowerPanel.ts', 'src/components/deckgl/outages-map.ts',
+      'src/App.ts', 'src/components/DeckGLMap.ts', 'src/components/MapContainer.ts',
+      'src/components/OutagesTelecomPanel.ts', 'src/components/OutagesPowerPanel.ts', 'src/components/OutagesInternetPanel.ts',
+      'src/components/OutagesCloudPanel.ts', 'src/components/deckgl/outages-map.ts',
     ]) {
       expect(read(p), p).not.toMatch(/TEMPS R[ÉE]EL/);
     }
@@ -79,8 +80,116 @@ describe('retraits de la phase A (spec 2026-10-08 § 2.4)', () => {
     expect(read('src/services/cyber-threat-scoring.ts')).not.toContain('powerOutageCount');
   });
 
-  it('la route IIP, son service et le plugin de développement restent pour le parc nucléaire (R22)', () => {
-    for (const p of ['api/_handlers/rte-iip.js', 'src/services/rte-iip.ts', 'src/plugins/rte-iip-proxy.ts']) expect(exists(p), p).toBe(true);
+  it('la route IIP et son service restent pour le parc nucléaire ; le plugin de développement est retiré (R22, P5)', () => {
+    for (const p of ['api/_handlers/rte-iip.js', 'src/services/rte-iip.ts']) expect(exists(p), p).toBe(true);
+    expect(exists('src/plugins/rte-iip-proxy.ts')).toBe(false);
     expect(read('api/_routes.js')).toContain("'/api/rte-iip'");
+  });
+});
+
+/** Fichiers de src/ (code de l'application), tests exclus. */
+const srcFiles = (): string[] => {
+  const out: string[] = [];
+  const walk = (rel: string): void => {
+    for (const e of readdirSync(new URL(`../${rel}`, import.meta.url), { withFileTypes: true })) {
+      const p = `${rel}/${e.name}`;
+      if (e.isDirectory()) walk(p);
+      else if (/\.(ts|js|css|html)$/.test(e.name) && !/\.test\.ts$/.test(e.name)) out.push(p);
+    }
+  };
+  walk('src');
+  return out;
+};
+
+describe('retraits de la phase B (spec 2026-10-08 § 3.3)', () => {
+  it('ancien panneau, services, routes, plugins, utilitaires et instantané vide supprimés ; référentiel des centres de données gardé', () => {
+    for (const p of [
+      'src/components/OutagesPanel.ts', 'src/services/internet-outages.ts', 'src/services/infra-network.ts',
+      'api/_handlers/internet-outages.js', 'api/_handlers/infra-network.js',
+      'src/plugins/internet-outages-proxy.ts', 'src/plugins/infra-network-proxy.ts',
+      'src/utils/infra-network-visuals.js', 'src/utils/infra-network-popup.js',
+      'tests/infra-network-visuals.test.ts', 'tests/datacenter-popup.test.ts',
+      'api/_shared/datacentermap-france-snapshot.js', 'scripts/generate-datacentermap-france-snapshot.mjs',
+    ]) {
+      expect(exists(p), p).toBe(false);
+    }
+    for (const p of ['api/_shared/infra-network-datacenters.js', 'tests/infra-network-datacenters.test.ts', 'tests/infra-network-official-cache.test.ts', 'api/_lib/peeringdb.js']) {
+      expect(exists(p), p).toBe(true);
+    }
+    const routes = read('api/_routes.js');
+    expect(routes).not.toContain('/api/internet-outages');
+    expect(routes).not.toContain('/api/infra-network');
+    const vite = read('vite.config.ts');
+    for (const plugin of ['internetOutagesProxyPlugin', 'infraNetworkProxyPlugin', 'rteIipProxyPlugin']) expect(vite, plugin).not.toContain(plugin);
+  });
+
+  it('aucun fichier de src/ ne dit « Non qualifié », « Site existant », « BGPView » ni un score national de 100 par défaut', () => {
+    const files = srcFiles();
+    expect(files.length).toBeGreaterThan(100);
+    for (const p of files) {
+      const t = read(p);
+      for (const banned of ['Non qualifié', 'Site existant', 'BGPView', 'nationalScore: 100']) expect(t, `${p} : ${banned}`).not.toContain(banned);
+    }
+  });
+
+  it('plus de couche, de source, d’icône ni de méthode de l’ancienne carte Internet et Cloud', () => {
+    const deck = read('src/components/DeckGLMap.ts');
+    const container = read('src/components/MapContainer.ts');
+    const constants = read('src/components/deckgl/constants.ts');
+    for (const method of ['updateNetworkOutages', 'updateInfraNetwork', 'highlightIsp', 'highlightIoda', 'highlightDc', 'highlightIxp']) {
+      expect(deck, method).not.toContain(method);
+      expect(container, method).not.toContain(method);
+    }
+    for (const name of ['LYR_NET_', 'LYR_DC_', 'LYR_IXP_', 'SRC_NET_', 'SRC_DC', 'SRC_IXP']) {
+      expect(deck, name).not.toContain(name);
+      expect(constants, name).not.toContain(name);
+    }
+    for (const leftover of ['triangle-dc', 'square-ixp', 'buildDatacenterPopupHtml', 'outageFocusGroups', 'explicitOpacityLayers']) {
+      expect(deck, leftover).not.toContain(leftover);
+    }
+  });
+
+  it('plus de style de l’ancien panneau ni de type de l’ancien état réseau', () => {
+    expect(read('src/styles/main.css')).not.toContain('.outages-panel-modal');
+    const types = read('src/types/index.ts');
+    for (const t of ['NetworkOutageState', 'InfraNetworkState', 'IodaOutageEvent', 'IspBgpStatus', 'InfraStatusLevel', 'InfraIncident', 'DatacenterStatus', 'IxpStatus', 'CloudflareRadarAnomaly']) {
+      expect(types, t).not.toMatch(new RegExp(`\\b(interface|type) ${t}\\b`));
+    }
+  });
+
+  it('test de fumée de production : routes Internet et Cloud (P38)', () => {
+    const smoke = read('.github/workflows/smoke.yml');
+    expect(smoke).toContain('"/api/outages/internet;200"');
+    expect(smoke).toContain('"/api/outages/cloud;200"');
+  });
+
+  it('README : routes Internet et Cloud avec leurs cadences, plus de route retirée ni de BGPView', () => {
+    const readme = read('README.md');
+    const row = (route: string): string => readme.split('\n').find((l) => l.includes(`\`${route}\``)) ?? '';
+    expect(row('/api/outages/internet')).toMatch(/\| 10 min \|$/);
+    expect(row('/api/outages/cloud')).toMatch(/\| 30 min \|$/);
+    expect(readme).not.toMatch(/\/api\/internet-outages|\/api\/infra-network|BGPView|OutagesPanel\.ts/);
+    // Lignes des pannes réseau (tableaux, baromètre, jeton) : ni tiret cadratin ni « temps réel ».
+    const outageLines = readme.split('\n').filter((l) => /^\| (Power|Telecom|Internet|Cloud) outages|outage panels|Network barometer|CLOUDFLARE_RADAR_TOKEN|outages-(internet|cloud)\.ts/.test(l));
+    expect(outageLines.length).toBe(13);
+    for (const l of outageLines) expect(l).not.toMatch(/\u2014|real-time|temps réel/i);
+  });
+
+  it('documentation du jeton Cloudflare Radar : script, vérification, retrait ; exemple d’environnement qui renvoie au script', () => {
+    const doc = read('docs/deployment-oracle.md');
+    const start = doc.indexOf('## (j) Jeton Cloudflare Radar');
+    expect(start).toBeGreaterThan(-1);
+    const end = doc.indexOf('\n## ', start + 1);
+    const section = doc.slice(start, end === -1 ? undefined : end);
+    expect(section).toContain('bash deploy/oracle/set-radar-token.sh');
+    expect(section).toContain('sudo systemctl restart fm-api');
+    expect(section).not.toMatch(/temps réel/i);
+    expect(section).toContain('pbpaste | bash deploy/oracle/set-radar-token.sh');
+    expect(section).toContain('.radar.configured');
+    // Vérification hors cache CDN : fm-api interrogé sur la VM ; le cache du domaine public est nommé.
+    expect(section).toContain("'curl -s http://127.0.0.1:3000/api/outages/internet'");
+    expect(section).toContain('s-maxage=300');
+    expect(section).not.toContain('\u2014');
+    expect(read('deploy/oracle/francemonitor.env.example')).toMatch(/Posé par deploy\/oracle\/set-radar-token\.sh/);
   });
 });

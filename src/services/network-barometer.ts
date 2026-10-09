@@ -2,26 +2,27 @@
  * network-barometer.ts — Baromètre composite santé infrastructure réseau France
  *
  * Agrège les caches existants (sans nouveaux appels réseau) :
- *  - Ecowatt (électricité)   30%
- *  - IODA/BGP (internet)     25%
- *  - ARCEP (télécom)         15%
- *  - Cloud/Web               15%  ← statuts datacenters (infra-network.ts)
- *  - Météo spatiale          10%
- *  - Tension cyber            5%
+ *  - Ecowatt (électricité)          30%
+ *  - BGP (visibilité RIPEstat)      25%
+ *  - ARCEP (télécom)                15%
+ *  - Cloud (zones françaises des pages d’état)  15%
+ *  - Météo spatiale                 10%
+ *  - Tension cyber                   5%
  */
 
-import type { CyberResponse, EcowattResponse, TelecomOutagesResponse } from '../types/index.ts';
+import type { CloudOutagesResponse, CyberResponse, EcowattResponse, InternetOutagesResponse, TelecomOutagesResponse } from '../types/index.ts';
 import type { SpaceWeatherData } from './space-weather.ts';
-import type { InfraNetworkState } from '../types/index.ts';
 import type { EolienLive } from './eolien/types.ts';
 import { fetchEcowatt } from './ecowatt.ts';
 import { ecowattToday } from './ecowatt-official.ts';
-import { fetchNetworkOutages } from './internet-outages.ts';
+import { fetchInternet } from './outages-internet.ts';
+import { fetchCloud } from './outages-cloud.ts';
+import { cloudLive, isDeducedZone, telecomIfFresh } from './outages-levels.ts';
 import { fetchTelecom } from './outages-telecom.ts';
 import { fetchSpaceWeather } from './space-weather.ts';
 import { fetchCyber } from './sovereignty-cyber.ts';
 import { servedCyber } from './sovereignty-inputs.ts';
-import { fetchInfraNetwork } from './infra-network.ts';
+import { isSovereigntyDataLate } from './sovereignty-levels.ts';
 import { computeCyberPressureAssessment } from './cyber-threat-scoring.ts';
 
 // ── Types exportés ────────────────────────────────────────────────────────────
@@ -88,6 +89,50 @@ export function normalizeTelecom(r: TelecomOutagesResponse | null): number | nul
   return Math.max(0, Math.round(100 - r.summary.recent / 50));
 }
 
+/**
+ * Entrées télécom du baromètre (P17) : le fichier ARCEP passe par telecomIfFresh, comme pour le score France. Fichier en retard, non lu ou
+ * sans résumé : composante null et aucune panne versée au contexte cyber (`undefined`, jamais un 0 présenté comme mesuré).
+ */
+export function telecomInputs(r: TelecomOutagesResponse | null, now: number): { score: number | null; outageCount: number | undefined } {
+  const fresh = telecomIfFresh(r, now);
+  return { score: normalizeTelecom(fresh), outageCount: fresh?.summary?.recent ?? undefined };
+}
+
+/**
+ * Santé BGP : visibilité minimale des grands réseaux français relevée par RIPEstat (spec § 3.1), arrondie. null si aucun relevé, aucun
+ * réseau, ou instantané en retard (règle RIPEstat : query_time + 10 h, P15) : jamais un 100 « par défaut ».
+ */
+export function normalizeBgp(r: InternetOutagesResponse | null, now: number = Date.now()): number | null {
+  const ripe = r?.ripe ?? null;
+  if (ripe === null || ripe.networks.length === 0 || isSovereigntyDataLate('ripestat', ripe.snapshotAt, now)) return null;
+  return Math.round(Math.min(...ripe.networks.map((n) => n.visibilityPct)));
+}
+
+/**
+ * Santé Cloud : part des zones françaises saines (opérationnelles ou en maintenance) parmi toutes les zones suivies des fournisseurs à
+ * jour (cloudLive, R41 : dernière lecture réussie de moins de 2 h ; un fournisseur en retard ou jamais lu est exclu), les zones de statut
+ * inconnu comprises au dénominateur (spec § 3.2, P16), × 100 arrondi. Une zone sans état publié (GCP, AWS : « opérationnelle » par
+ * absence d'incident, isDeducedZone) n'est comptée nulle part ; un incident publié l'y fait entrer, non saine (ruling B9, pas de vert
+ * déduit). null sans zone : jamais un 100 « par défaut ».
+ */
+export function normalizeCloud(r: CloudOutagesResponse | null, now: number = Date.now()): number | null {
+  if (r === null) return null;
+  const fresh = cloudLive(r, now).freshProviders;
+  const zones = r.providers
+    .filter((p) => fresh.includes(p.provider))
+    .flatMap((p) => p.zones.filter((z) => !isDeducedZone(p.provider, z)));
+  if (zones.length === 0) return null;
+  const healthy = zones.filter((z) => z.status === 'operational' || z.status === 'maintenance').length;
+  return Math.round((100 * healthy) / zones.length);
+}
+
+/** Contexte cyber : incidents France en cours des fournisseurs à jour (cloudLive) ; undefined si aucun n'est à jour (source muette). */
+export function cloudIncidentCount(r: CloudOutagesResponse | null, now: number = Date.now()): number | undefined {
+  if (r === null) return undefined;
+  const live = cloudLive(r, now);
+  return live.freshProviders.length === 0 ? undefined : live.incidents.length;
+}
+
 /** Santé « météo spatiale » ; null si NOAA n'a jamais été lu : composante indisponible, jamais un 100 « calme » par défaut. */
 export function normalizeSpace(data: SpaceWeatherData | null): number | null {
   if (data === null) return null;
@@ -95,20 +140,13 @@ export function normalizeSpace(data: SpaceWeatherData | null): number | null {
   return Math.max(0, 100 - Math.min(data.kpIndex * 12, 100));
 }
 
-function normalizeCloud(state: InfraNetworkState): number {
-  if (state.datacenters.length === 0) return 100;
-  const scoreMap: Record<string, number> = {
-    operational: 100, unknown: 100, maintenance: 90,
-    degraded: 60, partial: 40, outage: 0,
-  };
-  const scores = state.datacenters.map(dc => scoreMap[dc.status] ?? 100);
-  return Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
-}
-
-/** Santé cyber (5 %) : 100 moins la pression cyber consolidée, même fonction que le pilier Sécurité (arbitrage 11). */
+/**
+ * Santé cyber (5 %) : 100 moins la pression cyber consolidée, même fonction que le pilier Sécurité (arbitrage 11). Un compte `undefined`
+ * (source muette ou en retard) ne pèse pas.
+ */
 export function normalizeCyber(
   cyber: CyberResponse,
-  context: { telecomOutageCount: number; cloudIncidentCount: number },
+  context: { telecomOutageCount?: number; cloudIncidentCount?: number },
   now: number = Date.now(),
 ): number {
   // Pression consolidée : 0 = calme, 100 = crise ; inversée pour obtenir un score de santé.
@@ -166,31 +204,33 @@ export async function fetchNetworkBarometer(): Promise<NetworkBarometerResult> {
   if (_cache && Date.now() - _cache.ts < CACHE_TTL_MS) return _cache.data;
 
   // Fetch toutes les sources en parallèle — échec partiel → null pour cette source
-  const [ecowattRes, bgpRes, telecomRes, spaceRes, cyberRes, infraRes] = await Promise.allSettled([
+  const [ecowattRes, internetRes, telecomRes, spaceRes, cyberRes, cloudRes] = await Promise.allSettled([
     fetchEcowatt(),
-    fetchNetworkOutages(),
+    fetchInternet(null),
     fetchTelecom(null),
     fetchSpaceWeather(),
     fetchCyber(null),
-    fetchInfraNetwork(),
+    fetchCloud(null),
   ]);
+  const now = Date.now();
 
   // Vigilance cyber : réponse de /api/sovereignty/cyber, CERT-FR lu et à l'heure (fetchCyber ne rejette jamais) ; sinon composante
   // indisponible, jamais une santé de 100 par défaut.
-  const cyber = cyberRes.status === 'fulfilled' ? servedCyber(cyberRes.value.cyber.data, Date.now()) : null;
-  const telecomData = telecomRes.status === 'fulfilled' ? telecomRes.value.telecom.data : null;
-  const telecomOutageCount = telecomData?.summary?.recent ?? 0;
-  const cloudIncidentCount = infraRes.status === 'fulfilled' && infraRes.value !== null
-    ? infraRes.value.datacenters.filter((dc) => dc.status !== 'operational' && dc.status !== 'unknown').length
-    : 0;
+  const cyber = cyberRes.status === 'fulfilled' ? servedCyber(cyberRes.value.cyber.data, now) : null;
+  // Les services rendent des états (créneau de lecture) : la réponse est `.data`, null si rien n'a été lu (P4).
+  const telecom = telecomInputs(telecomRes.status === 'fulfilled' ? telecomRes.value.telecom.data : null, now);
+  const internet = internetRes.status === 'fulfilled' ? internetRes.value.internet.data : null;
+  const cloud = cloudRes.status === 'fulfilled' ? cloudRes.value.cloud.data : null;
 
   const scores: Partial<Record<WeightKey, number | null>> = {
     elec:    ecowattRes.status  === 'fulfilled' ? normalizeElec(ecowattRes.value)       : null,
-    bgp:     bgpRes.status      === 'fulfilled' ? bgpRes.value.nationalScore            : null,
-    telecom: normalizeTelecom(telecomData),
-    cloud:   infraRes.status === 'fulfilled' && infraRes.value !== null ? normalizeCloud(infraRes.value) : null,
+    bgp:     normalizeBgp(internet, now),
+    telecom: telecom.score,
+    cloud:   normalizeCloud(cloud, now),
     space:   spaceRes.status    === 'fulfilled' ? normalizeSpace(spaceRes.value)        : null,
-    cyber:   cyber !== null ? normalizeCyber(cyber, { telecomOutageCount, cloudIncidentCount }) : null,
+    cyber:   cyber !== null
+      ? normalizeCyber(cyber, { telecomOutageCount: telecom.outageCount, cloudIncidentCount: cloudIncidentCount(cloud, now) }, now)
+      : null,
     wind:    _eolienLive !== null ? normalizeWind(_eolienLive) : null,
   };
 

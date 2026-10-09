@@ -69,6 +69,8 @@ jobs:
             "/api/finance/market;200"
             "/api/outages/telecom;200"
             "/api/outages/power;200"
+            "/api/outages/internet;200"
+            "/api/outages/cloud;200"
             "/api/rte-iip;200"
             "/api/ministers/composition;200"
             "/api/energy/drom;200"

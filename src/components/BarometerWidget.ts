@@ -10,7 +10,7 @@ import type { ISNRSynthesisResult } from '../services/isnr-synthesis.ts';
 import type { NuclearState } from '../types/index.ts';
 import type { EolienLive } from '../services/eolien/types.ts';
 import { infraStatusLevel, levelHex, levelLabel } from '../services/vigilance.ts';
-import { nuclearInfraScore, windInfraScore } from '../services/infra-continuity.ts';
+import { INFRA_LABELS, nuclearInfraScore, windInfraScore } from '../services/infra-continuity.ts';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const RADIUS = 22;
@@ -414,7 +414,7 @@ export class BarometerWidget {
       ['Nucléaire (RTE)',       this.currentNuclear?.score ?? null],
       ['Éolien (éCO2mix)',      windScore],
       ['Telecom ARCEP',         details.telecom ?? null],
-      ['Cloud / Web',           details.cloud  ?? null],
+      [INFRA_LABELS.cloud.fr,   details.cloud  ?? null],
       ['Météo Spatiale',        details.space  ?? null],
       ['Résilience cyber infra', details.cyber  ?? null, 'cyber'],
     ];

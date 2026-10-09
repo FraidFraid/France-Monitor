@@ -206,8 +206,8 @@ describe('panneaux Souveraineté : un panneau par couche (contrats § 4.2 à 4.4
     expect(css).toContain('  .defense-panel-modal,\n  .connectivity-panel-modal,');
     expect(css).toContain('  .defense-panel-modal::before,\n  .connectivity-panel-modal::before,');
     expect(css).toContain('  #app.ui-v2 .defense-panel-modal,\n  #app.ui-v2 .connectivity-panel-modal,');
-    // Les panneaux Pannes réseau Télécoms et Électricité (spec 2026-10-08) partagent ces règles.
-    expect(css).toContain(':is(.defense-panel-modal, .connectivity-panel-modal, .cyber-panel-modal, .outages-telecom-panel-modal, .outages-power-panel-modal).lp .fmk-level .fmk-ctx { white-space: normal; }');
+    // Les quatre panneaux Pannes réseau (spec 2026-10-08) partagent ces règles.
+    expect(css).toContain(':is(.defense-panel-modal, .connectivity-panel-modal, .cyber-panel-modal, .outages-telecom-panel-modal, .outages-power-panel-modal, .outages-internet-panel-modal, .outages-cloud-panel-modal).lp .fmk-level .fmk-ctx { white-space: normal; }');
     expect(css).not.toMatch(/cyber-bento|cyber-alert-item|cyber-cve-badge|cyber-odometer|cyber-ring-container|cyber-warning|@keyframes cyber-pulse|Responsive adjustments for cyber panel/);
     expect(css).toContain('@keyframes pulse {');
   });

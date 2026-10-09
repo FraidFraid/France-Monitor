@@ -7,7 +7,11 @@ import { classifyTelecom, dedupeSites, normalizeArcepFeature, summarizeTelecom }
 import {
   buildPower, iipTransmission, iipUnits, latestVersions, mergeUnits, normalizeEdfLine, parseIipFeed, seiSignal,
 } from '../../../api/_lib/outages-power.js';
-import type { PowerOutagesResponse, PowerUnitOutage, TelecomOutagesResponse, TelecomSite } from '../../types/index.ts';
+import { normalizeIodaEvent, normalizeRadar } from '../../../api/_lib/outages-internet.js';
+import {
+  buildCloud, fromAws, fromCloudflare, fromGcp, fromStatuspage, isOvhFrance, outscaleFrance, ovhTitleFrance, scalewayFrance,
+} from '../../../api/_lib/outages-cloud.js';
+import type { CloudOutagesResponse, InternetEvent, InternetOutagesResponse, PowerOutagesResponse, PowerUnitOutage, RadarItem, TelecomOutagesResponse, TelecomSite } from '../../types/index.ts';
 
 const fx = (name: string): string => readFileSync(resolve(import.meta.dirname, '../../../tests/fixtures/outages', name), 'utf8');
 
@@ -45,4 +49,63 @@ export function powerFixtureResponse(): PowerOutagesResponse {
     history: [{ day: '2026-10-03', unplannedMw: 6340 }, { day: '2026-10-08', unplannedMw: 2985 }], errors: [],
   }, now) as PowerOutagesResponse;
   return { ...built, edfUpdatedAt: '2026-10-08T19:00:00.000Z', edfReadAt: '2026-10-08T19:40:00.000Z', iipPublishedAt: '2026-10-08T19:24:36.000Z', iipReadAt: '2026-10-08T19:50:00.000Z' };
+}
+
+/** Heure des vues Internet : 08/10/2026 22 h 30 à Paris. */
+export const INTERNET_FIXTURE_NOW = Date.parse('2026-10-08T20:30:00Z');
+
+/**
+ * Réponse Internet du 08/10/2026 : événements IODA du jeu d'essai (Scaleway ouvert depuis plus de 7 jours, six départements terminés),
+ * anomalies Cloudflare Radar (une en cours : Free, AS12322) et rappel RIPEstat de 16 h UTC. Lecture IODA à 20 h 26 UTC, Radar à 20 h 20.
+ */
+export function internetFixtureResponse(): InternetOutagesResponse {
+  const until = 1791491192;
+  const raw = [...(JSON.parse(fx('ioda-events-as12876-30j.json')) as { data: unknown[] }).data, ...(JSON.parse(fx('ioda-events-regions-30j.json')) as { data: unknown[] }).data];
+  const events = raw.map((e) => normalizeIodaEvent(e, until) as InternetEvent | null).filter((e): e is InternetEvent => e !== null);
+  return {
+    readAt: '2026-10-08T20:26:32.000Z', iodaReadAt: '2026-10-08T20:26:32.000Z',
+    radar: {
+      configured: true, readAt: '2026-10-08T20:20:00.000Z',
+      items: normalizeRadar(JSON.parse(fx('radar-traffic-anomalies-fr.json')), JSON.parse(fx('radar-outages-fr.json'))) as RadarItem[],
+    },
+    events, ripe: { snapshotAt: '2026-10-08T16:00:00.000Z', networks: [{ asn: 3215, name: 'Orange', visibilityPct: 100 }, { asn: 12322, name: 'Free', visibilityPct: 100 }] },
+    errors: [],
+  };
+}
+
+/** Heure des vues Cloud : 08/10/2026 22 h à Paris. */
+export const CLOUD_FIXTURE_NOW = Date.parse('2026-10-08T20:00:00Z');
+
+/**
+ * Réponse Cloud du 08/10/2026 : les quatre pages OVHcloud, Scaleway, Outscale, Cloudflare, Google Cloud et AWS du jeu d'essai, Azure sans
+ * état France, et un référentiel fictif (deux centres de données, deux points d'échange d'essai). Dernière lecture de chaque fournisseur
+ * lu posée à 19 h 50 UTC (le retard se mesure dessus, P8), quelle que soit la date de sa page.
+ */
+export function cloudFixtureResponse(): CloudOutagesResponse {
+  const now = CLOUD_FIXTURE_NOW;
+  const ovh = { component: isOvhFrance, title: ovhTitleFrance };
+  const pages = ['ovh-public-cloud-summary.json', 'ovh-web-cloud-summary.json', 'ovh-network-summary.json', 'ovh-bare-metal-servers-summary.json']
+    .map((name) => fromStatuspage('ovhcloud', 'OVHcloud', JSON.parse(fx(name)), ovh, now));
+  const readAt = '2026-10-08T19:50:00.000Z';
+  const built = buildCloud({
+    statuspages: [
+      ...pages,
+      fromStatuspage('scaleway', 'Scaleway', JSON.parse(fx('scaleway-summary.json')), scalewayFrance, now),
+      fromStatuspage('outscale', 'Outscale', JSON.parse(fx('outscale-summary.json')), outscaleFrance, now),
+    ],
+    cloudflare: fromCloudflare(JSON.parse(fx('cloudflare-components.json'))), gcp: fromGcp(JSON.parse(fx('gcp-incidents.json')), now), aws: fromAws(fx('aws-all.rss'), now),
+    reference: {
+      generatedAt: readAt,
+      datacenters: [
+        { id: 'essai-a', name: 'Centre de données d’essai A', operator: null, city: 'Paris', lat: 48.86, lon: 2.35, stage: 'existant', power: null, source: 'OpenStreetMap' },
+        { id: 'essai-b', name: 'Centre de données d’essai B', operator: null, city: 'Lyon', lat: 45.76, lon: 4.84, stage: 'en projet', power: null, source: 'uMap' },
+      ],
+      exchanges: [
+        { id: 1, name: 'Point d’échange d’essai 1', city: 'Paris', url: 'https://www.peeringdb.com/ix/1' },
+        { id: 2, name: 'Point d’échange d’essai 2', city: 'Lyon', url: 'https://www.peeringdb.com/ix/2' },
+      ],
+    },
+    readAt, errors: [],
+  }, now) as CloudOutagesResponse;
+  return { ...built, providers: built.providers.map((p) => (p.readAt === null ? p : { ...p, readAt })) };
 }

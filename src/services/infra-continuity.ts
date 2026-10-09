@@ -32,13 +32,14 @@ export const INFRA_NOTE: Record<'fr' | 'en', string> = {
   en: 'Bounded continuity score. The cyber line measures infrastructure resilience, not national cyber pressure.',
 };
 
-const LABELS: Record<InfraKey, Record<'fr' | 'en', string>> = {
+/** Libellés des lignes de continuité : source unique (fiche France et infobulle du baromètre). */
+export const INFRA_LABELS: Readonly<Record<InfraKey, Record<'fr' | 'en', string>>> = {
   bgp: { fr: 'BGP / Internet', en: 'BGP / Internet' },
   elec: { fr: 'Électricité (Écowatt)', en: 'Electricity (Ecowatt)' },
   nuclear: { fr: 'Nucléaire (RTE)', en: 'Nuclear (RTE)' },
   wind: { fr: 'Éolien (éCO2mix)', en: 'Wind (éCO2mix)' },
   telecom: { fr: 'Télécom (ARCEP)', en: 'Telecom (ARCEP)' },
-  cloud: { fr: 'Cloud / Web', en: 'Cloud / Web' },
+  cloud: { fr: 'Cloud (zones France)', en: 'Cloud (France zones)' },
   space: { fr: 'Météo spatiale', en: 'Space weather' },
   cyber: { fr: 'Résilience cyber infra', en: 'Infra cyber resilience' },
 };
@@ -92,5 +93,5 @@ export function infraRows(input: InfraInput, lang: 'fr' | 'en'): InfraRow[] {
     ['space', d.space ?? null, null, null],
     ['cyber', d.cyber ?? null, null, null],
   ];
-  return values.map(([key, value, note, level]) => ({ key, label: LABELS[key][lang], value, note, level }));
+  return values.map(([key, value, note, level]) => ({ key, label: INFRA_LABELS[key][lang], value, note, level }));
 }
