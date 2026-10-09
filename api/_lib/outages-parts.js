@@ -1,18 +1,19 @@
 // api/_lib/outages-parts.js : cadence et garde par partie, communes aux collecteurs des panneaux Pannes réseau (Électricité, Internet, Cloud).
 // Une partie (une source ou un fournisseur) est relue quand elle est due, d'après l'heure de sa dernière lecture RÉUSSIE ; en échec, elle
-// garde ses dernières données, nomme son erreur et est retentée après 5 min. Module neutre : aucun collecteur n'importe un autre.
+// garde ses dernières données, nomme son erreur et est retentée après 5 min (ou après le délai propre de la partie, `retryMs`). Module
+// neutre : aucun collecteur n'importe un autre.
 
 const MINUTE_MS = 60_000;
 export const RETRY_MS = 5 * MINUTE_MS;
 
 /**
- * Une partie est due si elle n'a jamais été lue, si sa dernière lecture RÉUSSIE date de l'intervalle (1 min de tolérance), ou 5 min
- * après un échec (un échec n'avance jamais la date de lecture).
+ * Une partie est due si elle n'a jamais été lue, si sa dernière lecture RÉUSSIE date de l'intervalle (1 min de tolérance), ou `retryMs`
+ * après un échec (5 min par défaut ; un échec n'avance jamais la date de lecture).
  */
-export function partDue(part, interval, now) {
+export function partDue(part, interval, now, retryMs = RETRY_MS) {
   if (!part) return true;
   const failed = part.failedAt ? Date.parse(part.failedAt) : Number.NaN;
-  if (Number.isFinite(failed)) return now - failed >= RETRY_MS;
+  if (Number.isFinite(failed)) return now - failed >= retryMs;
   const read = part.readAt ? Date.parse(part.readAt) : Number.NaN;
   return !Number.isFinite(read) || now - read >= interval - MINUTE_MS;
 }

@@ -4,7 +4,10 @@
 // (arbitrage 6). Référentiel (centres de données, points d'échange) servi comme inventaire (P5), jamais comme un état.
 // Chaque page d'état (OVHcloud en compte quatre) est une partie : lue toutes les 30 min d'après l'heure de sa dernière lecture RÉUSSIE
 // (horloge du serveur, comme `edfReadAt`) ; une page en échec garde ses dernières données, nomme son erreur et est retentée après 5 min
-// (outages-parts.js). Le référentiel est une partie à part (6 h, la durée de ses caches). Dernier relevé gardé en KV, servi daté.
+// (outages-parts.js). Le référentiel a trois sous-sources (DRIEAT, uMap, PeeringDB), chacune avec son état : relue toutes les 6 h (la durée
+// de ses caches) après une lecture réussie, retentée au plus toutes les 6 h après un échec (le WFS DRIEAT est en panne côté serveur depuis
+// le 09/10/2026 : jamais relu toutes les 5 min, et uMap n'est pas relu parce que DRIEAT a échoué). Le KV garde les parties une seule fois ;
+// la réponse en est recalculée à chaque lecture.
 import { fetchOfficialIdfDatacenters, fetchUmapProjectDatacenters, mergeDatacenters } from '../_shared/infra-network-datacenters.js';
 import { kvGetJson, kvSetJson } from './kv-history.js';
 import { failed, partDue, succeeded } from './outages-parts.js';
@@ -273,25 +276,70 @@ function referenceSites(idf, umap) {
     });
 }
 
-/**
- * Lit le référentiel. Chaque lecture qui échoue est nommée et le dernier résultat connu est gardé à sa place ; sans résultat connu, le
- * référentiel est servi sans cette lecture. Ne lève jamais.
- */
-async function readReference(now, previous) {
-  const errors = [];
-  const read = async (label, fn) => { try { return await fn(); } catch (err) { errors.push(sourceError(label, err)); return null; } };
-  // `force` : la cadence de la partie (6 h) remplace les caches en mémoire des deux fonctions.
-  const idf = await read('Référentiel (DRIEAT)', () => fetchOfficialIdfDatacenters(strictFetch, { force: true }));
-  const umap = await read('Référentiel (uMap)', () => fetchUmapProjectDatacenters(strictFetch, { force: true }));
+/** Erreur déjà nommée par sa source (« PeeringDB : HTTP 503 »). */
+class NamedError extends Error {}
+
+/** Points d'échange PeeringDB (cache partagé de 24 h) : `dataAt` = heure de la lecture PeeringDB servie ; lève l'erreur déjà nommée. */
+async function readExchanges(now) {
   const ix = await loadExchanges(now);
-  errors.push(...ix.errors);
-  const complete = idf !== null && umap !== null;
+  if (!ix.exchanges) throw new NamedError(ix.errors.join(' ; '));
+  return { dataAt: ix.exchanges.readAt, items: ix.exchanges.items.map((x) => ({ id: x.id, name: x.name, city: x.city, url: x.url })) };
+}
+
+/**
+ * Sous-sources du référentiel : chacune est une partie (outages-parts.js) relue toutes les 6 h, et retentée au plus toutes les 6 h après
+ * un échec. `force` : la cadence de la partie remplace les caches en mémoire des deux fonctions. `dataAt` : date de la donnée servie.
+ */
+const REFERENCE_PARTS = [
+  {
+    key: 'drieat', label: 'Référentiel (DRIEAT)', empty: { rows: [] },
+    read: async (now) => ({ dataAt: new Date(now).toISOString(), rows: await fetchOfficialIdfDatacenters(strictFetch, { force: true }) }),
+  },
+  {
+    key: 'umap', label: 'Référentiel (uMap)', empty: { rows: null },
+    read: async (now) => ({ dataAt: new Date(now).toISOString(), rows: await fetchUmapProjectDatacenters(strictFetch, { force: true }) }),
+  },
+  { key: 'peeringdb', label: 'PeeringDB', empty: { items: [] }, read: readExchanges },
+];
+
+/** Sous-partie du référentiel gardée en KV (objet), sinon undefined (jamais lue, ou relevé d'une forme antérieure). */
+function referencePart(parts, key) {
+  const ref = parts.reference;
+  const part = ref && typeof ref === 'object' ? ref[key] : undefined;
+  return part && typeof part === 'object' ? part : undefined;
+}
+const referenceDue = (parts, s, now) => partDue(referencePart(parts, s.key), REFERENCE_INTERVAL_MS, now, REFERENCE_INTERVAL_MS);
+
+/** Lit les sous-sources dues ; chacune en échec garde ses dernières données et nomme son erreur. Ne lève jamais. */
+async function collectReference(parts, now, attemptedAt) {
+  const reference = Object.fromEntries(REFERENCE_PARTS.map((s) => [s.key, referencePart(parts, s.key)]).filter(([, v]) => v !== undefined));
+  await Promise.all(REFERENCE_PARTS.filter((s) => referenceDue(parts, s, now)).map(async (s) => {
+    try {
+      reference[s.key] = succeeded(await s.read(now), attemptedAt);
+    } catch (err) {
+      const message = err instanceof NamedError ? err.message : sourceError(s.label, err);
+      reference[s.key] = failed(reference[s.key], { ...s.empty, dataAt: null, readAt: null }, message, attemptedAt);
+    }
+  }));
+  return reference;
+}
+
+/**
+ * Référentiel servi : sites et points d'échange des dernières lectures réussies de chaque sous-source ; daté par la plus récente d'entre
+ * elles (`generatedAt`, null si aucune n'a jamais réussi) ; pannes nommées par sous-source.
+ */
+function referenceFromParts(parts) {
+  const read = REFERENCE_PARTS.map((s) => referencePart(parts, s.key)).filter((p) => p !== undefined && typeof p.readAt === 'string');
+  const drieat = referencePart(parts, 'drieat');
+  const umap = referencePart(parts, 'umap');
+  const peeringdb = referencePart(parts, 'peeringdb');
   return {
-    data: {
-      datacenters: complete || !previous ? referenceSites(idf ?? [], umap) : previous.datacenters,
-      exchanges: ix.exchanges ? ix.exchanges.items.map((x) => ({ id: x.id, name: x.name, city: x.city, url: x.url })) : previous?.exchanges ?? [],
+    reference: {
+      generatedAt: read.map((p) => (typeof p.dataAt === 'string' ? p.dataAt : p.readAt)).sort().at(-1) ?? null,
+      datacenters: referenceSites(Array.isArray(drieat?.rows) ? drieat.rows : [], umap?.rows ?? null),
+      exchanges: Array.isArray(peeringdb?.items) ? peeringdb.items : [],
     },
-    errors,
+    errors: REFERENCE_PARTS.map((s) => referencePart(parts, s.key)?.error).filter((e) => typeof e === 'string' && e !== ''),
   };
 }
 
@@ -310,12 +358,11 @@ function bodyFromParts(parts) {
     else if (s.provider === 'gcp') gcp = p;
     else if (s.provider === 'aws') aws = p;
   }
-  const ref = parts.reference;
-  errors.push(...(ref?.errors ?? []));
+  const ref = referenceFromParts(parts);
+  errors.push(...ref.errors);
   const reads = Object.values(readAts);
   return buildCloud({
-    statuspages, cloudflare, gcp, aws, readAts, readAt: reads.length > 0 ? reads.sort().at(-1) : null,
-    reference: { generatedAt: ref?.readAt ?? null, datacenters: ref?.datacenters ?? [], exchanges: ref?.exchanges ?? [] }, errors: [...new Set(errors)],
+    statuspages, cloudflare, gcp, aws, readAts, readAt: reads.length > 0 ? reads.sort().at(-1) : null, reference: ref.reference, errors: [...new Set(errors)],
   });
 }
 
@@ -332,25 +379,21 @@ export async function collectCloud(now = Date.now()) {
       parts[s.key] = failed(parts[s.key], { ...EMPTY_PART[s.kind](s), readAt: null }, sourceError(s.errorLabel, err), attemptedAt);
     }
   }));
-  if (partDue(parts.reference, REFERENCE_INTERVAL_MS, now)) {
-    const { data, errors } = await readReference(now, parts.reference);
-    parts.reference = errors.length === 0
-      ? { ...succeeded(data, attemptedAt), errors: [] }
-      : { ...failed(parts.reference, { readAt: null, datacenters: [], exchanges: [] }, errors.join(' ; '), attemptedAt), ...data, errors };
-  }
+  if (REFERENCE_PARTS.some((s) => referenceDue(parts, s, now))) parts.reference = await collectReference(parts, now, attemptedAt);
 
-  const body = bodyFromParts(parts);
-  await kvSetJson(CLOUD_LAST_KEY, { attemptedAt, parts, body }, LAST_TTL_SEC, now);
-  return body;
+  // Les parties seules sont gardées (le référentiel une seule fois) ; la réponse en est recalculée.
+  await kvSetJson(CLOUD_LAST_KEY, { attemptedAt, parts }, LAST_TTL_SEC, now);
+  return bodyFromParts(parts);
 }
 
-const anyDue = (parts, now) => SOURCES.some((s) => partDue(parts[s.key], CLOUD_INTERVAL_MS, now)) || partDue(parts.reference, REFERENCE_INTERVAL_MS, now);
+const anyDue = (parts, now) => SOURCES.some((s) => partDue(parts[s.key], CLOUD_INTERVAL_MS, now)) || REFERENCE_PARTS.some((s) => referenceDue(parts, s, now));
+const storedParts = (last) => (last && typeof last === 'object' && last.parts && typeof last.parts === 'object' ? last.parts : null);
 
 /** Dernier relevé, après une collecte si une partie est due ; jamais deux à la fois. */
 export function ensureCloudFresh(now = Date.now()) {
   const turn = queue.then(async () => {
-    const last = await kvGetJson(CLOUD_LAST_KEY, now);
-    if (last?.body && last.parts && !anyDue(last.parts, now)) return last.body;
+    const parts = storedParts(await kvGetJson(CLOUD_LAST_KEY, now));
+    if (parts && !anyDue(parts, now)) return bodyFromParts(parts);
     return collectCloud(now);
   });
   queue = turn.then(() => undefined, () => undefined);
@@ -359,7 +402,7 @@ export function ensureCloudFresh(now = Date.now()) {
 
 /** Relevé gardé, sans attendre la collecte en cours, avec `note`. */
 export async function storedCloud(now, note) {
-  const last = await kvGetJson(CLOUD_LAST_KEY, now);
-  const body = last?.body ?? emptyCloud();
+  const parts = storedParts(await kvGetJson(CLOUD_LAST_KEY, now));
+  const body = parts ? bodyFromParts(parts) : emptyCloud();
   return { ...body, errors: [...body.errors, note] };
 }

@@ -269,11 +269,15 @@ describe('collecte', () => {
     expect(r.elsewhere.length).toBeGreaterThanOrEqual(5);
     expect(r.maintenances.map((m) => m.title.slice(0, 5))).toEqual(expect.arrayContaining(['[RBX4', '[RBX8', '[EU-W']));
     // Le relevé est écrit en KV sous la clé du Cloud, avec une partie par page d'état et une pour le référentiel.
-    const kept = await kvGetJson(CLOUD_LAST_KEY, NOW) as { parts: Record<string, unknown>; body: unknown } | null;
+    const kept = await kvGetJson(CLOUD_LAST_KEY, NOW) as { parts: Record<string, unknown>; body?: unknown } | null;
     expect(Object.keys(kept?.parts ?? {}).sort()).toEqual([
       'aws', 'cloudflare', 'gcp', 'outscale', 'ovhcloud:bare-metal-servers', 'ovhcloud:network', 'ovhcloud:public-cloud', 'ovhcloud:web-cloud', 'reference', 'scaleway',
     ]);
-    expect(kept?.body).toEqual(r);
+    // Les parties seules sont gardées ; la réponse en est recalculée à l'identique.
+    expect(kept).not.toHaveProperty('body');
+    const served = stubFetch(route());
+    expect(await ensureCloudFresh(NOW + MIN)).toEqual(r);
+    expect(served.urls).toEqual([]);
   });
 
   it('P8 : une page OVH en échec garde ses données, nomme son erreur par page (P31), garde l’ancienne lecture ; les autres pages avancent', async () => {
@@ -362,7 +366,7 @@ describe('référentiel (inventaire, jamais un état)', () => {
     expect(sent.every((x) => x.ua === 'FranceMonitor/1.0 (+https://www.francemonitor.com)')).toBe(true);
   });
 
-  it('une lecture du référentiel en échec est nommée, les pages d’état restent servies et le référentiel gardé est resservi', async () => {
+  it('une lecture du référentiel en échec est nommée, les pages d’état restent servies et les sites gardés de DRIEAT sont resservis', async () => {
     stubFetch(route());
     await collectCloud(NOW);
     const later = NOW + 7 * 60 * MIN;
@@ -370,17 +374,52 @@ describe('référentiel (inventaire, jamais un état)', () => {
     const r = await collectCloud(later);
     expect(r.errors).toEqual(['Référentiel (DRIEAT) : HTTP 503']);
     expect(r.reference.datacenters.some((d) => d.name.startsWith('Leonix'))).toBe(true);
-    expect(r.reference.generatedAt).toBe(new Date(NOW).toISOString());   // dernière relecture COMPLÈTE
+    expect(r.reference.datacenters.some((d) => d.name === 'Projet Alpha - Marseille')).toBe(true);
+    // E4 : daté par la dernière lecture réussie d'une sous-source (uMap relu à `later`).
+    expect(r.reference.generatedAt).toBe(new Date(later).toISOString());
     expect(provider(r, 'scaleway')?.error).toBeNull();
   });
 
-  it('première lecture sans le WFS : sans date de relecture, erreur nommée, sites embarqués servis', async () => {
+  it('E4 : première lecture sans le WFS : erreur DRIEAT nommée, référentiel daté par uMap et PeeringDB (jamais n.d. avec leurs sites)', async () => {
     stubFetch(route([WFS_PREFIX]));
     const r = await collectCloud(NOW);
     expect(r.errors).toEqual(['Référentiel (DRIEAT) : HTTP 503']);
-    expect(r.reference.generatedAt).toBeNull();
+    expect(r.reference.generatedAt).toBe(new Date(NOW).toISOString());
     expect(r.reference.datacenters.some((d) => d.name.startsWith('Leonix'))).toBe(false);
-    expect(r.reference.datacenters.length).toBeGreaterThan(0);
+    expect(r.reference.datacenters.some((d) => d.name === 'Projet Alpha - Marseille')).toBe(true);
+    expect(r.reference.exchanges.length).toBeGreaterThan(5);
+  });
+
+  it('E4 : aucune sous-source jamais lue : référentiel sans date (n.d.), chaque panne nommée', async () => {
+    stubFetch(route([WFS_PREFIX, UMAP_PREFIX, PEERINGDB_IX_URL]));
+    const r = await collectCloud(NOW);
+    expect(r.reference.generatedAt).toBeNull();
+    expect(r.errors).toEqual(['Référentiel (DRIEAT) : HTTP 503', 'Référentiel (uMap) : HTTP 503', 'PeeringDB : HTTP 503']);
+  });
+
+  it('I1 : DRIEAT en panne n’est retenté qu’au bout de 6 h ; uMap, réussi, n’est pas relu avant sa cadence ; erreur gardée entre-temps', async () => {
+    stubFetch(route([WFS_PREFIX]));
+    await collectCloud(NOW);
+    for (const at of [NOW + 5 * MIN, NOW + 31 * MIN, NOW + 5 * 60 * MIN]) {
+      const log = stubFetch(route([WFS_PREFIX]));
+      const r = await ensureCloudFresh(at);
+      expect(log.urls.filter((u) => u.startsWith(WFS_PREFIX) || u.startsWith(UMAP_PREFIX) || u === PEERINGDB_IX_URL), String((at - NOW) / MIN)).toEqual([]);
+      expect(r.errors).toContain('Référentiel (DRIEAT) : HTTP 503');
+      expect(r.reference.generatedAt).toBe(new Date(NOW).toISOString());
+    }
+    const due = stubFetch(route([WFS_PREFIX]));
+    await ensureCloudFresh(NOW + 6 * 60 * MIN);
+    expect(due.urls.filter((u) => u.startsWith(WFS_PREFIX))).toHaveLength(1);
+    expect(due.urls.filter((u) => u.startsWith(UMAP_PREFIX))).toHaveLength(1);
+  });
+
+  it('I1 : le référentiel est gardé une seule fois dans le KV', async () => {
+    stubFetch(route());
+    await collectCloud(NOW);
+    const raw = [...store.entries()].find(([k]) => k.endsWith(CLOUD_LAST_KEY))?.[1] ?? '';
+    expect(raw).not.toBe('');
+    expect(raw.split('Projet Alpha - Marseille')).toHaveLength(2);
+    expect(raw.split('SFINX')).toHaveLength(2);
   });
 
   it('PeeringDB en échec : points d’échange vides et erreur nommée, jamais un compte inventé', async () => {
