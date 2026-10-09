@@ -7,7 +7,7 @@
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 
-const url = process.argv[2] ?? 'http://localhost:3001/?ui=v2';
+const url = process.argv[2] ?? 'http://localhost:3001/?view=app';
 const outDir = process.argv[3] ?? '.superpowers/screens';
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ?? 'playwright');
 const executablePath = process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';

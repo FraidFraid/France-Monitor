@@ -1,10 +1,23 @@
-// src/services/ui-mode.ts — bascule de la nouvelle interface « poste de situation » (refonte UI,
-// spec §10) : `?ui=v2` active la disposition A1 pendant les étapes 2 et 3. Sans ce paramètre,
-// l'interface actuelle reste celle par défaut. Module minuscule : main.ts et App.ts l'importent
+// src/services/ui-mode.ts : bascule de l'interface « poste de situation » (refonte UI, spec §10).
+// Depuis la validation de la refonte, la v2 « carte d'abord » (disposition A1) est l'interface par
+// défaut ; `?ui=v1` redonne l'ancienne interface. Module minuscule : main.ts et App.ts l'importent
 // statiquement sans alourdir le chemin critique.
 
+/** v2 par défaut depuis la validation de la refonte (spec 2026-09-29 § 10) ; ?ui=v1 garde l'ancienne interface. */
 export function isUiV2(search: string): boolean {
-  return new URLSearchParams(search).get('ui') === 'v2';
+  return new URLSearchParams(search).get('ui') !== 'v1';
+}
+
+/**
+ * Page d'accueil ou tableau de bord ? La page d'accueil ne s'affiche que sur « / » sans paramètre
+ * ni ancre. `?view=app` et un `?ui=v2` explicite mènent au tableau de bord. Comme la v2 est
+ * désormais la valeur par défaut de `isUiV2`, il ne faut surtout pas s'en servir ici : « / » seul
+ * est « v2 » par défaut et masquerait la page d'accueil pour tout le monde.
+ */
+export function shouldRenderLanding(pathname: string, search: string, hash: string): boolean {
+  const params = new URLSearchParams(search);
+  if (params.get('view') === 'app' || params.get('ui') === 'v2') return false;
+  return pathname === '/' && hash === '';
 }
 
 /**

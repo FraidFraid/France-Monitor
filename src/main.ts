@@ -4,7 +4,7 @@ import { renderLandingPage } from './LandingPage';
 import { renderSourcesQualityPage } from './SourcesQualityPage';
 import { registerSW } from 'virtual:pwa-register';
 import { initI18n } from './services/i18n.ts';
-import { isUiV2 } from './services/ui-mode.ts';
+import { shouldRenderLanding as isLandingRoute } from './services/ui-mode.ts';
 
 // `App` (et toute la pile carte : maplibre-gl, deck.gl, d3…) n'est chargé que
 // lorsque la route tableau de bord est effectivement rendue. La landing et la
@@ -53,12 +53,8 @@ installChunkReloadGuard();
 registerSW({ immediate: true });
 
 function shouldRenderLanding(): boolean {
-  const { pathname, searchParams, hash, search } = new URL(window.location.href);
-  // ?ui=v2 désigne le tableau de bord (nouvelle interface) : jamais la page d'accueil.
-  if (searchParams.get('view') === 'app' || isUiV2(search)) {
-    return false;
-  }
-  return pathname === '/' && hash === '';
+  const { pathname, search, hash } = new URL(window.location.href);
+  return isLandingRoute(pathname, search, hash);
 }
 
 function shouldRenderSourcesQuality(): boolean {

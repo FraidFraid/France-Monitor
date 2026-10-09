@@ -1,5 +1,32 @@
 import { describe, it, expect } from 'vitest';
-import { layerActivationOptions, layerStateStorage, legendStatusLabel, moduleInColumn, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './ui-mode.ts';
+import { isUiV2, layerActivationOptions, layerStateStorage, legendStatusLabel, moduleInColumn, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot, shouldRenderLanding } from './ui-mode.ts';
+
+describe('isUiV2 (spec 2026-09-29 § 10)', () => {
+  it('la v2 par défaut ; l’ancienne interface par ?ui=v1', () => {
+    expect(isUiV2('')).toBe(true);
+    expect(isUiV2('?view=app')).toBe(true);
+    expect(isUiV2('?ui=v2')).toBe(true);
+    expect(isUiV2('?ui=v1')).toBe(false);
+    expect(isUiV2('?view=app&ui=v1')).toBe(false);
+  });
+});
+
+describe('shouldRenderLanding (la v2 par défaut ne doit pas supprimer la page d’accueil)', () => {
+  it('« / » sans paramètre ni ancre : page d’accueil', () => {
+    expect(shouldRenderLanding('/', '', '')).toBe(true);
+  });
+
+  it('?view=app ou ?ui=v2 explicite : tableau de bord', () => {
+    expect(shouldRenderLanding('/', '?view=app', '#live')).toBe(false);
+    expect(shouldRenderLanding('/', '?view=app&ui=v1', '')).toBe(false);
+    expect(shouldRenderLanding('/', '?ui=v2', '')).toBe(false);
+  });
+
+  it('une ancre ou un autre chemin : pas de page d’accueil', () => {
+    expect(shouldRenderLanding('/', '', '#live')).toBe(false);
+    expect(shouldRenderLanding('/sources-quality', '', '')).toBe(false);
+  });
+});
 
 describe('shouldRecordIntelSnapshot (garde : pas d’écriture dans l’historique partagé avec des caches vides)', () => {
   it('v1 : toujours vrai, le tiroir décide seul de sa visibilité', () => {
