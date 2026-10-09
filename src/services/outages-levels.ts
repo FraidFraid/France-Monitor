@@ -141,6 +141,23 @@ export function internetLevel(r: InternetOutagesResponse, now: number): Vigilanc
 export const CLOUD_PROVIDER_LABEL: Readonly<Record<CloudProvider, string>> = {
   ovhcloud: 'OVHcloud', scaleway: 'Scaleway', cloudflare: 'Cloudflare', gcp: 'Google Cloud', aws: 'AWS', outscale: 'Outscale', azure: 'Azure',
 };
+/** Statut d'une zone en mots (le statut d'une zone est celui de son fournisseur, jamais un statut mondial) : carte et panneau disent pareil. */
+export const CLOUD_STATUS_WORD: Readonly<Record<CloudStatus, string>> = {
+  operational: 'opérationnel', maintenance: 'maintenance', degraded: 'performances dégradées', partial: 'panne partielle', major: 'panne majeure', unknown: 'inconnu',
+};
+/** Fournisseurs dont la zone « opérationnelle » est déduite de l'absence d'incident publié : ils ne publient aucun état par région (P4, P5, P30). */
+const CLOUD_DEDUCED_PROVIDERS: ReadonlySet<CloudProvider> = new Set(['gcp', 'aws']);
+/** Texte d'une zone déduite : jamais « opérationnel » (rien n'est publié), ni daté. */
+export const CLOUD_NO_INCIDENT_TEXT = 'aucun incident publié';
+/** Zone dont le « opérationnel » n'est qu'une absence d'incident (GCP, AWS : aucune date d'état) : sans état publié, elle n'est pas colorée comme un état. */
+export function isDeducedZone(provider: CloudProvider, zone: Pick<CloudZone, 'status' | 'updatedAt'>): boolean {
+  return zone.status === 'operational' && zone.updatedAt === null && CLOUD_DEDUCED_PROVIDERS.has(provider);
+}
+/** Mots des sources de signal d'IODA ; une source inconnue est dite par son nom brut. */
+export function internetSignalWord(signal: string): string {
+  const words: Readonly<Record<string, string>> = { bgp: 'signal BGP', 'ping-slash24': 'sonde ping', 'merit-nt': 'télescope réseau', gtr: 'trafic Google' };
+  return words[signal] ?? signal;
+}
 /** Niveau d'un incident en cours selon son impact (pastille et puces de la vue Cloud). */
 export const CLOUD_IMPACT_LEVEL: Readonly<Record<CloudIncident['impact'], VigilanceLevel>> = { none: 'jaune', minor: 'jaune', major: 'orange', critical: 'rouge' };
 /** Niveau d'une zone selon son statut ; opérationnel, maintenance et inconnu n'ont pas de niveau d'alerte. */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  CLOUD_PROVIDER_LABEL, OUTAGES_LATE_AFTER_MIN, TELECOM_DISRUPTION_THRESHOLDS, cloudLevel, cloudLive, internetLevel, internetLive, isArcepFileLate, isOutagesDataLate, powerLevel, powerUnplannedMw,
+  CLOUD_NO_INCIDENT_TEXT, CLOUD_PROVIDER_LABEL, CLOUD_STATUS_WORD, OUTAGES_LATE_AFTER_MIN, TELECOM_DISRUPTION_THRESHOLDS, cloudLevel, cloudLive, internetLevel, internetLive, internetSignalWord, isArcepFileLate, isDeducedZone, isOutagesDataLate, powerLevel, powerUnplannedMw,
   telecomIfFresh, telecomLevel,
 } from './outages-levels.ts';
 import { outagesSlotStatus } from './outages-source.ts';
@@ -259,5 +259,22 @@ describe('Cloud : pastille', () => {
   it('cloudLive : « surveillé » et « ailleurs » ne sont jamais en cours ; les maintenances ne comptent pas', () => {
     const r = cloud([cloudProvider('ovhcloud', [cloudZone('maintenance')])], [cloudIncident({ state: 'surveille' })], { elsewhere: [cloudIncident({})] });
     expect(cloudLive(r, NOW).incidents).toEqual([]);
+  });
+});
+
+describe('vocabulaire partagé par la carte et les panneaux (R25)', () => {
+  it('isDeducedZone : seul « opérationnel » sans date chez Google Cloud ou AWS est déduit de l’absence d’incident', () => {
+    expect(isDeducedZone('gcp', { status: 'operational', updatedAt: null })).toBe(true);
+    expect(isDeducedZone('aws', { status: 'operational', updatedAt: null })).toBe(true);
+    expect(isDeducedZone('gcp', { status: 'degraded', updatedAt: null })).toBe(false);
+    expect(isDeducedZone('gcp', { status: 'operational', updatedAt: '2026-10-08T10:00:00Z' })).toBe(false);
+    expect(isDeducedZone('cloudflare', { status: 'operational', updatedAt: null })).toBe(false);
+    expect(isDeducedZone('ovhcloud', { status: 'operational', updatedAt: null })).toBe(false);
+    expect(CLOUD_NO_INCIDENT_TEXT).toBe('aucun incident publié');
+  });
+  it('CLOUD_STATUS_WORD couvre les six statuts ; internetSignalWord dit les quatre sources d’IODA et reprend un nom inconnu tel quel', () => {
+    expect(Object.keys(CLOUD_STATUS_WORD).sort()).toEqual(['degraded', 'maintenance', 'major', 'operational', 'partial', 'unknown']);
+    expect(['bgp', 'ping-slash24', 'merit-nt', 'gtr'].map(internetSignalWord)).toEqual(['signal BGP', 'sonde ping', 'télescope réseau', 'trafic Google']);
+    expect(internetSignalWord('nouveau')).toBe('nouveau');
   });
 });

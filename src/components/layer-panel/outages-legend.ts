@@ -52,11 +52,12 @@ const INTERNET_ITEMS: readonly LegendItem[] = [
   { id: 'internet-recent', label: `Anomalie terminée depuis moins de 7${NBSP}jours (contour)`, color: OUT_LONG_HEX, shape: 'zone' },
 ];
 const CLOUD_ITEMS: readonly LegendItem[] = [
-  { id: 'cloud-ok', label: 'Site opérationnel selon son fournisseur', color: levelHex('vert'), shape: 'circle' },
+  { id: 'cloud-ok', label: 'Site dont le fournisseur publie un état opérationnel', color: levelHex('vert'), shape: 'circle' },
   { id: 'cloud-maint', label: 'Maintenance', color: OUT_MAINT_HEX, shape: 'circle' },
   { id: 'cloud-degraded', label: 'Performances dégradées', color: levelHex('jaune'), shape: 'circle' },
   { id: 'cloud-partial', label: 'Panne partielle', color: levelHex('orange'), shape: 'circle' },
   { id: 'cloud-major', label: 'Panne majeure', color: levelHex('rouge'), shape: 'circle' },
+  { id: 'cloud-deduced', label: 'Région sans état publié (colorée seulement si un incident est publié)', color: OUT_REF_HEX, shape: 'circle' },
   { id: 'cloud-ref', label: 'Centre de données du référentiel (inventaire)', color: OUT_REF_HEX, shape: 'circle' },
 ];
 

@@ -269,112 +269,179 @@ const setStatus = (r: CloudOutagesResponse, provider: CloudProvider, zoneId: str
   z.status = status;
 };
 const place = (f: GeoJSON.Feature<GeoJSON.Point>): string => `${f.geometry.coordinates[0]},${f.geometry.coordinates[1]}`;
+const at = (fc: GeoJSON.FeatureCollection<GeoJSON.Point>, lon: number, lat: number): GeoJSON.Feature<GeoJSON.Point> => {
+  const found = fc.features.find((f) => place(f) === `${lon},${lat}`);
+  if (!found) throw new Error(`aucun cercle en ${lon},${lat}`);
+  return found;
+};
+const PARIS = [2.35, 48.86] as const;
+const GRAVELINES = [2.13, 50.99] as const;
 const cloudBodies = (): string[] => [
   ...cloudZoneFeatures(cloudFixtureResponse(), CLOUD_FIXTURE_NOW).features, ...cloudReferenceFeatures(cloudFixtureResponse()).features,
 ].map((f) => String(f.properties?.body));
+/** Jeu d'essai où les zones DONT l'état est publié sont toutes opérationnelles (le jeu réel du 08/10 en a une en maintenance, DC1). */
+const quiet = (): CloudOutagesResponse => {
+  const r = cloudFixtureResponse();
+  for (const p of r.providers) for (const z of p.zones) if (z.status === 'maintenance') z.status = 'operational';
+  return r;
+};
 
-describe('carte des pannes : Cloud (zones datées)', () => {
-  it('quatre points de présence Cloudflare (BOD, CDG, LYS, MRS), en [lng, lat] et en vert (opérationnels)', () => {
+describe('carte des pannes : Cloud (un cercle par lieu)', () => {
+  it('un cercle par lieu, tous fournisseurs confondus : Paris, Gravelines, Roubaix, Strasbourg, Bordeaux, Lyon, Marseille, et aucune position en double', () => {
     const fc = cloudZoneFeatures(cloudFixtureResponse(), CLOUD_FIXTURE_NOW);
-    const cf = fc.features.filter((f) => f.properties?.provider === 'cloudflare');
-    expect(cf).toHaveLength(4);
-    expect(cf.map(place).sort()).toEqual(['-0.58,44.84', '2.35,48.86', '4.84,45.76', '5.37,43.3'].sort());
-    expect(new Set(cf.map((f) => f.properties?.color))).toEqual(new Set([levelHex('vert')]));
+    expect(fc.features.map(place).sort()).toEqual(['-0.58,44.84', '2.13,50.99', '2.35,48.86', '3.18,50.69', '4.84,45.76', '5.37,43.3', '7.79,48.58'].sort());
+    expect(new Set(fc.features.map(place)).size).toBe(fc.features.length);
   });
-  it('OVHcloud : 24 zones sur quatre lieux (Roubaix, Strasbourg, Gravelines, Paris), un point par lieu', () => {
-    const r = cloudFixtureResponse();
-    const fc = cloudZoneFeatures(r, CLOUD_FIXTURE_NOW);
-    const ovh = fc.features.filter((f) => f.properties?.provider === 'ovhcloud');
-    expect(new Set(ovh.map(place)).size).toBe(ovh.length);
-    expect(ovh.map((f) => body(f).match(/<b>([^<]+)<\/b>/)?.[1]).sort()).toEqual(['Gravelines', 'Paris', 'Roubaix', 'Strasbourg']);
-    const withCoords = ref(r, 'ovhcloud').zones.filter((z) => z.lat !== null);
-    expect(withCoords.length).toBeGreaterThan(ovh.length);
+  it('lieu partagé : OVH en panne majeure à Paris et les autres fournisseurs verts donnent un cercle rouge dont l’infobulle nomme OVHcloud', () => {
+    const r = quiet();
+    setStatus(r, 'ovhcloud', 'EU-WEST-PAR-A', 'major');
+    const paris = at(cloudZoneFeatures(r, CLOUD_FIXTURE_NOW), ...PARIS);
+    expect(paris.properties).toMatchObject({ color: levelHex('rouge'), status: 'major', rank: 6 });
+    expect(String(paris.properties?.providers).split(',')).toEqual(expect.arrayContaining(['ovhcloud', 'cloudflare', 'gcp', 'aws', 'scaleway']));
+    const b = body(paris);
+    expect(b).toContain('<span>OVHcloud</span><span>panne majeure</span>');
+    expect(b).toContain('Paris (EU-WEST-PAR-A)');
+    expect(b).toContain('<span>Cloudflare</span><span>opérationnel</span>');
+    expect(b).toContain('<span>Google Cloud</span><span>aucun incident publié</span>');
+    expect(b).toContain('<span>AWS</span><span>aucun incident publié</span>');
+    expect(b).toContain('<b>Paris</b>');
   });
-  it('zones Scaleway et Outscale sans coordonnées : non dessinées ; Azure sans état France : rien', () => {
-    const fc = cloudZoneFeatures(cloudFixtureResponse(), CLOUD_FIXTURE_NOW);
-    const providers = new Set(fc.features.map((f) => f.properties?.provider));
-    expect(providers.has('scaleway')).toBe(false);
-    expect(providers.has('outscale')).toBe(false);
-    expect(providers.has('azure')).toBe(false);
-    expect(providers).toEqual(new Set(['ovhcloud', 'cloudflare', 'gcp', 'aws']));
-  });
-  it('une zone OVH en panne partielle sur Gravelines colore le seul point de Gravelines en orange ; les autres lieux restent verts', () => {
-    const r = cloudFixtureResponse();
+  it('couche des zones : le plus grave est dessiné au-dessus (circle-sort-key sur le rang)', () => {
+    const layer = OUT_LAYERS.find((l) => l.id === 'out-cloud-zones');
+    expect((layer?.layout as Record<string, unknown>)['circle-sort-key']).toEqual(['get', 'rank']);
+    const r = quiet();
     setStatus(r, 'ovhcloud', 'GRA7', 'partial');
     const fc = cloudZoneFeatures(r, CLOUD_FIXTURE_NOW);
-    const ovh = fc.features.filter((f) => f.properties?.provider === 'ovhcloud');
-    const colored = ovh.filter((f) => f.properties?.color === levelHex('orange'));
-    expect(colored).toHaveLength(1);
-    expect(colored[0].geometry.coordinates).toEqual([2.13, 50.99]);
-    expect(body(colored[0])).toContain('<b>Gravelines</b>');
-    expect(body(colored[0])).toContain('panne partielle');
-    expect(body(colored[0])).toContain('Gravelines (GRA7)');
-    expect(ovh.filter((f) => f !== colored[0]).every((f) => f.properties?.color === levelHex('vert'))).toBe(true);
+    const rank = (f: GeoJSON.Feature): number => Number(f.properties?.rank);
+    expect(rank(at(fc, ...GRAVELINES))).toBeGreaterThan(rank(at(fc, ...PARIS)));
   });
-  it('regroupement : statut le plus grave du lieu (majeure avant partielle avant dégradée avant maintenance avant opérationnel avant inconnu)', () => {
+  it('quatre points de présence Cloudflare (BOD, CDG, LYS, MRS) : Bordeaux, Lyon et Marseille verts, Paris partagé', () => {
+    const fc = cloudZoneFeatures(quiet(), CLOUD_FIXTURE_NOW);
+    for (const [lon, lat] of [[-0.58, 44.84], [4.84, 45.76], [5.37, 43.3]] as const) {
+      expect(at(fc, lon, lat).properties).toMatchObject({ providers: 'cloudflare', color: levelHex('vert') });
+    }
+    expect(String(at(fc, ...PARIS).properties?.providers)).toContain('cloudflare');
+  });
+  it('OVHcloud : 24 zones sur quatre lieux (Roubaix, Strasbourg, Gravelines, Paris) ; Gravelines regroupe ses zones sous un seul nom', () => {
     const r = cloudFixtureResponse();
+    const fc = cloudZoneFeatures(r, CLOUD_FIXTURE_NOW);
+    const ovh = fc.features.filter((f) => String(f.properties?.providers).split(',').includes('ovhcloud'));
+    expect(ovh.map((f) => body(f).match(/<b>([^<]+)<\/b>/)?.[1]).sort()).toEqual(['Gravelines', 'Paris', 'Roubaix', 'Strasbourg']);
+    expect(ref(r, 'ovhcloud').zones.filter((z) => z.lat !== null).length).toBeGreaterThan(ovh.length);
+    expect(body(at(fc, ...GRAVELINES))).toMatch(/<span>Zones suivies<\/span><span>\d+<\/span>/);
+  });
+  it('Scaleway : régions fr-par et centres DC1 à DC5 sont au point de Paris (région parisienne), non à part ; Outscale (sans coordonnées) et Azure non dessinés', () => {
+    const fc = cloudZoneFeatures(cloudFixtureResponse(), CLOUD_FIXTURE_NOW);
+    const providers = new Set(fc.features.flatMap((f) => String(f.properties?.providers).split(',')));
+    expect(providers.has('scaleway')).toBe(true);
+    expect(providers.has('outscale')).toBe(false);
+    expect(providers.has('azure')).toBe(false);
+    const b = body(at(fc, ...PARIS));
+    expect(b).toContain('<span>Scaleway</span>');
+    expect(b).toContain('Région fr-par : région parisienne.');
+  });
+  it('une zone OVH en panne partielle sur Gravelines colore le seul cercle de Gravelines en orange ; les autres lieux OVH restent verts', () => {
+    const r = quiet();
+    setStatus(r, 'ovhcloud', 'GRA7', 'partial');
+    const fc = cloudZoneFeatures(r, CLOUD_FIXTURE_NOW);
+    expect(fc.features.filter((f) => f.properties?.color === levelHex('orange'))).toHaveLength(1);
+    const gra = at(fc, ...GRAVELINES);
+    expect(gra.properties?.color).toBe(levelHex('orange'));
+    expect(body(gra)).toContain('<b>Gravelines</b>');
+    expect(body(gra)).toContain('<span>OVHcloud</span><span>panne partielle</span>');
+    expect(body(gra)).toContain('<span>Gravelines (GRA7)</span><span>panne partielle</span>');
+    for (const [lon, lat] of [[3.18, 50.69], [7.79, 48.58]] as const) expect(at(fc, lon, lat).properties?.color).toBe(levelHex('vert'));
+  });
+  it('regroupement : majeure avant partielle avant dégradée avant maintenance avant opérationnel avant inconnu', () => {
+    const r = quiet();
     setStatus(r, 'ovhcloud', 'GRA5', 'degraded');
     setStatus(r, 'ovhcloud', 'GRA7', 'major');
     setStatus(r, 'ovhcloud', 'GRA9', 'partial');
     setStatus(r, 'ovhcloud', 'GRA11', 'unknown');
-    const gra = cloudZoneFeatures(r, CLOUD_FIXTURE_NOW).features.find((f) => f.properties?.provider === 'ovhcloud' && place(f) === '2.13,50.99');
-    expect(gra?.properties?.color).toBe(levelHex('rouge'));
-    expect(gra?.properties?.status).toBe('major');
-    const m = cloudFixtureResponse();
+    expect(at(cloudZoneFeatures(r, CLOUD_FIXTURE_NOW), ...GRAVELINES).properties).toMatchObject({ color: levelHex('rouge'), status: 'major' });
+    const m = quiet();
     setStatus(m, 'ovhcloud', 'GRA5', 'maintenance');
-    expect(cloudZoneFeatures(m, CLOUD_FIXTURE_NOW).features.find((f) => f.properties?.provider === 'ovhcloud' && place(f) === '2.13,50.99')?.properties?.color).toBe(OUT_MAINT_HEX);
-    const u = cloudFixtureResponse();
+    expect(at(cloudZoneFeatures(m, CLOUD_FIXTURE_NOW), ...GRAVELINES).properties?.color).toBe(OUT_MAINT_HEX);
+    const u = quiet();
     setStatus(u, 'ovhcloud', 'GRA5', 'unknown');
-    expect(cloudZoneFeatures(u, CLOUD_FIXTURE_NOW).features.find((f) => f.properties?.provider === 'ovhcloud' && place(f) === '2.13,50.99')?.properties?.color).toBe(levelHex('vert'));
+    expect(at(cloudZoneFeatures(u, CLOUD_FIXTURE_NOW), ...GRAVELINES).properties?.color).toBe(levelHex('vert'));
+    const d = quiet();
+    setStatus(d, 'ovhcloud', 'GRA5', 'degraded');
+    expect(at(cloudZoneFeatures(d, CLOUD_FIXTURE_NOW), ...GRAVELINES).properties?.color).toBe(levelHex('jaune'));
   });
-  it('un statut dégradé est jaune ; un lieu entièrement inconnu est gris', () => {
-    const r = cloudFixtureResponse();
-    setStatus(r, 'cloudflare', 'CDG', 'degraded');
-    setStatus(r, 'cloudflare', 'LYS', 'unknown');
-    const cf = cloudZoneFeatures(r, CLOUD_FIXTURE_NOW).features.filter((f) => f.properties?.provider === 'cloudflare');
-    expect(cf.find((f) => place(f) === '2.35,48.86')?.properties?.color).toBe(levelHex('jaune'));
-    expect(cf.find((f) => place(f) === '4.84,45.76')?.properties?.color).toBe(OUT_LATE_HEX);
+  it('un lieu entièrement inconnu est gris (aucun état lisible)', () => {
+    const r = quiet();
+    for (const z of ref(r, 'cloudflare').zones) z.status = 'unknown';
+    expect(at(cloudZoneFeatures(r, CLOUD_FIXTURE_NOW), 4.84, 45.76).properties?.color).toBe(OUT_LATE_HEX);
   });
-  it('infobulle : fournisseur, état, zones suivies, zones non opérationnelles, date de mise à jour ; GCP et AWS « aucun incident publié »', () => {
-    const r = cloudFixtureResponse();
+  it('GCP et AWS ne publient aucun état par région : seule, une zone déduite reste en teinte neutre, jamais en vert', () => {
+    const r = quiet();
+    for (const p of r.providers) if (p.provider !== 'gcp' && p.provider !== 'aws') p.zones = [];
+    const paris = at(cloudZoneFeatures(r, CLOUD_FIXTURE_NOW), ...PARIS);
+    expect(paris.properties).toMatchObject({ color: OUT_REF_HEX, status: 'none', rank: 0 });
+    expect(body(paris)).toContain('<span>Google Cloud</span><span>aucun incident publié</span>');
+  });
+  it('GCP avec un incident publié (zone dégradée) : le lieu prend la couleur de l’incident', () => {
+    const r = quiet();
+    for (const p of r.providers) if (p.provider !== 'gcp' && p.provider !== 'aws') p.zones = [];
+    setStatus(r, 'gcp', 'europe-west9', 'degraded');
+    const paris = at(cloudZoneFeatures(r, CLOUD_FIXTURE_NOW), ...PARIS);
+    expect(paris.properties).toMatchObject({ color: levelHex('jaune'), status: 'degraded' });
+    expect(body(paris)).toContain('<span>Google Cloud</span><span>performances dégradées</span>');
+  });
+  it('un état publié opérationnel à Paris (Cloudflare) colore en vert malgré les zones déduites du même lieu', () => {
+    const paris = at(cloudZoneFeatures(quiet(), CLOUD_FIXTURE_NOW), ...PARIS);
+    expect(paris.properties?.color).toBe(levelHex('vert'));
+  });
+  it('infobulle : lieu, fournisseurs, état, zones suivies, zones non opérationnelles et date de mise à jour par fournisseur', () => {
+    const r = quiet();
     setStatus(r, 'ovhcloud', 'GRA7', 'partial');
-    const fc = cloudZoneFeatures(r, CLOUD_FIXTURE_NOW);
-    const gra = fc.features.find((f) => f.properties?.provider === 'ovhcloud' && place(f) === '2.13,50.99');
-    const b = body(gra);
+    const b = body(at(cloudZoneFeatures(r, CLOUD_FIXTURE_NOW), ...GRAVELINES));
     expect(b).toContain('class="hm-sub">OVHcloud</div>');
-    expect(b).toContain('<span>État</span><span>panne partielle</span>');
-    expect(b).toMatch(/<span>Zones suivies<\/span><span>\d+<\/span>/);
     expect(b).toContain('<span>Mis à jour</span>');
-    const gcp = fc.features.find((f) => f.properties?.provider === 'gcp');
-    expect(body(gcp)).toContain('<span>État</span><span>aucun incident publié</span>');
-    expect(body(gcp)).toContain('<span>Mis à jour</span><span>aucun incident publié</span>');
+    const paris = body(at(cloudZoneFeatures(r, CLOUD_FIXTURE_NOW), ...PARIS));
+    expect(paris).toContain('<span>Mis à jour</span><span>aucun incident publié</span>');
   });
-  it('fournisseur en retard (lu il y a 3 h) ou en erreur : ses points en gris, les autres gardent leur couleur', () => {
-    const late = cloudFixtureResponse();
+  it('plus de huit zones non opérationnelles : huit lignes puis « et n autres. »', () => {
+    const r = quiet();
+    const many = ref(r, 'ovhcloud').zones.filter((z) => z.lat === GRAVELINES[1]);
+    expect(many.length).toBeGreaterThan(8);
+    for (const z of many) z.status = 'degraded';
+    const b = body(at(cloudZoneFeatures(r, CLOUD_FIXTURE_NOW), ...GRAVELINES));
+    expect(b.match(/performances dégradées/g)?.length).toBe(9); // huit lignes de zone et la ligne du fournisseur
+    expect(b).toContain(`et ${many.length - 8}${NBSP}autre`);
+  });
+  it('fournisseur en retard (lu il y a 3 h) : il ne colore plus ; le lieu est gris s’il est seul, sinon les autres fournisseurs colorent', () => {
+    const late = quiet();
     ref(late, 'cloudflare').readAt = new Date(CLOUD_FIXTURE_NOW - 3 * 3_600_000).toISOString();
     setStatus(late, 'cloudflare', 'CDG', 'major');
+    setStatus(late, 'cloudflare', 'LYS', 'major');
     const fc = cloudZoneFeatures(late, CLOUD_FIXTURE_NOW);
-    const cf = fc.features.filter((f) => f.properties?.provider === 'cloudflare');
-    expect(new Set(cf.map((f) => f.properties?.color))).toEqual(new Set([OUT_LATE_HEX]));
-    expect(body(cf[0])).toContain('Page d’état en retard : couleur retirée.');
-    expect(fc.features.filter((f) => f.properties?.provider === 'ovhcloud').every((f) => f.properties?.color !== OUT_LATE_HEX)).toBe(true);
-    const err = cloudFixtureResponse();
+    const lyon = at(fc, 4.84, 45.76);
+    expect(lyon.properties?.color).toBe(OUT_LATE_HEX);
+    expect(body(lyon)).toContain('Cloudflare : page d’état en retard, couleur retirée.');
+    expect(at(fc, ...PARIS).properties?.color).toBe(levelHex('vert'));
+    expect(at(fc, ...GRAVELINES).properties?.color).toBe(levelHex('vert'));
+  });
+  it('fournisseur en erreur ou jamais lu : ses lieux propres en gris', () => {
+    const err = quiet();
     ref(err, 'ovhcloud').error = 'OVHcloud (network) : HTTP 503';
-    const ovh = cloudZoneFeatures(err, CLOUD_FIXTURE_NOW).features.filter((f) => f.properties?.provider === 'ovhcloud');
-    expect(ovh.length).toBeGreaterThan(0);
-    expect(new Set(ovh.map((f) => f.properties?.color))).toEqual(new Set([OUT_LATE_HEX]));
-    ref(err, 'aws').readAt = null;
-    expect(cloudZoneFeatures(err, CLOUD_FIXTURE_NOW).features.find((f) => f.properties?.provider === 'aws')?.properties?.color).toBe(OUT_LATE_HEX);
+    const fc = cloudZoneFeatures(err, CLOUD_FIXTURE_NOW);
+    expect(at(fc, ...GRAVELINES).properties?.color).toBe(OUT_LATE_HEX);
+    expect(body(at(fc, ...GRAVELINES))).toContain('OVHcloud : page d’état en erreur, couleur retirée.');
+    const never = quiet();
+    ref(never, 'cloudflare').readAt = null;
+    expect(at(cloudZoneFeatures(never, CLOUD_FIXTURE_NOW), 4.84, 45.76).properties?.color).toBe(OUT_LATE_HEX);
   });
   it('jamais lu : aucune entité', () => {
     expect(cloudZoneFeatures(null, CLOUD_FIXTURE_NOW).features).toEqual([]);
     expect(cloudReferenceFeatures(null).features).toEqual([]);
   });
   it('une zone sans position lisible n’est pas dessinée', () => {
-    const r = cloudFixtureResponse();
-    const cdg = ref(r, 'cloudflare').zones.find((z) => z.id === 'CDG');
-    if (cdg) cdg.lat = Number.NaN;
-    expect(cloudZoneFeatures(r, CLOUD_FIXTURE_NOW).features.filter((f) => f.properties?.provider === 'cloudflare')).toHaveLength(3);
+    const r = quiet();
+    const lys = ref(r, 'cloudflare').zones.find((z) => z.id === 'LYS');
+    if (lys) lys.lat = Number.NaN;
+    expect(cloudZoneFeatures(r, CLOUD_FIXTURE_NOW).features.map(place)).not.toContain('4.84,45.76');
   });
 });
 
@@ -434,7 +501,7 @@ describe('carte des pannes : Internet et Cloud, hygiène des infobulles', () => 
   });
   it('les textes de la source sont échappés dans les zones du cloud', () => {
     const r = cloudFixtureResponse();
-    const z = ref(r, 'cloudflare').zones.find((x) => x.id === 'CDG');
+    const z = ref(r, 'cloudflare').zones.find((x) => x.id === 'LYS');
     if (z) z.label = '<img src=x onerror=alert(1)>';
     const html = cloudZoneFeatures(r, CLOUD_FIXTURE_NOW).features.map(body).join('');
     expect(html).not.toContain('<img');

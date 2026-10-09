@@ -6,7 +6,7 @@
 import type { InternetEvent, InternetOutagesResponse, RadarItem } from '../../types/index.ts';
 import { parisDayOf } from '../../services/environment-levels.ts';
 import { INTERNET_PENDING_NOTE } from '../../services/outages-internet.ts';
-import { internetLevel, internetLive, isOutagesDataLate, radarPlace, type InternetLivePlace } from '../../services/outages-levels.ts';
+import { internetLevel, internetLive, internetSignalWord, isOutagesDataLate, radarPlace, type InternetLivePlace } from '../../services/outages-levels.ts';
 import { isSovereigntyDataLate, visibilityPctLevel } from '../../services/sovereignty-levels.ts';
 import { levelColorVar, type VigilanceLevel } from '../../services/vigilance.ts';
 import { escapeHtml } from '../france-intel-events.ts';
@@ -27,7 +27,6 @@ const RIPE_URL = 'https://stat.ripe.net';
 const DAY_MS = 86_400_000;
 const WEEK_MS = 7 * DAY_MS;
 const CURVE_DAYS = 30;
-const SIGNAL_WORD: Readonly<Record<string, string>> = { bgp: 'signal BGP', 'ping-slash24': 'sonde ping', 'merit-nt': 'télescope réseau', gtr: 'trafic Google' };
 const STALE_NOTE = `ouvert depuis plus de 7${NBSP}jours, probablement un recalage de référence`;
 const SCOPE_LEVEL: Readonly<Record<InternetLivePlace['scope'], VigilanceLevel>> = { national: 'rouge', operateur: 'orange', departement: 'jaune', inconnu: 'orange' };
 
@@ -43,9 +42,6 @@ function marker(level: VigilanceLevel, f: Freshness): { level: VigilanceLevel | 
   return { level: f.iodaLate ? 'gris' : level };
 }
 
-function signalWord(signal: string): string {
-  return SIGNAL_WORD[signal] ?? signal;
-}
 function unique<T>(items: readonly T[]): T[] {
   return [...new Set(items)];
 }
@@ -67,7 +63,7 @@ function liveRow(p: InternetLivePlace, r: InternetOutagesResponse, input: Intern
   const events = p.source === 'ioda' ? eventsOf(p, r.events) : [];
   const item = p.source === 'radar' ? radarItemOf(p, r.radar.items) : undefined;
   const start = events.length > 0 ? earliest(events.map((e) => e.start)) : item?.start ?? null;
-  const detail = events.length > 0 ? unique(events.map((e) => signalWord(e.signal))).join(' · ') : item?.kind === 'panne' ? 'panne signalée' : 'anomalie de trafic';
+  const detail = events.length > 0 ? unique(events.map((e) => internetSignalWord(e.signal))).join(' · ') : item?.kind === 'panne' ? 'panne signalée' : 'anomalie de trafic';
   return listRow({
     text: label, value: sinceText(start, input.now), ...marker(SCOPE_LEVEL[p.scope], f),
     note: `${detail} · ${p.source === 'ioda' ? 'IODA' : 'Cloudflare Radar'}`,
@@ -88,7 +84,7 @@ function setAsideRows(r: InternetOutagesResponse, now: number): string {
   }
   return [...groups.values()].map((g) => listRow({
     text: g.label, value: sinceText(earliest(g.events.map((e) => e.start)), now), level: 'gris',
-    note: `${unique(g.events.map((e) => signalWord(e.signal))).join(' · ')} · ${g.reason}`,
+    note: `${unique(g.events.map((e) => internetSignalWord(e.signal))).join(' · ')} · ${g.reason}`,
   })).join('');
 }
 
@@ -98,7 +94,7 @@ function recentRows(r: InternetOutagesResponse, f: Freshness, readAt: number): {
     .sort((a, b) => (b.end ?? '').localeCompare(a.end ?? ''));
   const rows = done.slice(0, INTERNET_RECENT_ROWS).map((e) => listRow({
     text: e.scope === 'departement' ? placeOf(e.dept) : e.label, value: formatDuration(e.durationSec), ...marker(SCOPE_LEVEL[e.scope], f),
-    note: `${signalWord(e.signal)} · le ${when(e.start)}`,
+    note: `${internetSignalWord(e.signal)} · le ${when(e.start)}`,
   })).join('') + moreNote(done.length, INTERNET_RECENT_ROWS);
   return { rows, total: done.length };
 }

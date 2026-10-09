@@ -32,6 +32,19 @@ const CITY = {
   LYS: { label: 'Lyon', lat: 45.76, lon: 4.84 }, BOD: { label: 'Bordeaux', lat: 44.84, lon: -0.58 },
 };
 
+/**
+ * Scaleway : zones de la région fr-par (« région parisienne », même point que les autres zones parisiennes) et centres Dedibox DC1 à DC5.
+ * Source des emplacements : Scaleway publie ses centres sous « Paris » (tableau « Paris : DC1, DC2, DC3, DC5 » de
+ * https://www.scaleway.com/en/docs/account/reference-content/products-availability/, et « DC2 PAR1 Paris, DC3 PAR1 Paris, DC4 Paris, DC5 PAR2 Paris »
+ * de https://www.scaleway.com/en/environmental-leadership/, lus le 09/10/2026). La commune « Paris » (code INSEE 75056) a pour centre
+ * [2.347, 48.8589] selon https://geo.api.gouv.fr/communes/75056?fields=nom,code,centre, arrondi comme CITY.PAR. Scaleway ne publie pas de commune
+ * plus précise : aucune adresse n'est devinée.
+ */
+function scalewayPlace(id) {
+  const region = /^fr-par-\d$/.test(id);
+  return /^(fr-par-\d|DC\d)$/.test(id) ? { label: region ? 'Région parisienne' : CITY.PAR.label, lat: CITY.PAR.lat, lon: CITY.PAR.lon } : null;
+}
+
 let queue = Promise.resolve();
 
 /** Réservé aux tests : file libre. */
@@ -92,7 +105,7 @@ export function fromStatuspage(provider, label, json, isFrance, nowMs) {
   // Groupes compris : les zones d'Outscale (« eu-west-2 », « cloudgouv-eu-west-1 ») sont des groupes ; les groupes d'OVHcloud et de
   // Scaleway (« Infrastructure || RBX », « Elements - AZ ») ne correspondent jamais aux motifs ancrés.
   const zones = comps.filter((c) => c && isFrance.component(c.name)).map((c) => {
-    const city = provider === 'ovhcloud' ? cityOf(String(c.name)) : null;
+    const city = provider === 'ovhcloud' ? cityOf(String(c.name)) : provider === 'scaleway' ? scalewayPlace(String(c.name)) : null;
     return { id: String(c.name), label: city ? `${city.label} (${c.name})` : String(c.name), status: statuspageStatus(c.status), updatedAt: iso(c.updated_at), lat: city?.lat ?? null, lon: city?.lon ?? null };
   });
   const incidents = []; const elsewhere = [];

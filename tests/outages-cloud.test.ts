@@ -66,6 +66,16 @@ describe('pages d’état (jeux d’essai du 08/10)', () => {
     expect(p.zones.map((z) => [z.id, z.status])).toEqual(expect.arrayContaining([['fr-par-1', 'operational'], ['DC1', 'maintenance']]));
     expect(p.elsewhere.length).toBeGreaterThanOrEqual(3);
   });
+  it('Scaleway : zones fr-par et centres Dedibox DC1 à DC5 placés au point de Paris (publié « Paris » par Scaleway), région nommée « région parisienne »', () => {
+    const p = fromStatuspage('scaleway', 'Scaleway', fx('scaleway-summary.json'), scalewayFrance, NOW);
+    const ids = p.zones.map((z) => z.id).sort();
+    expect(ids).toEqual(['DC1', 'DC2', 'DC3', 'DC4', 'DC5', 'fr-par-1', 'fr-par-2', 'fr-par-3']);
+    for (const z of p.zones) expect([z.lat, z.lon], z.id).toEqual([48.86, 2.35]);
+    expect(p.zones.find((z) => z.id === 'fr-par-2')?.label).toBe('Région parisienne (fr-par-2)');
+    expect(p.zones.find((z) => z.id === 'DC3')?.label).toBe('Paris (DC3)');
+    // Le point est celui des autres zones parisiennes (OVHcloud PAR, Cloudflare CDG).
+    expect(fromCloudflare(fx('cloudflare-components.json')).find((x) => x.id === 'CDG')).toMatchObject({ lat: 48.86, lon: 2.35 });
+  });
   it('Cloudflare : quatre points de présence français datés chacun, statut mondial ignoré', () => {
     const z = fromCloudflare(fx('cloudflare-components.json'));
     expect(z.map((x) => x.id)).toEqual(['BOD', 'CDG', 'LYS', 'MRS']);

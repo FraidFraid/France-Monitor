@@ -4,8 +4,8 @@
 // maintenance (gris clair), placées par la liste d'emplacements ; une unité sans emplacement connu n'est pas dessinée (V5). EDF muet ou en
 // retard (dernière lecture réussie, R20) : tout en gris. Internet : départements en anomalie IODA (en cours : remplissage et contour
 // rouges ; terminée depuis moins de 7 jours : contour orange) ; un opérateur, la France entière ou un département d'outre-mer (absent du
-// fichier des polygones) n'ont pas d'entité (V5). Cloud : zones des fournisseurs qui publient un état propre, regroupées par lieu (statut
-// le plus grave) ; référentiel en teinte neutre, un inventaire n'est pas un état. MapLibre ne lit pas les variables CSS : teintes de
+// fichier des polygones) n'ont pas d'entité (V5). Cloud : un cercle par lieu, tous fournisseurs confondus (statut publié le plus grave ;
+// une région sans état publié, GCP et AWS, reste neutre sauf incident) ; référentiel en teinte neutre, un inventaire n'est pas un état. MapLibre ne lit pas les variables CSS : teintes de
 // outages-legend.ts. Couleur et corps d'infobulle calculés ici, dans les propriétés ; tout texte est échappé. Aucune vue importée.
 import type { GeoJSONSourceSpecification, LayerSpecification } from 'maplibre-gl';
 import type { OutagesLayerKey } from '../../config/outages-sources.ts';
@@ -13,10 +13,12 @@ import type {
   CloudOutagesResponse, CloudProvider, CloudStatus, CloudZone, InternetEvent, InternetOutagesResponse, PowerOutagesResponse, TelecomOutagesResponse,
 } from '../../types/index.ts';
 import { parisDayOf } from '../../services/environment-levels.ts';
-import { CLOUD_PROVIDER_LABEL, internetLive, isArcepFileLate, isOutagesDataLate } from '../../services/outages-levels.ts';
+import {
+  CLOUD_NO_INCIDENT_TEXT, CLOUD_PROVIDER_LABEL, CLOUD_STATUS_WORD, CLOUD_ZONE_LEVEL, internetLive, internetSignalWord, isArcepFileLate, isDeducedZone, isOutagesDataLate,
+} from '../../services/outages-levels.ts';
 import { levelHex } from '../../services/vigilance.ts';
 import { NBSP, formatMw } from '../layer-panel/format.ts';
-import { dayMonth, formatDuration, parisClock, placeOf, when } from '../layer-panel/outages-format.ts';
+import { countText, dayMonth, formatDuration, parisClock, placeOf, when } from '../layer-panel/outages-format.ts';
 import { OUT_LATE_HEX, OUT_LONG_HEX, OUT_MAINT_HEX, OUT_RECENT_HEX, OUT_REF_HEX } from '../layer-panel/outages-legend.ts';
 import {
   LYR_OUT_CLOUD_REF, LYR_OUT_CLOUD_ZONES, LYR_OUT_INTERNET_FILL, LYR_OUT_INTERNET_LINE, LYR_OUT_POWER_PLANNED, LYR_OUT_POWER_UNPLANNED, LYR_OUT_TELECOM_LONG,
@@ -107,15 +109,13 @@ export function powerFeatures(p: PowerOutagesResponse | null, now: number): Fc {
 
 const DAY_MS = 86_400_000;
 const SEVEN_DAYS_MS = 7 * DAY_MS;
-/** Mots des sources de signal d'IODA (même table que la vue Internet : une vue n'est pas importée ici). */
-const SIGNAL_WORD: Readonly<Record<string, string>> = { bgp: 'signal BGP', 'ping-slash24': 'sonde ping', 'merit-nt': 'télescope réseau', gtr: 'trafic Google' };
 
 function isPolygon(g: GeoJSON.Geometry): g is PolyGeometry {
   return g.type === 'Polygon' || g.type === 'MultiPolygon';
 }
 
 function internetRow(e: InternetEvent): string {
-  return row(SIGNAL_WORD[e.signal] ?? e.signal, `${when(e.start)} · ${e.ongoing ? 'en cours' : formatDuration(e.durationSec)}`);
+  return row(internetSignalWord(e.signal), `${when(e.start)} · ${e.ongoing ? 'en cours' : formatDuration(e.durationSec)}`);
 }
 
 /**
@@ -160,63 +160,87 @@ export function internetFeatures(r: InternetOutagesResponse | null, departements
 
 /** Rang de gravité d'un statut : le plus grave colore le lieu ; « inconnu » ne l'emporte jamais sur un état publié. */
 const STATUS_RANK: Readonly<Record<CloudStatus, number>> = { major: 5, partial: 4, degraded: 3, maintenance: 2, operational: 1, unknown: 0 };
-const STATUS_WORD: Readonly<Record<CloudStatus, string>> = {
-  operational: 'opérationnel', maintenance: 'maintenance', degraded: 'performances dégradées', partial: 'panne partielle', major: 'panne majeure', unknown: 'inconnu',
+/** Ordre de dessin (circle-sort-key) : le plus grave au-dessus ; le neutre et le gris dessous, un état publié au-dessus d'eux. */
+const DRAW_RANK: Readonly<Record<CloudStatus | 'neutre' | 'retard', number>> = {
+  neutre: 0, retard: 1, unknown: 1, operational: 2, maintenance: 3, degraded: 4, partial: 5, major: 6,
 };
-const STATUS_HEX: Readonly<Record<CloudStatus, string>> = {
-  operational: levelHex('vert'), maintenance: OUT_MAINT_HEX, degraded: levelHex('jaune'), partial: levelHex('orange'), major: levelHex('rouge'), unknown: OUT_LATE_HEX,
-};
-/** GCP et AWS ne publient pas d'état par région : « opérationnel » y est déduit de l'absence d'incident, sans date (P30). */
-const DEDUCED_PROVIDERS: ReadonlySet<CloudProvider> = new Set(['gcp', 'aws']);
-const NO_INCIDENT = 'aucun incident publié';
+/** Couleur d'un statut publié : niveaux de la vue (CLOUD_ZONE_LEVEL), vert si opérationnel, maintenance et inconnu à part. */
+function statusHex(status: CloudStatus): string {
+  if (status === 'operational') return levelHex('vert');
+  if (status === 'maintenance') return OUT_MAINT_HEX;
+  const level = CLOUD_ZONE_LEVEL[status];
+  return level === undefined ? OUT_LATE_HEX : levelHex(level);
+}
 const ZONE_ROWS = 8;
 
-interface ZoneGroup { provider: CloudProvider; lat: number; lon: number; zones: CloudZone[]; late: boolean; error: boolean }
+/** Zones d'un fournisseur en un lieu ; `late` : page en retard (lecture + 2 h) ; `error` : page en échec. */
+interface ProviderZones { provider: CloudProvider; zones: CloudZone[]; late: boolean; error: boolean }
+interface Place { lat: number; lon: number; providers: ProviderZones[] }
 
 function hasPosition(z: CloudZone): z is CloudZone & { lat: number; lon: number } {
   return typeof z.lat === 'number' && typeof z.lon === 'number' && Number.isFinite(z.lat) && Number.isFinite(z.lon);
 }
-const isDeduced = (provider: CloudProvider, z: CloudZone): boolean => z.status === 'operational' && z.updatedAt === null && DEDUCED_PROVIDERS.has(provider);
 /** « Gravelines (GRA7) » devient « Gravelines » : le nom du lieu. */
 const placeName = (z: CloudZone): string => z.label.replace(/\s*\([^)]*\)\s*$/, '') || z.label;
+/** Statut le plus grave d'une liste de zones (null si vide). */
+function worstStatus(zones: readonly CloudZone[]): CloudStatus | null {
+  return zones.reduce<CloudStatus | null>((top, z) => (top === null || STATUS_RANK[z.status] > STATUS_RANK[top] ? z.status : top), null);
+}
 
-function zoneBody(g: ZoneGroup, worst: CloudStatus): string {
-  const deduced = g.zones.every((z) => isDeduced(g.provider, z));
-  const newest = g.zones.map((z) => z.updatedAt).filter((d): d is string => d !== null).sort().at(-1) ?? null;
-  const troubled = g.zones.filter((z) => z.status !== 'operational');
-  return head(placeName(g.zones[0]), CLOUD_PROVIDER_LABEL[g.provider])
-    + row('État', deduced ? NO_INCIDENT : STATUS_WORD[worst])
-    + row('Zones suivies', String(g.zones.length))
-    + troubled.slice(0, ZONE_ROWS).map((z) => row(z.label, STATUS_WORD[z.status])).join('')
-    + (troubled.length > ZONE_ROWS ? note(`et ${troubled.length - ZONE_ROWS} autres.`) : '')
-    + row('Mis à jour', newest === null ? NO_INCIDENT : when(newest))
-    + (g.late ? note('Page d’état en retard : couleur retirée.') : '')
-    + (g.error ? note('Page d’état en erreur : couleur retirée.') : '');
+/** Corps d'infobulle d'un lieu : chaque fournisseur présent, son état, ses zones non opérationnelles et la date de son état. */
+function placeBody(place: Place): string {
+  const first = place.providers[0].zones.find((z) => !z.label.startsWith('Région')) ?? place.providers[0].zones[0];
+  const sub = place.providers.map((p) => CLOUD_PROVIDER_LABEL[p.provider]).join(' · ');
+  return head(placeName(first), sub) + place.providers.map((p) => {
+    const name = CLOUD_PROVIDER_LABEL[p.provider];
+    const deduced = p.zones.every((z) => isDeducedZone(p.provider, z));
+    const troubled = p.zones.filter((z) => z.status !== 'operational');
+    const newest = p.zones.map((z) => z.updatedAt).filter((d): d is string => d !== null).sort().at(-1) ?? null;
+    return row(name, deduced ? CLOUD_NO_INCIDENT_TEXT : CLOUD_STATUS_WORD[worstStatus(p.zones) ?? 'unknown'])
+      + row('Zones suivies', String(p.zones.length))
+      + troubled.slice(0, ZONE_ROWS).map((z) => row(z.label, CLOUD_STATUS_WORD[z.status])).join('')
+      + (troubled.length > ZONE_ROWS ? note(`et ${countText(troubled.length - ZONE_ROWS, 'autre', 'autres')}.`) : '')
+      + row('Mis à jour', newest === null ? CLOUD_NO_INCIDENT_TEXT : when(newest))
+      + (p.late ? note(`${name} : page d’état en retard, couleur retirée.`) : '')
+      + (p.error ? note(`${name} : page d’état en erreur, couleur retirée.`) : '');
+  }).join('') + (place.providers.some((p) => p.zones.some((z) => z.id.startsWith('fr-par-'))) ? note('Région fr-par : région parisienne.') : '');
 }
 
 /**
- * Zones dont le fournisseur publie un état propre (centres OVH, points de présence Cloudflare, régions GCP, AWS et Outscale à
- * coordonnées), regroupées par fournisseur et lieu (statut le plus grave) : 24 zones OVH tiennent sur quatre lieux. Fournisseur en retard
- * (dernière lecture + 2 h) ou en échec : gris ; zone sans coordonnées : non dessinée (V5).
+ * Un cercle par LIEU, tous fournisseurs confondus (OVHcloud, Cloudflare, Google Cloud, AWS et Scaleway partagent le point de Paris) : le
+ * statut le plus grave des seules zones dont l'état est publié colore le lieu, et l'infobulle liste chaque fournisseur et ses zones. Une zone
+ * déduite de l'absence d'incident (GCP, AWS : aucun état publié par région) ne colore que lorsqu'un incident est publié pour elle ; seule, elle
+ * laisse le lieu en teinte neutre. Fournisseur en retard (lecture + 2 h) ou en échec : ses zones ne colorent plus (gris si rien d'autre ne
+ * colore). Zone sans coordonnées : non dessinée (V5). Le plus grave est dessiné au-dessus (circle-sort-key `rank`).
  */
 export function cloudZoneFeatures(r: CloudOutagesResponse | null, now: number): Fc {
   if (r === null) return fc([]);
-  const groups = new Map<string, ZoneGroup>();
+  const places = new Map<string, Place>();
   for (const p of r.providers) {
     const late = isOutagesDataLate('cloud', p.readAt, now);
     for (const z of p.zones) {
       if (!hasPosition(z)) continue;
-      const key = `${p.provider}:${z.lat}:${z.lon}`;
-      const g = groups.get(key) ?? { provider: p.provider, lat: z.lat, lon: z.lon, zones: [], late, error: p.error !== null };
-      g.zones.push(z);
-      groups.set(key, g);
+      const key = `${z.lat}:${z.lon}`;
+      const place = places.get(key) ?? { lat: z.lat, lon: z.lon, providers: [] };
+      let entry = place.providers.find((x) => x.provider === p.provider);
+      if (!entry) {
+        entry = { provider: p.provider, zones: [], late, error: p.error !== null };
+        place.providers.push(entry);
+      }
+      entry.zones.push(z);
+      places.set(key, place);
     }
   }
-  return fc([...groups.values()].map((g): PointFeature => {
-    const worst = g.zones.reduce<CloudStatus>((top, z) => (STATUS_RANK[z.status] > STATUS_RANK[top] ? z.status : top), g.zones[0].status);
+  return fc([...places.values()].map((place): PointFeature => {
+    const published = place.providers.filter((p) => !p.late && !p.error)
+      .flatMap((p) => p.zones.filter((z) => !isDeducedZone(p.provider, z)));
+    const worst = worstStatus(published);
+    const grey = place.providers.some((p) => p.late || p.error);
+    const color = worst !== null ? statusHex(worst) : grey ? OUT_LATE_HEX : OUT_REF_HEX;
+    const rank = worst !== null ? DRAW_RANK[worst] : grey ? DRAW_RANK.retard : DRAW_RANK.neutre;
     return {
-      type: 'Feature', geometry: { type: 'Point', coordinates: [g.lon, g.lat] },
-      properties: { provider: g.provider, status: worst, color: g.late || g.error ? OUT_LATE_HEX : STATUS_HEX[worst], body: zoneBody(g, worst) },
+      type: 'Feature', geometry: { type: 'Point', coordinates: [place.lon, place.lat] },
+      properties: { providers: place.providers.map((p) => p.provider).join(','), status: worst ?? 'none', color, rank, body: placeBody(place) },
     };
   }));
 }
@@ -294,7 +318,7 @@ export const OUT_LAYERS: readonly LayerSpecification[] = [
     paint: { 'circle-color': ['get', 'color'], 'circle-radius': 3.5, 'circle-opacity': 0.7 },
   },
   {
-    id: LYR_OUT_CLOUD_ZONES, type: 'circle', source: SRC_OUT_CLOUD_ZONES, layout: { visibility: 'none' },
+    id: LYR_OUT_CLOUD_ZONES, type: 'circle', source: SRC_OUT_CLOUD_ZONES, layout: { visibility: 'none', 'circle-sort-key': ['get', 'rank'] },
     paint: { 'circle-color': ['get', 'color'], 'circle-radius': 7, 'circle-stroke-width': 1, 'circle-stroke-color': '#0a0a0f' },
   },
 ];

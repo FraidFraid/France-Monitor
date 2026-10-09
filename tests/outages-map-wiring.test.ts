@@ -71,6 +71,18 @@ describe('DeckGLMap : couches Pannes réseau de deckgl/outages-map.ts', () => {
     expect(legend).toContain("activeLayers = [...OUT_LAYER_KEYS.outagesInternet];");
     expect(legend).toContain("activeLayers = [...OUT_LAYER_KEYS.outagesCloud];");
   });
+  it('R25 : la carte importe le vocabulaire Cloud et Internet de src/services/outages-levels.ts, sans le recopier', () => {
+    const map = read('src/components/deckgl/outages-map.ts');
+    const cloud = read('src/components/layer-panel/outages-cloud.ts');
+    const internet = read('src/components/layer-panel/outages-internet.ts');
+    expect(map).toContain("from '../../services/outages-levels.ts'");
+    for (const name of ['CLOUD_STATUS_WORD', 'isDeducedZone', 'internetSignalWord', 'CLOUD_ZONE_LEVEL']) expect(map, name).toContain(name);
+    for (const copy of ['SIGNAL_WORD', 'STATUS_WORD', 'DEDUCED_PROVIDERS', 'STATUS_HEX']) expect(map, copy).not.toMatch(new RegExp(`const ${copy}\\b`));
+    expect(cloud).toContain('isDeducedZone');
+    expect(cloud).not.toContain('DEDUCED_ZONE');
+    expect(internet).toContain('internetSignalWord');
+    expect(internet).not.toContain('const SIGNAL_WORD');
+  });
   it('le conteneur relaie updateOutagesInternet et updateOutagesCloud à la carte WebGL', () => {
     expect(container).toContain('updateOutagesInternet(r: InternetOutagesResponse | null, now: number): void');
     expect(container).toContain('updateOutagesCloud(r: CloudOutagesResponse | null, now: number): void');

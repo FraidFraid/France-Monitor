@@ -7,7 +7,9 @@
 import type { CloudIncident, CloudMaintenance, CloudOutagesResponse, CloudProvider, CloudProviderState, CloudStatus, CloudZone } from '../../types/index.ts';
 import { parisDayOf } from '../../services/environment-levels.ts';
 import { CLOUD_PENDING_NOTE } from '../../services/outages-cloud.ts';
-import { CLOUD_IMPACT_LEVEL, CLOUD_PROVIDER_LABEL, CLOUD_ZONE_LEVEL, cloudLevel, cloudLive, isOutagesDataLate } from '../../services/outages-levels.ts';
+import {
+  CLOUD_IMPACT_LEVEL, CLOUD_NO_INCIDENT_TEXT, CLOUD_PROVIDER_LABEL, CLOUD_STATUS_WORD, CLOUD_ZONE_LEVEL, cloudLevel, cloudLive, isDeducedZone, isOutagesDataLate,
+} from '../../services/outages-levels.ts';
 import { escapeHtml } from '../france-intel-events.ts';
 import { kvRow } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
@@ -25,10 +27,7 @@ const PAGES = [
   ['Google Cloud', 'https://status.cloud.google.com'], ['AWS', 'https://health.aws.amazon.com/health/status'], ['Outscale', 'https://status.outscale.com'],
 ] as const;
 
-/** Statut d'une zone en mots (le statut d'une zone est celui de son fournisseur, jamais un statut mondial). */
-export const CLOUD_STATUS_WORD: Readonly<Record<CloudStatus, string>> = {
-  operational: 'opérationnel', maintenance: 'maintenance', degraded: 'performances dégradées', partial: 'panne partielle', major: 'panne majeure', unknown: 'inconnu',
-};
+export { CLOUD_STATUS_WORD };
 /** Mot d'un compte de zones dans la synthèse d'un fournisseur (singulier, pluriel), dans l'ordre d'affichage. */
 const COUNT_WORD: ReadonlyArray<readonly [CloudStatus, string, string]> = [
   ['operational', 'opérationnelle', 'opérationnelles'], ['maintenance', 'en maintenance', 'en maintenance'], ['degraded', 'en performances dégradées', 'en performances dégradées'],
@@ -36,8 +35,6 @@ const COUNT_WORD: ReadonlyArray<readonly [CloudStatus, string, string]> = [
 ];
 /** Gravité décroissante : les zones non opérationnelles sont listées de la pire à la moins grave. */
 const SEVERITY: ReadonlyArray<CloudStatus> = ['major', 'partial', 'degraded', 'maintenance', 'unknown'];
-/** Fournisseurs dont la zone « opérationnelle » est déduite de l'absence d'incident publié (aucune date d'état, P30). */
-const DEDUCED_ZONE: ReadonlySet<CloudProvider> = new Set(['gcp', 'aws']);
 const PROVIDER_ORDER = Object.keys(CLOUD_PROVIDER_LABEL);
 
 type OpenFn = (sectionId: string, byDefault: boolean) => boolean;
@@ -82,7 +79,7 @@ function incidentRow(i: CloudIncident, ctx: Context, elsewhere: boolean): string
 }
 
 function zoneRow(z: CloudZone, p: CloudProviderState, late: boolean, ctx: Context): string {
-  const deduced = z.status === 'operational' && z.updatedAt === null && DEDUCED_ZONE.has(p.provider);
+  const deduced = isDeducedZone(p.provider, z);
   const marker = late ? { level: 'gris' as const }
     : z.status === 'maintenance' ? { color: OUT_MAINT_VAR }
     : z.status === 'unknown' ? { level: 'gris' as const }
@@ -90,7 +87,7 @@ function zoneRow(z: CloudZone, p: CloudProviderState, late: boolean, ctx: Contex
   const parts = [...(z.updatedAt === null ? [] : [`mis à jour le ${zoneDate(z.updatedAt, ctx.input.now)}`]), ...(late ? ['(en retard)'] : [])];
   const focus = ctx.input.canFocus && z.lat !== null && z.lon !== null;
   return listRow({
-    text: zoneLabel(z), value: deduced ? 'aucun incident publié' : CLOUD_STATUS_WORD[z.status], ...marker, ...(parts.length > 0 ? { note: parts.join(' · ') } : {}),
+    text: zoneLabel(z), value: deduced ? CLOUD_NO_INCIDENT_TEXT : CLOUD_STATUS_WORD[z.status], ...marker, ...(parts.length > 0 ? { note: parts.join(' · ') } : {}),
     ...(focus ? { data: { zone: `${z.lat},${z.lon}` }, link: true } : {}),
   });
 }

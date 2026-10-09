@@ -65,8 +65,9 @@ describe('légendes : identifiants, teintes et sources', () => {
   it('Cloud : une teinte par statut, le référentiel en teinte neutre, un site coloré seulement si son fournisseur publie un état', () => {
     const l = cloudLegend();
     expect([l.id, l.title]).toEqual(['outagesCloud', 'Cloud et hébergement']);
-    expect(l.items.map((i) => i.id)).toEqual(['cloud-ok', 'cloud-maint', 'cloud-degraded', 'cloud-partial', 'cloud-major', 'cloud-ref']);
-    expect(l.items.map((i) => i.color)).toEqual([levelHex('vert'), OUT_MAINT_HEX, levelHex('jaune'), levelHex('orange'), levelHex('rouge'), OUT_REF_HEX]);
+    expect(l.items.map((i) => i.id)).toEqual(['cloud-ok', 'cloud-maint', 'cloud-degraded', 'cloud-partial', 'cloud-major', 'cloud-deduced', 'cloud-ref']);
+    expect(l.items.map((i) => i.color)).toEqual([levelHex('vert'), OUT_MAINT_HEX, levelHex('jaune'), levelHex('orange'), levelHex('rouge'), OUT_REF_HEX, OUT_REF_HEX]);
+    expect(l.items.find((i) => i.id === 'cloud-deduced')?.label).toContain('Région sans état publié');
     expect(l.items.at(-1)?.label).toBe('Centre de données du référentiel (inventaire)');
     expect(l.refresh?.label).toContain('Pages d’état');
     expect(l.notes?.join(' ')).toContain('Un site n’est coloré que si son fournisseur publie un état.');
@@ -87,6 +88,6 @@ describe('légendes : identifiants, teintes et sources', () => {
     internetLegend().items.push({ id: 'x', label: 'x' });
     cloudLegend().items.push({ id: 'x', label: 'x' });
     expect(internetLegend().items).toHaveLength(2);
-    expect(cloudLegend().items).toHaveLength(6);
+    expect(cloudLegend().items).toHaveLength(7);
   });
 });
