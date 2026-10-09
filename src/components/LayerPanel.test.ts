@@ -11,7 +11,7 @@ function mountWith(layers: Partial<MapLayers>): HTMLElement {
   return host;
 }
 
-afterEach(() => { document.body.innerHTML = ''; });
+afterEach(() => { document.body.innerHTML = ''; window.history.replaceState(null, '', '/'); });
 
 describe('LayerPanel — « Personnaliser les couches »', () => {
   it('la liste des couches est dépliée à l’ouverture, même quand l’état correspond à une vue', () => {
@@ -37,7 +37,8 @@ describe('LayerPanel — entrée « Événements en cours » (v2 seulement)', ()
     expect(visibleLayerDefs(true).some((d) => d.key === 'events')).toBe(true);
   });
 
-  it('rendu : sans ?ui=v2 aucune case « ÉVÉNEMENTS EN COURS »', () => {
+  it('rendu : avec ?ui=v1 aucune case « ÉVÉNEMENTS EN COURS »', () => {
+    window.history.replaceState(null, '', '/?ui=v1');
     const host = mountWith(layersForPreset('energy'));
     expect(host.textContent).not.toContain('ÉVÉNEMENTS EN COURS');
   });

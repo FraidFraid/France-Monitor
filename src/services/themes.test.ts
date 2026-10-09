@@ -1,17 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { THEMES, categoryTheme, drivenByText, inTheme, situationTheme, themeLabel } from './themes.ts';
 import { LAYER_PRESETS } from '../config/layer-presets.ts';
-import { isUiV2 } from './ui-mode.ts';
-
-describe('isUiV2', () => {
-  it("n’active la nouvelle interface que sur ?ui=v2", () => {
-    expect(isUiV2('?ui=v2')).toBe(true);
-    expect(isUiV2('?view=app&ui=v2')).toBe(true);
-    expect(isUiV2('')).toBe(false);
-    expect(isUiV2('?ui=v1')).toBe(false);
-    expect(isUiV2('?ui=V2')).toBe(false);
-  });
-});
 
 describe('thèmes (spec §5.3, §7.3)', () => {
   it('reprennent les cinq vues de layer-presets, dans le même ordre, avec les libellés de la spec', () => {

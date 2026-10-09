@@ -1384,8 +1384,8 @@ export class App {
   private franceIntelBriefMark: BriefLevelMark | null = null;
   /** Revérifie à l'échéance de stabilisation (BRIEF_LEVEL_SETTLE_MS) avec un instantané frais ; un seul à la fois. */
   private franceIntelBriefSettleTimer: ReturnType<typeof setTimeout> | null = null;
-  // ── Disposition A1 derrière ?ui=v2 (refonte UI, étape 2) ──────────────────
-  /** Nouvelle interface « poste de situation » (paramètre d'URL ?ui=v2) ; sinon l'interface actuelle. */
+  // ── Disposition A1, interface par défaut (refonte UI, étape 3) ──────────────
+  /** Interface « poste de situation » (v2) par défaut ; ?ui=v1 redonne l'ancienne interface. */
   private readonly uiV2 = isUiV2(window.location.search);
   private poste: PosteSituation | null = null;
   private postePromise: Promise<PosteSituation> | null = null;

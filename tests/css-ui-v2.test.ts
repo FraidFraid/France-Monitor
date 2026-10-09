@@ -1,4 +1,4 @@
-// La disposition A1 (?ui=v2) ne doit rien changer à l'interface par défaut : les conteneurs v2 sont
+// La disposition A1 (v2, interface par défaut) ne doit rien changer à l'ancienne interface (?ui=v1) : les conteneurs v2 sont
 // masqués hors de la v2, toute règle qui les affiche est préfixée par #app.ui-v2, et les trois
 // largeurs de la spec §9 (ordinateur, tablette, mobile) sont couvertes.
 import { describe, it, expect } from 'vitest';
