@@ -46,4 +46,47 @@ describe('barre « Panneaux ouverts » de la carte', () => {
   it('au chargement (v1), un seul panneau flottant se rouvre', () => {
     expect(methodBody('restoreActiveLayerPanelsAfterRefresh')).toContain('restorePanelPlan(');
   });
+
+  it('v2 : la mise en page des puces passe par v2SwitcherLayout et ne pose jamais is-compact', () => {
+    const body = methodBody('layoutFloatingPanelSwitcher');
+    expect(body).toContain('v2SwitcherLayout(');
+    // is-compact (repli en icône seule de la v1) n'est posé que hors v2.
+    const v2Part = body.slice(body.indexOf('if (this.uiV2) {'));
+    expect(v2Part).not.toContain('is-compact');
+    expect(body).toMatch(/if \(!this\.uiV2\) \{[^}]*is-compact/);
+  });
+
+  it('v2 : l\u2019apparence verte des puces n\u2019est sous aucun @media de largeur (vert à toutes les largeurs)', () => {
+    // Retire chaque bloc @media (accolades équilibrées) : ce qui reste est la feuille « sans condition ».
+    let outside = '';
+    const media: string[] = [];
+    for (let i = 0; i < css.length;) {
+      const at = css.indexOf('@media', i);
+      if (at === -1) { outside += css.slice(i); break; }
+      outside += css.slice(i, at);
+      const open = css.indexOf('{', at);
+      let depth = 0;
+      let end = open;
+      for (; end < css.length; end += 1) {
+        if (css[end] === '{') depth += 1;
+        else if (css[end] === '}' && --depth === 0) break;
+      }
+      media.push(css.slice(at, end + 1));
+      i = end + 1;
+    }
+    const chip = [...outside.matchAll(/#app\.ui-v2 \.floating-panel-switcher__chip \{([^}]*)\}/g)].map((m) => m[1]).join('\n');
+    expect(chip).toContain('border: 1px solid rgba(var(--v2-brand-rgb), 0.5);');
+    expect(chip).toContain('box-shadow: 0 0 0 1px rgba(var(--v2-brand-rgb), 0.14)');
+    expect(chip).toContain('height: 36px;');
+    const active = /#app\.ui-v2 \.floating-panel-switcher__chip\.is-active,\s*#app\.ui-v2 \.floating-panel-switcher__chip\.is-active:hover \{([^}]*)\}/.exec(outside)?.[1] ?? '';
+    expect(active).toContain('background: var(--v2-brand);');
+    expect(active).toContain('color: #04220f;');
+    expect(outside).toContain('#app.ui-v2 .floating-panel-switcher__icon { color: var(--v2-brand); }');
+    // Aucun @media de largeur ne porte l'apparence des puces ; seuls le placement et le mouvement réduit y restent.
+    for (const block of media) {
+      if (!block.includes('.floating-panel-switcher')) continue;
+      expect(block).not.toMatch(/--v2-brand|background:|border:|box-shadow:|border-radius:|font-size:/);
+    }
+    expect(css).not.toMatch(/@media \(min-width: 1101px\)\s*\{\s*#app\.ui-v2 \.floating-panel-switcher__chip/);
+  });
 });

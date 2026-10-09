@@ -7902,84 +7902,91 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 /* Le bouton ⋯ porte aussi .header-quality-link (masqué ≤ 900 px) : en v2 il reste visible, il contient « Sources & qualité ». */
 #app.ui-v2 .header-overflow-trigger { display: inline-flex; }
 
-/* ── v2 : puces des panneaux de couche, en haut à gauche de la carte (demande du 29/09) ──
-   Seul accès aux panneaux en v2 (cocher une couche ne les ouvre pas) : elles doivent se voir.
-   Vert de la marque (#4bfc94 : « Monitor » du logo, bouton de langue actif), distinct du vert de
-   vigilance (#34c759) ; surfaces sombres. Libellé toujours visible (plus de mode icône seule). */
+/* ── v2 : puces des panneaux de couche (demande du 29/09, reprise le 09/10) ──
+   Seul accès aux panneaux en v2 (cocher une couche ne les ouvre pas) : elles doivent se voir, à TOUTES
+   les largeurs. L'apparence (vert, halo, puce active pleine) n'est donc sous AUCUN @media : un
+   @media (min-width: 1101px) la laissait en bleu compact (icône seule) en tablette (constaté en production).
+   Seul le placement dépend de la largeur, plus bas. Vert de la marque (#4bfc94 : « Monitor » du logo,
+   bouton de langue actif), distinct du vert de vigilance (#34c759) ; surfaces sombres. Libellé toujours
+   visible au-dessus de 768 px ; l'icône seule (.is-icon-only, posée par App.layoutFloatingPanelSwitcher)
+   n'apparaît que faute de place réelle. */
 #app.ui-v2 { --v2-brand: #4bfc94; --v2-brand-rgb: 75, 252, 148; --v2-drawer-w: 300px; }
-@media (min-width: 1101px) {
+#app.ui-v2 .floating-panel-switcher {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+/* Mesure de la largeur naturelle d'une rangée (App.layoutFloatingPanelSwitcher). */
+#app.ui-v2 .floating-panel-switcher.is-measuring { max-width: none !important; flex-wrap: nowrap !important; }
+/* Jamais de débordement : une puce ne dépasse pas la rangée, son libellé se coupe en « … ». */
+#app.ui-v2 .floating-panel-switcher__chip { min-width: 0; max-width: 100%; }
+#app.ui-v2 .floating-panel-switcher__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+/* Libellé visible, y compris sur mobile (la règle v1 le masque sous 769 px) ; seule l'icône seule le retire. */
+#app.ui-v2 .floating-panel-switcher:not(.is-icon-only) .floating-panel-switcher__label { display: block; }
+/* Place trop juste : icône seule, le nom reste en infobulle. */
+#app.ui-v2 .floating-panel-switcher.is-icon-only .floating-panel-switcher__chip {
+  width: 36px; padding: 0; justify-content: center;
+}
+#app.ui-v2 .floating-panel-switcher.is-icon-only .floating-panel-switcher__label { display: none; }
+#app.ui-v2 .floating-panel-switcher__chip {
+  height: 36px;
+  padding: 0 14px 0 12px;
+  gap: 8px;
+  border-radius: 18px;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text-primary);
+  background: rgba(12, 14, 22, 0.92);
+  border: 1px solid rgba(var(--v2-brand-rgb), 0.5);
+  box-shadow: 0 0 0 1px rgba(var(--v2-brand-rgb), 0.14), 0 0 16px rgba(var(--v2-brand-rgb), 0.3), 0 2px 8px rgba(0, 0, 0, 0.45);
+  transition: background 180ms cubic-bezier(0.25, 1, 0.5, 1), border-color 180ms cubic-bezier(0.25, 1, 0.5, 1),
+    box-shadow 180ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+#app.ui-v2 .floating-panel-switcher__icon { color: var(--v2-brand); }
+#app.ui-v2 .floating-panel-switcher__icon svg { width: 16px; height: 16px; }
+#app.ui-v2 .floating-panel-switcher__chip:hover {
+  background: rgba(var(--v2-brand-rgb), 0.16);
+  border-color: var(--v2-brand);
+  box-shadow: 0 0 0 1px rgba(var(--v2-brand-rgb), 0.35), 0 0 20px rgba(var(--v2-brand-rgb), 0.42), 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+/* Panneau ouvert : puce pleine de vert (distincte du survol, translucide), texte vert très sombre
+   (contraste > 12:1 sur #4bfc94), halo marqué. */
+#app.ui-v2 .floating-panel-switcher__chip.is-active,
+#app.ui-v2 .floating-panel-switcher__chip.is-active:hover {
+  color: #04220f;
+  font-weight: 700;
+  background: var(--v2-brand);
+  border-color: var(--v2-brand);
+  box-shadow: 0 0 0 3px rgba(var(--v2-brand-rgb), 0.3), 0 0 26px rgba(var(--v2-brand-rgb), 0.6), 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+#app.ui-v2 .floating-panel-switcher__chip.is-active .floating-panel-switcher__icon { color: #04220f; }
+#app.ui-v2 .floating-panel-switcher__chip:focus-visible { outline: 2px solid var(--v2-brand); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  #app.ui-v2 .floating-panel-switcher__chip { transition: none; }
+}
+
+/* Placement au-dessus de 768 px : en haut à gauche de la carte, à la hauteur du sélecteur Carte | Satellite
+   (≈ 165 px, en haut à droite). Sous 769 px, le placement mobile de la règle v1 (en bas à droite,
+   au-dessus du bouton Légende) est conservé. */
+@media (min-width: 769px) {
   #app.ui-v2 .floating-panel-switcher {
     top: 12px;
     left: 12px;
     right: auto;
     justify-content: flex-start;
-    flex-wrap: wrap;
-    gap: 8px;
-    /* Laisse la place au sélecteur Carte | Satellite (≈ 165 px), en haut à droite. */
     max-width: calc(100% - 24px - 180px);
   }
-  /* Tiroir Couches ouvert (il recouvre le bord gauche de la carte) : puces à sa droite, à la même hauteur. */
+  /* Pas la place sur une rangée à côté de Carte | Satellite (classe posée par
+     App.layoutFloatingPanelSwitcher) : les puces passent dessous et prennent toute la largeur libre. */
+  #app.ui-v2 .floating-panel-switcher.is-below-controls { top: 60px; max-width: calc(100% - 24px); }
+}
+/* Ordinateur (≥ 1101 px) : le tiroir Couches ouvert recouvre le bord gauche de la carte ; les puces se
+   placent à sa droite, à la même hauteur. En tablette (≤ 1100 px) le tiroir est une colonne à part, hors de la carte. */
+@media (min-width: 1101px) {
   #app.ui-v2:not(.sidebar-collapsed) .floating-panel-switcher {
     left: calc(var(--v2-drawer-w) + 12px);
     max-width: calc(100% - var(--v2-drawer-w) - 24px - 180px);
   }
-  /* Mesure de la largeur naturelle d'une rangée (App.layoutFloatingPanelSwitcher). */
-  #app.ui-v2 .floating-panel-switcher.is-measuring { max-width: none !important; flex-wrap: nowrap !important; }
-  /* Jamais de débordement : une puce ne dépasse pas la rangée, son libellé se coupe en « … ». */
-  #app.ui-v2 .floating-panel-switcher__chip { min-width: 0; max-width: 100%; }
-  #app.ui-v2 .floating-panel-switcher__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  /* Place trop juste à côté du tiroir (< 150 px) : icône seule, le nom reste en infobulle. */
-  #app.ui-v2 .floating-panel-switcher.is-icon-only .floating-panel-switcher__chip {
-    width: 36px; padding: 0; justify-content: center;
-  }
-  #app.ui-v2 .floating-panel-switcher.is-icon-only .floating-panel-switcher__label { display: none; }
-  #app.ui-v2 .floating-panel-switcher__chip,
-  #app.ui-v2 .floating-panel-switcher.is-compact .floating-panel-switcher__chip:not(.is-active) {
-    height: 36px;
-    padding: 0 14px 0 12px;
-    gap: 8px;
-    border-radius: 18px;
-    font-size: 12.5px;
-    font-weight: 600;
-    letter-spacing: 0.01em;
-    color: var(--text-primary);
-    background: rgba(12, 14, 22, 0.92);
-    border: 1px solid rgba(var(--v2-brand-rgb), 0.5);
-    box-shadow: 0 0 0 1px rgba(var(--v2-brand-rgb), 0.14), 0 0 16px rgba(var(--v2-brand-rgb), 0.3), 0 2px 8px rgba(0, 0, 0, 0.45);
-    transition: background 180ms cubic-bezier(0.25, 1, 0.5, 1), border-color 180ms cubic-bezier(0.25, 1, 0.5, 1),
-      box-shadow 180ms cubic-bezier(0.25, 1, 0.5, 1);
-  }
-  #app.ui-v2 .floating-panel-switcher.is-compact .floating-panel-switcher__chip:not(.is-active) .floating-panel-switcher__label {
-    display: inline;
-  }
-  #app.ui-v2 .floating-panel-switcher__icon { color: var(--v2-brand); }
-  #app.ui-v2 .floating-panel-switcher__icon svg { width: 16px; height: 16px; }
-  #app.ui-v2 .floating-panel-switcher__chip:hover {
-    background: rgba(var(--v2-brand-rgb), 0.16);
-    border-color: var(--v2-brand);
-    box-shadow: 0 0 0 1px rgba(var(--v2-brand-rgb), 0.35), 0 0 20px rgba(var(--v2-brand-rgb), 0.42), 0 2px 8px rgba(0, 0, 0, 0.45);
-  }
-  /* Panneau ouvert : puce pleine de vert (distincte du survol, translucide), texte vert très sombre
-     (contraste > 12:1 sur #4bfc94), halo marqué. */
-  #app.ui-v2 .floating-panel-switcher__chip.is-active,
-  #app.ui-v2 .floating-panel-switcher__chip.is-active:hover {
-    color: #04220f;
-    font-weight: 700;
-    background: var(--v2-brand);
-    border-color: var(--v2-brand);
-    box-shadow: 0 0 0 3px rgba(var(--v2-brand-rgb), 0.3), 0 0 26px rgba(var(--v2-brand-rgb), 0.6), 0 2px 8px rgba(0, 0, 0, 0.45);
-  }
-  #app.ui-v2 .floating-panel-switcher__chip.is-active .floating-panel-switcher__icon { color: #04220f; }
-  #app.ui-v2 .floating-panel-switcher__chip:focus-visible { outline: 2px solid var(--v2-brand); outline-offset: 3px; }
-}
-@media (min-width: 1101px) and (prefers-reduced-motion: reduce) {
-  #app.ui-v2 .floating-panel-switcher__chip { transition: none; }
-}
-
-/* Pas la place sur une rangée à côté de Carte | Satellite (classe posée par
-   App.layoutFloatingPanelSwitcher) : les puces passent dessous et prennent toute la largeur libre. */
-@media (min-width: 1101px) {
-  #app.ui-v2 .floating-panel-switcher.is-below-controls { top: 60px; max-width: calc(100% - 24px); }
   #app.ui-v2:not(.sidebar-collapsed) .floating-panel-switcher.is-below-controls { max-width: calc(100% - var(--v2-drawer-w) - 24px); }
 }
 
