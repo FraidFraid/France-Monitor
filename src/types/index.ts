@@ -1128,8 +1128,12 @@ export interface FranceCountrySignals {
   cyberPillLevel?: 'vert' | 'jaune' | 'orange' | 'rouge' | 'nd';
   /** Pastille Défense relevée par la seule grille GNSS (mailles à précision dégradée) : la tuile « Militaire » le dit (« GNSS à vérifier »). */
   defensePillFromGnss?: boolean;
-  // Finance (weak signal)
-  marketStress: number;
+  /** Stabilité financière (spec 2026-10-12 pilier finance) : plus haut niveau de CISS France, CISS zone euro, écart OAT-Bund ; null sans donnée. */
+  financeLevel: 'vert' | 'jaune' | 'orange' | 'rouge' | null;
+  /** Écart OAT-Bund en points (tuile, brief) ; null sans relevé. */
+  financeSpread: number | null;
+  /** CISS France (tuile, brief) ; null sans relevé. */
+  financeCissFr: number | null;
 }
 
 export interface FranceCountryAxes {

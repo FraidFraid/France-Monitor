@@ -19,7 +19,7 @@ function signals(over: Partial<FranceCountrySignals> = {}): FranceCountrySignals
     criticalNews: 0, highNews: 0, topNewsCount: 0, meteoAlerts: 0, floodAlerts: 0, fireDetections: 0,
     railDisruptions: 0, railSevere: 0, roadIncidents: 0, telecomOutages: 0, telecomOutagesLevel: 'vert',
     cyberAlerts: 0, cyberCritical: 0, militaryFlights: 0, maritimeTrafficFrance: 0,
-    defenseAlerts: 0, defenseHigh: 0, jammingSignals: 0, marketStress: 0, ...over,
+    defenseAlerts: 0, defenseHigh: 0, jammingSignals: 0, financeLevel: null, financeSpread: null, financeCissFr: null, ...over,
   };
 }
 
@@ -76,7 +76,7 @@ describe('rendu v1 figé avant extraction (spec 2026-10-01, v1 inchangée)', () 
   const rich = {
     signals: signals({
       cyberAlerts: 24, cyberCritical: 20, railDisruptions: 215, railSevere: 159, militaryFlights: 36,
-      telecomOutages: 1333, telecomOutagesLevel: 'orange', meteoAlerts: 10, fireDetections: 29, marketStress: 7, criticalNews: 2,
+      telecomOutages: 1333, telecomOutagesLevel: 'orange', meteoAlerts: 10, fireDetections: 29, financeLevel: 'orange', financeSpread: 1, financeCissFr: 0.05, criticalNews: 2,
       jammingSignals: 1,
     }),
     meteo: [

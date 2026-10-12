@@ -77,7 +77,6 @@ export function briefSignalCounts(s: FranceCountrySignals): Record<string, numbe
     maritimeTrafficFrance: s.maritimeTrafficFrance,
     defenseAlerts:         s.defenseAlerts,
     jammingSignals:        s.jammingSignals,
-    marketStress:          s.marketStress,
     militaryUnavailable:   s.militaryUnavailable === true,
     cablesUnavailable:     s.cablesUnavailable === true,
     gnssUnavailable:       s.gnssUnavailable === true,

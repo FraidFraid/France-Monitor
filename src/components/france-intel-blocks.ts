@@ -265,9 +265,9 @@ export function domainTiles(s: FranceCountrySignals, lang: Lang): DomainTile[] {
     defenseTile(s, lang),
     meteoTile(s, lang),
     {
-      label: 'Finance', value: s.marketStress,
-      meta: t(lang, 'lignes sous tension', 'stressed lines'),
-      level: s.marketStress > 2 ? 'medium' : 'low',
+      label: 'Finance', value: null,
+      meta: t(lang, 'stabilité financière', 'financial stability'),
+      level: null,
     },
   ];
 }

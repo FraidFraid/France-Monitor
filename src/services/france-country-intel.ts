@@ -9,6 +9,7 @@
 //                └──→ detectSituations()            ──→ DetectedSituation[]
 
 import type {
+  FinancialStabilityResponse,
   AisAnomaly,
   NewsItem,
   ISNRData,
@@ -58,6 +59,8 @@ import { MILITARY_FIGURE_LABEL, distinctVessels, isSovereigntyDataLate } from '.
 import { ecowattToday } from './ecowatt-official.ts';
 import { foyerLevel, isMajorFoyer } from './environment-levels.ts';
 import { telecomLevel } from './outages-levels.ts';
+import { blockLevel } from './financial-stability-levels.ts';
+import type { VigilanceLevel } from './vigilance.ts';
 
 /**
  * All raw data App.ts passes to the engine.
@@ -115,6 +118,8 @@ export interface FranceRawData {
   /** Épisodes de pollution de J à J+2 (Atmo France, § 3.2). Situations seulement ; aucune entrée du score. */
   airEpisodes?: AirEpisode[];
   marketData: MarketData[];
+  /** Stabilité financière (BCE + écart OAT-Bund, /api/finance/stability) : pilier finance du score (spec 2026-10-12). */
+  financialStability?: FinancialStabilityResponse | null;
   ecowattResponse: EcowattResponse | null;
   gasState: GasNetworkState | null;
   nuclearState: NuclearState | null;
@@ -150,6 +155,15 @@ function clamp(value: number): number {
  * Convert a raw national count into a bounded contribution.
  * Uses log scaling so very large totals do not instantly saturate the axis.
  */
+/** Pilier finance (spec 2026-10-12) : composante du pilier signal (poids 15) et apport à la pression informationnelle, même plafond que les anciennes baisses de marché (60 / 10). */
+export const FINANCE_COMPONENT: Readonly<Record<VigilanceLevel, { pillar: number; pressure: number }>> = {
+  vert: { pillar: 0, pressure: 0 }, jaune: { pillar: 20, pressure: 3 }, orange: { pillar: 40, pressure: 6 }, rouge: { pillar: 60, pressure: 10 },
+};
+
+export function financeComponent(level: VigilanceLevel | null): { pillar: number; pressure: number } {
+  return level === null ? FINANCE_COMPONENT.vert : FINANCE_COMPONENT[level];
+}
+
 function scaleCount(count: number, cap: number, maxContribution: number): number {
   if (count <= 0 || cap <= 0 || maxContribution <= 0) return 0;
   const bounded = Math.min(count, cap);
@@ -272,7 +286,7 @@ function signalPressure(signals: FranceCountrySignals): number {
   return clamp(
     scaleCount(signals.criticalNews + signals.highNews, 15, 40)
       + scaleCount(signals.meteoAlerts + signals.floodAlerts, 30, 22)
-      + scaleCount(signals.marketStress, 5, 10)
+      + financeComponent(signals.financeLevel).pressure
       + scaleCount(signals.cyberAlerts, 40, 12),
   );
 }
@@ -321,7 +335,7 @@ function computeFranceRiskPillars(
   const signal = averageWeighted([
     { value: isnrSocial, weight: 30 },
     { value: signalPressure(signals), weight: 40 },
-    { value: clamp(scaleCount(signals.marketStress, 5, 60)), weight: 15 },
+    { value: financeComponent(signals.financeLevel).pillar, weight: 15 },
     { value: clamp(scaleCount(signals.fireDetections, 15, 50)), weight: 15 },
   ]);
 
@@ -477,6 +491,17 @@ function buildEnergySnapshot(raw: FranceRawData, nowMs: number = Date.now()): Fr
 
 // ─── Exported pipeline functions ──────────────────────────────────────────────
 
+function financeSignals(fs: FinancialStabilityResponse | null): Pick<FranceCountrySignals, 'financeLevel' | 'financeSpread' | 'financeCissFr'> {
+  const ciss = fs?.series.find((s) => s.id === 'cissFr');
+  const usable = (v: number | null | undefined, status: string | undefined): number | null =>
+    typeof v === 'number' && Number.isFinite(v) && status !== 'unavailable' ? v : null;
+  return {
+    financeLevel: blockLevel(fs),
+    financeSpread: usable(fs?.spread.value, fs?.spread.status),
+    financeCissFr: usable(ciss?.value, ciss?.status),
+  };
+}
+
 /**
  * Build the flat FranceCountrySignals from raw data arrays.
  * Each field counts relevant items at the appropriate severity threshold.
@@ -540,8 +565,8 @@ export function buildFranceSignals(raw: FranceRawData, nowMs: number = Date.now(
     defensePillLevel: raw.defensePillLevel,
     cyberPillLevel: raw.cyberPillLevel,
     ...(raw.defensePillFromGnss === true ? { defensePillFromGnss: true } : {}),
-    // Finance (weak signal)
-    marketStress: raw.marketData.filter((m) => m.changePercent <= -1).length,
+    // Stabilité financière (spec 2026-10-12) : niveau du bloc, les baisses de marché n'entrent plus dans le score.
+    ...financeSignals(raw.financialStability ?? null),
   };
 }
 
@@ -668,7 +693,7 @@ export function computeFranceScoreBreakdown(
     signal: [
       { label: 'Tension sociale (ISNR)', value: isnrSocial },
       { label: 'Pression informationnelle', value: signalPressure(signals) },
-      { label: 'Stress marchés', value: clamp(scaleCount(signals.marketStress, 5, 60)) },
+      { label: 'Stabilité financière', value: financeComponent(signals.financeLevel).pillar },
       { label: 'Feux actifs', value: clamp(scaleCount(signals.fireDetections, 15, 50)) },
     ],
     defense: [
