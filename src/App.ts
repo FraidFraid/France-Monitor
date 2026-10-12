@@ -65,9 +65,11 @@ import { fetchNetworkBarometer, setBarometerEolienLive } from './services/networ
 import type { NetworkBarometerResult } from './services/network-barometer.ts';
 import { LayerPanel } from './components/LayerPanel.ts';
 import {
-  ALL_PRESETABLE_LAYER_KEYS, DEFAULT_PRESET_ID, hasPersistedLayers, layersForPreset, migrateStoredLayers, themeLayers, v2StartupLayers, type LayerPresetId,
+  ALL_PRESETABLE_LAYER_KEYS, DEFAULT_PRESET_ID, hasPersistedLayers, layersForPreset, migrateStoredLayers, presetShowsEvents, themeLayers, v2StartupLayers, type LayerPresetId,
 } from './config/layer-presets.ts';
 import { computeISNR } from './services/stability-index.ts';
+import type { DepartmentPressure } from './services/department-pressure.ts';
+import type { PressurePanel } from './components/PressurePanel.ts';
 import { ALL_INFRASTRUCTURE, NUCLEAR_PLANTS } from './config/infrastructure.ts';
 // ACTIVE_INSTALLATIONS (config/military-bases-db ~1100 l.) chargé dynamiquement dans loadDefenseSites(), sans fusion OpenStreetMap.
 
@@ -590,7 +592,7 @@ const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
   { id: 'military', label: 'Défense', icon: 'shield', layerKeys: ['military'] },
   { id: 'subseaCables', label: 'Connectivité', icon: 'waves', layerKeys: ['subseaCables'] },
   { id: 'cyber', label: 'Vigilance cyber', icon: 'lock-keyhole', layerKeys: ['cyber'] },
-  { id: 'stability', label: 'Indice stabilité', icon: 'bar-chart-3', layerKeys: ['stability'] },
+  { id: 'stability', label: 'Pression par département', icon: 'bar-chart-3', layerKeys: ['stability'] },
   { id: 'outagesElec', label: 'Électricité', icon: 'zap', layerKeys: ['outagesElec'] },
   { id: 'outagesTelecom', label: 'Télécoms mobiles', icon: 'satellite-dish', layerKeys: ['outagesTelecom'] },
   { id: 'outagesInternet', label: 'Internet', icon: 'globe', layerKeys: ['outagesInternet'] },
@@ -1369,6 +1371,9 @@ export class App {
   private commodityStrip: CommodityStrip | null = null;
   private _intervalCommodities: ReturnType<typeof setInterval> | null = null;
   private isnrPanel: ISNRPanel | null = null;
+  /** v2 : « Pression par département » à la place de l'ISNRPanel (12/10/2026) ; données calculées avec le fil du poste. */
+  private pressurePanel: PressurePanel | null = null;
+  private v2Pressure: DepartmentPressure[] | null = null;
   private cyberPanel: CyberPanel | null = null;
   private franceIntelPanel: FranceIntelPanel | null = null;
   private situationMonitor: SituationMonitor | null = null;
@@ -1904,14 +1909,17 @@ export class App {
     const toggle = header.querySelector<HTMLButtonElement>('[data-sidebar-toggle]');
     if (!toggle) return;
 
-    // v2 (arbitrage A6) : la barre des couches est repliée par défaut, et mémorisée à part.
-    const storageKey = this.uiV2 ? 'fm-v2-sidebar-collapsed' : 'fm-sidebar-collapsed';
+    // v2 : la barre des couches est toujours repliée à l'ouverture, la carte garde toute la place (décision du 12/10/2026,
+    // revient sur la mémorisation de l'arbitrage A6) ; v1 : état mémorisé.
+    const storageKey = 'fm-sidebar-collapsed';
     let collapsed = this.uiV2;
-    try {
-      const stored = localStorage.getItem(storageKey);
-      if (stored !== null) collapsed = stored === 'true';
-    } catch {
-      collapsed = this.uiV2;
+    if (!this.uiV2) {
+      try {
+        const stored = localStorage.getItem(storageKey);
+        if (stored !== null) collapsed = stored === 'true';
+      } catch {
+        collapsed = false;
+      }
     }
 
     const apply = (next: boolean, persist: boolean): void => {
@@ -1921,7 +1929,7 @@ export class App {
       this.layoutFloatingPanelSwitcher();
       toggle.setAttribute('aria-expanded', String(!collapsed));
       toggle.setAttribute('aria-label', collapsed ? t('app.sidebarExpandAria') : t('app.sidebarCollapseAria'));
-      if (!persist) return;
+      if (!persist || this.uiV2) return;
       try {
         localStorage.setItem(storageKey, String(collapsed));
       } catch {
@@ -2767,11 +2775,12 @@ export class App {
     // v2 : l'activation d'une couche ne l'ouvre jamais (spec 2026-09-29 § 4), le sélecteur de panneaux le fait.
     this.layerPanel.setOnChange((key, enabled) => this.onLayerToggle(key, enabled, layerActivationOptions(this.uiV2)));
     this.layerPanel.setPresetHandler((id) => {
+      // Thème posé avant la vue : la puce Actualités de la barre des panneaux en dépend.
+      this.v2Theme = id;
       this.applyLayerPreset(id);
       // v2 (arbitrage A5) : la vue choisie dans « Couches » devient aussi le thème de la liste et de la fiche.
       this.poste?.setTheme(id, { silent: true });
       // Silencieux : `onThemeChange` ne tourne pas, la carte doit suivre le thème du fil elle-même.
-      this.v2Theme = id;
       this.refreshEventPoints();
     });
     this.layerPanel.mount();
@@ -2864,6 +2873,20 @@ export class App {
     });
     // Click sur département : pas de flyTo (panel latéral uniquement, sans interaction carte)
     this.isnrPanel.mount();
+    // v2 : « Pression par département » chargé à la demande (hors du chunk critique), à la place de l'ISNRPanel.
+    if (this.uiV2) {
+      void import('./components/PressurePanel.ts').then(({ PressurePanel }) => {
+        const panel = new PressurePanel(floatContainer);
+        // Département choisi : mis en évidence sur la carte ; élément choisi : sa fiche.
+        panel.setOnSelectDepartment((code) => this.mapContainer?.highlightISNRDepartment(code));
+        panel.setOnOpenElement((key) => this.poste?.select(key));
+        panel.mount();
+        this.pressurePanel = panel;
+        panel.update(this.v2Pressure);
+        // La puce de la couche n'apparaît qu'avec l'instance du panneau.
+        this.refreshFloatingPanelSwitcher();
+      });
+    }
 
     void this.refreshNetworkBarometerWidget();
     this._intervalNetworkBarometer = setInterval(() => {
@@ -3392,7 +3415,10 @@ export class App {
 
     // All remaining panels use an if/else chain — at most one branch fires per toggle.
     if (key === 'stability') {
-      if (this.activeLayers.stability && this.currentISNRData) this.isnrPanel?.show(this.currentISNRData);
+      if (this.uiV2) {
+        if (this.activeLayers.stability) this.pressurePanel?.show(this.v2Pressure);
+        else this.pressurePanel?.hide({ silent: true });
+      } else if (this.activeLayers.stability && this.currentISNRData) this.isnrPanel?.show(this.currentISNRData);
       else this.isnrPanel?.hide();
     } else if (key === 'energySystems') {
       // Group master turned off: collapse all energy panels
@@ -5074,7 +5100,7 @@ export class App {
       case 'cyber': return this.cyberPanel;
       case 'military': return this.defensePanel;
       case 'subseaCables': return this.connectivityPanel;
-      case 'stability': return this.isnrPanel;
+      case 'stability': return this.uiV2 ? this.pressurePanel : this.isnrPanel;
       case 'outagesElec': return this.outagesPowerPanel;
       case 'outagesTelecom': return this.outagesTelecomPanel;
       case 'outagesInternet': return this.outagesInternetPanel;
@@ -5161,7 +5187,10 @@ export class App {
 
     const eligible = FLOATING_PANEL_DEFS.filter((def) => this.floatingPanelIsEligible(def.id));
 
-    if (!showsSwitcher(this.uiV2, eligible.length)) {
+    // v2 : puce « Actualités géolocalisées » en tête (12/10/2026), dans la vue qui affiche les actualités (Vue générale), même
+    // éteinte pour pouvoir les rallumer ; ailleurs, seulement si la couche a été cochée à la main.
+    const showNews = this.uiV2 && (presetShowsEvents(this.v2Theme) || this.activeLayers.events === true);
+    if (!showsSwitcher(this.uiV2, eligible.length + (showNews ? 1 : 0))) {
       el.hidden = true;
       el.innerHTML = '';
       this.layoutFloatingPanelSwitcher();
@@ -5169,7 +5198,24 @@ export class App {
     }
 
     el.hidden = false;
-    el.innerHTML = eligible.map((def) => {
+    const newsOn = this.activeLayers.events === true;
+    const newsAction = newsOn ? 'Masquer les actualités géolocalisées de la carte' : 'Afficher les actualités géolocalisées sur la carte';
+    // Même puce que les autres : pleine quand les points d'actualité (couche « Événements en cours ») sont affichés ; un clic les
+    // montre ou les cache.
+    const newsChip = !showNews ? '' : `
+        <button
+          type="button"
+          class="floating-panel-switcher__chip ${newsOn ? 'is-active' : ''}"
+          data-events-toggle
+          aria-pressed="${newsOn}"
+          aria-label="${newsAction}"
+          title="${newsAction}"
+        >
+          <span class="floating-panel-switcher__icon" aria-hidden="true">${fmIcon('newspaper')}</span>
+          <span class="floating-panel-switcher__label">Actualités géolocalisées</span>
+        </button>
+      `;
+    el.innerHTML = newsChip + eligible.map((def) => {
       // Surligné = son panneau est à l'écran ; un clic l'ouvre ou le referme (la couche reste active).
       const pressed = this.isFloatingPanelVisible(def.id);
       const action = t(pressed ? 'app.floatingPanelHide' : 'app.floatingPanelShow', { value: def.label });
@@ -5188,6 +5234,11 @@ export class App {
       `;
     }).join('');
 
+    el.querySelector<HTMLButtonElement>('[data-events-toggle]')?.addEventListener('click', () => {
+      this.onLayerToggle('events', !this.activeLayers.events, layerActivationOptions(this.uiV2));
+      this.layerPanel?.updateLayers(this.activeLayers);
+      this.refreshFloatingPanelSwitcher();
+    });
     el.querySelectorAll<HTMLButtonElement>('[data-panel-key]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const key = btn.dataset['panelKey'] as keyof MapLayers | undefined;
@@ -7880,6 +7931,11 @@ export class App {
         onFlyTo: (lon, lat, zoom) => this.mapContainer?.flyTo(lon, lat, zoom),
         onActivateLayers: (keys) => this.activateLayersFromSituation(keys),
         onOpenLayerPanel: (key) => this.openLayerPanelFromFiche(key),
+        onPressure: (depts) => {
+          this.v2Pressure = depts;
+          this.pressurePanel?.update(depts);
+          void this.mapContainer?.updateDepartmentPressure(new Map(depts.map((d) => [d.code, d.level])));
+        },
         onOpenDossier: (situation) => this.openAlertDossier(situation),
         onOpenReport: () => {
           void this.openSituationReport();
@@ -8020,7 +8076,8 @@ export class App {
     );
 
     // Update map layer
-    this.mapContainer?.updateISNR(this.currentISNRData.scores);
+    // v2 : la couche montre la pression par département (onPressure), pas l'ISNR.
+    if (!this.uiV2) void this.mapContainer?.updateISNR(this.currentISNRData.scores);
 
     // Update ISNR panel if visible
     if (this.isnrPanel?.isVisible()) {

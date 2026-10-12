@@ -206,7 +206,9 @@ describe('PosteSituation', () => {
 
   it('tablette : « Vue générale » filtre sans ouvrir de volet ; une clé theme:<id> ouvre la fiche du thème (I3)', () => {
     const { roots, poste } = setup(820);
-    expect(poste.selectedKey()).toBeNull();
+    // À l'ouverture, Intelligence France est affichée en volet (décision du 12/10/2026).
+    expect(poste.selectedKey()).toBe('france');
+    expect(roots.app.dataset.v2Fiche).toBe('open');
     poste.select('theme:security');
     expect(poste.selectedKey()).toBe('theme:security');
     expect(ficheKey(roots)).toBe('theme:security');
@@ -216,6 +218,18 @@ describe('PosteSituation', () => {
     roots.themes.querySelector<HTMLButtonElement>('[data-theme="general"]')?.click();
     expect(roots.app.dataset.v2Fiche).toBe('default');
     expect(roots.list.textContent).toContain('À traiter · Vue générale');
+  });
+
+  it('bouton « Intelligence France » avant les thèmes : ouvre la fiche État de la France, pressé quand elle est affichée', () => {
+    const { roots, poste } = setup(820);
+    const first = roots.themes.querySelector<HTMLButtonElement>('.tb-list > button');
+    expect(first?.hasAttribute('data-france')).toBe(true);
+    expect(first?.getAttribute('aria-pressed')).toBe('true');
+    poste.select('situation:energy-stress');
+    expect(roots.themes.querySelector('[data-france]')?.getAttribute('aria-pressed')).toBe('false');
+    roots.themes.querySelector<HTMLButtonElement>('[data-france]')?.click();
+    expect(poste.selectedKey()).toBe('france');
+    expect(ficheKey(roots)).toBe('france');
   });
 
   it('élément disparu : fiche par défaut, sélection effacée, focus sur le titre de la fiche (revue)', () => {
@@ -252,6 +266,9 @@ describe('PosteSituation', () => {
   it('mobile : onglets ; une sélection ouvre la fiche en volet ; l’onglet « France » montre la fiche du pays', () => {
     const { roots, poste } = setup(390);
     expect(roots.tabs.textContent).toContain('À traiter');
+    // À l'ouverture, l'onglet État (Intelligence France) est affiché (décision du 12/10/2026).
+    expect(roots.app.dataset.v2Tab).toBe('fiche');
+    roots.tabs.querySelector<HTMLButtonElement>('[data-tab="list"]')?.click();
     expect(roots.app.dataset.v2Tab).toBe('list');
     poste.select('situation:energy-stress');
     expect(roots.app.dataset.v2Fiche).toBe('open');

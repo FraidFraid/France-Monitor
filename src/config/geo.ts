@@ -383,6 +383,23 @@ export const DOM_TOM_BBOXES = [
   { name: 'Mayotte', west: 44.9, south: -13.0, east: 45.3, north: -12.6 },
 ];
 
+const DOM_TOM_DEPARTMENTS: Readonly<Record<string, { code: string; nom: string }>> = {
+  Guadeloupe: { code: '971', nom: 'Guadeloupe' },
+  Martinique: { code: '972', nom: 'Martinique' },
+  Guyane: { code: '973', nom: 'Guyane' },
+  'La Reunion': { code: '974', nom: 'La Réunion' },
+  Mayotte: { code: '976', nom: 'Mayotte' },
+};
+
+/**
+ * Département d'outre-mer contenant le point (cadre de DOM_TOM_BBOXES), ou null. La géométrie des départements
+ * (departements.geojson) ne couvre que la métropole : un événement en Guadeloupe y serait sans lieu (12/10/2026).
+ */
+export function overseasDepartmentAt(lon: number, lat: number): { code: string; nom: string } | null {
+  const box = DOM_TOM_BBOXES.find((b) => lon >= b.west && lon <= b.east && lat >= b.south && lat <= b.north);
+  return box ? DOM_TOM_DEPARTMENTS[box.name] ?? null : null;
+}
+
 /** Check if coordinates are within France or overseas territories */
 export function isInFrance(lon: number, lat: number): boolean {
   // Metro

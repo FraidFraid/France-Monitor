@@ -436,7 +436,7 @@ describe('fil de la refonte 29/09 (spec 2026-09-29 § 6)', () => {
     expect(q.items[0].since).toBe(Date.parse('2026-09-24T07:55:00Z'));
   });
 
-  it('lieu : département des coordonnées, « France » sans coordonnées, rien hors des départements, nom d’un code', () => {
+  it('lieu : département des coordonnées (outre-mer par son cadre), « France » sans coordonnées, rien ailleurs, nom d’un code', () => {
     const q = buildWorkQueue(input({
       departements: index,
       situations: [situation({ affectedZones: ['01'] })],
@@ -444,12 +444,15 @@ describe('fil de la refonte 29/09 (spec 2026-09-29 § 6)', () => {
         event({ id: 1, lat: 49.4, lon: 1.1 }),
         event({ id: 2, lat: null, lon: null }),
         event({ id: 3, lat: -20.9, lon: 55.45 }),
+        event({ id: 4, lat: 30, lon: -30 }),
       ] }),
     }));
     const place = (key: string): string | null | undefined => q.items.find((i) => i.key === key)?.place;
     expect(place('event:1')).toBe('Seine-Maritime');
     expect(place('event:2')).toBe('France');
-    expect(place('event:3')).toBeNull();
+    // Outre-mer : hors de la géométrie de métropole, nommé par son cadre (12/10/2026) ; en pleine mer : rien.
+    expect(place('event:3')).toBe('La Réunion');
+    expect(place('event:4')).toBeNull();
     expect(place('situation:energy-stress')).toBe('Ain');
   });
 });

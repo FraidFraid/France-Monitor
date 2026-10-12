@@ -40,6 +40,8 @@ import { buildFranceFiche, type FranceFicheSnapshot } from '../fiche/france.ts';
 import { buildEventFiche, buildMarketFiche, buildOfficialFiche, buildSituationFiche, buildThemeFiche } from '../fiche/items.ts';
 import type { FicheModel, Lang } from '../fiche/parts.ts';
 import { StatusBar, freshnessCounts, freshnessText } from './StatusBar.ts';
+import { NewsWire, wireItems } from './NewsWire.ts';
+import { departmentPressure, type DepartmentPressure } from '../../services/department-pressure.ts';
 import { ThemeBar } from './ThemeBar.ts';
 import { WorkList } from './WorkList.ts';
 import { FichePanel } from './FichePanel.ts';
@@ -92,6 +94,8 @@ export interface PosteCallbacks {
   onSelect: (key: string) => void;
   /** Lien d'une fiche vers le panneau d'une couche (fiche thème Santé) : App active la couche et ouvre son panneau. */
   onOpenLayerPanel?: (key: string) => void;
+  /** Pression par département recalculée avec le fil (panneau et couche « Pression par département », 12/10/2026). */
+  onPressure?: (depts: DepartmentPressure[]) => void;
 }
 
 export interface PosteRoots {
@@ -152,6 +156,7 @@ export class PosteSituation {
   private readonly clipboard: { writeText(text: string): Promise<void> } | null;
   private readonly sectionOpen: Map<string, boolean>;
   private readonly statusBar: StatusBar;
+  private readonly newsWire: NewsWire;
   private readonly themeBar: ThemeBar;
   private readonly workList: WorkList;
   private readonly fichePanel: FichePanel;
@@ -189,13 +194,22 @@ export class PosteSituation {
     this.storage = options.storage !== undefined ? options.storage : defaultStorage();
     this.clipboard = options.clipboard !== undefined ? options.clipboard : defaultClipboard();
     this.sectionOpen = loadSectionState(this.storage);
-    this.statusBar = new StatusBar(roots.status);
+    // Première ligne : l'état national, puis le fil des alertes dans l'espace libre (12/10/2026).
+    const statusMain = document.createElement('div');
+    statusMain.className = 'sb-main';
+    const wireHost = document.createElement('div');
+    wireHost.className = 'nw-host';
+    roots.status.replaceChildren(statusMain, wireHost);
+    this.statusBar = new StatusBar(statusMain);
+    this.newsWire = new NewsWire(wireHost);
+    this.newsWire.setOnSelect((key) => this.select(key));
     this.themeBar = new ThemeBar(roots.themes);
     this.workList = new WorkList(roots.list);
     this.fichePanel = new FichePanel(roots.fiche);
 
     this.statusBar.setOnSelectFrance(() => this.select('france'));
     this.themeBar.setOnSelect((theme) => this.chooseTheme(theme));
+    this.themeBar.setOnSelectFrance(() => this.select('france'));
     this.workList.setOnSelect((key) => this.select(key));
     this.workList.setOnShowAll((showAll) => {
       this.showAll = showAll;
@@ -214,6 +228,12 @@ export class PosteSituation {
       saveSectionState(this.storage, this.sectionOpen);
     });
     this.fichePanel.setOnClose(() => this.close());
+
+    // À l'ouverture, Intelligence France (fiche État de la France) est affichée à toutes les largeurs (décision du
+    // 12/10/2026) : ordinateur, colonne de droite par défaut ; tablette, volet ouvert ; mobile, onglet État.
+    const startLayout = this.layout();
+    if (startLayout === 'tablet') this.selection = 'france';
+    if (startLayout === 'mobile') this.tab = 'fiche';
 
     // Échap ramène à l'État où que soit le focus — liste, fiche ou carte (spec 2026-09-29 § 4) —,
     // sauf dans un champ de saisie. Écouté sur `window` (après tous les écouteurs de `document`) :
@@ -382,7 +402,15 @@ export class PosteSituation {
     });
     this.trackAppearances(queue, data.now);
     this.queue = queue;
+    // Après le rendu du fil : un calcul en échec ne doit jamais bloquer la liste.
     this.render();
+    try {
+      this.callbacks.onPressure?.(departmentPressure({
+        items: queue.items, meteo: data.meteo, floods: data.floods, departements: this.departements, now: data.now,
+      }));
+    } catch (err) {
+      console.error('[Poste] pression par département', err);
+    }
   }
 
   /** Heure d'apparition des éléments nouveaux pendant la session, après la chauffe du démarrage. */
@@ -433,7 +461,9 @@ export class PosteSituation {
       freshness: freshnessCounts(data.sources),
       lang,
     });
-    this.themeBar.update({ selected: this.theme, levels: national ? { general: national, ...queue.themeLevels } : null, lang });
+    this.newsWire.update(wireItems(queue.items), now, lang);
+    const franceOn = this.selection === 'france' || (this.selection === null && (this.layout() === 'desktop' || this.tab === 'fiche'));
+    this.themeBar.update({ selected: this.theme, franceOn, levels: national ? { general: national, ...queue.themeLevels } : null, lang });
     this.workList.update({ view: viewWorkQueue(queue, this.theme, this.showAll), selectedKey: this.selection, ready: data.ready, lang, now, foreignOpen: this.foreignOpen });
     this.renderTabs(lang);
     this.roots.app.dataset.v2Tab = this.tab;

@@ -61,23 +61,23 @@ describe('StatusBar (spec §5.2)', () => {
 });
 
 describe('ThemeBar (spec §5.3)', () => {
-  it('six thèmes, pastille seulement orange ou rouge (jamais sur Vue générale), le thème choisi est pressé', () => {
+  it('Intelligence France puis six thèmes ; un même voyant de niveau sur chaque thème ; le thème choisi est pressé', () => {
     const html = renderThemeBar({
       selected: 'energy',
       levels: { general: 'rouge', energy: 'rouge', security: 'orange', health: 'vert', environment: 'jaune', transport: 'vert' },
       lang: 'fr',
     });
+    expect(html.indexOf('data-france')).toBeLessThan(html.indexOf('data-theme='));
     expect(html.match(/data-theme=/g)).toHaveLength(6);
     expect(html).toContain('data-theme="energy" aria-pressed="true"');
-    expect(html).toContain('Sécurité et défense <span class="tb-level"><span class="fm-vig fm-vig--orange">Orange</span>');
-    expect(html).toContain('Énergie <span class="tb-level"><span class="fm-vig fm-vig--rouge">Rouge</span>');
-    // Vert et jaune : pas de pastille, le niveau reste dit aux lecteurs d'écran ; jamais rien sur « Vue générale ».
-    expect(html.match(/class="fm-vig /g)).toHaveLength(2);
-    expect(html).toContain('<span class="visually-hidden">· Vert</span>');
+    // Décision du 12/10/2026 : voyant sur les six thèmes (Vue générale comprise), plus de pastille avec le mot.
+    expect(html.match(/class="tb-dot /g)).toHaveLength(6);
+    expect(html).not.toContain('fm-vig');
+    expect(html).toContain('Sécurité et défense <span class="tb-dot tb-dot--orange" title="Orange" aria-hidden="true"></span><span class="visually-hidden">· Orange</span>');
+    expect(html).toContain('<span class="tb-dot tb-dot--rouge" title="Rouge"');
     expect(html).toContain('<span class="visually-hidden">· Jaune</span>');
-    expect(html).not.toMatch(/data-theme="general"[^>]*>[^<]*<span/);
-    // Niveau national pas encore calculé : aucune pastille plutôt qu'un vert par défaut (revue).
-    expect(renderThemeBar({ selected: 'general', levels: null, lang: 'fr' })).not.toContain('fm-vig');
+    // Niveau national pas encore calculé : aucun voyant plutôt qu'un vert par défaut (revue).
+    expect(renderThemeBar({ selected: 'general', levels: null, lang: 'fr' })).not.toContain('tb-dot');
   });
 
   it('un clic choisit le thème', () => {

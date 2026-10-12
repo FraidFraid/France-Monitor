@@ -5843,6 +5843,7 @@ button.header-quality-link {
   .air-traffic-panel-modal,
   .transport-panel-modal,
   .maritime-panel-modal,
+  .pressure-panel-modal,
   .fm-floating-panel {
     position: fixed !important;
     top: auto !important;
@@ -5892,6 +5893,7 @@ button.header-quality-link {
   .air-traffic-panel-modal::before,
   .transport-panel-modal::before,
   .maritime-panel-modal::before,
+  .pressure-panel-modal::before,
   .fm-floating-panel::before {
     content: '';
     flex-shrink: 0;
@@ -7520,19 +7522,49 @@ button.header-quality-link {
 /* Voyant neutre : la couleur est réservée à la gravité (spec §2). */
 .sb-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-muted); }
 
-.tb-list { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.tb-list { display: flex; align-items: center; gap: 10px; overflow-x: auto; scrollbar-width: none; }
 .tb-list::-webkit-scrollbar { display: none; }
+/* Intelligence France (12/10/2026) : entrée principale, au vert de la marque (--v2-brand, défini sur #app.ui-v2) ; en contour et
+   texte, jamais en aplat, pour ne pas se confondre avec le vert de vigilance. Pressée quand la fiche État de la France est affichée. */
+.tb-france {
+  display: inline-flex; align-items: center; gap: 7px; flex: none;
+  padding: 5px 12px; border: 1px solid rgba(var(--v2-brand-rgb, 75, 252, 148), 0.35); border-radius: 8px;
+  background: transparent; color: var(--v2-brand, #4bfc94);
+  font: inherit; font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+.tb-france:hover:not(.is-on) { background: rgba(var(--v2-brand-rgb, 75, 252, 148), 0.08); }
+.tb-france.is-on {
+  border-color: var(--v2-brand, #4bfc94); background: rgba(var(--v2-brand-rgb, 75, 252, 148), 0.12);
+  box-shadow: 0 0 12px rgba(var(--v2-brand-rgb, 75, 252, 148), 0.18);
+}
+.tb-france:focus-visible { outline: 2px solid var(--v2-brand, #4bfc94); outline-offset: 2px; }
+.tb-sep { flex: none; width: 1px; height: 20px; background: var(--border-color); }
+/* Thèmes : un groupe d'onglets, un seul actif (ce sont des filtres). */
+.tb-seg {
+  display: inline-flex; align-items: center; gap: 2px; flex: none;
+  padding: 2px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-primary);
+}
 /* position relative : le libellé `.visually-hidden` (position absolue) reste dans le bouton, donc dans la barre défilante ; sinon il
    élargissait la page du téléphone (446 px pour un écran de 390, contrôle à l'écran du 09/10/2026). */
 .tb-theme {
   position: relative;
   display: inline-flex; align-items: center; gap: 6px; flex: none;
-  padding: 4px 10px; border: 1px solid var(--border-color); border-radius: 6px;
+  padding: 4px 10px; border: 0; border-radius: 6px;
   background: transparent; color: var(--text-secondary); font: inherit; font-size: 12px; white-space: nowrap; cursor: pointer;
+  transition: background-color 120ms ease, color 120ms ease;
 }
-.tb-theme.is-on { color: var(--text-primary); border-color: var(--text-accent); background: var(--bg-surface); }
-.tb-theme:focus-visible { outline: 2px solid var(--text-accent); outline-offset: 1px; }
-.tb-level .fm-vig { font-size: 10px; padding: 0 5px; }
+.tb-theme .fm-icon { opacity: 0.65; }
+.tb-theme:hover:not(.is-on) { color: var(--text-primary); background: color-mix(in srgb, var(--text-primary) 5%, transparent); }
+.tb-theme.is-on { color: var(--text-primary); background: var(--bg-surface); box-shadow: inset 0 0 0 1px rgba(var(--v2-brand-rgb, 75, 252, 148), 0.45); }
+.tb-theme.is-on .fm-icon { opacity: 1; color: var(--v2-brand, #4bfc94); }
+.tb-theme:focus-visible { outline: 2px solid var(--v2-brand, #4bfc94); outline-offset: -2px; }
+/* Voyant de niveau des thèmes (12/10/2026) : le même à chaque niveau ; orange et rouge brillent plus fort. */
+.tb-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; }
+.tb-dot--vert { background: var(--sev-green); box-shadow: 0 0 5px color-mix(in srgb, var(--sev-green) 60%, transparent); }
+.tb-dot--jaune { background: var(--sev-yellow); box-shadow: 0 0 6px color-mix(in srgb, var(--sev-yellow) 65%, transparent); }
+.tb-dot--orange { background: var(--sev-orange); box-shadow: 0 0 8px 1px color-mix(in srgb, var(--sev-orange) 80%, transparent); }
+.tb-dot--rouge { background: var(--sev-red); box-shadow: 0 0 10px 2px color-mix(in srgb, var(--sev-red) 85%, transparent); }
 
 /* Ordinateur : trois colonnes, rien ne recouvre la carte. */
 #app.ui-v2 .main-container { flex-direction: row; position: relative; }
@@ -7844,6 +7876,7 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
   #app.ui-v2 .air-traffic-panel-modal,
   #app.ui-v2 .transport-panel-modal,
   #app.ui-v2 .maritime-panel-modal,
+  #app.ui-v2 .pressure-panel-modal,
   #app.ui-v2 .fm-floating-panel,
   body:has(#app.ui-v2) > .fm-floating-panel {
     position: fixed !important;
@@ -8138,3 +8171,59 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 .lp .lp-faint { color: var(--text-muted); }
 .lp .lp-key i.lp-dash { background: none; height: 0; border-top: 2px dashed var(--text-muted); }
 .lp .lp-seg { flex-wrap: wrap; }
+
+/* ── v2 : fil des alertes dans l'en-tête (12/10/2026, façon « newswire » des salles de rédaction) ──
+   Première ligne : l'état national garde sa largeur, le fil prend l'espace restant ; sous 300 px de place, il disparaît. */
+#app.ui-v2 .header .fm-v2-status { display: flex; align-items: center; gap: 16px; }
+#app.ui-v2 .fm-v2-status .sb-main { flex: 0 1 auto; min-width: 0; }
+.nw-host { flex: 1 1 0; min-width: 0; container-type: inline-size; }
+@container (max-width: 300px) { .nw { display: none !important; } }
+.nw {
+  display: flex; align-items: center; gap: 10px; height: 28px; min-width: 0;
+  padding-left: 12px; border-left: 1px solid var(--border-color);
+  font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 0.01em;
+}
+.nw-tag {
+  flex: none; padding: 1px 6px; border: 1px solid rgba(75, 252, 148, 0.45); border-radius: 3px;
+  color: #4bfc94; font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+}
+.nw-viewport {
+  flex: 1 1 auto; min-width: 0; overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 24px, #000 calc(100% - 40px), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 24px, #000 calc(100% - 40px), transparent 100%);
+}
+.nw-track { display: flex; width: max-content; animation: nw-scroll var(--nw-duration, 60s) linear infinite; }
+.nw:hover .nw-track, .nw:focus-within .nw-track { animation-play-state: paused; }
+@keyframes nw-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.nw-run { display: flex; flex: none; margin: 0; padding: 0; list-style: none; }
+.nw-run > li { flex: none; }
+.nw-item {
+  display: inline-flex; align-items: center; gap: 7px; margin-right: 34px; padding: 2px 4px;
+  border: 0; border-radius: 4px; background: transparent; color: var(--text-primary);
+  font: inherit; white-space: nowrap; cursor: pointer;
+}
+.nw-item:hover .nw-title { text-decoration: underline; text-underline-offset: 3px; }
+.nw-item:focus-visible { outline: 2px solid #4bfc94; outline-offset: 1px; }
+.nw-time { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.nw-place { color: var(--text-secondary); }
+.nw-place::before { content: '·'; margin-right: 7px; }
+.nw-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; }
+.nw-dot--jaune { background: var(--sev-yellow); }
+.nw-dot--orange { background: var(--sev-orange); box-shadow: 0 0 6px color-mix(in srgb, var(--sev-orange) 75%, transparent); }
+.nw-dot--rouge { background: var(--sev-red); box-shadow: 0 0 8px color-mix(in srgb, var(--sev-red) 85%, transparent); }
+.nw-dot--vert { background: var(--sev-green); }
+/* Dépêche rouge (12/10/2026) : étiquette URGENT qui clignote, heure en rouge, titre en gras ; orange : titre renforcé. */
+.nw-urgent {
+  flex: none; padding: 1px 6px; border-radius: 3px; background: var(--sev-red); color: #fff;
+  font-size: 10px; font-weight: 800; letter-spacing: 0.12em; animation: nw-blink 1s steps(2, start) infinite;
+}
+@keyframes nw-blink { to { opacity: 0.3; } }
+.nw-item--rouge .nw-time { color: var(--sev-red); font-weight: 700; }
+.nw-item--rouge .nw-title { color: #fff; font-weight: 700; }
+.nw-item--orange .nw-title { font-weight: 600; }
+/* Animations réduites : fil immobile, défilable à la main ; la copie du défilement continu disparaît. */
+@media (prefers-reduced-motion: reduce) {
+  .nw-track, .nw-urgent { animation: none; }
+  .nw-viewport { overflow-x: auto; scrollbar-width: none; }
+  .nw-run[aria-hidden="true"] { display: none; }
+}

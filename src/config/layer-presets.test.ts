@@ -7,6 +7,7 @@ import {
   LAYER_PRESETS,
   THEME_LAYERS,
   hasPersistedLayers,
+  presetShowsEvents,
   layersForPreset,
   migrateStoredLayers,
   themeLayers,
@@ -46,12 +47,10 @@ describe('layer-presets', () => {
     assert.deepEqual([...themed].sort(), [...ALL_PRESETABLE_LAYER_KEYS].sort());
   });
 
-  it('une vue thématique ne coche que des couches de son thème, 3 à 5 au plus (noyau essentiel)', () => {
+  it('une vue thématique coche toutes les couches de son thème, sauf les actualités brutes (décision du 12/10/2026)', () => {
     for (const preset of LAYER_PRESETS) {
       if (preset.id === 'general') continue;
-      const theme = new Set(THEME_LAYERS[preset.id]);
-      for (const key of preset.layers) assert.ok(theme.has(key), `${preset.id} : ${key} hors du thème`);
-      assert.ok(preset.layers.length >= 3 && preset.layers.length <= 5, `${preset.id} : ${preset.layers.length} couches`);
+      assert.deepEqual([...preset.layers].sort(), THEME_LAYERS[preset.id].filter((key) => key !== 'news').sort(), preset.id);
     }
   });
 
@@ -64,18 +63,14 @@ describe('layer-presets', () => {
     }
   });
 
-  it('noyaux des thèmes (décision du 12/10/2026)', () => {
-    const layersOf = (id: LayerPresetId) => LAYER_PRESETS.find((p) => p.id === id)?.layers;
-    assert.deepEqual(layersOf('energy'), ['powerGrid', 'nuclearFleet', 'gasNetwork', 'oilNetwork', 'outagesElec']);
-    assert.deepEqual(layersOf('security'), ['military', 'cyber', 'outagesTelecom', 'outagesInternet']);
-    assert.deepEqual(layersOf('health'), ['health', 'healthOscour', 'hospitals']);
-    assert.deepEqual(layersOf('environment'), ['environmental', 'floods', 'weatherRadar', 'fires', 'airQuality']);
-    assert.deepEqual(layersOf('transport'), ['trafficRoad', 'trafficRail', 'trafficMaritime', 'trafficAir']);
+  it('Environnement : sécheresse, séismes et qualité de l’air compris', () => {
+    const env = layersForPreset('environment');
+    for (const key of ['environmental', 'floods', 'weatherRadar', 'fires', 'airQuality', 'drought', 'earthquakes'] as const) assert.equal(env[key], true, key);
   });
 
-  it('« Événements en cours » : cochée par Vue générale et Sécurité & défense seulement', () => {
-    const withEvents = LAYER_PRESETS.filter((p) => p.events).map((p) => p.id);
-    assert.deepEqual(withEvents, ['general', 'security']);
+  it('« Événements en cours » : cochée par Vue générale seulement', () => {
+    assert.deepEqual(LAYER_PRESETS.filter((p) => p.events).map((p) => p.id), ['general']);
+    assert.deepEqual(LAYER_PRESETS.filter((p) => presetShowsEvents(p.id)).map((p) => p.id), ['general']);
   });
 
   it('remet toujours à false toutes les clés enfant hors de la vue sélectionnée', () => {
@@ -104,8 +99,7 @@ describe('couches v2 (spec 2026-09-29 § 5)', () => {
 
   it('v2 : chaque vue coche ou décoche « Événements en cours »', () => {
     assert.equal(themeLayers(true, 'general').events, true);
-    assert.equal(themeLayers(true, 'security').events, true);
-    for (const id of ['energy', 'health', 'environment', 'transport'] as const) assert.equal(themeLayers(true, id).events, false, id);
+    for (const id of ['energy', 'security', 'health', 'environment', 'transport'] as const) assert.equal(themeLayers(true, id).events, false, id);
   });
 
   it('v1 : les vues ne touchent pas « Événements en cours » (couche absente de la v1)', () => {

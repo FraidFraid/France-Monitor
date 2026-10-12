@@ -8,6 +8,7 @@ import type { Map as SVGMap } from './Map.ts';
 import type { NewsItem, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, EcowattResponse, FuelTensionDashboard, InfrastructurePoint, MapLayers, MapViewState, MilitaryBase, AirTrafficFlight, ISNRScore, AlertLevelsResponse, AplDataset, AplProfession, EmergencySite, HospitalsDataset, SyndromicResponse, GasNetworkState, SatelliteViewRequest, HydraulicBackboneAsset } from '../types/index.ts';
 import type { MilitaryShip } from '../services/military-ships.ts';
 import type { EventMapPoint } from '../services/v2-map.ts';
+import type { VigilanceLevel } from '../services/vigilance.ts';
 import type { MetropoleConsumption } from '../services/metropoles.ts';
 import type { CopernicusScene, SatelliteCollection } from '../types/index.ts';
 import type { EolienLive, EolienParkSummary } from '../services/eolien/types.ts';
@@ -465,6 +466,11 @@ export class MapContainer {
 
   highlightISNRDepartment(departmentCode: string | null): void {
     this.deckMap?.highlightISNRDepartment(departmentCode);
+  }
+
+  /** v2 : pression par département (couleur du niveau, départements jaunes ou plus seulement). */
+  async updateDepartmentPressure(levels: ReadonlyMap<string, VigilanceLevel>): Promise<void> {
+    await this.deckMap?.updateDepartmentPressure(levels);
   }
 
   // ─── Trafics (spec 2026-10-03 trafics § 3) ───
