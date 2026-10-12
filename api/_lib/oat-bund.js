@@ -1,9 +1,11 @@
 // api/_lib/oat-bund.js : écart de taux à 10 ans France-Allemagne (OAT-Bund) du bloc « Stabilité financière » (spec 2026-10-12).
 // Source de marché, non officielle : scanner TradingView (déjà lu par /api/finance/market ; vérifié le 12/10/2026 : FR10Y 4,90,
 // DE10Y 3,47). Un point par jour (date de Paris) est gardé 400 jours dans kv-history ; le dernier relevé du jour remplace le
-// précédent ; aucune interpolation : un jour sans relève reste un trou.
+// précédent ; aucune interpolation : un jour sans relève reste un trou. Le point n'est écrit qu'à une vraie relève (au plus 4 par
+// heure), jamais le week-end (TradingView rend alors la clôture du vendredi), et jamais après une lecture Redis en échec : réécrire
+// la clé à partir d'un journal vide effacerait la courbe gardée (revue finale du 12/10, I1, I2, I4).
 import { cachedSourceReport, fetchStrictResponse, sourceError } from './source-http.js';
-import { readLog, upsertLogEntry } from './kv-history.js';
+import { kvReadJson, readLog, upsertLogEntry } from './kv-history.js';
 import { parisDay } from './paris-time.js';
 
 export const TV_SCAN_URL = 'https://scanner.tradingview.com/global/scan';
@@ -32,6 +34,23 @@ export function parseSpread(json) {
   return { fr10y, de10y, value };
 }
 
+/** Samedi ou dimanche à Paris (date AAAA-MM-JJ) : marché obligataire fermé. */
+export function isWeekendDay(date) {
+  const day = new Date(`${date}T12:00:00Z`).getUTCDay();
+  return day === 0 || day === 6;
+}
+
+/** Point du jour : seulement en semaine et après une lecture Redis réussie (sinon la courbe gardée serait écrasée). */
+async function recordPoint(entry, now) {
+  if (isWeekendDay(entry.date)) return;
+  const { failed } = await kvReadJson(SPREAD_LOG_KEY, now);
+  if (failed) {
+    console.warn('[oat-bund] lecture Redis en échec : point du jour non enregistré');
+    return;
+  }
+  await upsertLogEntry(SPREAD_LOG_KEY, entry, { ...LOG, now });
+}
+
 async function readSpread(now) {
   const { text } = await fetchStrictResponse(TV_SCAN_URL, {
     method: 'POST',
@@ -42,20 +61,15 @@ async function readSpread(now) {
   });
   let json;
   try { json = JSON.parse(text); } catch { throw new Error('JSON illisible'); }
-  return { readAt: new Date(now).toISOString(), ...parseSpread(json) };
+  const read = { readAt: new Date(now).toISOString(), ...parseSpread(json) };
+  await recordPoint({ date: parisDay(now), at: read.readAt, value: read.value }, now);
+  return read;
 }
 
 const toPoints = (log) => log.map((e) => ({ date: e.date, value: e.value })).sort((a, b) => a.date.localeCompare(b.date));
 
-/** Courbe enregistrée, avec le point du jour s'il y en a un ; une écriture en échec n'empêche pas l'affichage. */
-async function history(now, entry) {
-  if (entry) {
-    try {
-      return toPoints(await upsertLogEntry(SPREAD_LOG_KEY, entry, { ...LOG, now }));
-    } catch (err) {
-      console.warn('[oat-bund] point du jour non enregistré', err);
-    }
-  }
+/** Courbe enregistrée (lecture seule) ; Redis muet : courbe vide, la valeur du jour s'affiche quand même. */
+async function history(now) {
   try {
     return toPoints(await readLog(SPREAD_LOG_KEY, { dateOf: LOG.dateOf, maxAgeMs: LOG.maxAgeMs, now }));
   } catch {
@@ -76,10 +90,9 @@ export async function loadSpread(now) {
   } catch (err) {
     error = sourceError(SPREAD_LABEL, err);
   }
-  if (!read) return { value: null, fr10y: null, de10y: null, readAt: null, history: await history(now, null), status: 'unavailable', error };
-  const entry = { date: parisDay(Date.parse(read.readAt)), at: read.readAt, value: read.value };
+  if (!read) return { value: null, fr10y: null, de10y: null, readAt: null, history: await history(now), status: 'unavailable', error };
   return {
     value: read.value, fr10y: read.fr10y, de10y: read.de10y, readAt: read.readAt,
-    history: await history(now, entry), status: error ? 'stale' : 'ok', error,
+    history: await history(now), status: error ? 'stale' : 'ok', error,
   };
 }

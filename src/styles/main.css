@@ -8256,4 +8256,5 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
   font-size: 10px; font-weight: 700; color: var(--fin-lvl); white-space: nowrap;
 }
 .fin-stab__meta { font-size: 10px; color: var(--text-muted); }
+.fin-stab__cause { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
 .fin-stab__row .market-strip__sparkline { display: block; width: 100%; height: 22px; margin-top: 4px; }

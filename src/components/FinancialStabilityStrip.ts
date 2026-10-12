@@ -2,7 +2,7 @@
 // « Flux boursier » : CISS France et zone euro, écart OAT-Bund, taux directeurs, €STR, EUR/USD (BCE) et CAC 40 en repère.
 // Uniquement des valeurs réelles : une courbe n'est tracée que sur des observations publiées ou relevées. Le HTML est produit
 // par une fonction pure (testée sous Node) ; la classe ne fait que l'insérer.
-import type { EcbSeries, FinancialStabilityResponse, MarketData, PolicyRate } from '../types/index.ts';
+import type { EcbSeries, FinancialStabilityResponse, MarketData, OatBundSpread, PolicyRate } from '../types/index.ts';
 import { buildMarketSparkline } from '../utils/market-sparkline.ts';
 import { NBSP, frNumber } from './layer-panel/format.ts';
 import { fmLoaderHTML } from './shared/loader.ts';
@@ -80,14 +80,20 @@ function rateRow(r: PolicyRate | undefined, id: PolicyRate['id']): Row {
   return { id, name, value: `${frNumber(r.value, 2)}${NBSP}%`, meta };
 }
 
-function spreadRow(data: FinancialStabilityResponse): Row {
-  const sp = data.spread;
+/** Samedi ou dimanche à Paris : TradingView rend la clôture du vendredi (revue finale I4). */
+function isParisWeekend(iso: string): boolean {
+  const day = new Date(iso).toLocaleDateString('en-GB', { timeZone: 'Europe/Paris', weekday: 'short' });
+  return day === 'Sat' || day === 'Sun';
+}
+
+function spreadRow(sp: OatBundSpread | undefined): Row {
   const name = 'Écart OAT-Bund 10 ans';
-  const curve = sp.history.map((p) => p.value);
+  const curve = sp?.history.map((p) => p.value) ?? [];
   const help = `${SPREAD_HELP} ${thresholdsText(SPREAD_BANDS, 1, `${NBSP}pt`)} Source : marché (TradingView), courbe relevée un point par jour.`;
-  if (sp.value === null) return { id: 'spread', name, value: ND, meta: 'TradingView indisponible', curve, help };
+  if (!sp || sp.value === null) return { id: 'spread', name, value: ND, meta: 'TradingView indisponible', curve, help };
   const band = bandOf(sp.value, SPREAD_BANDS);
-  const meta = sp.status === 'stale' ? 'en retard · source : marché (TradingView)' : 'en direct · source : marché (TradingView)';
+  const when = sp.status === 'stale' ? 'en retard' : sp.readAt !== null && isParisWeekend(sp.readAt) ? 'clôture du vendredi' : 'en direct';
+  const meta = `${when} · source : marché (TradingView)`;
   return { id: 'spread', name, value: `${frNumber(sp.value, 2)}${NBSP}pt`, meta, curve, word: { text: band.word, level: band.level }, help };
 }
 
@@ -98,25 +104,22 @@ function cacRow(cac: MarketData | null): Row {
 
 export function buildFinancialStabilityHTML(view: FinancialStabilityView): { level: VigilanceLevel | null; stamp: string; html: string } {
   const { data } = view;
-  if (!data) {
-    const cause = view.error ? `<div class="under-map-card__empty-detail">${esc(view.error)}</div>` : '';
-    return {
-      level: null,
-      stamp: 'Source indisponible',
-      html: `<div class="under-map-card__empty"><div class="under-map-card__empty-title">Stabilité financière indisponible</div>${cause}</div>`,
-    };
-  }
-  const byId = <T extends { id: string }>(list: T[], id: string): T | undefined => list.find((x) => x.id === id);
+  // Rien lu (502 sans relevé gardé) : mêmes lignes en « n.d. », le CAC 40 (source indépendante) reste (revue finale I3).
+  const byId = <T extends { id: string }>(list: T[] | undefined, id: string): T | undefined => list?.find((x) => x.id === id);
   const rows: Row[] = [
-    seriesRow(byId(data.series, 'cissFr'), 'cissFr'),
-    seriesRow(byId(data.series, 'cissEa'), 'cissEa'),
-    spreadRow(data),
-    rateRow(byId(data.rates, 'depot'), 'depot'),
-    rateRow(byId(data.rates, 'refi'), 'refi'),
-    seriesRow(byId(data.series, 'estr'), 'estr'),
-    seriesRow(byId(data.series, 'eurusd'), 'eurusd'),
+    seriesRow(byId(data?.series, 'cissFr'), 'cissFr'),
+    seriesRow(byId(data?.series, 'cissEa'), 'cissEa'),
+    spreadRow(data?.spread),
+    rateRow(byId(data?.rates, 'depot'), 'depot'),
+    rateRow(byId(data?.rates, 'refi'), 'refi'),
+    seriesRow(byId(data?.series, 'estr'), 'estr'),
+    seriesRow(byId(data?.series, 'eurusd'), 'eurusd'),
     cacRow(view.cac),
   ];
+  if (!data) {
+    const cause = view.error ? `<div class="fin-stab__cause">Stabilité financière indisponible : ${esc(view.error)}</div>` : '';
+    return { level: null, stamp: 'Source indisponible', html: `${cause}<div class="fin-stab">${rows.map(rowHTML).join('')}</div>` };
+  }
   const time = new Date(data.readAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
   return { level: blockLevel(data), stamp: `MàJ ${time}`, html: `<div class="fin-stab">${rows.map(rowHTML).join('')}</div>` };
 }

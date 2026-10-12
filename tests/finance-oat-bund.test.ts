@@ -64,11 +64,11 @@ describe('relève et point du jour', () => {
   });
   it('jours successifs : courbe chronologique, jour sans relève laissé vide', async () => {
     stubFetch(() => respond(scan(4.8, 3.4)));
-    await loadSpread(NOW - 2 * 86_400_000);
+    await loadSpread(NOW - 3 * 86_400_000);
     __resetSwrCacheForTests();
     stubFetch(() => respond(scan(4.9, 3.4)));
     const spread = await loadSpread(NOW);
-    expect(spread.history).toEqual([{ date: '2026-10-10', value: 1.4 }, { date: '2026-10-12', value: 1.5 }]);
+    expect(spread.history).toEqual([{ date: '2026-10-09', value: 1.4 }, { date: '2026-10-12', value: 1.5 }]);
   });
   it('serveur de dev : clé préfixée « dev: »', async () => {
     vi.stubEnv('NODE_ENV', 'development');
@@ -88,18 +88,54 @@ describe('relève et point du jour', () => {
 describe('pannes', () => {
   it('TradingView muet sans relevé connu : « unavailable », courbe déjà enregistrée gardée', async () => {
     stubFetch(() => respond(scan(4.8, 3.4)));
-    await loadSpread(NOW - 86_400_000);
+    await loadSpread(NOW - 3 * 86_400_000);
     __resetSwrCacheForTests();
     stubFetch(() => respond('erreur', 503));
     const spread = await loadSpread(NOW);
     expect(spread).toMatchObject({ value: null, status: 'unavailable', readAt: null });
     expect(spread.error).toMatch(/^Écart OAT-Bund \(TradingView\) : HTTP 503/);
-    expect(spread.history).toEqual([{ date: '2026-10-11', value: 1.4 }]);
+    expect(spread.history).toEqual([{ date: '2026-10-09', value: 1.4 }]);
   });
   it('écart rejeté : « unavailable », jamais de valeur inventée', async () => {
     stubFetch(() => respond(scan(12, 3.4)));
     const spread = await loadSpread(NOW);
     expect(spread).toMatchObject({ value: null, status: 'unavailable' });
     expect(spread.error).toMatch(/hors plage/);
+  });
+});
+
+describe('revue finale', () => {
+  it('lecture Redis en échec après un redémarrage : la courbe gardée n’est jamais écrasée (I1)', async () => {
+    const kept = JSON.stringify([
+      { date: '2026-10-09', at: '2026-10-09T15:00:00.000Z', value: 1.38 },
+      { date: '2026-10-08', at: '2026-10-08T15:00:00.000Z', value: 1.35 },
+    ]);
+    const store = new Map<string, string>([[SPREAD_LOG_KEY, kept]]);
+    let failNext = true;
+    __setKvClientForTests({
+      get: async (key: string) => { if (failNext) { failNext = false; throw new Error('délai Upstash'); } return store.get(key) ?? null; },
+      set: async (key: string, value: string) => { store.set(key, value); },
+    });
+    stubFetch(() => respond(scan(4.9, 3.47)));
+    const spread = await loadSpread(NOW);
+    expect(spread.value).toBe(1.43);
+    expect(store.get(SPREAD_LOG_KEY)).toBe(kept);
+  });
+  it('relevé servi du cache : aucune réécriture du journal (I2)', async () => {
+    let sets = 0;
+    __setKvClientForTests({ get: async () => null, set: async () => { sets += 1; } });
+    stubFetch(() => respond(scan(4.9, 3.47)));
+    await loadSpread(NOW);
+    await loadSpread(NOW + 60_000);
+    await loadSpread(NOW + 120_000);
+    expect(sets).toBe(1);
+  });
+  it('week-end (Paris) : valeur affichée, aucun point enregistré (I4)', async () => {
+    const SATURDAY = Date.parse('2026-10-10T09:00:00Z');
+    vi.setSystemTime(SATURDAY);
+    stubFetch(() => respond(scan(4.9, 3.47)));
+    const spread = await loadSpread(SATURDAY);
+    expect(spread).toMatchObject({ value: 1.43, status: 'ok', history: [] });
+    expect(redis.store.has(SPREAD_LOG_KEY)).toBe(false);
   });
 });

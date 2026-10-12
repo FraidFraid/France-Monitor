@@ -107,10 +107,20 @@ describe('pannes', () => {
     const data = { ...DATA, series: [{ ...DATA.series[0]!, status: 'stale' as const, date: '2026-10-06' }, ...DATA.series.slice(1)] };
     expect(rowOf(buildFinancialStabilityHTML({ data, error: null, cac: CAC }).html, 'cissFr')).toContain('au 06/10 · en retard');
   });
-  it('rien lu : message vide nommant la cause', () => {
-    const { html, level } = buildFinancialStabilityHTML({ data: null, error: 'HTTP 502', cac: null });
+  it('rien lu (502) : lignes en « n.d. », CAC 40 gardé, cause nommée (I3)', () => {
+    const { html, level, stamp } = buildFinancialStabilityHTML({ data: null, error: 'HTTP 502', cac: CAC });
     expect(level).toBeNull();
-    expect(html).toContain('Stabilité financière indisponible');
+    expect(stamp).toBe('Source indisponible');
+    for (const id of ['cissFr', 'cissEa', 'spread', 'depot', 'refi', 'estr', 'eurusd']) {
+      expect(rowOf(html, id)).toContain('<span class="fin-stab__value">n.d.</span>');
+    }
+    expect(rowOf(html, 'cac')).toContain('7\u202f833');
     expect(html).toContain('HTTP 502');
+  });
+  it('week-end : écart marqué « clôture du vendredi », jamais « en direct » (I4)', () => {
+    const data = { ...DATA, spread: { ...DATA.spread, readAt: '2026-10-10T09:00:00.000Z' } };
+    const row = rowOf(buildFinancialStabilityHTML({ data, error: null, cac: CAC }).html, 'spread');
+    expect(row).toContain('clôture du vendredi');
+    expect(row).not.toContain('en direct');
   });
 });
