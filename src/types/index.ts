@@ -2557,6 +2557,48 @@ export interface DisastersResponse {
   errors: string[];
 }
 
+// ═══ Copernicus EMS : cartographie satellite d'urgence (spec 2026-10-12 Copernicus EMS) ═══
+
+export type EmsCategory = 'feu' | 'inondation' | 'tempete' | 'seisme' | 'mouvement' | 'volcan' | 'industriel' | 'transport' | 'autre';
+
+/** Zone cartographiée : anneau extérieur [lon, lat]. */
+export interface EmsZone {
+  name: string;
+  ring: Array<[number, number]>;
+}
+
+/** Activation du service de cartographie rapide ; détail (déclencheur, population, zones) pour les activations françaises en cours seulement. */
+export interface EmsActivation {
+  code: string;
+  category: EmsCategory;
+  /** Nom d'origine (anglais), gardé en infobulle. */
+  name: string;
+  /** Lieu tiré du nom (« New Aquitaine »). */
+  place: string;
+  /** Territoire français (« Mayotte », « France (Hexagone et Corse) »). */
+  territory: string;
+  activationTime: string;
+  eventTime: string | null;
+  closed: boolean;
+  gdacsId: string | null;
+  products: number;
+  url: string;
+  activator: string | null;
+  population: number | null;
+  zones: EmsZone[];
+  lon: number | null;
+  lat: number | null;
+}
+
+/** Réponse de GET /api/environment/ems. */
+export interface EmsResponse {
+  readAt: string | null;
+  active: EmsActivation[];
+  recent: EmsActivation[];
+  elsewhere: { count: number; countries: string[] };
+  errors: string[];
+}
+
 // ─── Submersion marine : GET /api/environment/sea-levels ───
 export interface TideGauge {
   id: number;                          // identifiant REFMAR (shom_id)
