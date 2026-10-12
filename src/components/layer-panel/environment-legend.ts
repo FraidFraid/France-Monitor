@@ -2,7 +2,7 @@
 // environnement § 2 ; contrats § 4.1 et § 5) : sources, périmètres (E4), date réelle de chaque donnée (S1) ; donnée en retard (S2) :
 // « (en retard) » et couleurs de niveau retirées (« En retard : couleurs de niveau retirées de la carte. »). Teintes de catégorie
 // recopiées des jetons de main.css pour MapLibre, qui ne lit pas les variables CSS (égalité vérifiée par test).
-import type { AirQualityResponse, DroughtResponse, EarthquakesResponse, FiresResponse, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../../types/index.ts';
+import type { AirQualityResponse, DisasterType, DisastersResponse, DroughtResponse, EarthquakesResponse, FiresResponse, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../../types/index.ts';
 import { isEnvironmentDataLate, nextVigilanceMap, parisDayOf, vigilancePeriodOf } from '../../services/environment-levels.ts';
 import type { Radar2dManifest } from '../../services/radar-2d.ts';
 import { levelHex } from '../../services/vigilance.ts';
@@ -318,6 +318,35 @@ export function earthquakesLegend(q: EarthquakesResponse | null, now: number): L
   if (!q || q.readAt === null) return bDated(EARTHQUAKES_LEGEND, 'BCSF-RéNaSS et EMSC indisponibles', false);
   const source = q.source === 'EMSC' ? 'EMSC (repli)' : 'BCSF-RéNaSS';
   return bDated(EARTHQUAKES_LEGEND, `relevé ${source} ${bClock(q.readAt, now)}`, isEnvironmentDataLate('bcsf', q.readAt, now));
+}
+
+// ─── Catastrophes (GDACS, spec 2026-10-12) ───
+
+/** Alerte hors du territoire français (orange ou rouge) : gris, contexte seulement. */
+export const DISASTER_ABROAD_HEX = '#8e8e93';
+
+export const DISASTER_TYPE_LABEL: Readonly<Record<DisasterType, string>> = {
+  cyclone: 'Cyclone', seisme: 'Séisme', inondation: 'Inondation', volcan: 'Volcan', secheresse: 'Sécheresse', feu: 'Feu de forêt',
+};
+
+export const DISASTERS_LEGEND: LegendCategory = {
+  id: 'disasters',
+  title: 'Catastrophes (GDACS)',
+  items: [
+    { id: 'disaster-header', label: 'Alertes GDACS des 7 derniers jours', color: B_HEADER_HEX, isHeader: true },
+    { id: 'disaster-rouge', label: 'Alerte rouge, territoire français', color: levelHex('rouge'), shape: 'circle' },
+    { id: 'disaster-orange', label: 'Alerte orange, territoire français', color: levelHex('orange'), shape: 'circle' },
+    { id: 'disaster-vert', label: 'Alerte verte, territoire français', color: levelHex('vert'), shape: 'circle' },
+    { id: 'disaster-abroad', label: 'Alerte orange ou rouge hors de France', color: DISASTER_ABROAD_HEX, shape: 'circle' },
+  ],
+  source: { label: 'GDACS (ONU, Commission européenne)' },
+  refresh: { label: `Relève toutes les 10${NBSP}min` },
+  notes: ['Métropole, outre-mer et collectivités du Pacifique. Alertes calculées par modèle, pas une vigilance officielle française.'],
+};
+
+export function disastersLegend(d: DisastersResponse | null, now: number): LegendCategory {
+  if (!d || d.readAt === null) return bDated(DISASTERS_LEGEND, 'GDACS indisponible', false);
+  return bDated(DISASTERS_LEGEND, `relevé GDACS ${bClock(d.readAt, now)}`, isEnvironmentDataLate('gdacs', d.readAt, now));
 }
 
 /**
