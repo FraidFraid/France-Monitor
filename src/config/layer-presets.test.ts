@@ -7,6 +7,7 @@ import {
   LAYER_PRESETS,
   THEME_LAYERS,
   hasPersistedLayers,
+  presetShowsEvents,
   layersForPreset,
   migrateStoredLayers,
   themeLayers,
@@ -76,6 +77,7 @@ describe('layer-presets', () => {
   it('« Événements en cours » : cochée par Vue générale et Sécurité & défense seulement', () => {
     const withEvents = LAYER_PRESETS.filter((p) => p.events).map((p) => p.id);
     assert.deepEqual(withEvents, ['general', 'security']);
+    assert.deepEqual(LAYER_PRESETS.filter((p) => presetShowsEvents(p.id)).map((p) => p.id), ['general', 'security']);
   });
 
   it('remet toujours à false toutes les clés enfant hors de la vue sélectionnée', () => {

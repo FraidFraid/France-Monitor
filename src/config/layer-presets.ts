@@ -156,6 +156,11 @@ export function layersForPreset(id: LayerPresetId): Partial<MapLayers> {
   return result;
 }
 
+/** La vue affiche-t-elle les actualités (« Événements en cours ») ? Vue générale et Sécurité & défense. */
+export function presetShowsEvents(id: LayerPresetId): boolean {
+  return LAYER_PRESETS.find((p) => p.id === id)?.events ?? false;
+}
+
 /** v2 (spec 2026-09-29 § 5) : couches d'une nouvelle visite, celles de « Vue générale » (thème de départ). */
 export function v2StartupLayers(): Partial<MapLayers> {
   return Object.fromEntries(Object.entries(themeLayers(true, 'general')).filter(([, on]) => on)) as Partial<MapLayers>;
