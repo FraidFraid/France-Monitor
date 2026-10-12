@@ -40,6 +40,7 @@ const LAYER_KEYS: (keyof MapLayers)[] = [
     'drought',
     'airQuality',
     'earthquakes',
+    'disasters',
     'traffic',
     'trafficRoad',
     'trafficMaritime',

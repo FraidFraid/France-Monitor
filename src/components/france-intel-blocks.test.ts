@@ -19,7 +19,7 @@ function signals(over: Partial<FranceCountrySignals> = {}): FranceCountrySignals
     criticalNews: 0, highNews: 0, topNewsCount: 0, meteoAlerts: 0, floodAlerts: 0, fireDetections: 0,
     railDisruptions: 0, railSevere: 0, roadIncidents: 0, telecomOutages: 0, telecomOutagesLevel: 'vert',
     cyberAlerts: 0, cyberCritical: 0, militaryFlights: 0, maritimeTrafficFrance: 0,
-    defenseAlerts: 0, defenseHigh: 0, jammingSignals: 0, marketStress: 0, ...over,
+    defenseAlerts: 0, defenseHigh: 0, jammingSignals: 0, financeLevel: null, financeSpread: null, financeCissFr: null, ...over,
   };
 }
 
@@ -76,7 +76,7 @@ describe('rendu v1 figé avant extraction (spec 2026-10-01, v1 inchangée)', () 
   const rich = {
     signals: signals({
       cyberAlerts: 24, cyberCritical: 20, railDisruptions: 215, railSevere: 159, militaryFlights: 36,
-      telecomOutages: 1333, telecomOutagesLevel: 'orange', meteoAlerts: 10, fireDetections: 29, marketStress: 7, criticalNews: 2,
+      telecomOutages: 1333, telecomOutagesLevel: 'orange', meteoAlerts: 10, fireDetections: 29, financeLevel: 'orange', financeSpread: 1, financeCissFr: 0.05, criticalNews: 2,
       jammingSignals: 1,
     }),
     meteo: [
@@ -330,5 +330,29 @@ describe('données partagées des blocs (spec 2026-10-01)', () => {
 
   it('intensité de la chronologie', () => {
     expect([0, 1, 2, 3, 9].map(timelineIntensity)).toEqual([0.08, 0.25, 0.45, 0.65, 0.9]);
+  });
+});
+
+describe('tuile Finance (spec 2026-10-12 pilier finance)', () => {
+  const fin = (over: Partial<FranceCountrySignals>) => domainTiles(signals(over), 'fr').find((t) => t.label === 'Finance');
+  it('niveau en mots, indicateur qui le fixe, couleur du niveau', () => {
+    expect(fin({ financeLevel: 'rouge', financeSpread: 1.43, financeCissFr: 0.05 })).toMatchObject({
+      valueText: 'Rouge', meta: 'écart OAT-Bund 1,43 pt', level: 'critical',
+    });
+    expect(fin({ financeLevel: 'vert', financeSpread: 0.4, financeCissFr: 0.05 })).toMatchObject({ valueText: 'Vert', level: 'low' });
+  });
+  it('CISS qui fixe le niveau : nommé', () => {
+    expect(fin({ financeLevel: 'orange', financeSpread: 0.4, financeCissFr: 0.35 })?.meta).toBe('CISS France 0,350');
+  });
+  it('sans donnée : n.d., point gris', () => {
+    expect(fin({ financeLevel: null, financeSpread: null, financeCissFr: null })).toMatchObject({ valueText: 'n.d.', level: null, meta: 'stabilité financière' });
+  });
+});
+
+describe('tuile Finance : revue finale', () => {
+  const fin = (over: Partial<FranceCountrySignals>) => domainTiles(signals(over), 'fr').find((t) => t.label === 'Finance');
+  it('CISS zone euro qui fixe le niveau : nommé, jamais le CISS France vert', () => {
+    expect(fin({ financeLevel: 'orange', financeSpread: 0.4, financeCissFr: 0.05, financeCissEa: 0.35 })?.meta).toBe('CISS zone euro 0,350');
+    expect(fin({ financeLevel: 'orange', financeSpread: null, financeCissFr: null, financeCissEa: 0.35 })?.meta).toBe('CISS zone euro 0,350');
   });
 });

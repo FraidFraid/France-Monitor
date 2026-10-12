@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { FiresResponse, FloodsResponse, VigilancePeriod, VigilanceResponse } from '../../types/index.ts';
 import type { Radar2dManifest } from '../../services/radar-2d.ts';
 import { levelHex } from '../../services/vigilance.ts';
+import { DISASTERS_LEGEND, EMS_ZONE_HEX } from './environment-legend.ts';
 import type { LegendCategory } from '../MapLegend.ts';
 import { envBreakable } from './environment-format.ts';
 import { NBSP } from './format.ts';
@@ -142,5 +143,12 @@ describe('deux remplissages départementaux : la légende du masqué le dit', ()
     expect(text(withFillMask(AIR_QUALITY_LEGEND, ['drought', 'airQuality']))).not.toContain('Remplissage masqué par Sécheresse.');
     expect(withFillMask(DROUGHT_LEGEND, ['drought'])).toBe(DROUGHT_LEGEND);
     expect(withFillMask(DROUGHT_LEGEND, [])).toBe(DROUGHT_LEGEND);
+  });
+});
+
+describe('Copernicus EMS (spec 2026-10-12)', () => {
+  it('légende Catastrophes : zone cartographiée Copernicus EMS en violet', () => {
+    const item = DISASTERS_LEGEND.items.find((i) => i.id === 'ems-zone');
+    expect(item).toMatchObject({ label: 'Zone cartographiée par Copernicus EMS (activation en cours)', color: EMS_ZONE_HEX });
   });
 });

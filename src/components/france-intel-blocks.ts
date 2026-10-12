@@ -21,6 +21,8 @@ import {
 import { fuelTensionLevel, levelColorVar, levelLabel, officialLevel, type VigilanceLevel } from '../services/vigilance.ts';
 import { renderVigilancePill } from './shared/vigilancePill.ts';
 import { GNSS_SITUATION_CELLS, MILITARY_FIGURE_LABEL, gnssPartialText } from '../services/sovereignty-levels.ts';
+import { CISS_BANDS, SPREAD_BANDS, bandOf } from '../services/financial-stability-levels.ts';
+import { NBSP, frNumber } from './layer-panel/format.ts';
 
 type Lang = 'fr' | 'en';
 
@@ -91,6 +93,8 @@ export interface DomainTile {
   /** null : aucune part lue (toutes indisponibles), point gris, jamais un vert par défaut. */
   level: DomainLevel | null;
   parts?: DomainTilePart[];
+  /** Texte affiché à la place du nombre (niveau en mots, tuile Finance). */
+  valueText?: string;
 }
 
 /** Niveau L1 d'une tuile de domaine (couleurs du point, inchangées depuis le tiroir v1 ; `critical` : rouge). */
@@ -236,6 +240,23 @@ function defenseTile(s: FranceCountrySignals, lang: Lang): DomainTile {
   };
 }
 
+/** Tuile Finance (spec 2026-10-12) : niveau de stabilité financière en mots ; légende = l'indicateur qui fixe le niveau. */
+function financeTile(s: FranceCountrySignals, lang: Lang): DomainTile {
+  if (s.financeLevel === null) {
+    return { label: 'Finance', value: null, valueText: 'n.d.', meta: t(lang, 'stabilité financière', 'financial stability'), level: null };
+  }
+  // Légende : l'indicateur qui fixe le niveau (revue finale) : écart, puis CISS France, puis CISS zone euro.
+  const level = s.financeLevel;
+  const num = (v: number, d: number): string => (lang === 'en' ? v.toFixed(d) : frNumber(v, d));
+  const sets = (v: number | null | undefined, bands: typeof SPREAD_BANDS): v is number => typeof v === 'number' && bandOf(v, bands).level === level;
+  const meta = sets(s.financeSpread, SPREAD_BANDS)
+    ? t(lang, `écart OAT-Bund ${num(s.financeSpread, 2)}${NBSP}pt`, `OAT-Bund spread ${num(s.financeSpread, 2)}${NBSP}pt`)
+    : sets(s.financeCissFr, CISS_BANDS) ? t(lang, `CISS France ${num(s.financeCissFr, 3)}`, `France CISS ${num(s.financeCissFr, 3)}`)
+    : sets(s.financeCissEa, CISS_BANDS) ? t(lang, `CISS zone euro ${num(s.financeCissEa, 3)}`, `euro-area CISS ${num(s.financeCissEa, 3)}`)
+    : t(lang, 'stabilité financière', 'financial stability');
+  return { label: 'Finance', value: null, valueText: levelLabel(s.financeLevel, lang), meta, level: PILL_DOMAIN_LEVEL[s.financeLevel] };
+}
+
 /** Niveau de la pastille Télécoms (vigilance L1) → niveau de tuile : même couleur que le panneau pour le même chiffre. */
 const TELECOM_TILE_LEVEL: Readonly<Record<NonNullable<FranceCountrySignals['telecomOutagesLevel']>, DomainLevel>> = {
   vert: 'low', jaune: 'medium', orange: 'high', rouge: 'critical',
@@ -264,11 +285,7 @@ export function domainTiles(s: FranceCountrySignals, lang: Lang): DomainTile[] {
     },
     defenseTile(s, lang),
     meteoTile(s, lang),
-    {
-      label: 'Finance', value: s.marketStress,
-      meta: t(lang, 'lignes sous tension', 'stressed lines'),
-      level: s.marketStress > 2 ? 'medium' : 'low',
-    },
+    financeTile(s, lang),
   ];
 }
 
@@ -336,7 +353,7 @@ export function renderDomainsBlock(snapshot: Pick<FranceCountrySnapshot, 'signal
   const valueHtml = (tile: DomainTile): string => (tile.parts
     ? tile.parts.map((p) => `<span class="frintel-dom-part"><span class="frintel-dom-dot" style="background:${levelColor(p.level)};"></span>`
       + `${escapeHtml(p.label)}\u00a0${p.value ?? 'n.d.'}</span>`).join('')
-    : `${tile.value ?? 'n.d.'}`);
+    : escapeHtml(tile.valueText ?? `${tile.value ?? 'n.d.'}`));
   const tilesHtml = tiles.map((tile) => `
     <div class="frintel-dom-tile">
       <span class="frintel-dom-dot" style="background:${levelColor(tile.level)};"></span>

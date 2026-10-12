@@ -4,11 +4,11 @@
 // Une source en retard ou en panne ne crée ni ne garde de situation (entrées servies par environment-inputs.ts).
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import type { AirEpisode, Quake } from '../types/index.ts';
+import type { AirEpisode, DisasterAlert, EmsActivation, Quake } from '../types/index.ts';
 import { AIR_FIXTURE, QUAKES_FIXTURE } from '../components/layer-panel/environment.fixture.ts';
-import { servedAirEpisodes, servedQuakes } from './environment-inputs.ts';
+import { servedAirEpisodes, servedDisasters, servedQuakes } from './environment-inputs.ts';
 import { scoreFromPillars, type FranceRawData } from './france-country-intel.ts';
-import { detectAirPollution, detectSeismicEvents, detectSituations } from './situation-engine.ts';
+import { detectAirPollution, detectEmsActivations, detectNaturalHazardAlerts, detectSeismicEvents, detectSituations } from './situation-engine.ts';
 import { situationTheme } from './themes.ts';
 
 const NOW = Date.parse('2026-10-04T08:10:00Z');
@@ -126,5 +126,113 @@ describe('moteur et score (formule et cibles inchangées)', () => {
     for (const file of ['./situation-engine.ts', './france-country-intel.ts']) {
       expect(readFileSync(new URL(file, import.meta.url), 'utf8')).not.toMatch(/drought|Drought|vigieau|VigiEau/);
     }
+  });
+});
+
+describe('NATURAL_HAZARD_ALERT (GDACS, spec 2026-10-12) : situation sur sol français, jamais d’effet sur le score', () => {
+  const gd = (over: Partial<DisasterAlert>): DisasterAlert => ({
+    id: 'TC-1', type: 'cyclone', level: 'rouge', name: 'Tropical Cyclone TEST-26', countries: ['GLP'], frenchTerritory: 'Guadeloupe',
+    lat: 16.2, lon: -61.5, from: new Date(NOW - 86_400_000).toISOString(), to: new Date(NOW).toISOString(), current: true,
+    severity: 'Hurricane/Typhoon > 74 mph', url: 'https://www.gdacs.org/report.aspx?eventid=1', ...over,
+  });
+  const FR = 'France (Hexagone et Corse)';
+  it('rouge outre-mer → medium, orange → watch ; libellé au niveau réel ; couche, lien, source', () => {
+    const [red] = detectNaturalHazardAlerts(baseRawData({ disasters: [gd({})] }), NOW);
+    expect(red).toMatchObject({
+      id: 'natural-hazard-TC-1', type: 'NATURAL_HAZARD_ALERT', severity: 'medium', affectedZones: ['Guadeloupe'],
+      title: 'Alerte rouge GDACS : cyclone en Guadeloupe', lat: 16.2, lon: -61.5, activateLayers: ['disasters'],
+      linkUrl: 'https://www.gdacs.org/report.aspx?eventid=1', linkLabel: 'Fiche GDACS', sourceRefs: ['GDACS'],
+    });
+    expect(detectNaturalHazardAlerts(baseRawData({ disasters: [gd({ level: 'orange' })] }), NOW)[0]?.severity).toBe('watch');
+  });
+  it('vert, monde, et métropole hors cyclone : aucune situation ; cyclone en métropole et séisme en Martinique : oui', () => {
+    const none = [
+      gd({ id: 'A', level: 'vert' }), gd({ id: 'B', frenchTerritory: null, countries: ['MEX'] }),
+      gd({ id: 'C', type: 'secheresse', level: 'orange', frenchTerritory: FR }), gd({ id: 'D', type: 'seisme', frenchTerritory: FR }),
+      gd({ id: 'E', type: 'inondation', frenchTerritory: FR }), gd({ id: 'F', type: 'feu', frenchTerritory: FR }),
+    ];
+    expect(detectNaturalHazardAlerts(baseRawData({ disasters: none }), NOW)).toEqual([]);
+    const some = detectNaturalHazardAlerts(baseRawData({ disasters: [gd({ id: 'G', frenchTerritory: FR }), gd({ id: 'H', type: 'seisme', frenchTerritory: 'Martinique' })] }), NOW);
+    expect(some.map((s) => s.id)).toEqual(['natural-hazard-G', 'natural-hazard-H']);
+  });
+  it('score inchangé : alerte rouge en Guadeloupe = même score et même plafond que sans elle (fixture de verrouillage)', () => {
+    const without = scoreFromPillars(ZERO, detectSituations(baseRawData({}), NOW));
+    const withRed = scoreFromPillars(ZERO, detectSituations(baseRawData({ disasters: [gd({}), gd({ id: 'TC-2', frenchTerritory: 'La Réunion' })] }), NOW));
+    expect([withRed.score, withRed.situationCap]).toEqual([without.score, without.situationCap]);
+    expect([withRed.score, withRed.situationCap]).toEqual([95, null]);
+  });
+  it('servedDisasters : relevé en retard (plus de 30 min) = rien servi au moteur', () => {
+    const d = { readAt: new Date(NOW - 5 * 60_000).toISOString(), alerts: [gd({})], errors: [] };
+    expect(servedDisasters(d, NOW)).toHaveLength(1);
+    expect(servedDisasters({ ...d, readAt: new Date(NOW - 31 * 60_000).toISOString() }, NOW)).toEqual([]);
+    expect(servedDisasters(null, NOW)).toEqual([]);
+  });
+  it('thème Environnement', () => {
+    expect(situationTheme('NATURAL_HAZARD_ALERT')).toBe('environment');
+  });
+  it('résumé en français : nom et gravité traduits, jamais le texte GDACS anglais', () => {
+    const [s] = detectNaturalHazardAlerts(baseRawData({ disasters: [gd({ severity: 'Hurricane/Typhoon > 74 mph (maximum wind speed of 250 km/h)' })] }), NOW);
+    expect(s?.summary).toContain('Cyclone tropical TEST-26 (Ouragan ou typhon, vent maximal 250\u00a0km/h)');
+    expect(s?.summary).not.toMatch(/mph|Tropical Cyclone/);
+  });
+});
+
+describe('EMS_ACTIVATION (Copernicus EMS, spec 2026-10-12) : situation sur sol français, jamais d’effet sur le score', () => {
+  const act = (over: Partial<EmsActivation> = {}): EmsActivation => ({
+    code: 'EMSR866', category: 'inondation', name: 'Flood in New Aquitaine, France', place: 'New Aquitaine', territory: 'France (Hexagone et Corse)',
+    activationTime: new Date(NOW - 86_400_000).toISOString(), eventTime: null, closed: false, gdacsId: null, products: 14,
+    url: 'https://mapping.emergency.copernicus.eu/activations/EMSR866', activator: 'COGIC', population: 83890, zones: [], lon: -0.67, lat: 45.27, ...over,
+  });
+  it('activation en cours → medium, couche Catastrophes, lien, source', () => {
+    const [s] = detectEmsActivations(baseRawData({ emsActive: [act()] }), NOW);
+    expect(s).toMatchObject({
+      id: 'ems-EMSR866', type: 'EMS_ACTIVATION', severity: 'medium', affectedZones: ['France (Hexagone et Corse)'],
+      title: 'Cartographie satellite d’urgence : inondation, France (Hexagone et Corse)', lat: 45.27, lon: -0.67,
+      activateLayers: ['disasters'], linkUrl: 'https://mapping.emergency.copernicus.eu/activations/EMSR866', linkLabel: 'Fiche Copernicus',
+      sourceRefs: ['Copernicus EMS'],
+    });
+    expect(s?.summary).toContain('COGIC');
+    expect(s?.summary).toContain('83 890 habitants');
+    expect(s?.summary).not.toContain('—');
+  });
+  it('close : aucune situation ; aucune activation : rien', () => {
+    expect(detectEmsActivations(baseRawData({ emsActive: [act({ closed: true })] }), NOW)).toEqual([]);
+    expect(detectEmsActivations(baseRawData({}), NOW)).toEqual([]);
+  });
+  it('score inchangé : fixture de verrouillage à 95 sans plafond', () => {
+    const without = scoreFromPillars(ZERO, detectSituations(baseRawData({}), NOW));
+    const withEms = scoreFromPillars(ZERO, detectSituations(baseRawData({ emsActive: [act(), act({ code: 'EMSR900', territory: 'Mayotte' })] }), NOW));
+    expect([withEms.score, withEms.situationCap]).toEqual([without.score, without.situationCap]);
+    expect([withEms.score, withEms.situationCap]).toEqual([95, null]);
+  });
+  it('thème Environnement', () => {
+    expect(situationTheme('EMS_ACTIVATION')).toBe('environment');
+  });
+});
+
+describe('EMS_ACTIVATION : revue finale', () => {
+  it('résumé : « activé le JJ/MM à HH:MM », jamais « le le »', () => {
+    const a: EmsActivation = {
+      code: 'EMSR866', category: 'inondation', name: 'Flood in New Aquitaine, France', place: 'New Aquitaine', territory: 'France (Hexagone et Corse)',
+      activationTime: '2026-10-11T11:50:00.000Z', eventTime: null, closed: false, gdacsId: null, products: 14,
+      url: 'https://mapping.emergency.copernicus.eu/activations/EMSR866', activator: 'COGIC', population: null, zones: [], lon: null, lat: null,
+    };
+    const [s] = detectEmsActivations(baseRawData({ emsActive: [a] }), NOW);
+    expect(s?.summary).toContain('Copernicus EMS activé le 11/10 à 13:50 (heure de Paris)');
+    expect(s?.summary).not.toContain('le le');
+  });
+});
+
+describe('EMS_ACTIVATION : mineurs (12/10)', () => {
+  const a = (place: string, territory: string): EmsActivation => ({
+    code: 'EMSR780', category: 'tempete', name: `Storm in ${place}`, place, territory,
+    activationTime: '2026-10-11T11:50:00.000Z', eventTime: null, closed: false, gdacsId: null, products: 0,
+    url: 'https://mapping.emergency.copernicus.eu/activations/EMSR780', activator: null, population: null, zones: [], lon: null, lat: null,
+  });
+  it('lieu identique au territoire : omis ; lieu d’origine anglais : entre guillemets', () => {
+    const [same] = detectEmsActivations(baseRawData({ emsActive: [a('Mayotte', 'Mayotte')] }), NOW);
+    expect(same?.summary).toContain('(EMSR780)');
+    const [other] = detectEmsActivations(baseRawData({ emsActive: [a('New Aquitaine', 'France (Hexagone et Corse)')] }), NOW);
+    expect(other?.summary).toContain('(EMSR780, « New Aquitaine »)');
   });
 });

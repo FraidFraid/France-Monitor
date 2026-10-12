@@ -12,7 +12,8 @@ import { MapboxOverlay } from '@deck.gl/mapbox';
 import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import { COORDINATE_SYSTEM } from '@deck.gl/core';
 import type { MapViewState, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, NewsItem, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, AirTrafficFlight, EcowattResponse, AisShipData, OilDashboard, SatelliteViewRequest, HydraulicBackboneAsset } from '../types/index.ts';
-import type { AirQualityResponse, DroughtResponse, EarthquakesResponse, FiresResponse, FloodSection, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
+import { emsZoneFeatures } from './deckgl/environment-map-ems.ts';
+import type { AirQualityResponse, DisastersResponse, DroughtResponse, EmsResponse, EarthquakesResponse, FiresResponse, FloodSection, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
 import { ecowattToday, ecowattLevelLabel } from '../services/ecowatt-official.ts';
 import { DATA_FRESHNESS_LABELS } from '../types/index.ts';
 import type { AlertLevelsResponse, AplDataset, AplProfession, EmergencySite, HospitalsDataset, SyndromicResponse } from '../types/index.ts';
@@ -37,7 +38,7 @@ import {
 import {
   ENV_HOVER_LAYERS, ENV_ICON_GLYPH, ENV_ICON_MARGIN, ENV_ICON_NAMES, ENV_ICON_SIZE, ENV_LAYERS, ENV_LAYER_BEFORE, ENV_LAYER_KEYS, ENV_SOURCE_IDS, FOREST_DANGER_LAYERS, alphaToSdf, envIconImage, envLayerOn,
   envSourceSpec, envTooltipHtml, fireAbroadFeatures, fireDetectionFeatures, floodSectionFeatures, floodStationFeatures, forestDangerFeatures,
-  radarPickFeature, topEnvHit, vigilanceDeptFeatures, vigilanceIconFeatures, airDeptFeatures, droughtDeptFeatures, quakeFeatures, tideGaugeFeatures, envBReshowPaints, placeEnvBPoints,
+  radarPickFeature, topEnvHit, vigilanceDeptFeatures, vigilanceIconFeatures, airDeptFeatures, droughtDeptFeatures, quakeFeatures, tideGaugeFeatures, envBReshowPaints, placeEnvBPoints, disasterFeatures, placeDisasterPoints,
   type EnvBData, type EnvBLayerState,
 } from './deckgl/environment-map.ts';
 import {
@@ -170,6 +171,8 @@ import {
   SRC_DROUGHT,
   SRC_AIR_QUALITY,
   SRC_QUAKES,
+  SRC_DISASTERS,
+  SRC_EMS_ZONES,
   SRC_TIDE_GAUGES,
   LYR_DROUGHT_FILL,
   LYR_AIR_FILL,
@@ -412,6 +415,9 @@ export class DeckGLMap {
   private envFloods: FloodsResponse | null = null;
   /** Dernières réponses de la phase B, gardées couche masquée pour le repeint à l'heure courante (S2). */
   private envB: EnvBData = { drought: null, air: null, quakes: null, seaLevels: null, vigilance: null };
+  /** Dernière réponse GDACS (gardée couche masquée, repeinte au réaffichage). */
+  private disastersData: DisastersResponse | null = null;
+  private emsData: EmsResponse | null = null;
   private _forestDangerFill = false;
   private _echoTopsEnabled = false;
   private radarPick: { lat: number; lon: number } | null = null;
@@ -2727,6 +2733,7 @@ export class DeckGLMap {
 
     // Séismes et marégraphes (phase B) au-dessus de toutes les surfaces : ajoutés ici, sous la première couche de points qui suit la dernière surface.
     placeEnvBPoints(this.map);
+    placeDisasterPoints(this.map);
 
     // ─── Critical alerts (never clustered, always visible) ───
     // Glow layer for critical points
@@ -5342,7 +5349,7 @@ export class DeckGLMap {
       activeLayers = [...ENV_LAYER_KEYS.weatherRadar];
     } else if (categoryId === 'fires') {
       activeLayers = [...ENV_LAYER_KEYS.fires, ...FOREST_DANGER_LAYERS];
-    } else if (categoryId === 'drought' || categoryId === 'airQuality' || categoryId === 'earthquakes') {
+    } else if (categoryId === 'drought' || categoryId === 'airQuality' || categoryId === 'earthquakes' || categoryId === 'disasters') {
       activeLayers = [...ENV_LAYER_KEYS[categoryId]];
     }
 
@@ -7094,6 +7101,22 @@ export class DeckGLMap {
     this.hideEnvironmentHover();
   }
 
+  /** Catastrophes (GDACS) : points par niveau, territoire français en couleur, monde en gris. */
+  updateDisastersLayer(d: DisastersResponse | null, now: number): void {
+    this.disastersData = d;
+    if (!this.map) return;
+    (this.map.getSource(SRC_DISASTERS) as maplibregl.GeoJSONSource | undefined)?.setData(disasterFeatures(d, now));
+    this.hideEnvironmentHover();
+  }
+
+  /** Catastrophes : zones Copernicus EMS des activations françaises en cours (contour violet). */
+  updateEmsLayer(e: EmsResponse | null, now: number): void {
+    this.emsData = e;
+    if (!this.map) return;
+    (this.map.getSource(SRC_EMS_ZONES) as maplibregl.GeoJSONSource | undefined)?.setData(emsZoneFeatures(e, now));
+    this.hideEnvironmentHover();
+  }
+
   /** Marégraphes SHOM (couche Vigilance météo) : anneau de la couleur du domaine littoral du jour. */
   updateSeaLevelsLayer(s: SeaLevelsResponse | null, v: VigilanceResponse | null, now: number): void {
     this.envB.seaLevels = s;
@@ -7190,6 +7213,12 @@ export class DeckGLMap {
       const now = Date.now();
       (this.map.getSource(SRC_FLOODS) as maplibregl.GeoJSONSource | undefined)?.setData(floodSectionFeatures(this.envFloods, now));
       (this.map.getSource(SRC_FLOOD_STATIONS) as maplibregl.GeoJSONSource | undefined)?.setData(floodStationFeatures(this.envFloods, now));
+    }
+    if (envLayerOn(layers, 'disasters') && !envLayerOn(was, 'disasters') && this.disastersData) {
+      (this.map.getSource(SRC_DISASTERS) as maplibregl.GeoJSONSource | undefined)?.setData(disasterFeatures(this.disastersData, Date.now()));
+    }
+    if (envLayerOn(layers, 'disasters') && !envLayerOn(was, 'disasters') && this.emsData) {
+      (this.map.getSource(SRC_EMS_ZONES) as maplibregl.GeoJSONSource | undefined)?.setData(emsZoneFeatures(this.emsData, Date.now()));
     }
     if (envLayerOn(layers, 'fires') && !envLayerOn(was, 'fires') && this.envFires) {
       this.envFiresNow = Date.now();
@@ -8720,6 +8749,7 @@ export class DeckGLMap {
     for (const id of ENV_LAYER_KEYS.drought) this.setVis(id, vis(envLayerOn(layers, 'drought')));
     for (const id of ENV_LAYER_KEYS.airQuality) this.setVis(id, vis(envLayerOn(layers, 'airQuality')));
     for (const id of ENV_LAYER_KEYS.earthquakes) this.setVis(id, vis(envLayerOn(layers, 'earthquakes')));
+    for (const id of ENV_LAYER_KEYS.disasters) this.setVis(id, vis(envLayerOn(layers, 'disasters')));
     this.setVis(RADAR_2D_LAYER_ID, vis(this.radar2dShown()));
     this.setVis(ECHO_TOPS_LAYER_ID, vis(this.echoTopsShown(this._echoTopsEnabled)));
     this.hideEnvironmentHover();
