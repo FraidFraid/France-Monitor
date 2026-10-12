@@ -196,6 +196,7 @@ export class PosteSituation {
 
     this.statusBar.setOnSelectFrance(() => this.select('france'));
     this.themeBar.setOnSelect((theme) => this.chooseTheme(theme));
+    this.themeBar.setOnSelectFrance(() => this.select('france'));
     this.workList.setOnSelect((key) => this.select(key));
     this.workList.setOnShowAll((showAll) => {
       this.showAll = showAll;
@@ -214,6 +215,12 @@ export class PosteSituation {
       saveSectionState(this.storage, this.sectionOpen);
     });
     this.fichePanel.setOnClose(() => this.close());
+
+    // À l'ouverture, Intelligence France (fiche État de la France) est affichée à toutes les largeurs (décision du
+    // 12/10/2026) : ordinateur, colonne de droite par défaut ; tablette, volet ouvert ; mobile, onglet État.
+    const startLayout = this.layout();
+    if (startLayout === 'tablet') this.selection = 'france';
+    if (startLayout === 'mobile') this.tab = 'fiche';
 
     // Échap ramène à l'État où que soit le focus — liste, fiche ou carte (spec 2026-09-29 § 4) —,
     // sauf dans un champ de saisie. Écouté sur `window` (après tous les écouteurs de `document`) :
@@ -433,7 +440,8 @@ export class PosteSituation {
       freshness: freshnessCounts(data.sources),
       lang,
     });
-    this.themeBar.update({ selected: this.theme, levels: national ? { general: national, ...queue.themeLevels } : null, lang });
+    const franceOn = this.selection === 'france' || (this.selection === null && (this.layout() === 'desktop' || this.tab === 'fiche'));
+    this.themeBar.update({ selected: this.theme, franceOn, levels: national ? { general: national, ...queue.themeLevels } : null, lang });
     this.workList.update({ view: viewWorkQueue(queue, this.theme, this.showAll), selectedKey: this.selection, ready: data.ready, lang, now, foreignOpen: this.foreignOpen });
     this.renderTabs(lang);
     this.roots.app.dataset.v2Tab = this.tab;

@@ -1904,14 +1904,17 @@ export class App {
     const toggle = header.querySelector<HTMLButtonElement>('[data-sidebar-toggle]');
     if (!toggle) return;
 
-    // v2 (arbitrage A6) : la barre des couches est repliée par défaut, et mémorisée à part.
-    const storageKey = this.uiV2 ? 'fm-v2-sidebar-collapsed' : 'fm-sidebar-collapsed';
+    // v2 : la barre des couches est toujours repliée à l'ouverture, la carte garde toute la place (décision du 12/10/2026,
+    // revient sur la mémorisation de l'arbitrage A6) ; v1 : état mémorisé.
+    const storageKey = 'fm-sidebar-collapsed';
     let collapsed = this.uiV2;
-    try {
-      const stored = localStorage.getItem(storageKey);
-      if (stored !== null) collapsed = stored === 'true';
-    } catch {
-      collapsed = this.uiV2;
+    if (!this.uiV2) {
+      try {
+        const stored = localStorage.getItem(storageKey);
+        if (stored !== null) collapsed = stored === 'true';
+      } catch {
+        collapsed = false;
+      }
     }
 
     const apply = (next: boolean, persist: boolean): void => {
@@ -1921,7 +1924,7 @@ export class App {
       this.layoutFloatingPanelSwitcher();
       toggle.setAttribute('aria-expanded', String(!collapsed));
       toggle.setAttribute('aria-label', collapsed ? t('app.sidebarExpandAria') : t('app.sidebarCollapseAria'));
-      if (!persist) return;
+      if (!persist || this.uiV2) return;
       try {
         localStorage.setItem(storageKey, String(collapsed));
       } catch {
