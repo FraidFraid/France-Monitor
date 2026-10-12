@@ -205,7 +205,12 @@ export async function loadEventArticles(sql, eventIds, assignments) {
   const rows = await sql`
     SELECT n.id, n.event_id, n.title, n.feed_id, f.name AS feed_name, f.tier,
            LEAST(coalesce(n.published_at, n.collected_at), n.collected_at + interval '1 hour') AS effective_at,
-           n.category, n.severity, n.lat, n.lon, n.zone, n.temporality, n.reasons
+           n.category, n.severity,
+           -- Repli sur le centre de la région du flux (geocoder) : pas un lieu de l'événement, qui serait sinon placé dans la
+           -- région du journal (« Arabie saoudite » dans le Rhône, 12/10/2026). Le regroupement garde ces coordonnées.
+           CASE WHEN n.geocode_source = 'region-fallback' THEN NULL ELSE n.lat END AS lat,
+           CASE WHEN n.geocode_source = 'region-fallback' THEN NULL ELSE n.lon END AS lon,
+           n.zone, n.temporality, n.reasons
     FROM news_items n LEFT JOIN feeds f ON f.id = n.feed_id
     WHERE n.event_id = ANY(${eventIds}::bigint[]) OR n.id = ANY(${pendingIds}::bigint[])
   `;

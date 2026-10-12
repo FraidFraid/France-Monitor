@@ -122,6 +122,15 @@ describe('qualifyEvent', () => {
     expect(qualifyEvent([art('le-monde', 'high'), art('sud-ouest', 'high')], 'high'))
       .toEqual({ peakSeverity: 'high', zone: null, temporality: null, reasons: [] });
   });
+  it('zone à la majorité : quelques articles « une Française blessée » ne font pas passer en France un événement à l’étranger', () => {
+    const etranger = Array.from({ length: 7 }, () => art('le-monde', 'medium', { zone: 'etranger' }));
+    const france = Array.from({ length: 2 }, () => art('sud-ouest', 'medium', { zone: 'france' }));
+    expect(qualifyEvent([...etranger, ...france], 'medium').zone).toBe('etranger');
+    // Égalité : France ; « indéterminée » ne compte pas face à un article situé.
+    expect(qualifyEvent([art('rfi', 'low', { zone: 'etranger' }), art('le-monde', 'low', { zone: 'france' })], 'low').zone).toBe('france');
+    expect(qualifyEvent([art('rfi', 'low', { zone: 'etranger' }), art('le-monde', 'low', { zone: 'indeterminee' }), art('dna', 'low', { zone: 'indeterminee' })], 'low').zone).toBe('etranger');
+    expect(qualifyEvent([art('rfi', 'low', { zone: 'indeterminee' })], 'low').zone).toBe('indeterminee');
+  });
   it('étranger seul, passé seul', () => {
     expect(qualifyEvent([art('rfi', 'medium', { zone: 'etranger', temporality: 'passe' })], 'medium'))
       .toMatchObject({ zone: 'etranger', temporality: 'passe', reasons: [] });

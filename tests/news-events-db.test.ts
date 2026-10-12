@@ -55,6 +55,23 @@ describe('runEventPass', () => {
     expect(await logKinds()).toEqual(['created', 'created']);
   });
 
+  it('position de l’événement : jamais le centre de la région du journal (repli du geocoder), sinon le premier lieu trouvé', async () => {
+    const SAUDI = 'Arabie saoudite : trois morts dans des attaques houthistes contre des aéroports';
+    await insertArticles(sql, [
+      { id: 1, feedId: 'le-progres', title: SAUDI, publishedAt: T0 },
+      { id: 2, feedId: 'sud-ouest', title: SAUDI, publishedAt: T0 + 0.5 * H },
+    ]);
+    await sql`UPDATE news_items SET lat = 45.7, lon = 4.8, geocode_source = 'region-fallback' WHERE id = 1`;
+    await sql`UPDATE news_items SET lat = 44.8, lon = 0.5, geocode_source = 'region-fallback' WHERE id = 2`;
+    await runEventPass(sql, { now: T0 + H, insertedIds: [1, 2] });
+    expect(await events()).toEqual([expect.objectContaining({ article_count: 2, lat: null, lon: null })]);
+
+    await insertArticles(sql, [{ id: 3, feedId: 'le-monde', title: `${SAUDI} à Riyad`, publishedAt: T0 + 2 * H }]);
+    await sql`UPDATE news_items SET lat = 24.7, lon = 46.7, geocode_source = 'title' WHERE id = 3`;
+    await runEventPass(sql, { now: T0 + 3 * H, insertedIds: [3] });
+    expect(await events()).toEqual([expect.objectContaining({ article_count: 3, lat: 24.7, lon: 46.7 })]);
+  });
+
   it('journalise la corroboration au passage suivant, sans rien réécrire ensuite', async () => {
     await insertArticles(sql, [{ id: 1, feedId: 'le-progres', title: RINER, publishedAt: T0 }]);
     await runEventPass(sql, { now: T0 + H });
