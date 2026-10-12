@@ -2,7 +2,7 @@
 // de l'export, du poste v2, de l'ISNR et du stress hydro (spec 2026-10-04 environnement § 2.7 ; contrats § 6). Adaptateurs purs sur
 // les dernières lectures des services (tâche 9) : la formule du score et ses cibles ne changent pas, seules les entrées changent.
 import type {
-  ActiveFire, AirEpisode, AirQualityResponse, DisasterAlert, DisastersResponse, EarthquakesResponse, EnvironmentAvailability, FireFoyer, FiresResponse, FloodSectionRef,
+  ActiveFire, AirEpisode, AirQualityResponse, DisasterAlert, DisastersResponse, EarthquakesResponse, EmsActivation, EmsResponse, EnvironmentAvailability, FireFoyer, FiresResponse, FloodSectionRef,
   FloodsResponse, LocatedFireIncident, MeteoAlert, Quake, VigilanceResponse,
 } from '../types/index.ts';
 import { scoreFireDetections, toActiveFire } from './environment-fires.ts';
@@ -25,6 +25,8 @@ export interface EnvironmentInputs {
   quakes?: Quake[];
   /** Alertes GDACS servies à jour (spec 2026-10-12) : situations outre-mer, jamais le score. */
   disasters?: DisasterAlert[];
+  /** Activations Copernicus EMS françaises en cours, relevé à jour (spec 2026-10-12) : situations seulement, jamais le score. */
+  emsActive?: EmsActivation[];
   /** Épisodes de pollution de J à J+2 (phase B, situation « épisode d'alerte »). */
   airEpisodes?: AirEpisode[];
   /**
@@ -96,6 +98,12 @@ export function servedQuakes(quakes: EarthquakesResponse | null, now: number): Q
 export function servedDisasters(d: DisastersResponse | null, now: number): DisasterAlert[] {
   if (d === null || isEnvironmentDataLate('gdacs', d.readAt, now)) return [];
   return [...d.alerts];
+}
+
+/** Activations EMS au moteur seulement si le relevé est à jour (60 min) : un relevé en retard ne crée ni n'entretient de situation. */
+export function servedEms(e: EmsResponse | null, now: number): EmsActivation[] {
+  if (e === null || isEnvironmentDataLate('ems', e.readAt, now)) return [];
+  return [...e.active];
 }
 
 /**
