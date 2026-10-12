@@ -59,6 +59,7 @@ jobs:
             "/api/environment/air;200"
             "/api/environment/earthquakes;200"
             "/api/environment/disasters;200"
+            "/api/environment/ems;200"
             "/api/environment/sea-levels;200"
             "/api/sovereignty/military;200"
             "/api/sovereignty/cables-watch;200"

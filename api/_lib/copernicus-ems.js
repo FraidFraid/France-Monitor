@@ -2,6 +2,7 @@
 // 2026-10-12 Copernicus EMS). API publique sans clé (vérifiée le 12/10/2026) : liste complète en une page, détail par code.
 // L'outre-mer est rangé sous le pays « France » : le territoire est déduit du nom, puis du pays. TAAF écartées. Dates sans
 // fuseau lues en UTC (comme GDACS).
+import { cachedSource, cachedSourceReport, fetchStrictResponse, sourceError } from './source-http.js';
 
 export const EMS_BASE = 'https://rapidmapping.emergency.copernicus.eu/backend/dashboard-api';
 export const EMS_LIST_URL = `${EMS_BASE}/public-activations-info/?limit=400`;
@@ -138,4 +139,48 @@ export function parseEmsDetail(json) {
     return ring ? [{ name: String(z.name ?? ''), ring }] : [];
   });
   return { activator: activatorOf(r.activator), population: typeof pop === 'number' && Number.isFinite(pop) ? pop : null, zones };
+}
+
+const FETCH_TIMEOUT_MS = 20_000;
+const TTL_SEC = 1_800;
+/** Relevé encore servi sans panne : 30 min de cache après une lecture d'au plus FETCH_TIMEOUT_MS. */
+const FRESH_READ_MS = TTL_SEC * 1000 + FETCH_TIMEOUT_MS;
+const CACHE = { ttlSec: TTL_SEC, staleSec: 7 * 86_400, shared: true, waitMs: FETCH_TIMEOUT_MS + 5_000 };
+export const EMS_STALE_SERVED_ERROR = 'Copernicus EMS : source indisponible, relevé précédent servi';
+
+export const emptyEms = (errors = []) => ({ readAt: null, active: [], recent: [], elsewhere: { count: 0, countries: [] }, errors });
+
+async function readJson(url) {
+  const { text } = await fetchStrictResponse(url, { expect: 'json', timeoutMs: FETCH_TIMEOUT_MS });
+  try { return JSON.parse(text); } catch { throw new Error('JSON illisible'); }
+}
+
+/** Détail d'une activation française en cours ; en échec : la ligne de la liste, sans zone, panne nommée. */
+async function withDetail(a, errors) {
+  const label = `Copernicus EMS ${a.code}`;
+  try {
+    const { value, error } = await cachedSourceReport(`env:ems:${a.code}`, CACHE, label, async () => parseEmsDetail(await readJson(emsDetailUrl(a.code))));
+    if (error) errors.push(error);
+    return { ...a, ...value };
+  } catch (err) {
+    errors.push(sourceError(label, err));
+    return a;
+  }
+}
+
+export async function loadEms(now) {
+  const readAt = new Date(now).toISOString();
+  try {
+    const v = await cachedSource('env:ems', CACHE, async () => {
+      const json = await readJson(EMS_LIST_URL);
+      if (!Array.isArray(json?.results)) throw new Error('liste des activations absente');
+      return { readAt, list: parseEmsList(json, now) };
+    });
+    const errors = now - Date.parse(v.readAt) <= FRESH_READ_MS ? [] : [EMS_STALE_SERVED_ERROR];
+    const active = [];
+    for (const a of v.list.active) active.push(await withDetail(a, errors));
+    return { readAt: v.readAt, active, recent: v.list.recent, elsewhere: v.list.elsewhere, errors };
+  } catch (err) {
+    return emptyEms([sourceError('Copernicus EMS', err)]);
+  }
 }
