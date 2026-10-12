@@ -95,7 +95,7 @@ import type { MetroLoadPanel } from './components/MetroLoadPanel.ts';
 import { fetchVigilance, mergeVigilance, vigilanceStatus, type VigilanceState } from './services/environment-vigilance.ts';
 import { fetchFloods, floodsStatus, mergeFloods, type FloodsState } from './services/environment-floods.ts';
 import { fetchFires, firesStatus, mergeFires, type FiresState } from './services/environment-fires.ts';
-import { buildEnvironmentInputs, servedAirEpisodes, servedQuakes, type EnvironmentInputs } from './services/environment-inputs.ts';
+import { buildEnvironmentInputs, servedAirEpisodes, servedDisasters, servedQuakes, type EnvironmentInputs } from './services/environment-inputs.ts';
 import { ENVIRONMENT_LATE_AFTER_MIN, parisDayOf } from './services/environment-levels.ts';
 // Phase B (spec 2026-10-04 environnement § 3) : qualité de l'air et séismes lus au démarrage (situations, tâche 32), sécheresse avec sa
 // couche ou son panneau (un stock, jamais au score : E2), marégraphes avec la vigilance.
@@ -6928,6 +6928,7 @@ export class App {
       ),
       // Phase B : séismes et épisodes de pollution (situations, contrats § 6) ; la sécheresse n'y entre jamais (E2).
       quakes: servedQuakes(this.currentEarthquakes?.quakes.data ?? null, now),
+      disasters: servedDisasters(this.currentDisasters?.disasters.data ?? null, now),
       airEpisodes: servedAirEpisodes(this.currentAirQuality?.air.data ?? null, now),
     };
   }

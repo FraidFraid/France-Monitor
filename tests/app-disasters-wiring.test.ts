@@ -76,4 +76,7 @@ describe('câblage de la couche Catastrophes (GDACS)', () => {
     expect(css).toContain('.disasters-panel-modal::before');
     expect(css).toMatch(/#app :is\([^)]*\.disasters-panel-modal[^)]*\) \.fmk \.fmk-sec--ref \.fmk-kv \{/);
   });
+  it('environmentInputs fournit les alertes GDACS servies à jour', () => {
+    expect(methodBody('environmentInputs')).toContain('disasters: servedDisasters(this.currentDisasters?.disasters.data ?? null, now),');
+  });
 });

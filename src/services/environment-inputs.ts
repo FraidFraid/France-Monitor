@@ -2,7 +2,7 @@
 // de l'export, du poste v2, de l'ISNR et du stress hydro (spec 2026-10-04 environnement § 2.7 ; contrats § 6). Adaptateurs purs sur
 // les dernières lectures des services (tâche 9) : la formule du score et ses cibles ne changent pas, seules les entrées changent.
 import type {
-  ActiveFire, AirEpisode, AirQualityResponse, EarthquakesResponse, EnvironmentAvailability, FireFoyer, FiresResponse, FloodSectionRef,
+  ActiveFire, AirEpisode, AirQualityResponse, DisasterAlert, DisastersResponse, EarthquakesResponse, EnvironmentAvailability, FireFoyer, FiresResponse, FloodSectionRef,
   FloodsResponse, LocatedFireIncident, MeteoAlert, Quake, VigilanceResponse,
 } from '../types/index.ts';
 import { scoreFireDetections, toActiveFire } from './environment-fires.ts';
@@ -23,6 +23,8 @@ export interface EnvironmentInputs {
   fireFoyers: FireFoyer[];
   /** Séismes des 7 derniers jours (phase B, situations sismiques) ; absents : aucune situation. */
   quakes?: Quake[];
+  /** Alertes GDACS servies à jour (spec 2026-10-12) : situations outre-mer, jamais le score. */
+  disasters?: DisasterAlert[];
   /** Épisodes de pollution de J à J+2 (phase B, situation « épisode d'alerte »). */
   airEpisodes?: AirEpisode[];
   /**
@@ -88,6 +90,12 @@ export function buildEnvironmentInputs(
 export function servedQuakes(quakes: EarthquakesResponse | null, now: number): Quake[] {
   if (quakes === null || isEnvironmentDataLate('bcsf', quakes.readAt, now)) return [];
   return [...quakes.quakes];
+}
+
+/** Alertes GDACS au moteur seulement si le relevé est à jour (30 min) : une donnée en retard ne crée ni n'entretient de situation. */
+export function servedDisasters(d: DisastersResponse | null, now: number): DisasterAlert[] {
+  if (d === null || isEnvironmentDataLate('gdacs', d.readAt, now)) return [];
+  return [...d.alerts];
 }
 
 /**

@@ -1844,6 +1844,7 @@ export type SituationType =
   | 'DEFENSE_ALERT'
   | 'GPS_JAMMING_ALERT'
   | 'SEISMIC_EVENT'
+  | 'NATURAL_HAZARD_ALERT'
   | 'AIR_POLLUTION_EPISODE';
 
 export type SituationSeverity = 'critical' | 'high' | 'medium' | 'watch';
