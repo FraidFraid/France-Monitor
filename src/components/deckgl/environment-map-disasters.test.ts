@@ -35,7 +35,7 @@ describe('disasterFeatures', () => {
   it('branchée dans les tables de la carte Environnement', () => {
     expect(ENV_SOURCE_IDS).toContain(SRC_DISASTERS);
     expect(ENV_LAYER_KEYS.disasters).toEqual(DISASTER_LAYER_KEYS.disasters);
-    expect(DISASTER_LAYER_KEYS.disasters).toEqual([LYR_DISASTERS, LYR_DISASTER_LABEL]);
+    expect(DISASTER_LAYER_KEYS.disasters.slice(0, 2)).toEqual([LYR_DISASTERS, LYR_DISASTER_LABEL]);
   });
 });
 

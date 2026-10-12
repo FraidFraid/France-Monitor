@@ -10,6 +10,7 @@ import { clockOf } from '../layer-panel/environment-format.ts';
 import { ALERT_WORD, DISASTER_ABROAD_HEX, DISASTER_TYPE_LABEL, ENV_NEUTRAL_HEX } from '../layer-panel/environment-legend.ts';
 import { LYR_DISASTERS, LYR_DISASTER_LABEL, LYR_OUT_TELECOM_MAINT, SRC_DISASTERS } from './constants.ts';
 import { escapeHtml } from './format-utils.ts';
+import { EMS_LAYER_IDS } from './environment-map-ems.ts';
 
 const RANK = { rouge: 3, orange: 2, vert: 1 } as const;
 
@@ -68,7 +69,8 @@ export const DISASTER_LAYERS: readonly LayerSpecification[] = [
   },
 ];
 
-export const DISASTER_LAYER_KEYS: Readonly<Record<'disasters', readonly string[]>> = { disasters: [LYR_DISASTERS, LYR_DISASTER_LABEL] };
+/** Couche Catastrophes : points GDACS et zones Copernicus EMS (spec 2026-10-12 Copernicus EMS, décision D1). */
+export const DISASTER_LAYER_KEYS: Readonly<Record<'disasters', readonly string[]>> = { disasters: [LYR_DISASTERS, LYR_DISASTER_LABEL, ...EMS_LAYER_IDS] };
 
 /** Au-dessus des surfaces, comme les séismes (même ancre que placeEnvBPoints). */
 export function placeDisasterPoints(map: { getLayer(id: string): unknown; moveLayer(id: string, before?: string): unknown }): void {

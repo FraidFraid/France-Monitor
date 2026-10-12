@@ -18,7 +18,7 @@ import type {
   CablesWatchResponse, CloudOutagesResponse, DefenseOsmWorksFile, DroneZonesFile, GnssResponse, InternetOutagesResponse, MilitaryResponse, PowerOutagesResponse,
   SubseaCablesFile, TelecomOutagesResponse,
 } from '../types/index.ts';
-import type { AirQualityResponse, DisastersResponse, DroughtResponse, EarthquakesResponse, FiresResponse, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
+import type { AirQualityResponse, DisastersResponse, DroughtResponse, EmsResponse, EarthquakesResponse, FiresResponse, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
 import type { UrgencesSyndrome } from './layer-panel/health-format.ts';
 
 /** Detect if the device is mobile (no WebGL or small screen) */
@@ -528,6 +528,10 @@ export class MapContainer {
   updateDisastersLayer(d: DisastersResponse | null, now: number): void {
     this.deckMap?.updateDisastersLayer(d, now);
   }
+  updateEmsLayer(e: EmsResponse | null, now: number): void {
+    this.deckMap?.updateEmsLayer(e, now);
+  }
+
 
   updateSeaLevelsLayer(s: SeaLevelsResponse | null, v: VigilanceResponse | null, now: number): void {
     this.deckMap?.updateSeaLevelsLayer(s, v, now);

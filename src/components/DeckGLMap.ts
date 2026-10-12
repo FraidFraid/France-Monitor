@@ -12,7 +12,8 @@ import { MapboxOverlay } from '@deck.gl/mapbox';
 import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
 import { COORDINATE_SYSTEM } from '@deck.gl/core';
 import type { MapViewState, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, NewsItem, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, AirTrafficFlight, EcowattResponse, AisShipData, OilDashboard, SatelliteViewRequest, HydraulicBackboneAsset } from '../types/index.ts';
-import type { AirQualityResponse, DisastersResponse, DroughtResponse, EarthquakesResponse, FiresResponse, FloodSection, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
+import { emsZoneFeatures } from './deckgl/environment-map-ems.ts';
+import type { AirQualityResponse, DisastersResponse, DroughtResponse, EmsResponse, EarthquakesResponse, FiresResponse, FloodSection, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
 import { ecowattToday, ecowattLevelLabel } from '../services/ecowatt-official.ts';
 import { DATA_FRESHNESS_LABELS } from '../types/index.ts';
 import type { AlertLevelsResponse, AplDataset, AplProfession, EmergencySite, HospitalsDataset, SyndromicResponse } from '../types/index.ts';
@@ -171,6 +172,7 @@ import {
   SRC_AIR_QUALITY,
   SRC_QUAKES,
   SRC_DISASTERS,
+  SRC_EMS_ZONES,
   SRC_TIDE_GAUGES,
   LYR_DROUGHT_FILL,
   LYR_AIR_FILL,
@@ -415,6 +417,7 @@ export class DeckGLMap {
   private envB: EnvBData = { drought: null, air: null, quakes: null, seaLevels: null, vigilance: null };
   /** Dernière réponse GDACS (gardée couche masquée, repeinte au réaffichage). */
   private disastersData: DisastersResponse | null = null;
+  private emsData: EmsResponse | null = null;
   private _forestDangerFill = false;
   private _echoTopsEnabled = false;
   private radarPick: { lat: number; lon: number } | null = null;
@@ -7106,6 +7109,14 @@ export class DeckGLMap {
     this.hideEnvironmentHover();
   }
 
+  /** Catastrophes : zones Copernicus EMS des activations françaises en cours (contour violet). */
+  updateEmsLayer(e: EmsResponse | null, now: number): void {
+    this.emsData = e;
+    if (!this.map) return;
+    (this.map.getSource(SRC_EMS_ZONES) as maplibregl.GeoJSONSource | undefined)?.setData(emsZoneFeatures(e, now));
+    this.hideEnvironmentHover();
+  }
+
   /** Marégraphes SHOM (couche Vigilance météo) : anneau de la couleur du domaine littoral du jour. */
   updateSeaLevelsLayer(s: SeaLevelsResponse | null, v: VigilanceResponse | null, now: number): void {
     this.envB.seaLevels = s;
@@ -7205,6 +7216,9 @@ export class DeckGLMap {
     }
     if (envLayerOn(layers, 'disasters') && !envLayerOn(was, 'disasters') && this.disastersData) {
       (this.map.getSource(SRC_DISASTERS) as maplibregl.GeoJSONSource | undefined)?.setData(disasterFeatures(this.disastersData, Date.now()));
+    }
+    if (envLayerOn(layers, 'disasters') && !envLayerOn(was, 'disasters') && this.emsData) {
+      (this.map.getSource(SRC_EMS_ZONES) as maplibregl.GeoJSONSource | undefined)?.setData(emsZoneFeatures(this.emsData, Date.now()));
     }
     if (envLayerOn(layers, 'fires') && !envLayerOn(was, 'fires') && this.envFires) {
       this.envFiresNow = Date.now();
