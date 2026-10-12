@@ -1,7 +1,7 @@
 // src/components/CommodityStrip.test.ts : cours des matières premières à la française (virgule décimale, milliers groupés,
 // unité insécable), comme le bloc « Stabilité financière » voisin.
 import { describe, expect, it } from 'vitest';
-import { SECTION_LABELS, commoditySparkline, formatCommodityPct, formatCommodityPrice } from './CommodityStrip.ts';
+import { SECTION_LABELS, commodityRowHTML, commoditySparkline, formatCommodityPct, formatCommodityPrice } from './CommodityStrip.ts';
 import type { CommodityData } from '../types/index.ts';
 
 const NB = ' ';
@@ -31,5 +31,24 @@ describe('courbe de séance', () => {
     const svg = commoditySparkline(item);
     expect(svg).toContain('class="spark-ref"');
     expect(svg).toContain('<title>séance du jour · plus bas 3,17 · plus haut 3,22</title>');
+  });
+});
+
+describe('ligne de tableau (refonte du 12/10)', () => {
+  const base: CommodityData = {
+    symbol: 'BZ=F', name: 'Brent', category: 'energy', unit: '$/bbl', price: 106.52, changePercent: 1.72, trend: 'up',
+    lastUpdated: new Date('2026-10-12T18:43:00Z'), history: [104.7, 105.9, 106.52],
+  };
+  it('même ligne que la stabilité financière : nom, unité, cours, variation, courbe', () => {
+    const html = commodityRowHTML(base);
+    expect(html).toMatch(/^<div class="fin-row" data-id="BZ=F"/);
+    expect(html).toContain('<span class="fin-row__unit">$/bbl</span>');
+    expect(html).toContain('<span class="fin-row__value">106,52</span>');
+    expect(html).toContain(`<span class="fin-row__note is-up">+1,72${NB}%</span>`);
+    expect(html).toContain('class="spark-line"');
+  });
+  it('mouvement exceptionnel de l’énergie (± 5 %) : variation en alerte jaune', () => {
+    expect(commodityRowHTML({ ...base, changePercent: -6.1 })).toContain('fin-row__note is-alert');
+    expect(commodityRowHTML({ ...base, category: 'metals', changePercent: -6.1 })).toContain('fin-row__note is-down');
   });
 });

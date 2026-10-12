@@ -6,6 +6,7 @@ import type { EcbSeries, FinancialPoint, FinancialStabilityResponse, MarketData,
 import { buildMarketSparkline } from '../utils/market-sparkline.ts';
 import { NBSP, frNumber } from './layer-panel/format.ts';
 import { fmLoaderHTML } from './shared/loader.ts';
+import { finTableRowHTML, type FinTableRow } from './shared/fin-table.ts';
 import { levelColorVar, levelLabel, type VigilanceLevel } from '../services/vigilance.ts';
 import {
   CISS_BANDS, CISS_HELP, SPREAD_BANDS, SPREAD_HELP, bandOf, blockLevel, thresholdsText, type LevelBand,
@@ -30,46 +31,17 @@ function frDate(date: string, withYear = false): string {
 }
 
 /** Courbe d'une ligne : observations datées (trous au-delà de 4 jours), couleur du niveau éventuelle, format de l'infobulle. */
-interface Curve {
-  points: readonly FinancialPoint[];
-  label: string;
-  format: (v: number) => string;
-  color?: string;
-}
-
-const curveOf = (points: readonly FinancialPoint[] | undefined, label: string, format: (v: number) => string, color?: string): Curve =>
-  ({ points: points ?? [], label, format, color });
-
-interface Row {
-  id: string;
-  name: string;
-  value: string;
-  meta: string;
-  word?: { text: string; level: VigilanceLevel };
-  curve?: Curve;
-  help?: string;
-}
-
-function rowHTML(r: Row): string {
-  const word = r.word
-    ? `<span class="fin-stab__word" style="--fin-lvl:${levelColorVar(r.word.level)}">${esc(r.word.text)}</span>`
-    : '';
-  const c = r.curve;
-  const curve = c && c.points.length >= 2
-    ? buildMarketSparkline(c.points.map((p) => p.value), 'neutral', {
-      dates: c.points.map((p) => p.date), label: c.label, format: c.format, ...(c.color ? { color: c.color } : {}),
-    })
-    : '';
-  const title = r.help ? ` title="${esc(r.help)}"` : '';
-  return `<div class="fin-stab__row" data-id="${r.id}"${title}>
-    <div class="fin-stab__line"><span class="fin-stab__name">${esc(r.name)}</span><span class="fin-stab__value">${esc(r.value)}</span>${word}</div>
-    <div class="fin-stab__meta">${esc(r.meta)}</div>${curve}
-  </div>`;
+function curveHTML(points: readonly FinancialPoint[] | undefined, label: string, format: (v: number) => string, color?: string): string {
+  if (!points || points.length < 2) return '';
+  return buildMarketSparkline(points.map((p) => p.value), 'neutral', {
+    dates: points.map((p) => p.date), label, format, ...(color ? { color } : {}),
+  });
 }
 
 const SERIES_NAME: Record<EcbSeries['id'], string> = {
-  cissFr: 'CISS France', cissEa: 'CISS zone euro', estr: '€STR', eurusd: 'EUR/USD (référence BCE)',
+  cissFr: 'CISS France', cissEa: 'CISS zone euro', estr: '€STR', eurusd: 'EUR/USD',
 };
+const SERIES_UNIT: Partial<Record<EcbSeries['id'], string>> = { eurusd: 'réf. BCE' };
 
 /** Valeur d'une série à la française, unité insécable (CISS sans unité). */
 const SERIES_FORMAT: Record<EcbSeries['id'], (v: number) => string> = {
@@ -79,29 +51,42 @@ const SERIES_FORMAT: Record<EcbSeries['id'], (v: number) => string> = {
   eurusd: (v) => `${frNumber(v, 4)}${NBSP}$`,
 };
 
-function seriesRow(s: EcbSeries | undefined, id: EcbSeries['id']): Row {
+function seriesRow(s: EcbSeries | undefined, id: EcbSeries['id']): FinTableRow {
   const name = SERIES_NAME[id];
+  const unit = SERIES_UNIT[id];
   const format = SERIES_FORMAT[id];
-  if (!s || s.value === null) return { id, name, value: ND, meta: 'BCE indisponible', curve: curveOf(s?.history, '90 jours', format) };
+  const base = { id, name, ...(unit ? { unit } : {}) };
+  if (!s || s.value === null) return { ...base, value: ND, meta: 'BCE indisponible', curve: curveHTML(s?.history, '90 jours', format) };
   const date = s.date ? `au ${frDate(s.date)}` : ND;
   const meta = s.status === 'stale' ? `${date} · en retard` : date;
-  if (id !== 'cissFr' && id !== 'cissEa') return { id, name, value: format(s.value), meta, curve: curveOf(s.history, '90 jours', format) };
+  if (id !== 'cissFr' && id !== 'cissEa') return { ...base, value: format(s.value), meta, curve: curveHTML(s.history, '90 jours', format) };
   const band: LevelBand = bandOf(s.value, CISS_BANDS);
   return {
-    id, name, value: format(s.value), meta,
-    curve: curveOf(s.history, '90 jours', format, levelColorVar(band.level)),
-    word: { text: band.word, level: band.level }, help: `${CISS_HELP} ${thresholdsText(CISS_BANDS, 2, '')}`,
+    ...base, value: format(s.value), meta, level: band.level,
+    note: { text: band.word, level: band.level },
+    curve: curveHTML(s.history, '90 jours', format, levelColorVar(band.level)),
+    help: `${CISS_HELP} ${thresholdsText(CISS_BANDS, 2, '')}`,
   };
 }
 
-const RATE_NAME: Record<PolicyRate['id'], string> = { depot: 'Taux de dépôt BCE', refi: 'Taux de refinancement BCE' };
-
-function rateRow(r: PolicyRate | undefined, id: PolicyRate['id']): Row {
-  const name = RATE_NAME[id];
-  if (!r || r.value === null) return { id, name, value: ND, meta: 'BCE indisponible' };
-  const sense = r.previous === null || r.previous === r.value ? '' : r.previous < r.value ? ' (hausse)' : ' (baisse)';
-  const meta = r.since ? `depuis le ${frDate(r.since, true)}${sense}` : ND;
-  return { id, name, value: `${frNumber(r.value, 2)}${NBSP}%`, meta };
+/** Les deux taux directeurs sur une ligne ; la note donne le sens et la date du dernier changement du taux de dépôt. */
+function ratesRow(depot: PolicyRate | undefined, refi: PolicyRate | undefined): FinTableRow {
+  const pct = (r: PolicyRate | undefined): string => (r && r.value !== null ? frNumber(r.value, 2) : ND);
+  const base = { id: 'rates', name: 'Taux BCE', unit: 'dépôt · refi', curve: '' };
+  if ((!depot || depot.value === null) && (!refi || refi.value === null)) return { ...base, value: ND, meta: 'BCE indisponible' };
+  const value = `${pct(depot)} · ${pct(refi)}${NBSP}%`;
+  const ref = depot && depot.value !== null ? depot : refi;
+  if (!ref || ref.since === null) return { ...base, value };
+  const up = ref.previous !== null && ref.value !== null && ref.previous < ref.value;
+  const down = ref.previous !== null && ref.value !== null && ref.previous > ref.value;
+  const arrow = up ? '↑' : down ? '↓' : '';
+  const sense = up ? 'hausse' : down ? 'baisse' : 'changement';
+  return {
+    ...base, value,
+    note: { text: `${arrow ? `${arrow}${NBSP}` : ''}${frDate(ref.since)}`, tone: up ? 'up' : down ? 'down' : 'flat' },
+    ...(ref.status === 'stale' ? { meta: 'en retard' } : {}),
+    help: `Taux de dépôt et de refinancement de la BCE : ${sense} le ${frDate(ref.since, true)}.`,
+  };
 }
 
 /** Samedi ou dimanche à Paris : TradingView rend la clôture du vendredi (revue finale I4). */
@@ -110,45 +95,52 @@ function isParisWeekend(iso: string): boolean {
   return day === 'Sat' || day === 'Sun';
 }
 
-function spreadRow(sp: OatBundSpread | undefined): Row {
-  const name = 'Écart OAT-Bund 10 ans';
+/** Courbe de l'écart pas encore tracée : un seul relevé enregistré (un point par jour de semaine). */
+const PENDING_CURVE = '<span class="fin-row__pending">en constitution</span>';
+
+function spreadRow(sp: OatBundSpread | undefined): FinTableRow {
+  const base = { id: 'spread', name: 'Écart OAT-Bund' };
   const spreadFormat = (v: number): string => `${frNumber(v, 2)}${NBSP}pt`;
   const first = sp?.history[0];
   const label = first ? `depuis le ${frDate(first.date)}` : 'relevés quotidiens';
-  const curve = curveOf(sp?.history, label, spreadFormat, sp && sp.value !== null ? levelColorVar(bandOf(sp.value, SPREAD_BANDS).level) : undefined);
   const help = `${SPREAD_HELP} ${thresholdsText(SPREAD_BANDS, 1, `${NBSP}pt`)} Source : marché (TradingView), courbe relevée un point par jour.`;
-  if (!sp || sp.value === null) return { id: 'spread', name, value: ND, meta: 'TradingView indisponible', curve, help };
+  if (!sp || sp.value === null) return { ...base, value: ND, meta: 'TradingView indisponible', curve: curveHTML(sp?.history, label, spreadFormat), help };
   const band = bandOf(sp.value, SPREAD_BANDS);
   const when = sp.status === 'stale' ? 'en retard' : sp.readAt !== null && isParisWeekend(sp.readAt) ? 'clôture du vendredi' : 'en direct';
-  const meta = `${when} · source : marché (TradingView)`;
-  return { id: 'spread', name, value: `${frNumber(sp.value, 2)}${NBSP}pt`, meta, curve, word: { text: band.word, level: band.level }, help };
+  return {
+    ...base, value: spreadFormat(sp.value), meta: `${when} · TradingView`, level: band.level,
+    note: { text: band.word, level: band.level },
+    curve: sp.history.length >= 2 ? curveHTML(sp.history, label, spreadFormat, levelColorVar(band.level)) : PENDING_CURVE, help,
+  };
 }
 
-function cacRow(cac: MarketData | null): Row {
-  if (!cac) return { id: 'cac', name: 'CAC 40', value: ND, meta: 'TradingView indisponible' };
-  return { id: 'cac', name: 'CAC 40', value: frNumber(cac.price, 0), meta: `${frNumber(cac.changePercent, 2, true)}${NBSP}% sur la journée · en direct` };
+function cacRow(cac: MarketData | null): FinTableRow {
+  const base = { id: 'cac', name: 'CAC 40', curve: '' };
+  if (!cac) return { ...base, value: ND, meta: 'TradingView indisponible' };
+  const tone = cac.changePercent > 0 ? 'up' : cac.changePercent < 0 ? 'down' : 'flat';
+  return { ...base, value: frNumber(cac.price, 0), meta: 'en direct', note: { text: `${frNumber(cac.changePercent, 2, true)}${NBSP}%`, tone } };
 }
 
 export function buildFinancialStabilityHTML(view: FinancialStabilityView): { level: VigilanceLevel | null; stamp: string; html: string } {
   const { data } = view;
   // Rien lu (502 sans relevé gardé) : mêmes lignes en « n.d. », le CAC 40 (source indépendante) reste (revue finale I3).
   const byId = <T extends { id: string }>(list: T[] | undefined, id: string): T | undefined => list?.find((x) => x.id === id);
-  const rows: Row[] = [
+  const rows: FinTableRow[] = [
     seriesRow(byId(data?.series, 'cissFr'), 'cissFr'),
     seriesRow(byId(data?.series, 'cissEa'), 'cissEa'),
     spreadRow(data?.spread),
-    rateRow(byId(data?.rates, 'depot'), 'depot'),
-    rateRow(byId(data?.rates, 'refi'), 'refi'),
+    ratesRow(byId(data?.rates, 'depot'), byId(data?.rates, 'refi')),
     seriesRow(byId(data?.series, 'estr'), 'estr'),
     seriesRow(byId(data?.series, 'eurusd'), 'eurusd'),
     cacRow(view.cac),
   ];
+  const table = `<div class="fin-table">${rows.map(finTableRowHTML).join('')}</div>`;
   if (!data) {
-    const cause = view.error ? `<div class="fin-stab__cause">Stabilité financière indisponible : ${esc(view.error)}</div>` : '';
-    return { level: null, stamp: 'Source indisponible', html: `${cause}<div class="fin-stab">${rows.map(rowHTML).join('')}</div>` };
+    const cause = view.error ? `<div class="fin-table__cause">Stabilité financière indisponible : ${esc(view.error)}</div>` : '';
+    return { level: null, stamp: 'Source indisponible', html: `${cause}${table}` };
   }
   const time = new Date(data.readAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
-  return { level: blockLevel(data), stamp: `MàJ ${time}`, html: `<div class="fin-stab">${rows.map(rowHTML).join('')}</div>` };
+  return { level: blockLevel(data), stamp: `MàJ ${time}`, html: table };
 }
 
 export class FinancialStabilityStrip {

@@ -3,14 +3,9 @@ import { marketTone, type MarketTone } from '../services/vigilance.ts';
 import { buildMarketSparkline } from '../utils/market-sparkline.ts';
 import { fmLoaderHTML } from './shared/loader.ts';
 import { NBSP, frNumber } from './layer-panel/format.ts';
+import { finTableRowHTML } from './shared/fin-table.ts';
 
 // ─── Utilitaires ───────────────────────────────────
-
-function escapeHtml(value: string): string {
-  const el = document.createElement('div');
-  el.textContent = value;
-  return el.innerHTML;
-}
 
 /** Cours à la française : virgule décimale, milliers groupés sans décimale. */
 export function formatCommodityPrice(value: number): string {
@@ -26,6 +21,17 @@ export function formatCommodityPct(value: number): string {
 export function commoditySparkline(item: CommodityData, tone: MarketTone = 'neutral'): string {
   const previousClose = item.changePercent > -100 ? item.price / (1 + item.changePercent / 100) : null;
   return buildMarketSparkline(item.history, tone, { reference: previousClose, label: 'séance du jour', format: formatCommodityPrice });
+}
+
+/** Ligne de tableau (même style que la stabilité financière) ; pétrole et gaz : seuil de ± 5 %, métaux et agro toujours neutres. */
+export function commodityRowHTML(item: CommodityData): string {
+  const tone = marketTone(item.changePercent, item.category === 'energy' ? 'energy' : 'other');
+  const sense = item.changePercent > 0 ? 'up' : item.changePercent < 0 ? 'down' : 'flat';
+  return finTableRowHTML({
+    id: item.symbol, name: item.name, unit: item.unit, value: formatCommodityPrice(item.price),
+    note: { text: formatCommodityPct(item.changePercent), tone: tone === 'alert' ? 'alert' : sense },
+    curve: commoditySparkline(item, tone),
+  });
 }
 
 export const SECTION_LABELS: Readonly<Record<'energy' | 'metals' | 'agro', string>> = { energy: 'Énergie', metals: 'Métaux', agro: 'Agro' };
@@ -102,22 +108,7 @@ export class CommodityStrip {
     for (const item of items) {
       const listEl = this.listEls[item.category];
       if (!listEl) continue;
-
-      // Pétrole et gaz : seuil de ±5 % ; métaux et produits agricoles toujours neutres.
-      const tone = marketTone(item.changePercent, item.category === 'energy' ? 'energy' : 'other');
-
-      const card = document.createElement('article');
-      card.className = `market-strip__item is-${tone}`;
-      card.innerHTML = `
-        <div class="market-strip__topline">
-          <span class="market-strip__name">${escapeHtml(item.name)}</span>
-          <span class="market-strip__symbol">${escapeHtml(item.unit)}</span>
-        </div>
-        <div class="market-strip__price">${escapeHtml(formatCommodityPrice(item.price))}</div>
-        <div class="market-strip__delta">${escapeHtml(formatCommodityPct(item.changePercent))}</div>
-        ${commoditySparkline(item, tone)}
-      `;
-      listEl.appendChild(card);
+      listEl.insertAdjacentHTML('beforeend', commodityRowHTML(item));
 
       const ts = item.lastUpdated instanceof Date
         ? item.lastUpdated.getTime()
