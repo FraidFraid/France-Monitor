@@ -8,7 +8,8 @@ const NOW = Date.parse('2026-10-12T08:00:00Z');
 
 // Index factice : 13 Bouches-du-Rhône au sud (lat < 44), 69 Rhône au nord.
 const DEPTS: DepartementIndex = {
-  at: (_lon, lat) => (lat < 44 ? { code: '13', nom: 'Bouches-du-Rhône' } : { code: '69', nom: 'Rhône' }),
+  // Hors métropole (géométrie limitée à la métropole, comme departements.geojson) : rien.
+  at: (lon, lat) => (lon < -6 || lon > 10 || lat < 41 ? null : lat < 44 ? { code: '13', nom: 'Bouches-du-Rhône' } : { code: '69', nom: 'Rhône' }),
   nameOf: (code) => ({ '13': 'Bouches-du-Rhône', '69': 'Rhône', '59': 'Nord', '33': 'Gironde' } as Record<string, string>)[code] ?? null,
 };
 
@@ -84,6 +85,11 @@ describe('departmentPressure (12/10/2026)', () => {
       ['69', 'rouge', 'energy', 'aggrave', 1],
     ]);
     expect(out[0].elements.map((e) => e.level)).toEqual(['rouge', 'rouge', 'jaune']);
+  });
+
+  it('outre-mer : un événement en Guadeloupe compte pour la Guadeloupe (971), hors de la géométrie de métropole', () => {
+    const out = departmentPressure({ ...base, items: [eventItem(event({ id: 9, title: 'GIGN blessés en Guadeloupe', lat: 16.2, lon: -61.5 }))] });
+    expect(out.map((d) => [d.code, d.name])).toEqual([['971', 'Guadeloupe']]);
   });
 
   it('géométrie des départements pas encore chargée : seuls les signaux à code de département comptent', () => {

@@ -33,6 +33,7 @@ import { SPECIFIC_THEMES, THEMES, categoryTheme, inTheme, situationTheme, type S
 import type { VisitBaseline } from './intel-last-visit.ts';
 import { splitZoneScore } from './situation-text.ts';
 import type { DepartementIndex } from './departement-lookup.ts';
+import { overseasDepartmentAt } from '../config/geo.ts';
 
 type Lang = 'fr' | 'en';
 
@@ -272,7 +273,7 @@ function placeName(place: string | null, departements: DepartementIndex | null):
 /** Lieu d'un événement : son département ; « France » sans coordonnées (sujet national) ; rien hors des départements. */
 function eventPlace(e: NewsEvent, departements: DepartementIndex | null): string | null {
   if (e.lon === null || e.lat === null) return 'France';
-  return departements?.at(e.lon, e.lat)?.nom ?? null;
+  return departements?.at(e.lon, e.lat)?.nom ?? overseasDepartmentAt(e.lon, e.lat)?.nom ?? null;
 }
 
 function parseTime(iso: string): number | null {

@@ -8,6 +8,7 @@ import type { DepartementIndex } from './departement-lookup.ts';
 import type { WorkBadge, WorkItem } from './work-queue.ts';
 import type { ThemeId } from './themes.ts';
 import { LEVEL_RANK, maxLevel, officialLevel, type VigilanceLevel } from './vigilance.ts';
+import { overseasDepartmentAt } from '../config/geo.ts';
 
 export type PressureSource = 'event' | 'situation' | 'meteo' | 'vigicrues';
 
@@ -75,8 +76,11 @@ export function departmentPressure(input: DepartmentPressureInput): DepartmentPr
     entry.elements.push(element);
     byCode.set(code, entry);
   };
-  const at = (lon: number | null | undefined, lat: number | null | undefined): { code: string; nom: string } | null =>
-    departements && typeof lon === 'number' && typeof lat === 'number' ? departements.at(lon, lat) : null;
+  // Métropole par la géométrie des départements, outre-mer par son cadre (la géométrie n'y va pas).
+  const at = (lon: number | null | undefined, lat: number | null | undefined): { code: string; nom: string } | null => {
+    if (typeof lon !== 'number' || typeof lat !== 'number') return null;
+    return departements?.at(lon, lat) ?? overseasDepartmentAt(lon, lat);
+  };
 
   for (const item of input.items) {
     const element = { key: item.key, level: item.level, title: item.title, theme: item.theme, badge: item.badge };
