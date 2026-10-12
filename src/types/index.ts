@@ -2477,6 +2477,28 @@ export interface EarthquakesResponse {
   errors: string[];
 }
 
+// ─── Catastrophes (GDACS) : GET /api/environment/disasters ───
+export type DisasterType = 'cyclone' | 'seisme' | 'inondation' | 'volcan' | 'secheresse' | 'feu';
+export type DisasterLevel = 'vert' | 'orange' | 'rouge';
+export interface DisasterAlert {
+  id: string;                          // `${eventtype}-${eventid}` (ex. « TC-1001335 »)
+  type: DisasterType;
+  level: DisasterLevel;
+  name: string;                        // nom GDACS nettoyé (« Tropical Cyclone SIMON-26 »)
+  countries: string[];                 // ISO3 des pays touchés (iso3 puis affectedcountries), sans doublon ni vide
+  frenchTerritory: string | null;      // libellé du territoire français touché (« La Réunion »), sinon null
+  lat: number; lon: number;
+  from: string; to: string;            // ISO 8601 UTC
+  current: boolean;
+  severity: string | null;             // severitydata.severitytext ; null si vide ou « Magnitude 0 »
+  url: string | null;                  // fiche GDACS (url.report)
+}
+export interface DisastersResponse {
+  readAt: string | null;
+  alerts: DisasterAlert[];             // territoire français d'abord, puis rouge > orange > vert, puis plus récent d'abord
+  errors: string[];
+}
+
 // ─── Submersion marine : GET /api/environment/sea-levels ───
 export interface TideGauge {
   id: number;                          // identifiant REFMAR (shom_id)
