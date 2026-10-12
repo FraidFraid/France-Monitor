@@ -354,6 +354,22 @@ describe('PosteSituation', () => {
     expect(states).toEqual([['map', 'default'], ['map', 'default']]);
   });
 
+  it('ordinateur : fiche État de la France sans croix, ouverte par Intelligence France ou par défaut (pas de décalage, 12/10/2026)', () => {
+    const { roots, poste } = setup(1440);
+    const close = (): HTMLButtonElement | null => roots.fiche.querySelector<HTMLButtonElement>('.fiche-close');
+    roots.themes.querySelector<HTMLButtonElement>('[data-france]')?.click();
+    expect(poste.selectedKey()).toBe('france');
+    expect(close()?.hidden).toBe(true);
+    roots.themes.querySelector<HTMLButtonElement>('[data-theme="energy"]')?.click();
+    expect(close()?.hidden).toBe(true);
+    // Une autre fiche garde sa croix ; en tablette, la fiche France (volet) aussi.
+    poste.select('situation:energy-stress');
+    expect(close()?.hidden).toBe(false);
+    const tablet = setup(820);
+    expect(tablet.poste.selectedKey()).toBe('france');
+    expect(tablet.roots.fiche.querySelector<HTMLButtonElement>('.fiche-close')?.hidden).toBe(false);
+  });
+
   it('mobile : fermer le volet depuis l’onglet Carte met le focus sur l’onglet actif, jamais sur <body> (I2)', () => {
     const { roots, poste } = setup(390);
     simulateLayoutCss(roots, 'mobile');

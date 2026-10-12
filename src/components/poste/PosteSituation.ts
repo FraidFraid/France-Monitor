@@ -447,7 +447,10 @@ export class PosteSituation {
       model = { ...model, level: null, context: [notReadyText, ...(model.context ?? [])] };
     }
     this.lastModel = model;
-    this.fichePanel.render(model, lang, this.selection !== null);
+    // Ordinateur : la fiche État de la France est la fiche par défaut, sans croix (sinon le contenu se décale de la hauteur de la
+    // croix en passant d'Intelligence France à un thème, 12/10/2026) ; tablette et mobile : volet à fermer.
+    const franceOnDesktop = this.selection === 'france' && this.layout() === 'desktop';
+    this.fichePanel.render(model, lang, this.selection !== null && !franceOnDesktop);
     if (vanished && ficheHadFocus) this.restoreFocus(null);
 
     const history = this.events && !(this.events.unavailable && this.events.events.length === 0) ? this.events : null;
