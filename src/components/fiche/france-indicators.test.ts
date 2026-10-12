@@ -93,8 +93,8 @@ describe('Domaines', () => {
     }
     expect(s.html).toContain('<span class="fmk-domain-name"><span class="fmk-dot" aria-hidden="true"></span>Météo</span>');
     expect(s.html).not.toMatch(/(Vigilance|Crues|Feux)[ \u00a0]<b class="fmk-num">0<\/b>/);
-    // Sept tuiles comptées (toutes vertes ici) : la tuile « Météo » sans niveau n'entre pas dans le résumé.
-    expect(s.summary).toContain('<span class="fmk-num">7</span>');
+    // Six tuiles comptées (toutes vertes ici) : « Météo » sans niveau et « Finance » sans donnée (spec 2026-10-12 pilier finance) n'entrent pas dans le résumé.
+    expect(s.summary).toContain('<span class="fmk-num">6</span>');
   });
 });
 

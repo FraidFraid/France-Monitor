@@ -86,7 +86,7 @@ export function domainsSection(snapshot: Pick<FranceCountrySnapshot, 'signals' |
   const value = (tile: DomainTile): string => (tile.parts
     ? `<span class="fmk-domain-parts">${tile.parts.map((p) => `<span class="fmk-domain-part">${dot(p.level)}`
       + `${escapeHtml(p.label)}\u00a0${num(p.value)}</span>`).join('')}</span>`
-    : num(tile.value));
+    : tile.valueText !== undefined ? `<b class="fmk-num">${escapeHtml(tile.valueText)}</b>` : num(tile.value));
   const grid = tiles.map((tile) => `<div class="fmk-domain">`
     + `<span class="fmk-domain-name">${dot(tile.level)}${escapeHtml(tile.label)}</span>`
     + `${value(tile)}<small>${escapeHtml(tile.meta)}</small></div>`).join('');

@@ -332,3 +332,19 @@ describe('données partagées des blocs (spec 2026-10-01)', () => {
     expect([0, 1, 2, 3, 9].map(timelineIntensity)).toEqual([0.08, 0.25, 0.45, 0.65, 0.9]);
   });
 });
+
+describe('tuile Finance (spec 2026-10-12 pilier finance)', () => {
+  const fin = (over: Partial<FranceCountrySignals>) => domainTiles(signals(over), 'fr').find((t) => t.label === 'Finance');
+  it('niveau en mots, indicateur qui le fixe, couleur du niveau', () => {
+    expect(fin({ financeLevel: 'rouge', financeSpread: 1.43, financeCissFr: 0.05 })).toMatchObject({
+      valueText: 'Rouge', meta: 'écart OAT-Bund 1,43 pt', level: 'critical',
+    });
+    expect(fin({ financeLevel: 'vert', financeSpread: 0.4, financeCissFr: 0.05 })).toMatchObject({ valueText: 'Vert', level: 'low' });
+  });
+  it('CISS qui fixe le niveau : nommé', () => {
+    expect(fin({ financeLevel: 'orange', financeSpread: 0.4, financeCissFr: 0.35 })?.meta).toBe('CISS France 0,350');
+  });
+  it('sans donnée : n.d., point gris', () => {
+    expect(fin({ financeLevel: null, financeSpread: null, financeCissFr: null })).toMatchObject({ valueText: 'n.d.', level: null, meta: 'stabilité financière' });
+  });
+});
