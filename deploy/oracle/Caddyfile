@@ -58,8 +58,12 @@ www.francemonitor.com {
 	}
 
 	# ── Cache immuable sur les assets hashés (vercel.json → headers[0]) ──
+	# « file » : seulement si le fichier existe, sinon une 404 serait mise en cache un an.
 	@immutableAssets {
 		path_regexp ^/assets/(.+)-([A-Za-z0-9_-]{8})\.(js|css|woff2|png|svg|webp|avif|json)$
+		file {
+			root /srv/francemonitor/current/dist
+		}
 	}
 	header @immutableAssets Cache-Control "public, max-age=31536000, immutable"
 
@@ -101,6 +105,19 @@ www.francemonitor.com {
 		rewrite * {path}.html
 		root * /srv/francemonitor/current/dist
 		file_server
+	}
+
+	# Asset absent (fichier haché d'un ancien déploiement) : vraie 404, jamais index.html. Avec le
+	# repli SPA, le navigateur recevait du HTML à la place d'un module JS et l'application restait
+	# sur un écran noir (12/10/2026) ; la 404 déclenche le rechargement de src/utils/stale-chunk.ts.
+	@missingAsset {
+		path /assets/*
+		not file {
+			root /srv/francemonitor/current/dist
+		}
+	}
+	handle @missingAsset {
+		respond 404
 	}
 
 	# Repli SPA (vercel.json → rewrites, dernière règle "/(.*)")  + fichiers statiques.
