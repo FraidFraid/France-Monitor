@@ -18,13 +18,13 @@ export interface WireItem {
   at: number | null;
 }
 
-/** Au plus quinze dépêches : au-delà, le tour du fil dépasse plusieurs minutes. */
-export const WIRE_MAX_ITEMS = 15;
+/** Au plus huit dépêches : un tour du fil dure alors environ deux minutes (décision du 12/10/2026). */
+export const WIRE_MAX_ITEMS = 8;
 
 /**
- * Dépêches du fil : éléments à traiter jaunes, orange ou rouges, tous thèmes confondus, sans les cours de marché ; les rouges
- * d'abord, puis les orange, puis les jaunes (demande du 12/10/2026), et dans chaque niveau du plus récent au plus ancien (date
- * inconnue en dernier). Pure.
+ * Dépêches du fil : tous thèmes confondus, sans les cours de marché, les rouges d'abord, puis les orange, puis les jaunes en
+ * appoint seulement (décisions du 12/10/2026) ; dans chaque niveau, du plus récent au plus ancien (date inconnue en dernier).
+ * Les jaunes ne font que compléter jusqu'à `WIRE_MAX_ITEMS` : le tri par gravité les place après toutes les alertes graves. Pure.
  */
 export function wireItems(items: readonly WorkItem[]): WireItem[] {
   const rank: Record<VigilanceLevel, number> = { rouge: 0, orange: 1, jaune: 2, vert: 3 };

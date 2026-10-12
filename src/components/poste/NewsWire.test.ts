@@ -38,6 +38,15 @@ describe('wireItems (fil des alertes, 12/10/2026)', () => {
     const many = Array.from({ length: 30 }, (_, n) => item({ key: `k${n}`, since: NOW - n * 1000 }));
     expect(wireItems(many)).toHaveLength(WIRE_MAX_ITEMS);
   });
+
+  it('jaunes en appoint : les alertes orange et rouges passent toujours, même plus anciennes que dix jaunes récentes', () => {
+    const jaunes = Array.from({ length: 10 }, (_, n) => item({ key: `j${n}`, level: 'jaune', since: NOW - n * 1000 }));
+    const graves = [item({ key: 'o', level: 'orange', since: NOW - 86_000_000 }), item({ key: 'r', level: 'rouge', since: NOW - 90_000_000 })];
+    const keys = wireItems([...jaunes, ...graves]).map((i) => i.key);
+    expect(WIRE_MAX_ITEMS).toBe(8);
+    expect(keys.slice(0, 2)).toEqual(['r', 'o']);
+    expect(keys.slice(2)).toEqual(['j0', 'j1', 'j2', 'j3', 'j4', 'j5']);
+  });
 });
 
 describe('rendu du fil', () => {
