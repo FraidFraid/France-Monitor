@@ -13,6 +13,7 @@ import type {
   CableAlert,
   CertFrItem,
   DetectedSituation,
+  DisasterType,
   MilitaryEmergency,
   FuelTensionLevel,
   OilVigilanceStatus,
@@ -842,6 +843,45 @@ export function detectSeismicEvents(raw: FranceRawData, nowMs: number): Detected
   });
 }
 
+// ─── Règle : NATURAL_HAZARD_ALERT (GDACS, spec 2026-10-12) ───────
+
+const HAZARD_WORD: Readonly<Record<DisasterType, string>> = {
+  cyclone: 'cyclone', seisme: 'séisme', inondation: 'inondation', volcan: 'éruption volcanique', secheresse: 'sécheresse', feu: 'feu de forêt',
+};
+const METROPOLE = 'France (Hexagone et Corse)';
+
+/** « en Guadeloupe », « à La Réunion », « à Mayotte », « en Nouvelle-Calédonie », « en France (Hexagone et Corse) ». */
+function inTerritory(t: string): string {
+  return /^(La |Saint|Mayotte|Wallis)/.test(t) ? `à ${t}` : `en ${t}`;
+}
+
+/**
+ * Une situation par alerte GDACS orange ou rouge sur le territoire français. En métropole, les cyclones seuls (séismes, feux, crues et
+ * sécheresses y ont leurs sources propres). Sévérité plafonnée à medium (rouge) et watch (orange) : décision du 12/10/2026, aucun effet
+ * sur le score (jamais CAP_ONE_HIGH) avant une calibration dédiée. Hors de France : jamais de situation.
+ */
+export function detectNaturalHazardAlerts(raw: FranceRawData, nowMs: number): DetectedSituation[] {
+  return (raw.disasters ?? []).flatMap((a): DetectedSituation[] => {
+    const t = a.frenchTerritory;
+    if (t === null || a.level === 'vert' || (t === METROPOLE && a.type !== 'cyclone')) return [];
+    if (!a.current && nowMs - Date.parse(a.to) > 7 * 86_400_000) return [];
+    const word = HAZARD_WORD[a.type];
+    const base = situation(
+      `natural-hazard-${a.id}`, 'NATURAL_HAZARD_ALERT', a.level === 'rouge' ? 'medium' : 'watch', 0.8,
+      `Alerte ${a.level} GDACS : ${word} ${inTerritory(t)}`,
+      `${a.name}${a.severity ? ` (${a.severity})` : ''}, ${a.current ? `en cours depuis ${parisWhen(a.from)}` : `du ${parisWhen(a.from).slice(3)} au ${parisWhen(a.to).slice(3)}`} (heure de Paris). Niveau calculé par GDACS (ONU, Commission européenne), pas une vigilance officielle.`,
+      [t],
+      [`Alerte ${a.level} GDACS`, `${word.charAt(0).toUpperCase()}${word.slice(1)} ${inTerritory(t)}`],
+      [
+        action('Suivre la fiche GDACS (trajectoire, population exposée)', 'Analyste risques naturels', 'monitor', true),
+        action('Croiser avec la préfecture et Météo-France outre-mer', 'Analyste territorial', 'cross-check'),
+      ],
+      ['GDACS'],
+    );
+    return [{ ...base, lat: a.lat, lon: a.lon, activateLayers: ['disasters'], ...(a.url ? { linkUrl: a.url, linkLabel: 'Fiche GDACS' } : {}) }];
+  });
+}
+
 // ─── Règle : AIR_POLLUTION_EPISODE (spec 2026-10-04 environnement § 3.2, amendement 6) ───────
 
 /** Une situation quand un épisode atteint le seuil d'alerte en J ou J+1 (jours de Paris) : sévérité moyenne, sans plafond du score. */
@@ -914,6 +954,12 @@ export function detectSituations(raw: FranceRawData, nowMs: number = Date.now())
     results.push(...detectSeismicEvents(raw, nowMs));
   } catch (err) {
     console.warn('[SituationEngine] Seismic rule error:', err);
+  }
+  // Alertes GDACS sur sol français (spec 2026-10-12) ; même isolation que les autres règles.
+  try {
+    results.push(...detectNaturalHazardAlerts(raw, nowMs));
+  } catch (err) {
+    console.warn('[SituationEngine] Natural hazard rule error:', err);
   }
 
   const ranked = results.sort((a, b) => {

@@ -184,6 +184,16 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
     limits: ['Métropole, Corse et eaux françaises ; EMSC en repli', 'Outre-mer hors champ'],
   },
   {
+    id: 'gdacs',
+    name: 'GDACS',
+    domain: 'Catastrophes',
+    sourceType: 'official',
+    natureBaseline: 75,
+    watchdogNames: ['GDACS'],
+    mappedIndicators: ['niveau d’alerte (vert, orange, rouge)', 'type d’aléa', 'territoire ou pays touché'],
+    limits: ['Alertes calculées par modèle (ONU / Commission européenne), pas une vigilance officielle française', 'Monde : orange et rouge seulement'],
+  },
+  {
     id: 'shom-refmar',
     name: 'Marégraphes SHOM',
     domain: 'Submersion marine',

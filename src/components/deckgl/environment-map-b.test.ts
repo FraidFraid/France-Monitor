@@ -123,7 +123,8 @@ describe('sources, couches, survol', () => {
     // Remplissages départementaux sous la vigilance (jamais au-dessus des feux ni des crues) ; points au-dessus.
     for (const l of ENV_B_FILL_LAYERS) expect(ENV_LAYER_BEFORE[l.id]).toBe(LYR_WEATHER_FILL);
     for (const id of ENV_B_HOVERABLE) expect(ENV_HOVER_LAYERS).toContain(id);
-    expect(ENV_HOVER_LAYERS.slice(0, 2)).toEqual([LYR_QUAKES, LYR_TIDE_GAUGES]);
+    // Catastrophes GDACS (spec 2026-10-12) au-dessus de tout, puis les points de la phase B.
+    expect(ENV_HOVER_LAYERS.slice(0, 3)).toEqual(['disasters', LYR_QUAKES, LYR_TIDE_GAUGES]);
     expect(ENV_HOVER_LAYERS.indexOf(LYR_FIRES_POINTS)).toBeLessThan(ENV_HOVER_LAYERS.indexOf(LYR_AIR_FILL));
     expect(ENV_HOVER_LAYERS.indexOf(LYR_WEATHER_FILL)).toBeLessThan(ENV_HOVER_LAYERS.indexOf(LYR_DROUGHT_FILL));
     expect(ENV_LAYER_KEYS.environmental).toContain(LYR_TIDE_GAUGES);

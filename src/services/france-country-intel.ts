@@ -47,6 +47,7 @@ import type {
   MilitaryEmergency,
   SovereigntyAvailability,
   AirEpisode,
+  DisasterAlert,
   Quake,
 } from '@/types/index.ts';
 import type { EolienLive } from '@/services/eolien/types.ts';
@@ -106,6 +107,8 @@ export interface FranceRawData {
   firesPillLevel?: FranceCountrySignals['firesPillLevel'];
   /** Séismes des 7 derniers jours, France et 20 km autour (BCSF-RéNaSS, EMSC en repli ; spec 2026-10-04 § 3.3). Situations seulement. */
   quakes?: Quake[];
+  /** Alertes GDACS (spec 2026-10-12) : situations NATURAL_HAZARD_ALERT seulement, aucun pilier ni plafond. */
+  disasters?: DisasterAlert[];
   /** Épisodes de pollution de J à J+2 (Atmo France, § 3.2). Situations seulement ; aucune entrée du score. */
   airEpisodes?: AirEpisode[];
   marketData: MarketData[];

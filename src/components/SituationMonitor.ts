@@ -61,6 +61,7 @@ const TYPE_ICON: Record<string, string> = {
   DEFENSE_ALERT: fmIcon('shield'),
   GPS_JAMMING_ALERT: fmIcon('satellite-dish'),
   SEISMIC_EVENT: fmIcon('activity'),
+  NATURAL_HAZARD_ALERT: fmIcon('globe'),
   AIR_POLLUTION_EPISODE: fmIcon('cloud'),
 };
 

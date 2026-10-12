@@ -54,9 +54,9 @@ describe('App : légendes Environnement', () => {
       mapLegend: { setCategories, addCategory, setCategoryVisibility },
       currentVigilance: null, currentFloods: { floods: { data: FLOODS_FIXTURE(), error: null, fetchedAt: ENV_FIXTURE_NOW } },
       currentFires: null, radarManifest: null, radarError: null, vigilanceEcheance: 'J', echoTopsEnabled: false, forestDangerFill: false,
-      currentDrought: null, currentAirQuality: null, currentEarthquakes: null, currentSeaLevels: null, fillOrder: [],
+      currentDrought: null, currentAirQuality: null, currentEarthquakes: null, currentDisasters: null, currentSeaLevels: null, fillOrder: [],
       activeLayers: {
-        environmentGroup: true, environmental: false, floods: true, weatherRadar: false, fires: false, drought: false, airQuality: false, earthquakes: false,
+        environmentGroup: true, environmental: false, floods: true, weatherRadar: false, fires: false, drought: false, airQuality: false, earthquakes: false, disasters: false,
       },
     });
 
@@ -67,7 +67,7 @@ describe('App : légendes Environnement', () => {
     expect(setCategoryVisibility).not.toHaveBeenCalled();
     const categories = setCategories.mock.calls[0]?.[0] as LegendCategory[];
     expect(categories.map((c) => [c.id, c.visible])).toEqual([
-      ['environmental', false], ['floods', true], ['weatherRadar', false], ['fires', false], ['drought', false], ['airQuality', false], ['earthquakes', false],
+      ['environmental', false], ['floods', true], ['weatherRadar', false], ['fires', false], ['drought', false], ['airQuality', false], ['earthquakes', false], ['disasters', false],
     ]);
   });
 });

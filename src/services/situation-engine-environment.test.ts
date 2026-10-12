@@ -4,11 +4,11 @@
 // Une source en retard ou en panne ne crée ni ne garde de situation (entrées servies par environment-inputs.ts).
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import type { AirEpisode, Quake } from '../types/index.ts';
+import type { AirEpisode, DisasterAlert, Quake } from '../types/index.ts';
 import { AIR_FIXTURE, QUAKES_FIXTURE } from '../components/layer-panel/environment.fixture.ts';
-import { servedAirEpisodes, servedQuakes } from './environment-inputs.ts';
+import { servedAirEpisodes, servedDisasters, servedQuakes } from './environment-inputs.ts';
 import { scoreFromPillars, type FranceRawData } from './france-country-intel.ts';
-import { detectAirPollution, detectSeismicEvents, detectSituations } from './situation-engine.ts';
+import { detectAirPollution, detectNaturalHazardAlerts, detectSeismicEvents, detectSituations } from './situation-engine.ts';
 import { situationTheme } from './themes.ts';
 
 const NOW = Date.parse('2026-10-04T08:10:00Z');
@@ -126,5 +126,48 @@ describe('moteur et score (formule et cibles inchangées)', () => {
     for (const file of ['./situation-engine.ts', './france-country-intel.ts']) {
       expect(readFileSync(new URL(file, import.meta.url), 'utf8')).not.toMatch(/drought|Drought|vigieau|VigiEau/);
     }
+  });
+});
+
+describe('NATURAL_HAZARD_ALERT (GDACS, spec 2026-10-12) : situation sur sol français, jamais d’effet sur le score', () => {
+  const gd = (over: Partial<DisasterAlert>): DisasterAlert => ({
+    id: 'TC-1', type: 'cyclone', level: 'rouge', name: 'Tropical Cyclone TEST-26', countries: ['GLP'], frenchTerritory: 'Guadeloupe',
+    lat: 16.2, lon: -61.5, from: new Date(NOW - 86_400_000).toISOString(), to: new Date(NOW).toISOString(), current: true,
+    severity: 'Hurricane/Typhoon > 74 mph', url: 'https://www.gdacs.org/report.aspx?eventid=1', ...over,
+  });
+  const FR = 'France (Hexagone et Corse)';
+  it('rouge outre-mer → medium, orange → watch ; libellé au niveau réel ; couche, lien, source', () => {
+    const [red] = detectNaturalHazardAlerts(baseRawData({ disasters: [gd({})] }), NOW);
+    expect(red).toMatchObject({
+      id: 'natural-hazard-TC-1', type: 'NATURAL_HAZARD_ALERT', severity: 'medium', affectedZones: ['Guadeloupe'],
+      title: 'Alerte rouge GDACS : cyclone en Guadeloupe', lat: 16.2, lon: -61.5, activateLayers: ['disasters'],
+      linkUrl: 'https://www.gdacs.org/report.aspx?eventid=1', linkLabel: 'Fiche GDACS', sourceRefs: ['GDACS'],
+    });
+    expect(detectNaturalHazardAlerts(baseRawData({ disasters: [gd({ level: 'orange' })] }), NOW)[0]?.severity).toBe('watch');
+  });
+  it('vert, monde, et métropole hors cyclone : aucune situation ; cyclone en métropole et séisme en Martinique : oui', () => {
+    const none = [
+      gd({ id: 'A', level: 'vert' }), gd({ id: 'B', frenchTerritory: null, countries: ['MEX'] }),
+      gd({ id: 'C', type: 'secheresse', level: 'orange', frenchTerritory: FR }), gd({ id: 'D', type: 'seisme', frenchTerritory: FR }),
+      gd({ id: 'E', type: 'inondation', frenchTerritory: FR }), gd({ id: 'F', type: 'feu', frenchTerritory: FR }),
+    ];
+    expect(detectNaturalHazardAlerts(baseRawData({ disasters: none }), NOW)).toEqual([]);
+    const some = detectNaturalHazardAlerts(baseRawData({ disasters: [gd({ id: 'G', frenchTerritory: FR }), gd({ id: 'H', type: 'seisme', frenchTerritory: 'Martinique' })] }), NOW);
+    expect(some.map((s) => s.id)).toEqual(['natural-hazard-G', 'natural-hazard-H']);
+  });
+  it('score inchangé : alerte rouge en Guadeloupe = même score et même plafond que sans elle (fixture de verrouillage)', () => {
+    const without = scoreFromPillars(ZERO, detectSituations(baseRawData({}), NOW));
+    const withRed = scoreFromPillars(ZERO, detectSituations(baseRawData({ disasters: [gd({}), gd({ id: 'TC-2', frenchTerritory: 'La Réunion' })] }), NOW));
+    expect([withRed.score, withRed.situationCap]).toEqual([without.score, without.situationCap]);
+    expect([withRed.score, withRed.situationCap]).toEqual([95, null]);
+  });
+  it('servedDisasters : relevé en retard (plus de 30 min) = rien servi au moteur', () => {
+    const d = { readAt: new Date(NOW - 5 * 60_000).toISOString(), alerts: [gd({})], errors: [] };
+    expect(servedDisasters(d, NOW)).toHaveLength(1);
+    expect(servedDisasters({ ...d, readAt: new Date(NOW - 31 * 60_000).toISOString() }, NOW)).toEqual([]);
+    expect(servedDisasters(null, NOW)).toEqual([]);
+  });
+  it('thème Environnement', () => {
+    expect(situationTheme('NATURAL_HAZARD_ALERT')).toBe('environment');
   });
 });

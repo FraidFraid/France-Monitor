@@ -47,6 +47,7 @@ const LAYER_DEFS: LayerDef[] = [
   { key: 'drought', label: 'SÉCHERESSE', icon: fmIcon('sun'), sublayerOf: 'environmentGroup' },
   { key: 'airQuality', label: 'QUALITÉ DE L’AIR', icon: fmIcon('cloud'), sublayerOf: 'environmentGroup' },
   { key: 'earthquakes', label: 'SÉISMES', icon: fmIcon('activity'), sublayerOf: 'environmentGroup' },
+  { key: 'disasters', label: 'CATASTROPHES (GDACS)', icon: fmIcon('globe'), sublayerOf: 'environmentGroup' },
   { key: 'sovereignty', label: 'SOUVERAINETÉ', icon: fmIcon('shield') },
   { key: 'military', label: 'DÉFENSE', icon: fmIcon('shield'), sublayerOf: 'sovereignty' },
   { key: 'subseaCables', label: 'CONNECTIVITÉ', icon: fmIcon('waves'), sublayerOf: 'sovereignty' },
@@ -657,6 +658,7 @@ export class LayerPanel {
         this.helpItem(fmIcon('sun'), 'Sécheresse', 'Arrêtés de restriction d’eau en vigueur par département (VigiEau), niveau le plus haut et par usage ; un stock, hors du score.'),
         this.helpItem(fmIcon('cloud'), 'Qualité de l’air', 'Épisodes de pollution prévus de J à J+2 et indice ATMO agrégé par département (Atmo France) ; communes couvertes par les AASQA.'),
         this.helpItem(fmIcon('activity'), 'Séismes', 'Séismes des 7 derniers jours en France et à moins de 20\u00a0km (BCSF-RéNaSS, EMSC en repli) : magnitude, profondeur, statut.'),
+        this.helpItem(fmIcon('globe'), 'Catastrophes (GDACS)', 'Alertes GDACS des 7 derniers jours : territoire français (métropole, outre-mer), tous niveaux ; monde, orange et rouge, en gris.'),
       ]),
       this.helpSection(fmIcon('shield'), 'Souveraineté', [
         // Sans badge (point 20) : chaque panneau date sa donnée. O9 (libellé du gros chiffre), O18, S2, S10 ; phase B (B28) : O15, O17.

@@ -107,6 +107,8 @@ export interface MapLayers {
   drought: boolean;
   airQuality: boolean;
   earthquakes: boolean;
+  /** Environnement, catastrophes GDACS (spec 2026-10-12). */
+  disasters: boolean;
   traffic: boolean;
   trafficRoad: boolean;
   trafficMaritime: boolean;
@@ -1842,6 +1844,7 @@ export type SituationType =
   | 'DEFENSE_ALERT'
   | 'GPS_JAMMING_ALERT'
   | 'SEISMIC_EVENT'
+  | 'NATURAL_HAZARD_ALERT'
   | 'AIR_POLLUTION_EPISODE';
 
 export type SituationSeverity = 'critical' | 'high' | 'medium' | 'watch';
@@ -2474,6 +2477,28 @@ export interface EarthquakesResponse {
   source: 'BCSF-RéNaSS' | 'EMSC' | null;   // EMSC = repli
   quakes: Quake[];                     // 7 jours, France et 20 km autour, plus récent d'abord
   nonSeismic: number;                  // tirs de carrière, explosions, glissements écartés sur 7 jours (arbitrage 3, amendement 16)
+  errors: string[];
+}
+
+// ─── Catastrophes (GDACS) : GET /api/environment/disasters ───
+export type DisasterType = 'cyclone' | 'seisme' | 'inondation' | 'volcan' | 'secheresse' | 'feu';
+export type DisasterLevel = 'vert' | 'orange' | 'rouge';
+export interface DisasterAlert {
+  id: string;                          // `${eventtype}-${eventid}` (ex. « TC-1001335 »)
+  type: DisasterType;
+  level: DisasterLevel;
+  name: string;                        // nom GDACS nettoyé (« Tropical Cyclone SIMON-26 »)
+  countries: string[];                 // ISO3 des pays touchés (iso3 puis affectedcountries), sans doublon ni vide
+  frenchTerritory: string | null;      // libellé du territoire français touché (« La Réunion »), sinon null
+  lat: number; lon: number;
+  from: string; to: string;            // ISO 8601 UTC
+  current: boolean;
+  severity: string | null;             // severitydata.severitytext ; null si vide ou « Magnitude 0 »
+  url: string | null;                  // fiche GDACS (url.report)
+}
+export interface DisastersResponse {
+  readAt: string | null;
+  alerts: DisasterAlert[];             // territoire français d'abord, puis rouge > orange > vert, puis plus récent d'abord
   errors: string[];
 }
 

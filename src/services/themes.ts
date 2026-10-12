@@ -85,6 +85,7 @@ const SITUATION_THEME: Record<SituationType, ThemeId> = {
   WILDFIRE_ESCALATION: 'environment',
   WEATHER_ALERT: 'environment',
   SEISMIC_EVENT: 'environment',
+  NATURAL_HAZARD_ALERT: 'environment',
   AIR_POLLUTION_EPISODE: 'environment',
   // Pannes télécoms : même thème que leurs couches dans les vues (décision du 12/10/2026, revient sur l'arbitrage A9).
   TELECOM_DISRUPTION: 'security',
