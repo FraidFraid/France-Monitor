@@ -7639,6 +7639,7 @@ export class App {
       telecomOutages:       this.telecomForScore(),
       maritimeCount:        this.currentMaritimeTrafficFranceCount,
       marketData:           this.currentMarketData,
+      financialStability:   this.currentFinancialStability?.data ?? null,
       ecowattResponse:      this.currentEcowattResponse,
       gasState:             this.currentGasData,
       nuclearState:         this.currentNuclearState,

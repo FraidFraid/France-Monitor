@@ -32,3 +32,9 @@ describe('tableau de qualité des sources', () => {
     expect(quality).toMatch(/id: 'oat-bund',[^]*?watchdogNames: \['Écart OAT-Bund'\]/);
   });
 });
+
+describe('score (spec 2026-10-12 pilier finance)', () => {
+  it('la stabilité financière relevée entre dans les données du score', () => {
+    expect(app).toContain('financialStability:   this.currentFinancialStability?.data ?? null,');
+  });
+});
