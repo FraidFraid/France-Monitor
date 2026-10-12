@@ -57,7 +57,7 @@ function buildClientCacheKey(
  * avis KEV récents à part (même chiffre que la tuile) ; une source non lue est signalée par son drapeau, le serveur écrit alors « non
  * évalué » et jamais « 0 ». Le contrat de sortie v14 ne change pas.
  */
-export function briefSignalCounts(s: FranceCountrySignals): Record<string, number | boolean> {
+export function briefSignalCounts(s: FranceCountrySignals): Record<string, number | boolean | string | null> {
   return {
     criticalNews:          s.criticalNews,
     highNews:              s.highNews,
@@ -77,7 +77,10 @@ export function briefSignalCounts(s: FranceCountrySignals): Record<string, numbe
     maritimeTrafficFrance: s.maritimeTrafficFrance,
     defenseAlerts:         s.defenseAlerts,
     jammingSignals:        s.jammingSignals,
-    marketStress:          s.marketStress,
+    financeLevel:          s.financeLevel,
+    financeSpread:         s.financeSpread,
+    financeCissFr:         s.financeCissFr,
+    financeCissEa:         s.financeCissEa ?? null,
     militaryUnavailable:   s.militaryUnavailable === true,
     cablesUnavailable:     s.cablesUnavailable === true,
     gnssUnavailable:       s.gnssUnavailable === true,

@@ -98,6 +98,7 @@ const DEFAULT_LAYERS: MapLayers = {
   drought: false,
   airQuality: false,
   earthquakes: false,
+  disasters: false,
   traffic: false,
   trafficRoad: false,
   trafficMaritime: false,

@@ -13,7 +13,7 @@ export type { LayerLevel, LevelVerdict };
 
 export type EnvironmentSource =
   | 'vigilance' | 'vigicrues' | 'hubeau' | 'radar' | 'firms' | 'mdf' | 'mtg-frp'
-  | 'vigieau' | 'atmo' | 'bcsf' | 'refmar';
+  | 'vigieau' | 'atmo' | 'bcsf' | 'refmar' | 'gdacs' | 'ems';
 
 /** Minutes après la date de la donnée au-delà desquelles elle est « en retard » (tableau S2 de la spec). */
 export const ENVIRONMENT_LATE_AFTER_MIN: Readonly<Record<EnvironmentSource, number>> = {
@@ -28,6 +28,8 @@ export const ENVIRONMENT_LATE_AFTER_MIN: Readonly<Record<EnvironmentSource, numb
   atmo: 36 * 60, // date_maj + 36 h
   bcsf: 30, // relevé du serveur + 30 min
   refmar: 30, // dernière mesure + 30 min
+  gdacs: 30, // relevé du serveur + 30 min
+  ems: 60, // relevé du serveur + 60 min (Copernicus EMS)
 };
 
 /** Saison de la météo des forêts : juin à septembre (Paris), ou publication de moins de 72 h. */

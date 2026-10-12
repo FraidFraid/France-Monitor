@@ -107,6 +107,8 @@ export interface MapLayers {
   drought: boolean;
   airQuality: boolean;
   earthquakes: boolean;
+  /** Environnement, catastrophes GDACS (spec 2026-10-12). */
+  disasters: boolean;
   traffic: boolean;
   trafficRoad: boolean;
   trafficMaritime: boolean;
@@ -844,6 +846,61 @@ export interface MarketData {
   category?: 'indices' | 'defense' | 'services' | 'devises';
 }
 
+// ═══ Finance : stabilité financière (BCE + écart OAT-Bund, spec 2026-10-12) ═══
+
+/** État d'une partie du bloc : à jour, servie en retard (avec sa date) ou absente. */
+export type FinancialSourceStatus = 'ok' | 'stale' | 'unavailable';
+
+/** Observation datée (date de valeur AAAA-MM-JJ). */
+export interface FinancialPoint {
+  date: string;
+  value: number;
+}
+
+export type EcbSeriesId = 'cissFr' | 'cissEa' | 'estr' | 'eurusd';
+
+/** Série quotidienne de la BCE : dernière valeur, sa date et les 90 dernières observations (ordre chronologique). */
+export interface EcbSeries {
+  id: EcbSeriesId;
+  value: number | null;
+  date: string | null;
+  history: FinancialPoint[];
+  status: FinancialSourceStatus;
+  error: string | null;
+}
+
+export type PolicyRateId = 'depot' | 'refi';
+
+/** Taux directeur de la BCE : valeur, date d'effet du dernier changement et taux précédent. */
+export interface PolicyRate {
+  id: PolicyRateId;
+  value: number | null;
+  since: string | null;
+  previous: number | null;
+  status: FinancialSourceStatus;
+  error: string | null;
+}
+
+/** Écart de taux à 10 ans France-Allemagne (points) : relevé de marché et un point par jour enregistré. */
+export interface OatBundSpread {
+  value: number | null;
+  fr10y: number | null;
+  de10y: number | null;
+  readAt: string | null;
+  history: FinancialPoint[];
+  status: FinancialSourceStatus;
+  error: string | null;
+}
+
+/** Réponse de GET /api/finance/stability. */
+export interface FinancialStabilityResponse {
+  readAt: string;
+  series: EcbSeries[];
+  rates: PolicyRate[];
+  spread: OatBundSpread;
+  errors: string[];
+}
+
 // ═══ Finance (Matières premières) ═══
 
 export interface CommodityData extends Omit<MarketData, 'history' | 'category'> {
@@ -1071,8 +1128,14 @@ export interface FranceCountrySignals {
   cyberPillLevel?: 'vert' | 'jaune' | 'orange' | 'rouge' | 'nd';
   /** Pastille Défense relevée par la seule grille GNSS (mailles à précision dégradée) : la tuile « Militaire » le dit (« GNSS à vérifier »). */
   defensePillFromGnss?: boolean;
-  // Finance (weak signal)
-  marketStress: number;
+  /** Stabilité financière (spec 2026-10-12 pilier finance) : plus haut niveau de CISS France, CISS zone euro, écart OAT-Bund ; null sans donnée. */
+  financeLevel: 'vert' | 'jaune' | 'orange' | 'rouge' | null;
+  /** Écart OAT-Bund en points (tuile, brief) ; null sans relevé. */
+  financeSpread: number | null;
+  /** CISS France (tuile, brief) ; null sans relevé. */
+  financeCissFr: number | null;
+  /** CISS zone euro (tuile, brief) : il peut fixer le niveau seul ; null sans relevé. */
+  financeCissEa?: number | null;
 }
 
 export interface FranceCountryAxes {
@@ -1842,6 +1905,8 @@ export type SituationType =
   | 'DEFENSE_ALERT'
   | 'GPS_JAMMING_ALERT'
   | 'SEISMIC_EVENT'
+  | 'NATURAL_HAZARD_ALERT'
+  | 'EMS_ACTIVATION'
   | 'AIR_POLLUTION_EPISODE';
 
 export type SituationSeverity = 'critical' | 'high' | 'medium' | 'watch';
@@ -2474,6 +2539,70 @@ export interface EarthquakesResponse {
   source: 'BCSF-RéNaSS' | 'EMSC' | null;   // EMSC = repli
   quakes: Quake[];                     // 7 jours, France et 20 km autour, plus récent d'abord
   nonSeismic: number;                  // tirs de carrière, explosions, glissements écartés sur 7 jours (arbitrage 3, amendement 16)
+  errors: string[];
+}
+
+// ─── Catastrophes (GDACS) : GET /api/environment/disasters ───
+export type DisasterType = 'cyclone' | 'seisme' | 'inondation' | 'volcan' | 'secheresse' | 'feu';
+export type DisasterLevel = 'vert' | 'orange' | 'rouge';
+export interface DisasterAlert {
+  id: string;                          // `${eventtype}-${eventid}` (ex. « TC-1001335 »)
+  type: DisasterType;
+  level: DisasterLevel;
+  name: string;                        // nom GDACS nettoyé (« Tropical Cyclone SIMON-26 »)
+  countries: string[];                 // ISO3 des pays touchés (iso3 puis affectedcountries), sans doublon ni vide
+  frenchTerritory: string | null;      // libellé du territoire français touché (« La Réunion »), sinon null
+  lat: number; lon: number;
+  from: string; to: string;            // ISO 8601 UTC
+  current: boolean;
+  severity: string | null;             // severitydata.severitytext ; null si vide ou « Magnitude 0 »
+  url: string | null;                  // fiche GDACS (url.report)
+}
+export interface DisastersResponse {
+  readAt: string | null;
+  alerts: DisasterAlert[];             // territoire français d'abord, puis rouge > orange > vert, puis plus récent d'abord
+  errors: string[];
+}
+
+// ═══ Copernicus EMS : cartographie satellite d'urgence (spec 2026-10-12 Copernicus EMS) ═══
+
+export type EmsCategory = 'feu' | 'inondation' | 'tempete' | 'seisme' | 'mouvement' | 'volcan' | 'industriel' | 'transport' | 'autre';
+
+/** Zone cartographiée : anneau extérieur [lon, lat]. */
+export interface EmsZone {
+  name: string;
+  ring: Array<[number, number]>;
+}
+
+/** Activation du service de cartographie rapide ; détail (déclencheur, population, zones) pour les activations françaises en cours seulement. */
+export interface EmsActivation {
+  code: string;
+  category: EmsCategory;
+  /** Nom d'origine (anglais), gardé en infobulle. */
+  name: string;
+  /** Lieu tiré du nom (« New Aquitaine »). */
+  place: string;
+  /** Territoire français (« Mayotte », « France (Hexagone et Corse) »). */
+  territory: string;
+  activationTime: string;
+  eventTime: string | null;
+  closed: boolean;
+  gdacsId: string | null;
+  products: number;
+  url: string;
+  activator: string | null;
+  population: number | null;
+  zones: EmsZone[];
+  lon: number | null;
+  lat: number | null;
+}
+
+/** Réponse de GET /api/environment/ems. */
+export interface EmsResponse {
+  readAt: string | null;
+  active: EmsActivation[];
+  recent: EmsActivation[];
+  elsewhere: { count: number; countries: string[] };
   errors: string[];
 }
 

@@ -13,6 +13,8 @@ import type {
   CableAlert,
   CertFrItem,
   DetectedSituation,
+  DisasterType,
+  EmsCategory,
   MilitaryEmergency,
   FuelTensionLevel,
   OilVigilanceStatus,
@@ -35,6 +37,7 @@ import { SOVEREIGNTY_SOURCE_DETAILS } from '../config/sovereignty-sources.ts';
 import { DEPARTMENTS } from './stability-index.ts';
 import { ecowattToday } from './ecowatt-official.ts';
 import { formatObservationAge, selectMajorIncidents, wildfireSeverity } from './wildfire-dossier.ts';
+import { METROPOLE_LABEL, frenchName, frenchSeverity } from './disasters-format.ts';
 import { QUAKE_WINDOW_MS, magnitudeText, nextDayOf, parisDayOf, quakeInFrance, quakePlace } from './environment-levels.ts';
 
 // ─── Ordres de sévérité ──────────────────────────────────────────────────────
@@ -842,6 +845,83 @@ export function detectSeismicEvents(raw: FranceRawData, nowMs: number): Detected
   });
 }
 
+// ─── Règle : NATURAL_HAZARD_ALERT (GDACS, spec 2026-10-12) ───────
+
+const HAZARD_WORD: Readonly<Record<DisasterType, string>> = {
+  cyclone: 'cyclone', seisme: 'séisme', inondation: 'inondation', volcan: 'éruption volcanique', secheresse: 'sécheresse', feu: 'feu de forêt',
+};
+
+/** « en Guadeloupe », « à La Réunion », « à Mayotte », « en Nouvelle-Calédonie », « en France (Hexagone et Corse) ». */
+function inTerritory(t: string): string {
+  return /^(La |Saint|Mayotte|Wallis)/.test(t) ? `à ${t}` : `en ${t}`;
+}
+
+/**
+ * Une situation par alerte GDACS orange ou rouge sur le territoire français. En métropole, les cyclones seuls (séismes, feux, crues et
+ * sécheresses y ont leurs sources propres). Sévérité plafonnée à medium (rouge) et watch (orange) : décision du 12/10/2026, aucun effet
+ * sur le score (jamais CAP_ONE_HIGH) avant une calibration dédiée. Hors de France : jamais de situation.
+ */
+export function detectNaturalHazardAlerts(raw: FranceRawData, nowMs: number): DetectedSituation[] {
+  return (raw.disasters ?? []).flatMap((a): DetectedSituation[] => {
+    const t = a.frenchTerritory;
+    if (t === null || a.level === 'vert' || (t === METROPOLE_LABEL && a.type !== 'cyclone')) return [];
+    if (!a.current && nowMs - Date.parse(a.to) > 7 * 86_400_000) return [];
+    const word = HAZARD_WORD[a.type];
+    const base = situation(
+      `natural-hazard-${a.id}`, 'NATURAL_HAZARD_ALERT', a.level === 'rouge' ? 'medium' : 'watch', 0.8,
+      `Alerte ${a.level} GDACS : ${word} ${inTerritory(t)}`,
+      `${frenchName(a) ?? `${HAZARD_WORD[a.type].charAt(0).toUpperCase()}${HAZARD_WORD[a.type].slice(1)}`}${frenchSeverity(a) ? ` (${frenchSeverity(a)})` : ''}, ${a.current ? `en cours depuis ${parisWhen(a.from)}` : `du ${parisWhen(a.from).slice(3)} au ${parisWhen(a.to).slice(3)}`} (heure de Paris). Niveau calculé par GDACS (ONU, Commission européenne), pas une vigilance officielle.`,
+      [t],
+      [`Alerte ${a.level} GDACS`, `${word.charAt(0).toUpperCase()}${word.slice(1)} ${inTerritory(t)}`],
+      [
+        action('Suivre la fiche GDACS (trajectoire, population exposée)', 'Analyste risques naturels', 'monitor', true),
+        action('Croiser avec la préfecture et Météo-France outre-mer', 'Analyste territorial', 'cross-check'),
+      ],
+      ['GDACS'],
+    );
+    return [{ ...base, lat: a.lat, lon: a.lon, activateLayers: ['disasters'], ...(a.url ? { linkUrl: a.url, linkLabel: 'Fiche GDACS' } : {}) }];
+  });
+}
+
+// ─── Règle : EMS_ACTIVATION (Copernicus EMS, spec 2026-10-12) ───────
+
+const EMS_WORD: Readonly<Record<EmsCategory, string>> = {
+  feu: 'feu de forêt', inondation: 'inondation', tempete: 'tempête', seisme: 'séisme', mouvement: 'mouvement de terrain',
+  volcan: 'éruption volcanique', industriel: 'accident industriel', transport: 'accident de transport', autre: 'événement',
+};
+
+/**
+ * Une situation par activation Copernicus EMS en cours sur le territoire français : l'État a demandé une cartographie satellite
+ * d'urgence. Sévérité medium, décision du 12/10/2026, aucun effet sur le score (jamais de plafond) avant une calibration dédiée.
+ */
+export function detectEmsActivations(raw: FranceRawData, _nowMs: number): DetectedSituation[] {
+  return (raw.emsActive ?? []).flatMap((a): DetectedSituation[] => {
+    if (a.closed) return [];
+    const word = EMS_WORD[a.category];
+    const who = a.activator ? `à la demande de ${a.activator}` : 'à la demande de l’État';
+    const pop = a.population !== null ? ` Population dans l’emprise : ${frenchInt(a.population)}\u00a0habitants.` : '';
+    const base = situation(
+      `ems-${a.code}`, 'EMS_ACTIVATION', 'medium', 0.9,
+      `Cartographie satellite d’urgence : ${word}, ${a.territory}`,
+      `Copernicus EMS activé ${parisWhen(a.activationTime)} (heure de Paris) ${who} (${a.code}${a.place !== '' && a.place !== a.territory ? `, « ${a.place} »` : ''}).${pop}`,
+      [a.territory],
+      ['Activation Copernicus EMS', `${word.charAt(0).toUpperCase()}${word.slice(1)}, ${a.territory}`],
+      [
+        action('Suivre les cartes produites (emprise, dégâts)', 'Analyste risques naturels', 'monitor', true),
+        action('Croiser avec la préfecture et le COGIC', 'Analyste territorial', 'cross-check'),
+      ],
+      ['Copernicus EMS'],
+    );
+    const at = a.lat !== null && a.lon !== null ? { lat: a.lat, lon: a.lon } : {};
+    return [{ ...base, ...at, activateLayers: ['disasters'], linkUrl: a.url, linkLabel: 'Fiche Copernicus' }];
+  });
+}
+
+/** « 83 890 » : entier à la française (espace fine insécable). */
+function frenchInt(n: number): string {
+  return Math.round(n).toLocaleString('fr-FR');
+}
+
 // ─── Règle : AIR_POLLUTION_EPISODE (spec 2026-10-04 environnement § 3.2, amendement 6) ───────
 
 /** Une situation quand un épisode atteint le seuil d'alerte en J ou J+1 (jours de Paris) : sévérité moyenne, sans plafond du score. */
@@ -915,6 +995,18 @@ export function detectSituations(raw: FranceRawData, nowMs: number = Date.now())
   } catch (err) {
     console.warn('[SituationEngine] Seismic rule error:', err);
   }
+  // Alertes GDACS sur sol français (spec 2026-10-12) ; même isolation que les autres règles.
+  try {
+    results.push(...detectNaturalHazardAlerts(raw, nowMs));
+  } catch (err) {
+    console.warn('[SituationEngine] Natural hazard rule error:', err);
+  }
+  // Activations Copernicus EMS sur sol français (spec 2026-10-12) ; même isolation que les autres règles.
+    try {
+      results.push(...detectEmsActivations(raw, nowMs));
+    } catch (err) {
+      console.warn('[SituationEngine] EMS rule error:', err);
+    }
 
   const ranked = results.sort((a, b) => {
     const sevDiff = SEVERITY_ORDER[b.severity] - SEVERITY_ORDER[a.severity];

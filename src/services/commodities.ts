@@ -7,6 +7,7 @@ import type { CommodityData } from '../types/index.ts';
 // ─── Constantes ───────────────────────────────────────────────────────────────
 
 interface YahooSparkLegacyResponse {
+  timestamp?: number[];
   meta?: {
     regularMarketPrice?: number;
     previousClose?: number;
@@ -27,7 +28,21 @@ interface YahooSparkFlatResult {
   symbol?: string;
   previousClose?: number;
   close?: Array<number | null>;
+  timestamp?: number[];
   end?: number;
+}
+
+/**
+ * Heure du dernier cours relevé (secondes Unix) : dernier horodatage dont la clôture n'est pas vide. Jamais `end`, qui est la fin
+ * de la séance en cours (dans le futur : « MàJ 05:59 » affiché le soir, constat du 12/10/2026).
+ */
+function lastQuoteTime(timestamps: readonly number[] | undefined, closes: ReadonlyArray<number | null>): number | null {
+  if (!timestamps) return null;
+  for (let i = Math.min(timestamps.length, closes.length) - 1; i >= 0; i -= 1) {
+    const t = timestamps[i];
+    if (closes[i] !== null && typeof t === 'number') return t;
+  }
+  return null;
 }
 
 const COMMODITY_META: Record<string, { name: string; category: CommodityData['category']; unit: string }> = {
@@ -111,7 +126,7 @@ export async function fetchCommodityData(): Promise<CommodityData[]> {
         price,
         changePercent,
         trend,
-        lastUpdated: new Date(('end' in item && typeof item.end === 'number') ? item.end * 1000 : Date.now()),
+        lastUpdated: new Date((lastQuoteTime(legacyResponse?.timestamp ?? ('timestamp' in item ? item.timestamp : undefined), rawClose) ?? Date.now() / 1000) * 1000),
         history,
       });
     }

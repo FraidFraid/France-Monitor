@@ -1,0 +1,152 @@
+{
+ "count": 9,
+ "next": null,
+ "previous": null,
+ "results": [
+  {
+   "code": "EMSR934",
+   "countries": [
+    "Panama"
+   ],
+   "eventTime": "2026-10-09T17:56:00",
+   "name": "Earthquake in Los Santos, Panama",
+   "centroid": "POINT (-80.67084785156305 8.006692455305458)",
+   "activationTime": "2026-10-09T23:19:00",
+   "category": "Earthquake",
+   "lastUpdate": "2026-10-12T07:13:12.349261",
+   "closed": false,
+   "gdacsId": "EQ1570339",
+   "n_aois": 5,
+   "n_products": 5
+  },
+  {
+   "code": "EMSR933",
+   "countries": [
+    "Greece"
+   ],
+   "eventTime": "2026-10-01T07:00:00",
+   "name": "Flood in Crete, Greece",
+   "centroid": "POINT (24.978601792058495 35.22506250241993)",
+   "activationTime": "2026-10-04T11:02:00",
+   "category": "Flood",
+   "lastUpdate": "2026-10-12T16:44:23.825381",
+   "closed": false,
+   "gdacsId": null,
+   "n_aois": 8,
+   "n_products": 18
+  },
+  {
+   "code": "EMSR902",
+   "countries": [
+    "France"
+   ],
+   "eventTime": "2026-07-23T14:00:00",
+   "name": "Wildfire in Biscarrosse, France",
+   "centroid": "POINT (-1.124132 44.409217)",
+   "activationTime": "2026-07-24T02:42:00",
+   "category": "Wildfire",
+   "lastUpdate": "2026-07-31T08:38:08.859176",
+   "closed": true,
+   "gdacsId": "WF1029730",
+   "n_aois": 1,
+   "n_products": 3
+  },
+  {
+   "code": "EMSR866",
+   "countries": [
+    "France"
+   ],
+   "eventTime": "2026-02-12T11:00:00",
+   "name": "Flood in New Aquitaine, France",
+   "centroid": "POINT (-0.674064 45.265463)",
+   "activationTime": "2026-02-11T11:50:00",
+   "category": "Flood",
+   "lastUpdate": "2026-02-23T16:31:47.115546",
+   "closed": true,
+   "gdacsId": null,
+   "n_aois": 7,
+   "n_products": 14
+  },
+  {
+   "code": "EMSR852",
+   "countries": [
+    "France",
+    "New Caledonia"
+   ],
+   "eventTime": "2025-11-30T23:00:00",
+   "name": "Wildfire in New Caledonia",
+   "centroid": "POINT (167.47479667732875 -22.619006142424645)",
+   "activationTime": "2025-12-07T15:40:00",
+   "category": "Wildfire",
+   "lastUpdate": "2025-12-12T09:52:31.747830",
+   "closed": true,
+   "gdacsId": null,
+   "n_aois": 1,
+   "n_products": 3
+  },
+  {
+   "code": "EMSR790",
+   "countries": [
+    "France"
+   ],
+   "eventTime": "2025-02-27T19:00:00",
+   "name": "Storm in La Reunion, France",
+   "centroid": "POINT (55.517952 -21.128103)",
+   "activationTime": "2025-02-27T13:00:00",
+   "category": "Storm",
+   "lastUpdate": "2025-03-19T08:49:26.246243",
+   "closed": true,
+   "gdacsId": "TC1001151",
+   "n_aois": 3,
+   "n_products": 3
+  },
+  {
+   "code": "EMSR785",
+   "countries": [
+    "France"
+   ],
+   "eventTime": "2025-01-16T00:00:00",
+   "name": "Wildfire in Amsterdam Island, France",
+   "centroid": "POINT (77.571583 -37.797381)",
+   "activationTime": "2025-01-16T13:18:00",
+   "category": "Wildfire",
+   "lastUpdate": "2025-03-18T09:03:54.935628",
+   "closed": true,
+   "gdacsId": null,
+   "n_aois": 1,
+   "n_products": 9
+  },
+  {
+   "code": "EMSR780",
+   "countries": [
+    "France"
+   ],
+   "eventTime": "2024-12-14T02:00:00",
+   "name": "Tropical Cyclone CHIDO in Mayotte, France",
+   "centroid": "POINT (45.143568 -12.786592000000004)",
+   "activationTime": "2024-12-13T16:40:00",
+   "category": "Storm",
+   "lastUpdate": "2025-07-10T08:23:08",
+   "closed": true,
+   "gdacsId": "TC1001131",
+   "n_aois": 8,
+   "n_products": 8
+  },
+  {
+   "code": "EMSR706",
+   "countries": [
+    "France"
+   ],
+   "eventTime": "2023-11-07T00:00:00",
+   "name": "Flood in northern France",
+   "centroid": "POINT (1.812744 50.745841)",
+   "activationTime": "2023-11-07T14:48:00",
+   "category": "Flood",
+   "lastUpdate": "2024-02-15T11:34:43.164998",
+   "closed": true,
+   "gdacsId": null,
+   "n_aois": 7,
+   "n_products": 18
+  }
+ ]
+}

@@ -61,6 +61,7 @@ export const ALL_PRESETABLE_LAYER_KEYS: ReadonlyArray<keyof MapLayers> = [
   'drought',
   'airQuality',
   'earthquakes',
+  'disasters',
   'military',
   'subseaCables',
   'cyber',
@@ -78,7 +79,7 @@ export const THEME_LAYERS: Readonly<Record<Exclude<LayerPresetId, 'general'>, Re
   energy: ['powerGrid', 'nuclearFleet', 'gasNetwork', 'oilNetwork', 'outagesElec', 'hydroBackbone', 'windMonitor', 'dromEnergy', 'metroLoad'],
   security: ['military', 'cyber', 'outagesTelecom', 'outagesInternet', 'outagesCloud', 'subseaCables', 'news', 'stability'],
   health: ['health', 'healthOscour', 'hospitals', 'healthApl'],
-  environment: ['environmental', 'floods', 'weatherRadar', 'fires', 'airQuality', 'drought', 'earthquakes'],
+  environment: ['environmental', 'floods', 'weatherRadar', 'fires', 'airQuality', 'drought', 'earthquakes', 'disasters'],
   transport: ['trafficRoad', 'trafficRail', 'trafficMaritime', 'trafficAir'],
 };
 
@@ -126,7 +127,7 @@ export const LAYER_PRESETS: ReadonlyArray<LayerPreset> = [
     id: 'environment',
     label: 'Environnement',
     icon: 'leaf',
-    description: 'Tout le thème environnement : vigilance météo, crues, radar météo, feux de forêt, qualité de l’air, sécheresse et séismes.',
+    description: 'Tout le thème environnement : vigilance météo, crues, radar météo, feux de forêt, qualité de l’air, sécheresse, séismes et catastrophes (GDACS).',
     layers: THEME_LAYERS.environment,
     events: false,
   },

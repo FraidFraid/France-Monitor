@@ -90,9 +90,9 @@ exports[`rendu v1 figé avant extraction (spec 2026-10-01, v1 inchangée) > doma
     </div>
   
     <div class="frintel-dom-tile">
-      <span class="frintel-dom-dot" style="background:var(--sev-yellow);"></span>
+      <span class="frintel-dom-dot" style="background:var(--sev-orange);"></span>
       <span class="frintel-dom-label">Finance</span>
-      <div class="frintel-dom-value">7 <span class="frintel-dom-meta">lignes sous tension</span></div>
+      <div class="frintel-dom-value">Orange <span class="frintel-dom-meta">écart OAT-Bund 1,00 pt</span></div>
     </div>
   </div>
       <div class="frintel-chip-wrap"><span class="frintel-chip frintel-chip-warn">Orages · Orange ×2</span><span class="frintel-chip frintel-chip-warn">Pluie-inondation · Orange</span><span class="frintel-chip frintel-chip-warn">159 SNCF fortes</span><span class="frintel-chip frintel-chip-crit">2 titres critiques</span></div>
@@ -151,9 +151,9 @@ exports[`rendu v1 figé avant extraction (spec 2026-10-01, v1 inchangée) > doma
     </div>
   
     <div class="frintel-dom-tile">
-      <span class="frintel-dom-dot" style="background:var(--sev-yellow);"></span>
+      <span class="frintel-dom-dot" style="background:var(--sev-orange);"></span>
       <span class="frintel-dom-label">Finance</span>
-      <div class="frintel-dom-value">7 <span class="frintel-dom-meta">stressed lines</span></div>
+      <div class="frintel-dom-value">Orange <span class="frintel-dom-meta">OAT-Bund spread 1.00 pt</span></div>
     </div>
   </div>
       <div class="frintel-chip-wrap"><span class="frintel-chip frintel-chip-warn">Orages · Orange ×2</span><span class="frintel-chip frintel-chip-warn">Pluie-inondation · Orange</span><span class="frintel-chip frintel-chip-warn">159 SNCF severe</span><span class="frintel-chip frintel-chip-crit">2 critical headlines</span></div>

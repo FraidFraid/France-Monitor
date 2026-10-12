@@ -1,26 +1,40 @@
 import type { CommodityData } from '../types/index.ts';
-import { marketTone } from '../services/vigilance.ts';
+import { marketTone, type MarketTone } from '../services/vigilance.ts';
 import { buildMarketSparkline } from '../utils/market-sparkline.ts';
 import { fmLoaderHTML } from './shared/loader.ts';
+import { NBSP, frNumber } from './layer-panel/format.ts';
+import { finTableRowHTML } from './shared/fin-table.ts';
 
-// ─── Utilitaires (identiques à MarketStrip) ───────────────────────────────────
+// ─── Utilitaires ───────────────────────────────────
 
-function escapeHtml(value: string): string {
-  const el = document.createElement('div');
-  el.textContent = value;
-  return el.innerHTML;
+/** Cours à la française : virgule décimale, milliers groupés sans décimale. */
+export function formatCommodityPrice(value: number): string {
+  return frNumber(value, Math.abs(value) >= 1000 ? 0 : 2);
 }
 
-function formatPrice(value: number): string {
-  if (Math.abs(value) >= 1000) return value.toFixed(0);
-  if (Math.abs(value) >= 100)  return value.toFixed(2);
-  return value.toFixed(2);
+/** Variation du jour : signe, virgule, pourcentage insécable. */
+export function formatCommodityPct(value: number): string {
+  return `${frNumber(value, 2, true)}${NBSP}%`;
 }
 
-function formatPct(value: number): string {
-  const sign = value > 0 ? '+' : '';
-  return `${sign}${value.toFixed(2)}%`;
+/** Courbe de la séance : ligne pointillée de la clôture de la veille, infobulle à la française. */
+export function commoditySparkline(item: CommodityData, tone: MarketTone = 'neutral'): string {
+  const previousClose = item.changePercent > -100 ? item.price / (1 + item.changePercent / 100) : null;
+  return buildMarketSparkline(item.history, tone, { reference: previousClose, label: 'séance du jour', format: formatCommodityPrice });
 }
+
+/** Ligne de tableau (même style que la stabilité financière) ; pétrole et gaz : seuil de ± 5 %, métaux et agro toujours neutres. */
+export function commodityRowHTML(item: CommodityData): string {
+  const tone = marketTone(item.changePercent, item.category === 'energy' ? 'energy' : 'other');
+  const sense = item.changePercent > 0 ? 'up' : item.changePercent < 0 ? 'down' : 'flat';
+  return finTableRowHTML({
+    id: item.symbol, name: item.name, unit: item.unit, value: formatCommodityPrice(item.price),
+    note: { text: formatCommodityPct(item.changePercent), tone: tone === 'alert' ? 'alert' : sense },
+    curve: commoditySparkline(item, tone),
+  });
+}
+
+export const SECTION_LABELS: Readonly<Record<'energy' | 'metals' | 'agro', string>> = { energy: 'Énergie', metals: 'Métaux', agro: 'Agro' };
 
 // ─── Composant ────────────────────────────────────────────────────────────────
 
@@ -49,15 +63,15 @@ export class CommodityStrip {
       </div>
       <div class="under-map-card__body">
         <div class="commodity-strip__section commodity-strip__section--energy">
-          <div class="commodity-strip__section-label">ENERGIE</div>
+          <div class="commodity-strip__section-label">${SECTION_LABELS.energy}</div>
           <div class="commodity-strip__list" id="commodity-list-energy"></div>
         </div>
         <div class="commodity-strip__section commodity-strip__section--metals">
-          <div class="commodity-strip__section-label">METAUX</div>
+          <div class="commodity-strip__section-label">${SECTION_LABELS.metals}</div>
           <div class="commodity-strip__list" id="commodity-list-metals"></div>
         </div>
         <div class="commodity-strip__section commodity-strip__section--agro">
-          <div class="commodity-strip__section-label">AGRO</div>
+          <div class="commodity-strip__section-label">${SECTION_LABELS.agro}</div>
           <div class="commodity-strip__list" id="commodity-list-agro"></div>
         </div>
       </div>
@@ -94,22 +108,7 @@ export class CommodityStrip {
     for (const item of items) {
       const listEl = this.listEls[item.category];
       if (!listEl) continue;
-
-      // Pétrole et gaz : seuil de ±5 % ; métaux et produits agricoles toujours neutres.
-      const tone = marketTone(item.changePercent, item.category === 'energy' ? 'energy' : 'other');
-
-      const card = document.createElement('article');
-      card.className = `market-strip__item is-${tone}`;
-      card.innerHTML = `
-        <div class="market-strip__topline">
-          <span class="market-strip__name">${escapeHtml(item.name)}</span>
-          <span class="market-strip__symbol">${escapeHtml(item.unit)}</span>
-        </div>
-        <div class="market-strip__price">${escapeHtml(formatPrice(item.price))}</div>
-        <div class="market-strip__delta">${escapeHtml(formatPct(item.changePercent))}</div>
-        ${buildMarketSparkline(item.history, tone)}
-      `;
-      listEl.appendChild(card);
+      listEl.insertAdjacentHTML('beforeend', commodityRowHTML(item));
 
       const ts = item.lastUpdated instanceof Date
         ? item.lastUpdated.getTime()

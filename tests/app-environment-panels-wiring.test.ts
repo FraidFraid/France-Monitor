@@ -64,7 +64,7 @@ describe('panneaux Environnement : un panneau par couche (spec 2026-10-04 enviro
     expect(methodBody('readStoredActiveLayers')).toContain('const parsed = migrateStoredLayers(stored);');
   });
   it('relèves pausables par couche, aux cadences de la configuration ; vigilance, crues et feux toujours relevés', () => {
-    expect(ENVIRONMENT_POLL_MS).toEqual({ environmental: 300_000, floods: 600_000, weatherRadar: 300_000, fires: 900_000, drought: 3_600_000, airQuality: 1_800_000, earthquakes: 600_000 });
+    expect(ENVIRONMENT_POLL_MS).toEqual({ environmental: 300_000, floods: 600_000, weatherRadar: 300_000, fires: 900_000, drought: 3_600_000, airQuality: 1_800_000, earthquakes: 600_000, disasters: 600_000 });
     const sync = methodBody('syncEnvironmentPolling');
     expect(sync).toContain('this.registerPausableInterval(');
     expect(sync).toContain('ENVIRONMENT_POLL_MS[key]');

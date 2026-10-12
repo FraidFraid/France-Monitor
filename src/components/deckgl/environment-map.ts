@@ -20,18 +20,21 @@ import { ENV_NEUTRAL_HEX, FIRE_ABROAD_HEX, FIRE_RECURRENT_HEX, FLOOD_STATION_HEX
 import { departementName } from '../layer-panel/health-format.ts';
 import type { IconName } from '../shared/icons.ts';
 import {
-  LYR_AIR_FILL, LYR_DROUGHT_FILL, LYR_QUAKES, LYR_TIDE_GAUGES, LYR_FIRES_ABROAD, LYR_FIRES_GLOW, LYR_FIRES_HIGHLIGHT, LYR_FIRES_POINTS, LYR_FLOODS, LYR_FLOOD_STATIONS, LYR_FOREST_DANGER_FILL,
+  LYR_AIR_FILL, LYR_DISASTERS, LYR_DROUGHT_FILL, LYR_EMS_ZONE_FILL, LYR_QUAKES, LYR_TIDE_GAUGES, LYR_FIRES_ABROAD, LYR_FIRES_GLOW, LYR_FIRES_HIGHLIGHT, LYR_FIRES_POINTS, LYR_FLOODS, LYR_FLOOD_STATIONS, LYR_FOREST_DANGER_FILL,
   LYR_FOREST_DANGER_LINE, LYR_RADAR_PICK, LYR_WEATHER_FILL, LYR_WEATHER_ICONS, LYR_WEATHER_LINE, LYR_WEATHER_LINE_ORANGE, LYR_WEATHER_LINE_RED,
-  LYR_WEATHER_LINE_YELLOW, SRC_FIRES_ABROAD, SRC_FLOOD_STATIONS, SRC_FOREST_DANGER, SRC_RADAR_PICK, SRC_WEATHER_ICONS,
+  LYR_WEATHER_LINE_YELLOW, SRC_DISASTERS, SRC_FIRES_ABROAD, SRC_FLOOD_STATIONS, SRC_FOREST_DANGER, SRC_RADAR_PICK, SRC_WEATHER_ICONS, SRC_EMS_ZONES,
 } from './constants.ts';
+import { DISASTER_LAYERS, DISASTER_LAYER_KEYS } from './environment-map-disasters.ts';
+import { EMS_LAYERS } from './environment-map-ems.ts';
 import { ENV_B_FILL_LAYERS, ENV_B_HOVERABLE, ENV_B_LAYER_BEFORE, ENV_B_LAYER_KEYS, ENV_B_POINT_LAYERS, ENV_B_SOURCE_IDS } from './environment-map-b.ts';
 import { deptCodeToId, escapeHtml } from './format-utils.ts';
 
 export { airDeptFeatures, droughtDeptFeatures, quakeFeatures, tideGaugeFeatures } from './environment-map-b.ts';
 export { envBReshowPaints, placeEnvBPoints, type EnvBData, type EnvBLayerState } from './environment-map-b.ts';
+export { disasterFeatures, placeDisasterPoints } from './environment-map-disasters.ts';
 
 type Fc<G extends GeoJSON.Geometry = GeoJSON.Geometry> = GeoJSON.FeatureCollection<G>;
-export type EnvironmentMapLayer = 'environmental' | 'floods' | 'weatherRadar' | 'fires' | 'drought' | 'airQuality' | 'earthquakes';
+export type EnvironmentMapLayer = 'environmental' | 'floods' | 'weatherRadar' | 'fires' | 'drought' | 'airQuality' | 'earthquakes' | 'disasters';
 
 function fc<G extends GeoJSON.Geometry>(features: GeoJSON.Feature<G>[]): Fc<G> {
   return { type: 'FeatureCollection', features };
@@ -365,7 +368,7 @@ export function radarPickFeature(lat: number, lon: number): Fc<GeoJSON.Point> {
 // ─── Sources, couches, survol ───
 
 /** Sources nouvelles de l'environnement (les sources météo, crues et feux existent déjà dans DeckGLMap). */
-export const ENV_SOURCE_IDS: readonly string[] = [SRC_FOREST_DANGER, SRC_FIRES_ABROAD, SRC_FLOOD_STATIONS, SRC_RADAR_PICK, ...ENV_B_SOURCE_IDS];
+export const ENV_SOURCE_IDS: readonly string[] = [SRC_FOREST_DANGER, SRC_FIRES_ABROAD, SRC_FLOOD_STATIONS, SRC_RADAR_PICK, ...ENV_B_SOURCE_IDS, SRC_DISASTERS, SRC_EMS_ZONES];
 
 export function envSourceSpec(): GeoJSONSourceSpecification {
   return { type: 'geojson', data: { type: 'FeatureCollection', features: [] } };
@@ -406,6 +409,9 @@ export const ENV_LAYERS: readonly LayerSpecification[] = [
     paint: { 'circle-color': TRANSPARENT, 'circle-radius': 7, 'circle-stroke-width': 2.5, 'circle-stroke-color': '#ffffff' },
   },
   ...ENV_B_POINT_LAYERS,
+  // Zones Copernicus EMS sous les points GDACS (spec 2026-10-12 Copernicus EMS).
+  ...EMS_LAYERS,
+  ...DISASTER_LAYERS,
 ];
 
 /** Couche sous laquelle insérer une couche nouvelle : météo des forêts, étranger et pictogrammes de la vigilance sous les feux de France. */
@@ -422,6 +428,7 @@ export const ENV_LAYER_KEYS: Readonly<Record<EnvironmentMapLayer, readonly strin
   weatherRadar: [LYR_RADAR_PICK],
   fires: [LYR_FIRES_GLOW, LYR_FIRES_POINTS, LYR_FIRES_HIGHLIGHT, LYR_FIRES_ABROAD],
   ...ENV_B_LAYER_KEYS,
+  ...DISASTER_LAYER_KEYS,
 };
 
 /** Météo des forêts : option de la couche Feux. */
@@ -435,11 +442,13 @@ export function envLayerOn(layers: Partial<Record<EnvironmentMapLayer, boolean>>
 const HOVERABLE: ReadonlySet<string> = new Set([
   LYR_FIRES_POINTS, LYR_FIRES_ABROAD, LYR_FLOOD_STATIONS, LYR_FLOODS, LYR_FOREST_DANGER_FILL, LYR_WEATHER_FILL,
   ...ENV_B_HOVERABLE,
+  LYR_DISASTERS,
+  LYR_EMS_ZONE_FILL,
 ]);
 
 /** Couches survolées, de la plus haute à la plus basse : celle qu'on voit au-dessus répond (points avant tracés avant surfaces). */
 export const ENV_HOVER_LAYERS: readonly string[] = [
-  LYR_QUAKES, LYR_TIDE_GAUGES, LYR_FIRES_POINTS, LYR_FIRES_ABROAD, LYR_FLOOD_STATIONS, LYR_FLOODS, LYR_FOREST_DANGER_FILL, LYR_WEATHER_FILL, LYR_AIR_FILL,
+  LYR_DISASTERS, LYR_QUAKES, LYR_TIDE_GAUGES, LYR_FIRES_POINTS, LYR_FIRES_ABROAD, LYR_FLOOD_STATIONS, LYR_FLOODS, LYR_EMS_ZONE_FILL, LYR_FOREST_DANGER_FILL, LYR_WEATHER_FILL, LYR_AIR_FILL,
   LYR_DROUGHT_FILL,
 ];
 

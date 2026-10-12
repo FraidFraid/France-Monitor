@@ -208,7 +208,7 @@ function hasLowImmediateSignals(signalCounts) {
     && signalCounts.telecomOutages === 0
     && signalCounts.defenseAlerts === 0
     && signalCounts.jammingSignals === 0
-    && signalCounts.marketStress === 0
+    && (signalCounts.financeLevel === null || signalCounts.financeLevel === 'vert')
   );
 }
 
@@ -399,6 +399,34 @@ function formatSituationsBlock(situations, lang) {
   }).join('\n');
 }
 
+const FINANCE_LEVELS = ['vert', 'jaune', 'orange', 'rouge'];
+const FINANCE_LEVEL_EN = { vert: 'green', jaune: 'yellow', orange: 'orange', rouge: 'red' };
+
+/** Champs finance du corps (spec 2026-10-12 pilier finance) ; valeur hors énumération ou non finie : null. */
+export function parseFinance(signalCounts) {
+  const sc = signalCounts && typeof signalCounts === 'object' ? signalCounts : {};
+  return {
+    financeLevel: FINANCE_LEVELS.includes(sc.financeLevel) ? sc.financeLevel : null,
+    financeSpread: typeof sc.financeSpread === 'number' && Number.isFinite(sc.financeSpread) ? sc.financeSpread : null,
+    financeCissFr: typeof sc.financeCissFr === 'number' && Number.isFinite(sc.financeCissFr) ? sc.financeCissFr : null,
+    financeCissEa: typeof sc.financeCissEa === 'number' && Number.isFinite(sc.financeCissEa) ? sc.financeCissEa : null,
+  };
+}
+
+/** « finance : niveau rouge (écart OAT-Bund 1,43 pt, CISS France 0,051) » ; sans niveau : « finance non évaluée ». */
+function financeText(c, lang) {
+  const level = c.financeLevel ?? null;
+  if (level === null) return lang === 'en' ? 'finance not assessed' : 'finance non évaluée';
+  const nb = '\u00a0';
+  const fr = (v, d) => v.toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d });
+  const parts = [];
+  if (typeof c.financeSpread === 'number') parts.push(lang === 'en' ? `OAT-Bund spread ${c.financeSpread.toFixed(2)} pt` : `écart OAT-Bund ${fr(c.financeSpread, 2)}${nb}pt`);
+  if (typeof c.financeCissFr === 'number') parts.push(lang === 'en' ? `France CISS ${c.financeCissFr.toFixed(3)}` : `CISS France ${fr(c.financeCissFr, 3)}`);
+  if (typeof c.financeCissEa === 'number') parts.push(lang === 'en' ? `euro-area CISS ${c.financeCissEa.toFixed(3)}` : `CISS zone euro ${fr(c.financeCissEa, 3)}`);
+  const detail = parts.length > 0 ? ` (${parts.join(', ')})` : '';
+  return lang === 'en' ? `finance: ${FINANCE_LEVEL_EN[level]} level${detail}` : `finance : niveau ${level}${detail}`;
+}
+
 export function buildPrompt(countryScore, axes, isnrComponents, cyberScore, meteoAlertCount, headlines, signalCounts, energy, situations, events, lang) {
   const headlineList = headlines.length > 0
     ? headlines.map((h, i) => `${i + 1}. ${h}`).join('\n')
@@ -428,7 +456,7 @@ ${eventsBlock}
 [CONTEXT DATA]
 Posture: ${stabilityLabel} | Pillars: continuity=${axes.continuity} defense=${axes.defense} security=${axes.security} signal=${axes.signal} (0–100, higher = more pressure)
 Cyber pressure: ${cyberLabel} | Severe weather alerts: ${meteoAlertCount}
-Signals: ${signalCounts.criticalNews} critical / ${countIn('en', signalCounts.highNews, 'high headline', 'high headlines')}, ${signalCounts.railDisruptions} rail, ${signalCounts.roadIncidents} road, ${signalCounts.telecomUnavailable ? 'telecom not assessed' : `${signalCounts.telecomOutages} telecom`}, ${sovereigntySignals(signalCounts, 'en')}, ${countIn('en', signalCounts.fireDetections, 'fire', 'fires')}, ${countIn('en', signalCounts.marketStress, 'stressed market line', 'stressed market lines')}
+Signals: ${signalCounts.criticalNews} critical / ${countIn('en', signalCounts.highNews, 'high headline', 'high headlines')}, ${signalCounts.railDisruptions} rail, ${signalCounts.roadIncidents} road, ${signalCounts.telecomUnavailable ? 'telecom not assessed' : `${signalCounts.telecomOutages} telecom`}, ${sovereigntySignals(signalCounts, 'en')}, ${countIn('en', signalCounts.fireDetections, 'fire', 'fires')}, ${financeText(signalCounts, 'en')}
 Situation summary:
 ${situationSummary}
 Recent headlines (context only, NOT citable):
@@ -459,7 +487,7 @@ ${eventsBlock}
 [DONNÉES DE CONTEXTE]
 Posture : ${stabilityLabel} | Piliers : continuité=${axes.continuity} défense=${axes.defense} sécurité=${axes.security} signal=${axes.signal} (0–100, plus haut = plus de pression)
 Pression cyber : ${cyberLabel} | Alertes météo sévères : ${meteoAlertCount}
-Signaux : ${plural(signalCounts.criticalNews, 'titre critique', 'titres critiques')} / ${plural(signalCounts.highNews, 'élevé', 'élevés')}, ${signalCounts.railDisruptions} rail, ${signalCounts.roadIncidents} route, ${signalCounts.telecomUnavailable ? 'télécom non évalué' : `${signalCounts.telecomOutages} télécom`}, ${sovereigntySignals(signalCounts, 'fr')}, ${plural(signalCounts.fireDetections, 'feu', 'feux')}, ${plural(signalCounts.marketStress, 'ligne marché sous tension', 'lignes marché sous tension')}
+Signaux : ${plural(signalCounts.criticalNews, 'titre critique', 'titres critiques')} / ${plural(signalCounts.highNews, 'élevé', 'élevés')}, ${signalCounts.railDisruptions} rail, ${signalCounts.roadIncidents} route, ${signalCounts.telecomUnavailable ? 'télécom non évalué' : `${signalCounts.telecomOutages} télécom`}, ${sovereigntySignals(signalCounts, 'fr')}, ${plural(signalCounts.fireDetections, 'feu', 'feux')}, ${financeText(signalCounts, 'fr')}
 Résumé situationnel :
 ${situationSummary}
 Actualités récentes (contexte seulement, NON citables) :
@@ -532,7 +560,8 @@ export default async function handler(request) {
     maritimeTrafficFrance: typeof body.signalCounts?.maritimeTrafficFrance === 'number' ? Math.round(body.signalCounts.maritimeTrafficFrance) : 0,
     defenseAlerts: typeof body.signalCounts?.defenseAlerts === 'number' ? Math.round(body.signalCounts.defenseAlerts) : 0,
     jammingSignals: typeof body.signalCounts?.jammingSignals === 'number' ? Math.round(body.signalCounts.jammingSignals) : 0,
-    marketStress: typeof body.signalCounts?.marketStress === 'number' ? Math.round(body.signalCounts.marketStress) : 0,
+    // Stabilité financière (spec 2026-10-12 pilier finance) ; un ancien client qui envoie encore marketStress : finance non évaluée.
+    ...parseFinance(body.signalCounts),
     // Souveraineté (O6) : alertes en cours et avis KEV récents à part ; sans ces champs, les alertes reprennent cyberAlerts.
     cyberOpenAlerts: typeof body.signalCounts?.cyberOpenAlerts === 'number' ? Math.round(body.signalCounts.cyberOpenAlerts)
       : typeof body.signalCounts?.cyberAlerts === 'number' ? Math.round(body.signalCounts.cyberAlerts) : 0,
