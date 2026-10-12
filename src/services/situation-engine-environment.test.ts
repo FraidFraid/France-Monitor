@@ -4,11 +4,11 @@
 // Une source en retard ou en panne ne crée ni ne garde de situation (entrées servies par environment-inputs.ts).
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import type { AirEpisode, DisasterAlert, Quake } from '../types/index.ts';
+import type { AirEpisode, DisasterAlert, EmsActivation, Quake } from '../types/index.ts';
 import { AIR_FIXTURE, QUAKES_FIXTURE } from '../components/layer-panel/environment.fixture.ts';
 import { servedAirEpisodes, servedDisasters, servedQuakes } from './environment-inputs.ts';
 import { scoreFromPillars, type FranceRawData } from './france-country-intel.ts';
-import { detectAirPollution, detectNaturalHazardAlerts, detectSeismicEvents, detectSituations } from './situation-engine.ts';
+import { detectAirPollution, detectEmsActivations, detectNaturalHazardAlerts, detectSeismicEvents, detectSituations } from './situation-engine.ts';
 import { situationTheme } from './themes.ts';
 
 const NOW = Date.parse('2026-10-04T08:10:00Z');
@@ -174,5 +174,38 @@ describe('NATURAL_HAZARD_ALERT (GDACS, spec 2026-10-12) : situation sur sol fran
     const [s] = detectNaturalHazardAlerts(baseRawData({ disasters: [gd({ severity: 'Hurricane/Typhoon > 74 mph (maximum wind speed of 250 km/h)' })] }), NOW);
     expect(s?.summary).toContain('Cyclone tropical TEST-26 (Ouragan ou typhon, vent maximal 250\u00a0km/h)');
     expect(s?.summary).not.toMatch(/mph|Tropical Cyclone/);
+  });
+});
+
+describe('EMS_ACTIVATION (Copernicus EMS, spec 2026-10-12) : situation sur sol français, jamais d’effet sur le score', () => {
+  const act = (over: Partial<EmsActivation> = {}): EmsActivation => ({
+    code: 'EMSR866', category: 'inondation', name: 'Flood in New Aquitaine, France', place: 'New Aquitaine', territory: 'France (Hexagone et Corse)',
+    activationTime: new Date(NOW - 86_400_000).toISOString(), eventTime: null, closed: false, gdacsId: null, products: 14,
+    url: 'https://mapping.emergency.copernicus.eu/activations/EMSR866', activator: 'COGIC', population: 83890, zones: [], lon: -0.67, lat: 45.27, ...over,
+  });
+  it('activation en cours → medium, couche Catastrophes, lien, source', () => {
+    const [s] = detectEmsActivations(baseRawData({ emsActive: [act()] }), NOW);
+    expect(s).toMatchObject({
+      id: 'ems-EMSR866', type: 'EMS_ACTIVATION', severity: 'medium', affectedZones: ['France (Hexagone et Corse)'],
+      title: 'Cartographie satellite d’urgence : inondation, France (Hexagone et Corse)', lat: 45.27, lon: -0.67,
+      activateLayers: ['disasters'], linkUrl: 'https://mapping.emergency.copernicus.eu/activations/EMSR866', linkLabel: 'Fiche Copernicus',
+      sourceRefs: ['Copernicus EMS'],
+    });
+    expect(s?.summary).toContain('COGIC');
+    expect(s?.summary).toContain('83 890 habitants');
+    expect(s?.summary).not.toContain('—');
+  });
+  it('close : aucune situation ; aucune activation : rien', () => {
+    expect(detectEmsActivations(baseRawData({ emsActive: [act({ closed: true })] }), NOW)).toEqual([]);
+    expect(detectEmsActivations(baseRawData({}), NOW)).toEqual([]);
+  });
+  it('score inchangé : fixture de verrouillage à 95 sans plafond', () => {
+    const without = scoreFromPillars(ZERO, detectSituations(baseRawData({}), NOW));
+    const withEms = scoreFromPillars(ZERO, detectSituations(baseRawData({ emsActive: [act(), act({ code: 'EMSR900', territory: 'Mayotte' })] }), NOW));
+    expect([withEms.score, withEms.situationCap]).toEqual([without.score, without.situationCap]);
+    expect([withEms.score, withEms.situationCap]).toEqual([95, null]);
+  });
+  it('thème Environnement', () => {
+    expect(situationTheme('EMS_ACTIVATION')).toBe('environment');
   });
 });

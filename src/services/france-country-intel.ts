@@ -48,6 +48,7 @@ import type {
   SovereigntyAvailability,
   AirEpisode,
   DisasterAlert,
+  EmsActivation,
   Quake,
 } from '@/types/index.ts';
 import type { EolienLive } from '@/services/eolien/types.ts';
@@ -109,6 +110,8 @@ export interface FranceRawData {
   quakes?: Quake[];
   /** Alertes GDACS (spec 2026-10-12) : situations NATURAL_HAZARD_ALERT seulement, aucun pilier ni plafond. */
   disasters?: DisasterAlert[];
+  /** Activations Copernicus EMS françaises en cours, relevé à jour (spec 2026-10-12) : situations EMS_ACTIVATION seulement, aucun pilier ni plafond. */
+  emsActive?: EmsActivation[];
   /** Épisodes de pollution de J à J+2 (Atmo France, § 3.2). Situations seulement ; aucune entrée du score. */
   airEpisodes?: AirEpisode[];
   marketData: MarketData[];

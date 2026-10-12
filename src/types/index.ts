@@ -1900,6 +1900,7 @@ export type SituationType =
   | 'GPS_JAMMING_ALERT'
   | 'SEISMIC_EVENT'
   | 'NATURAL_HAZARD_ALERT'
+  | 'EMS_ACTIVATION'
   | 'AIR_POLLUTION_EPISODE';
 
 export type SituationSeverity = 'critical' | 'high' | 'medium' | 'watch';

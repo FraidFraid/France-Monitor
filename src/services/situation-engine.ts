@@ -14,6 +14,7 @@ import type {
   CertFrItem,
   DetectedSituation,
   DisasterType,
+  EmsCategory,
   MilitaryEmergency,
   FuelTensionLevel,
   OilVigilanceStatus,
@@ -882,6 +883,45 @@ export function detectNaturalHazardAlerts(raw: FranceRawData, nowMs: number): De
   });
 }
 
+// ─── Règle : EMS_ACTIVATION (Copernicus EMS, spec 2026-10-12) ───────
+
+const EMS_WORD: Readonly<Record<EmsCategory, string>> = {
+  feu: 'feu de forêt', inondation: 'inondation', tempete: 'tempête', seisme: 'séisme', mouvement: 'mouvement de terrain',
+  volcan: 'éruption volcanique', industriel: 'accident industriel', transport: 'accident de transport', autre: 'événement',
+};
+
+/**
+ * Une situation par activation Copernicus EMS en cours sur le territoire français : l'État a demandé une cartographie satellite
+ * d'urgence. Sévérité medium, décision du 12/10/2026, aucun effet sur le score (jamais de plafond) avant une calibration dédiée.
+ */
+export function detectEmsActivations(raw: FranceRawData, _nowMs: number): DetectedSituation[] {
+  return (raw.emsActive ?? []).flatMap((a): DetectedSituation[] => {
+    if (a.closed) return [];
+    const word = EMS_WORD[a.category];
+    const who = a.activator ? `à la demande de ${a.activator}` : 'à la demande de l’État';
+    const pop = a.population !== null ? ` Population dans l’emprise : ${frenchInt(a.population)} habitants.` : '';
+    const base = situation(
+      `ems-${a.code}`, 'EMS_ACTIVATION', 'medium', 0.9,
+      `Cartographie satellite d’urgence : ${word}, ${a.territory}`,
+      `Copernicus EMS activé le ${parisWhen(a.activationTime)} (heure de Paris) ${who} (${a.code}, ${a.place}).${pop}`,
+      [a.territory],
+      ['Activation Copernicus EMS', `${word.charAt(0).toUpperCase()}${word.slice(1)}, ${a.territory}`],
+      [
+        action('Suivre les cartes produites (emprise, dégâts)', 'Analyste risques naturels', 'monitor', true),
+        action('Croiser avec la préfecture et le COGIC', 'Analyste territorial', 'cross-check'),
+      ],
+      ['Copernicus EMS'],
+    );
+    const at = a.lat !== null && a.lon !== null ? { lat: a.lat, lon: a.lon } : {};
+    return [{ ...base, ...at, activateLayers: ['disasters'], linkUrl: a.url, linkLabel: 'Fiche Copernicus' }];
+  });
+}
+
+/** « 83 890 » : entier à la française (espace fine insécable). */
+function frenchInt(n: number): string {
+  return Math.round(n).toLocaleString('fr-FR');
+}
+
 // ─── Règle : AIR_POLLUTION_EPISODE (spec 2026-10-04 environnement § 3.2, amendement 6) ───────
 
 /** Une situation quand un épisode atteint le seuil d'alerte en J ou J+1 (jours de Paris) : sévérité moyenne, sans plafond du score. */
@@ -961,6 +1001,12 @@ export function detectSituations(raw: FranceRawData, nowMs: number = Date.now())
   } catch (err) {
     console.warn('[SituationEngine] Natural hazard rule error:', err);
   }
+  // Activations Copernicus EMS sur sol français (spec 2026-10-12) ; même isolation que les autres règles.
+    try {
+      results.push(...detectEmsActivations(raw, nowMs));
+    } catch (err) {
+      console.warn('[SituationEngine] EMS rule error:', err);
+    }
 
   const ranked = results.sort((a, b) => {
     const sevDiff = SEVERITY_ORDER[b.severity] - SEVERITY_ORDER[a.severity];
