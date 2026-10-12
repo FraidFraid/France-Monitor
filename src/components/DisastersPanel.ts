@@ -65,7 +65,9 @@ export class DisastersPanel {
     const s = this.state;
     const open = sectionOpenOf(loadSectionState(this.storage), PANEL_ID);
     this.shell.render(buildCatastrophesView({
-      disasters: s?.disasters.data ?? null, disastersError: s?.disasters.error ?? null, canFocus: this.onFocusAlert !== undefined, now: Date.now(), open,
+      disasters: s?.disasters.data ?? null, disastersError: s?.disasters.error ?? null,
+      ems: s ? s.ems.data : null, emsError: s?.ems.error ?? null,
+      canFocus: this.onFocusAlert !== undefined, now: Date.now(), open,
     }));
   }
 }

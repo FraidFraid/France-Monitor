@@ -1,6 +1,6 @@
 // src/components/layer-panel/catastrophes.test.ts : vue pure du panneau Catastrophes (GDACS).
 import { describe, expect, it } from 'vitest';
-import type { DisasterAlert, DisastersResponse } from '../../types/index.ts';
+import type { DisasterAlert, DisastersResponse, EmsActivation, EmsResponse } from '../../types/index.ts';
 import { visibleText } from './format.ts';
 import { renderLayerView } from './frame.ts';
 import { buildCatastrophesView } from './catastrophes.ts';
@@ -89,5 +89,49 @@ describe('correctifs de la revue finale', () => {
     expect(t).not.toContain('Country28');
     expect(html).toContain(`title="${long}"`);
     expect(text(body([]))).toContain('7 derniers jours');
+  });
+});
+
+describe('Copernicus EMS (spec 2026-10-12)', () => {
+  const act = (over: Partial<EmsActivation> = {}): EmsActivation => ({
+    code: 'EMSR866', category: 'inondation', name: 'Flood in New Aquitaine, France', place: 'New Aquitaine', territory: 'France (Hexagone et Corse)',
+    activationTime: '2026-10-11T11:50:00.000Z', eventTime: null, closed: false, gdacsId: 'FL1102030', products: 14,
+    url: 'https://mapping.emergency.copernicus.eu/activations/EMSR866', activator: 'COGIC', population: 83890, zones: [], lon: -0.67, lat: 45.27, ...over,
+  });
+  const ems = (over: Partial<EmsResponse> = {}): EmsResponse => ({
+    readAt: '2026-10-12T07:55:00.000Z', active: [act()], recent: [act({ code: 'EMSR902', category: 'feu', place: 'Biscarrosse', closed: true, activationTime: '2026-07-24T10:00:00.000Z', population: null, activator: null })],
+    elsewhere: { count: 2, countries: ['Panama', 'Grèce'] }, errors: [], ...over,
+  });
+  const viewE = (e: EmsResponse | null, err: string | null = null) =>
+    buildCatastrophesView({ disasters: body([]), disastersError: null, ems: e, emsError: err, canFocus: true, now: NOW, open: (_id, byDefault) => byDefault });
+  const textE = (e: EmsResponse | null, err: string | null = null) => visibleText(renderLayerView('disasters', viewE(e, err)));
+
+  it('section « Cartographie d’urgence » : ligne en cours avec code, date, déclencheur, cartes, population, liens', () => {
+    const t = textE(ems());
+    expect(t).toContain('Cartographie d’urgence (Copernicus)');
+    expect(t).toContain('Inondation · France (Hexagone et Corse)');
+    expect(t).toContain('EMSR866');
+    expect(t).toContain('COGIC');
+    expect(t).toContain('14 cartes');
+    expect(t).toContain('83 890 hab. dans l’emprise');
+    expect(t).toContain('Fiche Copernicus');
+    expect(t).toContain('Fiche GDACS');
+    expect(t).not.toContain('—');
+  });
+  it('chiffre et couleur : une activation française en cours compte orange', () => {
+    const v = viewE(ems());
+    expect(v.head.figure).toMatchObject({ value: '1', level: 'orange' });
+  });
+  it('relevé EMS en retard : activation non comptée', () => {
+    expect(viewE(ems({ readAt: '2026-10-12T06:30:00.000Z' })).head.figure).toMatchObject({ value: '0' });
+  });
+  it('aucune en cours ; historique 12 mois ; ailleurs ; source indisponible', () => {
+    expect(textE(ems({ active: [] }))).toContain('Aucune activation en cours sur le territoire français.');
+    expect(textE(ems())).toContain('12 derniers mois');
+    expect(textE(ems())).toContain('2 activations en cours ailleurs : Panama, Grèce');
+    expect(textE(null, 'HTTP 502')).toContain('Source indisponible : Copernicus EMS.');
+  });
+  it('sans données EMS fournies : panneau GDACS inchangé', () => {
+    expect(view(body([])).head.figure).toMatchObject({ value: '0' });
   });
 });
