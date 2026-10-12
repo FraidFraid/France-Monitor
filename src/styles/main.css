@@ -8238,3 +8238,22 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
   .nw-viewport { overflow-x: auto; scrollbar-width: none; }
   .nw-run[aria-hidden="true"] { display: none; }
 }
+
+/* Bloc « Stabilité financière » (spec 2026-10-12) : remplace le « Flux boursier ». */
+.fin-stab__title-wrap { display: flex; align-items: center; gap: 10px; }
+.fin-stab__level {
+  --fin-lvl: var(--text-muted);
+  font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
+  padding: 2px 8px; border-radius: 12px; border: 1px solid var(--fin-lvl); color: var(--fin-lvl); white-space: nowrap;
+}
+.fin-stab { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+.fin-stab__row { padding: 6px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.03); min-width: 0; }
+.fin-stab__line { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.fin-stab__name { font-size: 11px; color: var(--text-muted); }
+.fin-stab__value { font-size: 14px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.fin-stab__word {
+  --fin-lvl: var(--text-muted);
+  font-size: 10px; font-weight: 700; color: var(--fin-lvl); white-space: nowrap;
+}
+.fin-stab__meta { font-size: 10px; color: var(--text-muted); }
+.fin-stab__row .market-strip__sparkline { display: block; width: 100%; height: 22px; margin-top: 4px; }
