@@ -8209,9 +8209,18 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 .nw-dot--orange { background: var(--sev-orange); box-shadow: 0 0 6px color-mix(in srgb, var(--sev-orange) 75%, transparent); }
 .nw-dot--rouge { background: var(--sev-red); box-shadow: 0 0 8px color-mix(in srgb, var(--sev-red) 85%, transparent); }
 .nw-dot--vert { background: var(--sev-green); }
+/* Dépêche rouge (12/10/2026) : étiquette URGENT qui clignote, heure en rouge, titre en gras ; orange : titre renforcé. */
+.nw-urgent {
+  flex: none; padding: 1px 6px; border-radius: 3px; background: var(--sev-red); color: #fff;
+  font-size: 10px; font-weight: 800; letter-spacing: 0.12em; animation: nw-blink 1s steps(2, start) infinite;
+}
+@keyframes nw-blink { to { opacity: 0.3; } }
+.nw-item--rouge .nw-time { color: var(--sev-red); font-weight: 700; }
+.nw-item--rouge .nw-title { color: #fff; font-weight: 700; }
+.nw-item--orange .nw-title { font-weight: 600; }
 /* Animations réduites : fil immobile, défilable à la main ; la copie du défilement continu disparaît. */
 @media (prefers-reduced-motion: reduce) {
-  .nw-track { animation: none; }
+  .nw-track, .nw-urgent { animation: none; }
   .nw-viewport { overflow-x: auto; scrollbar-width: none; }
   .nw-run[aria-hidden="true"] { display: none; }
 }

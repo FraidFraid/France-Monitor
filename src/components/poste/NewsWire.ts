@@ -54,9 +54,13 @@ function renderRun(items: readonly WireItem[], now: number, lang: Lang, copy: bo
   const rows = items.map((i) => {
     const time = wireTime(i.at, now);
     // Copie : décor du défilement continu, hors de l'ordre de tabulation et des lecteurs d'écran.
-    return `<li><button type="button" class="nw-item" data-wire-key="${escapeHtml(i.key)}"${copy ? ' tabindex="-1"' : ''}>`
+    // Rouge : étiquette URGENT clignotante à la place du voyant, façon dépêche d'agence (12/10/2026).
+    const mark = i.level === 'rouge'
+      ? '<span class="nw-urgent" aria-hidden="true">URGENT</span>'
+      : `<span class="nw-dot nw-dot--${i.level}" aria-hidden="true"></span>`;
+    return `<li><button type="button" class="nw-item nw-item--${i.level}" data-wire-key="${escapeHtml(i.key)}"${copy ? ' tabindex="-1"' : ''}>`
       + (time ? `<span class="nw-time">${escapeHtml(time)}</span>` : '')
-      + `<span class="nw-dot nw-dot--${i.level}" aria-hidden="true"></span>`
+      + mark
       + `<span class="visually-hidden">${escapeHtml(levelLabel(i.level, lang))} : </span>`
       + `<span class="nw-title">${escapeHtml(i.title)}</span>`
       + (i.place ? `<span class="nw-place">${escapeHtml(i.place)}</span>` : '')

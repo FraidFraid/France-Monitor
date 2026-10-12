@@ -65,6 +65,15 @@ describe('rendu du fil', () => {
     expect(renderNewsWire([], NOW, 'fr')).toBe('');
   });
 
+  it('dépêche rouge : étiquette URGENT à la place du voyant ; les autres gardent leur voyant', () => {
+    const html = renderNewsWire(wireItems([item({ key: 'r', level: 'rouge' }), item({ key: 'o', level: 'orange' })]), NOW, 'fr');
+    expect(html).toContain('class="nw-item nw-item--rouge"');
+    expect(html).toContain('<span class="nw-urgent" aria-hidden="true">URGENT</span>');
+    expect(html).not.toContain('nw-dot--rouge');
+    expect(html).toContain('nw-dot--orange');
+    expect(html).toContain('<span class="visually-hidden">Rouge : </span>');
+  });
+
   it('vitesse de lecture constante : un fil plus long dure plus longtemps, entre 25 et 300 s', () => {
     const one = wireDurationSeconds(wireItems([item()]));
     const many = wireDurationSeconds(wireItems(Array.from({ length: 10 }, (_, n) => item({ key: `k${n}` }))));
