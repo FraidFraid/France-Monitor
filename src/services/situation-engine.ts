@@ -899,7 +899,7 @@ export function detectEmsActivations(raw: FranceRawData, _nowMs: number): Detect
     if (a.closed) return [];
     const word = EMS_WORD[a.category];
     const who = a.activator ? `à la demande de ${a.activator}` : 'à la demande de l’État';
-    const pop = a.population !== null ? ` Population dans l’emprise : ${frenchInt(a.population)} habitants.` : '';
+    const pop = a.population !== null ? ` Population dans l’emprise : ${frenchInt(a.population)}\u00a0habitants.` : '';
     const base = situation(
       `ems-${a.code}`, 'EMS_ACTIVATION', 'medium', 0.9,
       `Cartographie satellite d’urgence : ${word}, ${a.territory}`,
