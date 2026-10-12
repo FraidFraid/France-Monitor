@@ -212,7 +212,17 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
     watchdogNames: ['GDACS'],
     mappedIndicators: ['niveau d’alerte (vert, orange, rouge)', 'type d’aléa', 'territoire ou pays touché'],
     limits: ['Alertes calculées par modèle (ONU / Commission européenne), pas une vigilance officielle française', 'Monde : orange et rouge seulement'],
+  },  {
+    id: 'copernicus-ems',
+    name: 'Copernicus EMS',
+    domain: 'Catastrophes',
+    sourceType: 'official',
+    natureBaseline: 85,
+    watchdogNames: ['Copernicus EMS'],
+    mappedIndicators: ['activation de la cartographie satellite d’urgence', 'zones cartographiées', 'population dans l’emprise'],
+    limits: ['Activations à la demande des États', 'Zones et cartes publiées avec quelques heures à jours de décalage'],
   },
+
   {
     id: 'shom-refmar',
     name: 'Marégraphes SHOM',

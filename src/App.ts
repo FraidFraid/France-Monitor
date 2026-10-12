@@ -96,14 +96,14 @@ import type { MetroLoadPanel } from './components/MetroLoadPanel.ts';
 import { fetchVigilance, mergeVigilance, vigilanceStatus, type VigilanceState } from './services/environment-vigilance.ts';
 import { fetchFloods, floodsStatus, mergeFloods, type FloodsState } from './services/environment-floods.ts';
 import { fetchFires, firesStatus, mergeFires, type FiresState } from './services/environment-fires.ts';
-import { buildEnvironmentInputs, servedAirEpisodes, servedDisasters, servedQuakes, type EnvironmentInputs } from './services/environment-inputs.ts';
+import { buildEnvironmentInputs, servedAirEpisodes, servedDisasters, servedEms, servedQuakes, type EnvironmentInputs } from './services/environment-inputs.ts';
 import { ENVIRONMENT_LATE_AFTER_MIN, parisDayOf } from './services/environment-levels.ts';
 // Phase B (spec 2026-10-04 environnement § 3) : qualité de l'air et séismes lus au démarrage (situations, tâche 32), sécheresse avec sa
 // couche ou son panneau (un stock, jamais au score : E2), marégraphes avec la vigilance.
 import { droughtStatus, fetchDrought, mergeDrought, type DroughtState } from './services/environment-drought.ts';
 import { airQualityStatus, fetchAirQuality, mergeAirQuality, type AirQualityState } from './services/environment-air.ts';
 import { earthquakesStatus, fetchEarthquakes, mergeEarthquakes, type EarthquakesState } from './services/environment-earthquakes.ts';
-import { disastersStatus, fetchDisasters, mergeDisasters, type DisastersState } from './services/environment-disasters.ts';
+import { disastersStatus, emsStatus, fetchDisasters, mergeDisasters, type DisastersState } from './services/environment-disasters.ts';
 import { fetchSeaLevels, mergeSeaLevels, seaLevelsStatus, type SeaLevelsState } from './services/environment-sea-levels.ts';
 import type { DroughtPanel } from './components/DroughtPanel.ts';
 import type { AirQualityPanel } from './components/AirQualityPanel.ts';
@@ -3123,7 +3123,7 @@ export class App {
       void this.ensureAirQualityPanel().then(() => this.openEnvironmentPanel('airQuality'));
     } else if (name === 'BCSF-RéNaSS') {
       void this.ensureEarthquakesPanel().then(() => this.openEnvironmentPanel('earthquakes'));
-    } else if (name === 'GDACS') {
+    } else if (name === 'GDACS' || name === 'Copernicus EMS') {
       void this.ensureDisastersPanel().then(() => this.openEnvironmentPanel('disasters'));
 
     } else if (name === 'Marégraphes SHOM') {
@@ -6451,7 +6451,9 @@ export class App {
       const now = Date.now();
       const data = this.currentDisasters.disasters.data;
       this.statusPanel?.updateSource('GDACS', disastersStatus(this.currentDisasters, now));
+      this.statusPanel?.updateSource('Copernicus EMS', emsStatus(this.currentDisasters, now));
       this.mapContainer?.updateDisastersLayer(data, now);
+      this.mapContainer?.updateEmsLayer(this.currentDisasters.ems.data, now);
       this.disastersPanel?.update(this.currentDisasters);
       this.refreshEnvironmentLegend();
       this.recordEnvironmentSamples(now);
@@ -7085,6 +7087,7 @@ export class App {
       // Phase B : séismes et épisodes de pollution (situations, contrats § 6) ; la sécheresse n'y entre jamais (E2).
       quakes: servedQuakes(this.currentEarthquakes?.quakes.data ?? null, now),
       disasters: servedDisasters(this.currentDisasters?.disasters.data ?? null, now),
+      emsActive: servedEms(this.currentDisasters?.ems.data ?? null, now),
       airEpisodes: servedAirEpisodes(this.currentAirQuality?.air.data ?? null, now),
     };
   }
