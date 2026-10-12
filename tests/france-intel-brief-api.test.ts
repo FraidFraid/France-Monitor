@@ -257,3 +257,15 @@ describe('finance : revue finale', () => {
     expect(parseFinance({ financeCissEa: 'x' }).financeCissEa).toBeNull();
   });
 });
+
+describe('finance : mineurs (12/10)', () => {
+  const base = { criticalNews: 0, highNews: 0, weatherAlerts: 0, floodAlerts: 0, fireDetections: 0, railDisruptions: 0, roadIncidents: 0, telecomOutages: 0, cyberAlerts: 0, militaryFlights: 0, maritimeTrafficFrance: 0, defenseAlerts: 0, jammingSignals: 0, militaryUnavailable: false, cablesUnavailable: false, gnssUnavailable: false, cyberUnavailable: false, kevUnavailable: false };
+  const axes = { continuity: 5, defense: 5, security: 5, signal: 5 };
+  const isnr = { social: 0, security: 0, infra: 0 };
+  it('finance orange : vocabulaire calme interdit ; verte ou non évaluée : autorisé', () => {
+    const p = (fin: Record<string, unknown>) => buildPrompt(95, axes, isnr, 0, 0, [], { ...base, ...parseFinance(fin) }, null, [], [], 'fr');
+    expect(p({ financeLevel: 'orange', financeSpread: 1.0 })).toContain('Vocabulaire calme (stable/calme/normal/sous contrôle) : INTERDIT');
+    expect(p({ financeLevel: 'vert' })).toContain('Vocabulaire calme (stable/calme/normal/sous contrôle) : autorisé');
+    expect(p({})).toContain('Vocabulaire calme (stable/calme/normal/sous contrôle) : autorisé');
+  });
+});

@@ -23,6 +23,7 @@ const NAME_TERRITORY = [
   [/saint[- ]martin(?![- ]\w)/, 'Saint-Martin'], [/saint[- ]barth/, 'Saint-Barthélemy'], [/wallis/, 'Wallis-et-Futuna'],
   [/saint[- ]pierre(?:[- ](?:et|and)[- ]|\s*,|\s*$)|miquelon/, 'Saint-Pierre-et-Miquelon'],
 ];
+const TAAF_COUNTRIES = new Set(['French Southern and Antarctic Lands', 'French Southern Territories']);
 const TAAF = /amsterdam island|kerguelen|crozet|saint[- ]paul island|\btaaf\b/;
 const CATEGORY = {
   wildfire: 'feu', flood: 'inondation', storm: 'tempete', earthquake: 'seisme', 'mass movement': 'mouvement',
@@ -42,6 +43,7 @@ const countriesOf = (x) => (Array.isArray(x?.countries) ? x.countries.filter((c)
 /** Territoire français d'une activation ; 'TAAF' (écartée) ; null hors de France. */
 export function frenchTerritoryOf(x) {
   const countries = countriesOf(x);
+  if (countries.some((c) => TAAF_COUNTRIES.has(c))) return 'TAAF';
   if (!countries.some((c) => c === 'France' || Object.hasOwn(COUNTRY_TERRITORY, c))) return null;
   const name = fold(x?.name);
   if (TAAF.test(name)) return 'TAAF';
@@ -78,7 +80,8 @@ export function parsePoint(text) {
 
 /** Anneau extérieur d'un POLYGON WKT en [lon, lat] ; null si moins de 4 points ou coordonnée illisible. */
 export function parseWktPolygon(text) {
-  const m = /POLYGON\s*\(\s*\(([^()]+)\)/i.exec(String(text ?? ''));
+  // MULTIPOLYGON : premier polygone (mineur du 12/10).
+  const m = /POLYGON\s*\(\s*\(?\s*\(([^()]+)\)/i.exec(String(text ?? ''));
   if (!m) return null;
   const ring = [];
   for (const pair of m[1].split(',')) {
@@ -114,8 +117,10 @@ export function parseEmsList(json, now) {
   const active = [];
   const recent = [];
   const abroad = [];
+  let undated = 0;
   for (const x of rows) {
-    if (!x || typeof x.code !== 'string' || utcIso(x.activationTime) === null) continue;
+    if (!x || typeof x.code !== 'string') continue;
+    if (utcIso(x.activationTime) === null) { undated += 1; continue; }
     const territory = frenchTerritoryOf(x);
     if (territory === 'TAAF') continue;
     if (territory === null) {
@@ -127,7 +132,7 @@ export function parseEmsList(json, now) {
     else if (now - Date.parse(a.activationTime) <= EMS_RECENT_MS) recent.push(a);
   }
   const countries = [...new Set(abroad.flatMap(countriesOf).map((c) => COUNTRY_FR[c] ?? c))];
-  return { active: active.sort(newestFirst), recent: recent.sort(newestFirst), elsewhere: { count: abroad.length, countries } };
+  return { active: active.sort(newestFirst), recent: recent.sort(newestFirst), elsewhere: { count: abroad.length, countries }, undated };
 }
 
 /** Détail d'une activation : déclencheur, population dans l'emprise, zones lisibles. */
@@ -178,6 +183,7 @@ export async function loadEms(now) {
       return { readAt, list: parseEmsList(json, now) };
     });
     const errors = now - Date.parse(v.readAt) <= FRESH_READ_MS ? [] : [EMS_STALE_SERVED_ERROR];
+    if (v.list.undated > 0) errors.push(`Copernicus EMS : ${v.list.undated} activation(s) sans date lisible écartée(s)`);
     // Détails en parallèle : plusieurs activations ouvertes à la fois ne doivent pas faire dépasser le délai du CDN (revue finale I3).
     const active = await Promise.all(v.list.active.map((a) => withDetail(a, errors)));
     errors.sort();

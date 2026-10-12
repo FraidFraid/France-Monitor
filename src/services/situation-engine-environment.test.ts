@@ -222,3 +222,17 @@ describe('EMS_ACTIVATION : revue finale', () => {
     expect(s?.summary).not.toContain('le le');
   });
 });
+
+describe('EMS_ACTIVATION : mineurs (12/10)', () => {
+  const a = (place: string, territory: string): EmsActivation => ({
+    code: 'EMSR780', category: 'tempete', name: `Storm in ${place}`, place, territory,
+    activationTime: '2026-10-11T11:50:00.000Z', eventTime: null, closed: false, gdacsId: null, products: 0,
+    url: 'https://mapping.emergency.copernicus.eu/activations/EMSR780', activator: null, population: null, zones: [], lon: null, lat: null,
+  });
+  it('lieu identique au territoire : omis ; lieu d’origine anglais : entre guillemets', () => {
+    const [same] = detectEmsActivations(baseRawData({ emsActive: [a('Mayotte', 'Mayotte')] }), NOW);
+    expect(same?.summary).toContain('(EMSR780)');
+    const [other] = detectEmsActivations(baseRawData({ emsActive: [a('New Aquitaine', 'France (Hexagone et Corse)')] }), NOW);
+    expect(other?.summary).toContain('(EMSR780, « New Aquitaine »)');
+  });
+});

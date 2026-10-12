@@ -43,8 +43,8 @@ export function blockLevel(data: FinancialStabilityResponse | null): VigilanceLe
   if (!data) return null;
   const levels: VigilanceLevel[] = [];
   for (const s of data.series) {
-    if ((s.id === 'cissFr' || s.id === 'cissEa') && s.value !== null && s.status !== 'unavailable') levels.push(bandOf(s.value, CISS_BANDS).level);
+    if ((s.id === 'cissFr' || s.id === 'cissEa') && Number.isFinite(s.value) && s.value !== null && s.status !== 'unavailable') levels.push(bandOf(s.value, CISS_BANDS).level);
   }
-  if (data.spread.value !== null && data.spread.status !== 'unavailable') levels.push(bandOf(data.spread.value, SPREAD_BANDS).level);
+  if (data.spread.value !== null && Number.isFinite(data.spread.value) && data.spread.status !== 'unavailable') levels.push(bandOf(data.spread.value, SPREAD_BANDS).level);
   return levels.length > 0 ? maxLevel(levels) : null;
 }

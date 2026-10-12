@@ -22,7 +22,7 @@ describe('buildCatastrophesView', () => {
     expect(v.head.figure).toMatchObject({ value: '1', level: 'rouge' });
     const t = text(body([a({}), a({ id: 'EQ-2', type: 'seisme', level: 'orange', frenchTerritory: null, countries: ['PAN'], name: 'Earthquake in Panama' })]));
     expect(t).toContain('Cyclone · Guadeloupe');
-    expect(t).toContain('Séisme · PAN');
+    expect(t).toContain('Séisme · Panama');
     expect(t).not.toContain('Earthquake in Panama');
   });
   it('temps calme : ligne explicite, chiffre 0 en vert ; jamais vide', () => {
@@ -162,5 +162,13 @@ describe('Copernicus EMS : revue finale', () => {
   it('GDACS en retard, EMS à jour avec une activation : niveau orange gardé', () => {
     const view = v(body([], { readAt: '2026-10-12T07:00:00.000Z' }), null, ems());
     expect(view.head.level).toBe('orange');
+  });
+});
+
+describe('mineurs (12/10)', () => {
+  it('bloc Monde : pays en français, jamais le code ISO3', () => {
+    const t = text(body([a({ id: 'EQ-9', type: 'seisme', level: 'orange', frenchTerritory: null, countries: ['PAN'], name: 'Earthquake in Panama' })]));
+    expect(t).toContain('Séisme · Panama');
+    expect(t).not.toContain('PAN');
   });
 });

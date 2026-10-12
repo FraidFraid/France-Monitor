@@ -10,6 +10,7 @@ import { clockOf } from '../layer-panel/environment-format.ts';
 import { ALERT_WORD, DISASTER_ABROAD_HEX, DISASTER_TYPE_LABEL, ENV_NEUTRAL_HEX } from '../layer-panel/environment-legend.ts';
 import { LYR_DISASTERS, LYR_DISASTER_LABEL, LYR_OUT_TELECOM_MAINT, SRC_DISASTERS } from './constants.ts';
 import { escapeHtml } from './format-utils.ts';
+import { countryNameFr } from '../../utils/iso3.ts';
 import { EMS_LAYER_IDS } from './environment-map-ems.ts';
 
 const RANK = { rouge: 3, orange: 2, vert: 1 } as const;
@@ -24,7 +25,7 @@ export function disasterHex(x: DisasterAlert, late: boolean): string {
 
 function body(x: DisasterAlert, late: boolean, now: number): string {
   const context = isEuropeanContext(x);
-  const where = !context && x.frenchTerritory !== null ? x.frenchTerritory : (x.countries.length > 1 ? `${x.countries.length} pays` : (x.countries[0] ?? 'n.d.'));
+  const where = !context && x.frenchTerritory !== null ? x.frenchTerritory : (x.countries.length > 1 ? `${x.countries.length} pays` : (x.countries[0] ? countryNameFr(x.countries[0]) : 'n.d.'));
   const rows: Array<[string, string]> = [
     ['Niveau', ALERT_WORD[x.level]],
     ['Période', x.current ? `en cours depuis ${clockOf(x.from, now)}` : `du ${clockOf(x.from, now)} au ${clockOf(x.to, now)}`],

@@ -2,6 +2,7 @@
 // financière (CISS France, CISS zone euro, écart OAT-Bund) au lieu des baisses de marché ; même plafond qu'avant ; nouvelles fixtures.
 import { describe, expect, it } from 'vitest';
 import type { EcbSeries, FinancialStabilityResponse, OatBundSpread } from '../types/index.ts';
+import { briefSignalCounts } from './france-intel-brief.ts';
 import { FINANCE_COMPONENT, buildFranceCountrySnapshot, buildFranceSignals, financeComponent, type FranceRawData } from './france-country-intel.ts';
 
 const NOW = Date.parse('2026-10-12T08:00:00Z');
@@ -65,5 +66,25 @@ describe('score (nouvelles fixtures)', () => {
 describe('revue finale', () => {
   it('signal financeCissEa', () => {
     expect(buildFranceSignals(raw({ financialStability: fs(0.05, 0.35, 0.4) }), NOW)).toMatchObject({ financeLevel: 'orange', financeCissEa: 0.35 });
+  });
+});
+
+describe('mineurs (12/10) : scores figés', () => {
+  const score = (r: FranceRawData): number => buildFranceCountrySnapshot(r, { now: NOW }).score;
+  it('jour calme : rouge seul 94, orange seul 95, jaune seul 95', () => {
+    expect(score(raw({ financialStability: fs(0.05, 0.015, 1.43) }))).toBe(94);
+    expect(score(raw({ financialStability: fs(0.05, 0.015, 1.0) }))).toBe(95);
+    expect(score(raw({ financialStability: fs(0.05, 0.015, 0.7) }))).toBe(95);
+  });
+  it('valeur non finie : ignorée, jamais d’exception', () => {
+    expect(() => buildFranceSignals(raw({ financialStability: fs(Number.NaN, 0.015, 0.4) }), NOW)).not.toThrow();
+    expect(buildFranceSignals(raw({ financialStability: fs(Number.NaN, 0.015, 0.4) }), NOW).financeLevel).toBe('vert');
+  });
+});
+
+describe('mineurs (12/10) : envoi au brief', () => {
+  it('le client envoie niveau, écart, CISS France et zone euro', () => {
+    expect(briefSignalCounts(buildFranceSignals(raw({ financialStability: fs(0.05, 0.35, 0.4) }), NOW)))
+      .toMatchObject({ financeLevel: 'orange', financeSpread: 0.4, financeCissFr: 0.05, financeCissEa: 0.35 });
   });
 });

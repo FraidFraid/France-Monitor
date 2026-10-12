@@ -11,6 +11,7 @@ import { kvRow } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
 import { emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, type LayerView } from './frame.ts';
 import { NBSP, frNumber } from './format.ts';
+import { countryNameFr } from '../../utils/iso3.ts';
 import { ENVIRONMENT_THEME, note, plural, readErrors, shortDate, stamp } from './environment-format.ts';
 import { ALERT_WORD, DISASTER_TYPE_LABEL, EMS_CATEGORY_LABEL } from './environment-legend.ts';
 
@@ -50,7 +51,7 @@ function row(x: DisasterAlert, colored: boolean, late: boolean, canFocus: boolea
 
 /** Alerte du territoire français au sens strict : hors contexte européen (chiffre, couleur, bloc 1). */
 const isFrench = (x: DisasterAlert): boolean => x.frenchTerritory !== null && !isEuropeanContext(x);
-const countriesWhere = (x: DisasterAlert): string => x.countries.length > 1 ? `${x.countries.length} pays` : (x.countries[0] ?? 'n.d.');
+const countriesWhere = (x: DisasterAlert): string => x.countries.length > 1 ? `${x.countries.length} pays` : (x.countries[0] ? countryNameFr(x.countries[0]) : 'n.d.');
 
 const LATE_SUFFIX = ' (relevé en retard)';
 

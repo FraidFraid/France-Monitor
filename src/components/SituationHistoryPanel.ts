@@ -45,6 +45,7 @@ const TYPE_ICON: Record<string, string> = {
   FUEL_SUPPLY_RISK:        fmIcon('fuel'),
   SEISMIC_EVENT:           fmIcon('activity'),
   NATURAL_HAZARD_ALERT:    fmIcon('globe'),
+  EMS_ACTIVATION:          fmIcon('globe'),
   AIR_POLLUTION_EPISODE:   fmIcon('cloud'),
 };
 

@@ -108,3 +108,17 @@ describe('revue finale : noms de communes de métropole', () => {
     expect(frenchTerritoryOf({ name: 'Storm in Saint-Pierre, France', countries: ['France'] })).toBe('Saint-Pierre-et-Miquelon');
   });
 });
+
+describe('mineurs (12/10)', () => {
+  it('MULTIPOLYGON : premier polygone tracé', () => {
+    expect(parseWktPolygon('MULTIPOLYGON (((0 0, 1 0, 1 1, 0 0)), ((5 5, 6 5, 6 6, 5 5)))')).toEqual([[0, 0], [1, 0], [1, 1], [0, 0]]);
+  });
+  it('TAAF en pays : écartées', () => {
+    expect(frenchTerritoryOf({ name: 'Wildfire in Kerguelen', countries: ['French Southern and Antarctic Lands'] })).toBe('TAAF');
+    expect(frenchTerritoryOf({ name: 'Wildfire in X', countries: ['French Southern Territories'] })).toBe('TAAF');
+  });
+  it('activation sans date lisible : comptée comme écartée, jamais en silence', () => {
+    const list = { results: [{ code: 'EMSR999', countries: ['France'], name: 'Flood in Lot, France', category: 'Flood', closed: false, activationTime: 'n/a' }] };
+    expect(parseEmsList(list, NOW)).toMatchObject({ active: [], undated: 1 });
+  });
+});
