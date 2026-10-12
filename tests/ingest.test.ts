@@ -127,6 +127,14 @@ describe('computeBackoffMs', () => {
 });
 
 describe('server-geocoder.js / feeds-snapshot.js', () => {
+  it('extractLocations : territoires d’outre-mer cités (12/10/2026), sans « Guadeloupéen » ni « une réunion »', () => {
+    assert.deepEqual(extractLocations('En Guadeloupe, deux gendarmes du GIGN ont été grièvement blessés'), ['Guadeloupe']);
+    assert.deepEqual(extractLocations('Grève générale à la Réunion'), ['La Réunion']);
+    assert.deepEqual(extractLocations('Mayotte : pénurie d’eau'), ['Mayotte']);
+    assert.ok(!extractLocations('Un Guadeloupéen arrêté à Paris').includes('Guadeloupe'));
+    assert.ok(!extractLocations('Réunion de crise à la préfecture').includes('La Réunion'));
+  });
+
   it('extractLocations : préposition "à Lyon"', () => {
     assert.ok(extractLocations('Incendie à Lyon : une usine évacuée').includes('Lyon'));
   });

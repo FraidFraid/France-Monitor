@@ -90,6 +90,18 @@ const STOP_WORDS = new Set([
 const PREPOSITION_PATTERN =
     /(?:à|de|en|sur|près de|dans(?:\s+le|\s+la|\s+les|\s+l[''])?\s+)([A-ZÀ-Ü][a-zà-ü]+(?:[\s-][A-ZÀ-Ü][a-zà-ü]+)*)/g;
 
+/**
+ * Territoires d'outre-mer → nom de leur région (REGIONS, src/config/geo.ts). Pas un mot plus long (« Guadeloupéen ») ; la Réunion
+ * seulement précédée de « la » et avec sa majuscule (« une réunion de crise » n'est pas l'île).
+ */
+const OVERSEAS_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
+    [/(?<![\p{L}-])Guadeloupe(?![\p{L}-])/u, 'Guadeloupe'],
+    [/(?<![\p{L}-])Martinique(?![\p{L}-])/u, 'Martinique'],
+    [/(?<![\p{L}-])Guyane(?![\p{L}-])/u, 'Guyane'],
+    [/(?<![\p{L}-])[Ll]a Réunion(?![\p{L}-])/u, 'La Réunion'],
+    [/(?<![\p{L}-])Mayotte(?![\p{L}-])/u, 'Mayotte'],
+];
+
 /** "Lyon : ...", "La Rochelle –" at start of title — only valid if word is a known city */
 const TITLE_START_PATTERN =
     /^([A-ZÀ-Ü][a-zà-ü]+(?:[\s-][A-ZÀ-Ü][a-zà-ü]+)*)\s*[.–:-]/gm;
@@ -125,6 +137,12 @@ function isKnownCity(name: string): boolean {
 export function extractLocations(title: string): string[] {
     const locations: string[] = [];
     let match;
+
+    // Pass 0 — territoires d'outre-mer cités (« En Guadeloupe, … », « à la Réunion ») : le nom de leur région, que geocode()
+    // place (12/10/2026 : faute de lieu reconnu, l'article prenait le centre de la région du journal, Guadeloupe dans le Tarn).
+    for (const [pattern, name] of OVERSEAS_PATTERNS) {
+        if (pattern.test(title)) locations.push(name);
+    }
 
     // Pass 1 — prepositions
     PREPOSITION_PATTERN.lastIndex = 0;
