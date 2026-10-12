@@ -21,7 +21,7 @@ import {
 import { fuelTensionLevel, levelColorVar, levelLabel, officialLevel, type VigilanceLevel } from '../services/vigilance.ts';
 import { renderVigilancePill } from './shared/vigilancePill.ts';
 import { GNSS_SITUATION_CELLS, MILITARY_FIGURE_LABEL, gnssPartialText } from '../services/sovereignty-levels.ts';
-import { SPREAD_BANDS, bandOf } from '../services/financial-stability-levels.ts';
+import { CISS_BANDS, SPREAD_BANDS, bandOf } from '../services/financial-stability-levels.ts';
 import { NBSP, frNumber } from './layer-panel/format.ts';
 
 type Lang = 'fr' | 'en';
@@ -245,11 +245,14 @@ function financeTile(s: FranceCountrySignals, lang: Lang): DomainTile {
   if (s.financeLevel === null) {
     return { label: 'Finance', value: null, valueText: 'n.d.', meta: t(lang, 'stabilité financière', 'financial stability'), level: null };
   }
-  const spreadLevel = s.financeSpread !== null ? bandOf(s.financeSpread, SPREAD_BANDS).level : null;
+  // Légende : l'indicateur qui fixe le niveau (revue finale) : écart, puis CISS France, puis CISS zone euro.
+  const level = s.financeLevel;
   const num = (v: number, d: number): string => (lang === 'en' ? v.toFixed(d) : frNumber(v, d));
-  const meta = s.financeSpread !== null && spreadLevel === s.financeLevel
+  const sets = (v: number | null | undefined, bands: typeof SPREAD_BANDS): v is number => typeof v === 'number' && bandOf(v, bands).level === level;
+  const meta = sets(s.financeSpread, SPREAD_BANDS)
     ? t(lang, `écart OAT-Bund ${num(s.financeSpread, 2)}${NBSP}pt`, `OAT-Bund spread ${num(s.financeSpread, 2)}${NBSP}pt`)
-    : s.financeCissFr !== null ? t(lang, `CISS France ${num(s.financeCissFr, 3)}`, `France CISS ${num(s.financeCissFr, 3)}`)
+    : sets(s.financeCissFr, CISS_BANDS) ? t(lang, `CISS France ${num(s.financeCissFr, 3)}`, `France CISS ${num(s.financeCissFr, 3)}`)
+    : sets(s.financeCissEa, CISS_BANDS) ? t(lang, `CISS zone euro ${num(s.financeCissEa, 3)}`, `euro-area CISS ${num(s.financeCissEa, 3)}`)
     : t(lang, 'stabilité financière', 'financial stability');
   return { label: 'Finance', value: null, valueText: levelLabel(s.financeLevel, lang), meta, level: PILL_DOMAIN_LEVEL[s.financeLevel] };
 }

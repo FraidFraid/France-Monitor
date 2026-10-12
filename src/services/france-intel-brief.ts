@@ -80,6 +80,7 @@ export function briefSignalCounts(s: FranceCountrySignals): Record<string, numbe
     financeLevel:          s.financeLevel,
     financeSpread:         s.financeSpread,
     financeCissFr:         s.financeCissFr,
+    financeCissEa:         s.financeCissEa ?? null,
     militaryUnavailable:   s.militaryUnavailable === true,
     cablesUnavailable:     s.cablesUnavailable === true,
     gnssUnavailable:       s.gnssUnavailable === true,

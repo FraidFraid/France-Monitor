@@ -243,7 +243,17 @@ describe('finance (spec 2026-10-12 pilier finance)', () => {
     expect(promptFor({ marketStress: 3 }, 'en')).toContain('finance not assessed');
   });
   it('valeurs illisibles : null', () => {
-    expect(parseFinance({ financeLevel: 'violet', financeSpread: 'x', financeCissFr: Number.NaN })).toEqual({ financeLevel: null, financeSpread: null, financeCissFr: null });
+    expect(parseFinance({ financeLevel: 'violet', financeSpread: 'x', financeCissFr: Number.NaN })).toEqual({ financeLevel: null, financeSpread: null, financeCissFr: null, financeCissEa: null });
     expect(promptFor({ financeLevel: 'violet', financeSpread: 'x' }, 'fr')).toContain('finance non évaluée');
+  });
+});
+
+describe('finance : revue finale', () => {
+  it('CISS zone euro transmis au brief', () => {
+    const base = { criticalNews: 0, highNews: 0, weatherAlerts: 0, floodAlerts: 0, fireDetections: 0, railDisruptions: 0, roadIncidents: 0, telecomOutages: 0, cyberAlerts: 0, militaryFlights: 0, maritimeTrafficFrance: 0, defenseAlerts: 0, jammingSignals: 0 };
+    const sc = { financeLevel: 'orange', financeSpread: 0.4, financeCissFr: 0.05, financeCissEa: 0.35 };
+    const fr = buildPrompt(80, { continuity: 10, defense: 5, security: 10, signal: 10 }, { social: 0, security: 0, infra: 0 }, 0, 0, [], { ...base, ...parseFinance(sc) }, null, [], [], 'fr');
+    expect(fr).toContain('CISS zone euro 0,350');
+    expect(parseFinance({ financeCissEa: 'x' }).financeCissEa).toBeNull();
   });
 });

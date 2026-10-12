@@ -1134,6 +1134,8 @@ export interface FranceCountrySignals {
   financeSpread: number | null;
   /** CISS France (tuile, brief) ; null sans relevé. */
   financeCissFr: number | null;
+  /** CISS zone euro (tuile, brief) : il peut fixer le niveau seul ; null sans relevé. */
+  financeCissEa?: number | null;
 }
 
 export interface FranceCountryAxes {

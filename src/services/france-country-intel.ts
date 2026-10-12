@@ -491,14 +491,16 @@ function buildEnergySnapshot(raw: FranceRawData, nowMs: number = Date.now()): Fr
 
 // ─── Exported pipeline functions ──────────────────────────────────────────────
 
-function financeSignals(fs: FinancialStabilityResponse | null): Pick<FranceCountrySignals, 'financeLevel' | 'financeSpread' | 'financeCissFr'> {
+function financeSignals(fs: FinancialStabilityResponse | null): Pick<FranceCountrySignals, 'financeLevel' | 'financeSpread' | 'financeCissFr' | 'financeCissEa'> {
   const ciss = fs?.series.find((s) => s.id === 'cissFr');
+  const cissEa = fs?.series.find((s) => s.id === 'cissEa');
   const usable = (v: number | null | undefined, status: string | undefined): number | null =>
     typeof v === 'number' && Number.isFinite(v) && status !== 'unavailable' ? v : null;
   return {
     financeLevel: blockLevel(fs),
     financeSpread: usable(fs?.spread.value, fs?.spread.status),
     financeCissFr: usable(ciss?.value, ciss?.status),
+    financeCissEa: usable(cissEa?.value, cissEa?.status),
   };
 }
 

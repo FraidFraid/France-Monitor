@@ -348,3 +348,11 @@ describe('tuile Finance (spec 2026-10-12 pilier finance)', () => {
     expect(fin({ financeLevel: null, financeSpread: null, financeCissFr: null })).toMatchObject({ valueText: 'n.d.', level: null, meta: 'stabilité financière' });
   });
 });
+
+describe('tuile Finance : revue finale', () => {
+  const fin = (over: Partial<FranceCountrySignals>) => domainTiles(signals(over), 'fr').find((t) => t.label === 'Finance');
+  it('CISS zone euro qui fixe le niveau : nommé, jamais le CISS France vert', () => {
+    expect(fin({ financeLevel: 'orange', financeSpread: 0.4, financeCissFr: 0.05, financeCissEa: 0.35 })?.meta).toBe('CISS zone euro 0,350');
+    expect(fin({ financeLevel: 'orange', financeSpread: null, financeCissFr: null, financeCissEa: 0.35 })?.meta).toBe('CISS zone euro 0,350');
+  });
+});

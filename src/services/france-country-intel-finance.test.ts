@@ -61,3 +61,9 @@ describe('score (nouvelles fixtures)', () => {
     expect(rows).not.toContain('Stress marchés');
   });
 });
+
+describe('revue finale', () => {
+  it('signal financeCissEa', () => {
+    expect(buildFranceSignals(raw({ financialStability: fs(0.05, 0.35, 0.4) }), NOW)).toMatchObject({ financeLevel: 'orange', financeCissEa: 0.35 });
+  });
+});

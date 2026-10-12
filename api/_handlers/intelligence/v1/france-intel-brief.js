@@ -409,6 +409,7 @@ export function parseFinance(signalCounts) {
     financeLevel: FINANCE_LEVELS.includes(sc.financeLevel) ? sc.financeLevel : null,
     financeSpread: typeof sc.financeSpread === 'number' && Number.isFinite(sc.financeSpread) ? sc.financeSpread : null,
     financeCissFr: typeof sc.financeCissFr === 'number' && Number.isFinite(sc.financeCissFr) ? sc.financeCissFr : null,
+    financeCissEa: typeof sc.financeCissEa === 'number' && Number.isFinite(sc.financeCissEa) ? sc.financeCissEa : null,
   };
 }
 
@@ -421,6 +422,7 @@ function financeText(c, lang) {
   const parts = [];
   if (typeof c.financeSpread === 'number') parts.push(lang === 'en' ? `OAT-Bund spread ${c.financeSpread.toFixed(2)} pt` : `écart OAT-Bund ${fr(c.financeSpread, 2)}${nb}pt`);
   if (typeof c.financeCissFr === 'number') parts.push(lang === 'en' ? `France CISS ${c.financeCissFr.toFixed(3)}` : `CISS France ${fr(c.financeCissFr, 3)}`);
+  if (typeof c.financeCissEa === 'number') parts.push(lang === 'en' ? `euro-area CISS ${c.financeCissEa.toFixed(3)}` : `CISS zone euro ${fr(c.financeCissEa, 3)}`);
   const detail = parts.length > 0 ? ` (${parts.join(', ')})` : '';
   return lang === 'en' ? `finance: ${FINANCE_LEVEL_EN[level]} level${detail}` : `finance : niveau ${level}${detail}`;
 }
