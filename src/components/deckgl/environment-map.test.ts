@@ -178,10 +178,10 @@ describe('sources, couches, survol', () => {
     expect(ENV_LAYERS.map((l) => l.id)).toEqual([
       'drought-fill', 'drought-line', 'air-quality-fill', 'air-quality-line',
       LYR_FOREST_DANGER_FILL, LYR_FOREST_DANGER_LINE, LYR_FIRES_ABROAD, LYR_FLOOD_STATIONS, LYR_WEATHER_ICONS, LYR_RADAR_PICK,
-      'quakes', 'quakes-label', 'tide-gauges', 'disasters', 'disasters-label',
+      'quakes', 'quakes-label', 'tide-gauges', 'ems-zones-fill', 'ems-zones-line', 'ems-zones-label', 'disasters', 'disasters-label',
     ]);
     expect(ENV_LAYERS.every((l) => (l.layout as { visibility?: string } | undefined)?.visibility === 'none')).toBe(true);
-    expect(ENV_SOURCE_IDS).toHaveLength(9);
+    expect(ENV_SOURCE_IDS).toHaveLength(10);
     expect(ENV_LAYER_BEFORE[LYR_FOREST_DANGER_FILL]).toBe(LYR_FIRES_GLOW);
     // Un pictogramme de vigilance ne cache jamais un point de feu : il est inséré sous les feux de France.
     expect(ENV_LAYER_BEFORE[LYR_WEATHER_ICONS]).toBe(LYR_FIRES_GLOW);
