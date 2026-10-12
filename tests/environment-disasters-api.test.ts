@@ -7,8 +7,9 @@ import { __resetSwrCacheForTests } from '../api/_utils/swr-cache.js';
 import {
   DISASTER_WINDOW_MS, FRENCH_TERRITORIES, GDACS_SEARCH, gdacsTime, gdacsUrl, loadDisasters, mergeAlerts, parseGdacs,
 } from '../api/_lib/gdacs.js';
-import type { DisasterAlert } from '../src/types/index.ts';
-import { respond, stubFetch } from './helpers/traffic-fixtures.ts';
+import type { DisasterAlert, DisastersResponse } from '../src/types/index.ts';
+import handler, { CACHE_CONTROL } from '../api/_handlers/environment/disasters.js';
+import { callHandler, respond, stubFetch } from './helpers/traffic-fixtures.ts';
 
 const env = (name: string): string => readFileSync(new URL(`./fixtures/environment/${name}`, import.meta.url), 'utf8');
 const MONDE = env('gdacs-monde-orange-rouge-extrait.json');
@@ -153,5 +154,34 @@ describe('loadDisasters', () => {
     expect(body.readAt).toBeNull();
     expect(body.alerts).toEqual([]);
     expect(body.errors[0]).toMatch(/^GDACS : /);
+  });
+});
+
+describe('/api/environment/disasters', () => {
+  const ok = () => stubFetch((url) => (countryOf(url) === null ? respond(MONDE) : countryOf(url) === 'FRA' ? respond(FRANCE) : respond('', 204)));
+  it('200, cache 10 min ; alertes et relevé', async () => {
+    ok();
+    const { status, body, cache } = await callHandler<DisastersResponse>(handler);
+    expect([status, cache]).toEqual([200, CACHE_CONTROL]);
+    expect(CACHE_CONTROL).toBe('s-maxage=600, stale-while-revalidate=1200');
+    expect(body.alerts).toHaveLength(12);
+    expect(body.errors).toEqual([]);
+  });
+  it('tout en panne sans relevé : 502 non mis en cache, panne nommée', async () => {
+    stubFetch(() => respond('Bad Gateway', 502));
+    const { status, body, cache } = await callHandler<DisastersResponse>(handler);
+    expect([status, cache, body.readAt]).toEqual([502, 'no-store', null]);
+    expect(body.errors[0]).toMatch(/^GDACS : /);
+  });
+  it('tout en panne avec un relevé de plus de 10 min en cache : relevé servi avec sa date, panne nommée (jamais « aucune alerte » muet)', async () => {
+    ok();
+    await callHandler<DisastersResponse>(handler);
+    vi.setSystemTime(NOW + 11 * 60_000);
+    stubFetch(() => respond('Bad Gateway', 502));
+    const { status, body } = await callHandler<DisastersResponse>(handler);
+    expect(status).toBe(200);
+    expect(body.readAt).toBe('2026-10-12T08:00:00.000Z');
+    expect(body.errors[0]).toBe('GDACS : source indisponible, relevé précédent servi');
+    expect(body.alerts.length).toBeGreaterThan(0);
   });
 });
