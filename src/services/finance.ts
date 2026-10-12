@@ -4,7 +4,7 @@ import { Watchdog } from './watchdog.ts';
 Watchdog.register('finance', {
   label: 'Marchés Financiers',
   staleAfterMs: 15 * 60_000,
-  detail: 'Marketstack : CAC 40, indices, valeurs défense / énergie',
+  detail: 'TradingView : indices et valeurs suivies (score et poste)',
   freshness: 'TEMPS_REEL',
 });
 
@@ -28,7 +28,6 @@ const SYMBOL_NAMES: Record<string, string> = {
     'EURJPY=X': 'EUR / JPY'
 };
 
-// Fonction utilitaire pour générer une fausse courbe (random walk) qui se termine par `currentPrice` et a varié de `changePercent`
 const SYMBOL_CATEGORIES: Record<string, 'indices' | 'defense' | 'services' | 'devises'> = {
     'CAC.INDX': 'indices',
     'DAX.INDX': 'indices',
@@ -48,64 +47,6 @@ const SYMBOL_CATEGORIES: Record<string, 'indices' | 'defense' | 'services' | 'de
     'EURJPY=X': 'devises'
 };
 
-function createSeededRandom(seedText: string): () => number {
-    let seed = 2166136261;
-    for (let i = 0; i < seedText.length; i += 1) {
-        seed ^= seedText.charCodeAt(i);
-        seed = Math.imul(seed, 16777619);
-    }
-
-    return () => {
-        seed += 0x6D2B79F5;
-        let t = seed;
-        t = Math.imul(t ^ (t >>> 15), t | 1);
-        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-}
-
-function buildSyntheticHistory(
-    symbol: string,
-    currentPrice: number,
-    referencePrice: number,
-    trend: MarketData['trend'],
-): number[] {
-    if (!(currentPrice > 0) || !(referencePrice > 0)) {
-        return [];
-    }
-
-    const points = 36;
-    const start = referencePrice;
-    const end = currentPrice;
-    const delta = end - start;
-    const rand = createSeededRandom(`${symbol}:${start.toFixed(4)}:${end.toFixed(4)}:${trend}`);
-    const volatility = Math.max(Math.abs(delta) * 0.9, currentPrice * (trend === 'flat' ? 0.0025 : 0.0065));
-
-    const series: number[] = [start];
-    let runningNoise = 0;
-
-    for (let index = 1; index < points - 1; index += 1) {
-        const progress = index / (points - 1);
-        const baseline = start + delta * progress;
-
-        // Brownian bridge style: bruit irrégulier au milieu, ancré aux extrémités.
-        const taper = Math.sin(progress * Math.PI);
-        const driftBias =
-            trend === 'up' ? 0.18 :
-            trend === 'down' ? -0.18 :
-            0;
-        const shock = ((rand() - 0.5) * 2 + driftBias * (1 - progress)) * volatility * 0.22;
-        runningNoise = (runningNoise * 0.55) + shock;
-
-        const microJitter = ((rand() - 0.5) * 2) * volatility * 0.04;
-        const value = baseline + (runningNoise * taper) + microJitter;
-        series.push(Math.max(0, value));
-    }
-
-    series.push(end);
-    return series;
-}
-
 /**
  * Fetch market data from proxy (or vercel edge fn).
  * Returns array of parsed MarketData.
@@ -116,7 +57,7 @@ export async function fetchMarketData(): Promise<MarketData[]> {
     try {
         const resp = await fetch('/api/finance/market');
         if (!resp.ok) {
-            const reason = resp.status === 429 ? 'quota Marketstack dépassé' : `HTTP ${resp.status}`;
+            const reason = resp.status === 429 ? 'limite TradingView atteinte' : `HTTP ${resp.status}`;
             console.warn('[Finance] API returned', resp.status);
             Watchdog.report('finance', { type: 'failure', error: reason });
             return [];
@@ -162,7 +103,7 @@ export async function fetchMarketData(): Promise<MarketData[]> {
                 changePercent: pctChange,
                 trend,
                 lastUpdated: new Date(item.date || Date.now()),
-                history: buildSyntheticHistory(sym, last, open, trend),
+                history: [], // aucune courbe inventée (spec 2026-10-12) : TradingView ne fournit que le dernier cours
                 category: SYMBOL_CATEGORIES[sym] || 'indices'
             });
         }

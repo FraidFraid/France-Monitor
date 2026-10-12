@@ -18,7 +18,7 @@ import type { TransportPanel } from './components/TransportPanel.ts';
 import type { FiresPanel } from './components/FiresPanel.ts';
 import type { TrafficPanel } from './components/TrafficPanel.ts';
 import type { AirTrafficPanel } from './components/AirTrafficPanel.ts';
-import { MarketStrip } from './components/MarketStrip.ts';
+import { FinancialStabilityStrip } from './components/FinancialStabilityStrip.ts';
 import { CommodityStrip } from './components/CommodityStrip.ts';
 import { fetchCommodityData } from './services/commodities.ts';
 import { ISNRPanel } from './components/ISNRPanel.ts';
@@ -194,6 +194,9 @@ import {
 } from './components/layer-panel/traffic-legend.ts';
 import { fetchAirTrafficSnapshot } from './services/air-traffic.ts';
 import { fetchMarketData } from './services/finance.ts';
+import {
+  BCE_SOURCE_NAME, SPREAD_SOURCE_NAME, bceStatus, fetchFinancialStability, mergeFinancialStability, spreadStatus, type FinancialStabilitySlot,
+} from './services/financial-stability.ts';
 // Pannes réseau (spec 2026-10-08 panneaux pannes § 4) : Télécoms lu au démarrage et relevé sans arrêt (score) ; Électricité, Internet et
 // Cloud couche active ou panneau ouvert ; panneaux, carte, légendes et panneau des sources datés par leur donnée.
 import {
@@ -1387,7 +1390,9 @@ export class App {
   private forestDangerFill = false;
   private trafficPanel: TrafficPanel | null = null;
   private airTrafficPanel: AirTrafficPanel | null = null;
-  private marketStrip: MarketStrip | null = null;
+  private financialStrip: FinancialStabilityStrip | null = null;
+  /** Bloc « Stabilité financière » (spec 2026-10-12) : BCE + écart OAT-Bund, dernier relevé gardé en cas de panne. */
+  private currentFinancialStability: FinancialStabilitySlot | null = null;
   private commodityStrip: CommodityStrip | null = null;
   private _intervalCommodities: ReturnType<typeof setInterval> | null = null;
   private isnrPanel: ISNRPanel | null = null;
@@ -2825,7 +2830,7 @@ export class App {
 
     const underMapGrid = document.getElementById('under-map-grid')!;
 
-    // Moitié gauche : Flux boursier + Matières premières fusionnés en UNE
+    // Moitié gauche : Stabilité financière (spec 2026-10-12) + Matières premières fusionnés en UNE
     // seule bande (audit UI 2026-09 §5.3 point 7 — auparavant 2 cartes
     // empilées, chacune avec sa propre bordure/fond/ombre). Chaque composant
     // garde son mount() intact ; .under-map-market-band neutralise juste la
@@ -2837,8 +2842,8 @@ export class App {
     const marketStripContainer = document.createElement('div');
     marketStripContainer.className = 'under-map-market-band__col';
     marketBand.appendChild(marketStripContainer);
-    this.marketStrip = new MarketStrip(marketStripContainer);
-    this.marketStrip.mount();
+    this.financialStrip = new FinancialStabilityStrip(marketStripContainer);
+    this.financialStrip.mount();
 
     const commodityStripContainer = document.createElement('div');
     commodityStripContainer.className = 'under-map-market-band__col';
@@ -5958,8 +5963,9 @@ export class App {
       try {
         const data = await fetchMarketData();
         this.currentMarketData = data;
-        this.marketStrip?.update(data);
+        this.renderFinancialStrip();
         this.repaintPoste(); // v2 : mouvements exceptionnels des indices dans la liste (m4)
+        void this.loadFinancialStability().catch((err) => console.error('[Finance] Stabilité financière indisponible', err));
       } catch (err) {
         console.error('[Finance] Polling failed', err);
       }
@@ -5973,6 +5979,25 @@ export class App {
       if (document.hidden) return; // skip tick while tab is hidden
       void this.loadNuclear();
     }, POLL_NUCLEAR_MS);
+  }
+
+  /** Bloc « Stabilité financière » (spec 2026-10-12) : séries BCE et écart OAT-Bund ; deux lignes au panneau des sources. */
+  private async loadFinancialStability(): Promise<void> {
+    const incoming = await fetchFinancialStability(this.currentFinancialStability);
+    this.currentFinancialStability = mergeFinancialStability(this.currentFinancialStability, incoming);
+    this.statusPanel?.updateSource(BCE_SOURCE_NAME, bceStatus(this.currentFinancialStability));
+    this.statusPanel?.updateSource(SPREAD_SOURCE_NAME, spreadStatus(this.currentFinancialStability));
+    this.renderFinancialStrip();
+  }
+
+  /** Rendu du bloc : le CAC 40 en repère vient du relevé TradingView déjà fait pour le score. */
+  private renderFinancialStrip(): void {
+    const slot = this.currentFinancialStability;
+    this.financialStrip?.update({
+      data: slot?.data ?? null,
+      error: slot?.error ?? null,
+      cac: this.currentMarketData.find((m) => m.symbol === 'CAC.INDX') ?? null,
+    });
   }
 
   private startOilPolling(): void {
