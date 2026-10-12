@@ -8268,9 +8268,18 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 .commodity-strip__list {
   grid-auto-flow: row;
   grid-auto-columns: auto;
-  grid-template-columns: repeat(auto-fill, minmax(118px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
   overflow-x: visible;
 }
+/* Cartes compactes : trois par rangée dans la demi-bande (une ligne par section, hauteur proche du bloc voisin). */
+.commodity-strip__list .market-strip__item { padding: 8px 9px; border-radius: 8px; }
+.commodity-strip__list .market-strip__topline { gap: 4px; margin-bottom: 6px; }
+.commodity-strip__list .market-strip__name { font-size: 11px; }
+.commodity-strip__list .market-strip__symbol { font-size: 9px; }
+.commodity-strip__list .market-strip__price { font-size: 16px; }
+.commodity-strip__list .market-strip__delta { font-size: 11px; margin-top: 2px; }
+.commodity-strip__list .market-strip__sparkline { height: 24px; margin-top: 6px; }
 .commodity-strip__list .market-strip__topline { flex-wrap: wrap; row-gap: 2px; }
 .commodity-strip__list .market-strip__name { overflow: hidden; text-overflow: ellipsis; }
 .market-strip__price, .market-strip__delta { white-space: nowrap; font-variant-numeric: tabular-nums; }
