@@ -5843,6 +5843,7 @@ button.header-quality-link {
   .air-traffic-panel-modal,
   .transport-panel-modal,
   .maritime-panel-modal,
+  .pressure-panel-modal,
   .fm-floating-panel {
     position: fixed !important;
     top: auto !important;
@@ -5892,6 +5893,7 @@ button.header-quality-link {
   .air-traffic-panel-modal::before,
   .transport-panel-modal::before,
   .maritime-panel-modal::before,
+  .pressure-panel-modal::before,
   .fm-floating-panel::before {
     content: '';
     flex-shrink: 0;
@@ -7874,6 +7876,7 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
   #app.ui-v2 .air-traffic-panel-modal,
   #app.ui-v2 .transport-panel-modal,
   #app.ui-v2 .maritime-panel-modal,
+  #app.ui-v2 .pressure-panel-modal,
   #app.ui-v2 .fm-floating-panel,
   body:has(#app.ui-v2) > .fm-floating-panel {
     position: fixed !important;
