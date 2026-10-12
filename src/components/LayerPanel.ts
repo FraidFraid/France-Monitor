@@ -7,7 +7,7 @@ import type { MapLayers } from '../types/index.ts';
 import { AIS_RELAY_URL } from '../services/ais-connection.ts';
 import { isUiV2 } from '../services/ui-mode.ts';
 import { fmIcon } from './shared/icons.ts';
-import { ALL_PRESETABLE_LAYER_KEYS, LAYER_PRESETS, layersForPreset, type LayerPresetId } from '../config/layer-presets.ts';
+import { ALL_PRESETABLE_LAYER_KEYS, LAYER_PRESETS, themeLayers, type LayerPresetId } from '../config/layer-presets.ts';
 
 interface LayerDef {
   key: keyof MapLayers;
@@ -116,9 +116,12 @@ export class LayerPanel {
 
   /** Vue dont l'état exact (couches enfant) correspond à `this.layers`, ou `null` si aucune ne correspond. */
   private getMatchingPresetId(): LayerPresetId | null {
+    // v2 : « Événements en cours » fait partie des vues.
+    const uiV2 = isUiV2(window.location.search);
+    const keys: ReadonlyArray<keyof MapLayers> = uiV2 ? [...ALL_PRESETABLE_LAYER_KEYS, 'events'] : ALL_PRESETABLE_LAYER_KEYS;
     for (const preset of LAYER_PRESETS) {
-      const expected = layersForPreset(preset.id);
-      const matches = ALL_PRESETABLE_LAYER_KEYS.every((key) => !!this.layers[key] === !!expected[key]);
+      const expected = themeLayers(uiV2, preset.id);
+      const matches = keys.every((key) => !!this.layers[key] === !!expected[key]);
       if (matches) return preset.id;
     }
     return null;

@@ -307,7 +307,7 @@ describe('buildWorkQueue — états (spec §7.4)', () => {
       events: eventsState({ events: [event({ id: 1, severity: 'low', category: 'health' }), event({ id: 2, severity: 'info', category: 'finance' })] }),
       markets: [market()],
     }));
-    expect(q.greenTracked).toEqual({ general: 4, energy: 1, security: 0, health: 1, environment: 0 });
+    expect(q.greenTracked).toEqual({ general: 4, energy: 1, security: 0, health: 1, environment: 0, transport: 0 });
   });
 
   it('ligne de base à enregistrer : niveaux des éléments, sans les événements', () => {
@@ -363,7 +363,7 @@ describe('viewWorkQueue (spec §7.2, §7.3)', () => {
 
 describe('drivingThemes (spec §5.2)', () => {
   const levels = (over: Partial<Record<SpecificThemeId, VigilanceLevel>>): Record<SpecificThemeId, VigilanceLevel> => ({
-    energy: 'vert', security: 'vert', health: 'vert', environment: 'vert', ...over,
+    energy: 'vert', security: 'vert', health: 'vert', environment: 'vert', transport: 'vert', ...over,
   });
 
   it('les thèmes au niveau national, deux au plus', () => {

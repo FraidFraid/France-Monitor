@@ -5,6 +5,7 @@ import {
   ALL_PRESETABLE_LAYER_KEYS,
   DEFAULT_PRESET_ID,
   LAYER_PRESETS,
+  THEME_LAYERS,
   hasPersistedLayers,
   layersForPreset,
   migrateStoredLayers,
@@ -23,9 +24,8 @@ const GROUP_KEYS = new Set([
 ]);
 
 describe('layer-presets', () => {
-  it('expose exactement 5 vues nommées', () => {
-    const ids = LAYER_PRESETS.map((p) => p.id).sort();
-    assert.deepEqual(ids, ['energy', 'environment', 'general', 'health', 'security'].sort());
+  it('expose exactement 6 vues nommées, dans l’ordre de la barre des thèmes', () => {
+    assert.deepEqual(LAYER_PRESETS.map((p) => p.id), ['general', 'energy', 'security', 'health', 'environment', 'transport']);
   });
 
   it("n'inclut jamais une clé de groupe dans les couches d'une vue", () => {
@@ -41,62 +41,41 @@ describe('layer-presets', () => {
     assert.ok(LAYER_PRESETS.some((p) => p.id === DEFAULT_PRESET_ID));
   });
 
-  it('layersForPreset("general") active une couche phare par thème', () => {
-    const result = layersForPreset('general');
-    for (const key of ['news', 'powerGrid', 'military', 'health', 'environmental', 'floods'] as const) {
-      assert.equal(result[key], true, `${key} devrait être actif`);
-    }
-    assert.equal(result.cyber, false);
-    assert.equal(result.fires, false);
-    assert.equal(result.nuclearFleet, false);
-  });
-
-  it('layersForPreset("energy") active tout le thème énergie (DROM et charge métropolitaine compris)', () => {
-    const result = layersForPreset('energy');
-    for (const key of ['dromEnergy', 'powerGrid', 'nuclearFleet', 'gasNetwork', 'hydroBackbone', 'oilNetwork', 'windMonitor', 'metroLoad', 'outagesElec'] as const) {
-      assert.equal(result[key], true, `${key} devrait être actif`);
-    }
-    assert.equal(result.news, false);
-    assert.equal(result.military, false);
-  });
-
-  it('layersForPreset("security") active tout le thème sécurité & défense sans toucher santé', () => {
-    const result = layersForPreset('security');
-    for (const key of ['news', 'stability', 'military', 'cyber', 'subseaCables', 'outagesTelecom', 'outagesInternet', 'outagesCloud'] as const) {
-      assert.equal(result[key], true, `${key} devrait être actif`);
-    }
-    assert.equal(result.health, false);
-    assert.equal(result.hospitals, false);
-  });
-
-  it('vue Sécurité : description sur les libellés de la souveraineté (Connectivité, plus « câbles sous-marins »)', () => {
-    const security = LAYER_PRESETS.find((p) => p.id === 'security');
-    assert.equal(
-      security?.description,
-      'Tout le thème sécurité & défense : actualités, indice de stabilité, défense, cyber, connectivité et pannes télécom, Internet et cloud.',
-    );
-  });
-
-  it('layersForPreset("health") active tout le thème santé', () => {
-    const result = layersForPreset('health');
-    for (const key of ['health', 'healthOscour', 'healthApl', 'hospitals'] as const) {
-      assert.equal(result[key], true, `${key} devrait être actif`);
-    }
-    assert.equal(result.powerGrid, false);
-  });
-
-  it('layersForPreset("environment") active tout le thème environnement & transports', () => {
-    const result = layersForPreset('environment');
-    for (const key of ['environmental', 'floods', 'weatherRadar', 'fires', 'drought', 'airQuality', 'earthquakes', 'trafficRoad', 'trafficMaritime', 'trafficAir', 'trafficRail'] as const) {
-      assert.equal(result[key], true, `${key} devrait être actif`);
-    }
-    assert.equal(result.powerGrid, false);
-    assert.equal('dayNight' in result, false); // couche Jour / Nuit retirée (spec 2026-10-04 § 2.5)
-  });
-
-  it('les quatre thèmes sont complets : chaque couche appartient à exactement un thème', () => {
-    const themed = LAYER_PRESETS.filter((p) => p.id !== 'general').flatMap((p) => p.layers);
+  it('chaque couche appartient à exactement un thème', () => {
+    const themed = Object.values(THEME_LAYERS).flat();
     assert.deepEqual([...themed].sort(), [...ALL_PRESETABLE_LAYER_KEYS].sort());
+  });
+
+  it('une vue thématique ne coche que des couches de son thème, 3 à 5 au plus (noyau essentiel)', () => {
+    for (const preset of LAYER_PRESETS) {
+      if (preset.id === 'general') continue;
+      const theme = new Set(THEME_LAYERS[preset.id]);
+      for (const key of preset.layers) assert.ok(theme.has(key), `${preset.id} : ${key} hors du thème`);
+      assert.ok(preset.layers.length >= 3 && preset.layers.length <= 5, `${preset.id} : ${preset.layers.length} couches`);
+    }
+  });
+
+  it('« Vue générale » : seulement des couches vides quand tout va bien, jamais une infrastructure toujours affichée', () => {
+    const general = LAYER_PRESETS.find((p) => p.id === 'general');
+    assert.deepEqual(general?.layers, ['environmental', 'floods', 'fires', 'outagesInternet']);
+    assert.equal(general?.events, true);
+    for (const key of ['news', 'stability', 'powerGrid', 'nuclearFleet', 'gasNetwork', 'military', 'health', 'hospitals', 'outagesElec', 'outagesTelecom', 'trafficRoad'] as const) {
+      assert.equal(layersForPreset('general')[key], false, key);
+    }
+  });
+
+  it('noyaux des thèmes (décision du 12/10/2026)', () => {
+    const layersOf = (id: LayerPresetId) => LAYER_PRESETS.find((p) => p.id === id)?.layers;
+    assert.deepEqual(layersOf('energy'), ['powerGrid', 'nuclearFleet', 'gasNetwork', 'oilNetwork', 'outagesElec']);
+    assert.deepEqual(layersOf('security'), ['military', 'cyber', 'outagesTelecom', 'outagesInternet']);
+    assert.deepEqual(layersOf('health'), ['health', 'healthOscour', 'hospitals']);
+    assert.deepEqual(layersOf('environment'), ['environmental', 'floods', 'weatherRadar', 'fires', 'airQuality']);
+    assert.deepEqual(layersOf('transport'), ['trafficRoad', 'trafficRail', 'trafficMaritime', 'trafficAir']);
+  });
+
+  it('« Événements en cours » : cochée par Vue générale et Sécurité & défense seulement', () => {
+    const withEvents = LAYER_PRESETS.filter((p) => p.events).map((p) => p.id);
+    assert.deepEqual(withEvents, ['general', 'security']);
   });
 
   it('remet toujours à false toutes les clés enfant hors de la vue sélectionnée', () => {
@@ -119,21 +98,19 @@ describe('layer-presets', () => {
 });
 
 describe('couches v2 (spec 2026-09-29 § 5)', () => {
-  it('une nouvelle visite v2 démarre avec les événements et les vigilances, rien d’autre', () => {
-    assert.deepEqual(v2StartupLayers(), { events: true, environmental: true, floods: true });
+  it('une nouvelle visite v2 démarre sur « Vue générale »', () => {
+    assert.deepEqual(v2StartupLayers(), { events: true, environmental: true, floods: true, fires: true, outagesInternet: true });
   });
 
-  it('v2 : « Vue générale » ne garde que les vigilances parmi les couches des thèmes', () => {
-    const general = themeLayers(true, 'general');
-    assert.equal(general.environmental, true);
-    assert.equal(general.floods, true);
-    for (const key of ['news', 'powerGrid', 'military', 'health'] as const) assert.equal(general[key], false, key);
-    assert.equal('events' in general, false); // les thèmes ne touchent pas la couche Événements
+  it('v2 : chaque vue coche ou décoche « Événements en cours »', () => {
+    assert.equal(themeLayers(true, 'general').events, true);
+    assert.equal(themeLayers(true, 'security').events, true);
+    for (const id of ['energy', 'health', 'environment', 'transport'] as const) assert.equal(themeLayers(true, id).events, false, id);
   });
 
-  it('les autres thèmes, et la v1, gardent leurs vues', () => {
-    assert.deepEqual(themeLayers(true, 'energy'), layersForPreset('energy'));
+  it('v1 : les vues ne touchent pas « Événements en cours » (couche absente de la v1)', () => {
     assert.deepEqual(themeLayers(false, 'general'), layersForPreset('general'));
+    assert.equal('events' in themeLayers(false, 'security'), false);
   });
 });
 

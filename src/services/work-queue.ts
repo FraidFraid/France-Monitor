@@ -429,9 +429,10 @@ export function buildWorkQueue(input: WorkQueueInput): WorkQueue {
     security: themeLevel('security'),
     health: themeLevel('health'),
     environment: themeLevel('environment'),
+    transport: themeLevel('transport'),
   };
 
-  const greenTracked: Record<ThemeId, number> = { general: 0, energy: 0, security: 0, health: 0, environment: 0 };
+  const greenTracked: Record<ThemeId, number> = { general: 0, energy: 0, security: 0, health: 0, environment: 0, transport: 0 };
   const countGreen = (theme: ThemeId): void => {
     greenTracked.general += 1;
     if (theme !== 'general') greenTracked[theme] += 1;

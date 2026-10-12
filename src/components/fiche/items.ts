@@ -91,7 +91,7 @@ export interface ThemeFicheInput {
   /** Couches critiques chargées : avant, « Chargement des données… », jamais « Rien à traiter » (relecture finale m1). */
   ready: boolean;
   lang: Lang;
-  /** Fiche thème Santé (spec 2026-10-03 § 3.5) : niveau national et ses quatre entrées ; null tant que la veille n'est pas chargée. */
+/** Fiche thème Santé (spec 2026-10-03 § 3.5) : niveau national et ses quatre entrées ; null tant que la veille n'est pas chargée. */
   health?: NationalHealthSummary | null;
 }
 
@@ -151,6 +151,9 @@ function themeFigures(theme: SpecificThemeId, snapshot: ThemeFicheInput['snapsho
     case 'health':
       // Niveau national et entrées : section santé (healthIndicators), pas de chiffres isolés.
       return [];
+    case 'transport':
+      // Pas encore de chiffre national : la fiche renvoie aux panneaux des quatre trafics (TRANSPORT_PANELS).
+      return [];
   }
 }
 
@@ -158,11 +161,19 @@ const HEALTH_PANELS: ReadonlyArray<readonly [string, string]> = [
   ['health', 'Veille sanitaire'], ['healthOscour', 'Urgences et SOS Médecins'], ['healthApl', 'Accès aux soins'], ['hospitals', 'Hôpitaux'],
 ];
 
+const TRANSPORT_PANELS: ReadonlyArray<readonly [string, string]> = [
+  ['trafficRoad', 'Trafic routier'], ['trafficRail', 'Réseau ferroviaire'], ['trafficMaritime', 'Trafic maritime'], ['trafficAir', 'Trafic aérien'],
+];
+
+/** Liens d'ouverture des panneaux de couches d'un thème, au format de « open-cyber » (FichePanel → PosteSituation.runAction). */
+function panelLinks(panels: ReadonlyArray<readonly [string, string]>, lang: Lang): string {
+  return `<div class="fmk-sub">${t(lang, 'Panneaux des couches', 'Layer panels')}</div><ul class="fiche-list">${panels.map(([key, label]) =>
+    `<li><button type="button" class="fmk-link" data-action="open-layer:${key}">${escapeHtml(label)}</button></li>`).join('')}</ul>`;
+}
+
 /** Fiche thème Santé (spec 2026-10-03 § 3.5) : niveau national, ses quatre entrées datées, liens d'ouverture des quatre panneaux. */
 function healthIndicators(summary: NationalHealthSummary | null, lang: Lang): string {
-  // Liens au format de « open-cyber » (france-indicators.ts) : FichePanel route data-action vers PosteSituation.runAction.
-  const links = `<div class="fmk-sub">${t(lang, 'Panneaux des couches', 'Layer panels')}</div><ul class="fiche-list">${HEALTH_PANELS.map(([key, label]) =>
-    `<li><button type="button" class="fmk-link" data-action="open-layer:${key}">${escapeHtml(label)}</button></li>`).join('')}</ul>`;
+  const links = panelLinks(HEALTH_PANELS, lang);
   const title = `<div class="fmk-sub">${t(lang, 'Niveau national de santé', 'National health level')}</div>`;
   if (!summary) return `${title}<p class="fiche-empty">${t(lang, 'Données de santé en chargement…', 'Health data loading…')}</p>${links}`;
   const pill = summary.level === 'nd' ? renderNdPill() : renderVigilancePill(summary.level, lang);
@@ -224,6 +235,7 @@ export function buildThemeFiche(input: ThemeFicheInput): FicheModel {
     + (itemRows ? `<div class="fmk-sub">${t(lang, 'Éléments à traiter', 'Items to handle')}</div><ul class="fiche-list">${itemRows}</ul>` : '')
     + (theme === 'energy' ? energySection(input.snapshot.energy, lang).html + (fuelSection(input.snapshot.energy, lang)?.html ?? '') : '')
     + (theme === 'health' ? healthIndicators(input.health ?? null, lang) : '')
+    + (theme === 'transport' ? panelLinks(TRANSPORT_PANELS, lang) : '')
     + `<p class="fmk-note">${t(lang, 'Le niveau du thème est le plus élevé de ses signaux officiels et de ses éléments à traiter.', 'The theme level is the highest of its official signals and items to handle.')}</p>`;
   const sorted = changes.sort(byTimeDesc);
   const sections: FicheSection[] = [{ id: 'indicators', title: t(lang, 'Indicateurs', 'Indicators'), collapsible: true, open: open('indicators', true), html: indicators }];

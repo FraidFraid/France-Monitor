@@ -1,7 +1,7 @@
 /**
  * layer-presets.ts — Vues prédéfinies de couches (chantier simplification UI, audit 2026-09).
  *
- * Remplace le choix « 35 cases à cocher réparties en 7 groupes » par 5 vues
+ * Remplace le choix « 35 cases à cocher réparties en 7 groupes » par 6 vues
  * nommées, sélectionnables en un clic depuis `LayerPanel`. L'arbre complet
  * des couches reste accessible derrière « Personnaliser les couches ».
  *
@@ -16,22 +16,24 @@
 import type { MapLayers } from '../types/index.ts';
 import type { IconName } from '../components/shared/icons.ts';
 
-export type LayerPresetId = 'general' | 'energy' | 'security' | 'health' | 'environment';
+export type LayerPresetId = 'general' | 'energy' | 'security' | 'health' | 'environment' | 'transport';
 
 export interface LayerPreset {
   id: LayerPresetId;
   label: string;
   icon: IconName;
   description: string;
+  /** Couches enfants cochées par la vue : le noyau du thème, pas tout le thème (décision du 12/10/2026). */
   layers: ReadonlyArray<keyof MapLayers>;
+  /** v2 : la vue coche ou décoche aussi « Événements en cours » (couche absente de la v1). */
+  events: boolean;
 }
 
 /**
- * Toutes les clés ENFANTS exposées par `LayerPanel` (hors clés de groupe).
- * Sert de référentiel à `layersForPreset()` pour remettre à `false` tout ce
- * qu'une vue n'active pas explicitement. Tenue à jour avec `LAYER_DEFS`
- * (`src/components/LayerPanel.ts`) — un enfant qui y est ajouté doit aussi
- * apparaître ici pour être correctement désactivé par les autres vues.
+ * Toutes les clés ENFANTS exposées par `LayerPanel` (hors clés de groupe et hors `events`, propre à la
+ * v2). Sert de référentiel à `layersForPreset()` pour remettre à `false` tout ce qu'une vue n'active pas
+ * explicitement. Tenue à jour avec `LAYER_DEFS` (`src/components/LayerPanel.ts`) — un enfant qui y est
+ * ajouté doit aussi apparaître ici ET dans `THEME_LAYERS`.
  */
 export const ALL_PRESETABLE_LAYER_KEYS: ReadonlyArray<keyof MapLayers> = [
   'news',
@@ -69,46 +71,71 @@ export const ALL_PRESETABLE_LAYER_KEYS: ReadonlyArray<keyof MapLayers> = [
 ];
 
 /**
- * Chaque thème active TOUTES ses couches (décision utilisateur du 25/09/2026 : les vues courtes de
- * l'audit laissaient des couches du thème de côté). Les quatre thèmes couvrent à eux seuls toutes
- * les couches de `ALL_PRESETABLE_LAYER_KEYS` (vérifié par test) ; « Vue générale » prend une couche
- * phare par thème.
+ * Appartenance de chaque couche à un thème : chaque couche de `ALL_PRESETABLE_LAYER_KEYS` est dans
+ * exactement un thème (vérifié par test). La vue d'un thème n'en coche qu'un noyau ; les autres restent
+ * cochables à la main dans « Personnaliser les couches ».
+ */
+export const THEME_LAYERS: Readonly<Record<Exclude<LayerPresetId, 'general'>, ReadonlyArray<keyof MapLayers>>> = {
+  energy: ['powerGrid', 'nuclearFleet', 'gasNetwork', 'oilNetwork', 'outagesElec', 'hydroBackbone', 'windMonitor', 'dromEnergy', 'metroLoad'],
+  security: ['military', 'cyber', 'outagesTelecom', 'outagesInternet', 'outagesCloud', 'subseaCables', 'news', 'stability'],
+  health: ['health', 'healthOscour', 'hospitals', 'healthApl'],
+  environment: ['environmental', 'floods', 'weatherRadar', 'fires', 'airQuality', 'drought', 'earthquakes'],
+  transport: ['trafficRoad', 'trafficRail', 'trafficMaritime', 'trafficAir'],
+};
+
+/**
+ * Vues (décision du 12/10/2026, revient sur celle du 25/09) : chaque thème coche son noyau essentiel ;
+ * « Vue générale » ne coche que des couches vides quand tout va bien (signaux qui ne s'allument qu'en
+ * cas de problème), jamais une couche d'infrastructure toujours affichée.
  */
 export const LAYER_PRESETS: ReadonlyArray<LayerPreset> = [
   {
     id: 'general',
     label: 'Vue générale',
     icon: 'compass',
-    description: 'Une couche phare par thème : actualités, réseau électrique, défense, santé, vigilance météo et crues.',
-    layers: ['news', 'powerGrid', 'military', 'health', 'environmental', 'floods'],
+    description: 'Ce qui se passe en France : événements en cours, vigilance météo, crues, feux de forêt et pannes Internet.',
+    layers: ['environmental', 'floods', 'fires', 'outagesInternet'],
+    events: true,
   },
   {
     id: 'energy',
     label: 'Énergie',
     icon: 'zap',
-    description: 'Tout le thème énergie : réseau électrique, nucléaire, gaz, pétrole, éolien, hydraulique, DROM, charge métropolitaine et pannes élec.',
-    layers: ['dromEnergy', 'powerGrid', 'nuclearFleet', 'gasNetwork', 'hydroBackbone', 'oilNetwork', 'windMonitor', 'metroLoad', 'outagesElec'],
+    description: 'L’essentiel de l’énergie : réseau électrique, parc nucléaire, gaz, pétrole et pannes d’électricité.',
+    layers: ['powerGrid', 'nuclearFleet', 'gasNetwork', 'oilNetwork', 'outagesElec'],
+    events: false,
   },
   {
     id: 'security',
     label: 'Sécurité & défense',
     icon: 'shield',
-    description: 'Tout le thème sécurité & défense : actualités, indice de stabilité, défense, cyber, connectivité et pannes télécom, Internet et cloud.',
-    layers: ['news', 'stability', 'military', 'cyber', 'subseaCables', 'outagesTelecom', 'outagesInternet', 'outagesCloud'],
+    description: 'L’essentiel de la sécurité et de la défense : événements en cours, défense, vigilance cyber, pannes télécoms et Internet.',
+    layers: ['military', 'cyber', 'outagesTelecom', 'outagesInternet'],
+    events: true,
   },
   {
     id: 'health',
     label: 'Santé',
     icon: 'stethoscope',
-    description: 'Tout le thème santé : veille sanitaire, urgences et SOS Médecins, accès aux soins et hôpitaux.',
-    layers: ['health', 'healthOscour', 'healthApl', 'hospitals'],
+    description: 'L’essentiel de la santé : veille sanitaire, urgences et SOS Médecins, hôpitaux.',
+    layers: ['health', 'healthOscour', 'hospitals'],
+    events: false,
   },
   {
     id: 'environment',
-    label: 'Environnement & transports',
+    label: 'Environnement',
     icon: 'leaf',
-    description: 'Tout le thème environnement & transports : vigilance météo, crues, radar, feux de forêt, sécheresse, qualité de l’air, séismes, trafics routier, ferroviaire, maritime et aérien.',
-    layers: ['environmental', 'floods', 'weatherRadar', 'fires', 'drought', 'airQuality', 'earthquakes', 'trafficRoad', 'trafficMaritime', 'trafficAir', 'trafficRail'],
+    description: 'L’essentiel de l’environnement : vigilance météo, crues, radar météo, feux de forêt et qualité de l’air.',
+    layers: ['environmental', 'floods', 'weatherRadar', 'fires', 'airQuality'],
+    events: false,
+  },
+  {
+    id: 'transport',
+    label: 'Transports',
+    icon: 'train-front',
+    description: 'Les transports : trafics routier, ferroviaire, maritime et aérien.',
+    layers: ['trafficRoad', 'trafficRail', 'trafficMaritime', 'trafficAir'],
+    events: false,
   },
 ];
 
@@ -129,20 +156,16 @@ export function layersForPreset(id: LayerPresetId): Partial<MapLayers> {
   return result;
 }
 
-/** v2 (spec 2026-09-29 § 5) : couches d'une nouvelle visite, les événements et les vigilances (météo et crues, séparées le 04/10/2026). */
+/** v2 (spec 2026-09-29 § 5) : couches d'une nouvelle visite, celles de « Vue générale » (thème de départ). */
 export function v2StartupLayers(): Partial<MapLayers> {
-  return { events: true, environmental: true, floods: true };
+  return Object.fromEntries(Object.entries(themeLayers(true, 'general')).filter(([, on]) => on)) as Partial<MapLayers>;
 }
 
-/**
- * Couches d'un thème. v2 : « Vue générale » revient aux vigilances seules (la couche Événements,
- * hors des vues, n'est pas touchée) ; les autres thèmes gardent toutes leurs couches (décision du
- * 25/09/2026). v1 : les vues ci-dessus.
- */
+/** Couches d'un thème : la vue, plus « Événements en cours » en v2 (la v1 n'a pas cette couche). */
 export function themeLayers(uiV2: boolean, id: LayerPresetId): Partial<MapLayers> {
-  if (!uiV2 || id !== 'general') return layersForPreset(id);
-  const off = Object.fromEntries(ALL_PRESETABLE_LAYER_KEYS.map((key) => [key, false])) as Partial<MapLayers>;
-  return { ...off, environmental: true, floods: true };
+  const layers = layersForPreset(id);
+  if (!uiV2) return layers;
+  return { ...layers, events: LAYER_PRESETS.find((p) => p.id === id)?.events ?? false };
 }
 
 /**

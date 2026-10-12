@@ -3,10 +3,11 @@ import { THEMES, categoryTheme, drivenByText, inTheme, situationTheme, themeLabe
 import { LAYER_PRESETS } from '../config/layer-presets.ts';
 
 describe('thèmes (spec §5.3, §7.3)', () => {
-  it('reprennent les cinq vues de layer-presets, dans le même ordre, avec les libellés de la spec', () => {
+  it('reprennent les six vues de layer-presets, dans le même ordre, avec les libellés de la spec', () => {
     expect(THEMES.map((th) => th.id)).toEqual(LAYER_PRESETS.map((p) => p.id));
     expect(themeLabel('security')).toBe('Sécurité et défense');
-    expect(themeLabel('environment')).toBe('Environnement et transports');
+    expect(themeLabel('environment')).toBe('Environnement');
+    expect(themeLabel('transport')).toBe('Transports');
     expect(themeLabel('general', 'en')).toBe('Overview');
   });
 
@@ -14,14 +15,15 @@ describe('thèmes (spec §5.3, §7.3)', () => {
     expect(categoryTheme('energy')).toBe('energy');
     for (const c of ['security', 'cyber', 'social']) expect(categoryTheme(c)).toBe('security');
     expect(categoryTheme('health')).toBe('health');
-    for (const c of ['weather', 'floods', 'fires', 'transport', 'infrastructure']) expect(categoryTheme(c)).toBe('environment');
+    for (const c of ['weather', 'floods', 'fires', 'infrastructure']) expect(categoryTheme(c)).toBe('environment');
+    expect(categoryTheme('transport')).toBe('transport');
     for (const c of ['finance', 'general', 'inconnue']) expect(categoryTheme(c)).toBe('general');
   });
 
   it("rattachent situations et alertes ; une alerte presse suit la catégorie de son article", () => {
     expect(situationTheme('FUEL_SUPPLY_RISK')).toBe('energy');
     expect(situationTheme('DEFENSE_ALERT')).toBe('security');
-    expect(situationTheme('TELECOM_DISRUPTION')).toBe('environment');
+    expect(situationTheme('TELECOM_DISRUPTION')).toBe('security'); // même thème que ses couches (12/10/2026)
     expect(situationTheme('NEWS_ALERT')).toBe('general');
     expect(situationTheme('NEWS_ALERT', 'cyber')).toBe('security');
   });

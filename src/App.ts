@@ -5287,7 +5287,9 @@ export class App {
    */
   private applyLayerPreset(id: LayerPresetId): void {
     const target = themeLayers(this.uiV2, id);
-    for (const key of ALL_PRESETABLE_LAYER_KEYS) {
+    // v2 : la vue décide aussi de « Événements en cours » (décision du 12/10/2026).
+    const keys: ReadonlyArray<keyof MapLayers> = this.uiV2 ? [...ALL_PRESETABLE_LAYER_KEYS, 'events'] : ALL_PRESETABLE_LAYER_KEYS;
+    for (const key of keys) {
       const wanted = target[key] ?? false;
       if (this.activeLayers[key] === wanted) continue;
       this.onLayerToggle(key, wanted, { suppressPanel: true });

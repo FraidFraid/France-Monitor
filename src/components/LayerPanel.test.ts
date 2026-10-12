@@ -21,7 +21,7 @@ describe('LayerPanel — « Personnaliser les couches »', () => {
     expect(toggle?.getAttribute('aria-expanded')).toBe('true');
     expect(body?.style.display).toBe('block');
     // Le groupe du thème courant est déplié, ses cases cochées visibles.
-    expect(host.querySelector<HTMLInputElement>('[data-layer="metroLoad"] input')?.checked).toBe(true);
+    expect(host.querySelector<HTMLInputElement>('[data-layer="nuclearFleet"] input')?.checked).toBe(true);
   });
 
   it('reste repliée si l’utilisateur l’a repliée', () => {
