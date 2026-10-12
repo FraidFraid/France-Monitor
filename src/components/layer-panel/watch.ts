@@ -3,9 +3,14 @@
 // jaune ou plus en ce moment ; une source lue mais indisponible garde sa puce en « n.d. » (une source muette n'est pas un calme).
 // Le niveau de chaque couche est celui de la pastille de son panneau (fonctions *HeadLevel partagées), jamais un calcul parallèle.
 import type {
-  AirQualityResponse, CyberResponse, EarthquakesResponse, EcowattResponse, FiresResponse, FloodsResponse, FuelTensionDashboard,
-  GnssResponse, MapLayers, MilitaryResponse, NuclearState, TelecomOutagesResponse, VigilanceResponse,
+  AirQualityResponse, CloudOutagesResponse, CyberResponse, DroughtResponse, EarthquakesResponse, EcowattResponse, FiresResponse,
+  FloodsResponse, FuelTensionDashboard, GnssResponse, InternetOutagesResponse, MapLayers, MilitaryResponse, NuclearState,
+  PowerOutagesResponse, TelecomOutagesResponse, VigilanceResponse,
 } from '../../types/index.ts';
+import { cloudHeadLevel } from './outages-cloud.ts';
+import { internetHeadLevel } from './outages-internet.ts';
+import { powerHeadLevel } from './outages-power.ts';
+import { droughtHeadLevel } from './secheresse.ts';
 import { oilHeadLevel } from './oil.ts';
 import type { NationalHealthSummary } from './veille.ts';
 import { LEVEL_RANK, type VigilanceLevel } from '../../services/vigilance.ts';
@@ -40,6 +45,10 @@ export interface GeneralWatchInput {
   cyber: Watched<CyberResponse>;
   military: Watched<MilitaryResponse>;
   fuel: Watched<FuelTensionDashboard>;
+  power: Watched<PowerOutagesResponse>;
+  internet: Watched<InternetOutagesResponse>;
+  cloud: Watched<CloudOutagesResponse>;
+  drought: Watched<DroughtResponse>;
   /** Niveau national de santé (veille sanitaire, urgences) ; le panneau Veille sanitaire le montre. */
   health: Watched<NationalHealthSummary>;
   gnss: GnssResponse | null;
@@ -56,9 +65,15 @@ export const GENERAL_SOCLE: ReadonlyArray<keyof MapLayers> = ['environmental', '
 
 /** Couches suivies en continu, sans que leur couche soit allumée (données chargées pour l'indice et les situations). */
 export const WATCHED_LAYERS: ReadonlyArray<keyof MapLayers> = [
-  'environmental', 'floods', 'fires', 'earthquakes', 'airQuality', 'outagesTelecom', 'powerGrid', 'nuclearFleet', 'oilNetwork', 'cyber',
-  'military', 'health',
+  'environmental', 'floods', 'fires', 'earthquakes', 'airQuality', 'drought', 'outagesElec', 'outagesTelecom', 'outagesInternet',
+  'outagesCloud', 'powerGrid', 'nuclearFleet', 'oilNetwork', 'cyber', 'military', 'health',
 ];
+
+/**
+ * Couches lentes : seulement en crise (rouge). La sécheresse est un stock d'arrêtés qui évolue sur des semaines ; ses niveaux jaune
+ * et orange sont des restrictions courantes, pas un événement à traiter (recommandation OSINT du 12/10/2026).
+ */
+const CRISIS_ONLY: ReadonlySet<keyof MapLayers> = new Set<keyof MapLayers>(['drought']);
 
 const ORDER: Record<WatchLevel, number> = { rouge: 0, orange: 1, jaune: 2, nd: 3, vert: 4 };
 
@@ -75,6 +90,10 @@ export function watchLevels(input: GeneralWatchInput): Map<keyof MapLayers, Watc
   put('earthquakes', input.earthquakes, (d) => earthquakesHeadLevel(d, now));
   put('airQuality', input.airQuality, (d) => airQualityHeadLevel(d, now));
   put('outagesTelecom', input.telecom, (d) => telecomHeadLevel(d, now));
+  put('drought', input.drought, (d) => droughtHeadLevel(d, now));
+  put('outagesElec', input.power, (d) => powerHeadLevel(d, input.ecowatt.data?.official ?? null, now));
+  put('outagesInternet', input.internet, (d) => internetHeadLevel(d, now));
+  put('outagesCloud', input.cloud, (d) => cloudHeadLevel(d, now));
   put('powerGrid', input.ecowatt, (d) => ecowattHeadLevel(d, now));
   put('nuclearFleet', input.nuclear, (d) => nuclearHeadLevel(d, now));
   put('cyber', input.cyber, (d) => cyberHeadLevel(d, now));
@@ -94,6 +113,8 @@ export function generalWatch(levels: ReadonlyMap<keyof MapLayers, WatchLevel>): 
     const level = levels.get(key);
     if (GENERAL_SOCLE.includes(key)) {
       out.push({ key, level: level ?? 'vert' });
+    } else if (CRISIS_ONLY.has(key)) {
+      if (level === 'rouge') out.push({ key, level });
     } else if (level !== undefined && level !== 'vert') {
       out.push({ key, level });
     }

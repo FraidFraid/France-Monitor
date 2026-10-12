@@ -10,6 +10,7 @@ import { CLOUD_PENDING_NOTE, isCloudReferenceError } from '../../services/outage
 import {
   CLOUD_IMPACT_LEVEL, CLOUD_NO_INCIDENT_TEXT, CLOUD_PROVIDER_LABEL, CLOUD_STATUS_WORD, CLOUD_ZONE_LEVEL, cloudLevel, cloudLive, isDeducedZone, isOutagesDataLate,
 } from '../../services/outages-levels.ts';
+import type { VigilanceLevel } from '../../services/vigilance.ts';
 import { escapeHtml } from '../france-intel-events.ts';
 import { kvRow } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
@@ -190,6 +191,12 @@ function sections(ctx: Context, lateAll: boolean): FicheSection[] {
   ];
 }
 
+/** Niveau de la pastille (aucune page d'état lue : n.d.) : partagé avec la Vue générale dynamique (12/10/2026). */
+export function cloudHeadLevel(r: CloudOutagesResponse | null, now: number): VigilanceLevel | 'nd' {
+  if (r === null || r.providers.every((p) => p.readAt === null)) return 'nd';
+  return cloudLevel(r, now) ?? 'nd';
+}
+
 export function buildCloudView(input: CloudViewInput): LayerView {
   const { cloud: r, error, now } = input;
   if (r === null && error === null) {
@@ -213,7 +220,7 @@ export function buildCloudView(input: CloudViewInput): LayerView {
   const lateAll = live.freshProviders.length === 0;
   const newest = r.providers.map((p) => p.readAt).filter((at): at is string => at !== null).sort().at(-1) ?? null;
   const figure = lateAll ? { value: 'n.d.', caption: FIGURE_CAPTION, level: null } : { value: frNumber(live.incidents.length, 0), caption: FIGURE_CAPTION };
-  const level = cloudLevel(r, now) ?? 'nd';
+  const level = cloudHeadLevel(r, now);
   const muted = r.providers.filter((p) => p.note === null && !ctx.fresh.has(p.provider))
     .map((p) => `${p.label} (${p.readAt === null ? 'n.d.' : 'en retard'})`);
   const status = [

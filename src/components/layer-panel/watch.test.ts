@@ -17,11 +17,18 @@ describe('Vue générale dynamique (12/10/2026)', () => {
     expect(generalWatch(new Map()).map((e) => e.key)).toEqual([...GENERAL_SOCLE]);
   });
 
+  it('sécheresse : seulement en crise (rouge), jamais pour ses restrictions courantes ni en n.d.', () => {
+    expect(generalWatch(levels([['drought', 'orange']])).map((e) => e.key)).not.toContain('drought');
+    expect(generalWatch(levels([['drought', 'nd']])).map((e) => e.key)).not.toContain('drought');
+    expect(generalWatch(levels([['drought', 'rouge']])).map((e) => e.key)).toContain('drought');
+  });
+
   it('source jamais lue : pas de verdict ; lue mais indisponible : n.d.', () => {
     const none = { data: null, loaded: false };
     const input: GeneralWatchInput = {
       vigilance: none, floods: none, fires: none, earthquakes: none, airQuality: none, telecom: none, ecowatt: none, nuclear: none,
-      cyber: none, military: { data: null, loaded: true }, fuel: none, health: none, gnss: null, now: NOW,
+      cyber: none, military: { data: null, loaded: true }, fuel: none, health: none, power: none, internet: none, cloud: none, drought: none,
+      gnss: null, now: NOW,
     };
     expect([...watchLevels(input)]).toEqual([['military', 'nd']]);
   });
@@ -33,6 +40,9 @@ describe('Vue générale dynamique (12/10/2026)', () => {
   });
 
   it('chaque couche suivie a une puce de panneau (FLOATING_PANEL_DEFS) : rien n’est suivi sans pouvoir être montré', () => {
-    expect(WATCHED_LAYERS).toEqual(['environmental', 'floods', 'fires', 'earthquakes', 'airQuality', 'outagesTelecom', 'powerGrid', 'nuclearFleet', 'oilNetwork', 'cyber', 'military', 'health']);
+    expect(WATCHED_LAYERS).toEqual([
+      'environmental', 'floods', 'fires', 'earthquakes', 'airQuality', 'drought', 'outagesElec', 'outagesTelecom', 'outagesInternet',
+      'outagesCloud', 'powerGrid', 'nuclearFleet', 'oilNetwork', 'cyber', 'military', 'health',
+    ]);
   });
 });

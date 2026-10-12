@@ -563,6 +563,9 @@ interface FloatingPanelDef {
   layerKeys: ReadonlyArray<keyof MapLayers>;
 }
 
+/** Sources relevées pour la seule Vue générale dynamique (lot C) : hors du socle de relève permanent. */
+const GENERAL_WATCH_POLLED: ReadonlyArray<keyof MapLayers> = ['outagesElec', 'outagesInternet', 'outagesCloud', 'drought'];
+
 /** Panneaux de module : ne comptent pas comme « couche intérieure » pour Échap. */
 const MODULE_PANEL_SELECTOR = '[class*="-panel-modal"], .fm-floating-panel';
 
@@ -1387,6 +1390,7 @@ export class App {
   /** Module de surveillance chargé à la demande : il importe les vues des panneaux suivis, hors du chunk principal. */
   private watchModule: typeof import('./components/layer-panel/watch.ts') | null = null;
   private watchModulePromise: Promise<void> | null = null;
+  private generalWatchPollingStarted = false;
   private cyberPanel: CyberPanel | null = null;
   private franceIntelPanel: FranceIntelPanel | null = null;
   private situationMonitor: SituationMonitor | null = null;
@@ -4143,7 +4147,7 @@ export class App {
    * sécheresse si leur couche est active ou leur panneau ouvert ; radar aussi avec la couche Feux active et les sommets d'écho cochés.
    */
   private environmentPollWanted(key: EnvironmentLayerKey): boolean {
-    if (ENVIRONMENT_ALWAYS_POLLED.has(key) || this.activeLayers[key]) return true;
+    if (ENVIRONMENT_ALWAYS_POLLED.has(key) || this.activeLayers[key] || this.generalWatchPolls(key)) return true;
     if (this.getFloatingPanelInstance(key)?.isVisible?.() ?? false) return true;
     return key === 'weatherRadar' && this.activeLayers.fires && this.echoTopsEnabled;
   }
@@ -4446,7 +4450,7 @@ export class App {
    * ouvert, jamais couche éteinte (le cloud n'entre pas au score).
    */
   private outagesPollWanted(key: OutagesLayerKey): boolean {
-    if (OUTAGES_ALWAYS_POLLED.has(key) || this.activeLayers[key]) return true;
+    if (OUTAGES_ALWAYS_POLLED.has(key) || this.activeLayers[key] || this.generalWatchPolls(key)) return true;
     return this.getFloatingPanelInstance(key)?.isVisible?.() ?? false;
   }
 
@@ -5382,6 +5386,7 @@ export class App {
     this.layerPanel?.updateLayers(this.activeLayers);
     this.refreshFloatingPanelSwitcher();
     if (id === 'general') this.refreshGeneralWatch();
+    this.syncGeneralWatchPolling();
   }
 
   /**
@@ -5389,6 +5394,25 @@ export class App {
    * de niveau, puis, en Vue générale, couches en jaune ou plus allumées et couches revenues au vert éteintes (seulement celles que la
    * vue a allumées elle-même ; une couche touchée à la main n'est plus gérée). Appelée à chaque rafraîchissement du poste.
    */
+  /**
+   * Sources relevées pour la seule Vue générale dynamique (lot C, 12/10/2026) : coupures d'électricité, Internet et cloud (10, 10 et
+   * 30 min), sécheresse (1 h) ; environ 15 lectures de plus par heure, servies par le cache serveur, et seulement Vue générale affichée.
+   */
+  private generalWatchPolls(key: keyof MapLayers): boolean {
+    return this.uiV2 && this.v2Theme === 'general' && GENERAL_WATCH_POLLED.includes(key);
+  }
+
+  /** Relèves de la Vue générale alignées sur la vue affichée, et première lecture des sources jamais lues (une fois). */
+  private syncGeneralWatchPolling(): void {
+    for (const key of ['outagesElec', 'outagesInternet', 'outagesCloud'] as const) {
+      this.syncOutagesPolling(key);
+      const slot = key === 'outagesElec' ? this.currentOutPower?.power : key === 'outagesInternet' ? this.currentOutInternet?.internet : this.currentOutCloud?.cloud;
+      if (this.generalWatchPolls(key) && slot === undefined) this.loadOutagesSource(key).catch((err) => console.error(`[App] Lecture ${key} en échec`, err));
+    }
+    this.syncEnvironmentPolling('drought');
+    if (this.generalWatchPolls('drought') && this.currentDrought === null) void this.loadDrought();
+  }
+
   private refreshGeneralWatch(): void {
     if (!this.uiV2) return;
     const watch = this.watchModule;
@@ -5400,6 +5424,10 @@ export class App {
       return;
     }
     const { GENERAL_SOCLE, generalWatch, watchLevels, watchTransitions } = watch;
+    if (this.v2IntelStarted && !this.generalWatchPollingStarted) {
+      this.generalWatchPollingStarted = true;
+      this.syncGeneralWatchPolling();
+    }
     const now = Date.now();
     const healthNational = this.healthNationalNow(now);
     const slot = <T>(s: { data: T | null; error: string | null; fetchedAt: number | null } | undefined): Watched<T> =>
@@ -5417,6 +5445,10 @@ export class App {
       cyber: slot(this.currentSovCyber?.cyber),
       military: slot(this.currentMilitary?.military),
       fuel: { data: this.currentFuelTensionData, loaded: this.currentFuelTensionData !== null },
+      power: slot(this.currentOutPower?.power),
+      internet: slot(this.currentOutInternet?.internet),
+      cloud: slot(this.currentOutCloud?.cloud),
+      drought: slot(this.currentDrought?.drought),
       health: { data: healthNational, loaded: healthNational !== null },
       gnss: this.gnssState?.gnss.data ?? null,
       now,
@@ -6309,6 +6341,7 @@ export class App {
       this.droughtPanel?.update(this.currentDrought);
       this.refreshEnvironmentLegend();
       this.recordEnvironmentSamples(now);
+      this.refreshGeneralWatch();
     });
   }
 
