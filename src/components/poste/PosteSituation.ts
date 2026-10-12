@@ -41,6 +41,7 @@ import { buildEventFiche, buildMarketFiche, buildOfficialFiche, buildSituationFi
 import type { FicheModel, Lang } from '../fiche/parts.ts';
 import { StatusBar, freshnessCounts, freshnessText } from './StatusBar.ts';
 import { NewsWire, wireItems } from './NewsWire.ts';
+import { departmentPressure, type DepartmentPressure } from '../../services/department-pressure.ts';
 import { ThemeBar } from './ThemeBar.ts';
 import { WorkList } from './WorkList.ts';
 import { FichePanel } from './FichePanel.ts';
@@ -93,6 +94,8 @@ export interface PosteCallbacks {
   onSelect: (key: string) => void;
   /** Lien d'une fiche vers le panneau d'une couche (fiche thème Santé) : App active la couche et ouvre son panneau. */
   onOpenLayerPanel?: (key: string) => void;
+  /** Pression par département recalculée avec le fil (panneau et couche « Pression par département », 12/10/2026). */
+  onPressure?: (depts: DepartmentPressure[]) => void;
 }
 
 export interface PosteRoots {
@@ -399,7 +402,15 @@ export class PosteSituation {
     });
     this.trackAppearances(queue, data.now);
     this.queue = queue;
+    // Après le rendu du fil : un calcul en échec ne doit jamais bloquer la liste.
     this.render();
+    try {
+      this.callbacks.onPressure?.(departmentPressure({
+        items: queue.items, meteo: data.meteo, floods: data.floods, departements: this.departements, now: data.now,
+      }));
+    } catch (err) {
+      console.error('[Poste] pression par département', err);
+    }
   }
 
   /** Heure d'apparition des éléments nouveaux pendant la session, après la chauffe du démarrage. */

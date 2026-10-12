@@ -68,6 +68,8 @@ import {
   ALL_PRESETABLE_LAYER_KEYS, DEFAULT_PRESET_ID, hasPersistedLayers, layersForPreset, migrateStoredLayers, presetShowsEvents, themeLayers, v2StartupLayers, type LayerPresetId,
 } from './config/layer-presets.ts';
 import { computeISNR } from './services/stability-index.ts';
+import type { DepartmentPressure } from './services/department-pressure.ts';
+import type { PressurePanel } from './components/PressurePanel.ts';
 import { ALL_INFRASTRUCTURE, NUCLEAR_PLANTS } from './config/infrastructure.ts';
 // ACTIVE_INSTALLATIONS (config/military-bases-db ~1100 l.) chargé dynamiquement dans loadDefenseSites(), sans fusion OpenStreetMap.
 
@@ -590,7 +592,7 @@ const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
   { id: 'military', label: 'Défense', icon: 'shield', layerKeys: ['military'] },
   { id: 'subseaCables', label: 'Connectivité', icon: 'waves', layerKeys: ['subseaCables'] },
   { id: 'cyber', label: 'Vigilance cyber', icon: 'lock-keyhole', layerKeys: ['cyber'] },
-  { id: 'stability', label: 'Indice stabilité', icon: 'bar-chart-3', layerKeys: ['stability'] },
+  { id: 'stability', label: 'Pression par département', icon: 'bar-chart-3', layerKeys: ['stability'] },
   { id: 'outagesElec', label: 'Électricité', icon: 'zap', layerKeys: ['outagesElec'] },
   { id: 'outagesTelecom', label: 'Télécoms mobiles', icon: 'satellite-dish', layerKeys: ['outagesTelecom'] },
   { id: 'outagesInternet', label: 'Internet', icon: 'globe', layerKeys: ['outagesInternet'] },
@@ -1369,6 +1371,9 @@ export class App {
   private commodityStrip: CommodityStrip | null = null;
   private _intervalCommodities: ReturnType<typeof setInterval> | null = null;
   private isnrPanel: ISNRPanel | null = null;
+  /** v2 : « Pression par département » à la place de l'ISNRPanel (12/10/2026) ; données calculées avec le fil du poste. */
+  private pressurePanel: PressurePanel | null = null;
+  private v2Pressure: DepartmentPressure[] | null = null;
   private cyberPanel: CyberPanel | null = null;
   private franceIntelPanel: FranceIntelPanel | null = null;
   private situationMonitor: SituationMonitor | null = null;
@@ -2868,6 +2873,20 @@ export class App {
     });
     // Click sur département : pas de flyTo (panel latéral uniquement, sans interaction carte)
     this.isnrPanel.mount();
+    // v2 : « Pression par département » chargé à la demande (hors du chunk critique), à la place de l'ISNRPanel.
+    if (this.uiV2) {
+      void import('./components/PressurePanel.ts').then(({ PressurePanel }) => {
+        const panel = new PressurePanel(floatContainer);
+        // Département choisi : mis en évidence sur la carte ; élément choisi : sa fiche.
+        panel.setOnSelectDepartment((code) => this.mapContainer?.highlightISNRDepartment(code));
+        panel.setOnOpenElement((key) => this.poste?.select(key));
+        panel.mount();
+        this.pressurePanel = panel;
+        panel.update(this.v2Pressure);
+        // La puce de la couche n'apparaît qu'avec l'instance du panneau.
+        this.refreshFloatingPanelSwitcher();
+      });
+    }
 
     void this.refreshNetworkBarometerWidget();
     this._intervalNetworkBarometer = setInterval(() => {
@@ -3396,7 +3415,10 @@ export class App {
 
     // All remaining panels use an if/else chain — at most one branch fires per toggle.
     if (key === 'stability') {
-      if (this.activeLayers.stability && this.currentISNRData) this.isnrPanel?.show(this.currentISNRData);
+      if (this.uiV2) {
+        if (this.activeLayers.stability) this.pressurePanel?.show(this.v2Pressure);
+        else this.pressurePanel?.hide({ silent: true });
+      } else if (this.activeLayers.stability && this.currentISNRData) this.isnrPanel?.show(this.currentISNRData);
       else this.isnrPanel?.hide();
     } else if (key === 'energySystems') {
       // Group master turned off: collapse all energy panels
@@ -5078,7 +5100,7 @@ export class App {
       case 'cyber': return this.cyberPanel;
       case 'military': return this.defensePanel;
       case 'subseaCables': return this.connectivityPanel;
-      case 'stability': return this.isnrPanel;
+      case 'stability': return this.uiV2 ? this.pressurePanel : this.isnrPanel;
       case 'outagesElec': return this.outagesPowerPanel;
       case 'outagesTelecom': return this.outagesTelecomPanel;
       case 'outagesInternet': return this.outagesInternetPanel;
@@ -7909,6 +7931,10 @@ export class App {
         onFlyTo: (lon, lat, zoom) => this.mapContainer?.flyTo(lon, lat, zoom),
         onActivateLayers: (keys) => this.activateLayersFromSituation(keys),
         onOpenLayerPanel: (key) => this.openLayerPanelFromFiche(key),
+        onPressure: (depts) => {
+          this.v2Pressure = depts;
+          this.pressurePanel?.update(depts);
+        },
         onOpenDossier: (situation) => this.openAlertDossier(situation),
         onOpenReport: () => {
           void this.openSituationReport();
