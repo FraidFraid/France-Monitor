@@ -7991,6 +7991,14 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
   box-shadow: 0 0 0 3px rgba(var(--v2-brand-rgb), 0.3), 0 0 26px rgba(var(--v2-brand-rgb), 0.6), 0 2px 8px rgba(0, 0, 0, 0.45);
 }
 #app.ui-v2 .floating-panel-switcher__chip.is-active .floating-panel-switcher__icon { color: #04220f; }
+/* Vue générale dynamique (12/10/2026) : voyant de niveau de la couche ; gris pour une source indisponible (« n.d. »). */
+#app.ui-v2 .fps-level { flex: none; width: 8px; height: 8px; border-radius: 50%; }
+#app.ui-v2 .fps-level--vert { background: var(--sev-green); }
+#app.ui-v2 .fps-level--jaune { background: var(--sev-yellow); box-shadow: 0 0 6px color-mix(in srgb, var(--sev-yellow) 65%, transparent); }
+#app.ui-v2 .fps-level--orange { background: var(--sev-orange); box-shadow: 0 0 8px 1px color-mix(in srgb, var(--sev-orange) 80%, transparent); }
+#app.ui-v2 .fps-level--rouge { background: var(--sev-red); box-shadow: 0 0 10px 2px color-mix(in srgb, var(--sev-red) 85%, transparent); }
+#app.ui-v2 .fps-level--nd { background: var(--text-muted); }
+#app.ui-v2 .floating-panel-switcher__chip.is-active .fps-level { box-shadow: 0 0 0 1.5px #04220f; }
 #app.ui-v2 .floating-panel-switcher__chip:focus-visible { outline: 2px solid var(--v2-brand); outline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) {
   #app.ui-v2 .floating-panel-switcher__chip { transition: none; }

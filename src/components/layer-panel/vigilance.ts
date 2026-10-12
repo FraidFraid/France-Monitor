@@ -130,6 +130,12 @@ function leadOf(v: VigilanceResponse): string | null {
   return parts.length > 0 ? glueText(parts.join(' ')) : null;
 }
 
+/** Niveau de la pastille (carte du jour par défaut) : partagé avec la Vue générale dynamique (12/10/2026). */
+export function vigilanceHeadLevel(v: VigilanceResponse | null, now: number, echeance: VigilanceEcheance = 'J'): VigilanceLevel | 'nd' {
+  if (v === null) return 'nd';
+  return lateOf(v, now) ? 'nd' : vigilanceLevel(v, echeance).level;
+}
+
 function headOf(v: VigilanceResponse, period: VigilancePeriod, now: number): LayerHeadModel {
   const late = lateOf(v, now);
   const top = topCount(period);
@@ -139,7 +145,7 @@ function headOf(v: VigilanceResponse, period: VigilancePeriod, now: number): Lay
   return {
     theme: ENVIRONMENT_THEME, title: VIGILANCE_TITLE,
     figure: { value: frNumber(top.n, 0), caption: glueEnvUnits(caption), level: late ? null : OFFICIAL_COLOR_LEVEL[top.color] },
-    level: late ? 'nd' : verdict.level,
+    level: vigilanceHeadLevel(v, now, period.echeance),
     status: [
       late ? 'niveau suspendu : carte Météo-France en retard' : glueEnvUnits(verdict.reason),
       `${stamp('Météo-France', v.updateTime, late, now)} · prochaine carte vers ${clock(nextVigilanceMap(now))}`,

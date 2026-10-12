@@ -37,6 +37,14 @@ export type FranceFicheSnapshot = Pick<
   'score' | 'scoreBreakdown' | 'situations' | 'signals' | 'meteo' | 'energy' | 'timeline'
 >;
 
+/** Passage de niveau d'une couche suivie par la Vue générale (journal de session, 12/10/2026). */
+export interface LayerLevelChange {
+  label: string;
+  from: VigilanceLevel;
+  to: VigilanceLevel;
+  at: number;
+}
+
 export interface FranceFicheInput {
   snapshot: FranceFicheSnapshot;
   queue: WorkQueue;
@@ -51,6 +59,8 @@ export interface FranceFicheInput {
   resolved: readonly BriefSourceSituation[];
   /** Heure d'apparition connue, par clé de liste. */
   changeTimes: ReadonlyMap<string, number>;
+  /** Passages de niveau des couches suivies (« Vigilance météo : orange → vert ») ; la désescalade se consigne, elle ne s'efface pas. */
+  layerChanges?: readonly LayerLevelChange[];
   score: { delta24h: number | null; pillarDeltas: StabilityPillarValues | null; series: number[] };
   /** Heure de réception et niveau national au moment de la note ; null tant qu'aucune note n'est arrivée. */
   briefMeta: { at: number; level: VigilanceLevel } | null;
@@ -132,6 +142,15 @@ function allChanges(input: FranceFicheInput): EtatChange[] {
     out.push({
       at: parseTime(d.latestAt), text: digestChangeText(d, lang), select: `event:${d.event.id}`,
       kind, important: LEVEL_RANK[eventLevel(d.event.severity)] >= LEVEL_RANK.orange,
+    });
+  }
+  for (const c of input.layerChanges ?? []) {
+    const up = LEVEL_RANK[c.to] > LEVEL_RANK[c.from];
+    const word = (l: VigilanceLevel): string => levelLabel(l, lang).toLowerCase();
+    out.push({
+      at: c.at, text: `${c.label} : ${word(c.from)} → ${word(c.to)}`, select: null,
+      kind: up ? 'aggrave' : c.to === 'vert' ? 'resolu' : 'autre',
+      important: LEVEL_RANK[c.from] >= LEVEL_RANK.orange || LEVEL_RANK[c.to] >= LEVEL_RANK.orange,
     });
   }
   const active = new Set(input.snapshot.situations.map((s) => s.id));

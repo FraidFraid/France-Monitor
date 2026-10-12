@@ -101,6 +101,12 @@ function biggestRise(f: FloodsResponse, now: number): { station: FloodStation; s
   return best;
 }
 
+/** Niveau de la pastille : partagé avec la Vue générale dynamique (12/10/2026). */
+export function floodsHeadLevel(f: FloodsResponse | null, now: number): VigilanceLevel | 'nd' {
+  if (f === null || listDown(f) || late(f, now)) return 'nd';
+  return floodsLevel(f).level;
+}
+
 function headOf(f: FloodsResponse, now: number): LayerHeadModel {
   if (listDown(f)) {
     return {
@@ -126,7 +132,7 @@ function headOf(f: FloodsResponse, now: number): LayerHeadModel {
       : measured ? `Aucune station des tronçons en vigilance en hausse sur 1${NBSP}h.` : null;
   return {
     theme: ENVIRONMENT_THEME, title: CRUES_TITLE, figure,
-    level: isLate ? 'nd' : verdict.level,
+    level: floodsHeadLevel(f, now),
     status: [isLate ? 'niveau suspendu : relevé Vigicrues en retard' : glueEnvUnits(verdict.reason), ...(stamps === null ? [] : [stamps])],
     lead,
   };

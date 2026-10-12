@@ -54,11 +54,11 @@ describe('layer-presets', () => {
     }
   });
 
-  it('« Vue générale » : seulement des couches vides quand tout va bien, jamais une infrastructure toujours affichée', () => {
+  it('« Vue générale » : socle seulement (vigilance météo, crues) et Événements ; le reste s’allume en jaune ou plus (watch.ts)', () => {
     const general = LAYER_PRESETS.find((p) => p.id === 'general');
-    assert.deepEqual(general?.layers, ['environmental', 'floods', 'fires', 'outagesInternet']);
+    assert.deepEqual(general?.layers, ['environmental', 'floods']);
     assert.equal(general?.events, true);
-    for (const key of ['news', 'stability', 'powerGrid', 'nuclearFleet', 'gasNetwork', 'military', 'health', 'hospitals', 'outagesElec', 'outagesTelecom', 'trafficRoad'] as const) {
+    for (const key of ['news', 'stability', 'powerGrid', 'fires', 'outagesInternet', 'military', 'health', 'trafficRoad'] as const) {
       assert.equal(layersForPreset('general')[key], false, key);
     }
   });
@@ -94,7 +94,7 @@ describe('layer-presets', () => {
 
 describe('couches v2 (spec 2026-09-29 § 5)', () => {
   it('une nouvelle visite v2 démarre sur « Vue générale »', () => {
-    assert.deepEqual(v2StartupLayers(), { events: true, environmental: true, floods: true, fires: true, outagesInternet: true });
+    assert.deepEqual(v2StartupLayers(), { events: true, environmental: true, floods: true });
   });
 
   it('v2 : chaque vue coche ou décoche « Événements en cours »', () => {

@@ -84,16 +84,18 @@ export const THEME_LAYERS: Readonly<Record<Exclude<LayerPresetId, 'general'>, Re
 
 /**
  * Vues (décisions du 12/10/2026) : chaque thème coche toutes ses couches qui ont un panneau (donc toutes ses puces), sans les
- * actualités brutes (`news`, sans panneau, doublon des événements) ; « Vue générale » ne coche que des couches vides quand tout
- * va bien (signaux qui ne s'allument qu'en cas de problème) et est la seule à cocher « Événements en cours ».
+ * actualités brutes (`news`, sans panneau, doublon des événements) ; « Vue générale » coche son socle (vigilance météo, crues) et
+ * « Événements en cours », les autres couches suivies s'y allumant d'elles-mêmes en jaune ou plus.
  */
 export const LAYER_PRESETS: ReadonlyArray<LayerPreset> = [
   {
     id: 'general',
     label: 'Vue générale',
     icon: 'compass',
-    description: 'Ce qui se passe en France : actualités géolocalisées, vigilance météo, crues, feux de forêt et pannes Internet.',
-    layers: ['environmental', 'floods', 'fires', 'outagesInternet'],
+    // Socle seulement : les autres couches suivies s'allument d'elles-mêmes en jaune ou plus (Vue générale dynamique, 12/10/2026,
+    // App.refreshGeneralWatch et layer-panel/watch.ts).
+    description: 'Ce qui demande attention maintenant : actualités, vigilance météo et crues, plus toute couche suivie passée en jaune ou plus.',
+    layers: ['environmental', 'floods'],
     events: true,
   },
   {

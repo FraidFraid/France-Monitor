@@ -228,12 +228,18 @@ function statusOf(tension: FuelTensionDashboard | null, now: number): string[] {
   return [`${formatPct(tension.national.anomalyShare, 1)} de stations en anomalie`, time, 'prix-carburants'];
 }
 
+/** Niveau de la pastille (tension carburants nationale) : partagé avec la Vue générale dynamique (12/10/2026). */
+export function oilHeadLevel(tension: FuelTensionDashboard | null, now: number): VigilanceLevel | 'nd' {
+  if (tension === null || tension.degraded || tensionStale(tension, now)) return 'nd';
+  return tensionLevel(tension.national.tensionLevel);
+}
+
 function headOf(data: OilDashboard, tension: FuelTensionDashboard | null, now: number): LayerView['head'] {
   const { price, delta, at } = gasolePrice(data, tension, now);
   const day = at === null ? null : new Date(at).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Paris' });
   const today = new Date(now).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', timeZone: 'Europe/Paris' });
   const caption = day !== null && day !== today ? `gazole, moyenne nationale du ${day}` : 'gazole, moyenne nationale';
-  const level = tension === null ? null : tension.degraded || tensionStale(tension, now) ? 'nd' : tensionLevel(tension.national.tensionLevel);
+  const level = tension === null ? null : oilHeadLevel(tension, now);
   return {
     theme: THEME,
     title: TITLE,

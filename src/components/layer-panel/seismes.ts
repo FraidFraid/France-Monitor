@@ -69,6 +69,12 @@ function leadOf(q: EarthquakesResponse, now: number): string {
     + `${clockOf(top.at, now)}. ${capitalize(plural(fr.length, 'séisme'))} en France, dont ${frNumber(felt, 0)} de magnitude 2,5 ou plus.`;
 }
 
+/** Niveau de la pastille : partagé avec la Vue générale dynamique (12/10/2026). */
+export function earthquakesHeadLevel(q: EarthquakesResponse | null, now: number): VigilanceLevel | 'nd' {
+  if (q === null) return 'nd';
+  return late(q, now) ? 'nd' : earthquakesLevel(q, now).level;
+}
+
 function headOf(q: EarthquakesResponse, now: number): LayerHeadModel {
   const isLate = late(q, now);
   const verdict = earthquakesLevel(q, now);
@@ -82,7 +88,7 @@ function headOf(q: EarthquakesResponse, now: number): LayerHeadModel {
       caption: `séismes de magnitude 3 ou plus en France sur 7${NBSP}jours · ${sourceLabel(q)}, ${clockOf(q.readAt, now)}${isLate ? ' (en retard)' : ''}`,
       level: isLate ? null : strong.length === 0 ? 'vert' : figureLevel === 'gris' ? null : figureLevel,
     },
-    level: isLate ? 'nd' : verdict.level,
+    level: earthquakesHeadLevel(q, now),
     status: [
       isLate ? 'niveau suspendu : relevé des séismes en retard' : glueEnvUnits(verdict.reason), stamp(sourceLabel(q), q.readAt, isLate, now),
       ...(q.source === 'EMSC' ? ['BCSF-RéNaSS indisponible, repli EMSC'] : []),

@@ -12,7 +12,7 @@ import {
   firesLevel, firmsState, forestDangerCurrent, foyerLevel, isEnvironmentDataLate, maxForestDanger,
 } from '../../services/environment-levels.ts';
 import { FIRMS_PENDING_NOTE, FIRMS_TOO_OLD_ERROR, MDF_ERROR_PREFIX, isProgressNote } from '../../services/environment-source.ts';
-import { situationLevel } from '../../services/vigilance.ts';
+import { situationLevel, type VigilanceLevel } from '../../services/vigilance.ts';
 import { wildfireSeverity } from '../../services/wildfire-dossier.ts';
 import { escapeHtml } from '../france-intel-events.ts';
 import { absoluteTime, kvRow } from '../fiche/kit.ts';
@@ -196,6 +196,11 @@ function lead(f: FiresResponse): string | null {
   if (recurrent.length > 0) parts.push(`${plural(recurrent.length, 'source récurrente', 'sources récurrentes')} à vérifier, probablement industrielles (${recurrent.map((r) => departementName(r.dept)).join(', ')}).`);
   if (f.abroadCount > 0) parts.push(`${plural(f.abroadCount, 'détection', 'détections')} hors de France, non comptées.`);
   return parts.join(' ');
+}
+
+/** Niveau de la pastille (firesLevel seule) : partagé avec la Vue générale dynamique (12/10/2026). */
+export function firesHeadLevel(f: FiresResponse | null, now: number): VigilanceLevel | 'nd' {
+  return f === null ? 'nd' : firesLevel(f, now).level;
 }
 
 function headOf(input: FeuxViewInput, f: FiresResponse): LayerHeadModel {
