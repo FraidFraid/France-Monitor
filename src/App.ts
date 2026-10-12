@@ -102,10 +102,12 @@ import { ENVIRONMENT_LATE_AFTER_MIN, parisDayOf } from './services/environment-l
 import { droughtStatus, fetchDrought, mergeDrought, type DroughtState } from './services/environment-drought.ts';
 import { airQualityStatus, fetchAirQuality, mergeAirQuality, type AirQualityState } from './services/environment-air.ts';
 import { earthquakesStatus, fetchEarthquakes, mergeEarthquakes, type EarthquakesState } from './services/environment-earthquakes.ts';
+import { disastersStatus, fetchDisasters, mergeDisasters, type DisastersState } from './services/environment-disasters.ts';
 import { fetchSeaLevels, mergeSeaLevels, seaLevelsStatus, type SeaLevelsState } from './services/environment-sea-levels.ts';
 import type { DroughtPanel } from './components/DroughtPanel.ts';
 import type { AirQualityPanel } from './components/AirQualityPanel.ts';
 import type { EarthquakesPanel } from './components/EarthquakesPanel.ts';
+import type { DisastersPanel } from './components/DisastersPanel.ts';
 import { departementCentroid } from './config/departements.ts';
 import { radarStatus, type RadarProfileState } from './services/environment-radar.ts';
 import { clusterFireDetections } from './services/fire-clustering.ts';
@@ -115,8 +117,8 @@ import {
   environmentReportSources, hasActiveEnvironment, type EnvironmentLayerKey,
 } from './config/environment-sources.ts';
 import {
-  AIR_QUALITY_LEGEND, DROUGHT_LEGEND, EARTHQUAKES_LEGEND, FIRES_LEGEND, FLOODS_LEGEND, RADAR_LEGEND, VIGILANCE_LEGEND, airQualityLegend, droughtLegend, withFillMask,
-  earthquakesLegend, firesLegend, floodsLegend, radarLegend, vigilanceLegend, withTideGauges,
+  AIR_QUALITY_LEGEND, DISASTERS_LEGEND, DROUGHT_LEGEND, EARTHQUAKES_LEGEND, FIRES_LEGEND, FLOODS_LEGEND, RADAR_LEGEND, VIGILANCE_LEGEND, airQualityLegend, droughtLegend, withFillMask,
+  disastersLegend, earthquakesLegend, firesLegend, floodsLegend, radarLegend, vigilanceLegend, withTideGauges,
 } from './components/layer-panel/environment-legend.ts';
 // Souveraineté (spec 2026-10-04 souveraineté ; contrats § 4.4) : aéronefs militaires, veille des câbles et vigilance cyber lus au démarrage
 // et relevés sans arrêt (score, arbitrage 21) ; panneaux, carte, légendes et panneau des sources datés par leur donnée.
@@ -522,6 +524,7 @@ const DEFAULT_LAYERS: MapLayers = {
   drought: false,
   airQuality: false,
   earthquakes: false,
+  disasters: false,
   traffic: false,
   trafficRoad: false,
   trafficMaritime: false,
@@ -573,6 +576,7 @@ const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
   { id: 'drought', label: 'Sécheresse', icon: 'sun', layerKeys: ['drought'] },
   { id: 'airQuality', label: 'Qualité de l’air', icon: 'cloud', layerKeys: ['airQuality'] },
   { id: 'earthquakes', label: 'Séismes', icon: 'activity', layerKeys: ['earthquakes'] },
+  { id: 'disasters', label: 'Catastrophes', icon: 'globe', layerKeys: ['disasters'] },
   { id: 'powerGrid', label: 'Réseau électrique', icon: 'zap', layerKeys: ['powerGrid'] },
   { id: 'dromEnergy', label: 'Énergie DROM', icon: 'palmtree', layerKeys: ['dromEnergy'] },
   { id: 'nuclearFleet', label: 'Parc nucléaire', icon: 'atom', layerKeys: ['nuclearFleet'] },
@@ -619,6 +623,7 @@ const SOURCE_NAME_TO_FLOATING_PANEL: Record<string, keyof MapLayers> = {
   'VigiEau': 'drought',
   'Atmo France': 'airQuality',
   'BCSF-RéNaSS': 'earthquakes',
+  'GDACS': 'disasters',
   'Marégraphes SHOM': 'environmental',
   'Trafic': 'trafficRoad',
   'TomTom agglomérations': 'trafficRoad',
@@ -1298,6 +1303,15 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     label: 'SÉISMES',
     legend: EARTHQUAKES_LEGEND,
   },
+  {
+    id: 'disasters',
+    groupId: 'environment',
+    role: 'child',
+    dependsOnGroup: true,
+    label: 'CATASTROPHES (GDACS)',
+    legend: DISASTERS_LEGEND,
+  },
+
 ];
 
 const FRANCE_INTEL_BRIEF_REFRESH_MS = 6 * 60 * 60 * 1000;
@@ -1328,6 +1342,7 @@ export class App {
   private droughtPanel: DroughtPanel | null = null;
   private airQualityPanel: AirQualityPanel | null = null;
   private earthquakesPanel: EarthquakesPanel | null = null;
+  private disastersPanel: DisastersPanel | null = null;
   private weatherRadarPanel: WeatherRadarPanel | null = null;
   private maritimePanel: MaritimePanel | null = null;
   /** Environnement (spec 2026-10-04 environnement) : dernières lectures des services, partagées par les panneaux, la carte et le score. */
@@ -1343,6 +1358,7 @@ export class App {
   private fillOrder: string[] = [];
   private currentAirQuality: AirQualityState | null = null;
   private currentEarthquakes: EarthquakesState | null = null;
+  private currentDisasters: DisastersState | null = null;
   private currentSeaLevels: SeaLevelsState | null = null;
   /** Échéance de la vigilance affichée (bascule Aujourd’hui / Demain du panneau), suivie par la carte. */
   private vigilanceEcheance: VigilanceEcheance = 'J';
@@ -1519,6 +1535,7 @@ export class App {
   private droughtPanelPromise: Promise<void> | null = null;
   private airQualityPanelPromise: Promise<void> | null = null;
   private earthquakesPanelPromise: Promise<void> | null = null;
+  private disastersPanelPromise: Promise<void> | null = null;
   private weatherRadarPanelPromise: Promise<void> | null = null;
   private trafficPanelPromise: Promise<void> | null = null;
   private maritimePanelPromise: Promise<void> | null = null;
@@ -3080,6 +3097,9 @@ export class App {
       void this.ensureAirQualityPanel().then(() => this.openEnvironmentPanel('airQuality'));
     } else if (name === 'BCSF-RéNaSS') {
       void this.ensureEarthquakesPanel().then(() => this.openEnvironmentPanel('earthquakes'));
+    } else if (name === 'GDACS') {
+      void this.ensureDisastersPanel().then(() => this.openEnvironmentPanel('disasters'));
+
     } else if (name === 'Marégraphes SHOM') {
       void this.ensureVigilancePanel().then(() => this.openEnvironmentPanel('environmental'));
     } else if (name === 'Éolien France') {
@@ -3149,6 +3169,7 @@ export class App {
       'drought',
       'airQuality',
       'earthquakes',
+      'disasters',
       'powerGrid',
       'dromEnergy',
       'nuclearFleet',
@@ -4053,6 +4074,20 @@ export class App {
     return this.earthquakesPanelPromise;
   }
 
+  private ensureDisastersPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.disastersPanelPromise ??= import('./components/DisastersPanel.ts').then(({ DisastersPanel }) => {
+      const panel = new DisastersPanel(container);
+      panel.setOnClose(() => this.closeEnvironmentLayer('disasters'));
+      if (this.mapContainer?.canFocusMap()) panel.setOnFocusAlert((alert) => this.mapContainer?.flyTo(alert.lon, alert.lat, 6));
+      panel.mount();
+      this.disastersPanel = panel;
+      if (this.activeLayers.disasters) panel.show(this.currentDisasters);
+    });
+    return this.disastersPanelPromise;
+  }
+
   /** Département cliqué dans un panneau Environnement : la carte se centre sur son centroïde. */
   private focusDepartment(code: string): void {
     const c = departementCentroid(code);
@@ -4100,6 +4135,7 @@ export class App {
       case 'drought': this.droughtPanel?.show(this.currentDrought); break;
       case 'airQuality': this.airQualityPanel?.show(this.currentAirQuality); break;
       case 'earthquakes': this.earthquakesPanel?.show(this.currentEarthquakes); break;
+      case 'disasters': this.disastersPanel?.show(this.currentDisasters); break;
     }
     this.loadEnvironmentSource(key).catch((err) => console.error(`[App] Lecture ${key} en échec`, err));
     this.syncEnvironmentPolling(key);
@@ -4117,6 +4153,7 @@ export class App {
       case 'drought': return this.loadDrought();
       case 'airQuality': return this.loadAirQuality();
       case 'earthquakes': return this.loadEarthquakes();
+      case 'disasters': return this.loadDisasters();
     }
   }
 
@@ -4205,6 +4242,7 @@ export class App {
       { ...withFillMask(this.currentDrought ? droughtLegend(this.currentDrought.drought.data, now) : DROUGHT_LEGEND, this.fillOrder), visible: shown('drought') },
       { ...withFillMask(this.currentAirQuality ? airQualityLegend(this.currentAirQuality.air.data, now) : AIR_QUALITY_LEGEND, this.fillOrder), visible: shown('airQuality') },
       { ...(this.currentEarthquakes ? earthquakesLegend(this.currentEarthquakes.quakes.data, now) : EARTHQUAKES_LEGEND), visible: shown('earthquakes') },
+      { ...(this.currentDisasters ? disastersLegend(this.currentDisasters.disasters.data, now) : DISASTERS_LEGEND), visible: shown('disasters') },
     ]);
   }
 
@@ -5036,6 +5074,7 @@ export class App {
       case 'drought': return [this.ensureDroughtPanel()];
       case 'airQuality': return [this.ensureAirQualityPanel()];
       case 'earthquakes': return [this.ensureEarthquakesPanel()];
+      case 'disasters': return [this.ensureDisastersPanel()];
       case 'trafficRoad': return [this.ensureTrafficPanel()];
       case 'trafficAir': return [this.ensureAirTrafficPanel()];
       case 'trafficRail': return [this.ensureTransportPanel()];
@@ -5081,6 +5120,7 @@ export class App {
       case 'drought': return this.droughtPanel;
       case 'airQuality': return this.airQualityPanel;
       case 'earthquakes': return this.earthquakesPanel;
+      case 'disasters': return this.disastersPanel;
       case 'powerGrid': return this.energyPanel;
       case 'dromEnergy': return this.dromEnergyPanel;
       case 'nuclearFleet': return this.nuclearPanel;
@@ -5578,6 +5618,7 @@ export class App {
     this.mapLegend.addCategory(DROUGHT_LEGEND);
     this.mapLegend.addCategory(AIR_QUALITY_LEGEND);
     this.mapLegend.addCategory(EARTHQUAKES_LEGEND);
+    this.mapLegend.addCategory(DISASTERS_LEGEND);
     this.mapLegend.addCategory(DEFENSE_LEGEND);
     this.mapLegend.addCategory(CONNECTIVITY_LEGEND);
     this.mapLegend.addCategory(CYBER_LEGEND);
@@ -6240,6 +6281,22 @@ export class App {
       this.statusPanel?.updateSource('BCSF-RéNaSS', earthquakesStatus(this.currentEarthquakes, now));
       this.mapContainer?.updateEarthquakesLayer(data, now);
       this.earthquakesPanel?.update(this.currentEarthquakes);
+      this.refreshEnvironmentLegend();
+      this.recordEnvironmentSamples(now);
+      this.refreshFranceIntelPanel();
+    });
+  }
+
+  /** Catastrophes (GDACS, spec 2026-10-12) : territoire français et monde ; lues au démarrage et relevées sans arrêt (situations outre-mer). */
+  private loadDisasters(): Promise<void> {
+    return this.readEnvironment('disasters', async () => {
+      const incoming = await fetchDisasters(this.currentDisasters);
+      this.currentDisasters = mergeDisasters(this.currentDisasters, incoming);
+      const now = Date.now();
+      const data = this.currentDisasters.disasters.data;
+      this.statusPanel?.updateSource('GDACS', disastersStatus(this.currentDisasters, now));
+      this.mapContainer?.updateDisastersLayer(data, now);
+      this.disastersPanel?.update(this.currentDisasters);
       this.refreshEnvironmentLegend();
       this.recordEnvironmentSamples(now);
       this.refreshFranceIntelPanel();
@@ -7231,6 +7288,10 @@ export class App {
       {
         name: 'earthquakes', task: this.loadEarthquakes().catch((err) => console.error('[App] Séismes indisponibles', err))
       },
+      {
+        name: 'disasters', task: this.loadDisasters().catch((err) => console.error('[App] Catastrophes GDACS indisponibles', err))
+      },
+
       {
         name: 'infrastructure', task: this.loadInfrastructure().catch(() => {
           this.mapContainer?.updateInfrastructure(ALL_INFRASTRUCTURE.filter((p) => p.type === 'gas-terminal' || p.type === 'gas-storage'));

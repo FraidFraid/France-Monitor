@@ -52,7 +52,7 @@ describe('liste de câblage des couches (contrats § 4.4) pour drought, airQuali
     expect(methodBody('onLayerToggle')).toContain('this.refreshEnvironmentLegend();');
   });
   it('clés : type, DEFAULT_LAYERS, objet complet du fil d’actualités, URL, vues de couches, restauration', () => {
-    expect(ENVIRONMENT_LAYER_KEYS).toEqual(['environmental', 'floods', 'weatherRadar', 'fires', 'drought', 'airQuality', 'earthquakes']);
+    expect(ENVIRONMENT_LAYER_KEYS).toEqual(['environmental', 'floods', 'weatherRadar', 'fires', 'drought', 'airQuality', 'earthquakes', 'disasters']);
     expect(app).toMatch(/const DEFAULT_LAYERS[^]*?drought: false,[^]*?airQuality: false,[^]*?earthquakes: false,/);
     for (const key of ['drought', 'airQuality', 'earthquakes']) {
       expect(feed).toContain(`${key}: false,`);

@@ -107,6 +107,8 @@ export interface MapLayers {
   drought: boolean;
   airQuality: boolean;
   earthquakes: boolean;
+  /** Environnement, catastrophes GDACS (spec 2026-10-12). */
+  disasters: boolean;
   traffic: boolean;
   trafficRoad: boolean;
   trafficMaritime: boolean;
