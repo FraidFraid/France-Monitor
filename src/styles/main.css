@@ -8168,3 +8168,50 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 .lp .lp-faint { color: var(--text-muted); }
 .lp .lp-key i.lp-dash { background: none; height: 0; border-top: 2px dashed var(--text-muted); }
 .lp .lp-seg { flex-wrap: wrap; }
+
+/* ── v2 : fil des alertes dans l'en-tête (12/10/2026, façon « newswire » des salles de rédaction) ──
+   Première ligne : l'état national garde sa largeur, le fil prend l'espace restant ; sous 300 px de place, il disparaît. */
+#app.ui-v2 .header .fm-v2-status { display: flex; align-items: center; gap: 16px; }
+#app.ui-v2 .fm-v2-status .sb-main { flex: 0 1 auto; min-width: 0; }
+.nw-host { flex: 1 1 0; min-width: 0; container-type: inline-size; }
+@container (max-width: 300px) { .nw { display: none !important; } }
+.nw {
+  display: flex; align-items: center; gap: 10px; height: 28px; min-width: 0;
+  padding-left: 12px; border-left: 1px solid var(--border-color);
+  font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 0.01em;
+}
+.nw-tag {
+  flex: none; padding: 1px 6px; border: 1px solid rgba(75, 252, 148, 0.45); border-radius: 3px;
+  color: #4bfc94; font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+}
+.nw-viewport {
+  flex: 1 1 auto; min-width: 0; overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 24px, #000 calc(100% - 40px), transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 24px, #000 calc(100% - 40px), transparent 100%);
+}
+.nw-track { display: flex; width: max-content; animation: nw-scroll var(--nw-duration, 60s) linear infinite; }
+.nw:hover .nw-track, .nw:focus-within .nw-track { animation-play-state: paused; }
+@keyframes nw-scroll { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+.nw-run { display: flex; flex: none; margin: 0; padding: 0; list-style: none; }
+.nw-run > li { flex: none; }
+.nw-item {
+  display: inline-flex; align-items: center; gap: 7px; margin-right: 34px; padding: 2px 4px;
+  border: 0; border-radius: 4px; background: transparent; color: var(--text-primary);
+  font: inherit; white-space: nowrap; cursor: pointer;
+}
+.nw-item:hover .nw-title { text-decoration: underline; text-underline-offset: 3px; }
+.nw-item:focus-visible { outline: 2px solid #4bfc94; outline-offset: 1px; }
+.nw-time { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.nw-place { color: var(--text-secondary); }
+.nw-place::before { content: '·'; margin-right: 7px; }
+.nw-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; }
+.nw-dot--jaune { background: var(--sev-yellow); }
+.nw-dot--orange { background: var(--sev-orange); box-shadow: 0 0 6px color-mix(in srgb, var(--sev-orange) 75%, transparent); }
+.nw-dot--rouge { background: var(--sev-red); box-shadow: 0 0 8px color-mix(in srgb, var(--sev-red) 85%, transparent); }
+.nw-dot--vert { background: var(--sev-green); }
+/* Animations réduites : fil immobile, défilable à la main ; la copie du défilement continu disparaît. */
+@media (prefers-reduced-motion: reduce) {
+  .nw-track { animation: none; }
+  .nw-viewport { overflow-x: auto; scrollbar-width: none; }
+  .nw-run[aria-hidden="true"] { display: none; }
+}
