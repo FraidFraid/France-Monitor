@@ -91,6 +91,12 @@ function topFigure(d: DroughtResponse): { n: number; word: string; level: Vigila
   return { n: 0, word: 'sous restriction', level: 'vert' };
 }
 
+/** Niveau de la pastille (arrêtés VigiEau en retard : n.d.) : partagé avec la Vue générale dynamique (12/10/2026). */
+export function droughtHeadLevel(d: DroughtResponse | null, now: number): VigilanceLevel | 'nd' {
+  if (d === null) return 'nd';
+  return droughtLate(d, now) ? 'nd' : droughtLevel(d).level;
+}
+
 function headOf(d: DroughtResponse, now: number): LayerHeadModel {
   const late = droughtLate(d, now);
   const verdict = droughtLevel(d);
@@ -103,7 +109,7 @@ function headOf(d: DroughtResponse, now: number): LayerHeadModel {
       caption: `départements ${top.word} · arrêtés en vigueur au ${dayMonthClock(d.asOf)}${late ? ' (en retard)' : ''}`,
       level: late || verdict.level === 'nd' ? null : top.level,
     },
-    level: late ? 'nd' : verdict.level,
+    level: droughtHeadLevel(d, now),
     status: [late ? 'niveau suspendu : arrêtés VigiEau en retard' : glueEnvUnits(verdict.reason), stamp('VigiEau', d.asOf, late, now), ...partial],
     lead: late || d.departments.length === 0 ? null : leadOf(d),
   };

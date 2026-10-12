@@ -161,6 +161,11 @@ function leadOf(c: CyberResponse, now: number): string | null {
     + `dont ${cited.length} ${cited.length > 1 ? 'citées' : 'citée'} par le CERT-FR${names.length > 0 ? ` : ${names.join(', ')}` : ''}${late}.`);
 }
 
+/** Niveau de la pastille (cyberLevel, O2) : partagé avec la Vue générale dynamique (12/10/2026). */
+export function cyberHeadLevel(c: CyberResponse | null, now: number): VigilanceLevel | 'nd' {
+  return c === null ? 'nd' : cyberLevel(c, now).level;
+}
+
 /** Pastille et raison de `cyberLevel` (O2), jamais recalculées ; gros chiffre : alertes en cours, sans couleur à zéro ou en retard. */
 function headOf(c: CyberResponse, now: number): LayerHeadModel {
   const verdict = cyberLevel(c, now);

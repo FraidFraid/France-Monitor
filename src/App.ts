@@ -27,7 +27,7 @@ import type { FranceIntelPanel } from './components/FranceIntelPanel.ts';
 import type { PosteSituation } from './components/poste/PosteSituation.ts';
 import type { VisitBaselineSession } from './services/intel-last-visit.ts';
 import { briefSituationIds, evaluateBriefLevel, fetchFranceIntelBrief, type BriefLevelMark } from './services/france-intel-brief.ts';
-import { levelHex, scoreLevel } from './services/vigilance.ts';
+import { levelHex, scoreLevel, type VigilanceLevel } from './services/vigilance.ts';
 import { eventMapPoints } from './services/v2-map.ts';
 import type { ThemeId } from './services/themes.ts';
 import { innerLayerOpen } from './services/escape-layers.ts';
@@ -69,6 +69,7 @@ import {
 } from './config/layer-presets.ts';
 import { computeISNR } from './services/stability-index.ts';
 import type { DepartmentPressure } from './services/department-pressure.ts';
+import type { WatchEntry, WatchTransition, Watched } from './components/layer-panel/watch.ts';
 import type { PressurePanel } from './components/PressurePanel.ts';
 import { ALL_INFRASTRUCTURE, NUCLEAR_PLANTS } from './config/infrastructure.ts';
 // ACTIVE_INSTALLATIONS (config/military-bases-db ~1100 l.) chargé dynamiquement dans loadDefenseSites(), sans fusion OpenStreetMap.
@@ -561,6 +562,9 @@ interface FloatingPanelDef {
   icon: IconName;
   layerKeys: ReadonlyArray<keyof MapLayers>;
 }
+
+/** Sources relevées pour la seule Vue générale dynamique (lot C) : hors du socle de relève permanent. */
+const GENERAL_WATCH_POLLED: ReadonlyArray<keyof MapLayers> = ['outagesElec', 'outagesInternet', 'outagesCloud', 'drought'];
 
 /** Panneaux de module : ne comptent pas comme « couche intérieure » pour Échap. */
 const MODULE_PANEL_SELECTOR = '[class*="-panel-modal"], .fm-floating-panel';
@@ -1374,6 +1378,19 @@ export class App {
   /** v2 : « Pression par département » à la place de l'ISNRPanel (12/10/2026) ; données calculées avec le fil du poste. */
   private pressurePanel: PressurePanel | null = null;
   private v2Pressure: DepartmentPressure[] | null = null;
+  /**
+   * Vue générale dynamique (12/10/2026) : couches allumées automatiquement parce qu'elles sont en jaune ou plus (éteintes à leur
+   * retour au vert ; une couche touchée à la main en sort), puces dans l'ordre des niveaux, dernier niveau connu de chaque couche
+   * suivie et journal des passages de niveau de la session.
+   */
+  private generalAuto = new Set<keyof MapLayers>();
+  private watchEntries: WatchEntry[] = [];
+  private watchLastKnown = new Map<keyof MapLayers, VigilanceLevel>();
+  private watchLog: WatchTransition[] = [];
+  /** Module de surveillance chargé à la demande : il importe les vues des panneaux suivis, hors du chunk principal. */
+  private watchModule: typeof import('./components/layer-panel/watch.ts') | null = null;
+  private watchModulePromise: Promise<void> | null = null;
+  private generalWatchPollingStarted = false;
   private cyberPanel: CyberPanel | null = null;
   private franceIntelPanel: FranceIntelPanel | null = null;
   private situationMonitor: SituationMonitor | null = null;
@@ -2773,7 +2790,11 @@ export class App {
     // LayerPanel (COUCHES)
     this.layerPanel = new LayerPanel(sidebarEl, this.activeLayers);
     // v2 : l'activation d'une couche ne l'ouvre jamais (spec 2026-09-29 § 4), le sélecteur de panneaux le fait.
-    this.layerPanel.setOnChange((key, enabled) => this.onLayerToggle(key, enabled, layerActivationOptions(this.uiV2)));
+    this.layerPanel.setOnChange((key, enabled) => {
+      // Couche touchée à la main : la Vue générale ne l'éteindra plus d'elle-même (12/10/2026).
+      this.generalAuto.delete(key);
+      this.onLayerToggle(key, enabled, layerActivationOptions(this.uiV2));
+    });
     this.layerPanel.setPresetHandler((id) => {
       // Thème posé avant la vue : la puce Actualités de la barre des panneaux en dépend.
       this.v2Theme = id;
@@ -3735,7 +3756,8 @@ export class App {
   private healthSurveillanceKeys(): readonly HealthSurveillanceKey[] | 'all' {
     if (this.activeLayers.health) return 'all';
     const keys = new Set<HealthSurveillanceKey>(this.activeLayers.healthOscour ? ['syndromic', 'alerts'] : []);
-    if (this.healthThemeFicheVisible()) for (const k of HEALTH_NATIONAL_KEYS) keys.add(k);
+    // Fiche thème Santé à l'écran, ou Vue générale (niveau national suivi, 12/10/2026) : les sources du niveau national.
+    if (this.healthThemeFicheVisible() || (this.uiV2 && this.v2Theme === 'general')) for (const k of HEALTH_NATIONAL_KEYS) keys.add(k);
     return [...keys];
   }
 
@@ -4125,7 +4147,7 @@ export class App {
    * sécheresse si leur couche est active ou leur panneau ouvert ; radar aussi avec la couche Feux active et les sommets d'écho cochés.
    */
   private environmentPollWanted(key: EnvironmentLayerKey): boolean {
-    if (ENVIRONMENT_ALWAYS_POLLED.has(key) || this.activeLayers[key]) return true;
+    if (ENVIRONMENT_ALWAYS_POLLED.has(key) || this.activeLayers[key] || this.generalWatchPolls(key)) return true;
     if (this.getFloatingPanelInstance(key)?.isVisible?.() ?? false) return true;
     return key === 'weatherRadar' && this.activeLayers.fires && this.echoTopsEnabled;
   }
@@ -4428,7 +4450,7 @@ export class App {
    * ouvert, jamais couche éteinte (le cloud n'entre pas au score).
    */
   private outagesPollWanted(key: OutagesLayerKey): boolean {
-    if (OUTAGES_ALWAYS_POLLED.has(key) || this.activeLayers[key]) return true;
+    if (OUTAGES_ALWAYS_POLLED.has(key) || this.activeLayers[key] || this.generalWatchPolls(key)) return true;
     return this.getFloatingPanelInstance(key)?.isVisible?.() ?? false;
   }
 
@@ -5215,10 +5237,20 @@ export class App {
           <span class="floating-panel-switcher__label">Actualités géolocalisées</span>
         </button>
       `;
-    el.innerHTML = newsChip + eligible.map((def) => {
+    // Vue générale dynamique : puces dans l'ordre des niveaux (rouge d'abord), voyant de niveau ; « n.d. » en gris (12/10/2026).
+    const watchedLevel = (id: keyof MapLayers): string | null =>
+      this.uiV2 && this.v2Theme === 'general' ? this.watchEntries.find((e) => e.key === id)?.level ?? null : null;
+    const watchRank = (id: keyof MapLayers): number => {
+      const i = this.watchEntries.findIndex((e) => e.key === id);
+      return i === -1 ? this.watchEntries.length : i;
+    };
+    const ordered = this.uiV2 && this.v2Theme === 'general' ? [...eligible].sort((a, b) => watchRank(a.id) - watchRank(b.id)) : eligible;
+    el.innerHTML = newsChip + ordered.map((def) => {
       // Surligné = son panneau est à l'écran ; un clic l'ouvre ou le referme (la couche reste active).
       const pressed = this.isFloatingPanelVisible(def.id);
-      const action = t(pressed ? 'app.floatingPanelHide' : 'app.floatingPanelShow', { value: def.label });
+      const level = watchedLevel(def.id);
+      const action = t(pressed ? 'app.floatingPanelHide' : 'app.floatingPanelShow', { value: def.label })
+        + (level === 'nd' ? ' (source indisponible)' : '');
       return `
         <button
           type="button"
@@ -5230,6 +5262,7 @@ export class App {
         >
           <span class="floating-panel-switcher__icon" aria-hidden="true">${fmIcon(def.icon)}</span>
           <span class="floating-panel-switcher__label">${def.label}</span>
+          ${level ? `<span class="fps-level fps-level--${level}" title="${level === 'nd' ? 'source indisponible' : level}" aria-hidden="true"></span>` : ''}
         </button>
       `;
     }).join('');
@@ -5337,6 +5370,8 @@ export class App {
    * déjà trafficAir/trafficRoad/trafficMaritime start/stop).
    */
   private applyLayerPreset(id: LayerPresetId): void {
+    // Une vue choisie reprend la main sur toutes les couches : plus aucune n'est « allumée par la Vue générale ».
+    this.generalAuto.clear();
     const target = themeLayers(this.uiV2, id);
     // v2 : la vue décide aussi de « Événements en cours » (décision du 12/10/2026).
     const keys: ReadonlyArray<keyof MapLayers> = this.uiV2 ? [...ALL_PRESETABLE_LAYER_KEYS, 'events'] : ALL_PRESETABLE_LAYER_KEYS;
@@ -5349,6 +5384,100 @@ export class App {
     this.hideAllFloatingPanels();
     // Le LayerPanel tient son propre état des cases : le resynchroniser, sinon il diverge de App.
     this.layerPanel?.updateLayers(this.activeLayers);
+    this.refreshFloatingPanelSwitcher();
+    if (id === 'general') this.refreshGeneralWatch();
+    this.syncGeneralWatchPolling();
+  }
+
+  /**
+   * Vue générale dynamique (12/10/2026) : niveau de chaque couche suivie (celui de la pastille de son panneau), journal des passages
+   * de niveau, puis, en Vue générale, couches en jaune ou plus allumées et couches revenues au vert éteintes (seulement celles que la
+   * vue a allumées elle-même ; une couche touchée à la main n'est plus gérée). Appelée à chaque rafraîchissement du poste.
+   */
+  /**
+   * Sources relevées pour la seule Vue générale dynamique (lot C, 12/10/2026) : coupures d'électricité, Internet et cloud (10, 10 et
+   * 30 min), sécheresse (1 h) ; environ 15 lectures de plus par heure, servies par le cache serveur, et seulement Vue générale affichée.
+   */
+  private generalWatchPolls(key: keyof MapLayers): boolean {
+    return this.uiV2 && this.v2Theme === 'general' && GENERAL_WATCH_POLLED.includes(key);
+  }
+
+  /** Relèves de la Vue générale alignées sur la vue affichée, et première lecture des sources jamais lues (une fois). */
+  private syncGeneralWatchPolling(): void {
+    for (const key of ['outagesElec', 'outagesInternet', 'outagesCloud'] as const) {
+      this.syncOutagesPolling(key);
+      const slot = key === 'outagesElec' ? this.currentOutPower?.power : key === 'outagesInternet' ? this.currentOutInternet?.internet : this.currentOutCloud?.cloud;
+      if (this.generalWatchPolls(key) && slot === undefined) this.loadOutagesSource(key).catch((err) => console.error(`[App] Lecture ${key} en échec`, err));
+    }
+    this.syncEnvironmentPolling('drought');
+    if (this.generalWatchPolls('drought') && this.currentDrought === null) void this.loadDrought();
+  }
+
+  private refreshGeneralWatch(): void {
+    if (!this.uiV2) return;
+    const watch = this.watchModule;
+    if (!watch) {
+      this.watchModulePromise ??= import('./components/layer-panel/watch.ts').then((m) => {
+        this.watchModule = m;
+        this.refreshGeneralWatch();
+      });
+      return;
+    }
+    const { GENERAL_SOCLE, generalWatch, watchLevels, watchTransitions } = watch;
+    if (this.v2IntelStarted && !this.generalWatchPollingStarted) {
+      this.generalWatchPollingStarted = true;
+      this.syncGeneralWatchPolling();
+    }
+    const now = Date.now();
+    const healthNational = this.healthNationalNow(now);
+    const slot = <T>(s: { data: T | null; error: string | null; fetchedAt: number | null } | undefined): Watched<T> =>
+      ({ data: s?.data ?? null, loaded: s !== undefined && (s.fetchedAt !== null || s.error !== null) });
+    const levels = watchLevels({
+      vigilance: slot(this.currentVigilance?.vigilance),
+      floods: slot(this.currentFloods?.floods),
+      fires: slot(this.currentFires?.fires),
+      earthquakes: slot(this.currentEarthquakes?.quakes),
+      airQuality: slot(this.currentAirQuality?.air),
+      telecom: slot(this.currentOutTelecom?.telecom),
+      // Sans emplacement de source : pas de donnée = pas encore lu (une panne est dite dans la donnée, ex. rteAvailable, degraded).
+      ecowatt: { data: this.currentEcowattResponse, loaded: this.currentEcowattResponse !== null },
+      nuclear: { data: this.currentNuclearState, loaded: this.currentNuclearState !== null },
+      cyber: slot(this.currentSovCyber?.cyber),
+      military: slot(this.currentMilitary?.military),
+      fuel: { data: this.currentFuelTensionData, loaded: this.currentFuelTensionData !== null },
+      power: slot(this.currentOutPower?.power),
+      internet: slot(this.currentOutInternet?.internet),
+      cloud: slot(this.currentOutCloud?.cloud),
+      drought: slot(this.currentDrought?.drought),
+      health: { data: healthNational, loaded: healthNational !== null },
+      gnss: this.gnssState?.gnss.data ?? null,
+      now,
+    });
+    // Journal : passages entre niveaux connus (un « n.d. » n'écrit rien) ; 50 derniers gardés pour la session.
+    const transitions = watchTransitions(this.watchLastKnown, levels, now);
+    for (const [key, level] of levels) if (level !== 'nd') this.watchLastKnown.set(key, level);
+    if (transitions.length > 0) {
+      this.watchLog = [...transitions, ...this.watchLog].slice(0, 50);
+      this.poste?.setLayerChanges(this.watchLog.map((t) => ({ ...t, label: FLOATING_PANEL_DEFS.find((d) => d.id === t.key)?.label ?? t.key })));
+    }
+    // Avant les couches critiques, seul le socle : pas de puce « n.d. » pour une source simplement pas encore lue.
+    this.watchEntries = this.v2IntelStarted ? generalWatch(levels) : generalWatch(new Map());
+    if (this.v2Theme !== 'general') return;
+    const wanted = new Set(this.watchEntries.map((e) => e.key).filter((k) => !GENERAL_SOCLE.includes(k)));
+    let changed = false;
+    for (const key of wanted) {
+      if (this.activeLayers[key]) continue;
+      this.onLayerToggle(key, true, { suppressPanel: true });
+      this.generalAuto.add(key);
+      changed = true;
+    }
+    for (const key of [...this.generalAuto]) {
+      if (wanted.has(key)) continue;
+      this.generalAuto.delete(key);
+      if (this.activeLayers[key]) this.onLayerToggle(key, false, { suppressPanel: true });
+      changed = true;
+    }
+    if (changed) this.layerPanel?.updateLayers(this.activeLayers);
     this.refreshFloatingPanelSwitcher();
   }
 
@@ -5810,7 +5939,8 @@ export class App {
 
     this._intervalOil = setInterval(() => {
       if (document.hidden) return; // skip tick while tab is hidden
-      if (!this.activeLayers.oilNetwork) return;
+      // Vue générale dynamique : la tension carburants y est suivie, couche éteinte comprise (12/10/2026).
+      if (!this.activeLayers.oilNetwork && !(this.uiV2 && this.v2Theme === 'general')) return;
       void this.loadOil();
     }, POLL_OIL_MS);
   }
@@ -6211,6 +6341,7 @@ export class App {
       this.droughtPanel?.update(this.currentDrought);
       this.refreshEnvironmentLegend();
       this.recordEnvironmentSamples(now);
+      this.refreshGeneralWatch();
     });
   }
 
@@ -8036,6 +8167,7 @@ export class App {
       lang,
       now,
     });
+    this.refreshGeneralWatch();
   }
 
   /** Remet les événements à la v2 et enregistre la ligne de base, au même moment que l'ancre de visite. */

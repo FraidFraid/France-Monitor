@@ -77,6 +77,12 @@ function remitAt(state: NuclearState): number {
 
 // ── En-tête et onglets ────────────────────────────────────────────────────────
 
+/** Niveau de la pastille (arrêts fortuits) ; RTE indisponible : n.d. Partagé avec la Vue générale dynamique (12/10/2026). */
+export function nuclearHeadLevel(state: NuclearState | null, now: number): VigilanceLevel | 'nd' {
+  if (state === null || !state.rteAvailable) return 'nd';
+  return fleetLevel(fleetSummary(NUCLEAR_UNITS, activeOutages(state.unavailabilities, NUCLEAR_UNITS, now)).byKind.fortuit.lostMw);
+}
+
 function tabsOf(state: NuclearState | null): LayerTab[] {
   const n = state?.unconfirmedSignals.length ?? 0;
   return NUCLEAR_TABS.map((id) => ({ id, label: TAB_LABELS[id], count: id === 'remit' && n > 0 ? n : null }));

@@ -7,7 +7,7 @@
 // avec le compte de mailles à précision dégradée. Seules la DGAC et l'ANFR qualifient un brouillage : la vue dit « précision de
 // position dégradée » (O15). Pur, sans réseau ni DOM : appliqué par buildDefenseView (defense.ts) à la vue de la phase A. Aucun seuil de
 // la grille recopié : la vue lit `cell.level`, `generalDegradation`, `degraded` et `gnssDegradedCount`.
-import type { GnssResponse, KpPoint, NoaaAlert, NoaaScaleDay, SanctionsResponse } from '../../types/index.ts';
+import type { GnssResponse, KpPoint, MilitaryResponse, NoaaAlert, NoaaScaleDay, SanctionsResponse } from '../../types/index.ts';
 import { DRONES_LEGEND, DRONES_POINTER, DRONES_POINTER_URL, DRONES_TITLE } from '../../services/sovereignty-drones.ts';
 import {
   GNSS_ORANGE_PCT, GNSS_SITUATION_CELLS, GNSS_YELLOW_PCT, defenseLevel, gnssDegradedCount, gnssNotEvaluatedReason, gnssWindowHours,
@@ -404,6 +404,19 @@ export function defenseMethodB(): string {
 }
 
 // ─── Assemblage ───
+
+/**
+ * Niveau de la pastille Défense, grille GNSS comprise : même règle que headWithGnss (relevé adsb.lol en retard mais grille fraîche :
+ * la couleur du GNSS reste). Partagé avec la Vue générale dynamique (12/10/2026).
+ */
+export function defenseHeadLevel(m: MilitaryResponse | null, gnss: GnssResponse | null, now: number): VigilanceLevel | 'nd' {
+  if (m === null || m.readAt === null) return 'nd';
+  const count = gnssDegradedCount(gnss, now);
+  if (defenseLevel(m, now).level === 'nd' && count > 0) {
+    return defenseLevel({ ...m, emergencies: [], readAt: new Date(now).toISOString() }, now, count).level;
+  }
+  return defenseLevel(m, now, count).level;
+}
 
 /** Pastille avec le compte de mailles à précision dégradée : niveau et raison remplacés ; le gros chiffre suit la pastille (R3). */
 function headWithGnss(head: LayerHeadModel, input: DefenseViewInput): LayerHeadModel {

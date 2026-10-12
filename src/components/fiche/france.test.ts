@@ -249,6 +249,20 @@ describe('onglet État de la France (spec 2026-09-29 § 7)', () => {
     expect(rows.map((r) => r.text).join(' ')).toContain('Panne à Lyon');
   });
 
+  it('passages de niveau des couches suivies (Vue générale dynamique) : la désescalade se consigne, elle ne s’efface pas', () => {
+    const { meta, rows } = franceChangeDigest(input({
+      snapshot: snapshot({ situations: [] }),
+      layerChanges: [
+        { label: 'Vigilance météo', from: 'orange', to: 'vert', at: NOW - 60_000 },
+        { label: 'Feux de forêt', from: 'vert', to: 'orange', at: NOW - 120_000 },
+        { label: 'Séismes', from: 'vert', to: 'jaune', at: NOW - 180_000 },
+      ],
+    }));
+    expect(rows.map((r) => r.text)).toEqual(['Vigilance météo : orange → vert', 'Feux de forêt : vert → orange']);
+    // vert → jaune compte parmi les aggravations, sans ligne (seuls orange et rouge en ont une).
+    expect(meta).toContain('2 aggravés · 1 résolu');
+  });
+
   it('S<n> désigne la situation figée au moment du brief, pas l’instantané courant', () => {
     const html = renderFiche(buildFranceFiche(input({ briefSituationIds: ['cyber-pressure'] })), 'fr');
     expect(html).toContain('data-select="situation:cyber-pressure">S1');

@@ -82,6 +82,14 @@ function leadOf(a: AirQualityResponse, now: number): string {
   return parts.join(' ');
 }
 
+/** Niveau de la pastille : partagé avec la Vue générale dynamique (12/10/2026). */
+export function airQualityHeadLevel(a: AirQualityResponse | null, now: number): VigilanceLevel | 'nd' {
+  if (a === null) return 'nd';
+  if (a.episodesUpdatedAt !== null && episodesLate(a, now)) return 'nd';
+  if (a.episodesUpdatedAt === null && a.index.communes > 0) return 'nd';
+  return airQualityLevel(a).level;
+}
+
 function headOf(a: AirQualityResponse, now: number): LayerHeadModel {
   const late = a.episodesUpdatedAt !== null && episodesLate(a, now);
   const episodesDown = a.episodesUpdatedAt === null && a.index.communes > 0;
@@ -94,7 +102,7 @@ function headOf(a: AirQualityResponse, now: number): LayerHeadModel {
       caption: `épisodes de pollution en cours ou prévus, J à J+2 · Atmo France, ${clockOf(a.episodesUpdatedAt, now)}${tail}`,
       level: late || a.episodesUpdatedAt === null ? null : figureLevel(a),
     },
-    level: late ? 'nd' : verdict.level,
+    level: airQualityHeadLevel(a, now),
     status: [
       late ? 'niveau suspendu : épisodes Atmo France en retard' : glueEnvUnits(verdict.reason),
       `${stamp('Atmo', a.episodesUpdatedAt, late, now)} · ${stamp('indice', a.index.updatedAt, indexLate(a, now), now)}`,

@@ -211,6 +211,12 @@ function sections(r: InternetOutagesResponse, input: InternetViewInput, f: Fresh
   ];
 }
 
+/** Niveau de la pastille (IODA absent ou en retard : n.d.) : partagé avec la Vue générale dynamique (12/10/2026). */
+export function internetHeadLevel(r: InternetOutagesResponse | null, now: number): VigilanceLevel | 'nd' {
+  if (r === null || r.iodaReadAt === null || isOutagesDataLate('ioda', r.iodaReadAt, now)) return 'nd';
+  return internetLevel(r, now) ?? 'nd';
+}
+
 export function buildInternetView(input: InternetViewInput): LayerView {
   const { internet: r, error, now } = input;
   if (r === null && error === null) {
@@ -232,7 +238,7 @@ export function buildInternetView(input: InternetViewInput): LayerView {
   const iodaReadAt = Date.parse(r.iodaReadAt);
   const f: Freshness = { iodaLate: isOutagesDataLate('ioda', r.iodaReadAt, now), radarLate: r.radar.configured && isOutagesDataLate('radar', r.radar.readAt, now) };
   const live = internetLive(r, now);
-  const level = f.iodaLate ? 'nd' : internetLevel(r, now) ?? 'nd';
+  const level = internetHeadLevel(r, now);
   // IODA en retard : « en cours » ne se dit plus au présent, le gros chiffre est « n.d. » (jamais un compte, 0 compris).
   const figure = f.iodaLate ? { value: 'n.d.', caption: FIGURE_CAPTION, level: null } : { value: frNumber(live.length, 0), caption: FIGURE_CAPTION };
   const radar = !r.radar.configured ? 'Cloudflare Radar non configuré'

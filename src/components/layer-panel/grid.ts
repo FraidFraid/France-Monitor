@@ -407,6 +407,14 @@ function sourcesSection(input: GridViewInput, g: GridSnapshot | null): FicheSect
 
 // ── Vue ──────────────────────────────────────────────────────────────────────
 
+/** Niveau de la pastille : signal Écowatt officiel du jour (pas le repli ODRÉ J-1). Partagé avec la Vue générale dynamique (12/10/2026). */
+export function ecowattHeadLevel(data: EcowattResponse | null, now: number): VigilanceLevel | 'nd' {
+  const official = data?.official;
+  if (!official || official.source === 'odre' || ecowattToday(official, now) === null) return 'nd';
+  const today = ecowattUpcoming(official, now).find((d) => d.date === parisDate(now));
+  return today ? officialLevel(today.level) : 'nd';
+}
+
 export function buildGridView(input: GridViewInput): LayerView {
   const { data, now } = input;
   if (data === null) {

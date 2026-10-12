@@ -5,6 +5,7 @@
 import type { TelecomOutagesResponse, TelecomSite } from '../../types/index.ts';
 import { parisDayOf } from '../../services/environment-levels.ts';
 import { isArcepFileLate, telecomLevel } from '../../services/outages-levels.ts';
+import type { VigilanceLevel } from '../../services/vigilance.ts';
 import { escapeHtml } from '../france-intel-events.ts';
 import { kvRow } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
@@ -106,6 +107,13 @@ function sections(t: TelecomOutagesResponse, input: TelecomViewInput, isLate: bo
   ];
 }
 
+/** Niveau de la pastille : partagé avec la Vue générale dynamique (12/10/2026). */
+export function telecomHeadLevel(t: TelecomOutagesResponse | null, now: number): VigilanceLevel | 'nd' {
+  if (t === null || t.summary === null || t.file === null) return 'nd';
+  const level = telecomLevel(t);
+  return isArcepFileLate(t.file.day, now) || level === null ? 'nd' : level;
+}
+
 export function buildTelecomView(input: TelecomViewInput): LayerView {
   const { telecom: t, error, now } = input;
   if (t === null && error === null) {
@@ -120,6 +128,7 @@ export function buildTelecomView(input: TelecomViewInput): LayerView {
   }
   const isLate = isArcepFileLate(t.file.day, now);
   const level = telecomLevel(t);
+  // Même règle que telecomHeadLevel (Vue générale).
   const figure = { value: frNumber(t.summary.recent, 0), caption: FIGURE_CAPTION, ...(isLate ? { level: null } : {}) };
   return {
     head: { theme: OUTAGES_THEME, title: TELECOM_TITLE, figure, level: isLate || level === null ? 'nd' : level, status: [fileStatus(t.file, now)] },

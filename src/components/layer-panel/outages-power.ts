@@ -130,6 +130,13 @@ function sections(p: PowerOutagesResponse, input: PowerViewInput, f: Freshness):
   ];
 }
 
+/** Niveau de la pastille (EDF muet ou en retard : n.d.) : partagé avec la Vue générale dynamique (12/10/2026). */
+export function powerHeadLevel(p: PowerOutagesResponse | null, ecowatt: EcowattOfficial | null, now: number): VigilanceLevel | 'nd' {
+  if (p === null || (p.edfReadAt === null && p.iipReadAt === null)) return 'nd';
+  if (p.edfReadAt === null || isOutagesDataLate('edf', p.edfReadAt, now)) return 'nd';
+  return powerLevel(p, ecowattToday(ecowatt, now));
+}
+
 export function buildPowerView(input: PowerViewInput): LayerView {
   const { power: p, error, ecowatt, now } = input;
   if (p === null && error === null) {
@@ -157,7 +164,7 @@ export function buildPowerView(input: PowerViewInput): LayerView {
   const figure = edfMute
     ? { value: 'n.d.', caption: FIGURE_CAPTION, level: null }
     : { value: formatGw(powerUnplannedMw(p)), caption: FIGURE_CAPTION };
-  const level = edfMute ? 'nd' : powerLevel(p, ecowattToday(ecowatt, now));
+  const level = powerHeadLevel(p, ecowatt, now);
   // Erreurs nommées : celle de la lecture client, puis celles du serveur (une partie en échec reste dite, même avec des données gardées).
   const body = (error !== null ? sourceErrorCallout(p.readAt ? Date.parse(p.readAt) : null, now) : '') + p.errors.map(note).join('');
   return {

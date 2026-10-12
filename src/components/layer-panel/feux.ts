@@ -12,7 +12,7 @@ import {
   firesLevel, firmsState, forestDangerCurrent, foyerLevel, isEnvironmentDataLate, maxForestDanger,
 } from '../../services/environment-levels.ts';
 import { FIRMS_PENDING_NOTE, FIRMS_TOO_OLD_ERROR, MDF_ERROR_PREFIX, isProgressNote } from '../../services/environment-source.ts';
-import { situationLevel } from '../../services/vigilance.ts';
+import { situationLevel, type VigilanceLevel } from '../../services/vigilance.ts';
 import { wildfireSeverity } from '../../services/wildfire-dossier.ts';
 import { escapeHtml } from '../france-intel-events.ts';
 import { absoluteTime, kvRow } from '../fiche/kit.ts';
@@ -159,9 +159,7 @@ function deptLabel(code: string): string {
 function figureOf(f: FiresResponse, now: number): LayerHeadModel['figure'] {
   const fd = f.forestDanger;
   if (fd === null) return { value: 'n.d.', caption: 'départements par niveau de danger : météo des forêts indisponible', level: null };
-  if (!forestDangerCurrent(fd, now)) {
-    return { value: 'n.d.', caption: `météo des forêts hors saison, dernière publication le ${dateAt(fd.publishedAt, now)}`, level: null };
-  }
+  if (!forestDangerCurrent(fd, now)) return offSeasonFigure(f, fd.publishedAt, now);
   const max = maxForestDanger(fd);
   const counts = dangerCounts(fd, 'j1');
   const late = mdfLate(fd, now);
@@ -169,6 +167,24 @@ function figureOf(f: FiresResponse, now: number): LayerHeadModel['figure'] {
     value: frNumber(counts[max], 0),
     caption: `départements en danger ${FOREST_DANGER_WORD[max]} ${parisDayWord(fd.j1Date, now)} (météo des forêts) · ${frNumber(counts[3] + counts[4], 0)} élevé ou très élevé${late ? ' (en retard)' : ''}`,
     level: late ? null : FOREST_DANGER_LEVEL[max],
+  };
+}
+
+/**
+ * Hors saison de la météo des forêts (Météo-France la publie de juin à fin septembre) : le gros chiffre devient les foyers confirmés
+ * en France sur 24 h (FIRMS, toute l'année), jamais « n.d. », qui dit une panne (12/10/2026). Reprise annoncée en juin.
+ */
+function offSeasonFigure(f: FiresResponse, publishedAt: string, now: number): LayerHeadModel['figure'] {
+  const season = `météo des forêts hors saison depuis le ${dateAt(publishedAt, now)}, reprise en juin`;
+  if (f.readAt === null) return { value: 'n.d.', caption: `foyers confirmés : détections FIRMS indisponibles · ${season}`, level: null };
+  const confirmed = f.foyers.filter((x) => x.confirmed && !x.recurrent);
+  const late = firmsLate(f, now);
+  const levels = confirmed.map(foyerLevel).filter((l): l is VigilanceLevel => l !== 'gris');
+  const top: VigilanceLevel = levels.includes('rouge') ? 'rouge' : levels.includes('orange') ? 'orange' : levels.includes('jaune') ? 'jaune' : 'vert';
+  return {
+    value: frNumber(confirmed.length, 0),
+    caption: `${confirmed.length > 1 ? 'foyers confirmés' : 'foyer confirmé'} en France sur 24${NBSP}h (satellites FIRMS)${late ? ' (en retard)' : ''} · ${season}`,
+    level: late ? null : top,
   };
 }
 
@@ -196,6 +212,11 @@ function lead(f: FiresResponse): string | null {
   if (recurrent.length > 0) parts.push(`${plural(recurrent.length, 'source récurrente', 'sources récurrentes')} à vérifier, probablement industrielles (${recurrent.map((r) => departementName(r.dept)).join(', ')}).`);
   if (f.abroadCount > 0) parts.push(`${plural(f.abroadCount, 'détection', 'détections')} hors de France, non comptées.`);
   return parts.join(' ');
+}
+
+/** Niveau de la pastille (firesLevel seule) : partagé avec la Vue générale dynamique (12/10/2026). */
+export function firesHeadLevel(f: FiresResponse | null, now: number): VigilanceLevel | 'nd' {
+  return f === null ? 'nd' : firesLevel(f, now).level;
 }
 
 function headOf(input: FeuxViewInput, f: FiresResponse): LayerHeadModel {

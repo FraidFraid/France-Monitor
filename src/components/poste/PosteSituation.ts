@@ -36,7 +36,7 @@ import { trendText } from '../france-intel-score.ts';
 import type { InfraInput } from '../../services/infra-continuity.ts';
 import type { NationalHealthSummary } from '../layer-panel/veille.ts';
 import { loadSectionState, saveSectionState, sectionsOf, sectionMemoryKey, type SectionStorage } from '../../services/fiche-sections-store.ts';
-import { buildFranceFiche, type FranceFicheSnapshot } from '../fiche/france.ts';
+import { buildFranceFiche, type FranceFicheSnapshot, type LayerLevelChange } from '../fiche/france.ts';
 import { buildEventFiche, buildMarketFiche, buildOfficialFiche, buildSituationFiche, buildThemeFiche } from '../fiche/items.ts';
 import type { FicheModel, Lang } from '../fiche/parts.ts';
 import { StatusBar, freshnessCounts, freshnessText } from './StatusBar.ts';
@@ -182,6 +182,7 @@ export class PosteSituation {
   private resolved: BriefSourceSituation[] = [];
   private baseline: VisitBaseline | null = null;
   private departements: DepartementIndex | null = null;
+  private layerChanges: readonly LayerLevelChange[] = [];
   private warmupUntil: number | null = null;
   private readonly knownKeys = new Set<string>();
   private readonly firstSeen = new Map<string, number>();
@@ -260,6 +261,12 @@ export class PosteSituation {
   setEvents(state: IntelEventsState | null): void {
     this.events = state ?? unavailableEventsState(Date.now());
     this.rebuild();
+  }
+
+  /** Journal des passages de niveau des couches suivies par la Vue générale (App, 12/10/2026) ; affiché dans « Depuis votre visite ». */
+  setLayerChanges(changes: readonly LayerLevelChange[]): void {
+    this.layerChanges = changes;
+    this.render();
   }
 
   setDepartements(index: DepartementIndex): void {
@@ -488,6 +495,7 @@ export class PosteSituation {
       events: this.events,
       resolved: this.resolved,
       changeTimes: this.firstSeen,
+      layerChanges: this.layerChanges,
       score: data.score,
       freshness: this.freshness(data),
       infra: data.infra ?? null,

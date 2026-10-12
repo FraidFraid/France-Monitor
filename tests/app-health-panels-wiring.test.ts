@@ -57,7 +57,8 @@ describe('panneaux Santé : un panneau par couche (spec 2026-10-03 § 3)', () =>
   });
   it('relève santé : fiche thème Santé visible sans couche santé active, ses quatre sources nationales relues', () => {
     const keys = methodBody('healthSurveillanceKeys');
-    expect(keys).toContain('if (this.healthThemeFicheVisible()) for (const k of HEALTH_NATIONAL_KEYS) keys.add(k);');
+    // Fiche thème Santé visible, ou Vue générale dynamique (niveau national suivi, 12/10/2026).
+    expect(keys).toContain("if (this.healthThemeFicheVisible() || (this.uiV2 && this.v2Theme === 'general')) for (const k of HEALTH_NATIONAL_KEYS) keys.add(k);");
     expect(methodBody('healthThemeFicheVisible')).toContain("this.uiV2 && this.poste?.selectedKey() === 'theme:health'");
   });
   it('échec du module santé au démarrage : les dix sources santé passent en erreur, sans période', () => {
