@@ -67,23 +67,26 @@ export function corroboratedSeverity(articles) {
 
 /**
  * Qualification d'un événement : gravité signalée (pic des articles), zone, temporalité, motifs.
+ * Zone à la majorité des articles situés (France contre étranger, égalité : France), « indéterminée » si aucun ne l'est :
+ * quelques articles « une Française blessée » ne font plus passer en France un événement à l'étranger (12/10/2026).
  * Zone et temporalité nulles quand aucun article n'est qualifié (articles antérieurs à kw-2).
  * @param {Array<{ severity: string | null, zone?: string | null, temporality?: string | null, reasons?: string[] }>} articles
  * @param {string} severity  gravité retenue (corroboratedSeverity)
  */
 export function qualifyEvent(articles, severity) {
   let peak = 0;
-  const zones = new Set();
+  const zones = { france: 0, etranger: 0, indeterminee: 0 };
   const times = new Set();
   const reasons = new Set();
   for (const a of articles) {
     peak = Math.max(peak, rankOf(a.severity));
-    if (a.zone) zones.add(a.zone);
+    if (a.zone === 'france' || a.zone === 'etranger' || a.zone === 'indeterminee') zones[a.zone] += 1;
     if (a.temporality) times.add(a.temporality);
     for (const r of a.reasons ?? []) reasons.add(r);
   }
   if (peak > rankOf(severity)) reasons.add('non_confirme');
-  const zone = zones.has('france') ? 'france' : zones.has('etranger') ? 'etranger' : zones.has('indeterminee') ? 'indeterminee' : null;
+  const zone = zones.france + zones.etranger > 0 ? (zones.etranger > zones.france ? 'etranger' : 'france')
+    : zones.indeterminee > 0 ? 'indeterminee' : null;
   const temporality = times.has('en_cours') ? 'en_cours' : times.has('a_venir') ? 'a_venir' : times.has('passe') ? 'passe' : null;
   return { peakSeverity: SEVERITY_NAMES[peak], zone, temporality, reasons: REASON_ORDER.filter((r) => reasons.has(r)) };
 }

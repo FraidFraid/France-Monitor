@@ -397,6 +397,13 @@ var STOP_WORDS = /* @__PURE__ */ new Set([
   "actu"
 ]);
 var PREPOSITION_PATTERN = /(?:à|de|en|sur|près de|dans(?:\s+le|\s+la|\s+les|\s+l[''])?\s+)([A-ZÀ-Ü][a-zà-ü]+(?:[\s-][A-ZÀ-Ü][a-zà-ü]+)*)/g;
+var OVERSEAS_PATTERNS = [
+  [/(?<![\p{L}-])Guadeloupe(?![\p{L}-])/u, "Guadeloupe"],
+  [/(?<![\p{L}-])Martinique(?![\p{L}-])/u, "Martinique"],
+  [/(?<![\p{L}-])Guyane(?![\p{L}-])/u, "Guyane"],
+  [/(?<![\p{L}-])[Ll]a Réunion(?![\p{L}-])/u, "La R\xE9union"],
+  [/(?<![\p{L}-])Mayotte(?![\p{L}-])/u, "Mayotte"]
+];
 var TITLE_START_PATTERN = /^([A-ZÀ-Ü][a-zà-ü]+(?:[\s-][A-ZÀ-Ü][a-zà-ü]+)*)\s*[.–:-]/gm;
 var COMMA_PATTERN = /,\s+([A-ZÀ-Ü][a-zà-ü]+(?:[\s-][A-ZÀ-Ü][a-zà-ü]+)*)\s*[,:]/g;
 var _normCitySet = null;
@@ -416,6 +423,9 @@ function isKnownCity(name) {
 function extractLocations(title) {
   const locations = [];
   let match;
+  for (const [pattern, name] of OVERSEAS_PATTERNS) {
+    if (pattern.test(title)) locations.push(name);
+  }
   PREPOSITION_PATTERN.lastIndex = 0;
   while ((match = PREPOSITION_PATTERN.exec(title)) !== null) {
     const loc = match[1].trim();
