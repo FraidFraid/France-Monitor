@@ -2,8 +2,9 @@ import type { CommodityData } from '../types/index.ts';
 import { marketTone } from '../services/vigilance.ts';
 import { buildMarketSparkline } from '../utils/market-sparkline.ts';
 import { fmLoaderHTML } from './shared/loader.ts';
+import { NBSP, frNumber } from './layer-panel/format.ts';
 
-// ─── Utilitaires (identiques à MarketStrip) ───────────────────────────────────
+// ─── Utilitaires ───────────────────────────────────
 
 function escapeHtml(value: string): string {
   const el = document.createElement('div');
@@ -11,16 +12,17 @@ function escapeHtml(value: string): string {
   return el.innerHTML;
 }
 
-function formatPrice(value: number): string {
-  if (Math.abs(value) >= 1000) return value.toFixed(0);
-  if (Math.abs(value) >= 100)  return value.toFixed(2);
-  return value.toFixed(2);
+/** Cours à la française : virgule décimale, milliers groupés sans décimale. */
+export function formatCommodityPrice(value: number): string {
+  return frNumber(value, Math.abs(value) >= 1000 ? 0 : 2);
 }
 
-function formatPct(value: number): string {
-  const sign = value > 0 ? '+' : '';
-  return `${sign}${value.toFixed(2)}%`;
+/** Variation du jour : signe, virgule, pourcentage insécable. */
+export function formatCommodityPct(value: number): string {
+  return `${frNumber(value, 2, true)}${NBSP}%`;
 }
+
+export const SECTION_LABELS: Readonly<Record<'energy' | 'metals' | 'agro', string>> = { energy: 'Énergie', metals: 'Métaux', agro: 'Agro' };
 
 // ─── Composant ────────────────────────────────────────────────────────────────
 
@@ -49,15 +51,15 @@ export class CommodityStrip {
       </div>
       <div class="under-map-card__body">
         <div class="commodity-strip__section commodity-strip__section--energy">
-          <div class="commodity-strip__section-label">ENERGIE</div>
+          <div class="commodity-strip__section-label">${SECTION_LABELS.energy}</div>
           <div class="commodity-strip__list" id="commodity-list-energy"></div>
         </div>
         <div class="commodity-strip__section commodity-strip__section--metals">
-          <div class="commodity-strip__section-label">METAUX</div>
+          <div class="commodity-strip__section-label">${SECTION_LABELS.metals}</div>
           <div class="commodity-strip__list" id="commodity-list-metals"></div>
         </div>
         <div class="commodity-strip__section commodity-strip__section--agro">
-          <div class="commodity-strip__section-label">AGRO</div>
+          <div class="commodity-strip__section-label">${SECTION_LABELS.agro}</div>
           <div class="commodity-strip__list" id="commodity-list-agro"></div>
         </div>
       </div>
@@ -105,8 +107,8 @@ export class CommodityStrip {
           <span class="market-strip__name">${escapeHtml(item.name)}</span>
           <span class="market-strip__symbol">${escapeHtml(item.unit)}</span>
         </div>
-        <div class="market-strip__price">${escapeHtml(formatPrice(item.price))}</div>
-        <div class="market-strip__delta">${escapeHtml(formatPct(item.changePercent))}</div>
+        <div class="market-strip__price">${escapeHtml(formatCommodityPrice(item.price))}</div>
+        <div class="market-strip__delta">${escapeHtml(formatCommodityPct(item.changePercent))}</div>
         ${buildMarketSparkline(item.history, tone)}
       `;
       listEl.appendChild(card);
