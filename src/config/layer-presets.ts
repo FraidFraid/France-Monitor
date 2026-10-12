@@ -23,7 +23,7 @@ export interface LayerPreset {
   label: string;
   icon: IconName;
   description: string;
-  /** Couches enfants cochées par la vue : le noyau du thème, pas tout le thème (décision du 12/10/2026). */
+  /** Couches enfants cochées par la vue. */
   layers: ReadonlyArray<keyof MapLayers>;
   /** v2 : la vue coche ou décoche aussi « Événements en cours » (couche absente de la v1). */
   events: boolean;
@@ -72,8 +72,7 @@ export const ALL_PRESETABLE_LAYER_KEYS: ReadonlyArray<keyof MapLayers> = [
 
 /**
  * Appartenance de chaque couche à un thème : chaque couche de `ALL_PRESETABLE_LAYER_KEYS` est dans
- * exactement un thème (vérifié par test). La vue d'un thème n'en coche qu'un noyau ; les autres restent
- * cochables à la main dans « Personnaliser les couches ».
+ * exactement un thème (vérifié par test). La vue d'un thème les coche toutes, sauf `news`.
  */
 export const THEME_LAYERS: Readonly<Record<Exclude<LayerPresetId, 'general'>, ReadonlyArray<keyof MapLayers>>> = {
   energy: ['powerGrid', 'nuclearFleet', 'gasNetwork', 'oilNetwork', 'outagesElec', 'hydroBackbone', 'windMonitor', 'dromEnergy', 'metroLoad'],
@@ -84,16 +83,16 @@ export const THEME_LAYERS: Readonly<Record<Exclude<LayerPresetId, 'general'>, Re
 };
 
 /**
- * Vues (décision du 12/10/2026, revient sur celle du 25/09) : chaque thème coche son noyau essentiel ;
- * « Vue générale » ne coche que des couches vides quand tout va bien (signaux qui ne s'allument qu'en
- * cas de problème), jamais une couche d'infrastructure toujours affichée.
+ * Vues (décisions du 12/10/2026) : chaque thème coche toutes ses couches qui ont un panneau (donc toutes ses puces), sans les
+ * actualités brutes (`news`, sans panneau, doublon des événements) ; « Vue générale » ne coche que des couches vides quand tout
+ * va bien (signaux qui ne s'allument qu'en cas de problème) et est la seule à cocher « Événements en cours ».
  */
 export const LAYER_PRESETS: ReadonlyArray<LayerPreset> = [
   {
     id: 'general',
     label: 'Vue générale',
     icon: 'compass',
-    description: 'Ce qui se passe en France : événements en cours, vigilance météo, crues, feux de forêt et pannes Internet.',
+    description: 'Ce qui se passe en France : actualités géolocalisées, vigilance météo, crues, feux de forêt et pannes Internet.',
     layers: ['environmental', 'floods', 'fires', 'outagesInternet'],
     events: true,
   },
@@ -101,40 +100,40 @@ export const LAYER_PRESETS: ReadonlyArray<LayerPreset> = [
     id: 'energy',
     label: 'Énergie',
     icon: 'zap',
-    description: 'L’essentiel de l’énergie : réseau électrique, parc nucléaire, gaz, pétrole et pannes d’électricité.',
-    layers: ['powerGrid', 'nuclearFleet', 'gasNetwork', 'oilNetwork', 'outagesElec'],
+    description: 'Tout le thème énergie : réseau électrique, nucléaire, gaz, pétrole, pannes d’électricité, hydraulique, éolien, DROM et charge métropolitaine.',
+    layers: THEME_LAYERS.energy,
     events: false,
   },
   {
     id: 'security',
     label: 'Sécurité & défense',
     icon: 'shield',
-    description: 'L’essentiel de la sécurité et de la défense : événements en cours, défense, vigilance cyber, pannes télécoms et Internet.',
-    layers: ['military', 'cyber', 'outagesTelecom', 'outagesInternet'],
-    events: true,
+    description: 'Tout le thème sécurité & défense : défense, cyber, pannes télécoms, Internet et cloud, connectivité et indice de stabilité.',
+    layers: THEME_LAYERS.security.filter((key) => key !== 'news'),
+    events: false,
   },
   {
     id: 'health',
     label: 'Santé',
     icon: 'stethoscope',
-    description: 'L’essentiel de la santé : veille sanitaire, urgences et SOS Médecins, hôpitaux.',
-    layers: ['health', 'healthOscour', 'hospitals'],
+    description: 'Tout le thème santé : veille sanitaire, urgences et SOS Médecins, hôpitaux et accès aux soins.',
+    layers: THEME_LAYERS.health,
     events: false,
   },
   {
     id: 'environment',
     label: 'Environnement',
     icon: 'leaf',
-    description: 'L’essentiel de l’environnement : vigilance météo, crues, radar météo, feux de forêt et qualité de l’air.',
-    layers: ['environmental', 'floods', 'weatherRadar', 'fires', 'airQuality'],
+    description: 'Tout le thème environnement : vigilance météo, crues, radar météo, feux de forêt, qualité de l’air, sécheresse et séismes.',
+    layers: THEME_LAYERS.environment,
     events: false,
   },
   {
     id: 'transport',
     label: 'Transports',
     icon: 'train-front',
-    description: 'Les transports : trafics routier, ferroviaire, maritime et aérien.',
-    layers: ['trafficRoad', 'trafficRail', 'trafficMaritime', 'trafficAir'],
+    description: 'Tout le thème transports : trafics routier, ferroviaire, maritime et aérien.',
+    layers: THEME_LAYERS.transport,
     events: false,
   },
 ];
@@ -156,7 +155,7 @@ export function layersForPreset(id: LayerPresetId): Partial<MapLayers> {
   return result;
 }
 
-/** La vue affiche-t-elle les actualités (« Événements en cours ») ? Vue générale et Sécurité & défense. */
+/** La vue affiche-t-elle les actualités (« Événements en cours ») ? Seule « Vue générale ». */
 export function presetShowsEvents(id: LayerPresetId): boolean {
   return LAYER_PRESETS.find((p) => p.id === id)?.events ?? false;
 }

@@ -5165,8 +5165,8 @@ export class App {
 
     const eligible = FLOATING_PANEL_DEFS.filter((def) => this.floatingPanelIsEligible(def.id));
 
-    // v2 : puce « Actualités géolocalisées » en tête (12/10/2026), dans les vues qui affichent les actualités (Vue générale,
-    // Sécurité & défense), même éteinte pour pouvoir les rallumer ; ailleurs, seulement si la couche a été cochée à la main.
+    // v2 : puce « Actualités géolocalisées » en tête (12/10/2026), dans la vue qui affiche les actualités (Vue générale), même
+    // éteinte pour pouvoir les rallumer ; ailleurs, seulement si la couche a été cochée à la main.
     const showNews = this.uiV2 && (presetShowsEvents(this.v2Theme) || this.activeLayers.events === true);
     if (!showsSwitcher(this.uiV2, eligible.length + (showNews ? 1 : 0))) {
       el.hidden = true;
