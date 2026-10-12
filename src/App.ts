@@ -7934,6 +7934,7 @@ export class App {
         onPressure: (depts) => {
           this.v2Pressure = depts;
           this.pressurePanel?.update(depts);
+          void this.mapContainer?.updateDepartmentPressure(new Map(depts.map((d) => [d.code, d.level])));
         },
         onOpenDossier: (situation) => this.openAlertDossier(situation),
         onOpenReport: () => {
@@ -8075,7 +8076,8 @@ export class App {
     );
 
     // Update map layer
-    this.mapContainer?.updateISNR(this.currentISNRData.scores);
+    // v2 : la couche montre la pression par département (onPressure), pas l'ISNR.
+    if (!this.uiV2) void this.mapContainer?.updateISNR(this.currentISNRData.scores);
 
     // Update ISNR panel if visible
     if (this.isnrPanel?.isVisible()) {

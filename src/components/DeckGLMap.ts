@@ -5,6 +5,7 @@
  *           Traffic (axes routiers).
  */
 
+import { levelHex } from '../services/vigilance.ts';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { MapboxOverlay } from '@deck.gl/mapbox';
@@ -471,6 +472,8 @@ export class DeckGLMap {
   // corresponding layer was inactive, so setLayerVisibility() can replay the
   // same call (cheap: memoized fetch, or first real one) once it's switched on.
   private _pendingIsnrScores: import('../types/index.ts').ISNRScore[] | null = null;
+  /** v2 : niveaux de la pression par département gardés tant que la couche est masquée (même règle que l'ISNR). */
+  private _pendingPressure: ReadonlyMap<string, import('../services/vigilance.ts').VigilanceLevel> | null = null;
   // Couches santé (spec 2026-10-03 § 3) : dernières données reçues, syndrome et profession choisis dans les panneaux.
   private healthAlerts: AlertLevelsResponse | null = null;
   /** Instant de la dernière relève : règle « en saison » des alertes et retard des urgences (S2). */
@@ -6859,6 +6862,34 @@ export class DeckGLMap {
     }
   }
 
+  /**
+   * v2 : pression par département (12/10/2026) sur la même source que l'ISNR. Seuls les départements jaunes ou plus sont
+   * colorés, à la couleur de leur niveau ; les autres restent transparents (couche vide quand tout va bien).
+   */
+  async updateDepartmentPressure(levels: ReadonlyMap<string, import('../services/vigilance.ts').VigilanceLevel>): Promise<void> {
+    if (!this.map) return;
+    if (!this.currentLayers?.stability) {
+      this._pendingPressure = levels;
+      return;
+    }
+    this._pendingPressure = null;
+    try {
+      const baseGeojson = await this.getDepartmentsGeojson();
+      if (!baseGeojson || !this.map) return;
+      const geojson = this.cloneDepartmentsGeojson(baseGeojson);
+      for (const feat of geojson.features) {
+        const code = (feat.properties?.code as string) ?? '';
+        feat.id = deptCodeToId(code);
+        const level = levels.get(code);
+        const color = level && level !== 'vert' ? levelHex(level) : null;
+        feat.properties = { ...feat.properties, fillColor: color ?? 'rgba(0, 0, 0, 0)', lineColor: color ?? 'rgba(0, 0, 0, 0)' };
+      }
+      (this.map.getSource(SRC_ISNR) as maplibregl.GeoJSONSource | undefined)?.setData(geojson);
+    } catch (e) {
+      console.warn('[DeckGLMap] Failed to load depts for pressure layer', e);
+    }
+  }
+
   highlightISNRDepartment(departmentCode: string | null): void {
     if (!this.map) return;
 
@@ -8644,6 +8675,7 @@ export class DeckGLMap {
       const scores = this._pendingIsnrScores;
       void this.updateISNR(scores);
     }
+    if (layers.stability && this._pendingPressure !== null) void this.updateDepartmentPressure(this._pendingPressure);
 
     const vis = (visible: boolean) => visible ? 'visible' : 'none';
 
