@@ -846,6 +846,61 @@ export interface MarketData {
   category?: 'indices' | 'defense' | 'services' | 'devises';
 }
 
+// ═══ Finance : stabilité financière (BCE + écart OAT-Bund, spec 2026-10-12) ═══
+
+/** État d'une partie du bloc : à jour, servie en retard (avec sa date) ou absente. */
+export type FinancialSourceStatus = 'ok' | 'stale' | 'unavailable';
+
+/** Observation datée (date de valeur AAAA-MM-JJ). */
+export interface FinancialPoint {
+  date: string;
+  value: number;
+}
+
+export type EcbSeriesId = 'cissFr' | 'cissEa' | 'estr' | 'eurusd';
+
+/** Série quotidienne de la BCE : dernière valeur, sa date et les 90 dernières observations (ordre chronologique). */
+export interface EcbSeries {
+  id: EcbSeriesId;
+  value: number | null;
+  date: string | null;
+  history: FinancialPoint[];
+  status: FinancialSourceStatus;
+  error: string | null;
+}
+
+export type PolicyRateId = 'depot' | 'refi';
+
+/** Taux directeur de la BCE : valeur, date d'effet du dernier changement et taux précédent. */
+export interface PolicyRate {
+  id: PolicyRateId;
+  value: number | null;
+  since: string | null;
+  previous: number | null;
+  status: FinancialSourceStatus;
+  error: string | null;
+}
+
+/** Écart de taux à 10 ans France-Allemagne (points) : relevé de marché et un point par jour enregistré. */
+export interface OatBundSpread {
+  value: number | null;
+  fr10y: number | null;
+  de10y: number | null;
+  readAt: string | null;
+  history: FinancialPoint[];
+  status: FinancialSourceStatus;
+  error: string | null;
+}
+
+/** Réponse de GET /api/finance/stability. */
+export interface FinancialStabilityResponse {
+  readAt: string;
+  series: EcbSeries[];
+  rates: PolicyRate[];
+  spread: OatBundSpread;
+  errors: string[];
+}
+
 // ═══ Finance (Matières premières) ═══
 
 export interface CommodityData extends Omit<MarketData, 'history' | 'category'> {
