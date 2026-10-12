@@ -42,6 +42,13 @@ describe('sécheresse : niveau le plus haut par département', () => {
     const body = String(props(fc, 0)['body']);
     for (const part of ['Ain (01)', 'niveau le plus haut : crise', 'Eaux superficielles', 'Eau potable', 'Arrêtés en vigueur au 4 octobre 02:43.']) expect(body).toContain(part);
   });
+  it('Vue générale (crisisOnly, 12/10/2026) : seulement les départements en crise, les restrictions courantes ne couvrent plus la carte', () => {
+    const all = droughtDeptFeatures(GEO, DROUGHT_FIXTURE, NOW);
+    const crisis = droughtDeptFeatures(GEO, DROUGHT_FIXTURE, NOW, true);
+    expect(crisis.features.length).toBeLessThan(all.features.length);
+    expect(crisis.features.length).toBeGreaterThan(0);
+    expect(crisis.features.every((f) => f.properties?.['color'] === '#ff3b30')).toBe(true);
+  });
   it('amendement 15 : département « unavailable » en gris, « donnée indisponible », jamais « aucun arrêté »', () => {
     const d: DroughtResponse = structuredClone(DROUGHT_FIXTURE);
     const ain = d.departments.find((x) => x.dept === '01');

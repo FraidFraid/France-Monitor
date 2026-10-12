@@ -74,8 +74,7 @@ export function restorePanelPlan<K extends string>(
 
 /** Largeur (px) du tiroir Couches en v2 (main.css, --v2-drawer-w). */
 export const V2_DRAWER_PX = 300;
-/** Place réservée au sélecteur Carte | Satellite, en haut à droite de la carte (main.css, 180 px). */
-export const V2_MAP_CONTROLS_PX = 180;
+
 /** Largeur libre minimale pour garder les libellés des puces. */
 const V2_MIN_LABEL_ROOM_PX = 150;
 /** Marges gauche et droite de la barre dans la carte (main.css, 12 px de chaque côté). */
@@ -88,8 +87,6 @@ const V2_DESKTOP_MIN_PX = 1101;
 export interface V2SwitcherLayout {
   /** Icône seule (nom en infobulle) : faute de place réelle. */
   iconOnly: boolean;
-  /** Les puces passent sous Carte | Satellite au lieu de se mettre à sa gauche. */
-  belowControls: boolean;
 }
 
 /**
@@ -100,17 +97,17 @@ export interface V2SwitcherLayout {
  * @param viewportWidth  largeur de la fenêtre
  * @param mapWidth       largeur de la zone carte (0 si masquée)
  * @param drawerOpen     tiroir Couches ouvert
- * @param oneRowWidth    largeur naturelle de la rangée avec libellés, sur une seule ligne
+ * La rangée reste toujours sur la ligne de Carte | Satellite et défile si elle déborde (demande du 12/10/2026 : plus de passage
+ * sous le sélecteur ni de deuxième ligne).
  */
-export function v2SwitcherLayout(viewportWidth: number, mapWidth: number, drawerOpen: boolean, oneRowWidth: number): V2SwitcherLayout {
+export function v2SwitcherLayout(viewportWidth: number, mapWidth: number, drawerOpen: boolean): V2SwitcherLayout {
   if (viewportWidth <= V2_MOBILE_MAX_PX) {
-    return { iconOnly: true, belowControls: false };
+    return { iconOnly: true };
   }
   const drawerOverMap = drawerOpen && viewportWidth >= V2_DESKTOP_MIN_PX;
   const room = mapWidth - (drawerOverMap ? V2_DRAWER_PX : 0) - V2_SIDE_MARGINS_PX;
   return {
     iconOnly: room < V2_MIN_LABEL_ROOM_PX,
-    belowControls: oneRowWidth > room - V2_MAP_CONTROLS_PX,
   };
 }
 

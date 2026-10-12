@@ -2691,6 +2691,14 @@ export class App {
     floatingPanelSwitcher.hidden = true;
     mapArea.appendChild(floatingPanelSwitcher);
     this.floatingPanelSwitcherEl = floatingPanelSwitcher;
+    // v2 : rangée sur une seule ligne, défilante (12/10/2026) ; la molette verticale la fait défiler à l'horizontale.
+    floatingPanelSwitcher.addEventListener('wheel', (e) => {
+      if (!this.uiV2 || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      if (floatingPanelSwitcher.scrollWidth <= floatingPanelSwitcher.clientWidth + 1) return;
+      floatingPanelSwitcher.scrollLeft += e.deltaY;
+      e.preventDefault();
+    }, { passive: false });
+    floatingPanelSwitcher.addEventListener('scroll', () => this.markSwitcherOverflow(), { passive: true });
     // La largeur de la carte change la place disponible (repli en icônes) et donc le décalage des panneaux.
     this.addGlobalListener(window, 'resize', () => this.layoutFloatingPanelSwitcher());
     // v2 : la zone carte change de taille sans que la fenêtre bouge (tiroir ouvert ou fermé, onglet Carte du mobile).
@@ -5283,6 +5291,15 @@ export class App {
     this.layoutFloatingPanelSwitcher();
   }
 
+  /** Rangée de puces v2 : déborde-t-elle (fondu à droite), et le défilement est-il arrivé au bout (fondu retiré) ? */
+  private markSwitcherOverflow(): void {
+    const el = this.floatingPanelSwitcherEl;
+    if (!el || !this.uiV2) return;
+    const overflowing = el.scrollWidth > el.clientWidth + 1;
+    el.classList.toggle('is-overflowing', overflowing);
+    el.classList.toggle('is-scrolled-end', overflowing && el.scrollLeft + el.clientWidth >= el.scrollWidth - 2);
+  }
+
   /** Referme le panneau flottant `id` sans éteindre sa couche (clic sur son bouton surligné). */
   private hideFloatingPanel(id: keyof MapLayers): void {
     this.getFloatingPanelInstance(id)?.hide({ silent: true });
@@ -5312,23 +5329,18 @@ export class App {
       // Zone carte masquée (mobile, autre onglet) : rien à mesurer ; l'observateur de taille relance la mise en page à son retour.
       const mapWidth = el.parentElement?.clientWidth ?? 0;
       if (mapWidth > 0 && !el.hidden) {
-        // Le libellé reste visible au-dessus de 768 px ; le repli en icônes ne vient que d'un manque de place
-        // réel (v2SwitcherLayout). La largeur d'une rangée se mesure donc sans repli ni plafond.
-        el.classList.remove('is-icon-only');
-        el.classList.add('is-measuring');
-        const chips = Array.from(el.children) as HTMLElement[];
-        const oneRow = chips.reduce((w, chip) => w + chip.offsetWidth, 0) + 8 * Math.max(0, chips.length - 1);
-        el.classList.remove('is-measuring');
+        // Le libellé reste visible au-dessus de 768 px ; le repli en icônes ne vient que d'un manque de place réel
+        // (v2SwitcherLayout). Une seule ligne, à côté de Carte | Satellite, qui défile si elle déborde (12/10/2026).
         const drawerOpen = !this.container.classList.contains('sidebar-collapsed');
-        const layout = v2SwitcherLayout(window.innerWidth, mapWidth, drawerOpen, oneRow);
+        const layout = v2SwitcherLayout(window.innerWidth, mapWidth, drawerOpen);
         el.classList.toggle('is-icon-only', layout.iconOnly);
-        el.classList.toggle('is-below-controls', layout.belowControls);
         // Tablette : les panneaux de module flottent par-dessus la carte ; ils commencent sous les puces.
         offset = v2TabletPanelOffsetPx(el.getBoundingClientRect().bottom, window.innerWidth, false);
       }
     }
     document.documentElement.style.setProperty('--map-switcher-offset', `${offset}px`);
     this.syncV2ColumnVars();
+    this.markSwitcherOverflow();
   }
 
   /** v2 : pose la géométrie de la colonne État (`.fm-v2-fiche`) en variables CSS ; les panneaux de module s'y placent. */
@@ -5387,6 +5399,8 @@ export class App {
     this.refreshFloatingPanelSwitcher();
     if (id === 'general') this.refreshGeneralWatch();
     this.syncGeneralWatchPolling();
+    // Vue générale : la sécheresse n'y paraît qu'en crise, sa couche ne remplit que ces départements (12/10/2026).
+    this.mapContainer?.setDroughtCrisisOnly(this.uiV2 && id === 'general');
   }
 
   /**
@@ -5463,6 +5477,8 @@ export class App {
     // Avant les couches critiques, seul le socle : pas de puce « n.d. » pour une source simplement pas encore lue.
     this.watchEntries = this.v2IntelStarted ? generalWatch(levels) : generalWatch(new Map());
     if (this.v2Theme !== 'general') return;
+    // Démarrage sur la Vue générale (sans applyLayerPreset) : sécheresse en crise seulement, comme au choix de la vue.
+    this.mapContainer?.setDroughtCrisisOnly(true);
     const wanted = new Set(this.watchEntries.map((e) => e.key).filter((k) => !GENERAL_SOCLE.includes(k)));
     let changed = false;
     for (const key of wanted) {

@@ -72,8 +72,11 @@ function droughtBody(x: DroughtDept, d: DroughtResponse, late: boolean): string 
     + note(`Arrêtés en vigueur au ${dayMonthClock(d.asOf)}${late ? ' (en retard) : couleur retirée' : ''}.`);
 }
 
-/** Départements de métropole remplis par le niveau le plus haut de leurs arrêtés ; sans arrêté : non rempli (infobulle gardée). */
-export function droughtDeptFeatures(geo: GeoJSON.FeatureCollection, d: DroughtResponse | null, now: number): Fc {
+/**
+ * Départements de métropole remplis par le niveau le plus haut de leurs arrêtés ; sans arrêté : non rempli (infobulle gardée).
+ * `crisisOnly` (Vue générale, 12/10/2026) : seulement les départements en crise ; les restrictions courantes couvriraient la carte.
+ */
+export function droughtDeptFeatures(geo: GeoJSON.FeatureCollection, d: DroughtResponse | null, now: number, crisisOnly = false): Fc {
   if (!d) return fc([]);
   const late = isEnvironmentDataLate('vigieau', d.asOf, now);
   const byCode = new Map(d.departments.map((x) => [x.dept, x]));
@@ -81,6 +84,7 @@ export function droughtDeptFeatures(geo: GeoJSON.FeatureCollection, d: DroughtRe
     const code = codeOf(f);
     const x = byCode.get(code);
     if (!x || !f.geometry) return [];
+    if (crisisOnly && !(x.available && x.max === 'crise')) return [];
     return [{ type: 'Feature', geometry: f.geometry, properties: { code, color: droughtHex(x, late), body: droughtBody(x, d, late) } }];
   }));
 }

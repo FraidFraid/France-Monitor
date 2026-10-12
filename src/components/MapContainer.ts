@@ -517,6 +517,11 @@ export class MapContainer {
     return this.deckMap?.updateDroughtLayer(d, now) ?? Promise.resolve();
   }
 
+  /** Vue générale : sécheresse limitée aux départements en crise. */
+  setDroughtCrisisOnly(on: boolean): void {
+    this.deckMap?.setDroughtCrisisOnly(on);
+  }
+
   updateAirQualityLayer(a: AirQualityResponse | null, now: number): Promise<void> {
     return this.deckMap?.updateAirQualityLayer(a, now) ?? Promise.resolve();
   }
