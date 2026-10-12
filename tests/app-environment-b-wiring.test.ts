@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs';
 import {
   ENVIRONMENT_ALWAYS_POLLED, ENVIRONMENT_LAYER_KEYS, ENVIRONMENT_LAYER_SOURCES, ENVIRONMENT_POLL_MS, hasActiveEnvironment,
 } from '../src/config/environment-sources.ts';
-import { ALL_PRESETABLE_LAYER_KEYS, LAYER_PRESETS } from '../src/config/layer-presets.ts';
+import { ALL_PRESETABLE_LAYER_KEYS, THEME_LAYERS } from '../src/config/layer-presets.ts';
 import { DROUGHT_TTL_MS } from '../src/services/environment-drought.ts';
 import { AIR_QUALITY_TTL_MS } from '../src/services/environment-air.ts';
 import { EARTHQUAKES_TTL_MS } from '../src/services/environment-earthquakes.ts';
@@ -58,10 +58,10 @@ describe('liste de câblage des couches (contrats § 4.4) pour drought, airQuali
       expect(feed).toContain(`${key}: false,`);
       expect(urlState).toContain(`'${key}'`);
       expect(ALL_PRESETABLE_LAYER_KEYS).toContain(key);
-      expect(LAYER_PRESETS.find((p) => p.id === 'environment')?.layers).toContain(key);
+      // Thème Environnement (la vue n'en coche que le noyau depuis le 12/10/2026).
+      expect(THEME_LAYERS.environment).toContain(key);
     }
     expect(methodBody('restoreActiveLayerPanelsAfterRefresh')).toContain("'fires',\n      'drought',\n      'airQuality',\n      'earthquakes',");
-    expect(LAYER_PRESETS.find((p) => p.id === 'environment')?.description).toContain('sécheresse, qualité de l’air, séismes');
   });
   it('panneaux flottants, couches de la légende, tiroir des couches (sans badge LIVE), carte', () => {
     for (const [id, label, icon, , , , , , legend, drawer] of PANELS) {

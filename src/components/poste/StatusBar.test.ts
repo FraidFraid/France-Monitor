@@ -61,13 +61,13 @@ describe('StatusBar (spec §5.2)', () => {
 });
 
 describe('ThemeBar (spec §5.3)', () => {
-  it('cinq thèmes, pastille seulement orange ou rouge (jamais sur Vue générale), le thème choisi est pressé', () => {
+  it('six thèmes, pastille seulement orange ou rouge (jamais sur Vue générale), le thème choisi est pressé', () => {
     const html = renderThemeBar({
       selected: 'energy',
-      levels: { general: 'rouge', energy: 'rouge', security: 'orange', health: 'vert', environment: 'jaune' },
+      levels: { general: 'rouge', energy: 'rouge', security: 'orange', health: 'vert', environment: 'jaune', transport: 'vert' },
       lang: 'fr',
     });
-    expect(html.match(/data-theme=/g)).toHaveLength(5);
+    expect(html.match(/data-theme=/g)).toHaveLength(6);
     expect(html).toContain('data-theme="energy" aria-pressed="true"');
     expect(html).toContain('Sécurité et défense <span class="tb-level"><span class="fm-vig fm-vig--orange">Orange</span>');
     expect(html).toContain('Énergie <span class="tb-level"><span class="fm-vig fm-vig--rouge">Rouge</span>');
@@ -85,7 +85,7 @@ describe('ThemeBar (spec §5.3)', () => {
     const bar = new ThemeBar(root);
     const onSelect = vi.fn();
     bar.setOnSelect(onSelect);
-    bar.update({ selected: 'general', levels: { general: 'jaune', energy: 'vert', security: 'vert', health: 'vert', environment: 'vert' }, lang: 'fr' });
+    bar.update({ selected: 'general', levels: { general: 'jaune', energy: 'vert', security: 'vert', health: 'vert', environment: 'vert', transport: 'vert' }, lang: 'fr' });
     root.querySelector<HTMLButtonElement>('[data-theme="health"]')?.click();
     expect(onSelect).toHaveBeenCalledWith('health');
   });

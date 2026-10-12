@@ -1,5 +1,5 @@
-// src/services/themes.ts — thèmes de la barre de thèmes (refonte UI, spec §5.3 et §7.3). Les cinq
-// thèmes reprennent les cinq vues de src/config/layer-presets.ts (mêmes identifiants) ; ce module
+// src/services/themes.ts — thèmes de la barre de thèmes (refonte UI, spec §5.3 et §7.3). Les six
+// thèmes reprennent les six vues de src/config/layer-presets.ts (mêmes identifiants) ; ce module
 // dit à quel thème appartient chaque élément de la liste « À traiter ». Pur, sans DOM.
 
 import type { SituationType } from '../types/index.ts';
@@ -23,11 +23,12 @@ export const THEMES: ReadonlyArray<ThemeDef> = [
   { id: 'energy', fr: 'Énergie', en: 'Energy', driverFr: 'l’énergie', driverEn: 'energy' },
   { id: 'security', fr: 'Sécurité et défense', en: 'Security and defence', driverFr: 'la sécurité et la défense', driverEn: 'security and defence' },
   { id: 'health', fr: 'Santé', en: 'Health', driverFr: 'la santé', driverEn: 'health' },
-  { id: 'environment', fr: 'Environnement et transports', en: 'Environment and transport', driverFr: 'l’environnement et les transports', driverEn: 'environment and transport' },
+  { id: 'environment', fr: 'Environnement', en: 'Environment', driverFr: 'l’environnement', driverEn: 'environment' },
+  { id: 'transport', fr: 'Transports', en: 'Transport', driverFr: 'les transports', driverEn: 'transport' },
 ];
 
 /** Thèmes proprement dits : « Vue générale » les montre tous. */
-export const SPECIFIC_THEMES: ReadonlyArray<SpecificThemeId> = ['energy', 'security', 'health', 'environment'];
+export const SPECIFIC_THEMES: ReadonlyArray<SpecificThemeId> = ['energy', 'security', 'health', 'environment', 'transport'];
 
 function def(id: ThemeId): ThemeDef {
   return THEMES.find((th) => th.id === id) ?? THEMES[0];
@@ -59,9 +60,10 @@ export function categoryTheme(category: string): ThemeId {
     case 'weather':
     case 'floods':
     case 'fires':
-    case 'transport':
     case 'infrastructure':
       return 'environment';
+    case 'transport':
+      return 'transport';
     default:
       return 'general';
   }
@@ -84,8 +86,8 @@ const SITUATION_THEME: Record<SituationType, ThemeId> = {
   WEATHER_ALERT: 'environment',
   SEISMIC_EVENT: 'environment',
   AIR_POLLUTION_EPISODE: 'environment',
-  // Catégorie « infrastructure » du tableau §7.3 (arbitrage A9).
-  TELECOM_DISRUPTION: 'environment',
+  // Pannes télécoms : même thème que leurs couches dans les vues (décision du 12/10/2026, revient sur l'arbitrage A9).
+  TELECOM_DISRUPTION: 'security',
   NEWS_ALERT: 'general',
 };
 
