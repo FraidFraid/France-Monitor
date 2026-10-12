@@ -1,7 +1,8 @@
 // src/components/CommodityStrip.test.ts : cours des matières premières à la française (virgule décimale, milliers groupés,
 // unité insécable), comme le bloc « Stabilité financière » voisin.
 import { describe, expect, it } from 'vitest';
-import { SECTION_LABELS, formatCommodityPct, formatCommodityPrice } from './CommodityStrip.ts';
+import { SECTION_LABELS, commoditySparkline, formatCommodityPct, formatCommodityPrice } from './CommodityStrip.ts';
+import type { CommodityData } from '../types/index.ts';
 
 const NB = ' ';
 
@@ -18,5 +19,17 @@ describe('format français', () => {
   });
   it('intitulés accentués', () => {
     expect(SECTION_LABELS).toEqual({ energy: 'Énergie', metals: 'Métaux', agro: 'Agro' });
+  });
+});
+
+describe('courbe de séance', () => {
+  const item: CommodityData = {
+    symbol: 'NG=F', name: 'Gaz Naturel', category: 'energy', unit: '$/MMBtu', price: 3.171, changePercent: -1.522, trend: 'down',
+    lastUpdated: new Date('2026-10-12T18:43:00Z'), history: [3.22, 3.2, 3.171],
+  };
+  it('ligne pointillée de la clôture de la veille, infobulle « séance du jour » à la française', () => {
+    const svg = commoditySparkline(item);
+    expect(svg).toContain('class="spark-ref"');
+    expect(svg).toContain('<title>séance du jour · plus bas 3,17 · plus haut 3,22</title>');
   });
 });

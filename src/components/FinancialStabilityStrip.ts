@@ -2,7 +2,7 @@
 // « Flux boursier » : CISS France et zone euro, écart OAT-Bund, taux directeurs, €STR, EUR/USD (BCE) et CAC 40 en repère.
 // Uniquement des valeurs réelles : une courbe n'est tracée que sur des observations publiées ou relevées. Le HTML est produit
 // par une fonction pure (testée sous Node) ; la classe ne fait que l'insérer.
-import type { EcbSeries, FinancialStabilityResponse, MarketData, OatBundSpread, PolicyRate } from '../types/index.ts';
+import type { EcbSeries, FinancialPoint, FinancialStabilityResponse, MarketData, OatBundSpread, PolicyRate } from '../types/index.ts';
 import { buildMarketSparkline } from '../utils/market-sparkline.ts';
 import { NBSP, frNumber } from './layer-panel/format.ts';
 import { fmLoaderHTML } from './shared/loader.ts';
@@ -29,13 +29,24 @@ function frDate(date: string, withYear = false): string {
   return withYear ? `${d}/${date.slice(0, 4)}` : d;
 }
 
+/** Courbe d'une ligne : observations datées (trous au-delà de 4 jours), couleur du niveau éventuelle, format de l'infobulle. */
+interface Curve {
+  points: readonly FinancialPoint[];
+  label: string;
+  format: (v: number) => string;
+  color?: string;
+}
+
+const curveOf = (points: readonly FinancialPoint[] | undefined, label: string, format: (v: number) => string, color?: string): Curve =>
+  ({ points: points ?? [], label, format, color });
+
 interface Row {
   id: string;
   name: string;
   value: string;
   meta: string;
   word?: { text: string; level: VigilanceLevel };
-  curve?: number[];
+  curve?: Curve;
   help?: string;
 }
 
@@ -43,7 +54,12 @@ function rowHTML(r: Row): string {
   const word = r.word
     ? `<span class="fin-stab__word" style="--fin-lvl:${levelColorVar(r.word.level)}">${esc(r.word.text)}</span>`
     : '';
-  const curve = r.curve && r.curve.length >= 2 ? buildMarketSparkline(r.curve, 'neutral') : '';
+  const c = r.curve;
+  const curve = c && c.points.length >= 2
+    ? buildMarketSparkline(c.points.map((p) => p.value), 'neutral', {
+      dates: c.points.map((p) => p.date), label: c.label, format: c.format, ...(c.color ? { color: c.color } : {}),
+    })
+    : '';
   const title = r.help ? ` title="${esc(r.help)}"` : '';
   return `<div class="fin-stab__row" data-id="${r.id}"${title}>
     <div class="fin-stab__line"><span class="fin-stab__name">${esc(r.name)}</span><span class="fin-stab__value">${esc(r.value)}</span>${word}</div>
@@ -55,19 +71,27 @@ const SERIES_NAME: Record<EcbSeries['id'], string> = {
   cissFr: 'CISS France', cissEa: 'CISS zone euro', estr: '€STR', eurusd: 'EUR/USD (référence BCE)',
 };
 
+/** Valeur d'une série à la française, unité insécable (CISS sans unité). */
+const SERIES_FORMAT: Record<EcbSeries['id'], (v: number) => string> = {
+  cissFr: (v) => frNumber(v, 3),
+  cissEa: (v) => frNumber(v, 3),
+  estr: (v) => `${frNumber(v, 3)}${NBSP}%`,
+  eurusd: (v) => `${frNumber(v, 4)}${NBSP}$`,
+};
+
 function seriesRow(s: EcbSeries | undefined, id: EcbSeries['id']): Row {
   const name = SERIES_NAME[id];
-  const curve = s?.history.map((p) => p.value) ?? [];
-  if (!s || s.value === null) return { id, name, value: ND, meta: 'BCE indisponible', curve };
-  const isCiss = id === 'cissFr' || id === 'cissEa';
-  const value = isCiss ? frNumber(s.value, 3)
-    : id === 'estr' ? `${frNumber(s.value, 3)}${NBSP}%`
-    : `${frNumber(s.value, 4)}${NBSP}$`;
+  const format = SERIES_FORMAT[id];
+  if (!s || s.value === null) return { id, name, value: ND, meta: 'BCE indisponible', curve: curveOf(s?.history, '90 jours', format) };
   const date = s.date ? `au ${frDate(s.date)}` : ND;
   const meta = s.status === 'stale' ? `${date} · en retard` : date;
-  if (!isCiss) return { id, name, value, meta, curve };
+  if (id !== 'cissFr' && id !== 'cissEa') return { id, name, value: format(s.value), meta, curve: curveOf(s.history, '90 jours', format) };
   const band: LevelBand = bandOf(s.value, CISS_BANDS);
-  return { id, name, value, meta, curve, word: { text: band.word, level: band.level }, help: `${CISS_HELP} ${thresholdsText(CISS_BANDS, 2, '')}` };
+  return {
+    id, name, value: format(s.value), meta,
+    curve: curveOf(s.history, '90 jours', format, levelColorVar(band.level)),
+    word: { text: band.word, level: band.level }, help: `${CISS_HELP} ${thresholdsText(CISS_BANDS, 2, '')}`,
+  };
 }
 
 const RATE_NAME: Record<PolicyRate['id'], string> = { depot: 'Taux de dépôt BCE', refi: 'Taux de refinancement BCE' };
@@ -88,7 +112,10 @@ function isParisWeekend(iso: string): boolean {
 
 function spreadRow(sp: OatBundSpread | undefined): Row {
   const name = 'Écart OAT-Bund 10 ans';
-  const curve = sp?.history.map((p) => p.value) ?? [];
+  const spreadFormat = (v: number): string => `${frNumber(v, 2)}${NBSP}pt`;
+  const first = sp?.history[0];
+  const label = first ? `depuis le ${frDate(first.date)}` : 'relevés quotidiens';
+  const curve = curveOf(sp?.history, label, spreadFormat, sp && sp.value !== null ? levelColorVar(bandOf(sp.value, SPREAD_BANDS).level) : undefined);
   const help = `${SPREAD_HELP} ${thresholdsText(SPREAD_BANDS, 1, `${NBSP}pt`)} Source : marché (TradingView), courbe relevée un point par jour.`;
   if (!sp || sp.value === null) return { id: 'spread', name, value: ND, meta: 'TradingView indisponible', curve, help };
   const band = bandOf(sp.value, SPREAD_BANDS);

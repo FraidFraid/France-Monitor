@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import type { FinancialStabilityResponse, MarketData } from '../types/index.ts';
 import { buildFinancialStabilityHTML } from './FinancialStabilityStrip.ts';
+import { levelColorVar } from '../services/vigilance.ts';
 
 const NB = ' ';
 const hist = (...v: number[]) => v.map((value, i) => ({ date: `2026-10-0${i + 7}`, value }));
@@ -122,5 +123,19 @@ describe('pannes', () => {
     const row = rowOf(buildFinancialStabilityHTML({ data, error: null, cac: CAC }).html, 'spread');
     expect(row).toContain('clôture du vendredi');
     expect(row).not.toContain('en direct');
+  });
+});
+
+describe('courbes (refonte du 12/10)', () => {
+  const { html } = buildFinancialStabilityHTML({ data: DATA, error: null, cac: CAC });
+  const stroke = (row: string): string => /class="spark-line"[^>]*stroke="([^"]+)"/.exec(row)?.[1] ?? '';
+  it('CISS et écart : couleur de leur niveau ; €STR et EUR/USD : neutre', () => {
+    expect(stroke(rowOf(html, 'cissFr'))).toBe(levelColorVar('vert'));
+    expect(stroke(rowOf(buildFinancialStabilityHTML({ data: { ...DATA, spread: { ...DATA.spread, history: hist(1.4, 1.43) } }, error: null, cac: CAC }).html, 'spread'))).toBe(levelColorVar('rouge'));
+    expect(stroke(rowOf(html, 'estr'))).toBe('var(--spark-neutral)');
+  });
+  it('infobulle de la courbe : période et bornes au format de la ligne', () => {
+    expect(rowOf(html, 'cissFr')).toContain('<title>90 jours · plus bas 0,044 · plus haut 0,051</title>');
+    expect(rowOf(html, 'eurusd')).toContain(`plus haut 1,1206${NB}$`);
   });
 });

@@ -1,5 +1,5 @@
 import type { CommodityData } from '../types/index.ts';
-import { marketTone } from '../services/vigilance.ts';
+import { marketTone, type MarketTone } from '../services/vigilance.ts';
 import { buildMarketSparkline } from '../utils/market-sparkline.ts';
 import { fmLoaderHTML } from './shared/loader.ts';
 import { NBSP, frNumber } from './layer-panel/format.ts';
@@ -20,6 +20,12 @@ export function formatCommodityPrice(value: number): string {
 /** Variation du jour : signe, virgule, pourcentage insécable. */
 export function formatCommodityPct(value: number): string {
   return `${frNumber(value, 2, true)}${NBSP}%`;
+}
+
+/** Courbe de la séance : ligne pointillée de la clôture de la veille, infobulle à la française. */
+export function commoditySparkline(item: CommodityData, tone: MarketTone = 'neutral'): string {
+  const previousClose = item.changePercent > -100 ? item.price / (1 + item.changePercent / 100) : null;
+  return buildMarketSparkline(item.history, tone, { reference: previousClose, label: 'séance du jour', format: formatCommodityPrice });
 }
 
 export const SECTION_LABELS: Readonly<Record<'energy' | 'metals' | 'agro', string>> = { energy: 'Énergie', metals: 'Métaux', agro: 'Agro' };
@@ -109,7 +115,7 @@ export class CommodityStrip {
         </div>
         <div class="market-strip__price">${escapeHtml(formatCommodityPrice(item.price))}</div>
         <div class="market-strip__delta">${escapeHtml(formatCommodityPct(item.changePercent))}</div>
-        ${buildMarketSparkline(item.history, tone)}
+        ${commoditySparkline(item, tone)}
       `;
       listEl.appendChild(card);
 
