@@ -87,7 +87,8 @@ function gdacsReportUrl(id: string): string | null {
   return m ? `https://www.gdacs.org/report.aspx?eventtype=${m[1]}&eventid=${m[2]}` : null;
 }
 
-function emsRow(a: EmsActivation, active: boolean, now: number): string {
+/** Ligne d'activation : en cours (orange), en cours sur un relevé en retard (grise, dite en retard), close (historique, grise). */
+function emsRow(a: EmsActivation, state: 'active' | 'late' | 'closed', now: number): string {
   const parts = [
     a.place !== a.territory ? a.place : null,
     a.code,
@@ -99,8 +100,8 @@ function emsRow(a: EmsActivation, active: boolean, now: number): string {
   const gdacs = a.gdacsId ? gdacsReportUrl(a.gdacsId) : null;
   const links = sourceLinkHtml('Fiche Copernicus', a.url) + (gdacs ? ` · ${sourceLinkHtml('Fiche GDACS', gdacs)}` : '');
   return listRow({
-    text: `${EMS_CATEGORY_LABEL[a.category]} · ${a.territory}`, value: active ? 'en cours' : 'close',
-    level: active ? 'orange' : 'gris', noteHtml: `${escapeHtml(parts.join(' · '))} · ${links}`, title: a.name,
+    text: `${EMS_CATEGORY_LABEL[a.category]} · ${a.territory}`, value: state === 'closed' ? 'close' : 'en cours',
+    level: state === 'active' ? 'orange' : 'gris', noteHtml: `${escapeHtml(parts.join(' · '))}${state === 'late' ? escapeHtml(LATE_SUFFIX) : ''} · ${links}`, title: a.name,
   });
 }
 
@@ -114,7 +115,7 @@ function emsSections(e: EmsResponse | null, error: string | null, now: number, o
   const unavailable = e === null || e.readAt === null;
   const activeHtml = unavailable ? emptyLine('Source indisponible : Copernicus EMS.')
     : e.active.length === 0 ? emptyLine(`Aucune activation en cours sur le territoire français${late ? LATE_SUFFIX : ''}.`)
-    : e.active.map((a) => emsRow(a, !late, now)).join('');
+    : e.active.map((a) => emsRow(a, late ? 'late' : 'active', now)).join('');
   const elsewhere = !unavailable && e.elsewhere.count > 0
     ? note(`${plural(e.elsewhere.count, 'activation')} en cours ailleurs : ${e.elsewhere.countries.join(', ')}.`) : '';
   const current: FicheSection = {
@@ -125,7 +126,7 @@ function emsSections(e: EmsResponse | null, error: string | null, now: number, o
   const history: FicheSection = {
     id: 'ems-recent', title: '12 derniers mois (Copernicus)', collapsible: true, open: open('ems-recent', false),
     summary: plural(recent.length, 'activation'),
-    html: recent.length === 0 ? emptyLine('Aucune activation sur le territoire français ces 12 derniers mois.') : recent.map((a) => emsRow(a, false, now)).join(''),
+    html: recent.length === 0 ? emptyLine('Aucune activation sur le territoire français ces 12 derniers mois.') : recent.map((a) => emsRow(a, 'closed', now)).join(''),
   };
   void error;
   return [current, history];
@@ -158,16 +159,21 @@ export function buildCatastrophesView(input: CatastrophesViewInput): LayerView {
   const context = contextSection(d, late, canFocus, now, open);
   const ems = input.ems !== undefined ? emsSections(input.ems, input.emsError ?? null, now, open) : [];
   const sections = [franceSection(d, late, canFocus, now, open), ...ems, ...(context ? [context] : []), worldSection(d, late, canFocus, now, open), methodSection(d, late, now, open, input.ems)];
+  // Copernicus EMS à jour : compté même quand GDACS est injoignable ou en retard (revue finale I4, une source ne bloque pas l'autre).
+  const emsActive = emsCounted(input.ems, now);
   if (d === null || d.readAt === null) {
+    const emsOnly = emsActive.length > 0;
     return {
       head: {
-        theme: ENVIRONMENT_THEME, title: CATASTROPHES_TITLE, level: 'nd',
-        figure: { value: 'n.d.', caption: 'alertes GDACS sur le territoire français', level: null }, status: ['GDACS injoignable'],
+        theme: ENVIRONMENT_THEME, title: CATASTROPHES_TITLE, level: emsOnly ? 'orange' : 'nd',
+        figure: emsOnly
+          ? { value: String(emsActive.length), caption: 'activations Copernicus en cours, territoire français (GDACS injoignable)', level: 'orange' }
+          : { value: 'n.d.', caption: 'alertes GDACS sur le territoire français', level: null },
+        status: ['GDACS injoignable'],
       },
       sections, bodyHtml: sourceErrorCallout(null, now),
     };
   }
-  const emsActive = emsCounted(input.ems, now);
   const french = d.alerts.filter(isFrench);
   const gdacsTop = french.reduce<DisasterLevel>((m, x) => (RANK[x.level] > RANK[m] ? x.level : m), 'vert');
   const top: DisasterLevel = emsActive.length > 0 && RANK.orange > RANK[gdacsTop] ? 'orange' : gdacsTop;
@@ -179,8 +185,9 @@ export function buildCatastrophesView(input: CatastrophesViewInput): LayerView {
   return {
     head: {
       theme: ENVIRONMENT_THEME, title: CATASTROPHES_TITLE,
-      figure: { value: String(count), caption, level: late ? null : level(top) },
-      level: late ? 'nd' : level(top),
+      // GDACS en retard : sa couleur est retirée, l'orange d'une activation EMS à jour reste.
+      figure: { value: String(count), caption, level: late ? (emsActive.length > 0 ? 'orange' : null) : level(top) },
+      level: late ? (emsActive.length > 0 ? 'orange' : 'nd') : level(top),
       status: [stamp('relevé GDACS', d.readAt, late, now)],
     },
     sections,

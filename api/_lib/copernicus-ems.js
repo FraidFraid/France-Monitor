@@ -19,8 +19,9 @@ const COUNTRY_TERRITORY = {
 const NAME_TERRITORY = [
   [/mayotte/, 'Mayotte'], [/reunion/, 'La Réunion'], [/guadeloupe/, 'Guadeloupe'], [/martinique/, 'Martinique'],
   [/guiana|guyane/, 'Guyane'], [/new caledonia|nouvelle-caledonie/, 'Nouvelle-Calédonie'], [/polynesia|tahiti/, 'Polynésie française'],
-  [/saint[- ]martin/, 'Saint-Martin'], [/saint[- ]barth/, 'Saint-Barthélemy'], [/wallis/, 'Wallis-et-Futuna'],
-  [/saint[- ]pierre|miquelon/, 'Saint-Pierre-et-Miquelon'],
+  // Ancrés : « Saint-Martin-Vésubie », « Saint-Pierre-d'Oléron » sont des communes de métropole (revue finale).
+  [/saint[- ]martin(?![- ]\w)/, 'Saint-Martin'], [/saint[- ]barth/, 'Saint-Barthélemy'], [/wallis/, 'Wallis-et-Futuna'],
+  [/saint[- ]pierre(?:[- ](?:et|and)[- ]|\s*,|\s*$)|miquelon/, 'Saint-Pierre-et-Miquelon'],
 ];
 const TAAF = /amsterdam island|kerguelen|crozet|saint[- ]paul island|\btaaf\b/;
 const CATEGORY = {
@@ -177,8 +178,9 @@ export async function loadEms(now) {
       return { readAt, list: parseEmsList(json, now) };
     });
     const errors = now - Date.parse(v.readAt) <= FRESH_READ_MS ? [] : [EMS_STALE_SERVED_ERROR];
-    const active = [];
-    for (const a of v.list.active) active.push(await withDetail(a, errors));
+    // Détails en parallèle : plusieurs activations ouvertes à la fois ne doivent pas faire dépasser le délai du CDN (revue finale I3).
+    const active = await Promise.all(v.list.active.map((a) => withDetail(a, errors)));
+    errors.sort();
     return { readAt: v.readAt, active, recent: v.list.recent, elsewhere: v.list.elsewhere, errors };
   } catch (err) {
     return emptyEms([sourceError('Copernicus EMS', err)]);

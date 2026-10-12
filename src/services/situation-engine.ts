@@ -903,7 +903,7 @@ export function detectEmsActivations(raw: FranceRawData, _nowMs: number): Detect
     const base = situation(
       `ems-${a.code}`, 'EMS_ACTIVATION', 'medium', 0.9,
       `Cartographie satellite d’urgence : ${word}, ${a.territory}`,
-      `Copernicus EMS activé le ${parisWhen(a.activationTime)} (heure de Paris) ${who} (${a.code}, ${a.place}).${pop}`,
+      `Copernicus EMS activé ${parisWhen(a.activationTime)} (heure de Paris) ${who} (${a.code}, ${a.place}).${pop}`,
       [a.territory],
       ['Activation Copernicus EMS', `${word.charAt(0).toUpperCase()}${word.slice(1)}, ${a.territory}`],
       [

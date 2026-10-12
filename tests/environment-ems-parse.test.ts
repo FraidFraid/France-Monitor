@@ -98,3 +98,13 @@ describe('détail', () => {
       .toEqual({ activator: null, population: null, zones: [] });
   });
 });
+
+describe('revue finale : noms de communes de métropole', () => {
+  it('Saint-Pierre-d’Oléron et Saint-Martin-Vésubie restent en métropole ; Saint-Martin et Saint-Pierre-et-Miquelon reconnus', () => {
+    expect(frenchTerritoryOf({ name: "Wildfire in Saint-Pierre-d'Oleron, France", countries: ['France'] })).toBe(METROPOLE_LABEL);
+    expect(frenchTerritoryOf({ name: 'Flood in Saint-Martin-Vesubie, France', countries: ['France'] })).toBe(METROPOLE_LABEL);
+    expect(frenchTerritoryOf({ name: 'Hurricane IRMA in Saint Martin, France', countries: ['France'] })).toBe('Saint-Martin');
+    expect(frenchTerritoryOf({ name: 'Storm in Saint Pierre and Miquelon', countries: ['France'] })).toBe('Saint-Pierre-et-Miquelon');
+    expect(frenchTerritoryOf({ name: 'Storm in Saint-Pierre, France', countries: ['France'] })).toBe('Saint-Pierre-et-Miquelon');
+  });
+});

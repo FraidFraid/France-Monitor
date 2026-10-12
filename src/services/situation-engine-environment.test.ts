@@ -209,3 +209,16 @@ describe('EMS_ACTIVATION (Copernicus EMS, spec 2026-10-12) : situation sur sol f
     expect(situationTheme('EMS_ACTIVATION')).toBe('environment');
   });
 });
+
+describe('EMS_ACTIVATION : revue finale', () => {
+  it('résumé : « activé le JJ/MM à HH:MM », jamais « le le »', () => {
+    const a: EmsActivation = {
+      code: 'EMSR866', category: 'inondation', name: 'Flood in New Aquitaine, France', place: 'New Aquitaine', territory: 'France (Hexagone et Corse)',
+      activationTime: '2026-10-11T11:50:00.000Z', eventTime: null, closed: false, gdacsId: null, products: 14,
+      url: 'https://mapping.emergency.copernicus.eu/activations/EMSR866', activator: 'COGIC', population: null, zones: [], lon: null, lat: null,
+    };
+    const [s] = detectEmsActivations(baseRawData({ emsActive: [a] }), NOW);
+    expect(s?.summary).toContain('Copernicus EMS activé le 11/10 à 13:50 (heure de Paris)');
+    expect(s?.summary).not.toContain('le le');
+  });
+});

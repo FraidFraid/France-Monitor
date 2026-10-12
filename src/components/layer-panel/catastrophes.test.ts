@@ -135,3 +135,32 @@ describe('Copernicus EMS (spec 2026-10-12)', () => {
     expect(view(body([])).head.figure).toMatchObject({ value: '0' });
   });
 });
+
+describe('Copernicus EMS : revue finale', () => {
+  const act = (over: Partial<EmsActivation> = {}): EmsActivation => ({
+    code: 'EMSR866', category: 'inondation', name: 'Flood in New Aquitaine, France', place: 'New Aquitaine', territory: 'France (Hexagone et Corse)',
+    activationTime: '2026-10-11T11:50:00.000Z', eventTime: null, closed: false, gdacsId: null, products: 0,
+    url: 'https://mapping.emergency.copernicus.eu/activations/EMSR866', activator: null, population: null, zones: [], lon: null, lat: null, ...over,
+  });
+  const ems = (over: Partial<EmsResponse> = {}): EmsResponse => ({
+    readAt: '2026-10-12T07:55:00.000Z', active: [act()], recent: [], elsewhere: { count: 0, countries: [] }, errors: [], ...over,
+  });
+  const v = (d: DisastersResponse | null, dErr: string | null, e: EmsResponse | null) =>
+    buildCatastrophesView({ disasters: d, disastersError: dErr, ems: e, emsError: null, canFocus: true, now: NOW, open: (_id, byDefault) => byDefault });
+  it('relevé EMS en retard : activation toujours « en cours » (grise, relevé en retard), jamais « close »', () => {
+    const t = visibleText(renderLayerView('disasters', v(body([]), null, ems({ readAt: '2026-10-12T06:30:00.000Z' }))));
+    expect(t).toContain('en cours');
+    expect(t).not.toContain('close');
+    expect(t).toContain('relevé en retard');
+  });
+  it('GDACS injoignable, EMS à jour avec une activation : chiffre et orange d’EMS, GDACS nommé indisponible', () => {
+    const view = v(null, 'HTTP 502', ems());
+    expect(view.head.figure).toMatchObject({ value: '1', level: 'orange' });
+    expect(view.head.level).toBe('orange');
+    expect(view.head.status).toContain('GDACS injoignable');
+  });
+  it('GDACS en retard, EMS à jour avec une activation : niveau orange gardé', () => {
+    const view = v(body([], { readAt: '2026-10-12T07:00:00.000Z' }), null, ems());
+    expect(view.head.level).toBe('orange');
+  });
+});

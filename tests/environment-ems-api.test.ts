@@ -67,3 +67,18 @@ describe('route', () => {
     expect(read('../.github/workflows/smoke.yml')).toContain('"/api/environment/ems;200"');
   });
 });
+
+describe('revue finale : détails en parallèle', () => {
+  it('trois activations françaises en cours : les trois détails demandés avant qu’aucun ne réponde', async () => {
+    const pending: Array<() => void> = [];
+    const log = stubFetch((url) => (url === EMS_LIST_URL
+      ? respond(listWithOpen(['EMSR866', 'EMSR902', 'EMSR852']))
+      : new Promise((resolve) => { pending.push(() => resolve(respond(DETAIL))); })));
+    const run = loadEms(NOW);
+    for (let i = 0; i < 20 && pending.length < 3; i += 1) await new Promise((r) => setImmediate(r));
+    expect(log.urls.filter((u) => u !== EMS_LIST_URL)).toHaveLength(3);
+    for (const go of pending) go();
+    const body = await run;
+    expect(body.active).toHaveLength(3);
+  });
+});
