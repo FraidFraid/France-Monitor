@@ -329,6 +329,491 @@ var CITIES = {
   "Papeete": [-149.5667, -17.5333]
 };
 
+// src/config/departements.ts
+var DEPARTEMENT_NAMES = [
+  "Ain",
+  "Aisne",
+  "Allier",
+  "Alpes-de-Haute-Provence",
+  "Hautes-Alpes",
+  "Alpes-Maritimes",
+  "Ard\xE8che",
+  "Ardennes",
+  "Ari\xE8ge",
+  "Aube",
+  "Aude",
+  "Aveyron",
+  "Bouches-du-Rh\xF4ne",
+  "Calvados",
+  "Cantal",
+  "Charente",
+  "Charente-Maritime",
+  "Cher",
+  "Corr\xE8ze",
+  "Corse-du-Sud",
+  "Haute-Corse",
+  "C\xF4te-d\u2019Or",
+  "C\xF4tes-d\u2019Armor",
+  "Creuse",
+  "Dordogne",
+  "Doubs",
+  "Dr\xF4me",
+  "Eure",
+  "Eure-et-Loir",
+  "Finist\xE8re",
+  "Gard",
+  "Haute-Garonne",
+  "Gers",
+  "Gironde",
+  "H\xE9rault",
+  "Ille-et-Vilaine",
+  "Indre",
+  "Indre-et-Loire",
+  "Is\xE8re",
+  "Jura",
+  "Landes",
+  "Loir-et-Cher",
+  "Loire",
+  "Haute-Loire",
+  "Loire-Atlantique",
+  "Loiret",
+  "Lot",
+  "Lot-et-Garonne",
+  "Loz\xE8re",
+  "Maine-et-Loire",
+  "Manche",
+  "Marne",
+  "Haute-Marne",
+  "Mayenne",
+  "Meurthe-et-Moselle",
+  "Meuse",
+  "Morbihan",
+  "Moselle",
+  "Ni\xE8vre",
+  "Nord",
+  "Oise",
+  "Orne",
+  "Pas-de-Calais",
+  "Puy-de-D\xF4me",
+  "Pyr\xE9n\xE9es-Atlantiques",
+  "Hautes-Pyr\xE9n\xE9es",
+  "Pyr\xE9n\xE9es-Orientales",
+  "Bas-Rhin",
+  "Haut-Rhin",
+  "Rh\xF4ne",
+  "Haute-Sa\xF4ne",
+  "Sa\xF4ne-et-Loire",
+  "Sarthe",
+  "Savoie",
+  "Haute-Savoie",
+  "Paris",
+  "Seine-Maritime",
+  "Seine-et-Marne",
+  "Yvelines",
+  "Deux-S\xE8vres",
+  "Somme",
+  "Tarn",
+  "Tarn-et-Garonne",
+  "Var",
+  "Vaucluse",
+  "Vend\xE9e",
+  "Vienne",
+  "Haute-Vienne",
+  "Vosges",
+  "Yonne",
+  "Territoire de Belfort",
+  "Essonne",
+  "Hauts-de-Seine",
+  "Seine-Saint-Denis",
+  "Val-de-Marne",
+  "Val-d\u2019Oise",
+  "Guadeloupe",
+  "Martinique",
+  "Guyane",
+  "La R\xE9union",
+  "Mayotte"
+];
+
+// src/config/departement-centers.ts
+var DEPARTEMENT_CENTERS = {
+  "Ain": { code: "01", center: [5.4652, 46.247] },
+  "Aisne": { code: "02", center: [3.6539, 49.7003] },
+  "Allier": { code: "03", center: [3.1428, 46.4547] },
+  "Alpes-de-Haute-Provence": { code: "04", center: [6.1797, 43.9658] },
+  "Hautes-Alpes": { code: "05", center: [6.1768, 44.5626] },
+  "Alpes-Maritimes": { code: "06", center: [7.2201, 44.0968] },
+  "Ard\xE8che": { code: "07", center: [4.3219, 44.7053] },
+  "Ardennes": { code: "08", center: [4.7122, 49.6036] },
+  "Ari\xE8ge": { code: "09", center: [1.4105, 42.8693] },
+  "Aube": { code: "10", center: [4.0598, 48.3994] },
+  "Aude": { code: "11", center: [2.4782, 43.2168] },
+  "Aveyron": { code: "12", center: [2.4934, 44.4409] },
+  "Bouches-du-Rh\xF4ne": { code: "13", center: [4.9798, 43.4658] },
+  "Calvados": { code: "14", center: [-0.2201, 49.0229] },
+  "Cantal": { code: "15", center: [2.7136, 44.9626] },
+  "Charente": { code: "16", center: [0.1187, 45.7607] },
+  "Charente-Maritime": { code: "17", center: [-0.621, 45.8585] },
+  "Cher": { code: "18", center: [2.4057, 47.1456] },
+  "Corr\xE8ze": { code: "19", center: [1.8895, 45.4279] },
+  "C\xF4te-d'Or": { code: "21", center: [4.8157, 47.3526] },
+  "C\xF4tes-d'Armor": { code: "22", center: [-2.7499, 48.4573] },
+  "Creuse": { code: "23", center: [1.949, 46.2177] },
+  "Dordogne": { code: "24", center: [0.7393, 45.0282] },
+  "Doubs": { code: "25", center: [6.3507, 47.2721] },
+  "Dr\xF4me": { code: "26", center: [5.1897, 44.6068] },
+  "Eure": { code: "27", center: [1.0159, 49.2395] },
+  "Eure-et-Loir": { code: "28", center: [1.383, 48.2499] },
+  "Finist\xE8re": { code: "29", center: [-4.1924, 48.0522] },
+  "Corse-du-Sud": { code: "2A", center: [9.0647, 41.7715] },
+  "Haute-Corse": { code: "2B", center: [9.1009, 42.4219] },
+  "Gard": { code: "30", center: [4.0624, 44.06] },
+  "Haute-Garonne": { code: "31", center: [1.434, 43.4286] },
+  "Gers": { code: "32", center: [0.434, 43.6183] },
+  "Gironde": { code: "33", center: [-0.532, 44.6081] },
+  "H\xE9rault": { code: "34", center: [3.3886, 43.5928] },
+  "Ille-et-Vilaine": { code: "35", center: [-1.6496, 48.1716] },
+  "Indre": { code: "36", center: [1.5372, 46.6262] },
+  "Indre-et-Loire": { code: "37", center: [0.7445, 47.1259] },
+  "Is\xE8re": { code: "38", center: [5.3065, 45.4086] },
+  "Jura": { code: "39", center: [5.783, 46.7833] },
+  "Landes": { code: "40", center: [-0.5926, 44.1144] },
+  "Loir-et-Cher": { code: "41", center: [1.6654, 47.4702] },
+  "Loire": { code: "42", center: [4.2927, 45.5448] },
+  "Haute-Loire": { code: "43", center: [3.8622, 45.2224] },
+  "Loire-Atlantique": { code: "44", center: [-1.7036, 47.4456] },
+  "Loiret": { code: "45", center: [2.322, 48.0002] },
+  "Lot": { code: "46", center: [1.6658, 44.625] },
+  "Lot-et-Garonne": { code: "47", center: [0.3916, 44.2106] },
+  "Loz\xE8re": { code: "48", center: [3.4482, 44.629] },
+  "Maine-et-Loire": { code: "49", center: [-0.5984, 47.3052] },
+  "Manche": { code: "50", center: [-1.2451, 49.0916] },
+  "Marne": { code: "51", center: [4.1894, 48.7829] },
+  "Haute-Marne": { code: "52", center: [5.2469, 48.0217] },
+  "Mayenne": { code: "53", center: [-0.6242, 48.2344] },
+  "Meurthe-et-Moselle": { code: "54", center: [6.1867, 48.7133] },
+  "Meuse": { code: "55", center: [5.3509, 48.8922] },
+  "Morbihan": { code: "56", center: [-2.8514, 47.98] },
+  "Moselle": { code: "57", center: [6.5217, 49.1195] },
+  "Ni\xE8vre": { code: "58", center: [3.6055, 47.2131] },
+  "Nord": { code: "59", center: [3.3857, 50.3051] },
+  "Oise": { code: "60", center: [2.4283, 49.5527] },
+  "Orne": { code: "61", center: [0.0446, 48.5762] },
+  "Pas-de-Calais": { code: "62", center: [2.2962, 50.4145] },
+  "Puy-de-D\xF4me": { code: "63", center: [3.2053, 45.5779] },
+  "Pyr\xE9n\xE9es-Atlantiques": { code: "64", center: [-0.8835, 43.351] },
+  "Hautes-Pyr\xE9n\xE9es": { code: "65", center: [0.1798, 42.9552] },
+  "Pyr\xE9n\xE9es-Orientales": { code: "66", center: [2.4281, 42.5086] },
+  "Bas-Rhin": { code: "67", center: [7.6662, 48.7906] },
+  "Haut-Rhin": { code: "68", center: [7.267, 47.9548] },
+  "Rh\xF4ne": { code: "69", center: [4.7665, 45.7098] },
+  "Haute-Sa\xF4ne": { code: "70", center: [6.0949, 47.6383] },
+  "Sa\xF4ne-et-Loire": { code: "71", center: [4.5584, 46.6557] },
+  "Sarthe": { code: "72", center: [0.1727, 47.8434] },
+  "Savoie": { code: "73", center: [6.3849, 45.4951] },
+  "Haute-Savoie": { code: "74", center: [6.4219, 45.9723] },
+  "Paris": { code: "75", center: [2.3201, 48.859] },
+  "Seine-Maritime": { code: "76", center: [0.9169, 49.4972] },
+  "Seine-et-Marne": { code: "77", center: [3.0422, 48.619] },
+  "Yvelines": { code: "78", center: [1.8881, 48.762] },
+  "Deux-S\xE8vres": { code: "79", center: [-0.3286, 46.3113] },
+  "Somme": { code: "80", center: [2.374, 49.969] },
+  "Tarn": { code: "81", center: [2.3147, 43.7104] },
+  "Tarn-et-Garonne": { code: "82", center: [1.3651, 44.1433] },
+  "Var": { code: "83", center: [6.2808, 43.5739] },
+  "Vaucluse": { code: "84", center: [5.1604, 43.9271] },
+  "Vend\xE9e": { code: "85", center: [-1.4594, 46.8393] },
+  "Vienne": { code: "86", center: [0.5527, 46.4993] },
+  "Haute-Vienne": { code: "87", center: [1.262, 45.726] },
+  "Vosges": { code: "88", center: [6.3752, 48.3034] },
+  "Yonne": { code: "89", center: [3.5818, 47.7461] },
+  "Territoire de Belfort": { code: "90", center: [6.9098, 47.6684] },
+  "Essonne": { code: "91", center: [2.2182, 48.4811] },
+  "Hauts-de-Seine": { code: "92", center: [2.2416, 48.818] },
+  "Seine-Saint-Denis": { code: "93", center: [2.4411, 48.9509] },
+  "Val-de-Marne": { code: "94", center: [2.4547, 48.7576] },
+  "Val-d'Oise": { code: "95", center: [2.0601, 49.1083] }
+};
+
+// src/config/foreign-places.ts
+var FOREIGN_COUNTRIES = [
+  "Afghanistan",
+  "Afrique du Sud",
+  "Albanie",
+  "Alg\xE9rie",
+  "Allemagne",
+  "Andorre",
+  "Angleterre",
+  "Angola",
+  "Arabie saoudite",
+  "Argentine",
+  "Arm\xE9nie",
+  "Australie",
+  "Autriche",
+  "Azerba\xEFdjan",
+  "Bahre\xEFn",
+  "Bangladesh",
+  "Belgique",
+  "B\xE9nin",
+  "Bi\xE9lorussie",
+  "Birmanie",
+  "Bolivie",
+  "Bosnie",
+  "Br\xE9sil",
+  "Bulgarie",
+  "Burkina Faso",
+  "Burundi",
+  "Cambodge",
+  "Cameroun",
+  "Canada",
+  "Chili",
+  "Chine",
+  "Chypre",
+  "Cisjordanie",
+  "Colombie",
+  "Congo",
+  "Cor\xE9e du Nord",
+  "Cor\xE9e du Sud",
+  "C\xF4te d\u2019Ivoire",
+  "Crim\xE9e",
+  "Croatie",
+  "Cuba",
+  "Danemark",
+  "Donbass",
+  "\xC9cosse",
+  "\xC9gypte",
+  "\xC9mirats arabes unis",
+  "\xC9quateur",
+  "\xC9rythr\xE9e",
+  "Espagne",
+  "Estonie",
+  "\xC9tats-Unis",
+  "\xC9thiopie",
+  "Finlande",
+  "Gabon",
+  "Gaza",
+  "G\xE9orgie",
+  "Ghana",
+  "Grande-Bretagne",
+  "Gr\xE8ce",
+  "Groenland",
+  "Guatemala",
+  "Guin\xE9e",
+  "Ha\xEFti",
+  "Honduras",
+  "Hongrie",
+  "Inde",
+  "Indon\xE9sie",
+  "Irak",
+  "Iran",
+  "Irlande",
+  "Irlande du Nord",
+  "Islande",
+  "Isra\xEBl",
+  "Italie",
+  "Jama\xEFque",
+  "Japon",
+  "Jordanie",
+  "Kazakhstan",
+  "Kenya",
+  "Kosovo",
+  "Kowe\xEFt",
+  "Kurdistan",
+  "Laos",
+  "Lettonie",
+  "Liban",
+  "Libye",
+  "Lituanie",
+  "Mac\xE9doine",
+  "Madagascar",
+  "Malaisie",
+  "Mali",
+  "Malte",
+  "Maroc",
+  "Mauritanie",
+  "Mexique",
+  "Moldavie",
+  "Mongolie",
+  "Mont\xE9n\xE9gro",
+  "Mozambique",
+  "Myanmar",
+  "Namibie",
+  "N\xE9pal",
+  "Nicaragua",
+  "Niger",
+  "Nigeria",
+  "Norv\xE8ge",
+  "Nouvelle-Z\xE9lande",
+  "Oman",
+  "Ouganda",
+  "Ouzb\xE9kistan",
+  "Pakistan",
+  "Palestine",
+  "Panama",
+  "Paraguay",
+  "Pays-Bas",
+  "Pays de Galles",
+  "P\xE9rou",
+  "Philippines",
+  "Pologne",
+  "Portugal",
+  "Qatar",
+  "R\xE9publique tch\xE8que",
+  "Roumanie",
+  "Royaume-Uni",
+  "Russie",
+  "Rwanda",
+  "Salvador",
+  "S\xE9n\xE9gal",
+  "Serbie",
+  "Sierra Leone",
+  "Singapour",
+  "Slovaquie",
+  "Slov\xE9nie",
+  "Somalie",
+  "Soudan",
+  "Sri Lanka",
+  "Su\xE8de",
+  "Suisse",
+  "Syrie",
+  "Ta\xEFwan",
+  "Tanzanie",
+  "Tchad",
+  "Tch\xE9quie",
+  "Tha\xEFlande",
+  "Togo",
+  "Tunisie",
+  "Turquie",
+  "Ukraine",
+  "Uruguay",
+  "Venezuela",
+  "Vietnam",
+  "Y\xE9men",
+  "Zambie",
+  "Zimbabwe"
+];
+var FOREIGN_CITIES = [
+  "Londres",
+  "Manchester",
+  "Liverpool",
+  "Birmingham",
+  "\xC9dimbourg",
+  "Dublin",
+  "Berlin",
+  "Munich",
+  "Hambourg",
+  "Francfort",
+  "Cologne",
+  "Madrid",
+  "Barcelone",
+  "S\xE9ville",
+  "Rome",
+  "Milan",
+  "Naples",
+  "Turin",
+  "Venise",
+  "Lisbonne",
+  "Amsterdam",
+  "Rotterdam",
+  "Anvers",
+  "Gen\xE8ve",
+  "Lausanne",
+  "Zurich",
+  "B\xE2le",
+  "Berne",
+  "Varsovie",
+  "Prague",
+  "Budapest",
+  "Ath\xE8nes",
+  "Istanbul",
+  "Ankara",
+  "Moscou",
+  "Saint-P\xE9tersbourg",
+  "Kiev",
+  "Kyiv",
+  "Kharkiv",
+  "Odessa",
+  "Marioupol",
+  "Minsk",
+  "Belgrade",
+  "Bucarest",
+  "Sofia",
+  "Copenhague",
+  "Stockholm",
+  "Oslo",
+  "Helsinki",
+  "New York",
+  "Washington",
+  "Los Angeles",
+  "San Francisco",
+  "Chicago",
+  "Miami",
+  "Houston",
+  "La Nouvelle-Orl\xE9ans",
+  "Montr\xE9al",
+  "Qu\xE9bec",
+  "Toronto",
+  "Mexico",
+  "Bogota",
+  "Caracas",
+  "Buenos Aires",
+  "Rio de Janeiro",
+  "S\xE3o Paulo",
+  "Lima",
+  "Santiago",
+  "La Havane",
+  "Port-au-Prince",
+  "Tokyo",
+  "P\xE9kin",
+  "Shanghai",
+  "Hong Kong",
+  "S\xE9oul",
+  "Pyongyang",
+  "Taipei",
+  "Bangkok",
+  "Manille",
+  "Jakarta",
+  "Hano\xEF",
+  "New Delhi",
+  "Bombay",
+  "Karachi",
+  "Islamabad",
+  "Kaboul",
+  "T\xE9h\xE9ran",
+  "Bagdad",
+  "Damas",
+  "Beyrouth",
+  "J\xE9rusalem",
+  "Tel-Aviv",
+  "Ramallah",
+  "Amman",
+  "Riyad",
+  "Ryad",
+  "Doha",
+  "Duba\xEF",
+  "Abou Dhabi",
+  "Le Caire",
+  "Alger",
+  "Tunis",
+  "Rabat",
+  "Casablanca",
+  "Tripoli",
+  "Dakar",
+  "Bamako",
+  "Niamey",
+  "Ouagadougou",
+  "Abidjan",
+  "Lagos",
+  "Kinshasa",
+  "Nairobi",
+  "Addis-Abeba",
+  "Johannesburg",
+  "Pretoria",
+  "Khartoum",
+  "Mogadiscio",
+  "Sydney",
+  "Melbourne"
+];
+
 // src/services/geocoder.ts
 var STOP_WORDS = /* @__PURE__ */ new Set([
   "france",
@@ -394,9 +879,39 @@ var STOP_WORDS = /* @__PURE__ */ new Set([
   "affaire",
   "actu",
   "info",
-  "actu"
+  "actu",
+  // Institutions et lieux de pouvoir qui sont aussi des communes (« à Matignon » n'est pas Matignon, Côtes-d'Armor), mois,
+  // compétitions (12/10/2026, passe préposition réparée).
+  "matignon",
+  "\xE9lys\xE9e",
+  "elys\xE9e",
+  "elysee",
+  "bercy",
+  "beauvau",
+  "versailles-assembl\xE9e",
+  "janvier",
+  "f\xE9vrier",
+  "mars",
+  "avril",
+  "mai",
+  "juin",
+  "juillet",
+  "ao\xFBt",
+  "septembre",
+  "octobre",
+  "novembre",
+  "d\xE9cembre",
+  "mondial",
+  "euro",
+  "ligue des champions",
+  "roland-garros",
+  "tour de france"
 ]);
-var PREPOSITION_PATTERN = /(?:à|de|en|sur|près de|dans(?:\s+le|\s+la|\s+les|\s+l[''])?\s+)([A-ZÀ-Ü][a-zà-ü]+(?:[\s-][A-ZÀ-Ü][a-zà-ü]+)*)/g;
+var PLACE_NAME = "(?:(?:La|Le|Les)\\s+|L['\u2019])?\\p{Lu}[\\p{Ll}'\u2019]+(?:-(?:(?:sur|sous|en|et|de|des|du|la|le|les|l\xE8s|aux|au)-|d['\u2019]|l['\u2019])?\\p{Lu}[\\p{Ll}'\u2019]+)*";
+var PREPOSITION_PATTERN = new RegExp(
+  `(?<![\\p{L}])(\xE0|au|aux|en|sur|pr\xE8s de|depuis|dans(?:\\s+(?:le|les))?|de|du)\\s+(la\\s+|l['\u2019])?(${PLACE_NAME})|(?<![\\p{L}])(d)['\u2019](${PLACE_NAME})`,
+  "gu"
+);
 var OVERSEAS_PATTERNS = [
   [/(?<![\p{L}-])Guadeloupe(?![\p{L}-])/u, "Guadeloupe"],
   [/(?<![\p{L}-])Martinique(?![\p{L}-])/u, "Martinique"],
@@ -420,16 +935,49 @@ function normCitySet() {
 function isKnownCity(name) {
   return normCitySet().has(name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase());
 }
+var foldName = (name) => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/['’]/g, "'").toLowerCase();
+function adresseNameMatches(query, props) {
+  const q = foldName(query.trim());
+  return [props.name, props.city].some((n) => typeof n === "string" && foldName(n) === q);
+}
+var _deptCenters = null;
+function departementCenter(name) {
+  _deptCenters ??= new Map(Object.entries(DEPARTEMENT_CENTERS).map(([nom, d]) => [foldName(nom), { name: nom, center: d.center }]));
+  return _deptCenters.get(foldName(name.trim())) ?? null;
+}
+var _regionNames = null;
+function isMetroRegionName(name) {
+  _regionNames ??= new Set(Object.entries(REGIONS).filter(([code]) => code.length === 2 && Number(code) >= 11).map(([, r]) => foldName(r.name)));
+  return _regionNames.has(foldName(name));
+}
+var _knownPlaces = null;
+function isKnownPlace(name) {
+  _knownPlaces ??= new Set([...Object.keys(CITIES), ...Object.values(REGIONS).map((r) => r.name), ...DEPARTEMENT_NAMES].map(foldName));
+  return _knownPlaces.has(foldName(name));
+}
+var _foreignPlaces = null;
+function isForeignPlace(name) {
+  _foreignPlaces ??= new Set([...FOREIGN_COUNTRIES, ...FOREIGN_CITIES].map(foldName));
+  return _foreignPlaces.has(foldName(name));
+}
 function extractLocations(title) {
   const locations = [];
   let match;
   for (const [pattern, name] of OVERSEAS_PATTERNS) {
     if (pattern.test(title)) locations.push(name);
   }
+  const ofPlaces = [];
   PREPOSITION_PATTERN.lastIndex = 0;
   while ((match = PREPOSITION_PATTERN.exec(title)) !== null) {
-    const loc = match[1].trim();
-    if (loc.length >= 3 && !STOP_WORDS.has(loc.toLowerCase())) locations.push(loc);
+    const prep = match[1] ?? match[4];
+    const name = (match[3] ?? match[5]).trim();
+    const loc = match[2]?.trim() === "la" ? `La ${name}` : name;
+    if (loc.length < 3 || STOP_WORDS.has(loc.toLowerCase()) || isForeignPlace(loc) || isMetroRegionName(loc)) continue;
+    if (prep === "de" || prep === "du" || prep === "d") {
+      if (isKnownPlace(loc)) ofPlaces.push(loc);
+      continue;
+    }
+    locations.push(loc);
   }
   TITLE_START_PATTERN.lastIndex = 0;
   while ((match = TITLE_START_PATTERN.exec(title)) !== null) {
@@ -443,7 +991,8 @@ function extractLocations(title) {
     const loc = match[1].trim();
     if (loc.length >= 3 && !STOP_WORDS.has(loc.toLowerCase())) locations.push(loc);
   }
-  if (locations.length === 0) {
+  locations.push(...ofPlaces);
+  {
     const normTitle = title.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
     for (const cityName of Object.keys(CITIES)) {
       const normCity = cityName.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -460,9 +1009,8 @@ var GEOCODE_TIMEOUT_MS = 3e3;
 function norm(value) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
 }
-async function fetchAdresse(query, municipalityOnly) {
-  const typeFilter = municipalityOnly ? "&type=municipality" : "";
-  const url = "https://api-adresse.data.gouv.fr/search/?q=" + encodeURIComponent(query) + "&limit=1" + typeFilter;
+async function fetchAdresse(query) {
+  const url = "https://api-adresse.data.gouv.fr/search/?q=" + encodeURIComponent(query) + "&limit=1&type=municipality";
   const resp = await fetch(url, { signal: AbortSignal.timeout(GEOCODE_TIMEOUT_MS) });
   if (!resp.ok) return null;
   return await resp.json();
@@ -476,6 +1024,12 @@ async function geocodeQuery(query) {
       geoCache.set(key, result);
       return result;
     }
+  }
+  const dept = departementCenter(query);
+  if (dept) {
+    const result = { lat: dept.center[1], lon: dept.center[0], locationName: dept.name, confidence: 0.9, source: "departements" };
+    geoCache.set(key, result);
+    return result;
   }
   for (const region of Object.values(REGIONS)) {
     if (norm(region.name) === key) {
@@ -491,9 +1045,10 @@ async function geocodeQuery(query) {
     }
   }
   try {
-    let data = await fetchAdresse(query, true);
-    if (!data?.features?.length) {
-      data = await fetchAdresse(query, false);
+    const data = await fetchAdresse(query);
+    if (data?.features?.length && !adresseNameMatches(query, data.features[0].properties)) {
+      geoCache.set(key, null);
+      return null;
     }
     if (!data?.features?.length) {
       geoCache.set(key, null);

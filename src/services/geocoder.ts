@@ -66,6 +66,9 @@ async function cacheResult(key: string, result: GeoResult | null): Promise<void>
 }
 
 import { CITIES, REGIONS } from '../config/geo.ts';
+import { DEPARTEMENT_NAMES } from '../config/departements.ts';
+import { DEPARTEMENT_CENTERS } from '../config/departement-centers.ts';
+import { FOREIGN_CITIES, FOREIGN_COUNTRIES } from '../config/foreign-places.ts';
 
 // ─── Stop words ───
 
@@ -80,15 +83,32 @@ const STOP_WORDS = new Set([
     'direct', 'vidéo', 'photo', 'image', 'alerte', 'urgence',
     'nouveau', 'nouvelle', 'grand', 'grande', 'premier', 'première',
     'procès', 'tribunal', 'appel', 'affaire', 'actu', 'info', 'actu',
+    // Institutions et lieux de pouvoir qui sont aussi des communes (« à Matignon » n'est pas Matignon, Côtes-d'Armor), mois,
+    // compétitions (12/10/2026, passe préposition réparée).
+    'matignon', 'élysée', 'elysée', 'elysee', 'bercy', 'beauvau', 'versailles-assemblée',
+    'janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
+    'mondial', 'euro', 'ligue des champions', 'roland-garros', 'tour de france',
 ]);
 
 // ─── Location extraction from title ───
 
 /**
- * Preposition-anchored pattern: "à Lyon", "de Paris", "en Bretagne", "dans le Rhône"
+ * Nom de lieu après une préposition : « Lyon », « La Rochelle », « Saint-Malo », « Bourg-Saint-Maurice », « Aix-en-Provence »,
+ * « Boulogne-sur-Mer », « Villeneuve-d'Ascq », « Seine-et-Marne ». Article initial (La, Le, Les, L') compris.
  */
-const PREPOSITION_PATTERN =
-    /(?:à|de|en|sur|près de|dans(?:\s+le|\s+la|\s+les|\s+l[''])?\s+)([A-ZÀ-Ü][a-zà-ü]+(?:[\s-][A-ZÀ-Ü][a-zà-ü]+)*)/g;
+const PLACE_NAME =
+    "(?:(?:La|Le|Les)\\s+|L['’])?\\p{Lu}[\\p{Ll}'’]+(?:-(?:(?:sur|sous|en|et|de|des|du|la|le|les|lès|aux|au)-|d['’]|l['’])?\\p{Lu}[\\p{Ll}'’]+)*";
+
+/**
+ * Préposition + lieu (12/10/2026 : l'ancien motif n'attendait l'espace qu'après « dans », la passe ne trouvait presque rien).
+ * Groupes : préposition, article en minuscule (« à la Rochelle », « dans l'Hérault »), lieu ; ou « d' » et lieu. « à », « au », « en », « sur », « près de », « depuis », « dans le/la/les/l' » :
+ * tout nom ; « de », « du », « d' » : seulement un lieu connu (« de Michel Barnier » est une personne), voir extractLocations.
+ */
+const PREPOSITION_PATTERN = new RegExp(
+    `(?<![\\p{L}])(à|au|aux|en|sur|près de|depuis|dans(?:\\s+(?:le|les))?|de|du)\\s+(la\\s+|l['’])?(${PLACE_NAME})`
+    + `|(?<![\\p{L}])(d)['’](${PLACE_NAME})`,
+    'gu',
+);
 
 /**
  * Territoires d'outre-mer → nom de leur région (REGIONS, src/config/geo.ts). Pas un mot plus long (« Guadeloupéen ») ; la Réunion
@@ -127,6 +147,45 @@ function isKnownCity(name: string): boolean {
     return normCitySet().has(name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase());
 }
 
+const foldName = (name: string): string => name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/['’]/g, "'").toLowerCase();
+
+/**
+ * Résultat de l'API Adresse retenu seulement si son nom est celui cherché (12/10/2026) : l'API rend toujours la commune la plus
+ * proche, même sans rapport (« Los Angeles » → Los Masos, « Navi Pillay » → Navilly, « Toscane » → Tours).
+ */
+export function adresseNameMatches(query: string, props: { name?: string; city?: string }): boolean {
+    const q = foldName(query.trim());
+    return [props.name, props.city].some((n) => typeof n === 'string' && foldName(n) === q);
+}
+
+let _deptCenters: Map<string, { name: string; center: [number, number] }> | null = null;
+/** Point intérieur d'un département nommé (DEPARTEMENT_CENTERS), ou null. */
+export function departementCenter(name: string): { name: string; center: [number, number] } | null {
+    _deptCenters ??= new Map(Object.entries(DEPARTEMENT_CENTERS).map(([nom, d]) => [foldName(nom), { name: nom, center: d.center }]));
+    return _deptCenters.get(foldName(name.trim())) ?? null;
+}
+
+let _regionNames: Set<string> | null = null;
+/** Région de métropole : son centre tombe dans un département au hasard, ce n'est pas un lieu précis. */
+function isMetroRegionName(name: string): boolean {
+    _regionNames ??= new Set(Object.entries(REGIONS).filter(([code]) => code.length === 2 && Number(code) >= 11).map(([, r]) => foldName(r.name)));
+    return _regionNames.has(foldName(name));
+}
+
+let _knownPlaces: Set<string> | null = null;
+/** Ville du dictionnaire, région ou département : un lieu sûr même après « de » (« maire de Nantes », « préfet du Var »). */
+function isKnownPlace(name: string): boolean {
+    _knownPlaces ??= new Set([...Object.keys(CITIES), ...Object.values(REGIONS).map((r) => r.name), ...DEPARTEMENT_NAMES].map(foldName));
+    return _knownPlaces.has(foldName(name));
+}
+
+let _foreignPlaces: Set<string> | null = null;
+/** Pays ou ville étrangère connus (« en Ukraine », « à Kiev ») : jamais cherchés parmi les communes françaises. */
+function isForeignPlace(name: string): boolean {
+    _foreignPlaces ??= new Set([...FOREIGN_COUNTRIES, ...FOREIGN_CITIES].map(foldName));
+    return _foreignPlaces.has(foldName(name));
+}
+
 /**
  * Extract potential location names from a news title.
  * Pass 1: preposition-anchored (very reliable)
@@ -144,11 +203,21 @@ export function extractLocations(title: string): string[] {
         if (pattern.test(title)) locations.push(name);
     }
 
-    // Pass 1 — prepositions
+    // Pass 1 — prepositions (jamais un lieu étranger connu ; après « de », « du », « d' », seulement un lieu connu, et après les
+    // autres candidats : « le Racing Club de Strasbourg s'incline à Nice » se passe à Nice)
+    const ofPlaces: string[] = [];
     PREPOSITION_PATTERN.lastIndex = 0;
     while ((match = PREPOSITION_PATTERN.exec(title)) !== null) {
-        const loc = match[1].trim();
-        if (loc.length >= 3 && !STOP_WORDS.has(loc.toLowerCase())) locations.push(loc);
+        const prep = match[1] ?? match[4];
+        const name = (match[3] ?? match[5]).trim();
+        // « à la Rochelle » → « La Rochelle » ; « dans l'Hérault » → « Hérault » (l'élision ne fait pas partie du nom).
+        const loc = match[2]?.trim() === 'la' ? `La ${name}` : name;
+        if (loc.length < 3 || STOP_WORDS.has(loc.toLowerCase()) || isForeignPlace(loc) || isMetroRegionName(loc)) continue;
+        if (prep === 'de' || prep === 'du' || prep === 'd') {
+            if (isKnownPlace(loc)) ofPlaces.push(loc);
+            continue;
+        }
+        locations.push(loc);
     }
 
     // Pass 2 — title start "City :" (known cities only)
@@ -167,8 +236,11 @@ export function extractLocations(title: string): string[] {
         if (loc.length >= 3 && !STOP_WORDS.has(loc.toLowerCase())) locations.push(loc);
     }
 
-    // Pass 4 — full-scan fallback against CITIES dictionary
-    if (locations.length === 0) {
+    locations.push(...ofPlaces);
+
+    // Pass 4 — villes du dictionnaire citées n'importe où, toujours en dernier recours (12/10/2026) : un candidat qui échoue
+    // (« grâce à Sotoca ») ne prive plus le titre de sa ville connue (« Lens mène face à Lyon »).
+    {
         // NFD sans accents, mais maintien de la casse pour éviter les faux positifs sur des mots communs ("eu" vs "Eu", "pau", "cannes")
         const normTitle = title.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         for (const cityName of Object.keys(CITIES)) {
@@ -211,6 +283,14 @@ export async function geocode(query: string): Promise<GeoResult | null> {
         }
     }
 
+    // Département (« dans le Var ») : son point intérieur, jamais une commune approchante de l'API.
+    const dept = departementCenter(query);
+    if (dept) {
+        const result: GeoResult = { lat: dept.center[1], lon: dept.center[0], locationName: dept.name, confidence: 0.9 };
+        await cacheResult(cacheKey, result);
+        return result;
+    }
+
     for (const region of Object.values(REGIONS)) {
         if (region.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() === normCacheKey) {
             const result: GeoResult = { lat: region.center[1], lon: region.center[0], locationName: region.name, confidence: 0.9 };
@@ -225,29 +305,24 @@ export async function geocode(query: string): Promise<GeoResult | null> {
         const proxied = (upstream: string): string => `/api/opendata-proxy?url=${encodeURIComponent(upstream)}`;
 
         // First try with type=municipality for exact city matches
-        let url = proxied(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(query)}&limit=1&type=municipality`);
-        let resp = await fetch(url, { signal: AbortSignal.timeout(5000) });
+        const url = proxied(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(query)}&limit=1&type=municipality`);
+        const resp = await fetch(url, { signal: AbortSignal.timeout(5000) });
 
         let data: {
             features: Array<{
                 geometry: { coordinates: [number, number] };
-                properties: { label: string; score: number; city?: string };
+                properties: { label: string; score: number; name?: string; city?: string };
             }>;
         } | null = null;
 
         if (resp.ok) {
             data = await resp.json();
         }
+        // Commune au nom cherché seulement (adresseNameMatches).
+        if (data?.features?.length && !adresseNameMatches(query, data.features[0].properties)) data = null;
 
-        // If no municipality found, try without type filter (catches localities, hamlets, etc.)
-        if (!data?.features?.length) {
-            url = proxied(`https://api-adresse.data.gouv.fr/search/?q=${encodeURIComponent(query)}&limit=1`);
-            resp = await fetch(url, { signal: AbortSignal.timeout(5000) });
-            if (resp.ok) {
-                data = await resp.json();
-            }
-        }
-
+        // Pas de commune au nom exact : aucun lieu. Ni rue ni adresse (« rue Michel Barnier »), ni lieu-dit (« Malaga » est un
+        // lieu-dit du Gers, « Boulogne » un lieu-dit de la Dordogne) : mesure du 12/10/2026 sur 600 titres.
         if (!data?.features?.length) {
             await cacheResult(cacheKey, null);
             return null;
