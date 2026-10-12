@@ -208,7 +208,12 @@ describe('pannes, retards, hors saison (S1 à S3)', () => {
   it('hors saison (lecture du 15/10) : niveaux échus sans couleur, dernière publication dite, jamais « (en retard) » pour la météo des forêts', () => {
     const later = Date.parse('2026-10-15T10:00:00+02:00');
     const v = view({ now: later });
-    expect(v.head.figure).toEqual({ value: 'n.d.', caption: 'météo des forêts hors saison, dernière publication le 03/10 à 16:50', level: null });
+    // Hors saison : le gros chiffre devient les foyers confirmés (FIRMS, toute l'année), jamais « n.d. » qui dirait une panne (12/10/2026) ;
+    // ici la collecte FIRMS du 04/10 est en retard le 15/10 : chiffre sans couleur.
+    expect(v.head.figure).toEqual({
+      value: '3', level: null,
+      caption: 'foyers confirmés en France sur 24\u00a0h (satellites FIRMS) (en retard) · météo des forêts hors saison depuis le 03/10 à 16:50, reprise en juin',
+    });
     expect(v.head.status[1]).toContain('météo des forêts hors saison');
     const s = v.sections.find((x) => x.id === 'meteo-forets');
     expect(s?.summary).toBe('hors saison');

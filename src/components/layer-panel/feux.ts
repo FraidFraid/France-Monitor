@@ -159,9 +159,7 @@ function deptLabel(code: string): string {
 function figureOf(f: FiresResponse, now: number): LayerHeadModel['figure'] {
   const fd = f.forestDanger;
   if (fd === null) return { value: 'n.d.', caption: 'départements par niveau de danger : météo des forêts indisponible', level: null };
-  if (!forestDangerCurrent(fd, now)) {
-    return { value: 'n.d.', caption: `météo des forêts hors saison, dernière publication le ${dateAt(fd.publishedAt, now)}`, level: null };
-  }
+  if (!forestDangerCurrent(fd, now)) return offSeasonFigure(f, fd.publishedAt, now);
   const max = maxForestDanger(fd);
   const counts = dangerCounts(fd, 'j1');
   const late = mdfLate(fd, now);
@@ -169,6 +167,24 @@ function figureOf(f: FiresResponse, now: number): LayerHeadModel['figure'] {
     value: frNumber(counts[max], 0),
     caption: `départements en danger ${FOREST_DANGER_WORD[max]} ${parisDayWord(fd.j1Date, now)} (météo des forêts) · ${frNumber(counts[3] + counts[4], 0)} élevé ou très élevé${late ? ' (en retard)' : ''}`,
     level: late ? null : FOREST_DANGER_LEVEL[max],
+  };
+}
+
+/**
+ * Hors saison de la météo des forêts (Météo-France la publie de juin à fin septembre) : le gros chiffre devient les foyers confirmés
+ * en France sur 24 h (FIRMS, toute l'année), jamais « n.d. », qui dit une panne (12/10/2026). Reprise annoncée en juin.
+ */
+function offSeasonFigure(f: FiresResponse, publishedAt: string, now: number): LayerHeadModel['figure'] {
+  const season = `météo des forêts hors saison depuis le ${dateAt(publishedAt, now)}, reprise en juin`;
+  if (f.readAt === null) return { value: 'n.d.', caption: `foyers confirmés : détections FIRMS indisponibles · ${season}`, level: null };
+  const confirmed = f.foyers.filter((x) => x.confirmed && !x.recurrent);
+  const late = firmsLate(f, now);
+  const levels = confirmed.map(foyerLevel).filter((l): l is VigilanceLevel => l !== 'gris');
+  const top: VigilanceLevel = levels.includes('rouge') ? 'rouge' : levels.includes('orange') ? 'orange' : levels.includes('jaune') ? 'jaune' : 'vert';
+  return {
+    value: frNumber(confirmed.length, 0),
+    caption: `${confirmed.length > 1 ? 'foyers confirmés' : 'foyer confirmé'} en France sur 24${NBSP}h (satellites FIRMS)${late ? ' (en retard)' : ''} · ${season}`,
+    level: late ? null : top,
   };
 }
 
