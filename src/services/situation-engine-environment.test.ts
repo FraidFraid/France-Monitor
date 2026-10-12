@@ -170,4 +170,9 @@ describe('NATURAL_HAZARD_ALERT (GDACS, spec 2026-10-12) : situation sur sol fran
   it('thème Environnement', () => {
     expect(situationTheme('NATURAL_HAZARD_ALERT')).toBe('environment');
   });
+  it('résumé en français : nom et gravité traduits, jamais le texte GDACS anglais', () => {
+    const [s] = detectNaturalHazardAlerts(baseRawData({ disasters: [gd({ severity: 'Hurricane/Typhoon > 74 mph (maximum wind speed of 250 km/h)' })] }), NOW);
+    expect(s?.summary).toContain('Cyclone tropical TEST-26 (Ouragan ou typhon, vent maximal 250\u00a0km/h)');
+    expect(s?.summary).not.toMatch(/mph|Tropical Cyclone/);
+  });
 });

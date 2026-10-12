@@ -22,15 +22,37 @@ describe('buildCatastrophesView', () => {
     expect(v.head.figure).toMatchObject({ value: '1', level: 'rouge' });
     const t = text(body([a({}), a({ id: 'EQ-2', type: 'seisme', level: 'orange', frenchTerritory: null, countries: ['PAN'], name: 'Earthquake in Panama' })]));
     expect(t).toContain('Cyclone · Guadeloupe');
-    expect(t).toContain('Earthquake in Panama');
+    expect(t).toContain('Séisme · PAN');
+    expect(t).not.toContain('Earthquake in Panama');
   });
   it('temps calme : ligne explicite, chiffre 0 en vert ; jamais vide', () => {
     const v = view(body([]));
     expect(v.head.figure).toMatchObject({ value: '0', level: 'vert' });
     expect(text(body([]))).toContain('Aucune alerte GDACS sur le territoire français');
   });
-  it('sécheresse d’Europe centrale touchant la France : visible dans le bloc France', () => {
-    expect(text(body([a({ id: 'DR-1', type: 'secheresse', level: 'orange', frenchTerritory: 'France (Hexagone et Corse)' })]))).toContain('Sécheresse · France (Hexagone et Corse)');
+  it('sécheresse d’Europe centrale touchant la France : bloc « Contexte européen », hors du chiffre et de la couleur', () => {
+    const drought = a({
+      id: 'DR-1', type: 'secheresse', level: 'orange', frenchTerritory: 'France (Hexagone et Corse)', countries: ['AUT', 'BEL', 'FRA'],
+      name: 'Drought in Austria, Belgium, France', severity: 'Medium impact for agricultural drought in 1759971 km2',
+    });
+    const flood = a({ id: 'FL-2', type: 'inondation', level: 'vert', frenchTerritory: 'France (Hexagone et Corse)', countries: ['FRA'], name: 'Flood in France', severity: 'Magnitude 0 ' });
+    const v = view(body([drought, flood]));
+    expect(v.sections.map((s) => s.id)).toEqual(['france', 'contexte', 'monde', 'methode']);
+    expect(v.head.figure).toMatchObject({ value: '1', level: 'vert' });
+    const france = visibleText(v.sections.find((s) => s.id === 'france')?.html ?? '');
+    const contexte = visibleText(v.sections.find((s) => s.id === 'contexte')?.html ?? '');
+    expect(france).toContain('Inondation · France (Hexagone et Corse)');
+    expect(france).not.toContain('Sécheresse');
+    expect(contexte).toContain('Sécheresse · 3 pays touchés');
+    expect(view(body([drought])).head.figure).toMatchObject({ value: '0', level: 'vert' });
+  });
+  it('textes en français : gravité traduite, nom anglais seulement en infobulle', () => {
+    const html = renderLayerView('disasters', view(body([a({ severity: 'Hurricane/Typhoon > 74 mph (maximum wind speed of 250 km/h)' })])));
+    const t = visibleText(html);
+    expect(t).toContain('Cyclone tropical TEST-26');
+    expect(t).toContain('Ouragan ou typhon, vent maximal 250\u00a0km/h');
+    expect(t).not.toMatch(/mph|Tropical Cyclone/);
+    expect(html).toContain('title="Tropical Cyclone TEST-26"');
   });
   it('en retard : « en retard », niveau n.d. ; injoignable : n.d. et message ; pannes nommées dans Méthode', () => {
     expect(view(body([a({})], { readAt: '2026-10-12T07:00:00.000Z' })).head.level).toBe('nd');

@@ -3,6 +3,7 @@
 // France : gris ; relevé en retard (S2) : neutre. Module à part pour ne pas toucher les tables figées de la phase B.
 import type { LayerSpecification } from 'maplibre-gl';
 import type { DisasterAlert, DisastersResponse } from '../../types/index.ts';
+import { frenchName, frenchSeverity, isEuropeanContext } from '../../services/disasters-format.ts';
 import { isEnvironmentDataLate } from '../../services/environment-levels.ts';
 import { levelHex } from '../../services/vigilance.ts';
 import { clockOf } from '../layer-panel/environment-format.ts';
@@ -12,21 +13,27 @@ import { escapeHtml } from './format-utils.ts';
 
 const RANK = { rouge: 3, orange: 2, vert: 1 } as const;
 
+/** Alerte coloriée : territoire français au sens strict (hors contexte européen). */
+const colored = (x: DisasterAlert): boolean => x.frenchTerritory !== null && !isEuropeanContext(x);
+
 export function disasterHex(x: DisasterAlert, late: boolean): string {
   if (late) return ENV_NEUTRAL_HEX;
-  return x.frenchTerritory === null ? DISASTER_ABROAD_HEX : levelHex(x.level);
+  return colored(x) ? levelHex(x.level) : DISASTER_ABROAD_HEX;
 }
 
 function body(x: DisasterAlert, late: boolean, now: number): string {
-  const where = x.frenchTerritory ?? (x.countries.length > 1 ? `${x.countries.length} pays` : (x.countries[0] ?? 'n.d.'));
+  const context = isEuropeanContext(x);
+  const where = !context && x.frenchTerritory !== null ? x.frenchTerritory : (x.countries.length > 1 ? `${x.countries.length} pays` : (x.countries[0] ?? 'n.d.'));
   const rows: Array<[string, string]> = [
     ['Niveau', ALERT_WORD[x.level]],
     ['Période', x.current ? `en cours depuis ${clockOf(x.from, now)}` : `du ${clockOf(x.from, now)} au ${clockOf(x.to, now)}`],
-    ['Gravité', x.severity ?? 'n.d.'],
+    ['Gravité', frenchSeverity(x) ?? 'n.d.'],
     ['Source', 'GDACS'],
   ];
-  return `<b>${escapeHtml(`${DISASTER_TYPE_LABEL[x.type]} · ${where}`)}</b><div class="hm-sub">${escapeHtml(x.name)}</div>`
+  const sub = frenchName(x);
+  return `<b>${escapeHtml(`${DISASTER_TYPE_LABEL[x.type]} · ${where}`)}</b>${sub && sub !== where ? `<div class="hm-sub">${escapeHtml(sub)}</div>` : ''}`
     + rows.map(([k, v]) => `<div class="hm-row"><span>${escapeHtml(k)}</span><span>${escapeHtml(v)}</span></div>`).join('')
+    + (context ? '<div class="hm-note">Contexte européen : touche la métropole, centré hors de France.</div>' : '')
     + (late ? '<div class="hm-note">Relevé en retard : couleur retirée.</div>' : '');
 }
 
@@ -38,9 +45,9 @@ export function disasterFeatures(d: DisastersResponse | null, now: number): GeoJ
     features: d.alerts.map((x): GeoJSON.Feature<GeoJSON.Point> => ({
       type: 'Feature', geometry: { type: 'Point', coordinates: [x.lon, x.lat] },
       properties: {
-        id: x.id, color: disasterHex(x, late), radius: x.frenchTerritory !== null ? 9 : 6,
-        sortKey: RANK[x.level] + (x.frenchTerritory !== null ? 10 : 0),
-        label: x.frenchTerritory !== null ? DISASTER_TYPE_LABEL[x.type] : '', body: body(x, late, now),
+        id: x.id, color: disasterHex(x, late), radius: colored(x) ? 9 : 6,
+        sortKey: RANK[x.level] + (colored(x) ? 10 : 0),
+        label: colored(x) ? DISASTER_TYPE_LABEL[x.type] : '', body: body(x, late, now),
       },
     })),
   };

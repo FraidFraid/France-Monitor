@@ -38,3 +38,18 @@ describe('disasterFeatures', () => {
     expect(DISASTER_LAYER_KEYS.disasters).toEqual([LYR_DISASTERS, LYR_DISASTER_LABEL]);
   });
 });
+
+describe('contexte européen et textes français', () => {
+  it('sécheresse centrée hors de France touchant la métropole : grise, sans étiquette ; infobulle traduite', () => {
+    const drought = a({
+      id: 'DR-1', type: 'secheresse', level: 'orange', frenchTerritory: 'France (Hexagone et Corse)', countries: ['AUT', 'FRA'],
+      name: 'Drought in Austria, France', severity: 'Medium impact for agricultural drought in 1759971 km2',
+    });
+    const [f] = disasterFeatures(body([drought]), NOW).features;
+    expect([f?.properties?.['color'], f?.properties?.['label']]).toEqual([DISASTER_ABROAD_HEX, '']);
+    const html = envTooltipHtml(LYR_DISASTERS, f?.properties ?? {}) ?? '';
+    expect(html).toContain('Sécheresse agricole, impact moyen');
+    expect(html).toContain('Contexte européen');
+    expect(html).not.toMatch(/Drought|km2/);
+  });
+});

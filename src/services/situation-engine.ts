@@ -36,6 +36,7 @@ import { SOVEREIGNTY_SOURCE_DETAILS } from '../config/sovereignty-sources.ts';
 import { DEPARTMENTS } from './stability-index.ts';
 import { ecowattToday } from './ecowatt-official.ts';
 import { formatObservationAge, selectMajorIncidents, wildfireSeverity } from './wildfire-dossier.ts';
+import { METROPOLE_LABEL, frenchName, frenchSeverity } from './disasters-format.ts';
 import { QUAKE_WINDOW_MS, magnitudeText, nextDayOf, parisDayOf, quakeInFrance, quakePlace } from './environment-levels.ts';
 
 // ─── Ordres de sévérité ──────────────────────────────────────────────────────
@@ -848,7 +849,6 @@ export function detectSeismicEvents(raw: FranceRawData, nowMs: number): Detected
 const HAZARD_WORD: Readonly<Record<DisasterType, string>> = {
   cyclone: 'cyclone', seisme: 'séisme', inondation: 'inondation', volcan: 'éruption volcanique', secheresse: 'sécheresse', feu: 'feu de forêt',
 };
-const METROPOLE = 'France (Hexagone et Corse)';
 
 /** « en Guadeloupe », « à La Réunion », « à Mayotte », « en Nouvelle-Calédonie », « en France (Hexagone et Corse) ». */
 function inTerritory(t: string): string {
@@ -863,13 +863,13 @@ function inTerritory(t: string): string {
 export function detectNaturalHazardAlerts(raw: FranceRawData, nowMs: number): DetectedSituation[] {
   return (raw.disasters ?? []).flatMap((a): DetectedSituation[] => {
     const t = a.frenchTerritory;
-    if (t === null || a.level === 'vert' || (t === METROPOLE && a.type !== 'cyclone')) return [];
+    if (t === null || a.level === 'vert' || (t === METROPOLE_LABEL && a.type !== 'cyclone')) return [];
     if (!a.current && nowMs - Date.parse(a.to) > 7 * 86_400_000) return [];
     const word = HAZARD_WORD[a.type];
     const base = situation(
       `natural-hazard-${a.id}`, 'NATURAL_HAZARD_ALERT', a.level === 'rouge' ? 'medium' : 'watch', 0.8,
       `Alerte ${a.level} GDACS : ${word} ${inTerritory(t)}`,
-      `${a.name}${a.severity ? ` (${a.severity})` : ''}, ${a.current ? `en cours depuis ${parisWhen(a.from)}` : `du ${parisWhen(a.from).slice(3)} au ${parisWhen(a.to).slice(3)}`} (heure de Paris). Niveau calculé par GDACS (ONU, Commission européenne), pas une vigilance officielle.`,
+      `${frenchName(a) ?? `${HAZARD_WORD[a.type].charAt(0).toUpperCase()}${HAZARD_WORD[a.type].slice(1)}`}${frenchSeverity(a) ? ` (${frenchSeverity(a)})` : ''}, ${a.current ? `en cours depuis ${parisWhen(a.from)}` : `du ${parisWhen(a.from).slice(3)} au ${parisWhen(a.to).slice(3)}`} (heure de Paris). Niveau calculé par GDACS (ONU, Commission européenne), pas une vigilance officielle.`,
       [t],
       [`Alerte ${a.level} GDACS`, `${word.charAt(0).toUpperCase()}${word.slice(1)} ${inTerritory(t)}`],
       [
