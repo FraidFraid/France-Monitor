@@ -60,7 +60,7 @@ export function classify(title: string, description?: string): {
 `;
 
 const GEOCODER_ENTRY = `
-import { extractLocations } from './src/services/geocoder.ts';
+import { extractLocations, departementCenter, adresseNameMatches } from './src/services/geocoder.ts';
 import { CITIES, REGIONS } from './src/config/geo.ts';
 
 export { extractLocations };
@@ -86,13 +86,12 @@ function norm(value: string): string {
 interface AdresseResponse {
   features?: Array<{
     geometry: { coordinates: [number, number] };
-    properties: { label: string; score: number; city?: string };
+    properties: { label: string; score: number; name?: string; city?: string };
   }>;
 }
 
-async function fetchAdresse(query: string, municipalityOnly: boolean): Promise<AdresseResponse | null> {
-  const typeFilter = municipalityOnly ? '&type=municipality' : '';
-  const url = 'https://api-adresse.data.gouv.fr/search/?q=' + encodeURIComponent(query) + '&limit=1' + typeFilter;
+async function fetchAdresse(query: string): Promise<AdresseResponse | null> {
+  const url = 'https://api-adresse.data.gouv.fr/search/?q=' + encodeURIComponent(query) + '&limit=1&type=municipality';
   const resp = await fetch(url, { signal: AbortSignal.timeout(GEOCODE_TIMEOUT_MS) });
   if (!resp.ok) return null;
   return await resp.json() as AdresseResponse;
@@ -114,6 +113,14 @@ export async function geocodeQuery(query: string): Promise<ServerGeoResult | nul
     }
   }
 
+  // Département (« dans le Var ») : son point intérieur, jamais une commune approchante de l'API (12/10/2026).
+  const dept = departementCenter(query);
+  if (dept) {
+    const result: ServerGeoResult = { lat: dept.center[1], lon: dept.center[0], locationName: dept.name, confidence: 0.9, source: 'departements' };
+    geoCache.set(key, result);
+    return result;
+  }
+
   for (const region of Object.values(REGIONS)) {
     if (norm(region.name) === key) {
       const result: ServerGeoResult = {
@@ -129,9 +136,12 @@ export async function geocodeQuery(query: string): Promise<ServerGeoResult | nul
   }
 
   try {
-    let data = await fetchAdresse(query, true);
-    if (!data?.features?.length) {
-      data = await fetchAdresse(query, false);
+    // Commune au nom cherché seulement (« Los Angeles » n'est pas Los Masos). Ni rue ni adresse (« rue Michel Barnier »), ni
+    // lieu-dit (« Malaga » est un lieu-dit du Gers) : mesure du 12/10/2026 sur 600 titres.
+    const data = await fetchAdresse(query);
+    if (data?.features?.length && !adresseNameMatches(query, data.features[0].properties)) {
+      geoCache.set(key, null);
+      return null;
     }
     if (!data?.features?.length) {
       geoCache.set(key, null);
