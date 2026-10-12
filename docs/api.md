@@ -31,6 +31,7 @@ L'API est au stade **0.1.0 (expérimental)**. Aucune garantie de stabilité form
 | `GET /api/environment/air` | Qualité de l'air (Atmo France) : épisodes de pollution de J à J+2 et indice ATMO de J par département. |
 | `GET /api/environment/earthquakes` | Séismes des 7 derniers jours en France et à 20 km autour (BCSF-RéNaSS, EMSC en repli). |
 | `GET /api/environment/disasters` | Alertes catastrophes GDACS des 7 derniers jours : territoire français (tous niveaux) et monde (orange, rouge). |
+| `GET /api/finance/stability` | Stabilité financière : CISS France et zone euro, taux directeurs, €STR et EUR/USD (BCE), écart OAT-Bund à 10 ans (TradingView, un point par jour gardé 400 jours). |
 | `GET /api/environment/sea-levels` | Hauteurs d'eau des marégraphes du SHOM (19 ports), variation sur 1 h et courbe de 24 h. |
 | `GET /api/sovereignty/military` | Aéronefs militaires au-dessus de la France (Données adsb.lol, ODbL 1.0), appareils français en compte par département, urgences confirmées, comptes horaires. |
 | `GET /api/sovereignty/cables-watch` | Navires lents près d'un câble télécom sous-marin (AIS du relais, câbles du Shom et d'OpenStreetMap), « à vérifier ». |
@@ -77,6 +78,7 @@ Chaque fonction positionne une directive de cache CDN (`s-maxage`) qui reflète 
 | `/api/environment/fires`, `/api/environment/vigilance`, `/api/environment/floods` | 5 min (30 s pendant une collecte ou une lecture en cours) |
 | `/api/environment/earthquakes`, `/api/environment/sea-levels`, `/api/environment/disasters` | 5 min |
 | `/api/environment/air` | 30 min |
+| `/api/finance/stability` | 15 min (séries BCE relues chaque heure, écart toutes les 15 min) |
 | `/api/environment/drought` | 1 h |
 | `/api/health-check`, `/api/situation-history` | jamais mis en cache (`no-store`) |
 

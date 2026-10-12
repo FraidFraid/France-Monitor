@@ -25,6 +25,7 @@ export const ROUTES = {
   '/api/events': () => import('./_handlers/events.js'),
   '/api/finance/commodities': () => import('./_handlers/finance/commodities.js'),
   '/api/finance/market': () => import('./_handlers/finance/market.js'),
+  '/api/finance/stability': () => import('./_handlers/finance/stability.js'),
   '/api/fire-observations/mtg-frp': () => import('./_handlers/fire-observations/mtg-frp.js'),
   '/api/fire-observations/radar-2d': () => import('./_handlers/fire-observations/radar-2d.js'),
   '/api/fire-observations/radar-column': () => import('./_handlers/fire-observations/radar-column.js'),

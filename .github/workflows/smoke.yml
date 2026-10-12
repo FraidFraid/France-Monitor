@@ -68,6 +68,7 @@ jobs:
             "/api/sovereignty/connectivity;200"
             "/api/sovereignty/sanctions;200"
             "/api/finance/market;200"
+            "/api/finance/stability;200"
             "/api/outages/telecom;200"
             "/api/outages/power;200"
             "/api/outages/internet;200"

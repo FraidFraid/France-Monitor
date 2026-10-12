@@ -29,6 +29,7 @@
     { "name": "Actualités", "description": "Fil d'actualités ingéré (presse nationale + régionale) et son agrégation temporelle." },
     { "name": "Santé", "description": "Santé opérationnelle de la plateforme et historique de la situation." },
     { "name": "Énergie", "description": "Mix électrique régional/national et flux gaziers aux frontières." },
+    { "name": "Finance", "description": "Stabilité financière : indicateurs de la BCE et écart de taux OAT-Bund." },
     { "name": "Environnement", "description": "Vigilance météo, crues, feux de forêt (détections satellite, foyers, météo des forêts), sécheresse, qualité de l'air, séismes et marégraphes." },
     { "name": "Souveraineté", "description": "Défense (aéronefs militaires ou d'État visibles en ADS-B, page Vigipirate du SGDSN, précision de position GNSS et météo spatiale, registre des gels), connectivité (câbles télécom sous-marins, grands réseaux, points d'échange), vigilance cyber (CERT-FR, vulnérabilités exploitées, revendications agrégées) : mesures datées de sources ouvertes, sans lieu inventé." }
   ],
@@ -428,6 +429,24 @@
           "502": {
             "description": "Aucune requête GDACS lue : même corps, pannes nommées dans `errors`, jamais mis en cache.",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DisastersResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/finance/stability": {
+      "get": {
+        "tags": ["Finance"],
+        "operationId": "getFinanceStability",
+        "summary": "Stabilité financière : CISS, taux directeurs, €STR, EUR/USD (BCE) et écart OAT-Bund (TradingView)",
+        "description": "Séries BCE quotidiennes (90 observations), taux directeurs avec date et sens du dernier changement, écart de taux à 10 ans France-Allemagne relevé en direct et enregistré un point par jour. Une série est en retard au-delà de 4 jours calendaires après sa date de valeur.\n\nCache CDN visé : `s-maxage=900, stale-while-revalidate=600` (plus court si la réponse est partielle).",
+        "responses": {
+          "200": {
+            "description": "Au moins une partie lue ; une panne ou un retard est nommé dans `errors`.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FinancialStabilityResponse" } } }
+          },
+          "502": {
+            "description": "Aucune partie lue : même corps, pannes nommées dans `errors`, jamais mis en cache.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FinancialStabilityResponse" } } }
           }
         }
       }
@@ -938,6 +957,63 @@
           "errors": { "type": "array", "description": "Pannes nommées (« GDACS Guadeloupe : HTTP 500 »).", "items": { "type": "string" } }
         },
         "required": ["readAt", "alerts", "errors"]
+      },
+      "FinancialPoint": {
+        "type": "object",
+        "properties": { "date": { "type": "string", "format": "date" }, "value": { "type": "number" } },
+        "required": ["date", "value"]
+      },
+      "FinancialStabilityResponse": {
+        "type": "object",
+        "description": "Bloc « Stabilité financière », type `FinancialStabilityResponse` de `src/types/index.ts`.",
+        "properties": {
+          "readAt": { "type": "string", "format": "date-time" },
+          "series": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string", "enum": ["cissFr", "cissEa", "estr", "eurusd"] },
+                "value": { "type": ["number", "null"] },
+                "date": { "type": ["string", "null"], "format": "date" },
+                "history": { "type": "array", "items": { "$ref": "#/components/schemas/FinancialPoint" } },
+                "status": { "type": "string", "enum": ["ok", "stale", "unavailable"] },
+                "error": { "type": ["string", "null"] }
+              },
+              "required": ["id", "value", "date", "history", "status", "error"]
+            }
+          },
+          "rates": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string", "enum": ["depot", "refi"] },
+                "value": { "type": ["number", "null"] },
+                "since": { "type": ["string", "null"], "format": "date" },
+                "previous": { "type": ["number", "null"] },
+                "status": { "type": "string", "enum": ["ok", "stale", "unavailable"] },
+                "error": { "type": ["string", "null"] }
+              },
+              "required": ["id", "value", "since", "previous", "status", "error"]
+            }
+          },
+          "spread": {
+            "type": "object",
+            "properties": {
+              "value": { "type": ["number", "null"], "description": "Écart en points de pourcentage." },
+              "fr10y": { "type": ["number", "null"] },
+              "de10y": { "type": ["number", "null"] },
+              "readAt": { "type": ["string", "null"], "format": "date-time" },
+              "history": { "type": "array", "items": { "$ref": "#/components/schemas/FinancialPoint" } },
+              "status": { "type": "string", "enum": ["ok", "stale", "unavailable"] },
+              "error": { "type": ["string", "null"] }
+            },
+            "required": ["value", "fr10y", "de10y", "readAt", "history", "status", "error"]
+          },
+          "errors": { "type": "array", "items": { "type": "string" } }
+        },
+        "required": ["readAt", "series", "rates", "spread", "errors"]
       },
       "SeaLevelsResponse": {
         "type": "object",
