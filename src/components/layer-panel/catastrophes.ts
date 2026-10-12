@@ -10,7 +10,7 @@ import type { FicheSection } from '../fiche/parts.ts';
 import { emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, type LayerView } from './frame.ts';
 import { NBSP } from './format.ts';
 import { ENVIRONMENT_THEME, note, plural, readErrors, shortDate, stamp } from './environment-format.ts';
-import { DISASTER_TYPE_LABEL } from './environment-legend.ts';
+import { ALERT_WORD, DISASTER_TYPE_LABEL } from './environment-legend.ts';
 
 export const CATASTROPHES_TITLE = 'Catastrophes (GDACS)';
 type OpenFn = (sectionId: string, byDefault: boolean) => boolean;
@@ -25,29 +25,42 @@ function period(x: DisasterAlert, now: number): string {
   return x.current ? `en cours depuis le ${shortDate(x.from, now)}` : `du ${shortDate(x.from, now)} au ${shortDate(x.to, now)}`;
 }
 
-function row(x: DisasterAlert, canFocus: boolean, now: number, where: string): string {
+/** Nom GDACS au-delà duquel la ligne est tronquée (une sécheresse peut lister 29 pays) ; nom complet en infobulle. */
+const NAME_MAX = 90;
+
+function shortName(name: string): string {
+  return name.length <= NAME_MAX ? name : `${name.slice(0, NAME_MAX).replace(/[\s,]+\S*$/, '')}…`;
+}
+
+/** Ligne d'une alerte : en retard ou hors de France, puce grise (S2) ; note avec le lien vers la fiche GDACS. */
+function row(x: DisasterAlert, late: boolean, canFocus: boolean, now: number, where: string): string {
+  const parts = [shortName(x.name), period(x, now), x.severity].filter((s): s is string => s !== null && s !== '');
+  const link = x.url ? ` · ${sourceLinkHtml('Fiche GDACS', x.url)}` : '';
   return listRow({
-    text: `${DISASTER_TYPE_LABEL[x.type]} · ${where}`, value: `Alerte ${x.level}`,
-    level: x.frenchTerritory !== null ? level(x.level) : 'gris',
-    note: [x.name, period(x, now), x.severity].filter((s): s is string => s !== null && s !== '').join(' · '),
+    text: `${DISASTER_TYPE_LABEL[x.type]} · ${where}`, value: ALERT_WORD[x.level],
+    level: x.frenchTerritory !== null && !late ? level(x.level) : 'gris',
+    noteHtml: `${escapeHtml(parts.join(' · '))}${link}`,
+    title: x.name.length > NAME_MAX ? x.name : null,
     data: { disaster: x.id }, link: canFocus,
   });
 }
 
-function franceSection(d: DisastersResponse | null, canFocus: boolean, now: number, open: OpenFn): FicheSection {
+const LATE_SUFFIX = ' (relevé en retard)';
+
+function franceSection(d: DisastersResponse | null, late: boolean, canFocus: boolean, now: number, open: OpenFn): FicheSection {
   const list = (d?.alerts ?? []).filter((x) => x.frenchTerritory !== null);
   const html = d === null ? emptyLine('Source indisponible : GDACS.')
-    : list.length === 0 ? emptyLine('Aucune alerte GDACS sur le territoire français ces 7 derniers jours.')
-    : list.map((x) => row(x, canFocus, now, x.frenchTerritory ?? 'n.d.')).join('');
+    : list.length === 0 ? emptyLine(`Aucune alerte GDACS sur le territoire français ces 7${NBSP}derniers jours${late ? LATE_SUFFIX : ''}.`)
+    : list.map((x) => row(x, late, canFocus, now, x.frenchTerritory ?? 'n.d.')).join('');
   return { id: 'france', title: 'Territoire français', collapsible: true, open: open('france', true), summary: plural(list.length, 'alerte'), html };
 }
 
-function worldSection(d: DisastersResponse | null, canFocus: boolean, now: number, open: OpenFn): FicheSection {
+function worldSection(d: DisastersResponse | null, late: boolean, canFocus: boolean, now: number, open: OpenFn): FicheSection {
   const list = (d?.alerts ?? []).filter((x) => x.frenchTerritory === null);
   const shown = list.slice(0, MAX_WORLD_ROWS);
   const html = d === null ? emptyLine('Source indisponible : GDACS.')
-    : list.length === 0 ? emptyLine('Aucune alerte orange ou rouge dans le monde ces 7 derniers jours.')
-    : shown.map((x) => row(x, canFocus, now, x.countries.length > 1 ? `${x.countries.length} pays` : (x.countries[0] ?? 'n.d.'))).join('')
+    : list.length === 0 ? emptyLine(`Aucune alerte orange ou rouge dans le monde ces 7${NBSP}derniers jours${late ? LATE_SUFFIX : ''}.`)
+    : shown.map((x) => row(x, late, canFocus, now, x.countries.length > 1 ? `${x.countries.length} pays` : (x.countries[0] ?? 'n.d.'))).join('')
       + (list.length > shown.length ? note(`${list.length - shown.length} autres alertes non affichées.`) : '');
   return { id: 'monde', title: 'Monde (alertes orange et rouges)', collapsible: true, open: open('monde', false), summary: plural(list.length, 'alerte'), html };
 }
@@ -67,7 +80,7 @@ export function buildCatastrophesView(input: CatastrophesViewInput): LayerView {
     return { head: { theme: ENVIRONMENT_THEME, title: CATASTROPHES_TITLE, status: ['chargement…'] }, sections: [], bodyHtml: loadingBody() };
   }
   const late = d !== null && isEnvironmentDataLate('gdacs', d.readAt, now);
-  const sections = [franceSection(d, canFocus, now, open), worldSection(d, canFocus, now, open), methodSection(d, late, now, open)];
+  const sections = [franceSection(d, late, canFocus, now, open), worldSection(d, late, canFocus, now, open), methodSection(d, late, now, open)];
   if (d === null || d.readAt === null) {
     return {
       head: {
@@ -83,7 +96,7 @@ export function buildCatastrophesView(input: CatastrophesViewInput): LayerView {
   return {
     head: {
       theme: ENVIRONMENT_THEME, title: CATASTROPHES_TITLE,
-      figure: { value: String(french.length), caption: 'alertes GDACS sur le territoire français, 7 derniers jours', level: late ? null : level(top) },
+      figure: { value: String(french.length), caption: `alertes GDACS sur le territoire français, 7${NBSP}derniers jours`, level: late ? null : level(top) },
       level: late ? 'nd' : level(top),
       status: [stamp('relevé GDACS', d.readAt, late, now)],
     },

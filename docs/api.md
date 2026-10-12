@@ -75,8 +75,7 @@ Chaque fonction positionne une directive de cache CDN (`s-maxage`) qui reflète 
 | `/api/energy/ecowatt` | ~15 min |
 | `/api/energy/gas-pir` | ~30 min |
 | `/api/environment/fires`, `/api/environment/vigilance`, `/api/environment/floods` | 5 min (30 s pendant une collecte ou une lecture en cours) |
-| `/api/environment/earthquakes`, `/api/environment/sea-levels` | 5 min |
-| `/api/environment/disasters` | 10 min |
+| `/api/environment/earthquakes`, `/api/environment/sea-levels`, `/api/environment/disasters` | 5 min |
 | `/api/environment/air` | 30 min |
 | `/api/environment/drought` | 1 h |
 | `/api/health-check`, `/api/situation-history` | jamais mis en cache (`no-store`) |

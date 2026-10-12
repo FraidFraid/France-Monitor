@@ -3,7 +3,7 @@
 import { emptyDisasters, loadDisasters } from '../../_lib/gdacs.js';
 import { handlePreflight, sendSourceJson, sourceError } from '../../_lib/source-http.js';
 
-export const CACHE_CONTROL = 's-maxage=600, stale-while-revalidate=1200';
+export const CACHE_CONTROL = 's-maxage=300, stale-while-revalidate=600';
 
 export default async function handler(req, res) {
   if (handlePreflight(req, res)) return;

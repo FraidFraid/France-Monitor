@@ -419,7 +419,7 @@
         "tags": ["Environnement"],
         "operationId": "getEnvironmentDisasters",
         "summary": "Catastrophes : alertes GDACS (ONU / Commission européenne), territoire français et alertes orange ou rouges du monde",
-        "description": "Alertes GDACS des 7 derniers jours : sur le territoire français (métropole, outre-mer), tous niveaux ; ailleurs, orange et rouge seulement. Niveaux calculés par modèle, pas une vigilance officielle française.\n\nCache CDN visé : `s-maxage=600, stale-while-revalidate=1200` (plus court si la réponse est partielle).",
+        "description": "Alertes GDACS des 7 derniers jours : sur le territoire français (métropole, outre-mer), tous niveaux ; ailleurs, orange et rouge seulement. Niveaux calculés par modèle, pas une vigilance officielle française.\n\nCache CDN visé : `s-maxage=300, stale-while-revalidate=600` (plus court si la réponse est partielle).",
         "responses": {
           "200": {
             "description": "Au moins une requête GDACS lue (ou un relevé précédent servi avec sa date) ; une panne est nommée dans `errors`.",

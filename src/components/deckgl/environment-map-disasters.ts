@@ -6,7 +6,7 @@ import type { DisasterAlert, DisastersResponse } from '../../types/index.ts';
 import { isEnvironmentDataLate } from '../../services/environment-levels.ts';
 import { levelHex } from '../../services/vigilance.ts';
 import { clockOf } from '../layer-panel/environment-format.ts';
-import { DISASTER_ABROAD_HEX, DISASTER_TYPE_LABEL, ENV_NEUTRAL_HEX } from '../layer-panel/environment-legend.ts';
+import { ALERT_WORD, DISASTER_ABROAD_HEX, DISASTER_TYPE_LABEL, ENV_NEUTRAL_HEX } from '../layer-panel/environment-legend.ts';
 import { LYR_DISASTERS, LYR_DISASTER_LABEL, LYR_OUT_TELECOM_MAINT, SRC_DISASTERS } from './constants.ts';
 import { escapeHtml } from './format-utils.ts';
 
@@ -20,7 +20,7 @@ export function disasterHex(x: DisasterAlert, late: boolean): string {
 function body(x: DisasterAlert, late: boolean, now: number): string {
   const where = x.frenchTerritory ?? (x.countries.length > 1 ? `${x.countries.length} pays` : (x.countries[0] ?? 'n.d.'));
   const rows: Array<[string, string]> = [
-    ['Niveau', `Alerte ${x.level}`],
+    ['Niveau', ALERT_WORD[x.level]],
     ['Période', x.current ? `en cours depuis ${clockOf(x.from, now)}` : `du ${clockOf(x.from, now)} au ${clockOf(x.to, now)}`],
     ['Gravité', x.severity ?? 'n.d.'],
     ['Source', 'GDACS'],

@@ -2,7 +2,7 @@
 // environnement § 2 ; contrats § 4.1 et § 5) : sources, périmètres (E4), date réelle de chaque donnée (S1) ; donnée en retard (S2) :
 // « (en retard) » et couleurs de niveau retirées (« En retard : couleurs de niveau retirées de la carte. »). Teintes de catégorie
 // recopiées des jetons de main.css pour MapLibre, qui ne lit pas les variables CSS (égalité vérifiée par test).
-import type { AirQualityResponse, DisasterType, DisastersResponse, DroughtResponse, EarthquakesResponse, FiresResponse, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../../types/index.ts';
+import type { AirQualityResponse, DisasterLevel, DisasterType, DisastersResponse, DroughtResponse, EarthquakesResponse, FiresResponse, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../../types/index.ts';
 import { isEnvironmentDataLate, nextVigilanceMap, parisDayOf, vigilancePeriodOf } from '../../services/environment-levels.ts';
 import type { Radar2dManifest } from '../../services/radar-2d.ts';
 import { levelHex } from '../../services/vigilance.ts';
@@ -328,6 +328,9 @@ export const DISASTER_ABROAD_HEX = '#8e8e93';
 export const DISASTER_TYPE_LABEL: Readonly<Record<DisasterType, string>> = {
   cyclone: 'Cyclone', seisme: 'Séisme', inondation: 'Inondation', volcan: 'Volcan', secheresse: 'Sécheresse', feu: 'Feu de forêt',
 };
+
+/** Mot du niveau accordé à « alerte » : « Alerte verte », « Alerte orange », « Alerte rouge ». */
+export const ALERT_WORD: Readonly<Record<DisasterLevel, string>> = { vert: 'Alerte verte', orange: 'Alerte orange', rouge: 'Alerte rouge' };
 
 export const DISASTERS_LEGEND: LegendCategory = {
   id: 'disasters',

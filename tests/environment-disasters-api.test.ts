@@ -159,11 +159,11 @@ describe('loadDisasters', () => {
 
 describe('/api/environment/disasters', () => {
   const ok = () => stubFetch((url) => (countryOf(url) === null ? respond(MONDE) : countryOf(url) === 'FRA' ? respond(FRANCE) : respond('', 204)));
-  it('200, cache 10 min ; alertes et relevé', async () => {
+  it('200, cache CDN 5 min (la somme des caches reste sous le seuil de retard de 30 min) ; alertes et relevé', async () => {
     ok();
     const { status, body, cache } = await callHandler<DisastersResponse>(handler);
     expect([status, cache]).toEqual([200, CACHE_CONTROL]);
-    expect(CACHE_CONTROL).toBe('s-maxage=600, stale-while-revalidate=1200');
+    expect(CACHE_CONTROL).toBe('s-maxage=300, stale-while-revalidate=600');
     expect(body.alerts).toHaveLength(12);
     expect(body.errors).toEqual([]);
   });

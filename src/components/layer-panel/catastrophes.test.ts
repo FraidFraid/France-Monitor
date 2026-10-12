@@ -44,3 +44,28 @@ describe('buildCatastrophesView', () => {
     expect(t).not.toMatch(/—|\d{4}-\d{2}-\d{2}T/);
   });
 });
+
+describe('correctifs de la revue finale', () => {
+  it('relevé en retard : lignes en gris (jamais la couleur de niveau) ; temps calme dit « en retard », jamais « aucune alerte » seul', () => {
+    const late = renderLayerView('disasters', view(body([a({})], { readAt: '2026-10-12T07:00:00.000Z' })));
+    expect(renderLayerView('disasters', view(body([a({})])))).toContain('fmk-dot--rouge');
+    expect(late).not.toContain('fmk-dot--rouge');
+    expect(text(body([], { readAt: '2026-10-12T07:00:00.000Z' }))).toMatch(/Aucune alerte GDACS sur le territoire français[^.]*\(relevé en retard\)/);
+  });
+  it('chaque ligne porte le lien vers la fiche GDACS', () => {
+    const html = renderLayerView('disasters', view(body([a({ url: 'https://www.gdacs.org/report.aspx?eventid=1' })])));
+    expect(html).toContain('href="https://www.gdacs.org/report.aspx?eventid=1"');
+    expect(visibleText(html)).toContain('Fiche GDACS');
+  });
+  it('accord : « Alerte verte » ; « 7 jours » insécable ; nom très long tronqué (complet en infobulle)', () => {
+    const long = `Drought in ${Array.from({ length: 29 }, (_, i) => `Country${i}`).join(', ')}`;
+    const html = renderLayerView('disasters', view(body([a({ level: 'vert' }), a({ id: 'DR-9', type: 'secheresse', level: 'orange', name: long })])));
+    const t = visibleText(html);
+    expect(t).toContain('Alerte verte');
+    expect(t).not.toContain('Alerte vert ');
+    expect(t).not.toMatch(/7 derniers/);
+    expect(t).not.toContain('Country28');
+    expect(html).toContain(`title="${long}"`);
+    expect(text(body([]))).toContain('7 derniers jours');
+  });
+});
