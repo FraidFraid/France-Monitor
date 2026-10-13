@@ -13,7 +13,8 @@ import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/laye
 import { COORDINATE_SYSTEM } from '@deck.gl/core';
 import type { MapViewState, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, NewsItem, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, AirTrafficFlight, EcowattResponse, AisShipData, OilDashboard, SatelliteViewRequest, HydraulicBackboneAsset } from '../types/index.ts';
 import { emsZoneFeatures } from './deckgl/environment-map-ems.ts';
-import type { AirQualityResponse, DisastersResponse, DroughtResponse, EmsResponse, EarthquakesResponse, FiresResponse, FloodSection, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
+import { ASNR_RING_LAYER, asnrRingFeatures } from './deckgl/nuclear-map-asnr.ts';
+import type { AirQualityResponse, AsnrResponse, DisastersResponse, DroughtResponse, EmsResponse, EarthquakesResponse, FiresResponse, FloodSection, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
 import { ecowattToday, ecowattLevelLabel } from '../services/ecowatt-official.ts';
 import { DATA_FRESHNESS_LABELS } from '../types/index.ts';
 import type { AlertLevelsResponse, AplDataset, AplProfession, EmergencySite, HospitalsDataset, SyndromicResponse } from '../types/index.ts';
@@ -184,6 +185,8 @@ import {
   LYR_SENTINEL_SCENE,
   LYR_ENERGY_INFRA_VITAL_HALO,
   LYR_ENERGY_INFRA_NUCLEAR_RING,
+  SRC_ASNR_RINGS,
+  LYR_ASNR_RING,
   LYR_ENERGY_INFRA_HIGHLIGHT_GLOW,
   LYR_ENERGY_INFRA_HIGHLIGHT_RING,
   LYR_ENERGY_INFRA_CIRCLE,
@@ -418,6 +421,7 @@ export class DeckGLMap {
   /** Dernière réponse GDACS (gardée couche masquée, repeinte au réaffichage). */
   private disastersData: DisastersResponse | null = null;
   private emsData: EmsResponse | null = null;
+  private asnrData: AsnrResponse | null = null;
   private _forestDangerFill = false;
   private _echoTopsEnabled = false;
   private radarPick: { lat: number; lon: number } | null = null;
@@ -766,6 +770,7 @@ export class DeckGLMap {
 
     // Infrastructure
     this.map.addSource(SRC_INFRA, { type: 'geojson', data: emptyFC() });
+    this.map.addSource(SRC_ASNR_RINGS, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_INFRA_HIGHLIGHT, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_DROM_ENERGY, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_DROM_ENERGY_HTA_LINES, { type: 'geojson', data: emptyFC() });
@@ -2079,6 +2084,8 @@ export class DeckGLMap {
         'circle-stroke-color': INFRA_NUCLEAR_RING_COLOR,
       },
     });
+    // Avis de sûreté ASNR (spec 2026-10-13) : anneau orange de moins de 7 jours, gris jusqu'à 30 jours.
+    this.map.addLayer(ASNR_RING_LAYER);
 
     this.map.addLayer({
       id: LYR_ENERGY_INFRA_HIGHLIGHT_GLOW,
@@ -7117,6 +7124,13 @@ export class DeckGLMap {
     this.hideEnvironmentHover();
   }
 
+  /** Parc nucléaire : anneaux des avis de sûreté ASNR (spec 2026-10-13). */
+  updateAsnrLayer(r: AsnrResponse | null, now: number): void {
+    this.asnrData = r;
+    if (!this.map) return;
+    (this.map.getSource(SRC_ASNR_RINGS) as maplibregl.GeoJSONSource | undefined)?.setData(asnrRingFeatures(r, now));
+  }
+
   /** Marégraphes SHOM (couche Vigilance météo) : anneau de la couleur du domaine littoral du jour. */
   updateSeaLevelsLayer(s: SeaLevelsResponse | null, v: VigilanceResponse | null, now: number): void {
     this.envB.seaLevels = s;
@@ -7219,6 +7233,10 @@ export class DeckGLMap {
     }
     if (envLayerOn(layers, 'disasters') && !envLayerOn(was, 'disasters') && this.emsData) {
       (this.map.getSource(SRC_EMS_ZONES) as maplibregl.GeoJSONSource | undefined)?.setData(emsZoneFeatures(this.emsData, Date.now()));
+    }
+    // Parc nucléaire réaffiché : anneaux ASNR recolorés avec l'horloge courante (orange 7 jours, gris 30 jours).
+    if (layers.nuclearFleet && !before?.nuclearFleet && this.asnrData) {
+      (this.map.getSource(SRC_ASNR_RINGS) as maplibregl.GeoJSONSource | undefined)?.setData(asnrRingFeatures(this.asnrData, Date.now()));
     }
     if (envLayerOn(layers, 'fires') && !envLayerOn(was, 'fires') && this.envFires) {
       this.envFiresNow = Date.now();
@@ -8757,6 +8775,7 @@ export class DeckGLMap {
     this.setVis(LYR_ISNR_LINE, vis(layers.stability ?? false));
     this.setVis(LYR_ENERGY_INFRA_VITAL_HALO, 'none');
     this.setVis(LYR_ENERGY_INFRA_NUCLEAR_RING, vis(layers.nuclearFleet ?? false));
+    this.setVis(LYR_ASNR_RING, vis(layers.nuclearFleet ?? false));
     this.setVis(LYR_ENERGY_INFRA_HIGHLIGHT_GLOW, vis(layers.nuclearFleet ?? false));
     this.setVis(LYR_ENERGY_INFRA_HIGHLIGHT_RING, vis(layers.nuclearFleet ?? false));
     this.setVis(LYR_ENERGY_INFRA_CIRCLE, vis(layers.nuclearFleet ?? false));

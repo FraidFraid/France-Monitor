@@ -8053,6 +8053,18 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
   }
   #app.ui-v2:not(.sidebar-collapsed) .floating-panel-switcher.is-below-controls { max-width: calc(100% - var(--v2-drawer-w) - 24px); }
 }
+/* Puces sur plusieurs rangées (13/10/2026) : elles commencent en haut, à côté de Carte | Satellite, et passent à la ligne sur toute la
+   largeur. Un espace flottant à droite (::before) réserve le coin du sélecteur sur la première rangée seulement ; d'où un bloc en
+   ligne (les flottants n'agissent pas dans une boîte flex), l'écart entre puces devient une marge. */
+@media (min-width: 769px) {
+  #app.ui-v2 .floating-panel-switcher.is-below-controls { display: block; top: 12px; }
+  #app.ui-v2 .floating-panel-switcher.is-below-controls::before {
+    content: ''; float: right; width: 172px; height: 44px;
+  }
+  #app.ui-v2 .floating-panel-switcher.is-below-controls .floating-panel-switcher__chip {
+    vertical-align: top; margin: 0 8px 8px 0;
+  }
+}
 
 .lp { --v2-brand: #4bfc94; --v2-brand-rgb: 75, 252, 148; --fmk-rule: var(--border-color); --fmk-track: var(--bg-surface-hover); --fmk-muted: var(--text-secondary); --fmk-faint: var(--text-muted); --fmk-loss: #ff9f6b; }
 /* ─── Panneaux de couches : cadre commun (spec 2026-10-02 § 4) ─── */
@@ -8187,6 +8199,18 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
    Première ligne : l'état national garde sa largeur, le fil prend l'espace restant ; sous 300 px de place, il disparaît. */
 #app.ui-v2 .header .fm-v2-status { display: flex; align-items: center; gap: 16px; }
 #app.ui-v2 .fm-v2-status .sb-main { flex: 0 1 auto; min-width: 0; }
+/* État national sur deux lignes (13/10/2026) : pastille à gauche sur toute la hauteur, résumé puis « Depuis votre visite » en dessous,
+   plus petit ; chaque ligne se coupe d'un « … » plutôt que de déborder sur le fil, qui gagne la largeur libérée. */
+#app.ui-v2 .fm-v2-status .sb-line {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; row-gap: 1px; align-items: center;
+}
+#app.ui-v2 .fm-v2-status .sb-level { grid-row: 1 / span 2; }
+#app.ui-v2 .fm-v2-status :is(.sb-summary, .sb-visit, .sb-loading) {
+  grid-column: 2; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; line-height: 1.25;
+}
+#app.ui-v2 .fm-v2-status .sb-summary { font-size: 12px; color: var(--text-primary); }
+#app.ui-v2 .fm-v2-status .sb-visit { font-size: 11px; color: var(--text-muted); }
+#app.ui-v2 .fm-v2-status .sb-visit b { color: var(--text-secondary); font-weight: 600; }
 .nw-host { flex: 1 1 0; min-width: 0; container-type: inline-size; }
 @container (max-width: 300px) { .nw { display: none !important; } }
 .nw {
@@ -8232,6 +8256,22 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 .nw-item--rouge .nw-time { color: var(--sev-red); font-weight: 700; }
 .nw-item--rouge .nw-title { color: #fff; font-weight: 700; }
 .nw-item--orange .nw-title { font-weight: 600; }
+/* Alertes (13/10/2026) : situations, surveillance et vigilances distinctes de la presse : étiquette ALERTE, fond teinté du niveau ;
+   repère ACTU entre les alertes et les actualités. */
+.nw-item--alert { padding: 2px 8px 2px 4px; border: 1px solid transparent; }
+.nw-item--alert.nw-item--jaune { background: color-mix(in srgb, var(--sev-yellow) 12%, transparent); border-color: color-mix(in srgb, var(--sev-yellow) 35%, transparent); }
+.nw-item--alert.nw-item--orange { background: color-mix(in srgb, var(--sev-orange) 14%, transparent); border-color: color-mix(in srgb, var(--sev-orange) 40%, transparent); }
+.nw-item--alert.nw-item--rouge { background: color-mix(in srgb, var(--sev-red) 16%, transparent); border-color: color-mix(in srgb, var(--sev-red) 45%, transparent); }
+.nw-alert-tag {
+  flex: none; padding: 0 5px; border: 1px solid currentColor; border-radius: 3px;
+  font-size: 9.5px; font-weight: 800; letter-spacing: 0.12em;
+}
+.nw-item--jaune .nw-alert-tag { color: var(--sev-yellow); }
+.nw-item--orange .nw-alert-tag { color: var(--sev-orange); }
+.nw-sep {
+  flex: none; align-self: center; margin-right: 34px; padding: 1px 6px 1px 10px; border-left: 2px solid var(--border-color);
+  color: var(--text-secondary); font-size: 10px; font-weight: 700; letter-spacing: 0.12em;
+}
 /* Animations réduites : fil immobile, défilable à la main ; la copie du défilement continu disparaît. */
 @media (prefers-reduced-motion: reduce) {
   .nw-track, .nw-urgent { animation: none; }

@@ -83,6 +83,16 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
     limits: ['Dépend de la disponibilité des flux RTE'],
   },
   {
+    id: 'asnr',
+    name: 'ASNR',
+    domain: 'Énergie',
+    sourceType: 'official',
+    natureBaseline: 90,
+    watchdogNames: ['ASNR'],
+    mappedIndicators: ['activation du centre de crise', 'événement de sûreté et niveau INES', 'centrale concernée'],
+    limits: ['Avis publiés avec quelques heures à jours de décalage', 'Niveau INES pas toujours indiqué dans l’avis'],
+  },
+  {
     id: 'sncf',
     name: 'SNCF',
     domain: 'Transport',

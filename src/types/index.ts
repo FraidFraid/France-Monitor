@@ -1907,7 +1907,9 @@ export type SituationType =
   | 'SEISMIC_EVENT'
   | 'NATURAL_HAZARD_ALERT'
   | 'EMS_ACTIVATION'
-  | 'AIR_POLLUTION_EPISODE';
+  | 'AIR_POLLUTION_EPISODE'
+  | 'ASNR_CRISIS'
+  | 'NUCLEAR_INCIDENT';
 
 export type SituationSeverity = 'critical' | 'high' | 'medium' | 'watch';
 
@@ -2603,6 +2605,32 @@ export interface EmsResponse {
   active: EmsActivation[];
   recent: EmsActivation[];
   elsewhere: { count: number; countries: string[] };
+  errors: string[];
+}
+
+// ═══ Événements de sûreté ASNR (spec 2026-10-13 ASNR sûreté) ═══
+
+/** Groupe d'un avis : centre de crise activé, incident d'installation nucléaire, radioprotection (santé, recherche, transport). */
+export type AsnrKind = 'crise' | 'installation' | 'radioprotection';
+
+export interface AsnrEvent {
+  id: string;
+  url: string;
+  title: string;
+  /** Jour de publication (Paris), « AAAA-MM-JJ ». */
+  date: string;
+  kind: AsnrKind;
+  /** Niveau INES lu dans l'avis ; null si non indiqué. */
+  ines: number | null;
+  /** Centrale EDF (`NUCLEAR_PLANTS`) ; null hors centrale. */
+  plantId: string | null;
+  site: string | null;
+}
+
+/** Réponse de GET /api/nuclear/asnr. */
+export interface AsnrResponse {
+  readAt: string | null;
+  events: AsnrEvent[];
   errors: string[];
 }
 

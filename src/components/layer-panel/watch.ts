@@ -122,6 +122,14 @@ export function generalWatch(levels: ReadonlyMap<keyof MapLayers, WatchLevel>): 
   return out.sort((a, b) => ORDER[a.level] - ORDER[b.level] || WATCHED_LAYERS.indexOf(a.key) - WATCHED_LAYERS.indexOf(b.key));
 }
 
+/**
+ * Puce masquée dans la Vue générale (13/10/2026) : couche suivie au vert (le socle, seul à y figurer au vert) ; sa couche reste
+ * allumée sur la carte. Jaune et plus, ou « n.d. » (source illisible, jamais prise pour un calme) : puce gardée. Pure.
+ */
+export function generalChipHidden(key: keyof MapLayers, entries: readonly WatchEntry[]): boolean {
+  return entries.some((e) => e.key === key && e.level === 'vert');
+}
+
 export interface WatchTransition {
   key: keyof MapLayers;
   from: VigilanceLevel;

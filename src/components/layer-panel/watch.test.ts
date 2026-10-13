@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { GENERAL_SOCLE, WATCHED_LAYERS, generalWatch, isEscalation, watchLevels, watchTransitions, type GeneralWatchInput, type WatchLevel } from './watch.ts';
+import { GENERAL_SOCLE, WATCHED_LAYERS, generalChipHidden, generalWatch, isEscalation, watchLevels, watchTransitions, type GeneralWatchInput, type WatchLevel } from './watch.ts';
 import type { MapLayers } from '../../types/index.ts';
 
 const NOW = Date.parse('2026-10-12T08:00:00Z');
@@ -44,5 +44,15 @@ describe('Vue générale dynamique (12/10/2026)', () => {
       'environmental', 'floods', 'fires', 'earthquakes', 'airQuality', 'drought', 'outagesElec', 'outagesTelecom', 'outagesInternet',
       'outagesCloud', 'powerGrid', 'nuclearFleet', 'oilNetwork', 'cyber', 'military', 'health',
     ]);
+  });
+});
+
+describe('puces de la Vue générale (13/10/2026)', () => {
+  it('une couche du socle au vert garde sa couche mais perd sa puce ; jaune ou n.d. : puce gardée ; hors suivi : puce gardée', () => {
+    const entries = generalWatch(new Map<keyof MapLayers, WatchLevel>([['environmental', 'vert'], ['floods', 'jaune'], ['fires', 'nd']]));
+    expect(generalChipHidden('environmental', entries)).toBe(true);
+    expect(generalChipHidden('floods', entries)).toBe(false);
+    expect(generalChipHidden('fires', entries)).toBe(false);
+    expect(generalChipHidden('trafficRoad' as keyof MapLayers, entries)).toBe(false);
   });
 });
