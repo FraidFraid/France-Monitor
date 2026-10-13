@@ -8196,7 +8196,7 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 #app.ui-v2 .fm-v2-status :is(.sb-summary, .sb-visit, .sb-loading) {
   grid-column: 2; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; line-height: 1.25;
 }
-#app.ui-v2 .fm-v2-status .sb-summary { font-size: 12px; }
+#app.ui-v2 .fm-v2-status .sb-summary { font-size: 12px; color: var(--text-primary); }
 #app.ui-v2 .fm-v2-status .sb-visit { font-size: 11px; color: var(--text-muted); }
 #app.ui-v2 .fm-v2-status .sb-visit b { color: var(--text-secondary); font-weight: 600; }
 .nw-host { flex: 1 1 0; min-width: 0; container-type: inline-size; }
