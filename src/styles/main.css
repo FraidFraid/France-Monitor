@@ -8053,6 +8053,18 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
   }
   #app.ui-v2:not(.sidebar-collapsed) .floating-panel-switcher.is-below-controls { max-width: calc(100% - var(--v2-drawer-w) - 24px); }
 }
+/* Puces sur plusieurs rangées (13/10/2026) : elles commencent en haut, à côté de Carte | Satellite, et passent à la ligne sur toute la
+   largeur. Un espace flottant à droite (::before) réserve le coin du sélecteur sur la première rangée seulement ; d'où un bloc en
+   ligne (les flottants n'agissent pas dans une boîte flex), l'écart entre puces devient une marge. */
+@media (min-width: 769px) {
+  #app.ui-v2 .floating-panel-switcher.is-below-controls { display: block; top: 12px; }
+  #app.ui-v2 .floating-panel-switcher.is-below-controls::before {
+    content: ''; float: right; width: 172px; height: 44px;
+  }
+  #app.ui-v2 .floating-panel-switcher.is-below-controls .floating-panel-switcher__chip {
+    vertical-align: top; margin: 0 8px 8px 0;
+  }
+}
 
 .lp { --v2-brand: #4bfc94; --v2-brand-rgb: 75, 252, 148; --fmk-rule: var(--border-color); --fmk-track: var(--bg-surface-hover); --fmk-muted: var(--text-secondary); --fmk-faint: var(--text-muted); --fmk-loss: #ff9f6b; }
 /* ─── Panneaux de couches : cadre commun (spec 2026-10-02 § 4) ─── */
