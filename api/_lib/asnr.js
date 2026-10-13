@@ -2,7 +2,9 @@
 // 13/10/2026 : flux RSS (10 items mêlés, texte complet ; l'URL sans « ?q= » redirige par meta refresh), liste des actualités (16 cartes
 // par page, 13 pages) et page de chaque avis. Classement sur le TITRE seul : tout texte ASNR contient « Autorité de sûreté nucléaire et
 // de radioprotection ». Site : centrale EDF cherchée dans le titre, puis dans le texte ; jamais de site deviné hors des 19 centrales.
-import { cleanText, decodeEntities } from './source-http.js';
+import { kvReadJson, kvWriteJson } from './kv-history.js';
+import { mapLimit } from './map-limit.js';
+import { cachedSource, cachedSourceReport, cleanText, decodeEntities, fetchStrictHtml, fetchStrictXml, sourceError } from './source-http.js';
 
 export const ASNR_ORIGIN = 'https://www.asnr.fr';
 export const ASNR_RSS_URL = `${ASNR_ORIGIN}/rss.xml?q=/rss.xml`;
@@ -115,4 +117,160 @@ export function parseAsnrDetail(html) {
   const main = /<main[\s\S]*?<\/main>/.exec(String(html ?? ''))?.[0];
   if (!main) throw new Error('page d’avis illisible');
   return cleanText(main.replace(/<script[\s\S]*?<\/script>/g, ' '));
+}
+
+// ── Chargeur et journal ───────────────────────────────────────────────────────
+
+export const ASNR_LOG_KEY = 'nuc:asnr:log';
+const DAY_MS = 86_400_000;
+const LOG_MAX_AGE_MS = 365 * DAY_MS;
+const LOG_TTL_SEC = 400 * 86_400;
+const FETCH_TIMEOUT_MS = 20_000;
+const TTL_SEC = 3_600;
+/** Relevé encore servi sans panne : 1 h de cache après une lecture d'au plus FETCH_TIMEOUT_MS. */
+const FRESH_READ_MS = TTL_SEC * 1000 + FETCH_TIMEOUT_MS;
+const CACHE = { ttlSec: TTL_SEC, staleSec: 7 * 86_400, shared: true, waitMs: 2 * FETCH_TIMEOUT_MS + 5_000 };
+const DETAIL_CACHE = { ttlSec: 30 * 86_400, staleSec: 30 * 86_400, shared: true, waitMs: FETCH_TIMEOUT_MS + 5_000 };
+const LAST_PAGE = 12;
+const PAGE_SIZE = 16;
+const DETAIL_LIMIT = 4;
+const MAX_DETAILS_PER_RUN = 12;
+export const ASNR_STALE_SERVED_ERROR = 'ASNR : source indisponible, relevé précédent servi';
+export const ASNR_LOG_READ_ERROR = 'ASNR : journal indisponible, relevé non enregistré';
+
+const slugOf = (url) => url.split('/').pop() ?? url;
+const inWindow = (date, now) => Number.isFinite(Date.parse(`${date}T00:00:00Z`)) && now - Date.parse(`${date}T00:00:00Z`) <= LOG_MAX_AGE_MS;
+
+/** Fusion de deux relevés d'un même avis : date la plus ancienne, INES le plus haut (jamais abaissé), site et texte complétés. */
+export function mergeEvent(old, next) {
+  const ines = old.ines === null ? next.ines : next.ines === null ? old.ines : Math.max(old.ines, next.ines);
+  return {
+    ...old, ...next,
+    date: old.date < next.date ? old.date : next.date,
+    ines,
+    plantId: next.plantId ?? old.plantId,
+    site: next.site ?? old.site,
+    textRead: Boolean(old.textRead || next.textRead),
+  };
+}
+
+/** Item lu → entrée du journal ; null s'il n'est pas un événement de sûreté. */
+function toEntry(item) {
+  const text = item.text ?? '';
+  const kind = classifyAsnr(item.title, text);
+  if (kind === null) return null;
+  const plant = matchPlant(item.title, text);
+  return {
+    id: `asnr-${slugOf(item.url)}`, url: item.url, title: item.title, date: item.date, kind,
+    ines: parseInes(text), plantId: plant?.id ?? null, site: plant?.name ?? null, textRead: item.text !== null,
+  };
+}
+
+async function readText(url, expect) {
+  return expect === 'xml' ? fetchStrictXml(url, { timeoutMs: FETCH_TIMEOUT_MS }) : fetchStrictHtml(url, { timeoutMs: FETCH_TIMEOUT_MS });
+}
+
+/** Relevé horaire : RSS et page 0 ; une partie en panne est nommée, les deux en panne : erreur (rien n'est mis en cache). */
+async function readFeed(now) {
+  const errors = [];
+  const items = [];
+  let undated = 0;
+  let ok = 0;
+  try {
+    const rss = parseAsnrRss(await readText(ASNR_RSS_URL, 'xml'));
+    items.push(...rss.items); undated += rss.undated; ok += 1;
+  } catch (err) { errors.push(sourceError('ASNR (flux RSS)', err)); }
+  try {
+    const page = parseAsnrListPage(await readText(asnrListUrl(0), 'html'));
+    items.push(...page.items); undated += page.undated; ok += 1;
+  } catch (err) { errors.push(sourceError('ASNR (actualités)', err)); }
+  if (ok === 0) throw new Error(errors.join(' ; '));
+  return { readAt: new Date(now).toISOString(), items, undated, errors };
+}
+
+/** Rattrapage unique : pages 1 à 12 jusqu'à la première page de plus de 12 mois ou incomplète. Rend { items, done }. */
+async function backfill(now, errors) {
+  const items = [];
+  for (let page = 1; page <= LAST_PAGE; page += 1) {
+    let read;
+    try {
+      read = parseAsnrListPage(await readText(asnrListUrl(page), 'html'));
+    } catch (err) {
+      errors.push(sourceError(`ASNR (actualités, page ${page})`, err));
+      return { items, done: false };
+    }
+    items.push(...read.items);
+    const oldest = read.items.reduce((min, i) => (i.date < min ? i.date : min), '9999-12-31');
+    if (!inWindow(oldest, now) || read.cards < PAGE_SIZE) break;
+  }
+  return { items, done: true };
+}
+
+/** Texte des avis retenus jamais lus (au plus MAX_DETAILS_PER_RUN, DETAIL_LIMIT à la fois) ; un avis en panne reste à lire. */
+async function withDetails(entries, errors) {
+  const pending = entries.filter((e) => !e.textRead).slice(0, MAX_DETAILS_PER_RUN);
+  const results = await mapLimit(pending, DETAIL_LIMIT, async (e) => {
+    const { value, error } = await cachedSourceReport(`nuc:asnr:detail:${slugOf(e.url)}`, DETAIL_CACHE, `ASNR ${slugOf(e.url)}`,
+      async () => parseAsnrDetail(await readText(e.url, 'html')));
+    if (error) errors.push(error);
+    return value;
+  });
+  const texts = new Map();
+  pending.forEach((e, i) => {
+    const r = results[i];
+    if (r.ok) texts.set(e.id, r.value);
+    else errors.push(sourceError(`ASNR ${slugOf(e.url)}`, r.error));
+  });
+  return entries.map((e) => {
+    const text = texts.get(e.id);
+    if (text === undefined) return e;
+    const plant = matchPlant(e.title, text);
+    return mergeEvent(e, { ...e, kind: classifyAsnr(e.title, text) ?? e.kind, ines: parseInes(text), plantId: plant?.id ?? null, site: plant?.name ?? null, textRead: true });
+  });
+}
+
+const publicEvent = ({ textRead: _textRead, ...e }) => e;
+const byDateDesc = (a, b) => (a.date === b.date ? a.title.localeCompare(b.title, 'fr') : a.date < b.date ? 1 : -1);
+
+/** Réponse de /api/nuclear/asnr : journal de 12 mois mis à jour par le relevé horaire. */
+export async function loadAsnr(now) {
+  const errors = [];
+  const stored = await kvReadJson(ASNR_LOG_KEY, now);
+  if (stored.failed) errors.push(ASNR_LOG_READ_ERROR);
+  const log = stored.value && Array.isArray(stored.value.events) ? stored.value : { backfilledAt: null, events: [] };
+
+  let readAt = null;
+  let items = [];
+  try {
+    const feed = await cachedSource('nuc:asnr:feed', CACHE, () => readFeed(now));
+    readAt = feed.readAt;
+    items = feed.items;
+    errors.push(...feed.errors);
+    if (now - Date.parse(feed.readAt) > FRESH_READ_MS) errors.push(ASNR_STALE_SERVED_ERROR);
+    if (feed.undated > 0) errors.push(`ASNR : ${feed.undated} actualité(s) sans date lisible écartée(s)`);
+  } catch (err) {
+    errors.push(sourceError('ASNR', err));
+  }
+
+  let backfilledAt = log.backfilledAt;
+  if (readAt !== null && backfilledAt === null && !stored.failed) {
+    const more = await backfill(now, errors);
+    items = [...items, ...more.items];
+    if (more.done) backfilledAt = new Date(now).toISOString();
+  }
+
+  const byId = new Map(log.events.filter((e) => inWindow(e.date, now)).map((e) => [e.id, e]));
+  for (const item of items) {
+    if (!inWindow(item.date, now)) continue;
+    const entry = toEntry(item);
+    if (entry === null) continue;
+    const old = byId.get(entry.id);
+    byId.set(entry.id, old ? mergeEvent(old, entry) : entry);
+  }
+  const events = (await withDetails([...byId.values()], errors)).sort(byDateDesc);
+
+  const next = { backfilledAt, events };
+  if (!stored.failed && JSON.stringify(next) !== JSON.stringify(log)) await kvWriteJson(ASNR_LOG_KEY, next, LOG_TTL_SEC, now);
+  errors.sort();
+  return { readAt, events: events.map(publicEvent), errors };
 }

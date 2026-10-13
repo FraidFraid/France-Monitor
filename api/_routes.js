@@ -57,6 +57,7 @@ export const ROUTES = {
   '/api/ministers/wikidata': () => import('./_handlers/ministers/wikidata.js'),
   '/api/news/history': () => import('./_handlers/news/history.js'),
   '/api/news': () => import('./_handlers/news.js'),
+  '/api/nuclear/asnr': () => import('./_handlers/nuclear/asnr.js'),
   '/api/nuclear/rte-unavailability': () => import('./_handlers/nuclear/rte-unavailability.js'),
   '/api/oil-proxy': () => import('./_handlers/oil-proxy.js'),
   '/api/opendata-proxy': () => import('./_handlers/opendata-proxy.js'),
