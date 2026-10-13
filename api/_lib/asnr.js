@@ -97,7 +97,7 @@ export function parseAsnrRss(xml) {
 /** Cartes d'une page de la liste des actualités (sans texte) ; aucune carte : erreur (maquette changée, jamais « 0 avis »). */
 export function parseAsnrListPage(html) {
   const cards = String(html ?? '').split('irsn-related-card__link').slice(1);
-  if (cards.length === 0) throw new Error('aucune actualité lisible');
+  if (cards.length === 0) throw new Error(NO_CARD);
   const items = [];
   let undated = 0;
   for (const card of cards) {
@@ -130,6 +130,9 @@ const TTL_SEC = 3_600;
 /** Relevé encore servi sans panne : 1 h de cache après une lecture d'au plus FETCH_TIMEOUT_MS. */
 const FRESH_READ_MS = TTL_SEC * 1000 + FETCH_TIMEOUT_MS;
 const CACHE = { ttlSec: TTL_SEC, staleSec: 7 * 86_400, shared: true, waitMs: 2 * FETCH_TIMEOUT_MS + 5_000 };
+/** Pages du rattrapage : une page lue n'est pas relue pendant un jour, une page en panne pas avant la mémoire de panne (revue finale I3). */
+const PAGE_CACHE = { ttlSec: 86_400, staleSec: 86_400, shared: true, waitMs: FETCH_TIMEOUT_MS + 5_000 };
+const NO_CARD = 'aucune actualité lisible';
 const DETAIL_CACHE = { ttlSec: 30 * 86_400, staleSec: 30 * 86_400, shared: true, waitMs: FETCH_TIMEOUT_MS + 5_000 };
 const LAST_PAGE = 12;
 const PAGE_SIZE = 16;
@@ -141,11 +144,16 @@ export const ASNR_LOG_READ_ERROR = 'ASNR : journal indisponible, relevé non enr
 const slugOf = (url) => url.split('/').pop() ?? url;
 const inWindow = (date, now) => Number.isFinite(Date.parse(`${date}T00:00:00Z`)) && now - Date.parse(`${date}T00:00:00Z`) <= LOG_MAX_AGE_MS;
 
-/** Fusion de deux relevés d'un même avis : date la plus ancienne, INES le plus haut (jamais abaissé), site et texte complétés. */
+/**
+ * Fusion de deux relevés d'un même avis : date la plus ancienne, INES le plus haut (jamais abaissé), site et texte complétés ; un
+ * relevé sans texte (carte de liste) ne remplace jamais le groupe calculé avec le texte (revue finale I2).
+ */
 export function mergeEvent(old, next) {
+  const kind = old.textRead && !next.textRead ? old.kind : next.kind;
   const ines = old.ines === null ? next.ines : next.ines === null ? old.ines : Math.max(old.ines, next.ines);
   return {
     ...old, ...next,
+    kind,
     date: old.date < next.date ? old.date : next.date,
     ines,
     plantId: next.plantId ?? old.plantId,
@@ -194,8 +202,10 @@ async function backfill(now, errors) {
   for (let page = 1; page <= LAST_PAGE; page += 1) {
     let read;
     try {
-      read = parseAsnrListPage(await readText(asnrListUrl(page), 'html'));
+      read = await cachedSource(`nuc:asnr:page:${page}`, PAGE_CACHE, async () => parseAsnrListPage(await readText(asnrListUrl(page), 'html')));
     } catch (err) {
+      // Page vide après une page pleine (nombre d'avis multiple de 16) : fin de la liste, pas une panne.
+      if (err instanceof Error && err.message === NO_CARD) break;
       errors.push(sourceError(`ASNR (actualités, page ${page})`, err));
       return { items, done: false };
     }

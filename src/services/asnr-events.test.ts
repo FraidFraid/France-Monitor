@@ -25,9 +25,16 @@ describe('asnrStatus', () => {
 });
 
 describe('asnrEventsOf et asnrAgeDays', () => {
-  it('journal servi même en retard ; âge en jours depuis minuit UTC du jour publié', () => {
+  it('journal servi même en retard ; âge en jours depuis minuit (Paris, UTC+2) du jour publié', () => {
     expect(asnrEventsOf(RESPONSE)).toHaveLength(1);
     expect(asnrEventsOf(null)).toEqual([]);
-    expect(asnrAgeDays('2026-10-10', NOW)).toBeCloseTo(3.33, 1);
+    expect(asnrAgeDays('2026-10-10', NOW)).toBeCloseTo(3.42, 1);
+  });
+});
+
+describe('asnrAgeDays : jour de Paris', () => {
+  it('avis publié à 00 h 40 heure de Paris (22 h 40 UTC la veille) : âge positif dès la publication', () => {
+    expect(asnrAgeDays('2026-10-14', Date.parse('2026-10-13T22:40:00Z'))).toBeGreaterThanOrEqual(0);
+    expect(asnrAgeDays('2026-01-15', Date.parse('2026-01-14T23:30:00Z'))).toBeGreaterThanOrEqual(0);
   });
 });

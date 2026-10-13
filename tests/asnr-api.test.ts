@@ -136,3 +136,27 @@ describe('route', () => {
     expect([down.status, down.cache]).toEqual([502, 'no-store']);
   });
 });
+
+describe('revue finale', () => {
+  const base = { id: 'a', url: 'u', title: 't', date: '2026-10-02', kind: 'installation', ines: 2, plantId: 'nuc-penly', site: 'Penly', textRead: true };
+  it('relevé sans texte (carte de liste) : le groupe calculé avec le texte est gardé', () => {
+    expect(mergeEvent(base, { ...base, kind: 'radioprotection', plantId: null, site: null, textRead: false }).kind).toBe('installation');
+  });
+  it('rattrapage : page vide après une page pleine = fin de liste, sans erreur', async () => {
+    const kv = fakeKv();
+    stubFetch((url) => (/page=([2-9]|1\d)$/.test(url) ? respond('<html><body>vide</body></html>') : asnrSite(url)));
+    const body = await loadAsnr(NOW);
+    expect(body.errors).toEqual([]);
+    const stored = JSON.parse(kv.store.get(ASNR_LOG_KEY) ?? '{}') as { backfilledAt: string | null };
+    expect(stored.backfilledAt).not.toBeNull();
+  });
+  it('rattrapage en panne : les pages déjà lues ne sont pas relues à l’appel suivant', async () => {
+    fakeKv();
+    stubFetch((url) => (url === asnrListUrl(3) ? respond('x', 503) : asnrSite(url)));
+    const first = await loadAsnr(NOW);
+    expect(first.errors.some((e) => e.startsWith('ASNR (actualités, page 3)'))).toBe(true);
+    const log = stubFetch((url) => (url === asnrListUrl(3) ? respond('x', 503) : asnrSite(url)));
+    await loadAsnr(NOW + 60_000);
+    expect(log.urls.filter((u) => u === asnrListUrl(1) || u === asnrListUrl(2))).toEqual([]);
+  });
+});

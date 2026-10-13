@@ -41,7 +41,10 @@ export function asnrEventsOf(r: AsnrResponse | null): AsnrEvent[] {
   return r?.events ?? [];
 }
 
-/** Âge d'un avis en jours, depuis minuit UTC de son jour de publication. */
+/**
+ * Âge d'un avis en jours, depuis minuit de son jour de publication à Paris (pris en heure d'été, UTC+2 : en hiver l'âge est surestimé
+ * d'une heure au plus). Jamais négatif à la publication : un avis de 00 h 40 compte dès sa sortie (revue finale I1).
+ */
 export function asnrAgeDays(date: string, now: number): number {
-  return (now - Date.parse(`${date}T00:00:00Z`)) / 86_400_000;
+  return (now - Date.parse(`${date}T00:00:00+02:00`)) / 86_400_000;
 }
