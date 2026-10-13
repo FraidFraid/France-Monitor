@@ -10,6 +10,7 @@
  */
 
 import type {
+  AsnrEvent,
   CableAlert,
   CertFrItem,
   DetectedSituation,
@@ -24,6 +25,8 @@ import type {
   SituationType,
 } from '../types/index.ts';
 import { FRENCH_PORTS } from '../config/french-ports.ts';
+import { NUCLEAR_PLANTS } from '../config/infrastructure.ts';
+import { ASNR_SITUATION_DAYS, asnrAgeDays } from './asnr-events.ts';
 import type { FranceRawData } from './france-country-intel.ts';
 import {
   CERTFR_RECENT_DAYS, CLAIMS_RATIO_JAUNE, GNSS_SITUATION_CELLS, alertsByVessel, certfrDate, certfrExploitationText, certfrKevAdvisories,
@@ -917,6 +920,55 @@ export function detectEmsActivations(raw: FranceRawData, _nowMs: number): Detect
   });
 }
 
+// ─── Règle : ASNR_CRISIS / NUCLEAR_INCIDENT (ASNR, spec 2026-10-13) ───────
+
+const ASNR_KIND_WORD: Readonly<Record<AsnrEvent['kind'], string>> = {
+  crise: 'centre de crise', installation: 'installation nucléaire', radioprotection: 'radioprotection',
+};
+
+/** Sévérité d'un avis ASNR : crise high ; INES ≥ 2 high ; INES 1 medium ; sinon aucune situation. */
+function asnrSeverity(e: AsnrEvent): SituationSeverity | null {
+  if (e.kind === 'crise') return 'high';
+  if (e.ines === null) return null;
+  return e.ines >= 2 ? 'high' : e.ines === 1 ? 'medium' : null;
+}
+
+/**
+ * Une situation par avis ASNR de moins de 7 jours : centre de crise activé, ou événement classé INES 1 et plus. Décision du 13/10/2026 :
+ * aucun effet sur le score (SCORE_NEUTRAL_SITUATIONS). Coordonnées seulement sur une centrale EDF connue, jamais devinées.
+ */
+export function detectAsnrEvents(raw: FranceRawData, nowMs: number): DetectedSituation[] {
+  return (raw.asnrEvents ?? []).flatMap((e): DetectedSituation[] => {
+    const severity = asnrSeverity(e);
+    const age = asnrAgeDays(e.date, nowMs);
+    if (severity === null || age < 0 || age > ASNR_SITUATION_DAYS) return [];
+    const zone = e.site ?? 'France';
+    const crisis = e.kind === 'crise';
+    const ines = e.ines === null ? 'INES n.d.' : `INES ${e.ines}`;
+    const base = situation(
+      `asnr-${e.id}`, crisis ? 'ASNR_CRISIS' : 'NUCLEAR_INCIDENT', severity, 0.9,
+      crisis ? `Centre de crise ASNR activé : ${zone}` : `Événement de sûreté ${ines} : ${zone}`,
+      `${e.title} (avis ASNR du ${parisDate(e.date)}, ${ASNR_KIND_WORD[e.kind]}).`,
+      [zone],
+      [crisis ? 'Centre de crise ASNR activé' : `Événement classé ${ines}`, ASNR_KIND_WORD[e.kind]],
+      [
+        action('Lire l’avis de l’ASNR et suivre ses mises à jour', 'Analyste énergie', 'monitor', true),
+        action('Croiser avec l’exploitant et la préfecture', 'Analyste territorial', 'cross-check'),
+      ],
+      ['ASNR'],
+    );
+    const plant = e.plantId ? NUCLEAR_PLANTS.find((p) => p.id === e.plantId) : undefined;
+    const at = plant ? { lon: plant.coordinates[0], lat: plant.coordinates[1] } : {};
+    return [{ ...base, ...at, activateLayers: ['nuclearFleet'], linkUrl: e.url, linkLabel: 'Avis ASNR' }];
+  });
+}
+
+/** « 01/10/2026 » à partir d'un jour « AAAA-MM-JJ ». */
+function parisDate(day: string): string {
+  const [y, m, d] = day.split('-');
+  return `${d}/${m}/${y}`;
+}
+
 /** « 83 890 » : entier à la française (espace fine insécable). */
 function frenchInt(n: number): string {
   return Math.round(n).toLocaleString('fr-FR');
@@ -1007,6 +1059,12 @@ export function detectSituations(raw: FranceRawData, nowMs: number = Date.now())
     } catch (err) {
       console.warn('[SituationEngine] EMS rule error:', err);
     }
+  // Avis de sûreté ASNR (spec 2026-10-13) ; même isolation que les autres règles.
+  try {
+    results.push(...detectAsnrEvents(raw, nowMs));
+  } catch (err) {
+    console.warn('[SituationEngine] ASNR rule error:', err);
+  }
 
   const ranked = results.sort((a, b) => {
     const sevDiff = SEVERITY_ORDER[b.severity] - SEVERITY_ORDER[a.severity];

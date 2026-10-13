@@ -43,6 +43,8 @@ const TYPE_ICON: Record<SituationType, string> = {
   SEISMIC_EVENT: fmIcon('activity'),
   NATURAL_HAZARD_ALERT: fmIcon('globe'),
   EMS_ACTIVATION: fmIcon('globe'),
+  ASNR_CRISIS: fmIcon('siren'),
+  NUCLEAR_INCIDENT: fmIcon('atom'),
   AIR_POLLUTION_EPISODE: fmIcon('cloud'),
 };
 

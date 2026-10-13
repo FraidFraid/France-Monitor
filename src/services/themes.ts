@@ -71,6 +71,8 @@ export function categoryTheme(category: string): ThemeId {
 
 const SITUATION_THEME: Record<SituationType, ThemeId> = {
   ENERGY_STRESS: 'energy',
+  ASNR_CRISIS: 'energy',
+  NUCLEAR_INCIDENT: 'energy',
   IMPORT_DEPENDENCY_RISK: 'energy',
   FUEL_SUPPLY_RISK: 'energy',
   CYBER_PRESSURE: 'security',

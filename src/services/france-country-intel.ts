@@ -9,6 +9,8 @@
 //                └──→ detectSituations()            ──→ DetectedSituation[]
 
 import type {
+  AsnrEvent,
+  SituationType,
   FinancialStabilityResponse,
   AisAnomaly,
   NewsItem,
@@ -115,6 +117,8 @@ export interface FranceRawData {
   disasters?: DisasterAlert[];
   /** Activations Copernicus EMS françaises en cours, relevé à jour (spec 2026-10-12) : situations EMS_ACTIVATION seulement, aucun pilier ni plafond. */
   emsActive?: EmsActivation[];
+  /** Événements de sûreté ASNR du journal servi (spec 2026-10-13) : situations ASNR_CRISIS et NUCLEAR_INCIDENT seulement, jamais le score. */
+  asnrEvents?: AsnrEvent[];
   /** Épisodes de pollution de J à J+2 (Atmo France, § 3.2). Situations seulement ; aucune entrée du score. */
   airEpisodes?: AirEpisode[];
   marketData: MarketData[];
@@ -731,6 +735,14 @@ export function computeFranceScoreBreakdown(
   };
 }
 
+/** Situations sans effet sur le score (spec 2026-10-13 ASNR) : jamais comptées dans le plafond (une high plafonnerait sinon à 78). */
+export const SCORE_NEUTRAL_SITUATIONS: ReadonlySet<SituationType> = new Set<SituationType>(['ASNR_CRISIS', 'NUCLEAR_INCIDENT']);
+
+/** Situations passées au score : les types neutres sont écartés. */
+export function situationsForScore<T extends { type: SituationType }>(situations: readonly T[]): T[] {
+  return situations.filter((s) => !SCORE_NEUTRAL_SITUATIONS.has(s.type));
+}
+
 /**
  * Full pipeline: assemble a FranceCountrySnapshot from raw data.
  *
@@ -757,7 +769,7 @@ export function buildFranceCountrySnapshot(
   const axes = computeFranceAxes(signals, raw.isnrData, raw, nowMs);
   const situations: DetectedSituation[] = detectSituations(raw, nowMs);
   const scoreBreakdown = computeFranceScoreBreakdown(
-    raw, signals, raw.isnrData ?? null, situations, options?.previousScore ?? null, nowMs,
+    raw, signals, raw.isnrData ?? null, situationsForScore(situations), options?.previousScore ?? null, nowMs,
   );
   const score = scoreBreakdown.score;
   const partialCtx = buildFranceBriefContext(signals, axes, raw, nowMs);

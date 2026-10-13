@@ -1907,7 +1907,9 @@ export type SituationType =
   | 'SEISMIC_EVENT'
   | 'NATURAL_HAZARD_ALERT'
   | 'EMS_ACTIVATION'
-  | 'AIR_POLLUTION_EPISODE';
+  | 'AIR_POLLUTION_EPISODE'
+  | 'ASNR_CRISIS'
+  | 'NUCLEAR_INCIDENT';
 
 export type SituationSeverity = 'critical' | 'high' | 'medium' | 'watch';
 
