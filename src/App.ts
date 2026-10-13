@@ -5258,7 +5258,10 @@ export class App {
       this.currentFloatingPanelId = null;
     }
 
-    const eligible = FLOATING_PANEL_DEFS.filter((def) => this.floatingPanelIsEligible(def.id));
+    // Vue générale : pas de puce pour une couche du socle au vert (13/10/2026), sa couche reste allumée.
+    const hideGreen = this.uiV2 && this.v2Theme === 'general' && this.watchModule !== null;
+    const eligible = FLOATING_PANEL_DEFS.filter((def) => this.floatingPanelIsEligible(def.id)
+      && !(hideGreen && this.watchModule?.generalChipHidden(def.id, this.watchEntries)));
 
     // v2 : puce « Actualités géolocalisées » en tête (12/10/2026), dans la vue qui affiche les actualités (Vue générale), même
     // éteinte pour pouvoir les rallumer ; ailleurs, seulement si la couche a été cochée à la main.
