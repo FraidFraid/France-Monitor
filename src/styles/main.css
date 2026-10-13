@@ -8187,6 +8187,18 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
    Première ligne : l'état national garde sa largeur, le fil prend l'espace restant ; sous 300 px de place, il disparaît. */
 #app.ui-v2 .header .fm-v2-status { display: flex; align-items: center; gap: 16px; }
 #app.ui-v2 .fm-v2-status .sb-main { flex: 0 1 auto; min-width: 0; }
+/* État national sur deux lignes (13/10/2026) : pastille à gauche sur toute la hauteur, résumé puis « Depuis votre visite » en dessous,
+   plus petit ; chaque ligne se coupe d'un « … » plutôt que de déborder sur le fil, qui gagne la largeur libérée. */
+#app.ui-v2 .fm-v2-status .sb-line {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; row-gap: 1px; align-items: center;
+}
+#app.ui-v2 .fm-v2-status .sb-level { grid-row: 1 / span 2; }
+#app.ui-v2 .fm-v2-status :is(.sb-summary, .sb-visit, .sb-loading) {
+  grid-column: 2; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; line-height: 1.25;
+}
+#app.ui-v2 .fm-v2-status .sb-summary { font-size: 12px; }
+#app.ui-v2 .fm-v2-status .sb-visit { font-size: 11px; color: var(--text-muted); }
+#app.ui-v2 .fm-v2-status .sb-visit b { color: var(--text-secondary); font-weight: 600; }
 .nw-host { flex: 1 1 0; min-width: 0; container-type: inline-size; }
 @container (max-width: 300px) { .nw { display: none !important; } }
 .nw {
