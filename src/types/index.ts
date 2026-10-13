@@ -2606,6 +2606,32 @@ export interface EmsResponse {
   errors: string[];
 }
 
+// ═══ Événements de sûreté ASNR (spec 2026-10-13 ASNR sûreté) ═══
+
+/** Groupe d'un avis : centre de crise activé, incident d'installation nucléaire, radioprotection (santé, recherche, transport). */
+export type AsnrKind = 'crise' | 'installation' | 'radioprotection';
+
+export interface AsnrEvent {
+  id: string;
+  url: string;
+  title: string;
+  /** Jour de publication (Paris), « AAAA-MM-JJ ». */
+  date: string;
+  kind: AsnrKind;
+  /** Niveau INES lu dans l'avis ; null si non indiqué. */
+  ines: number | null;
+  /** Centrale EDF (`NUCLEAR_PLANTS`) ; null hors centrale. */
+  plantId: string | null;
+  site: string | null;
+}
+
+/** Réponse de GET /api/nuclear/asnr. */
+export interface AsnrResponse {
+  readAt: string | null;
+  events: AsnrEvent[];
+  errors: string[];
+}
+
 // ─── Submersion marine : GET /api/environment/sea-levels ───
 export interface TideGauge {
   id: number;                          // identifiant REFMAR (shom_id)
