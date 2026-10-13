@@ -305,7 +305,7 @@ function inesLevel(e: AsnrEvent): VigilanceLevel | null {
 }
 
 function asnrRow(e: AsnrEvent): string {
-  const ines = e.ines === null ? 'INES n.d.' : `INES ${e.ines}`;
+  const ines = e.ines === null ? 'INES n.d.' : `INES\u00a0${e.ines}`;
   return `<div class="lp-row">${levelDot(inesLevel(e))}<span>${sourceLinkHtml(e.title, e.url)}</span>`
     + `<span class="fmk-num">${escapeHtml(ines)}</span><small>${escapeHtml(asnrDay(e.date))}</small></div>`;
 }

@@ -23,7 +23,7 @@ describe('asnrSection', () => {
     const html = s.html;
     expect(html.indexOf('Centre de crise activé')).toBeLessThan(html.indexOf('Radioprotection'));
     expect(html).not.toContain('Installations nucléaires');
-    expect(html).toContain('INES 2');
+    expect(html).toContain('INES\u00a02');
     expect(html).toContain('le 30 juin');
     expect(html).not.toContain('—');
   });

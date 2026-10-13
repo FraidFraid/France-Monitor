@@ -944,7 +944,7 @@ export function detectAsnrEvents(raw: FranceRawData, nowMs: number): DetectedSit
     if (severity === null || age < 0 || age > ASNR_SITUATION_DAYS) return [];
     const zone = e.site ?? 'France';
     const crisis = e.kind === 'crise';
-    const ines = e.ines === null ? 'INES n.d.' : `INES ${e.ines}`;
+    const ines = e.ines === null ? 'INES n.d.' : `INES\u00a0${e.ines}`;
     const base = situation(
       `asnr-${e.id}`, crisis ? 'ASNR_CRISIS' : 'NUCLEAR_INCIDENT', severity, 0.9,
       crisis ? `Centre de crise ASNR activé : ${zone}` : `Événement de sûreté ${ines} : ${zone}`,
