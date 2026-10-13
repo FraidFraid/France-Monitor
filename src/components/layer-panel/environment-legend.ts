@@ -3,7 +3,7 @@
 // « (en retard) » et couleurs de niveau retirées (« En retard : couleurs de niveau retirées de la carte. »). Teintes de catégorie
 // recopiées des jetons de main.css pour MapLibre, qui ne lit pas les variables CSS (égalité vérifiée par test).
 import type { AirQualityResponse, DisasterLevel, DisasterType, DisastersResponse, EmsCategory, DroughtResponse, EarthquakesResponse, FiresResponse, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../../types/index.ts';
-import { isEnvironmentDataLate, nextVigilanceMap, parisDayOf, vigilancePeriodOf } from '../../services/environment-levels.ts';
+import { firmsAcquisitionLate, isEnvironmentDataLate, nextVigilanceMap, parisDayOf, vigilancePeriodOf } from '../../services/environment-levels.ts';
 import type { Radar2dManifest } from '../../services/radar-2d.ts';
 import { levelHex } from '../../services/vigilance.ts';
 import type { LegendCategory, LegendItem } from '../MapLegend.ts';
@@ -217,7 +217,7 @@ export const FIRES_LEGEND: LegendCategory = {
 export function firesLegend(f: FiresResponse | null, forestDangerFill: boolean, now: number): LegendCategory {
   const items = forestDangerFill ? [...FIRE_ITEMS, ...FOREST_DANGER_ITEMS] : FIRE_ITEMS;
   const at = parse(f?.lastAcquisitionAt);
-  const late = f === null || isEnvironmentDataLate('firms', f.lastAcquisitionAt, now);
+  const late = f === null || firmsAcquisitionLate(f, now);
   const refresh = f === null || f.readAt === null
     ? 'NASA FIRMS indisponible'
     : at === null ? 'Aucune acquisition sur la zone' : `Dernière acquisition ${dateAt(at)} (${formatAge(at, now)})${late ? ' (en retard)' : ''}`;
