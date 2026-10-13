@@ -90,7 +90,8 @@ export function parseCertFrFeed(xml, kind) {
 function versionCell(html, which) {
   const accent = '(?:è|&egrave;|&#232;)';
   const label = which === 'derniere' ? `derni${accent}re` : `premi${accent}re`;
-  const m = new RegExp(`Date de la ${label} version\\s*</td>\\s*<td[^>]*>([^<]*)</td>`, 'i').exec(html);
+  // Libellé en <td> (ancienne maquette) ou en <th scope="row"> (maquette DSFR, 13/10/2026).
+  const m = new RegExp(`Date de la ${label} version\\s*</t[dh]>\\s*<td[^>]*>([^<]*)</td>`, 'i').exec(html);
   return m ? frenchDate(cleanText(m[1])) : null;
 }
 
@@ -111,7 +112,9 @@ function saysExploitation(sentence) {
 
 /** Date de clôture inscrite dans la « Gestion détaillée du document » : « le 22 septembre 2026 » avant « Clôture de l'alerte ». */
 function closureDate(html) {
-  const m = new RegExp(`<dt>\\s*(?:<strong>)?([^<]*)(?:</strong>)?\\s*</dt>\\s*<dd>\\s*Cl(?:ô|&ocirc;|&#244;)ture de l${APOS}alerte`, 'i').exec(html);
+  // Gestion détaillée en liste <dt>/<dd> (ancienne maquette) ou en tableau <td>date</td><td>Clôture…</td> (maquette DSFR, 13/10/2026).
+  const m = new RegExp(`<dt>\\s*(?:<strong>)?([^<]*)(?:</strong>)?\\s*</dt>\\s*<dd>\\s*Cl(?:ô|&ocirc;|&#244;)ture de l${APOS}alerte`, 'i').exec(html)
+    ?? new RegExp(`<td>\\s*([^<]*)</td>\\s*<td>\\s*Cl(?:ô|&ocirc;|&#244;)ture de l${APOS}alerte`, 'i').exec(html);
   return m ? frenchDate(cleanText(m[1])) : null;
 }
 
@@ -150,11 +153,18 @@ export function parseCertFrPage(html) {
  */
 export function parseCertFrAlertList(html) {
   const out = [];
-  for (const chunk of String(html ?? '').split(/<article\b/i).slice(1)) {
-    const ref = CERTFR_REF.exec(/class="item-ref"[^>]*>([^<]*)</i.exec(chunk)?.[1] ?? '')?.[0];
-    const statusText = cleanText(/class="item-status"[^>]*>([^<]*)</i.exec(chunk)?.[1] ?? '');
+  const text = String(html ?? '');
+  // Maquette DSFR (13/10/2026) : blocs « alert-item », badge de statut, « Publié le … » ; sinon l'ancienne maquette en <article>.
+  const dsfr = /class="alert-item"/.test(text);
+  for (const chunk of dsfr ? text.split(/class="alert-item"/).slice(1) : text.split(/<article\b/i).slice(1)) {
+    const ref = dsfr
+      ? CERTFR_REF.exec(/href="\/alerte\/([^"/]+)/i.exec(chunk)?.[1] ?? '')?.[0]
+      : CERTFR_REF.exec(/class="item-ref"[^>]*>([^<]*)</i.exec(chunk)?.[1] ?? '')?.[0];
+    const statusText = dsfr
+      ? cleanText(/class="[^"]*alert-item__badge[^"]*"[^>]*>([\s\S]*?)<\/p>/i.exec(chunk)?.[1] ?? '')
+      : cleanText(/class="item-status"[^>]*>([^<]*)</i.exec(chunk)?.[1] ?? '');
     if (!ref) continue;
-    const publishedAt = frenchDate(cleanText(/class="item-date"[^>]*>([^<]*)</i.exec(chunk)?.[1] ?? ''));
+    const publishedAt = frenchDate(cleanText((dsfr ? /class="[^"]*alert-item__date[^"]*"[^>]*>([^<]*)</i : /class="item-date"[^>]*>([^<]*)</i).exec(chunk)?.[1] ?? ''));
     if (/^alerte en cours/i.test(statusText)) out.push({ ref, publishedAt, status: 'en-cours', closedAt: null });
     else if (/^cl(?:ô|o)tur(?:é|e)e/i.test(statusText)) out.push({ ref, publishedAt, status: 'cloturee', closedAt: frenchDate(statusText) });
     // Statut illisible : l'alerte reste dans le résultat avec `status: null` (jamais « en cours » supposé, jamais écartée sans trace).

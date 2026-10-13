@@ -248,3 +248,35 @@ describe('Rapports Menaces et incidents (ANSSI), flux CTI du 04/10/2026 (S12)', 
     await expect(fetchCtiReports()).rejects.toThrow('flux CTI sans rapport lisible');
   });
 });
+
+// Site du CERT-FR refait au système de design de l'État (DSFR), constaté le 13/10/2026 : libellés du tableau en <th>, liste des
+// alertes en blocs « alert-item » avec un badge de statut. L'ancienne maquette reste lue (fixtures ci-dessus).
+describe('maquette DSFR du CERT-FR (13/10/2026)', () => {
+  it('liste : 10 alertes, ALE-012 à 009 en cours, ALE-008 close le 22/09, dates de publication lues', () => {
+    const list = parseCertFrAlertList(fx('certfr-alerte-liste-dsfr.html'));
+    expect(list).toHaveLength(10);
+    expect(list.slice(0, 5)).toEqual([
+      { ref: 'CERTFR-2026-ALE-012', publishedAt: '2026-10-12', status: 'en-cours', closedAt: null },
+      { ref: 'CERTFR-2026-ALE-011', publishedAt: '2026-09-28', status: 'en-cours', closedAt: null },
+      { ref: 'CERTFR-2026-ALE-010', publishedAt: '2026-09-10', status: 'en-cours', closedAt: null },
+      { ref: 'CERTFR-2026-ALE-009', publishedAt: '2026-09-02', status: 'en-cours', closedAt: null },
+      { ref: 'CERTFR-2026-ALE-008', publishedAt: '2026-07-22', status: 'cloturee', closedAt: '2026-09-22' },
+    ]);
+  });
+  it('page ALE-012 : première et dernière version le 12/10, en cours', () => {
+    expect(parseCertFrPage(fx('certfr-alerte-CERTFR-2026-ALE-012-dsfr.html'))).toMatchObject({ firstVersion: '2026-10-12', lastVersion: '2026-10-12', closed: false });
+  });
+  it('page ALE-011 : dernière version, CVE de la section « Référence CVE », exploitation signalée', () => {
+    const p = parseCertFrPage(fx('certfr-alerte-CERTFR-2026-ALE-011-dsfr.html'));
+    expect(p.firstVersion).toBe('2026-09-28');
+    expect(p.lastVersion).not.toBeNull();
+    expect(p.cves).toContain('CVE-2026-88771');
+    expect(p.exploited).toBe(true);
+  });
+  it('page ALE-008 : close le 22/09 (« Clôture de l’alerte » dans la gestion détaillée)', () => {
+    expect(parseCertFrPage(fx('certfr-alerte-CERTFR-2026-ALE-008-dsfr.html'))).toMatchObject({ lastVersion: '2026-09-22', closed: true, closedAt: '2026-09-22' });
+  });
+  it('page d’avis AVI-1257 : 02/10, CVE-2026-104286', () => {
+    expect(parseCertFrPage(fx('certfr-avis-CERTFR-2026-AVI-1257-dsfr.html'))).toMatchObject({ lastVersion: '2026-10-02', cves: ['CVE-2026-104286'] });
+  });
+});
