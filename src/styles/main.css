@@ -8232,6 +8232,22 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 .nw-item--rouge .nw-time { color: var(--sev-red); font-weight: 700; }
 .nw-item--rouge .nw-title { color: #fff; font-weight: 700; }
 .nw-item--orange .nw-title { font-weight: 600; }
+/* Alertes (13/10/2026) : situations, surveillance et vigilances distinctes de la presse : étiquette ALERTE, fond teinté du niveau ;
+   repère ACTU entre les alertes et les actualités. */
+.nw-item--alert { padding: 2px 8px 2px 4px; border: 1px solid transparent; }
+.nw-item--alert.nw-item--jaune { background: color-mix(in srgb, var(--sev-yellow) 12%, transparent); border-color: color-mix(in srgb, var(--sev-yellow) 35%, transparent); }
+.nw-item--alert.nw-item--orange { background: color-mix(in srgb, var(--sev-orange) 14%, transparent); border-color: color-mix(in srgb, var(--sev-orange) 40%, transparent); }
+.nw-item--alert.nw-item--rouge { background: color-mix(in srgb, var(--sev-red) 16%, transparent); border-color: color-mix(in srgb, var(--sev-red) 45%, transparent); }
+.nw-alert-tag {
+  flex: none; padding: 0 5px; border: 1px solid currentColor; border-radius: 3px;
+  font-size: 9.5px; font-weight: 800; letter-spacing: 0.12em;
+}
+.nw-item--jaune .nw-alert-tag { color: var(--sev-yellow); }
+.nw-item--orange .nw-alert-tag { color: var(--sev-orange); }
+.nw-sep {
+  flex: none; align-self: center; margin-right: 34px; padding: 1px 6px 1px 10px; border-left: 2px solid var(--border-color);
+  color: var(--text-secondary); font-size: 10px; font-weight: 700; letter-spacing: 0.12em;
+}
 /* Animations réduites : fil immobile, défilable à la main ; la copie du défilement continu disparaît. */
 @media (prefers-reduced-motion: reduce) {
   .nw-track, .nw-urgent { animation: none; }

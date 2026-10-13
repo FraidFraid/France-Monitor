@@ -96,3 +96,51 @@ describe('rendu du fil', () => {
     expect(onSelect).toHaveBeenCalledWith('event:42');
   });
 });
+
+describe('alertes distinctes des actualités (13/10/2026)', () => {
+  const SITUATION = { kind: 'situation', situation: {} } as unknown as WorkItem['ref'];
+  const alert = (key: string, level: WorkItem['level'], since: number | null = NOW): WorkItem => item({ key, level, since, ref: SITUATION });
+  const news = (key: string, level: WorkItem['level'], since: number | null = NOW): WorkItem => item({ key, level, since });
+
+  it('alertes (situations, surveillance, vigilances) d’abord, puis les actualités ; chaque groupe trié par gravité puis date', () => {
+    const items = wireItems([
+      news('n-rouge', 'rouge', NOW), alert('a-orange', 'orange', NOW), news('n-orange', 'orange', NOW),
+      item({ key: 'a-officiel', level: 'jaune', ref: { kind: 'official', group: {} } as unknown as WorkItem['ref'] }),
+      item({ key: 'a-surv', level: 'rouge', since: NOW - 60_000, ref: { kind: 'alert', situation: {} } as unknown as WorkItem['ref'] }),
+    ]);
+    expect(items.map((i) => [i.key, i.type])).toEqual([
+      ['a-surv', 'alerte'], ['a-orange', 'alerte'], ['a-officiel', 'alerte'], ['n-rouge', 'actu'], ['n-orange', 'actu'],
+    ]);
+  });
+
+  it('les actualités gardent au moins 2 places quand les alertes débordent', () => {
+    const alerts = Array.from({ length: 12 }, (_, n) => alert(`a${n}`, 'rouge', NOW - n * 1000));
+    const items = wireItems([...alerts, news('n1', 'jaune'), news('n2', 'jaune', NOW - 5000), news('n3', 'jaune', NOW - 9000)]);
+    expect(items).toHaveLength(WIRE_MAX_ITEMS);
+    expect(items.filter((i) => i.type === 'actu').map((i) => i.key)).toEqual(['n1', 'n2']);
+  });
+
+  it('peu d’actualités : les alertes prennent les places libres', () => {
+    const alerts = Array.from({ length: 12 }, (_, n) => alert(`a${n}`, 'orange', NOW - n * 1000));
+    const items = wireItems([...alerts, news('n1', 'jaune')]);
+    expect(items.filter((i) => i.type === 'alerte')).toHaveLength(WIRE_MAX_ITEMS - 1);
+  });
+
+  it('rendu : étiquette ALERTE et fond teinté ; repère ACTU entre les groupes, dans les deux passages ; URGENT en rouge', () => {
+    const html = renderNewsWire(wireItems([alert('a', 'orange'), alert('r', 'rouge'), news('n', 'orange')]), NOW, 'fr');
+    expect(html).toContain('class="nw-item nw-item--orange nw-item--alert"');
+    expect(html).toContain('<span class="nw-alert-tag" aria-hidden="true">ALERTE</span>');
+    expect(html).toContain('<span class="visually-hidden">Alerte, </span>');
+    expect(html).toContain('<span class="visually-hidden">Actualité, </span>');
+    expect(html.match(/class="nw-sep"/g)).toHaveLength(2);
+    const urgent = html.slice(html.indexOf('data-wire-key="r"'), html.indexOf('</button>', html.indexOf('data-wire-key="r"')));
+    expect(urgent).toContain('URGENT');
+    expect(urgent).not.toContain('ALERTE');
+    expect(html).not.toContain('—');
+  });
+
+  it('sans alerte, ou sans actualité : aucun repère ACTU', () => {
+    expect(renderNewsWire(wireItems([news('n', 'orange')]), NOW, 'fr')).not.toContain('nw-sep');
+    expect(renderNewsWire(wireItems([alert('a', 'orange')]), NOW, 'fr')).not.toContain('nw-sep');
+  });
+});
