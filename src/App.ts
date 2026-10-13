@@ -96,6 +96,9 @@ import type { MetroLoadPanel } from './components/MetroLoadPanel.ts';
 import { fetchVigilance, mergeVigilance, vigilanceStatus, type VigilanceState } from './services/environment-vigilance.ts';
 import { fetchFloods, floodsStatus, mergeFloods, type FloodsState } from './services/environment-floods.ts';
 import { fetchFires, firesStatus, mergeFires, type FiresState } from './services/environment-fires.ts';
+import { asnrEventsOf, asnrStatus, fetchAsnr, mergeAsnr } from './services/asnr-events.ts';
+import type { SourceSlot } from './services/environment-source.ts';
+import type { AsnrResponse } from './types/index.ts';
 import { buildEnvironmentInputs, servedAirEpisodes, servedDisasters, servedEms, servedQuakes, type EnvironmentInputs } from './services/environment-inputs.ts';
 import { ENVIRONMENT_LATE_AFTER_MIN, parisDayOf } from './services/environment-levels.ts';
 // Phase B (spec 2026-10-04 environnement § 3) : qualité de l'air et séismes lus au démarrage (situations, tâche 32), sécheresse avec sa
@@ -1455,6 +1458,8 @@ export class App {
   private currentOilData: OilDashboard | null = null;
   private currentFuelTensionData: FuelTensionDashboard | null = null;
   private currentNuclearState: NuclearState | null = null;
+  /** Événements de sûreté ASNR (spec 2026-10-13) ; null avant la première lecture. */
+  private currentAsnr: SourceSlot<AsnrResponse> | null = null;
   private nuclearPanel: NuclearPanel | null = null;
   /** Pannes réseau (spec 2026-10-08 panneaux pannes) : dernières lectures des services, partagées par les panneaux, la carte et le score. */
   private currentOutTelecom: TelecomState | null = null;
@@ -5060,6 +5065,7 @@ export class App {
         this.closeEnergyLayer('nuclearFleet');
       });
       this.nuclearPanel = panel;
+      panel.setAsnr(this.currentAsnr);
       if (this.activeLayers.nuclearFleet) {
         panel.show(this.currentNuclearState, this.currentEcowattResponse);
         this.layoutEnergyFloatingPanels();
@@ -5978,6 +5984,7 @@ export class App {
     this._intervalNuclear = setInterval(() => {
       if (document.hidden) return; // skip tick while tab is hidden
       void this.loadNuclear();
+      void this.loadAsnr();
     }, POLL_NUCLEAR_MS);
   }
 
@@ -6584,6 +6591,17 @@ export class App {
       this.refreshEnergyDataLegends();
       this.refreshFranceIntelPanel();
     }
+  }
+
+  /** Événements de sûreté ASNR (spec 2026-10-13) : section du panneau Nucléaire, anneaux, situations ; lus au rythme du parc. */
+  private async loadAsnr(): Promise<void> {
+    const incoming = await fetchAsnr(this.currentAsnr);
+    this.currentAsnr = mergeAsnr(this.currentAsnr, incoming);
+    const now = Date.now();
+    this.statusPanel?.updateSource('ASNR', asnrStatus(this.currentAsnr, now));
+    this.mapContainer?.updateAsnrLayer(this.currentAsnr.data, now);
+    this.nuclearPanel?.setAsnr(this.currentAsnr);
+    this.refreshFranceIntelPanel();
   }
 
   private async loadNuclear(): Promise<void> {
@@ -7414,6 +7432,9 @@ export class App {
           this.statusPanel?.updateSource('Nucléaire RTE', { status: 'error', lastUpdate: new Date() });
         })
       },
+      {
+        name: 'asnr', task: this.loadAsnr().catch((err) => console.error('[App] ASNR indisponible', err))
+      },
     ];
 
     const results = await Promise.allSettled(tasks.map((t) => t.task));
@@ -7643,6 +7664,7 @@ export class App {
       ecowattResponse:      this.currentEcowattResponse,
       gasState:             this.currentGasData,
       nuclearState:         this.currentNuclearState,
+      asnrEvents:           asnrEventsOf(this.currentAsnr?.data ?? null),
       eolienLive:           this.currentEolienLive,
       aisAnomalies:         this.currentAisAnomalies,
       timeline:             this.buildFranceTimeline(lang, env),
