@@ -221,6 +221,25 @@ function mw(v: number): string {
  */
 const FIRES_COLLECTION_MAX_AGE_MS = 2 * 86_400_000;
 
+/** Collecte « fraîche » : lue depuis moins de 2 h (le serveur relit FIRMS bien plus souvent). */
+const FIRMS_FRESH_READ_MS = 2 * 3_600_000;
+/** Sans aucune détection sur la zone, délai au-delà duquel une collecte pourtant fraîche est dite en retard. */
+export const FIRMS_QUIET_LATE_MS = 36 * 3_600_000;
+
+/**
+ * Retard des détections FIRMS (13/10/2026). `lastAcquisitionAt` est la date de la DERNIÈRE DÉTECTION, pas du dernier passage : une
+ * nuit sans feu la vieillit sans que FIRMS soit en retard. Collecte fraîche et toutes les sources FIRMS lues : en retard après 36 h
+ * sans détection seulement ; sinon (collecte ancienne, source en échec, sources inconnues) la règle des 14 h (S2) s'applique.
+ */
+export function firmsAcquisitionLate(f: FiresResponse, now: number): boolean {
+  if (f.lastAcquisitionAt === null) return false;
+  const readAt = f.readAt === null ? Number.NaN : Date.parse(f.readAt);
+  const quiet = Number.isFinite(readAt) && now - readAt < FIRMS_FRESH_READ_MS && f.sources.length > 0 && f.sources.every((s) => s.ok);
+  if (!quiet) return isEnvironmentDataLate('firms', f.lastAcquisitionAt, now);
+  const last = Date.parse(f.lastAcquisitionAt);
+  return !Number.isFinite(last) || now - last > FIRMS_QUIET_LATE_MS;
+}
+
 /** Détections FIRMS d'une réponse : à l'heure, en retard (S2) ou indisponibles (S3). */
 export type FirmsState = 'ok' | 'late' | 'down';
 
@@ -231,7 +250,7 @@ export type FirmsState = 'ok' | 'late' | 'down';
  */
 export function firmsState(f: FiresResponse, now: number): FirmsState {
   if (f.readAt === null) return 'down';
-  if (f.lastAcquisitionAt !== null && isEnvironmentDataLate('firms', f.lastAcquisitionAt, now)) return 'late';
+  if (firmsAcquisitionLate(f, now)) return 'late';
   const readAt = Date.parse(f.readAt);
   return Number.isFinite(readAt) && now - readAt < FIRES_COLLECTION_MAX_AGE_MS ? 'ok' : 'down';
 }

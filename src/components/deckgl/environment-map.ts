@@ -9,7 +9,7 @@ import type {
   VigilanceResponse,
 } from '../../types/index.ts';
 import { departementCentroid } from '../../config/departements.ts';
-import { forestDangerCurrent, foyerLevel, isEnvironmentDataLate, parisDayOf, stationLate, vigilancePeriodOf } from '../../services/environment-levels.ts';
+import { firmsAcquisitionLate, forestDangerCurrent, foyerLevel, isEnvironmentDataLate, parisDayOf, stationLate, vigilancePeriodOf } from '../../services/environment-levels.ts';
 import { levelHex, type VigilanceLevel } from '../../services/vigilance.ts';
 import {
   COLOR_WORD, FOREST_DANGER_LEVEL, FOREST_DANGER_WORD, PHENOMENON_ICON, PHENOMENON_LABEL, SATELLITE_WORD, capitalize, clockOf, formatAge, formatChangeM,
@@ -299,7 +299,7 @@ function detectionBody(d: FireDetection, foyer: FireFoyer | undefined, level: Vi
  */
 export function fireDetectionFeatures(f: FiresResponse | null, now: number): Fc<GeoJSON.Point> {
   if (!f) return fc([]);
-  const late = isEnvironmentDataLate('firms', f.lastAcquisitionAt, now);
+  const late = firmsAcquisitionLate(f, now);
   const foyers = new Map(f.foyers.map((x) => [x.id, x]));
   return fc(f.detections.map((d): GeoJSON.Feature<GeoJSON.Point> => {
     const foyer = foyers.get(d.foyerId);

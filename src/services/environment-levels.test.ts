@@ -4,7 +4,7 @@ import type {
   VigilanceResponse,
 } from '../types/index.ts';
 import {
-  ENVIRONMENT_LATE_AFTER_MIN, ORANGE_FOYER_MW, dayWordOf, firesLevel, firmsState, floodsLevel, forestDangerCurrent, forestDangerSeason, foyerLevel,
+  ENVIRONMENT_LATE_AFTER_MIN, ORANGE_FOYER_MW, dayWordOf, firesLevel, firmsAcquisitionLate, firmsState, floodsLevel, forestDangerCurrent, forestDangerSeason, foyerLevel,
   isEnvironmentDataLate, isMajorFoyer, nextVigilanceMap, parisDayOf, stationLate, vigilanceLevel,
 } from './environment-levels.ts';
 
@@ -306,5 +306,31 @@ describe('pastille Feux et retards (S2, spec § 2.4) : une source en retard ou e
     expect(firmsState(kept, readAt + 2 * 86_400_000 + 60_000)).toBe('down');
     expect(firmsState({ ...kept, readAt: null }, NOW)).toBe('down');
     expect(firmsState(fires([]), NOW)).toBe('ok');
+  });
+});
+
+// Nuit sans feu (constaté en production le 13/10/2026) : la dernière détection datait de 17 h, toutes les sources FIRMS répondaient,
+// la collecte avait 15 min. Ce n'est pas un retard : rien n'a brûlé. Le retard ne se juge sur 14 h que si la collecte ou une source
+// FIRMS fait défaut ; sinon 36 h sans aucune détection sur la zone (France et marges) restent « à l'heure ».
+describe('firmsAcquisitionLate : nuit sans détection', () => {
+  const ok = (id: string) => ({ id, ok: true, lastAcquisitionAt: '2026-10-12T14:48:00.000Z' }) as FiresResponse['sources'][number];
+  const quiet = (over: Partial<FiresResponse> = {}): FiresResponse => ({
+    ...fires([], null, '2026-10-13T08:27:00Z'), lastAcquisitionAt: '2026-10-12T14:48:00Z',
+    sources: [ok('VIIRS_SNPP_NRT'), ok('MODIS_NRT')], ...over,
+  });
+  const MORNING = T('2026-10-13T08:41:00Z');
+  it('collecte fraîche, toutes sources lues, dernière détection de 18 h : à l’heure, pastille évaluée', () => {
+    expect(firmsAcquisitionLate(quiet(), MORNING)).toBe(false);
+    expect(firmsState(quiet(), MORNING)).toBe('ok');
+  });
+  it('plus de 36 h sans détection : en retard même avec une collecte fraîche', () => {
+    expect(firmsAcquisitionLate(quiet(), T('2026-10-14T03:00:00Z'))).toBe(true);
+  });
+  it('une source FIRMS en échec ou une collecte de plus de 2 h : règle des 14 h', () => {
+    expect(firmsAcquisitionLate(quiet({ sources: [ok('VIIRS_SNPP_NRT'), { ...ok('MODIS_NRT'), ok: false }] }), MORNING)).toBe(true);
+    expect(firmsAcquisitionLate(quiet({ readAt: '2026-10-13T05:00:00Z' }), MORNING)).toBe(true);
+  });
+  it('sans acquisition datée : jamais en retard par ce critère', () => {
+    expect(firmsAcquisitionLate(quiet({ lastAcquisitionAt: null }), MORNING)).toBe(false);
   });
 });
