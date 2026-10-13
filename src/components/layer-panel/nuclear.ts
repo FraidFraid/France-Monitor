@@ -1,6 +1,8 @@
 // src/components/layer-panel/nuclear.ts : vue pure du panneau « Parc nucléaire » (spec 2026-10-02 § 6.1).
 // Construit l'en-tête, les onglets et les sections du kit ; la coquille DOM est dans frame.ts. Aucun accès réseau ni DOM.
-import type { EcowattResponse, NuclearRemitSignal, NuclearState } from '../../types/index.ts';
+import type { AsnrEvent, AsnrResponse, EcowattResponse, NuclearRemitSignal, NuclearState } from '../../types/index.ts';
+import type { SourceSlot } from '../../services/environment-source.ts';
+import { isEnvironmentDataLate } from '../../services/environment-levels.ts';
 import { NUCLEAR_UNITS } from '../../config/infrastructure.ts';
 import {
   activeOutages, availabilityLevel, fleetCalendar, fleetLevel, fleetSummary, plantRows, remitMatchWords, shortLabel, unitLabel,
@@ -19,6 +21,8 @@ export const NUCLEAR_TABS: readonly NuclearTab[] = ['overview', 'calendar', 'rem
 export interface NuclearViewInput {
   state: NuclearState | null;
   ecowatt: EcowattResponse | null;
+  /** Événements de sûreté ASNR (spec 2026-10-13) ; null avant la première lecture. */
+  asnr: SourceSlot<AsnrResponse> | null;
   tab: NuclearTab;
   now: number;
   open: (sectionId: string, byDefault: boolean) => boolean;
@@ -283,10 +287,50 @@ function remitSections(state: NuclearState, now: number, open: NuclearViewInput[
   ];
 }
 
+// ── Sûreté (ASNR) ─────────────────────────────────────────────────────────────
+
+const ASNR_URL_PUBLIC = 'https://www.asnr.fr/actualites';
+const ASNR_GROUPS: ReadonlyArray<[AsnrEvent['kind'], string]> = [
+  ['crise', 'Centre de crise activé'], ['installation', 'Installations nucléaires'], ['radioprotection', 'Radioprotection'],
+];
+
+/** « le 1 oct. » : jour de publication. */
+function asnrDay(date: string): string {
+  return `le ${new Date(`${date}T12:00:00Z`).toLocaleDateString('fr-FR', { timeZone: PARIS, day: 'numeric', month: 'short' })}`;
+}
+
+function inesLevel(e: AsnrEvent): VigilanceLevel | null {
+  if (e.kind === 'crise') return 'rouge';
+  return e.ines === null || e.ines === 0 ? null : e.ines >= 2 ? 'orange' : 'jaune';
+}
+
+function asnrRow(e: AsnrEvent): string {
+  const ines = e.ines === null ? 'INES n.d.' : `INES ${e.ines}`;
+  return `<div class="lp-row">${levelDot(inesLevel(e))}<span>${sourceLinkHtml(e.title, e.url)}</span>`
+    + `<span class="fmk-num">${escapeHtml(ines)}</span><small>${escapeHtml(asnrDay(e.date))}</small></div>`;
+}
+
+/** Section du panneau : trois groupes du plus fort au plus discret ; panne ou retard du relevé dits en clair (spec § Erreurs). */
+export function asnrSection(asnr: SourceSlot<AsnrResponse> | null, now: number, open: NuclearViewInput['open']): FicheSection {
+  const base = { id: 'asnr', title: 'Sûreté (ASNR)', collapsible: true, open: open('asnr', true) };
+  if (asnr === null || (asnr.data === null && asnr.error === null)) return { ...base, summary: 'chargement…', html: loadingBody() };
+  const lastGood = asnr.fetchedAt === null ? '' : `, dernier relevé à ${absoluteTime(asnr.fetchedAt, now, 'fr')}`;
+  const down = asnr.error !== null ? `<p class="fmk-note">${escapeHtml(`Relevé ASNR indisponible${lastGood}.`)}</p>` : '';
+  const events = asnr.data?.events ?? [];
+  const late = asnr.data !== null && isEnvironmentDataLate('asnr', asnr.data.readAt, now);
+  const groups = ASNR_GROUPS.map(([kind, label]) => {
+    const rows = events.filter((e) => e.kind === kind);
+    return rows.length === 0 ? '' : `<p class="fmk-note"><b>${escapeHtml(label)}</b></p>${rows.map(asnrRow).join('')}`;
+  }).join('');
+  const body = asnr.data === null ? '' : events.length === 0 ? emptyLine('Aucun événement publié sur 12 mois.') : groups;
+  const summary = `${events.length} sur 12 mois${late ? ' · relevé en retard' : ''}`;
+  return { ...base, summary: escapeHtml(summary), html: `${down}${body}${kvRow('Source', sourceLinkHtml('ASNR, actualités', ASNR_URL_PUBLIC))}` };
+}
+
 // ── Vue ───────────────────────────────────────────────────────────────────────
 
 export function buildNuclearView(input: NuclearViewInput): LayerView {
-  const { state, ecowatt, tab, now, open } = input;
+  const { state, ecowatt, asnr, tab, now, open } = input;
   const tabs = tabsOf(state);
   if (state === null) {
     return { head: { theme: 'Énergie', title: 'Parc nucléaire', status: ['chargement…'] }, tabs, activeTab: tab, sections: [], bodyHtml: loadingBody() };
@@ -305,7 +349,7 @@ export function buildNuclearView(input: NuclearViewInput): LayerView {
     // La production réelle et la méthode restent lisibles sans RTE ; seul le disponible devient n.d.
     return {
       head, tabs, activeTab: tab, bodyHtml: sourceErrorCallout(null, now),
-      sections: [productionSection(state, ecowatt, summary.installedMw, null, open), methodSection(state, now, open)],
+      sections: [productionSection(state, ecowatt, summary.installedMw, null, open), asnrSection(asnr, now, open), methodSection(state, now, open)],
     };
   }
 
@@ -338,6 +382,7 @@ export function buildNuclearView(input: NuclearViewInput): LayerView {
       productionSection(state, ecowatt, summary.installedMw, summary.availableMw, open),
       outagesSection(summary.outages, now, open),
       sitesSection(outages, open),
+      asnrSection(asnr, now, open),
       methodSection(state, now, open),
     ]
     : tab === 'calendar' ? calendarSections(state, now, open) : remitSections(state, now, open);

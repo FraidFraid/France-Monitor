@@ -23,7 +23,7 @@ function state(over: Partial<NuclearState> = {}): NuclearState {
   };
 }
 const view = (s: NuclearState | null, tab: 'overview' | 'calendar' | 'remit' = 'overview') =>
-  buildNuclearView({ state: s, ecowatt: null, tab, now: NOW, open });
+  buildNuclearView({ state: s, ecowatt: null, asnr: null, tab, now: NOW, open });
 
 describe('vue Parc nucléaire', () => {
   it('mots et niveaux de nature', () => {
@@ -54,7 +54,7 @@ describe('vue Parc nucléaire', () => {
   });
   it('vue d’ensemble : production, arrêts en cours avec retour prévu, sites, méthode', () => {
     const v = view(state());
-    expect(v.sections.map((s) => s.id)).toEqual(['production', 'outages', 'sites', 'method']);
+    expect(v.sections.map((s) => s.id)).toEqual(['production', 'outages', 'sites', 'asnr', 'method']);
     const h = renderLayerView('nuclearFleet', v);
     expect(h).toMatch(/fortuit[^]*retour prévu le \d\d\/\d\d à \d\d:\d\d/);
     expect(h).toContain('fmk-dot--orange');
@@ -103,7 +103,7 @@ describe('vue Parc nucléaire', () => {
   });
   it('RTE injoignable : la production et la méthode restent affichées, disponible n.d.', () => {
     const v = view(state({ rteAvailable: false, unavailabilities: [] }));
-    expect(v.sections.map((s) => s.id)).toEqual(['production', 'method']);
+    expect(v.sections.map((s) => s.id)).toEqual(['production', 'asnr', 'method']);
     const h = renderLayerView('nuclearFleet', v);
     expect(h).toContain('Source injoignable');
     expect(h).toMatch(/Disponible[^]*?n\.d\./);
@@ -186,7 +186,7 @@ describe('vue Parc nucléaire', () => {
       grid: gridNuclear === 'nogrid' ? null : { dataTime: NOW, consumptionMw: null, forecastMw: null, co2gPerKwh: null, netImportMw: null, mix: mixOf(gridNuclear), hydroDetail: { runOfRiver: null, lakes: null, stepTurbine: null, pumping: null }, windDetail: { onshore: null, offshore: null }, day: [] },
     });
     const overview = (e: EcowattResponse): string => renderLayerView('nuclearFleet', buildNuclearView({
-      state: state({ unavailabilities: [] }), ecowatt: e, tab: 'overview', now: NOW, open }));
+      state: state({ unavailabilities: [] }), ecowatt: e, asnr: null, tab: 'overview', now: NOW, open }));
     const NOTE = 'Le parc produit en dessous du disponible';
 
     it('jauges Produit / Disponible / Installé en GW', () => {

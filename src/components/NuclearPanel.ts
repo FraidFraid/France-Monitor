@@ -1,6 +1,7 @@
 // src/components/NuclearPanel.ts : panneau de couche « Parc nucléaire » (spec 2026-10-02 § 6).
 // Coquille DOM : contenu de buildNuclearView (pur), cadre de createLayerPanelShell.
-import type { EcowattResponse, NuclearState } from '../types/index.ts';
+import type { AsnrResponse, EcowattResponse, NuclearState } from '../types/index.ts';
+import type { SourceSlot } from '../services/environment-source.ts';
 import { loadSectionState } from '../services/fiche-sections-store.ts';
 import {
   createLayerPanelShell, isLayerPanelOpen, loadLayerTab, safeStorage, saveLayerTab, sectionOpenOf, type LayerPanelShell,
@@ -13,6 +14,7 @@ export class NuclearPanel {
   private shell: LayerPanelShell | null = null;
   private state: NuclearState | null = null;
   private ecowatt: EcowattResponse | null = null;
+  private asnr: SourceSlot<AsnrResponse> | null = null;
   private onCloseCallback?: () => void;
   private onPlantHoverCallback?: (plantName: string | null) => void;
   private hoveredPlant: string | null = null;
@@ -42,6 +44,12 @@ export class NuclearPanel {
       this.emitHover(el?.dataset['nuclearPlant'] ?? null);
     });
     this.shell.root.addEventListener('mouseleave', () => this.emitHover(null));
+  }
+
+  /** Événements de sûreté ASNR (spec 2026-10-13) : section de la vue d'ensemble. */
+  setAsnr(slot: SourceSlot<AsnrResponse> | null): void {
+    this.asnr = slot;
+    if (this.isVisible()) this.render();
   }
 
   setOnClose(cb: () => void): void { this.onCloseCallback = cb; }
@@ -80,7 +88,7 @@ export class NuclearPanel {
   private render(): void {
     if (!this.shell) return;
     const open = sectionOpenOf(loadSectionState(this.storage), PANEL_ID);
-    this.shell.render(buildNuclearView({ state: this.state, ecowatt: this.ecowatt, tab: this.tab, now: Date.now(), open }));
+    this.shell.render(buildNuclearView({ state: this.state, ecowatt: this.ecowatt, asnr: this.asnr, tab: this.tab, now: Date.now(), open }));
   }
 
   private emitHover(plantName: string | null): void {
