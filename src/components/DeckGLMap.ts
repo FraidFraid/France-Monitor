@@ -27,7 +27,7 @@ import {
 import type { MetropoleConsumption } from '../services/metropoles.ts';
 import type { DromEnergyAsset, DromEnergyAssetType, DromEnergyDashboard } from '../services/drom-energy/index.ts';
 import { classifyMetropoles } from '../utils/metropolesElectric.ts';
-import type { EventMapPoint } from '../services/v2-map.ts';
+import { NEWS_INFO_HEX, newsLevelHex, newsOffDrawnEvents, type EventMapPoint } from '../services/v2-map.ts';
 import { fetchTrafficFlowSegment } from '../services/traffic-road.ts';
 import {
   AIR_TWEEN_MIN_ZOOM, TRAFFIC_COLOR, TRAFFIC_HOVER_LAYERS, TRAFFIC_JAM_LAYERS, TRAFFIC_LAYERS, TRAFFIC_LAYER_KEYS, TRAFFIC_SOURCE_IDS,
@@ -573,6 +573,9 @@ export class DeckGLMap {
   } | null = null;
   /** Événements consolidés de la v2 (spec 2026-09-29 § 5), déjà filtrés par App (v2-map.ts). */
   private eventPoints: EventMapPoint[] = [];
+  /** Articles reçus d'App, avant le retrait de ceux des événements dessinés (spec 2026-10-14). */
+  private rawNewsItems: NewsItem[] = [];
+  private drawnEventIds: ReadonlySet<number> = new Set();
   private eventPointsVisible = false;
   private onEventPointClick: ((id: number) => void) | null = null;
   private airTrafficVisible = false;
@@ -1360,8 +1363,8 @@ export class DeckGLMap {
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 30, 8, 45, 12, 60],
         'circle-color': ['match', ['get', 'level'],
-          'critical', 'rgba(255,45,85,0.25)',
-          'high', 'rgba(255,107,53,0.20)',
+          'critical', 'rgba(255,59,48,0.25)',
+          'high', 'rgba(255,149,0,0.20)',
           'rgba(0,0,0,0)'],
         'circle-blur': 0.8,
       },
@@ -1376,25 +1379,20 @@ export class DeckGLMap {
       paint: {
         // Color by max threat level in cluster with better opacity for DSFR map
         'circle-color': ['case',
-          ['>=', ['get', 'maxThreat'], 3], 'rgba(255,107,53,1)',  // high
-          ['>=', ['get', 'maxThreat'], 2], 'rgba(255,204,0,1)',   // medium
-          ['>=', ['get', 'maxThreat'], 1], 'rgba(52,199,89,1)',   // low
-          'rgba(90,200,250,1)'  // info
+          ['>=', ['get', 'maxThreat'], 3], newsLevelHex('high'),
+          ['>=', ['get', 'maxThreat'], 2], newsLevelHex('medium'),
+          ['>=', ['get', 'maxThreat'], 1], newsLevelHex('low'),
+          NEWS_INFO_HEX,
         ],
         // Halo to make it pop like DSFR icons
         'circle-stroke-width': ['case',
-          ['boolean', ['feature-state', 'hover'], false], 3, 0],
+          ['boolean', ['feature-state', 'hover'], false], 3, 1],
         'circle-stroke-color': ['case',
           ['boolean', ['feature-state', 'hover'], false],
           '#ffffff',
-          'rgba(0,0,0,0)'],
-        'circle-radius': [
-          'step', ['get', 'point_count'],
-          18,     // < 5
-          5, 24,  // 5-15
-          15, 32, // 15-50
-          50, 42, // 50+
-        ],
+          'rgba(10,10,15,0.8)'],
+        // Taille fixe : le nombre d'articles est écrit au centre (légende sans échelle de taille, spec 2026-10-14).
+        'circle-radius': 13,
         'circle-opacity': 0.9,
       },
     });
@@ -1412,7 +1410,7 @@ export class DeckGLMap {
         'text-allow-overlap': false,
       },
       paint: {
-        'text-color': '#ffffff',
+        'text-color': '#0a0a0f',
       },
     });
 
@@ -1425,11 +1423,11 @@ export class DeckGLMap {
       filter: ['!', ['has', 'point_count']],
       paint: {
         'circle-color': ['match', ['get', 'level'],
-          'critical', 'rgba(255,45,85,1)',
-          'high', 'rgba(255,107,53,1)',
-          'medium', 'rgba(255,204,0,1)',
-          'low', 'rgba(52,199,89,1)',
-          'rgba(90,200,250,1)'],
+          'critical', newsLevelHex('critical'),
+          'high', newsLevelHex('high'),
+          'medium', newsLevelHex('medium'),
+          'low', newsLevelHex('low'),
+          NEWS_INFO_HEX],
         'circle-radius': ['interpolate', ['linear'], ['zoom'],
           4, ['match', ['get', 'level'], 'critical', 5.5, 'high', 5, 'medium', 4.5, 4],
           7, ['match', ['get', 'level'], 'critical', 7, 'high', 6.5, 'medium', 5.5, 5],
@@ -2750,7 +2748,7 @@ export class DeckGLMap {
       source: SRC_CRITICAL,
       paint: {
         'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 25, 8, 40, 12, 55],
-        'circle-color': 'rgba(255,45,85,0.15)',
+        'circle-color': 'rgba(255,59,48,0.15)',
         'circle-blur': 0.7,
       },
     });
@@ -2760,7 +2758,7 @@ export class DeckGLMap {
       type: 'circle',
       source: SRC_CRITICAL,
       paint: {
-        'circle-color': 'rgba(255,45,85,1)',
+        'circle-color': newsLevelHex('critical'),
         'circle-radius': ['interpolate', ['linear'], ['zoom'],
           4, 6.5,
           7, 8.5,
@@ -2771,7 +2769,7 @@ export class DeckGLMap {
         'circle-stroke-color': ['case',
           ['boolean', ['feature-state', 'hover'], false],
           '#ffffff',
-          'rgba(255,159,10,0.9)'],
+          'rgba(10,10,15,0.85)'],
         'circle-opacity': 1,  // Always fully visible
       },
     });
@@ -5281,7 +5279,14 @@ export class DeckGLMap {
   // ═══════════════════════════════════════════════════════════════
 
   updateNews(items: NewsItem[]): void {
-    this.newsItems = items.filter((i) => i.lat != null && i.lon != null);
+    this.rawNewsItems = items;
+    this.applyNewsItems();
+  }
+
+  /** Articles dessinés : localisés, et hors des événements dessinés quand la couche Événements est allumée. */
+  private applyNewsItems(): void {
+    const shown = this.eventPointsVisible ? newsOffDrawnEvents(this.rawNewsItems, this.drawnEventIds) : this.rawNewsItems;
+    this.newsItems = shown.filter((i) => i.lat != null && i.lon != null);
     this.itemsById.clear();
     for (const it of this.newsItems) this.itemsById.set(it.id, it);
     this.syncNewsSource();
@@ -8107,6 +8112,8 @@ export class DeckGLMap {
 
   setEventPoints(points: EventMapPoint[]): void {
     this.eventPoints = points;
+    this.drawnEventIds = new Set(points.map((p) => p.id));
+    this.applyNewsItems();
     this.scheduleOverlayUpdate();
   }
 
@@ -8696,6 +8703,7 @@ export class DeckGLMap {
     const eventsVisible = layers.events === true;
     if (eventsVisible !== this.eventPointsVisible) {
       this.eventPointsVisible = eventsVisible;
+      this.applyNewsItems();
       this.scheduleOverlayUpdate();
     }
     // Update DOM overlay immediately to reflect news toggle
