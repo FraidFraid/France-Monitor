@@ -27,7 +27,10 @@ import {
 import type { MetropoleConsumption } from '../services/metropoles.ts';
 import type { DromEnergyAsset, DromEnergyAssetType, DromEnergyDashboard } from '../services/drom-energy/index.ts';
 import { classifyMetropoles } from '../utils/metropolesElectric.ts';
-import { NEWS_INFO_HEX, newsLevelHex, newsOffDrawnEvents, type EventMapPoint } from '../services/v2-map.ts';
+import {
+  alertLabel, alertPriority, categoryIcon, drawnRadius, layoutAlertLabels, NEWS_INFO_HEX, newsLevelHex, newsOffDrawnEvents,
+  type EventMapPoint, type LabelBox,
+} from '../services/v2-map.ts';
 import { fetchTrafficFlowSegment } from '../services/traffic-road.ts';
 import {
   AIR_TWEEN_MIN_ZOOM, TRAFFIC_COLOR, TRAFFIC_HOVER_LAYERS, TRAFFIC_JAM_LAYERS, TRAFFIC_LAYERS, TRAFFIC_LAYER_KEYS, TRAFFIC_SOURCE_IDS,
@@ -520,6 +523,8 @@ export class DeckGLMap {
 
   // Pulse overlay for critical/high alerts
   private pulseOverlay: HTMLElement | null = null;
+  /** Pictos et étiquettes des événements rouges et orange (spec 2026-10-14) : DOM sans pointeur, le clic passe au point Deck.gl. */
+  private alertOverlay: HTMLElement | null = null;
   private pulseMarkers: Map<string, HTMLElement> = new Map();
 
   // NOTE: Dynamic dasharray animations disabled due to MapLibre LineAtlas saturation.
@@ -3661,6 +3666,9 @@ export class DeckGLMap {
     // PULSE OVERLAY (CSS animations for critical/high alerts)
     // ═══════════════════════════════════════════════════════════════
     this.initPulseOverlay();
+    this.alertOverlay = document.createElement('div');
+    this.alertOverlay.className = 'event-alert-overlay';
+    this.container.appendChild(this.alertOverlay);
     // Halo des câbles : animé seulement quand la couche Connectivité est visible (setLayerVisibility, audit 30).
 
     // Update pulse markers on map move — throttled via requestAnimationFrame
@@ -3672,6 +3680,7 @@ export class DeckGLMap {
       pulseRafId = requestAnimationFrame(() => {
         pulseRafId = null;
         this.updatePulseMarkerPositions();
+        this.syncEventAlertMarkers();
       });
     };
     this.map.on('move', schedulePulseUpdate);
@@ -3865,7 +3874,7 @@ export class DeckGLMap {
         coordinateSystem: COORDINATE_SYSTEM.LNGLAT,
         getPosition: (d: EventMapPoint) => [d.lon, d.lat],
         radiusUnits: 'pixels',
-        getRadius: (d: EventMapPoint) => d.radius,
+        getRadius: (d: EventMapPoint) => drawnRadius(d),
         filled: true,
         getFillColor: (d: EventMapPoint) => (d.hollow ? [0, 0, 0, 0] : [...d.color, 220]) as [number, number, number, number],
         stroked: true,
@@ -8115,10 +8124,43 @@ export class DeckGLMap {
     this.drawnEventIds = new Set(points.map((p) => p.id));
     this.applyNewsItems();
     this.scheduleOverlayUpdate();
+    this.syncEventAlertMarkers();
   }
 
   setOnEventPointClick(handler: ((id: number) => void) | null): void {
     this.onEventPointClick = handler;
+  }
+
+  /** Largeur estimée d'une étiquette (11 px, gras) : sert seulement à éviter les chevauchements. */
+  private static readonly LABEL_CHAR_PX = 6.6;
+
+  private syncEventAlertMarkers(): void {
+    const overlay = this.alertOverlay;
+    if (!overlay) return;
+    if (!this.map || !this.eventPointsVisible) {
+      overlay.replaceChildren();
+      return;
+    }
+    const map = this.map;
+    const bounds = map.getBounds();
+    const alerts = this.eventPoints.filter((p) => p.alert && bounds.contains([p.lon, p.lat])).sort(alertPriority);
+    const placed = alerts.map((p) => {
+      const { x, y } = map.project([p.lon, p.lat]);
+      const r = drawnRadius(p);
+      const text = alertLabel(p.title);
+      const box: LabelBox = { id: p.id, x: x + r + 4, y: y - 9, w: text.length * DeckGLMap.LABEL_CHAR_PX + 14, h: 18 };
+      return { p, x, y, r, text, box };
+    });
+    const labelled = layoutAlertLabels(placed.map((a) => a.box));
+    overlay.innerHTML = placed.map(({ p, x, y, r, text }) => {
+      const hex = levelHex(p.level);
+      const label = labelled.has(p.id)
+        ? `<span class="event-alert__label" style="--lvl:${hex}">${escapeHtml(text)}</span>`
+        : '';
+      // Rond vide (« à confirmer ») : picto à la couleur du niveau ; rond plein : picto blanc.
+      return `<div class="event-alert" data-id="${p.id}" style="left:${x.toFixed(1)}px;top:${y.toFixed(1)}px;--r:${r}px;color:${p.hollow ? hex : '#ffffff'}">`
+        + `${fmIcon(categoryIcon(p.category), { size: Math.round(r * 1.1), className: 'event-alert__icon' })}${label}</div>`;
+    }).join('');
   }
 
   // ─── Souveraineté (spec 2026-10-04 souveraineté § 2 ; contrats § 5) ───
@@ -8705,6 +8747,7 @@ export class DeckGLMap {
       this.eventPointsVisible = eventsVisible;
       this.applyNewsItems();
       this.scheduleOverlayUpdate();
+      this.syncEventAlertMarkers();
     }
     // Update DOM overlay immediately to reflect news toggle
     this.updatePulseMarkerPositions();
@@ -8975,6 +9018,8 @@ export class DeckGLMap {
   }
 
   destroy(): void {
+    this.alertOverlay?.remove();
+    this.alertOverlay = null;
     this.radar2dDestroyed = true;
     this.radar2dOperationGeneration += 1;
     // Cleanup timeouts
