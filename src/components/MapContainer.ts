@@ -44,7 +44,7 @@ export class MapContainer {
   private deckMap: DeckGLMap | null = null;
   private svgMap: SVGMap | null = null;
   private isMobile: boolean;
-  private onItemClick: ((item: NewsItem) => void) | null = null;
+  private onItemClick: ((item: NewsItem, point?: { x: number; y: number }) => void) | null = null;
   private onItemHover: ((item: NewsItem | null, x: number, y: number) => void) | null = null;
   private onClusterHover: ((items: NewsItem[], x: number, y: number, totalCount: number) => void) | null = null;
   private onClusterClick: ((items: NewsItem[], center: [number, number]) => void) | null = null;
@@ -225,7 +225,7 @@ export class MapContainer {
     this.deckMap?.setEventPoints(points);
   }
 
-  setOnEventPointClick(handler: ((id: number) => void) | null): void {
+  setOnEventPointClick(handler: ((id: number, x: number, y: number) => void) | null): void {
     this.deckMap?.setOnEventPointClick(handler);
   }
 
@@ -374,7 +374,7 @@ export class MapContainer {
   }
 
   // ─── Events ───
-  setOnItemClick(handler: (item: NewsItem) => void): void {
+  setOnItemClick(handler: (item: NewsItem, point?: { x: number; y: number }) => void): void {
     this.onItemClick = handler;
     this.deckMap?.setOnItemClick(handler);
     this.svgMap?.setOnItemClick(handler);

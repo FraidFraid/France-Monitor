@@ -382,7 +382,7 @@ export class DeckGLMap {
   private newsItems: NewsItem[] = [];
   private itemsById: Map<string, NewsItem> = new Map();
   private hoveredId: number | null = null;
-  private onItemClick: ((item: NewsItem) => void) | null = null;
+  private onItemClick: ((item: NewsItem, point?: { x: number; y: number }) => void) | null = null;
   private onRawMapClick: ((lat: number, lon: number) => void) | null = null;
   private onItemHover:
     | ((item: NewsItem | null, x: number, y: number) => void)
@@ -582,7 +582,7 @@ export class DeckGLMap {
   private rawNewsItems: NewsItem[] = [];
   private drawnEventIds: ReadonlySet<number> = new Set();
   private eventPointsVisible = false;
-  private onEventPointClick: ((id: number) => void) | null = null;
+  private onEventPointClick: ((id: number, x: number, y: number) => void) | null = null;
   private airTrafficVisible = false;
   private civilAirTrafficFlights: AirTrafficFlight[] = [];  // Filtered: excludes military callsigns
   private legendHoverCategory: string | null = null;
@@ -3007,8 +3007,7 @@ export class DeckGLMap {
       if (features.length > 0) {
         const itemId = features[0].properties?.itemId as string | undefined;
         const item = itemId ? this.itemsById.get(itemId) ?? null : null;
-        console.log('[DeckGLMap] Click on point:', itemId, item?.title, item?.link);
-        if (item && this.onItemClick) this.onItemClick(item);
+        if (item && this.onItemClick) this.onItemClick(item, { x: e.point.x, y: e.point.y });
         return;
       }
 
@@ -3889,7 +3888,7 @@ export class DeckGLMap {
         },
         onClick: (info) => {
           const point = info.object as EventMapPoint | undefined;
-          if (point) this.onEventPointClick?.(point.id);
+          if (point) this.onEventPointClick?.(point.id, info.x, info.y);
         },
         updateTriggers: {
           getFillColor: this.eventPoints,
@@ -5470,7 +5469,7 @@ export class DeckGLMap {
   getSatelliteMode(): boolean { return this._satelliteMode; }
 
   // ─── Events ───
-  setOnItemClick(h: (item: NewsItem) => void): void { this.onItemClick = h; }
+  setOnItemClick(h: (item: NewsItem, point?: { x: number; y: number }) => void): void { this.onItemClick = h; }
   setOnRawMapClick(h: (lat: number, lon: number) => void): void { this.onRawMapClick = h; }
   setOnItemHover(h: (item: NewsItem | null, x: number, y: number) => void): void { this.onItemHover = h; }
   setOnViewChange(h: (vs: MapViewState) => void): void { this.onViewChange = h; }
@@ -8127,7 +8126,7 @@ export class DeckGLMap {
     this.syncEventAlertMarkers();
   }
 
-  setOnEventPointClick(handler: ((id: number) => void) | null): void {
+  setOnEventPointClick(handler: ((id: number, x: number, y: number) => void) | null): void {
     this.onEventPointClick = handler;
   }
 

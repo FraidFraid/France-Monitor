@@ -5,6 +5,7 @@
 
 import { MapContainer } from './components/MapContainer.ts';
 import { MapPopup } from './components/MapPopup.ts';
+import { buildArticlePreviewHtml, buildEventPreviewHtml, MapPreviewCard } from './components/MapPreviewCard.ts';
 import { MapLegend, type LegendCategory } from './components/MapLegend.ts';
 import { fmIcon, type IconName } from './components/shared/icons.ts';
 import { UnderMapNewsFeed } from './components/UnderMapNewsFeed.ts';
@@ -1442,6 +1443,9 @@ export class App {
   /** Thème choisi dans la v2 : filtre les points d'événements (spec 2026-09-29 § 5). */
   private v2Theme: ThemeId = 'general';
   private v2EventsState: IntelEventsState | null = null;
+  private mapPreview: MapPreviewCard | null = null;
+  /** Événement dont l'aperçu attend son détail : un détail arrivé pour un autre point est ignoré. */
+  private previewEventId: number | null = null;
   /** Ligne de base de visite figée par startV2Intel ; null avant (aucun enregistrement possible). */
   private v2BaselineSession: VisitBaselineSession | null = null;
   private v2EventsTimer: ReturnType<typeof setInterval> | null = null;
@@ -5603,6 +5607,7 @@ export class App {
     if (!mapEl) return;
 
     this.mapContainer = new MapContainer(mapEl);
+    this.mapPreview = new MapPreviewCard(mapEl);
 
     this.mapContainer.setOnItemHover((item, x, y) => {
       if (item) {
@@ -5614,14 +5619,19 @@ export class App {
       }
     });
 
-    this.mapContainer.setOnItemClick((item) => {
+    this.mapContainer.setOnItemClick((item, point) => {
       this.mapPopup?.hide();
       this.mapContainer?.selectItem(item);
       this.newsPanel?.selectItem(item.id);
+      this.routeGovernmentContextForItem(item);
+      // Clic sur un point de la carte : aperçu avec lien vers l'article complet (spec 2026-10-14), sans zoom.
+      if (point) {
+        this.openArticlePreview(item, point.x, point.y);
+        return;
+      }
       if (item.lon != null && item.lat != null) {
         this.mapContainer?.flyTo(item.lon, item.lat, 12);
       }
-      this.routeGovernmentContextForItem(item);
     });
 
     // Cluster hover: show popup with list of articles
@@ -8224,7 +8234,7 @@ export class App {
     // enregistrent la dernière liste vue (relecture finale I5).
     this.v2BaselineSession = visit.startVisitBaseline(() => poste.currentLevels(), { document, window });
     poste.setBaseline(this.v2BaselineSession.baseline);
-    this.mapContainer?.setOnEventPointClick((id) => poste.select(`event:${id}`));
+    this.mapContainer?.setOnEventPointClick((id, x, y) => { void this.openEventPreview(id, x, y); });
     void loadDepartementIndex().then((index) => {
       if (index) poste.setDepartements(index);
     });
@@ -8291,6 +8301,39 @@ export class App {
   private refreshEventPoints(): void {
     if (!this.uiV2) return;
     this.mapContainer?.setEventPoints(eventMapPoints(this.v2EventsState?.events ?? [], this.v2Theme));
+  }
+
+  /** Aperçu d'un événement : ouvert tout de suite, articles et extrait à l'arrivée du détail. */
+  private async openEventPreview(id: number, x: number, y: number): Promise<void> {
+    const event = this.v2EventsState?.events.find((e) => e.id === id);
+    const preview = this.mapPreview;
+    if (!event || !preview) {
+      this.poste?.select(`event:${id}`);
+      return;
+    }
+    this.previewEventId = id;
+    preview.setOnAction((action) => {
+      if (action === 'open-fiche') this.poste?.select(`event:${id}`);
+    });
+    preview.show(buildEventPreviewHtml(event, 'loading', Date.now()), x, y);
+    // Module chargé à la demande, comme le reste des événements (hors chunk critique).
+    const detail = await import('./services/news-events.ts')
+      .then((m) => m.fetchEventDetail(id))
+      .catch(() => null);
+    if (this.previewEventId !== id || !preview.isOpen()) return;
+    preview.update(buildEventPreviewHtml(event, detail ?? 'error', Date.now()));
+  }
+
+  /** Aperçu d'un article ; « Voir l'événement » s'il appartient à un événement chargé. */
+  private openArticlePreview(item: NewsItem, x: number, y: number): void {
+    const preview = this.mapPreview;
+    if (!preview) return;
+    const event = item.eventId === undefined ? null : this.v2EventsState?.events.find((e) => e.id === item.eventId) ?? null;
+    this.previewEventId = null;
+    preview.setOnAction((action) => {
+      if (action === 'open-event' && event) this.poste?.select(`event:${event.id}`);
+    });
+    preview.show(buildArticlePreviewHtml(item, event, Date.now()), x, y);
   }
 
   private deliverV2Events(state: IntelEventsState | null): void {

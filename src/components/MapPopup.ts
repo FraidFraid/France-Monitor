@@ -201,7 +201,7 @@ export class MapPopup {
           ${item.locationName ? `<div class="map-popup-location">${fmIcon('map-pin')} ${escapeHtml(item.locationName)}</div>` : ''}
         </div>
         <div class="map-popup-action">
-          Cliquez pour ouvrir
+          Cliquez pour lire l’article
         </div>
       </div>
     `;

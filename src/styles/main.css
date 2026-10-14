@@ -8370,3 +8370,38 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
   border-radius: 2px;
   padding: 1px 6px;
 }
+
+/* Aperçu au clic sur la carte (spec 2026-10-14) */
+.map-preview-card {
+  position: absolute;
+  z-index: calc(var(--z-map-overlay) + 2);
+  width: 320px;
+  max-width: calc(100% - 24px);
+}
+.map-preview-card .mpc__inner {
+  position: relative;
+  background: var(--bg-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-left: 3px solid var(--lvl);
+  border-radius: 8px;
+  padding: 12px 14px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  color: var(--text-primary);
+}
+.mpc__close { position: absolute; top: 6px; right: 6px; width: 28px; height: 28px; border: 0; border-radius: 4px; background: none; color: var(--text-secondary); cursor: pointer; }
+.mpc__close:hover, .mpc__close:focus-visible { background: rgba(255, 255, 255, 0.08); color: var(--text-primary); outline: none; }
+.mpc__kind { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-secondary); margin: 0 28px 4px 0; }
+.mpc__kind i { width: 8px; height: 8px; border-radius: 50%; background: var(--lvl); flex: none; }
+.mpc__title { margin: 0 0 6px; font-size: 14px; line-height: 1.3; }
+.mpc__meta { margin: 0 0 8px; font-size: 11px; color: var(--text-muted); }
+.mpc__excerpt { margin: 0 0 8px; font-size: 12.5px; color: var(--text-secondary); line-height: 1.45; }
+.mpc__muted { margin: 0 0 8px; font-size: 12px; color: var(--text-muted); }
+.mpc__articles { list-style: none; margin: 0 0 10px; padding: 0; }
+.mpc__articles li { padding: 4px 0; border-top: 1px solid rgba(255, 255, 255, 0.08); font-size: 12px; }
+.mpc__articles a { color: var(--text-primary); text-decoration: none; }
+.mpc__articles a:hover { text-decoration: underline; }
+.mpc__articles small { display: block; color: var(--text-muted); white-space: nowrap; }
+.mpc__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.mpc__primary, .mpc__ghost { display: inline-flex; align-items: center; gap: 4px; min-height: 30px; padding: 0 10px; border-radius: 5px; font-size: 12px; white-space: nowrap; text-decoration: none; cursor: pointer; }
+.mpc__primary { background: var(--text-accent); color: #fff; border: 0; }
+.mpc__ghost { background: none; color: var(--text-primary); border: 1px solid rgba(255, 255, 255, 0.16); font: inherit; font-size: 12px; }
