@@ -65,4 +65,26 @@ describe('alertes de la carte', () => {
     const drawn = Reflect.get(deck, 'eventPoints') as EventMapPoint[];
     expect(drawn.map((p) => p.id)).toEqual([2, 3, 1]);
   });
+
+  it('calque créé après les points (démarrage) : les alertes apparaissent tout de suite', () => {
+    const deck = new DeckGLMap(document.createElement('div'));
+    Reflect.set(deck, 'map', new ProjectMap() as unknown as maplibregl.Map);
+    deck.setLayerVisibility({ news: true, events: true } as MapLayers);
+    deck.setEventPoints([pt(1, 'rouge', 1, 49)]);
+    Reflect.apply(Reflect.get(deck, 'attachAlertOverlay') as () => void, deck, []);
+    const overlay = Reflect.get(deck, 'alertOverlay') as HTMLElement;
+    expect(overlay.querySelectorAll('.event-alert')).toHaveLength(1);
+  });
+
+  it('déplacement de la carte : mêmes éléments, seule la position change', () => {
+    const { deck, overlay } = setup();
+    deck.setEventPoints([pt(1, 'rouge', 1, 49)]);
+    const before = overlay.querySelector('.event-alert');
+    const map = Reflect.get(deck, 'map') as ProjectMap;
+    map.project = ([lon, lat]: [number, number]) => ({ x: lon * 100 + 50, y: lat * 10 });
+    Reflect.apply(Reflect.get(deck, 'syncEventAlertMarkers') as () => void, deck, []);
+    const after = overlay.querySelector<HTMLElement>('.event-alert');
+    expect(after).toBe(before);
+    expect(after?.style.left).toBe('150px');
+  });
 });

@@ -71,3 +71,22 @@ describe('MapLegend · à la demande', () => {
     legend.destroy();
   });
 });
+
+describe('MapLegend · bascule d’un niveau', () => {
+  it('garde le focus sur le bouton et la position de défilement', () => {
+    sessionStorage.setItem('fm-legend-open', '1');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const legend = new MapLegend(host);
+    legend.init();
+    legend.setEventsKey('<button type="button" data-key-action="level:rouge" aria-pressed="true">Rouge</button>');
+    const panel = host.querySelector<HTMLElement>('.map-key');
+    if (panel) panel.scrollTop = 40;
+    host.querySelector<HTMLButtonElement>('[data-key-action="level:rouge"]')?.focus();
+    legend.setEventsKey('<button type="button" data-key-action="level:rouge" aria-pressed="false">Rouge</button>');
+    expect((document.activeElement as HTMLElement | null)?.dataset.keyAction).toBe('level:rouge');
+    expect(host.querySelector<HTMLElement>('.map-key')?.scrollTop).toBe(40);
+    legend.destroy();
+    host.remove();
+  });
+});

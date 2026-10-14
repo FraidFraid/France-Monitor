@@ -347,8 +347,19 @@ export class MapLegend {
         if (this.element) {
             const hasContent = this.categories.some(cat => cat.visible !== false) || this.eventsKeyHtml !== '';
             this.element.style.display = hasContent ? 'flex' : 'none';
+            // Re-rendu complet : on rend le focus clavier et la position de défilement de la bulle.
+            const focused = document.activeElement instanceof HTMLElement && this.element.contains(document.activeElement)
+                ? document.activeElement.dataset.keyAction ?? null
+                : null;
+            const scrollTop = this.element.querySelector<HTMLElement>('.map-key')?.scrollTop ?? 0;
             this.element.innerHTML = this.render();
             this.bindEvents();
+            const panel = this.element.querySelector<HTMLElement>('.map-key');
+            if (panel) panel.scrollTop = scrollTop;
+            if (focused !== null) {
+                [...this.element.querySelectorAll<HTMLElement>('[data-key-action]')]
+                    .find(el => el.dataset.keyAction === focused)?.focus();
+            }
         }
     }
 

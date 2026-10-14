@@ -525,6 +525,8 @@ export class DeckGLMap {
   private pulseOverlay: HTMLElement | null = null;
   /** Pictos et étiquettes des événements rouges et orange (spec 2026-10-14) : DOM sans pointeur, le clic passe au point Deck.gl. */
   private alertOverlay: HTMLElement | null = null;
+  /** Un élément par alerte affichée : au déplacement, seule la position change. */
+  private alertEls = new Map<number, { el: HTMLElement; sig: string }>();
   private pulseMarkers: Map<string, HTMLElement> = new Map();
 
   // NOTE: Dynamic dasharray animations disabled due to MapLibre LineAtlas saturation.
@@ -3665,9 +3667,7 @@ export class DeckGLMap {
     // PULSE OVERLAY (CSS animations for critical/high alerts)
     // ═══════════════════════════════════════════════════════════════
     this.initPulseOverlay();
-    this.alertOverlay = document.createElement('div');
-    this.alertOverlay.className = 'event-alert-overlay';
-    this.container.appendChild(this.alertOverlay);
+    this.attachAlertOverlay();
     // Halo des câbles : animé seulement quand la couche Connectivité est visible (setLayerVisibility, audit 30).
 
     // Update pulse markers on map move — throttled via requestAnimationFrame
@@ -3684,6 +3684,8 @@ export class DeckGLMap {
     };
     this.map.on('move', schedulePulseUpdate);
     this.map.on('zoom', schedulePulseUpdate);
+    // Un redimensionnement (panneau ouvert ou fermé) déplace les points sans événement « move ».
+    this.map.on('resize', schedulePulseUpdate);
 
     // Couches santé au-dessus des autres remplissages : contours, marqueurs, puis les sites d'urgences.
     try {
@@ -8134,11 +8136,21 @@ export class DeckGLMap {
   /** Largeur estimée d'une étiquette (11 px, gras) : sert seulement à éviter les chevauchements. */
   private static readonly LABEL_CHAR_PX = 6.6;
 
+  /** Crée le calque des alertes à la fin de l'initialisation et y place tout de suite les points déjà reçus. */
+  private attachAlertOverlay(): void {
+    this.alertOverlay = document.createElement('div');
+    this.alertOverlay.className = 'event-alert-overlay';
+    this.container.appendChild(this.alertOverlay);
+    this.alertEls.clear();
+    this.syncEventAlertMarkers();
+  }
+
   private syncEventAlertMarkers(): void {
     const overlay = this.alertOverlay;
     if (!overlay) return;
     if (!this.map || !this.eventPointsVisible) {
       overlay.replaceChildren();
+      this.alertEls.clear();
       return;
     }
     const map = this.map;
@@ -8152,16 +8164,40 @@ export class DeckGLMap {
       return { p, x, y, r, text, box };
     });
     const labelled = layoutAlertLabels(placed.map((a) => a.box));
-    overlay.innerHTML = placed.map(({ p, x, y, r, text }) => {
+    const seen = new Set<number>();
+    for (const { p, x, y, r, text } of placed) {
+      seen.add(p.id);
       const hex = levelHex(p.level);
-      const label = labelled.has(p.id)
-        ? `<span class="event-alert__label" style="--lvl:${hex}">${escapeHtml(text)}</span>`
-        : '';
-      // Rond vide (« à confirmer ») : picto à la couleur du niveau ; rond plein : picto blanc.
-      return `<div class="event-alert" data-id="${p.id}" style="left:${x.toFixed(1)}px;top:${y.toFixed(1)}px;--r:${r}px;color:${p.hollow ? hex : '#ffffff'}">`
-        + `${fmIcon(categoryIcon(p.category), { size: Math.round(r * 1.1), className: 'event-alert__icon' })}${label}</div>`;
-    }).join('');
+      const label = labelled.has(p.id) ? text : '';
+      const sig = `${p.level}|${p.hollow ? 1 : 0}|${r}|${p.category}|${label}`;
+      let entry = this.alertEls.get(p.id);
+      if (!entry || entry.el.parentElement !== overlay) {
+        const el = document.createElement('div');
+        el.className = 'event-alert';
+        el.dataset.id = String(p.id);
+        overlay.appendChild(el);
+        entry = { el, sig: '' };
+        this.alertEls.set(p.id, entry);
+      }
+      if (entry.sig !== sig) {
+        // Rond vide (« à confirmer ») : picto à la couleur du niveau ; rond plein : picto blanc.
+        entry.el.style.setProperty('--r', `${r}px`);
+        entry.el.style.color = p.hollow ? hex : '#ffffff';
+        entry.el.innerHTML = fmIcon(categoryIcon(p.category), { size: Math.round(r * 1.1), className: 'event-alert__icon' })
+          + (label ? `<span class="event-alert__label" style="--lvl:${hex}">${escapeHtml(label)}</span>` : '');
+        entry.sig = sig;
+      }
+      entry.el.style.left = `${x.toFixed(1)}px`;
+      entry.el.style.top = `${y.toFixed(1)}px`;
+    }
+    for (const [id, entry] of this.alertEls) {
+      if (!seen.has(id)) {
+        entry.el.remove();
+        this.alertEls.delete(id);
+      }
+    }
   }
+
 
   // ─── Souveraineté (spec 2026-10-04 souveraineté § 2 ; contrats § 5) ───
 
