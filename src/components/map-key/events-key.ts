@@ -63,10 +63,12 @@ function eventsBlock(m: EventsKeyModel): string {
     : '';
   const sizes = nestedCirclesSvg([12, 8, 5], [`5${NBSP}sources et plus`, `2 à 4${NBSP}sources`, `1${NBSP}source`], 'Sources indépendantes');
   const alerts = m.points.filter((p) => p.alert).sort((a, b) => LEVEL_RANK[b.level] - LEVEL_RANK[a.level]);
-  const domains = [...new Set(alerts.map((p) => p.category))];
-  const icons = domains.length > 0
-    ? `<div class="mk-sub">Pictogramme : domaine (rouge et orange seulement)</div><div class="mk-icons">${domains.map((c) =>
-      `<span><i class="mk-pic" style="--r:${drawnRadius({ radius: 5, alert: true })}px">${fmIcon(categoryIcon(c), { size: 11 })}</i>${categoryLabel(c)}</span>`).join('')}</div>`
+  // Domaine → niveau le plus grave (alerts est trié du plus grave au moins grave : la première occurrence gagne).
+  const domains = new Map<string, VigilanceLevel>();
+  for (const p of alerts) if (!domains.has(p.category)) domains.set(p.category, p.level);
+  const icons = domains.size > 0
+    ? `<div class="mk-sub">Pictogramme : domaine (rouge et orange seulement)</div><div class="mk-icons">${[...domains].map(([c, l]) =>
+      `<span><i class="mk-pic" style="--r:${drawnRadius({ radius: 5, alert: true })}px;--lvl:${levelHex(l)}">${fmIcon(categoryIcon(c), { size: 11 })}</i>${categoryLabel(c)}</span>`).join('')}</div>`
     : '';
   const empty = rows === '' ? '<p class="mk-sub">Aucun événement sur la carte.</p>' : '';
   return '<section class="mk" aria-label="Événements en cours"><h3>Événements en cours <small>points</small></h3>'

@@ -8119,7 +8119,8 @@ export class DeckGLMap {
   // ─── Événements consolidés (v2) ───
 
   setEventPoints(points: EventMapPoint[]): void {
-    this.eventPoints = points;
+    // Le plus grave en dernier : dessiné au-dessus, c'est lui que le clic atteint quand des points se superposent.
+    this.eventPoints = [...points].sort((a, b) => alertPriority(b, a));
     this.drawnEventIds = new Set(points.map((p) => p.id));
     this.applyNewsItems();
     this.scheduleOverlayUpdate();

@@ -8298,7 +8298,8 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
   align-items: flex-end;
   gap: 8px;
   pointer-events: none;
-  max-height: calc(100% - 56px);
+  /* Laisse libres les puces de couches en haut de la carte (jusqu'à trois lignes). */
+  max-height: calc(100% - 200px);
 }
 .map-key-host > * { pointer-events: auto; }
 .map-key-btn {
@@ -8335,8 +8336,9 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 .mk-key { margin: 4px 0 2px; }
 .mk-icons { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; font-size: 12.5px; }
 .mk-icons span { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
-.mk-pic { display: inline-flex; align-items: center; justify-content: center; flex: none; width: calc(var(--r) * 2); height: calc(var(--r) * 2); border-radius: 50%; background: var(--text-secondary); color: #fff; }
+.mk-pic { display: inline-flex; align-items: center; justify-content: center; flex: none; width: calc(var(--r) * 2); height: calc(var(--r) * 2); border-radius: 50%; background: var(--lvl); color: #fff; }
 .map-key__layers .legend-card { min-width: 0; margin-top: 10px; padding: 10px 0 0; border: 0; border-top: 1px solid rgba(255, 255, 255, 0.1); border-radius: 0; background: none; }
+.map-key__layers .legend-card h4 { font-size: 12.5px; font-weight: 600; text-transform: none; letter-spacing: 0; }
 .map-key__layers .legend-card:hover { background: none; border-color: rgba(255, 255, 255, 0.1); }
 .map-key__foot { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.1); font-size: 11px; color: var(--text-secondary); }
 @media (max-width: 768px) {

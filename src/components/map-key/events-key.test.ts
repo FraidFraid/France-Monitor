@@ -36,6 +36,9 @@ describe('bloc événements de la légende', () => {
     expect(el.querySelector('svg[aria-label^="Sources indépendantes"]')).not.toBeNull();
     const domains = [...el.querySelectorAll('.mk-icons span')].map((s) => s.textContent?.trim());
     expect(domains).toEqual(['Sécurité', 'Énergie']);
+    // Même symbole que la carte : rond à la couleur du niveau le plus grave du domaine.
+    const pics = [...el.querySelectorAll<HTMLElement>('.mk-icons .mk-pic')].map((p) => p.style.getPropertyValue('--lvl'));
+    expect(pics).toEqual(['#ff3b30', '#ff9500']);
   });
 
   it('bloc articles seul quand la couche Actualités est allumée ; vide si rien n’est allumé', () => {

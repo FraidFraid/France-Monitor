@@ -58,4 +58,11 @@ describe('alertes de la carte', () => {
     deck.setEventPoints([pt(1, 'rouge', 1, 49, '<img src=x onerror=alert(1)>')]);
     expect(overlay.querySelector('img')).toBeNull();
   });
+
+  it('les plus graves sont dessinés en dernier (au-dessus, et donc cliqués en premier)', () => {
+    const { deck } = setup();
+    deck.setEventPoints([pt(1, 'rouge', 1, 49), pt(2, 'jaune', 1, 49), pt(3, 'orange', 1, 49)]);
+    const drawn = Reflect.get(deck, 'eventPoints') as EventMapPoint[];
+    expect(drawn.map((p) => p.id)).toEqual([2, 3, 1]);
+  });
 });

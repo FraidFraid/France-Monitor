@@ -5579,7 +5579,6 @@ export class App {
     if (!mapEl) return;
 
     this.mapContainer = new MapContainer(mapEl);
-    this.mapPreview = new MapPreviewCard(mapEl);
 
     this.mapContainer.setOnItemHover((item, x, y) => {
       if (item) {
@@ -5713,6 +5712,8 @@ export class App {
     // Initialize map legend
     this.mapLegend = new MapLegend(mapEl);
     this.mapLegend.init();
+    // Créé avec la légende : un élément ajouté avant l'initialisation de la carte est effacé avec son conteneur.
+    this.mapPreview = new MapPreviewCard(mapEl);
     this.mapLegend.setOnKeyAction((action) => {
       const level = action.startsWith('level:') ? action.slice('level:'.length) : '';
       if (level !== 'rouge' && level !== 'orange' && level !== 'jaune' && level !== 'vert') return;
