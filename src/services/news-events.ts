@@ -174,7 +174,11 @@ export async function fetchEventDetail(id: number): Promise<NewsEventDetail | nu
       const title = str(a.title);
       const link = str(a.link);
       if (articleId === null || title === null || link === null) return [];
-      return [{ id: articleId, title: noEmDash(title), link, feedName: str(a.feedName), publishedAt: str(a.publishedAt) }];
+      const summary = str(a.summary);
+      return [{
+        id: articleId, title: noEmDash(title), link, feedName: str(a.feedName), publishedAt: str(a.publishedAt),
+        summary: summary === null || summary.trim() === '' ? null : noEmDash(summary),
+      }];
     })
     : [];
   const log: NewsEventDetail['log'] = Array.isArray(body.log)

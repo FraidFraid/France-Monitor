@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import {
   digestChanges,
+  fetchEventDetail,
   loadIntelEventsState,
   parseNewsEvent,
   pressAlertEvents,
@@ -123,3 +124,20 @@ describe('pressAlertEvents', () => {
   });
 });
 
+
+describe('fetchEventDetail · extrait des articles', () => {
+  afterEach(() => { vi.unstubAllGlobals(); resetNewsEventsCircuit(); });
+  it('lit summary, null s’il manque', async () => {
+    const event = { id: 3, title: 'Incendie', category: 'security', severity: 'high', status: 'active', firstSeen: '2026-10-14T06:00:00Z', lastSeen: '2026-10-14T07:00:00Z', articleCount: 2, sourceCount: 2, independentCount: 2, sourceNames: [], lat: 49.4, lon: 1.1 };
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      event,
+      articles: [
+        { id: 1, title: 'A', link: 'https://a.fr', feedName: 'Paris-Normandie', publishedAt: '2026-10-14T06:30:00Z', summary: 'Un incendie s’est déclaré.' },
+        { id: 2, title: 'B', link: 'https://b.fr', feedName: null, publishedAt: null },
+      ],
+      log: [],
+    }), { status: 200 })));
+    const detail = await fetchEventDetail(3);
+    expect(detail?.articles.map((a) => a.summary)).toEqual(['Un incendie s’est déclaré.', null]);
+  });
+});

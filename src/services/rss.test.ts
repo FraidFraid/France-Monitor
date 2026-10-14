@@ -31,3 +31,15 @@ describe('rss : aucun tiret cadratin', () => {
     expect(items?.[0].summary).toBe('Trafic : perturbé');
   });
 });
+
+describe('mapIngestItem · rattachement à un événement', () => {
+  const base = { id: 1, feedId: 'le-monde', feedName: 'Le Monde', title: 'Titre', link: 'https://example.fr/a', publishedAt: '2026-10-14T06:00:00Z' };
+  it('garde eventId numérique', () => {
+    const item = mapIngestItem({ ...base, eventId: 12 } as Parameters<typeof mapIngestItem>[0]);
+    expect(item?.eventId).toBe(12);
+  });
+  it('eventId absent ou null : non rattaché', () => {
+    expect(mapIngestItem({ ...base } as Parameters<typeof mapIngestItem>[0])?.eventId).toBeUndefined();
+    expect(mapIngestItem({ ...base, eventId: null } as Parameters<typeof mapIngestItem>[0])?.eventId).toBeUndefined();
+  });
+});

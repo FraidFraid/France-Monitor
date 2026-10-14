@@ -22,8 +22,8 @@ describe('rendu des événements', () => {
     const html = renderEventRow(event({ title: '<img src=x onerror=alert(1)>' }), 'fr', NOW, {
       event: event(), log: [],
       articles: [
-        { id: 1, title: 'ok', link: 'javascript:alert(1)', feedName: 'X', publishedAt: null },
-        { id: 2, title: 'ok2', link: 'https://example.fr/a?b="c"', feedName: 'Y', publishedAt: null },
+        { id: 1, title: 'ok', link: 'javascript:alert(1)', feedName: 'X', publishedAt: null, summary: null },
+        { id: 2, title: 'ok2', link: 'https://example.fr/a?b="c"', feedName: 'Y', publishedAt: null, summary: null },
       ],
     });
     expect(html).not.toContain('<img');

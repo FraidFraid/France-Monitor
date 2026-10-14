@@ -74,6 +74,8 @@ export interface NewsItem {
   alertable?: boolean;        // true = remplit les critères d'alerte (cf. jev-policy.derive)
   scope?: string;             // 'commune' | 'departement' | 'region' | 'national' | 'international' | 'unknown'
   scoredBy?: 'keywords' | 'groq' | 'jev' | 'llm';  // moteur ayant produit category/severity/confidence
+  /** Événement consolidé de rattachement (serveur, spec 2026-10-14) ; absent en repli flux directs. */
+  eventId?: number;
 }
 
 // ═══ Time & Filters ═══
@@ -1227,6 +1229,8 @@ export interface NewsEventArticle {
   link: string;
   feedName: string | null;
   publishedAt: string | null;
+  /** Extrait du chapeau (280 caractères au plus) pour l'aperçu de carte ; null si le flux n'en donne pas. */
+  summary: string | null;
 }
 
 export interface NewsEventDetail {

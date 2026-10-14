@@ -292,6 +292,7 @@ async function fetchViaJsonProxy(feed: Feed): Promise<{ items: NewsItem[]; sourc
 // ─── Ingestion API consolidée (/api/news) ───
 
 interface IngestApiItem {
+    eventId?: number | null;
     id?: number;
     feedId?: string;
     feedName?: string | null;
@@ -395,6 +396,7 @@ export function mapIngestItem(raw: IngestApiItem): NewsItem | null {
         alertable: typeof raw.alertable === 'boolean' ? raw.alertable : undefined,
         scope: typeof raw.scope === 'string' ? raw.scope : undefined,
         scoredBy: isScoredBy(raw.scoredBy) ? raw.scoredBy : undefined,
+        eventId: typeof raw.eventId === 'number' && Number.isFinite(raw.eventId) ? raw.eventId : undefined,
     };
 }
 

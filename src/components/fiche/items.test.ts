@@ -245,8 +245,8 @@ describe('fiche événement (spec 2026-10-01 fiches § 4.1)', () => {
   const detail: NewsEventDetail = {
     event: ev(),
     articles: [
-      { id: 1, title: 'Article ancien', link: 'https://exemple.fr/a', feedName: 'DNA', publishedAt: '2026-09-30T17:11:00Z' },
-      { id: 2, title: 'Article récent <b>', link: 'https://exemple.fr/b', feedName: 'Le Figaro', publishedAt: '2026-10-01T04:44:00Z' },
+      { id: 1, title: 'Article ancien', link: 'https://exemple.fr/a', feedName: 'DNA', publishedAt: '2026-09-30T17:11:00Z', summary: null },
+      { id: 2, title: 'Article récent <b>', link: 'https://exemple.fr/b', feedName: 'Le Figaro', publishedAt: '2026-10-01T04:44:00Z', summary: null },
     ],
     log: [
       { at: '2026-10-01T06:30:00Z', kind: 'cooling', from: 'active', to: 'cooling' },
@@ -323,7 +323,7 @@ describe('fiche événement (spec 2026-10-01 fiches § 4.1)', () => {
   it('articles hostiles : lien non http en span, titre, flux et source échappés', () => {
     const hostile: NewsEventDetail = {
       ...detail,
-      articles: [{ id: 9, title: '<img src=x onerror=alert(1)>', link: 'javascript:alert(1)', feedName: '<i>flux</i>', publishedAt: '2026-10-01T04:44:00Z' }],
+      articles: [{ id: 9, title: '<img src=x onerror=alert(1)>', link: 'javascript:alert(1)', feedName: '<i>flux</i>', publishedAt: '2026-10-01T04:44:00Z', summary: null }],
     };
     const m = build({ event: ev({ sourceNames: ['<b>X</b>'] }), detail: hostile });
     const html = byId(m).get('articles')?.html ?? '';
