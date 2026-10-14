@@ -40,6 +40,11 @@ describe('mapNewsRow', () => {
     classifier_version: 'kw-1',
   };
 
+  it('expose l’événement de rattachement (eventId), null sinon', () => {
+    expect(mapNewsRow({ ...BASE_ROW, event_id: 7 }).eventId).toBe(7);
+    expect(mapNewsRow({ ...BASE_ROW }).eventId).toBeNull();
+  });
+
   it('ligne sans colonnes Jev (avant migration) → champs Jev à null, scoredBy dérivé de classifier_version', () => {
     const item = mapNewsRow(BASE_ROW);
     expect(item.scoredBy).toBe('keywords');

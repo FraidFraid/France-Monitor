@@ -63,6 +63,7 @@ export function mapNewsRow(row) {
     confidence: toNumberOrNull(row.confidence),
     lat: toNumberOrNull(row.lat),
     lon: toNumberOrNull(row.lon),
+    eventId: toNumberOrNull(row.event_id),
     scoredBy: scoredByFromVersion(row.classifier_version),
     relevance: toNumberOrNull(row.relevance),
     noise: toBooleanOrNull(row.is_noise),
@@ -215,7 +216,7 @@ export async function queryNews(searchParams) {
     SELECT
       n.id, n.feed_id, f.name AS feed_name, f.region AS feed_region, f.tier,
       n.title, n.link, n.description, n.published_at, n.collected_at,
-      n.category, n.severity, n.confidence, n.lat, n.lon, n.classifier_version,
+      n.category, n.severity, n.confidence, n.lat, n.lon, n.event_id, n.classifier_version,
       to_jsonb(n)->>'relevance' AS relevance,
       to_jsonb(n)->>'is_noise' AS is_noise,
       to_jsonb(n)->>'alertable' AS alertable,

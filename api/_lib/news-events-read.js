@@ -106,7 +106,7 @@ export async function getEventDetail(sql, id) {
   const [row] = await sql`SELECT * FROM news_events WHERE id = ${id}`;
   if (!row) return null;
   const articles = await sql`
-    SELECT n.id, n.title, n.link, f.name AS feed_name,
+    SELECT n.id, n.title, n.link, n.description, f.name AS feed_name,
            LEAST(coalesce(n.published_at, n.collected_at), n.collected_at + interval '1 hour') AS effective_at
     FROM news_items n LEFT JOIN feeds f ON f.id = n.feed_id
     WHERE n.event_id = ${id}
@@ -125,6 +125,10 @@ export async function getEventDetail(sql, id) {
       // correctif d'entités (2026-09) restent encodés en base, parfois doublement (&amp;#039;).
       title: decodeHtmlEntities(String(a.title)),
       link: String(a.link),
+      // Extrait pour l'aperçu de carte (spec 2026-10-14) : même décodage que le titre, borné à 280 caractères.
+      summary: a.description == null || String(a.description).trim() === ''
+        ? null
+        : decodeHtmlEntities(String(a.description)).replace(/\s+/g, ' ').trim().slice(0, 280),
       feedName: a.feed_name === null ? null : String(a.feed_name),
       publishedAt: toIso(a.effective_at),
     })),

@@ -68,6 +68,10 @@ describe('lecture (Postgres embarqué)', () => {
     const detail = await getEventDetail(sql, riner.id);
     expect(detail.articles.map((a: { feedName: string }) => a.feedName)).toEqual(['Le Progrès', 'Le Monde']);
     expect(detail.log.map((l: { kind: string }) => l.kind)).toEqual(['created']);
+    for (const a of detail.articles) {
+      expect(a).toHaveProperty('summary');
+      expect(a.summary === null || (typeof a.summary === 'string' && a.summary.length <= 280)).toBe(true);
+    }
     expect(await getEventDetail(sql, top.id + 999)).toBeNull();
   });
 
