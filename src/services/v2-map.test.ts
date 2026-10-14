@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { eventMapPoints, sourcesRadius } from './v2-map.ts';
-import type { NewsEvent } from '../types/index.ts';
+import {
+  alertLabel, alertPriority, categoryIcon, categoryLabel, drawnRadius, eventMapPoints, layoutAlertLabels,
+  newsLevelHex, newsOffDrawnEvents, NEWS_INFO_HEX, sourcesRadius,
+} from './v2-map.ts';
+import type { NewsEvent, NewsItem } from '../types/index.ts';
 import { buildWorkQueue, viewWorkQueue } from './work-queue.ts';
 import type { ThemeId } from './themes.ts';
 
@@ -63,5 +66,76 @@ describe('carte et fil : un seul thème, un seul jeu d’événements', () => {
     });
     const rowEventIds = new Set(viewWorkQueue(queue, theme, true).rows.flatMap((r) => (r.ref.kind === 'event' ? [r.ref.event.id] : [])));
     for (const p of eventMapPoints(events, theme)) expect(rowEventIds.has(p.id)).toBe(true);
+  });
+});
+
+describe('alertes rouges et orange (spec 2026-10-14)', () => {
+  it('orange et rouge sont des alertes, agrandies de 5 px ; jaune ne l’est pas', () => {
+    const [orange] = eventMapPoints([event({ severity: 'high' })], 'general');
+    const [jaune] = eventMapPoints([event()], 'general');
+    expect(orange).toMatchObject({ alert: true, category: 'social', radius: 8 });
+    expect(drawnRadius(orange)).toBe(13);
+    expect(jaune.alert).toBe(false);
+    expect(drawnRadius(jaune)).toBe(8);
+  });
+
+  it('un niveau masqué dans la légende n’est pas dessiné', () => {
+    expect(eventMapPoints([event({ severity: 'high' })], 'general', new Set(['orange']))).toEqual([]);
+  });
+
+  it('priorité : le plus grave, puis le plus corroboré', () => {
+    const pts = eventMapPoints([
+      event({ id: 1, severity: 'high', independentCount: 2 }),
+      event({ id: 2, severity: 'critical', independentCount: 2 }),
+      event({ id: 3, severity: 'high', independentCount: 6 }),
+    ], 'general');
+    expect([...pts].sort(alertPriority).map((p) => p.id)).toEqual([2, 3, 1]);
+  });
+});
+
+describe('newsOffDrawnEvents', () => {
+  const item = (id: string, eventId?: number): NewsItem => ({ id, source: 's', title: 't', link: 'https://x.fr', pubDate: new Date(0), isAlert: false, eventId });
+  it('retire les articles d’un événement dessiné, garde les autres et les non rattachés', () => {
+    const out = newsOffDrawnEvents([item('a', 1), item('b', 2), item('c')], new Set([1]));
+    expect(out.map((i) => i.id)).toEqual(['b', 'c']);
+  });
+  it('aucun événement dessiné : rien n’est retiré', () => {
+    expect(newsOffDrawnEvents([item('a', 1)], new Set())).toHaveLength(1);
+  });
+});
+
+describe('étiquettes', () => {
+  it('coupe au mot, 40 caractères au plus, sans ponctuation finale', () => {
+    expect(alertLabel('Incendie sur un site industriel classé')).toBe('Incendie sur un site industriel classé');
+    const long = alertLabel('Explosion dans une usine chimique de Seine-Maritime, plan particulier déclenché');
+    expect(long.length).toBeLessThanOrEqual(40);
+    expect(long.endsWith('…')).toBe(true);
+    expect(long).not.toMatch(/[,\s]…$/);
+  });
+
+  it('placement sans chevauchement, dans l’ordre de priorité', () => {
+    const kept = layoutAlertLabels([
+      { id: 1, x: 0, y: 0, w: 100, h: 18 },
+      { id: 2, x: 50, y: 5, w: 100, h: 18 },
+      { id: 3, x: 0, y: 30, w: 100, h: 18 },
+    ]);
+    expect([...kept]).toEqual([1, 3]);
+  });
+
+  it('picto et libellé par domaine, repli « Général »', () => {
+    expect(categoryIcon('security')).toBe('shield');
+    expect(categoryIcon('inconnu')).toBe('newspaper');
+    expect(categoryLabel('energy')).toBe('Énergie');
+    expect(categoryLabel('inconnu')).toBe('Général');
+  });
+});
+
+describe('palette des actualités', () => {
+  it('même couleurs que la vigilance, bleu pour l’information', () => {
+    expect(newsLevelHex('critical')).toBe('#ff3b30');
+    expect(newsLevelHex('high')).toBe('#ff9500');
+    expect(newsLevelHex('medium')).toBe('#ffcc00');
+    expect(newsLevelHex('low')).toBe('#34c759');
+    expect(newsLevelHex('info')).toBe(NEWS_INFO_HEX);
   });
 });
