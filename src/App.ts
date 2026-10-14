@@ -6,6 +6,7 @@
 import { MapContainer } from './components/MapContainer.ts';
 import { MapPopup } from './components/MapPopup.ts';
 import { buildArticlePreviewHtml, buildEventPreviewHtml, MapPreviewCard } from './components/MapPreviewCard.ts';
+import { buildEventsKeyHtml } from './components/map-key/events-key.ts';
 import { MapLegend, type LegendCategory } from './components/MapLegend.ts';
 import { fmIcon, type IconName } from './components/shared/icons.ts';
 import { UnderMapNewsFeed } from './components/UnderMapNewsFeed.ts';
@@ -768,37 +769,6 @@ const HOSPITALS_LEGEND: LegendCategory = {
   refresh: { label: 'Annuelle' },
 };
 
-const NEWS_LEGEND: LegendCategory = {
-  id: 'news',
-  title: 'Actualites',
-  columns: 2,
-  splitIndex: 6,
-  items: [
-    { id: 'news-severity-header', label: 'Niveau', color: '#9898a8', isHeader: true },
-    { id: 'news-critical', label: 'Critique', color: '#ff2d55', shape: 'circle' },
-    { id: 'news-high', label: 'Eleve', color: '#ff6b35', shape: 'circle' },
-    { id: 'news-medium', label: 'Modere', color: '#ffcc00', shape: 'circle' },
-    { id: 'news-low', label: 'Faible', color: '#34c759', shape: 'circle' },
-    { id: 'news-info', label: 'Information', color: '#5ac8fa', shape: 'circle' },
-    { id: 'news-clusters-header', label: 'Clusters', color: '#9898a8', isHeader: true },
-    { id: 'news-cluster-small', label: '< 5 articles', color: '#94a3b8', icon: '●', iconSize: 12 },
-    { id: 'news-cluster-medium', label: '5 a 14 articles', color: '#94a3b8', icon: '●', iconSize: 16 },
-    { id: 'news-cluster-large', label: '15 a 49 articles', color: '#94a3b8', icon: '●', iconSize: 20 },
-    { id: 'news-cluster-xlarge', label: '50+ articles', color: '#94a3b8', icon: '●', iconSize: 24 },
-  ],
-  source: {
-    label: 'RSS PQR / geocodage local / classification hybride',
-  },
-  refresh: {
-    label: 'Environ 5 min'
-  },
-  notes: [
-    'Couleur = niveau de gravite.',
-    'Taille du cluster = nombre d articles agreges.',
-  ],
-};
-
-
 // Couleur des régions = solde production/consommation éco2mix (teintes de REGION_BALANCE_COLORS,
 // deckgl/constants.ts), jamais une vigilance : Écowatt est national et dit dans les notes.
 const ENERGY_ECOWATT_LEGEND: LegendCategory = {
@@ -1014,7 +984,6 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     role: 'child',
     dependsOnGroup: true,
     label: 'Actualites',
-    legend: NEWS_LEGEND,
   },
   {
     id: 'events',
@@ -1442,6 +1411,8 @@ export class App {
   private v2IntelStarted = false;
   /** Thème choisi dans la v2 : filtre les points d'événements (spec 2026-09-29 § 5). */
   private v2Theme: ThemeId = 'general';
+  /** Niveaux masqués depuis la légende (clic sur une ligne de niveau, spec 2026-10-14). */
+  private v2HiddenLevels = new Set<VigilanceLevel>();
   private v2EventsState: IntelEventsState | null = null;
   private mapPreview: MapPreviewCard | null = null;
   /** Événement dont l'aperçu attend son détail : un détail arrivé pour un autre point est ignoré. */
@@ -1824,6 +1795,7 @@ export class App {
         this.mapLegend?.setCategoryVisibility(config.legend.id, isVisible);
       }
     }
+    this.refreshEventPoints();
   }
 
   private refreshTrafficLegend(): void {
@@ -5741,13 +5713,19 @@ export class App {
     // Initialize map legend
     this.mapLegend = new MapLegend(mapEl);
     this.mapLegend.init();
+    this.mapLegend.setOnKeyAction((action) => {
+      const level = action.startsWith('level:') ? action.slice('level:'.length) : '';
+      if (level !== 'rouge' && level !== 'orange' && level !== 'jaune' && level !== 'vert') return;
+      if (this.v2HiddenLevels.has(level)) this.v2HiddenLevels.delete(level);
+      else this.v2HiddenLevels.add(level);
+      this.refreshEventPoints();
+    });
 
     // Wire map hover interactions
     this.mapLegend.setOnHover((categoryId) => {
       this.mapContainer?.setLegendHover(categoryId);
     });
 
-    this.mapLegend.addCategory(NEWS_LEGEND);
     this.mapLegend.addCategory(ROAD_TRAFFIC_LEGEND);
     this.mapLegend.addCategory(MARITIME_TRAFFIC_LEGEND);
     this.mapLegend.addCategory(AIR_TRAFFIC_LEGEND);
@@ -8299,8 +8277,16 @@ export class App {
   /** Remet les événements à la v2 et enregistre la ligne de base, au même moment que l'ancre de visite. */
   /** Couche Événements de la v2 : les événements du fil, du thème choisi (spec 2026-09-29 § 5). */
   private refreshEventPoints(): void {
-    if (!this.uiV2) return;
-    this.mapContainer?.setEventPoints(eventMapPoints(this.v2EventsState?.events ?? [], this.v2Theme));
+    // L'ancienne interface (?ui=v1) n'a pas d'événements : sa légende garde le seul bloc des articles.
+    const events = this.uiV2 ? this.v2EventsState?.events ?? [] : [];
+    const all = eventMapPoints(events, this.v2Theme);
+    if (this.uiV2) this.mapContainer?.setEventPoints(eventMapPoints(events, this.v2Theme, this.v2HiddenLevels));
+    this.mapLegend?.setEventsKey(buildEventsKeyHtml({
+      eventsVisible: this.uiV2 && this.activeLayers.events === true,
+      newsVisible: this.activeLayers.news === true,
+      points: all,
+      hiddenLevels: this.v2HiddenLevels,
+    }));
   }
 
   /** Aperçu d'un événement : ouvert tout de suite, articles et extrait à l'arrivée du détail. */

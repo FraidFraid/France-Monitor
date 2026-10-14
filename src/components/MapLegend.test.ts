@@ -36,3 +36,38 @@ describe('MapLegend.setCategories', () => {
     expect(host.textContent?.match(/Crues/g)).toHaveLength(2);
   });
 });
+
+describe('MapLegend · à la demande', () => {
+  it('fermée : un bouton « Légende » ; ouverte : « Lire la carte », bloc événements puis couches ; Échap ferme', () => {
+    sessionStorage.clear();
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const legend = new MapLegend(host);
+    legend.init();
+    legend.addCategory({ id: 'vigilance', title: 'Vigilance météo', items: [{ id: 'v', label: 'Rouge', color: '#ff3b30' }], visible: true });
+    legend.setEventsKey('<section class="mk">Événements en cours</section>');
+    const btn = host.querySelector<HTMLButtonElement>('.map-key-btn');
+    expect(btn?.textContent).toContain('Légende');
+    expect(btn?.getAttribute('aria-expanded')).toBe('false');
+    btn?.click();
+    const dialog = host.querySelector('[role="dialog"]');
+    expect(dialog?.getAttribute('aria-label')).toBe('Lire la carte');
+    expect(dialog?.textContent?.indexOf('Événements en cours')).toBeLessThan(dialog?.textContent?.indexOf('Vigilance météo') ?? 0);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+    legend.destroy();
+  });
+
+  it('un clic sur un niveau remonte l’action', () => {
+    sessionStorage.setItem('fm-legend-open', '1');
+    const host = document.createElement('div');
+    const legend = new MapLegend(host);
+    legend.init();
+    const onAction = vi.fn();
+    legend.setOnKeyAction(onAction);
+    legend.setEventsKey('<button type="button" data-key-action="level:rouge">Rouge</button>');
+    host.querySelector<HTMLButtonElement>('[data-key-action="level:rouge"]')?.click();
+    expect(onAction).toHaveBeenCalledWith('level:rouge');
+    legend.destroy();
+  });
+});

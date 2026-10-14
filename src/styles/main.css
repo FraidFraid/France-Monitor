@@ -5523,112 +5523,7 @@ button.header-quality-link {
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
 /* Container ancré en bas de carte */
-.legend-banner-container {
-  position: absolute;
-  bottom: 12px;
-  /* Ajusté pour laisser les crédits de la map visibles */
-  left: 0;
-  width: 100%;
-  padding: 0 24px;
-  box-sizing: border-box;
-
-  /* z-index ajusté : doit être au dessus du canvas de la map MAIS en dessous des tooltips (souvent 1000+) */
-  z-index: var(--z-map-overlay);
-  pointer-events: none;
-  /* Clics passent à travers sur l'espace vide... */
-
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  /* Centre les cartes horizontalement si elles sont peu nombreuses */
-}
-
-/* Zone pour le bouton de repli */
-.legend-collapse-wrapper {
-  display: flex;
-  justify-content: center;
-  pointer-events: auto;
-  margin-bottom: 6px;
-}
-
-.legend-collapse-btn {
-  background: rgba(15, 23, 36, 0.75);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  color: var(--text-muted, #94a3b8);
-  cursor: pointer;
-  padding: 4px 16px;
-  font-size: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  transition: all 0.2s ease;
-}
-
-.legend-collapse-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
-  border-color: rgba(255, 255, 255, 0.2);
-}
-
-.legend-collapse-btn__icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  border: 1px solid currentColor;
-  font-size: 9px;
-  font-weight: 700;
-  line-height: 1;
-}
-
-.legend-collapse-btn__label {
-  font-weight: 600;
-  letter-spacing: 0.3px;
-  text-transform: uppercase;
-}
-
-/* Zone scrollable horizontalement */
-.legend-scroll-area {
-  display: flex;
-  gap: 12px;
-  overflow-x: auto;
-  pointer-events: auto;
-  /* ... sauf sur cette zone de cartes */
-
-  /* Superbe effet Glassmorphism - Dashboard d'opérations */
-  background: rgba(15, 23, 36, 0.75);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 12px;
-  padding: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  max-width: 100%;
-
-  /* UI scrollbar fine pour Firefox et Webkit */
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
-}
-
-/* Scrollbar discrète sur Desktop */
-.legend-scroll-area::-webkit-scrollbar {
-  height: 6px;
-}
-
-.legend-scroll-area::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 6px;
-}
-
-/* Carte de Légende Individuelle */
+/* (anciennes règles de la bande de légende remplacées par .map-key, spec 2026-10-14) */
 .legend-card {
   flex: 0 0 auto;
   min-width: 160px;
@@ -5772,20 +5667,6 @@ button.header-quality-link {
   height: 16px;
   clip-path: polygon(50% 6%, 90% 82%, 50% 66%, 10% 82%);
   border-radius: 0;
-}
-
-/* Mobile : bannière s'étale sur la largeur, carrousel scrollable */
-@media (max-width: 768px) {
-  .legend-banner-container {
-    padding: 0 10px;
-    bottom: 8px;
-  }
-
-  .legend-scroll-area {
-    width: 100%;
-    justify-content: flex-start;
-    /* Au lieu de center */
-  }
 }
 
 /* Squelettes de chargement (animation gardée : d'autres panneaux s'en servent) */
@@ -8405,3 +8286,61 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 .mpc__primary, .mpc__ghost { display: inline-flex; align-items: center; gap: 4px; min-height: 30px; padding: 0 10px; border-radius: 5px; font-size: 12px; white-space: nowrap; text-decoration: none; cursor: pointer; }
 .mpc__primary { background: var(--text-accent); color: #fff; border: 0; }
 .mpc__ghost { background: none; color: var(--text-primary); border: 1px solid rgba(255, 255, 255, 0.16); font: inherit; font-size: 12px; }
+
+/* Légende « Lire la carte » à la demande (spec 2026-10-14) */
+.map-key-host {
+  position: absolute;
+  right: 12px;
+  bottom: 28px;
+  z-index: var(--z-map-overlay);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+  max-height: calc(100% - 56px);
+}
+.map-key-host > * { pointer-events: auto; }
+.map-key-btn {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 0 12px;
+  background: rgba(18, 18, 26, 0.95); color: var(--text-primary); border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px; font: inherit; font-size: 13px; cursor: pointer;
+}
+.map-key-btn:hover, .map-key-btn:focus-visible { border-color: var(--text-accent); outline: none; }
+.map-key {
+  width: 340px; max-width: calc(100vw - 24px); overflow: auto; min-height: 0;
+  background: rgba(14, 14, 20, 0.97); border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 8px;
+  padding: 12px 14px 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45); color: var(--text-primary);
+}
+.map-key__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.map-key__head h2 { margin: 0; font-size: 14px; font-weight: 600; }
+.map-key__close { width: 28px; height: 28px; border: 0; border-radius: 4px; background: none; color: var(--text-secondary); cursor: pointer; }
+.map-key__close:hover, .map-key__close:focus-visible { background: rgba(255, 255, 255, 0.08); color: var(--text-primary); outline: none; }
+.mk h3 { display: flex; gap: 6px; align-items: baseline; margin: 12px 0 2px; padding-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.1); font-size: 12.5px; font-weight: 600; }
+.map-key__head + .mk h3 { margin-top: 6px; padding-top: 0; border-top: 0; }
+.mk h3 small { font-weight: 400; color: var(--text-secondary); font-size: 11.5px; }
+.mk-sub { margin: 8px 0 3px; font-size: 11.5px; color: var(--text-secondary); }
+.mk-row {
+  display: grid; grid-template-columns: 24px 1fr auto; align-items: center; gap: 8px; width: calc(100% + 8px);
+  min-height: 26px; margin: 0 -4px; padding: 1px 4px; border: 0; border-radius: 4px; background: none;
+  color: var(--text-primary); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer;
+}
+.mk-row:hover, .mk-row:focus-visible { background: rgba(255, 255, 255, 0.06); outline: none; }
+.mk-row--static { cursor: default; }
+.mk-row--static:hover { background: none; }
+.mk-row--off { opacity: 0.4; }
+.mk-row--off .mk-lbl { text-decoration: line-through; }
+.mk-sym { display: flex; justify-content: center; }
+.mk-n { min-width: 2ch; text-align: right; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.mk-key { margin: 4px 0 2px; }
+.mk-icons { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; font-size: 12.5px; }
+.mk-icons span { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+.mk-pic { display: inline-flex; align-items: center; justify-content: center; flex: none; width: calc(var(--r) * 2); height: calc(var(--r) * 2); border-radius: 50%; background: var(--text-secondary); color: #fff; }
+.map-key__layers .legend-card { min-width: 0; margin-top: 10px; padding: 10px 0 0; border: 0; border-top: 1px solid rgba(255, 255, 255, 0.1); border-radius: 0; background: none; }
+.map-key__layers .legend-card:hover { background: none; border-color: rgba(255, 255, 255, 0.1); }
+.map-key__foot { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.1); font-size: 11px; color: var(--text-secondary); }
+@media (max-width: 768px) {
+  .map-key-host { left: 12px; right: 12px; align-items: stretch; }
+  .map-key { width: auto; }
+  .map-key-btn { align-self: flex-end; }
+}

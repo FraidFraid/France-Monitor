@@ -5,6 +5,8 @@
  * Affiche uniquement les catégories de données visibles.
  */
 
+import { fmIcon } from './shared/icons.ts';
+
 export interface LegendItem {
     id: string;
     label: string;
@@ -68,6 +70,15 @@ export class MapLegend {
     private onHoverCallback: ((categoryId: string | null) => void) | null = null;
     /** Repliée par défaut ; ne reste ouverte que si l'utilisateur l'a explicitement ouverte cette session. */
     private isCollapsed: boolean = !this.readOpenState();
+    private eventsKeyHtml = '';
+    private onKeyAction: ((action: string) => void) | null = null;
+    private readonly onKeydown = (ev: KeyboardEvent): void => {
+        if (ev.key !== 'Escape' || this.isCollapsed) return;
+        this.isCollapsed = true;
+        this.writeOpenState(false);
+        this.update();
+        this.element?.querySelector<HTMLButtonElement>('.map-key-btn')?.focus();
+    };
 
     constructor(container: HTMLElement) {
         this.container = container;
@@ -95,10 +106,22 @@ export class MapLegend {
 
     init(): void {
         this.element = document.createElement('div');
-        this.element.className = 'legend-banner-container';
+        this.element.className = 'map-key-host';
         this.element.innerHTML = this.render();
         this.container.appendChild(this.element);
         this.bindEvents();
+        document.addEventListener('keydown', this.onKeydown);
+    }
+
+    /** Bloc « Événements en cours » / « Autres articles » (events-key.ts), placé en tête de la bulle. */
+    setEventsKey(html: string): void {
+        if (html === this.eventsKeyHtml) return;
+        this.eventsKeyHtml = html;
+        this.update();
+    }
+
+    setOnKeyAction(callback: (action: string) => void): void {
+        this.onKeyAction = callback;
     }
 
     setOnHover(callback: (categoryId: string | null) => void): void {
@@ -107,39 +130,22 @@ export class MapLegend {
 
     private render(): string {
         const activeCategories = this.categories.filter(cat => cat.visible !== false);
-
-        if (activeCategories.length === 0) {
-            return '';
-        }
-
-        const cardsHtml = this.isCollapsed
-            ? ''
-            : activeCategories.map(cat => this.renderCategoryCard(cat)).join('');
-
-        // Repliée : petit déclencheur « ? Légende ». Ouverte : bouton pour la refermer.
-        const toggleHtml = `
-            <div class="legend-collapse-wrapper">
-                <button
-                    class="legend-collapse-btn"
-                    aria-expanded="${!this.isCollapsed}"
-                    title="${this.isCollapsed ? 'Afficher la légende' : 'Masquer la légende'}"
-                >
-                    <span class="legend-collapse-btn__icon" aria-hidden="true">${this.isCollapsed ? '?' : '▾'}</span>
-                    <span class="legend-collapse-btn__label">${this.isCollapsed ? 'Légende' : 'Masquer'}</span>
-                </button>
-            </div>
-        `;
-
-        if (this.isCollapsed) {
-            return toggleHtml;
-        }
-
+        const hasContent = activeCategories.length > 0 || this.eventsKeyHtml !== '';
+        if (!hasContent) return '';
+        const open = !this.isCollapsed;
+        const button = `<button type="button" class="map-key-btn" aria-expanded="${open}" aria-controls="map-key-dialog">`
+            + `${fmIcon('circle-help', { size: 14 })}<span>Légende</span></button>`;
+        if (!open) return button;
+        const cards = activeCategories.map(cat => this.renderCategoryCard(cat)).join('');
         return `
-            ${toggleHtml}
-            <div class="legend-scroll-area">
-                ${cardsHtml}
-            </div>
-        `;
+            <section class="map-key" id="map-key-dialog" role="dialog" aria-label="Lire la carte">
+                <header class="map-key__head"><h2>Lire la carte</h2>
+                    <button type="button" class="map-key__close" aria-label="Fermer la légende">${fmIcon('x', { size: 14 })}</button></header>
+                ${this.eventsKeyHtml}
+                ${cards ? `<div class="map-key__layers">${cards}</div>` : ''}
+                <footer class="map-key__foot">Seuls les éléments présents sur la carte sont listés.</footer>
+            </section>
+            ${button}`;
     }
 
     private renderCategoryCard(category: LegendCategory): string {
@@ -317,24 +323,30 @@ export class MapLegend {
             });
         });
 
-        const toggleBtn = this.element.querySelector('.legend-collapse-btn');
-        if (toggleBtn) {
-            toggleBtn.addEventListener('click', () => {
-                this.isCollapsed = !this.isCollapsed;
-                this.writeOpenState(!this.isCollapsed);
-                this.update();
+        const toggleBtn = this.element.querySelector('.map-key-btn');
+        toggleBtn?.addEventListener('click', () => {
+            this.isCollapsed = !this.isCollapsed;
+            this.writeOpenState(!this.isCollapsed);
+            this.update();
+        });
+        this.element.querySelector('.map-key__close')?.addEventListener('click', () => {
+            this.isCollapsed = true;
+            this.writeOpenState(false);
+            this.update();
+            this.element?.querySelector<HTMLButtonElement>('.map-key-btn')?.focus();
+        });
+        this.element.querySelectorAll<HTMLElement>('[data-key-action]').forEach(el => {
+            el.addEventListener('click', () => {
+                const action = el.dataset.keyAction;
+                if (action) this.onKeyAction?.(action);
             });
-        }
+        });
     }
 
     update(): void {
         if (this.element) {
-            const activeCategories = this.categories.filter(cat => cat.visible !== false);
-            if (activeCategories.length === 0) {
-                this.element.style.display = 'none';
-            } else {
-                this.element.style.display = 'flex';
-            }
+            const hasContent = this.categories.some(cat => cat.visible !== false) || this.eventsKeyHtml !== '';
+            this.element.style.display = hasContent ? 'flex' : 'none';
             this.element.innerHTML = this.render();
             this.bindEvents();
         }
@@ -395,6 +407,7 @@ export class MapLegend {
     }
 
     destroy(): void {
+        document.removeEventListener('keydown', this.onKeydown);
         this.element?.remove();
         this.element = null;
     }
