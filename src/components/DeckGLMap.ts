@@ -1545,8 +1545,8 @@ export class DeckGLMap {
       filter: ['==', ['get', 'type'], 'storage'],
       layout: {
         'icon-image': ENERGY_SHAPE_SQUARE,
-        // Côté de 16 à 36 px (anciens rayons 8 à 18) ; 1 = 32 px.
-        'icon-size': ['interpolate', ['linear'], ['get', 'capacity'], 1, 0.5, 7, 1.12],
+        // Côté de 12 à 24 px selon la capacité ; 1 = 32 px (forme à 76 % de l'image).
+        'icon-size': ['interpolate', ['linear'], ['get', 'capacity'], 1, 0.5, 7, 1],
         'icon-allow-overlap': true,
         'icon-ignore-placement': true,
       },
@@ -1584,7 +1584,7 @@ export class DeckGLMap {
       type: 'symbol',
       source: SRC_GAS_VITALS,
       filter: ['==', ['get', 'type'], 'terminal'],
-      layout: { 'icon-image': ENERGY_SHAPE_SQUARE, 'icon-size': 0.62, 'icon-allow-overlap': true, 'icon-ignore-placement': true },
+      layout: { 'icon-image': ENERGY_SHAPE_SQUARE, 'icon-size': 0.55, 'icon-allow-overlap': true, 'icon-ignore-placement': true },
       paint: { 'icon-color': ENERGY_STATE_HEX.nonSuivi, 'icon-halo-color': '#0a0a12', 'icon-halo-width': 1.5 },
     });
 
@@ -2766,6 +2766,9 @@ export class DeckGLMap {
     for (const layer of SOV_LAYERS) this.map.addLayer(layer);
     // Pannes réseau (deckgl/outages-map.ts) : même rang, masquées jusqu'à setLayerVisibility.
     for (const layer of OUT_LAYERS) this.map.addLayer(layer);
+    // Pictos d'alerte de l'énergie au-dessus des pannes EDF (leur rond cerclé de blanc cachait le picto), spec 2026-10-15.
+    this.map.moveLayer(LYR_ENERGY_ALERT_DISC);
+    this.map.moveLayer(LYR_ENERGY_ALERT_ICON);
 
     // Séismes et marégraphes (phase B) au-dessus de toutes les surfaces : ajoutés ici, sous la première couche de points qui suit la dernière surface.
     placeEnvBPoints(this.map);
@@ -5753,12 +5756,28 @@ export class DeckGLMap {
   /** Carré (gaz) et losange (hydraulique) en SDF, teintés par la couleur d'état. */
   private async createEnergyShapeIcons(): Promise<void> {
     if (!this.map) return;
-    const size = 64;
+    const size = ENV_ICON_SIZE;
     const load = (id: string, svg: string): Promise<void> => new Promise<void>((resolve) => {
       if (!this.map || this.map.hasImage(id)) { resolve(); return; }
       const img = new Image(size, size);
       img.onload = () => {
-        if (this.map && !this.map.hasImage(id)) this.map.addImage(id, img, { sdf: true, pixelRatio: 2 });
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (ctx && this.map && !this.map.hasImage(id)) {
+          ctx.drawImage(img, 0, 0, size, size);
+          // Vrai champ de distance (comme les pictos) : bords nets et contour `icon-halo` visible.
+          const pixels = ctx.getImageData(0, 0, size, size);
+          const sdf = alphaToSdf(pixels.data, size);
+          for (let i = 0; i < sdf.length; i += 1) {
+            pixels.data[i * 4] = 255;
+            pixels.data[i * 4 + 1] = 255;
+            pixels.data[i * 4 + 2] = 255;
+            pixels.data[i * 4 + 3] = sdf[i] ?? 0;
+          }
+          this.map.addImage(id, pixels, { sdf: true, pixelRatio: 2 });
+        }
         resolve();
       };
       img.onerror = () => { console.warn(`[DeckGLMap] Forme ${id} non chargée`); resolve(); };

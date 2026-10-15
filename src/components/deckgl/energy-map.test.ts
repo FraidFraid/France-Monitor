@@ -25,10 +25,18 @@ describe('entrées de l’énergie', () => {
 
 describe('pictos d’alerte', () => {
   it('seuls l’arrêt et la tension, le plus grave en dernier, picto de la filière, couleur de l’état', () => {
-    const fc = energyAlertFeatures([e('1', 'arret'), e('2', 'normal'), e('3', 'tension', 'gaz'), e('4', 'reduit')]);
+    const at = (x: EnergyEntry, lon: number): EnergyEntry => ({ ...x, coordinates: [lon, 47] });
+    const fc = energyAlertFeatures([at(e('1', 'arret'), 1), at(e('2', 'normal'), 2), at(e('3', 'tension', 'gaz'), 3), at(e('4', 'reduit'), 4)]);
     expect(fc.features.map((f) => f.properties?.id)).toEqual(['3', '1']);
     expect(fc.features[0].properties).toMatchObject({ energyState: 'tension', color: '#ff9500', icon: energyIconImage('flame') });
     expect(fc.features[1].properties).toMatchObject({ energyState: 'arret', color: '#ff3b30', icon: energyIconImage('atom') });
+  });
+});
+
+describe('pictos d’alerte au même endroit', () => {
+  it('un seul picto par emplacement : le plus grave, à égalité le premier inscrit (réacteur avant unité EDF)', () => {
+    const fc = energyAlertFeatures([e('nuc', 'arret'), e('edf', 'arret', 'electricite'), e('gaz', 'tension', 'gaz')]);
+    expect(fc.features.map((f) => f.properties?.id)).toEqual(['nuc']);
   });
 });
 

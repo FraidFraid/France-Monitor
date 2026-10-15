@@ -80,8 +80,15 @@ export function shapeIconSvg(shape: 'square' | 'diamond', size: number): string 
 
 /** Pictos des objets à l'arrêt ou sous tension, triés pour que le plus grave soit dessiné en dernier. */
 export function energyAlertFeatures(entries: readonly EnergyEntry[]): GeoJSON.FeatureCollection {
-  const alerts = entries.filter((x) => isEnergyAlert(x.state))
-    .sort((a, b) => ENERGY_STATE_RANK[a.state] - ENERGY_STATE_RANK[b.state]);
+  // Un seul picto par emplacement (un réacteur et son unité EDF se superposent) : le plus grave, à égalité le premier inscrit.
+  const byPlace = new Map<string, EnergyEntry>();
+  for (const x of entries) {
+    if (!isEnergyAlert(x.state)) continue;
+    const key = `${x.coordinates[0].toFixed(4)},${x.coordinates[1].toFixed(4)}`;
+    const prev = byPlace.get(key);
+    if (prev === undefined || ENERGY_STATE_RANK[x.state] > ENERGY_STATE_RANK[prev.state]) byPlace.set(key, x);
+  }
+  const alerts = [...byPlace.values()].sort((a, b) => ENERGY_STATE_RANK[a.state] - ENERGY_STATE_RANK[b.state]);
   return {
     type: 'FeatureCollection',
     features: alerts.map((x) => ({
