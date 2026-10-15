@@ -8497,7 +8497,9 @@ export class DeckGLMap {
 
   /** Unités de production en arrêt imprévu ou en maintenance, placées par la liste d'emplacements (sans emplacement : non dessinées). */
   updateOutagesPower(p: PowerOutagesResponse | null, now: number): void {
-    (this.map?.getSource(SRC_OUT_POWER) as maplibregl.GeoJSONSource | undefined)?.setData(powerFeatures(p, now));
+    const powerFc = powerFeatures(p, now);
+    (this.map?.getSource(SRC_OUT_POWER) as maplibregl.GeoJSONSource | undefined)?.setData(powerFc);
+    this.recordEnergy('outagesElec', energyEntriesFrom(powerFc.features, 'electricite', 'edf'));
     this.hideOutagesHover();
   }
 

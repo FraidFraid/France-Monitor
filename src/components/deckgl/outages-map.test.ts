@@ -14,6 +14,7 @@ import {
   outTooltipHtml, powerFeatures, telecomFeatures, topOutHit,
 } from './outages-map.ts';
 import { resolveAssetCoords } from './iip-geocoding.ts';
+import { ENERGY_STATE_HEX } from '../../services/energy-state.ts';
 
 const LATE_NOW = Date.parse('2026-10-09T16:00:00+02:00');
 const names = (p: PowerOutagesResponse): Array<string | undefined> => powerFeatures(p, OUTAGES_FIXTURE_NOW).features.map((f) => f.properties?.name as string | undefined);
@@ -79,17 +80,17 @@ describe('carte des pannes : Électricité', () => {
     for (const name of unplaced) expect(names(p), name).not.toContain(name);
     expect(fc.features).toHaveLength([...p.unplanned, ...p.planned].length - unplaced.length);
   });
-  it('arrêt imprévu en rouge, maintenance en gris clair ; EDF muet ou en retard : tout en gris', () => {
+  it('arrêt imprévu en rouge, maintenance en gris ; EDF muet ou en retard : sans état suivi (spec 2026-10-15)', () => {
     const p = powerFixtureResponse();
     const fc = powerFeatures(p, OUTAGES_FIXTURE_NOW);
-    expect(fc.features.find((f) => f.properties?.kind === 'imprevue')?.properties?.color).toBe(OUT_RECENT_HEX);
-    expect(fc.features.find((f) => f.properties?.kind === 'planifiee')?.properties?.color).toBe(OUT_MAINT_HEX);
+    expect(fc.features.find((f) => f.properties?.kind === 'imprevue')?.properties?.color).toBe(ENERGY_STATE_HEX.arret);
+    expect(fc.features.find((f) => f.properties?.kind === 'planifiee')?.properties?.color).toBe(ENERGY_STATE_HEX.maintenance);
     // Le retard se mesure sur la dernière lecture EDF réussie (R20), non sur la date de mise à jour du jeu.
     const stale = powerFeatures({ ...p, edfReadAt: '2026-10-08T10:00:00.000Z' }, OUTAGES_FIXTURE_NOW);
-    expect(new Set(stale.features.map((f) => f.properties?.color))).toEqual(new Set([OUT_LATE_HEX]));
+    expect(new Set(stale.features.map((f) => f.properties?.color))).toEqual(new Set([ENERGY_STATE_HEX.nonSuivi]));
     const mute = powerFeatures({ ...p, edfReadAt: null }, OUTAGES_FIXTURE_NOW);
-    expect(new Set(mute.features.map((f) => f.properties?.color))).toEqual(new Set([OUT_LATE_HEX]));
-    expect(powerFeatures({ ...p, edfUpdatedAt: '2026-10-01T00:00:00.000Z' }, OUTAGES_FIXTURE_NOW).features[0].properties?.color).not.toBe(OUT_LATE_HEX);
+    expect(new Set(mute.features.map((f) => f.properties?.color))).toEqual(new Set([ENERGY_STATE_HEX.nonSuivi]));
+    expect(powerFeatures({ ...p, edfUpdatedAt: '2026-10-01T00:00:00.000Z' }, OUTAGES_FIXTURE_NOW).features[0].properties?.color).not.toBe(ENERGY_STATE_HEX.nonSuivi);
   });
   it('jamais lu : aucune unité', () => {
     expect(powerFeatures(null, OUTAGES_FIXTURE_NOW).features).toEqual([]);
@@ -517,5 +518,20 @@ describe('carte des pannes : Internet et Cloud, hygiène des infobulles', () => 
     const html = cloudZoneFeatures(r, CLOUD_FIXTURE_NOW).features.map(body).join('');
     expect(html).not.toContain('<img');
     expect(html).toContain('&lt;img');
+  });
+});
+
+describe('carte des pannes : Électricité sur les états de l’énergie', () => {
+  it('arrêt imprévu rouge vigilance, maintenance gris, chaque point porte son état', () => {
+    const fc = powerFeatures(powerFixtureResponse(), OUTAGES_FIXTURE_NOW);
+    const imprevue = fc.features.find((f) => f.properties?.kind === 'imprevue');
+    const planifiee = fc.features.find((f) => f.properties?.kind === 'planifiee');
+    expect(imprevue?.properties).toMatchObject({ energyState: 'arret', color: '#ff3b30' });
+    expect(planifiee?.properties).toMatchObject({ energyState: 'maintenance', color: '#6e6e80' });
+  });
+  it('donnée EDF en retard : sans état suivi, jamais en alerte', () => {
+    const fc = powerFeatures(powerFixtureResponse(), LATE_NOW);
+    expect(fc.features.length).toBeGreaterThan(0);
+    expect(new Set(fc.features.map((f) => f.properties?.energyState))).toEqual(new Set(['nonSuivi']));
   });
 });

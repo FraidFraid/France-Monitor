@@ -25,6 +25,7 @@ import {
   LYR_OUT_TELECOM_MAINT, LYR_OUT_TELECOM_RECENT, SRC_OUT_CLOUD_REF, SRC_OUT_CLOUD_ZONES, SRC_OUT_INTERNET, SRC_OUT_POWER, SRC_OUT_TELECOM,
 } from './constants.ts';
 import { escapeHtml } from './format-utils.ts';
+import { ENERGY_STATE_HEX, powerOutageState } from '../../services/energy-state.ts';
 import { resolveAssetCoords } from './iip-geocoding.ts';
 
 type Fc = GeoJSON.FeatureCollection<GeoJSON.Point>;
@@ -94,12 +95,14 @@ export function powerFeatures(p: PowerOutagesResponse | null, now: number): Fc {
   if (p === null) return fc([]);
   const late = isOutagesDataLate('edf', p.edfReadAt, now);
   const out: PointFeature[] = [];
-  for (const u of [...p.unplanned, ...p.planned]) {
+  for (const [i, u] of [...p.unplanned, ...p.planned].entries()) {
     const at = resolveAssetCoords(u.name);
     if (at === null) continue;
+    // Couleur = état de l'énergie (spec 2026-10-15) : donnée en retard = sans état suivi, jamais en alerte.
+    const energyState = powerOutageState(u.kind, late);
     out.push({
       type: 'Feature', geometry: { type: 'Point', coordinates: at },
-      properties: { name: u.name, kind: u.kind, color: late ? OUT_LATE_HEX : u.kind === 'imprevue' ? OUT_RECENT_HEX : OUT_MAINT_HEX, body: powerBody(u, late) },
+      properties: { id: `edf-${i}-${u.name}`, name: u.name, kind: u.kind, energyState, color: ENERGY_STATE_HEX[energyState], body: powerBody(u, late) },
     });
   }
   return fc(out);
