@@ -571,6 +571,8 @@ export interface InfrastructurePoint {
   notes?: string;
   /** Couleur CSS override (ex. pour statut nucléaire dynamique RTE). */
   colorOverride?: string;
+  /** État de l'énergie (spec 2026-10-15), porté sur la carte pour la légende et le masquage. */
+  energyState?: import('../services/energy-state.ts').EnergyState;
 }
 
 export type HydraulicAssetType =

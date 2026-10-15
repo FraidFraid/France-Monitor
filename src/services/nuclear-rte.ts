@@ -13,7 +13,7 @@ import { NUCLEAR_PLANTS, NUCLEAR_UNITS } from '../config/infrastructure.ts';
 import { Watchdog } from './watchdog.ts';
 import { dedupe } from '../utils/inflight.ts';
 import { readPersisted, writePersisted } from '../utils/persistentCache.ts';
-import { levelHex } from './vigilance.ts';
+import { ENERGY_STATE_HEX, nuclearState, type EnergyState } from './energy-state.ts';
 
 // ── Watchdog registration ──
 Watchdog.register('nuclear-rte', {
@@ -155,29 +155,28 @@ export function getPlantWorstStatus(
   return 'UNKNOWN';
 }
 
-/**
- * Construit une map plantName → couleur CSS pour la carte.
- */
-export function buildNuclearColorMap(
+/** Centrale → état de l'énergie (pire statut de ses tranches actives), pour la carte (spec 2026-10-15). */
+export function buildNuclearStateMap(
   unavailabilities: NuclearUnavailability[],
-): Record<string, string> {
-  const map: Record<string, string> = {};
+  nowMs: number = Date.now(),
+): Record<string, EnergyState> {
+  const map: Record<string, EnergyState> = {};
   for (const plant of NUCLEAR_PLANTS) {
     if (plant.status === 'shutdown') continue;
-    const status = getPlantWorstStatus(plant.name, unavailabilities);
-    map[plant.name] = NUCLEAR_STATUS_COLORS[status];
+    map[plant.name] = nuclearState(getPlantWorstStatus(plant.name, unavailabilities, nowMs));
   }
   return map;
 }
 
 // ── Color map ─────────────────────────────────────────────────────────────────
 
+/** Couleurs de statut = couleurs des états de l'énergie (table unique, spec 2026-10-15). */
 export const NUCLEAR_STATUS_COLORS: Record<ReactorAvailabilityStatus, string> = {
-  AVAILABLE: levelHex('vert'),
-  REDUCED: levelHex('jaune'),
-  OUTAGE_PLANNED: '#6e6e80',
-  OUTAGE_UNPLANNED: levelHex('orange'),
-  UNKNOWN: '#3a3a4e',
+  AVAILABLE: ENERGY_STATE_HEX[nuclearState('AVAILABLE')],
+  REDUCED: ENERGY_STATE_HEX[nuclearState('REDUCED')],
+  OUTAGE_PLANNED: ENERGY_STATE_HEX[nuclearState('OUTAGE_PLANNED')],
+  OUTAGE_UNPLANNED: ENERGY_STATE_HEX[nuclearState('OUTAGE_UNPLANNED')],
+  UNKNOWN: ENERGY_STATE_HEX[nuclearState('UNKNOWN')],
 };
 
 /** Éléments de légende pour la couche nucléaire, construits à partir des couleurs de statut. */

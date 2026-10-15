@@ -106,7 +106,7 @@ import {
 } from './deckgl/format-utils.ts';
 import { fmIcon, fmStatusDot, type IconName } from './shared/icons.ts';
 import {
-  buildEnergyKeyModel, energyAlertFeatures, energyIconImage, energyStateFilter, ENERGY_ICON_NAMES, ENERGY_LAYER_KEYS,
+  buildEnergyKeyModel, energyAlertFeatures, energyEntriesFrom, energyIconImage, energyStateFilter, ENERGY_ICON_NAMES, ENERGY_LAYER_KEYS,
   ENERGY_SHAPE_DIAMOND, ENERGY_SHAPE_SQUARE, shapeIconSvg,
   type EnergyEntry, type EnergyFlowCount, type EnergyKeyModel, type EnergyLayerKey,
 } from './deckgl/energy-map.ts';
@@ -7970,7 +7970,7 @@ export class DeckGLMap {
     const fc: GeoJSON.FeatureCollection = {
       type: 'FeatureCollection',
       features: points.filter((p) => p.status !== 'shutdown').map((p) => {
-        let color = p.colorOverride ?? INFRA_COLORS[p.type] ?? '#8e8e93';
+        const color = p.colorOverride ?? INFRA_COLORS[p.type] ?? '#8e8e93';
         const isElectricGeneration = p.type === 'nuclear' || p.type === 'thermal' || p.type === 'hydro';
         const baseRadius =
           p.type === 'nuclear' ? 8
@@ -7979,15 +7979,15 @@ export class DeckGLMap {
                 : p.type === 'gas-storage' || p.type === 'oil-depot' ? 6.2
                   : 5.8;
 
-        if (!p.colorOverride && p.type === 'nuclear' && p.status === 'maintenance') color = '#B7D6E7';
-
         return {
           type: 'Feature' as const,
           geometry: { type: 'Point' as const, coordinates: p.coordinates },
           properties: {
+            id: p.id,
             name: p.name,
             type: p.type,
             color,
+            energyState: p.energyState ?? 'nonSuivi',
             baseRadius,
             capacity: p.capacity ?? 0,
             capacityUnit: p.capacityUnit ?? '',
@@ -8006,6 +8006,7 @@ export class DeckGLMap {
     };
     const src = this.map.getSource(SRC_INFRA) as maplibregl.GeoJSONSource;
     src?.setData(fc);
+    this.recordEnergy('nuclearFleet', energyEntriesFrom(fc.features.filter((f) => f.properties?.type === 'nuclear'), 'nucleaire', 'nuc'));
   }
 
   updateDromEnergy(dashboard: DromEnergyDashboard): void {

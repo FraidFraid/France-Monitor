@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import fixture from '../../tests/fixtures/rte-unavailability-2026-10-02.json';
 import type { NuclearUnavailability } from '../types/index.ts';
-import { NUCLEAR_LEGEND_ITEMS, NUCLEAR_STATUS_COLORS, getPlantWorstStatus, normalizeNuclearItems } from './nuclear-rte.ts';
+import { NUCLEAR_LEGEND_ITEMS, NUCLEAR_STATUS_COLORS, buildNuclearStateMap, getPlantWorstStatus, normalizeNuclearItems } from './nuclear-rte.ts';
+import { ENERGY_STATE_HEX } from './energy-state.ts';
+import { NUCLEAR_PLANTS } from '../config/infrastructure.ts';
 
 const NOW = Date.parse('2026-10-02T06:30:00Z');
 
@@ -136,5 +138,21 @@ describe('nuclear-rte', () => {
       }], NOW);
       expect(u.status).toBe('REDUCED');
     });
+  });
+});
+
+describe('nucléaire sur les états de l’énergie', () => {
+  it('les couleurs de statut sont celles des états (arrêt imprévu en rouge comme les pannes EDF)', () => {
+    expect(NUCLEAR_STATUS_COLORS.OUTAGE_UNPLANNED).toBe(ENERGY_STATE_HEX.arret);
+    expect(NUCLEAR_STATUS_COLORS.REDUCED).toBe(ENERGY_STATE_HEX.reduit);
+    expect(NUCLEAR_STATUS_COLORS.OUTAGE_PLANNED).toBe(ENERGY_STATE_HEX.maintenance);
+    expect(NUCLEAR_STATUS_COLORS.AVAILABLE).toBe(ENERGY_STATE_HEX.normal);
+    expect(NUCLEAR_STATUS_COLORS.UNKNOWN).toBe(ENERGY_STATE_HEX.nonSuivi);
+  });
+  it('sans indisponibilité, toutes les centrales en service sont « normal »', () => {
+    const map = buildNuclearStateMap([]);
+    const active = NUCLEAR_PLANTS.filter((p) => p.status !== 'shutdown');
+    expect(Object.keys(map)).toHaveLength(active.length);
+    expect(new Set(Object.values(map))).toEqual(new Set(['normal']));
   });
 });

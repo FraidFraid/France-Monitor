@@ -220,7 +220,8 @@ import type { OutagesPowerPanel } from './components/OutagesPowerPanel.ts';
 import type { OutagesInternetPanel } from './components/OutagesInternetPanel.ts';
 import type { OutagesCloudPanel } from './components/OutagesCloudPanel.ts';
 import { fetchRTEIIPIncidents } from './services/rte-iip.ts';
-import { fetchNuclearUnavailabilities, buildNuclearColorMap, NUCLEAR_LEGEND_ITEMS } from './services/nuclear-rte.ts';
+import { fetchNuclearUnavailabilities, buildNuclearStateMap, NUCLEAR_LEGEND_ITEMS } from './services/nuclear-rte.ts';
+import { ENERGY_STATE_HEX } from './services/energy-state.ts';
 import { buildNuclearState } from './services/nuclear-correlation.ts';
 import type { NuclearPanel } from './components/NuclearPanel.ts';
 import { SituationMonitor } from './components/SituationMonitor.ts';
@@ -424,15 +425,17 @@ function summarizeNuclearPlantForMap(
 function buildNuclearInfrastructurePoints(
   unavailabilities: NuclearUnavailability[] = [],
 ): InfrastructurePoint[] {
-  const colorMap = buildNuclearColorMap(unavailabilities);
+  const stateMap = buildNuclearStateMap(unavailabilities);
 
   return NUCLEAR_PLANTS
     .filter((p) => p.status !== 'shutdown')
     .map((p) => {
       const summary = summarizeNuclearPlantForMap(p.name, p.capacity ?? 0, unavailabilities);
+      const energyState = stateMap[p.name] ?? 'nonSuivi';
       return {
         ...p,
-        colorOverride: colorMap[p.name] ?? '#6B7280',
+        energyState,
+        colorOverride: ENERGY_STATE_HEX[energyState],
         totalPower: p.capacity ?? 0,
         totalAvailable: summary.availableMW,
         globalAvailability: summary.availabilityRatio,
