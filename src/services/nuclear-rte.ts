@@ -155,15 +155,19 @@ export function getPlantWorstStatus(
   return 'UNKNOWN';
 }
 
-/** Centrale → état de l'énergie (pire statut de ses tranches actives), pour la carte (spec 2026-10-15). */
+/**
+ * Centrale → état de l'énergie (pire statut de ses tranches actives), pour la carte (spec 2026-10-15).
+ * RTE indisponible : aucune mesure, donc aucune centrale « normal » (sans état suivi).
+ */
 export function buildNuclearStateMap(
   unavailabilities: NuclearUnavailability[],
   nowMs: number = Date.now(),
+  rteAvailable = true,
 ): Record<string, EnergyState> {
   const map: Record<string, EnergyState> = {};
   for (const plant of NUCLEAR_PLANTS) {
     if (plant.status === 'shutdown') continue;
-    map[plant.name] = nuclearState(getPlantWorstStatus(plant.name, unavailabilities, nowMs));
+    map[plant.name] = rteAvailable ? nuclearState(getPlantWorstStatus(plant.name, unavailabilities, nowMs)) : 'nonSuivi';
   }
   return map;
 }

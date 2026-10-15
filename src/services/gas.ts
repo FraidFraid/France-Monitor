@@ -211,6 +211,28 @@ interface OdreStorageRecord {
   date_maj?: string;
 }
 
+/**
+ * Enrichit la configuration des stockages avec les relevés ODRÉ. `fillMeasured` dit si le taux vient d'un relevé :
+ * sans relevé, le taux de configuration reste affiché au panneau mais n'est pas un état sur la carte (spec 2026-10-15).
+ */
+export function applyStorageRecords(storages: readonly GasStorage[], records: readonly OdreStorageRecord[]): GasStorage[] {
+  return storages.map(storage => {
+    const liveRecord = records.find(r =>
+      r.nom_site?.toLowerCase().includes(storage.name.toLowerCase()) ||
+      r.code_site === storage.id
+    );
+    const liveFill = liveRecord?.taux_remplissage;
+    const measured = typeof liveFill === 'number' && Number.isFinite(liveFill);
+    return {
+      ...storage,
+      fillLevel: measured ? liveFill : storage.fillLevel,
+      fillMeasured: measured,
+      currentStockTWh: liveRecord?.stock_twh,
+      fillTrend: determineFillTrend(liveRecord),
+    };
+  });
+}
+
 async function fetchStorageLevels(): Promise<{ storages: GasStorage[]; status: 'ok' | 'stale' | 'error' }> {
   try {
     // ODRE dataset for gas storage levels
@@ -223,26 +245,14 @@ async function fetchStorageLevels(): Promise<{ storages: GasStorage[]; status: '
     const records = (json.results || []) as OdreStorageRecord[];
 
     // Enrich static storage config with live fill levels from ODRE
-    const enriched = GAS_STORAGES.map(storage => {
-      const liveRecord = records.find(r =>
-        r.nom_site?.toLowerCase().includes(storage.name.toLowerCase()) ||
-        r.code_site === storage.id
-      );
-
-      return {
-        ...storage,
-        fillLevel: liveRecord?.taux_remplissage ?? storage.fillLevel,
-        currentStockTWh: liveRecord?.stock_twh,
-        fillTrend: determineFillTrend(liveRecord),
-      };
-    });
+    const enriched = applyStorageRecords(GAS_STORAGES, records);
 
     // We no longer overwrite with AGSI company-level data which was causing
     // the identical "Débit net" duplicate bug on all sites of the same operator.
     return { storages: enriched, status: 'ok' };
   } catch (err) {
     console.warn('[Gas/Storage] ODRE fetch failed, using static data:', err);
-    return { storages: GAS_STORAGES, status: 'stale' };
+    return { storages: GAS_STORAGES.map((s) => ({ ...s, fillMeasured: false })), status: 'stale' };
   }
 }
 

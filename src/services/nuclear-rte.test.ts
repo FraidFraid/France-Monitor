@@ -156,3 +156,10 @@ describe('nucléaire sur les états de l’énergie', () => {
     expect(new Set(Object.values(map))).toEqual(new Set(['normal']));
   });
 });
+
+describe('nucléaire : RTE indisponible', () => {
+  it('sans données RTE, aucune centrale n’est « normal » : toutes sans état suivi', () => {
+    const map = buildNuclearStateMap([], Date.now(), false);
+    expect(new Set(Object.values(map))).toEqual(new Set(['nonSuivi']));
+  });
+});

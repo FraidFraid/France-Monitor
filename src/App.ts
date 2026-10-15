@@ -428,8 +428,9 @@ function isEnergyStateName(value: string): value is EnergyState {
 
 function buildNuclearInfrastructurePoints(
   unavailabilities: NuclearUnavailability[] = [],
+  rteAvailable = false,
 ): InfrastructurePoint[] {
-  const stateMap = buildNuclearStateMap(unavailabilities);
+  const stateMap = buildNuclearStateMap(unavailabilities, Date.now(), rteAvailable);
 
   return NUCLEAR_PLANTS
     .filter((p) => p.status !== 'shutdown')
@@ -451,9 +452,10 @@ function buildNuclearInfrastructurePoints(
 
 function buildEnergyInfrastructurePoints(
   unavailabilities: NuclearUnavailability[] = [],
+  rteAvailable = false,
 ): InfrastructurePoint[] {
   const gasInfra = ALL_INFRASTRUCTURE.filter((p) => p.type === 'gas-terminal' || p.type === 'gas-storage');
-  return [...buildNuclearInfrastructurePoints(unavailabilities), ...gasInfra];
+  return [...buildNuclearInfrastructurePoints(unavailabilities, rteAvailable), ...gasInfra];
 }
 
 function buildOilBriefingContext(
@@ -3291,7 +3293,7 @@ export class App {
     } else if (key === 'nuclearFleet') {
       if (this.activeLayers.nuclearFleet) {
         const nuclearInfra = this.currentNuclearState
-          ? buildEnergyInfrastructurePoints(this.currentNuclearState.unavailabilities)
+          ? buildEnergyInfrastructurePoints(this.currentNuclearState.unavailabilities, this.currentNuclearState.rteAvailable)
           : buildEnergyInfrastructurePoints();
         this.mapContainer?.updateInfrastructure(nuclearInfra);
         if (!this.currentNuclearState) void this.loadNuclear(); // lazy-load on first enable
@@ -6336,7 +6338,7 @@ export class App {
         this.nuclearPanel.update(nuclearState, this.currentEcowattResponse);
       }
 
-      this.mapContainer?.updateInfrastructure(buildEnergyInfrastructurePoints(unavailabilities));
+      this.mapContainer?.updateInfrastructure(buildEnergyInfrastructurePoints(unavailabilities, rteResult.available));
 
       this.statusPanel?.updateSource('Nucléaire RTE', {
         status: nuclearState.rteAvailable ? 'ok' : 'stale',

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { agsiNetFlowGWhDay, applyAlsiTerminals, applyPirPoints, parseAlsiTerminals } from './gas.ts';
-import { GAS_INTERCONNECTIONS, GAS_TERMINALS } from '../config/gas-infrastructure';
+import { agsiNetFlowGWhDay, applyAlsiTerminals, applyPirPoints, applyStorageRecords, parseAlsiTerminals } from './gas.ts';
+import { GAS_INTERCONNECTIONS, GAS_STORAGES, GAS_TERMINALS } from '../config/gas-infrastructure';
 
 describe('agsiNetFlowGWhDay', () => {
   it('prend la dernière journée publiée, pas le cumul des 30 jours (réponse réelle du 28/09/2026)', () => {
@@ -87,5 +87,18 @@ describe('flux ENTSOG par interconnexion', () => {
     expect(res[0]?.flowMissing).toBeUndefined();
     expect(res.slice(1).every((i) => i.flowMissing === true && i.flowGWhDay === 0)).toBe(true);
     expect(res).toHaveLength(others.length + 1);
+  });
+});
+
+describe('stockages : remplissage mesuré ou non (spec 2026-10-15)', () => {
+  it('un site trouvé dans ODRÉ avec un taux fini est mesuré ; sinon le taux de configuration n’est pas une mesure', () => {
+    const [a, b] = GAS_STORAGES;
+    const out = applyStorageRecords([a, b], [{ code_site: a.id, taux_remplissage: 42 }]);
+    expect(out[0]).toMatchObject({ fillLevel: 42, fillMeasured: true });
+    expect(out[1]).toMatchObject({ fillLevel: b.fillLevel, fillMeasured: false });
+  });
+  it('taux absent ou non fini dans l’enregistrement : non mesuré', () => {
+    const [a] = GAS_STORAGES;
+    expect(applyStorageRecords([a], [{ code_site: a.id, taux_remplissage: Number.NaN }])[0].fillMeasured).toBe(false);
   });
 });

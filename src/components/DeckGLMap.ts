@@ -406,6 +406,31 @@ const ENERGY_FILTER_BASES: ReadonlyArray<readonly [string, maplibregl.FilterSpec
   [LYR_METRO_LOAD_GLOW, null],
   [LYR_ENERGY_ALERT_DISC, null],
   [LYR_ENERGY_ALERT_ICON, null],
+  // Calques compagnons : anneaux, halos, étiquettes et zones de survol suivent leur objet.
+  [LYR_ENERGY_INFRA_NUCLEAR_RING, ['==', ['get', 'type'], 'nuclear']],
+  [LYR_WIND_TURBINE_HALO, ['!', ['has', 'point_count']]],
+  [LYR_WIND_TURBINE_LABEL, ['!', ['has', 'point_count']]],
+  [LYR_WIND_PARK_HALO, null],
+  [LYR_WIND_PARK_LABEL, ['==', ['get', 'kind'], 'offshore']],
+  [LYR_OIL_REFINERIES_LABEL, null],
+  [LYR_OIL_REFINERIES_HIT, null],
+  [LYR_OIL_DEPOTS_TERMINAL_CENTER, ['==', ['get', 'role'], 'terminal']],
+  [LYR_OIL_DEPOTS_LABEL, null],
+  [LYR_OIL_DEPOTS_HIT, null],
+  [LYR_METRO_LOAD_LABEL, null],
+  [LYR_BIOMETHANE_SITES, ['!', ['has', 'point_count']]],
+  [LYR_BIOMETHANE_SITES_LABEL, ['!', ['has', 'point_count']]],
+];
+
+/**
+ * Groupes (supercluster) : un groupe ne porte pas l'état de ses objets ; il est caché quand tous les états
+ * possibles de sa source sont masqués (éoliennes : sans état suivi et hors service ; biométhane : sans état suivi).
+ */
+const ENERGY_CLUSTER_LAYERS: ReadonlyArray<readonly [string, readonly EnergyState[]]> = [
+  [LYR_WIND_CLUSTER, ['nonSuivi', 'maintenance']],
+  [LYR_WIND_CLUSTER_COUNT, ['nonSuivi', 'maintenance']],
+  [LYR_BIOMETHANE_CLUSTERS, ['nonSuivi']],
+  [LYR_BIOMETHANE_CLUSTER_COUNT, ['nonSuivi']],
 ];
 
 export class DeckGLMap {
@@ -5966,7 +5991,7 @@ export class DeckGLMap {
       // Storages (color-coded circles by fill level)
       for (const storage of state.storages) {
         // Couleur = état du remplissage ; le contour de tendance (déduite de la saison) est retiré (spec 2026-10-15).
-        const { energyState, color: fillColor } = gasStorageStyle(storage.fillLevel);
+        const { energyState, color: fillColor } = gasStorageStyle(storage.fillMeasured === true ? storage.fillLevel : null);
 
         pointFeatures.push({
           type: 'Feature',
@@ -5990,7 +6015,8 @@ export class DeckGLMap {
 
       const vitalsSource = this.map.getSource(SRC_GAS_VITALS) as maplibregl.GeoJSONSource;
       vitalsSource?.setData({ type: 'FeatureCollection', features: pointFeatures });
-      this.recordEnergy('gasNetwork', energyEntriesFrom(pointFeatures, 'gaz', 'gas'));
+      const biomethane = (this.energyEntries.get('gasNetwork') ?? []).filter((x) => x.id.startsWith('biomethane:'));
+      this.recordEnergy('gasNetwork', [...energyEntriesFrom(pointFeatures, 'gaz', 'gas'), ...biomethane]);
 
       // === Build PIR flow arcs ===
       // Gas flow: Cyan/turquoise with softer glow, rapid dash animation
@@ -6208,6 +6234,7 @@ export class DeckGLMap {
         coordinates: [s.longitude, s.latitude],
       },
       properties: {
+        id: `biomethane:${s.id}`,
         name: s.name,
         commune: s.commune ?? '',
         department: s.department ?? '',
@@ -6220,6 +6247,9 @@ export class DeckGLMap {
     }));
 
     src.setData({ type: 'FeatureCollection', features });
+    // Biométhane : compté avec la couche Gaz, à côté des stockages et terminaux (spec 2026-10-15).
+    const vitals = (this.energyEntries.get('gasNetwork') ?? []).filter((x) => !x.id.startsWith('biomethane:'));
+    this.recordEnergy('gasNetwork', [...vitals, ...energyEntriesFrom(features, 'gaz', 'biomethane')]);
   }
 
   /**
@@ -8249,6 +8279,16 @@ export class DeckGLMap {
         this.map.setFilter(id, energyStateFilter(own, this.hiddenEnergyStates));
       } catch {
         // Calque pas encore prêt : le prochain appel le rattrapera.
+      }
+    }
+    const clusters: maplibregl.FilterSpecification = ['has', 'point_count'];
+    for (const [id, states] of ENERGY_CLUSTER_LAYERS) {
+      if (!this.map.getLayer(id)) continue;
+      const allHidden = states.every((st) => this.hiddenEnergyStates.has(st));
+      try {
+        this.map.setFilter(id, allHidden ? ['all', clusters, false] : clusters);
+      } catch {
+        // Calque pas encore prêt.
       }
     }
   }

@@ -1468,6 +1468,8 @@ export interface GasStorage {
   operator: 'Storengy' | 'Terega' | 'Geomethane';
   capacityTWh: number; // Max capacity
   fillLevel: number; // 0-100 percentage
+  /** Taux issu d'un relevé ODRÉ (sinon valeur de configuration, sans état sur la carte, spec 2026-10-15). */
+  fillMeasured?: boolean;
   currentStockTWh?: number; // Absolute stock value
   flowRateGWhDay?: number; // Daily injection/withdrawal rate
   fillTrend: 'filling' | 'stable' | 'withdrawing';
