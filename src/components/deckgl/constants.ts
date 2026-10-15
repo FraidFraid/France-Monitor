@@ -832,3 +832,8 @@ export const LYR_EMS_ZONE_LINE = 'ems-zones-line';
 export const LYR_EMS_ZONE_LABEL = 'ems-zones-label';
 export const SRC_TIDE_GAUGES = 'tide-gauges-src';
 export const LYR_TIDE_GAUGES = 'tide-gauges';
+
+/** Pictos d'alerte de l'énergie (rouge et orange, toutes filières), spec 2026-10-15. */
+export const SRC_ENERGY_ALERTS = 'energy-alerts-src';
+export const LYR_ENERGY_ALERT_DISC = 'energy-alert-disc';
+export const LYR_ENERGY_ALERT_ICON = 'energy-alert-icon';
