@@ -106,6 +106,13 @@ import {
 } from './deckgl/format-utils.ts';
 import { fmIcon, fmStatusDot, type IconName } from './shared/icons.ts';
 import {
+  buildEnergyKeyModel, energyAlertFeatures, energyIconImage, energyStateFilter, ENERGY_ICON_NAMES, ENERGY_LAYER_KEYS,
+  ENERGY_SHAPE_DIAMOND, ENERGY_SHAPE_SQUARE, shapeIconSvg,
+  type EnergyEntry, type EnergyFlowCount, type EnergyKeyModel, type EnergyLayerKey,
+} from './deckgl/energy-map.ts';
+import type { EnergyState } from '../services/energy-state.ts';
+import type { VigilanceLevel } from '../services/vigilance.ts';
+import {
   dromEnergyAssetFromProperties,
   renderDromEnergyTooltipHtml,
 } from './deckgl/popup-templates.ts';
@@ -308,6 +315,11 @@ import {
   HYDRAULIC_TREND_COLORS,
   DEFAULT_VIEW,
   FRANCE_CENTER,
+  SRC_ENERGY_ALERTS,
+  LYR_ENERGY_ALERT_DISC,
+  LYR_ENERGY_ALERT_ICON,
+  LYR_OUT_POWER_PLANNED,
+  LYR_OUT_POWER_UNPLANNED,
 } from './deckgl/constants.ts';
 
 // ─── Satellite basemap toggle control ───
@@ -374,6 +386,30 @@ type InfrastructureRenderPoint = InfrastructurePoint & {
   totalPower?: number;
   totalAvailable?: number;
 };
+
+/** Calques énergie masquables par état, avec le filtre propre de leur addLayer (spec 2026-10-15). */
+const ENERGY_FILTER_BASES: ReadonlyArray<readonly [string, maplibregl.FilterSpecification | null]> = [
+  [LYR_ENERGY_INFRA_CIRCLE, null],
+  [LYR_ENERGY_INFRA_LABEL, null],
+  [LYR_OUT_POWER_PLANNED, ['==', ['get', 'kind'], 'planifiee']],
+  [LYR_OUT_POWER_UNPLANNED, ['==', ['get', 'kind'], 'imprevue']],
+  [LYR_GAS_STORAGES_GLOW, ['==', ['get', 'type'], 'storage']],
+  [LYR_GAS_STORAGES, ['==', ['get', 'type'], 'storage']],
+  [LYR_GAS_STORAGES_LABEL, ['==', ['get', 'type'], 'storage']],
+  [LYR_GAS_TERMINALS, ['==', ['get', 'type'], 'terminal']],
+  [LYR_HYDRO_BACKBONE_CIRCLE, null],
+  [LYR_HYDRO_BACKBONE_LABEL, null],
+  [LYR_WIND_TURBINE_CIRCLE, ['!', ['has', 'point_count']]],
+  [LYR_WIND_PARK_CIRCLE, null],
+  [LYR_OIL_REFINERIES, null],
+  [LYR_OIL_REFINERIES_GLOW, null],
+  [LYR_OIL_DEPOTS, null],
+  [LYR_DROM_ENERGY_POINTS, null],
+  [LYR_METRO_LOAD_CIRCLE, null],
+  [LYR_METRO_LOAD_GLOW, null],
+  [LYR_ENERGY_ALERT_DISC, null],
+  [LYR_ENERGY_ALERT_ICON, null],
+];
 
 export class DeckGLMap {
   private container: HTMLElement;
@@ -527,6 +563,14 @@ export class DeckGLMap {
   private alertOverlay: HTMLElement | null = null;
   /** Un élément par alerte affichée : au déplacement, seule la position change. */
   private alertEls = new Map<number, { el: HTMLElement; sig: string }>();
+  /** Registre de l'énergie (spec 2026-10-15) : objets de chaque couche avec leur état, flux, tension carburants. */
+  private energyEntries = new Map<EnergyLayerKey, EnergyEntry[]>();
+  private energyFlows = new Map<EnergyLayerKey, EnergyFlowCount>();
+  private fuelTensionLevels: VigilanceLevel[] = [];
+  private hiddenEnergyStates: ReadonlySet<EnergyState> = new Set();
+  private onEnergyKeyChange: ((model: EnergyKeyModel) => void) | null = null;
+  /** Signature des pictos d'alerte déjà dessinés (null = jamais dessinés). */
+  private energyAlertSig: string | null = null;
   private pulseMarkers: Map<string, HTMLElement> = new Map();
 
   // NOTE: Dynamic dasharray animations disabled due to MapLibre LineAtlas saturation.
@@ -936,6 +980,7 @@ export class DeckGLMap {
     // Create chevron icon for flow direction (must await before adding layer)
     await this.createChevronIcon();
     await this.createRefineryTriangleIcon();
+    await this.createEnergyShapeIcons();
 
     // Chevron symbols as individual animated points along arcs
     // Points are updated each frame to create continuous movement
@@ -2503,6 +2548,34 @@ export class DeckGLMap {
         'text-halo-width': 1.6,
         'text-opacity': 0.96,
       },
+    });
+
+    // ─── Énergie : pictos des installations à l'arrêt ou sous tension (spec 2026-10-15) ───
+    this.map.addSource(SRC_ENERGY_ALERTS, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    this.map.addLayer({
+      id: LYR_ENERGY_ALERT_DISC,
+      type: 'circle',
+      source: SRC_ENERGY_ALERTS,
+      layout: { visibility: 'none' },
+      paint: {
+        'circle-radius': 11,
+        'circle-color': ['get', 'color'],
+        'circle-stroke-width': 1.5,
+        'circle-stroke-color': '#0a0a12',
+      },
+    });
+    this.map.addLayer({
+      id: LYR_ENERGY_ALERT_ICON,
+      type: 'symbol',
+      source: SRC_ENERGY_ALERTS,
+      layout: {
+        visibility: 'none',
+        'icon-image': ['get', 'icon'],
+        'icon-size': 0.5,
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+      },
+      paint: { 'icon-color': '#ffffff' },
     });
 
     // ─── Military ───
@@ -5723,6 +5796,26 @@ export class DeckGLMap {
   }
 
   /** Triangle SDF icon pour les raffineries (▲ actif, ▼ maintenance via icon-rotate). */
+  /** Carré (gaz) et losange (hydraulique) en SDF, teintés par la couleur d'état. */
+  private async createEnergyShapeIcons(): Promise<void> {
+    if (!this.map) return;
+    const size = 64;
+    const load = (id: string, svg: string): Promise<void> => new Promise<void>((resolve) => {
+      if (!this.map || this.map.hasImage(id)) { resolve(); return; }
+      const img = new Image(size, size);
+      img.onload = () => {
+        if (this.map && !this.map.hasImage(id)) this.map.addImage(id, img, { sdf: true, pixelRatio: 2 });
+        resolve();
+      };
+      img.onerror = () => { console.warn(`[DeckGLMap] Forme ${id} non chargée`); resolve(); };
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    });
+    await Promise.all([
+      load(ENERGY_SHAPE_SQUARE, shapeIconSvg('square', size)),
+      load(ENERGY_SHAPE_DIAMOND, shapeIconSvg('diamond', size)),
+    ]);
+  }
+
   private async createRefineryTriangleIcon(): Promise<void> {
     if (!this.map) return;
     if (this.map.hasImage('triangle-refinery')) return;
@@ -7300,8 +7393,13 @@ export class DeckGLMap {
     return enabled && ((this.currentLayers?.weatherRadar ?? false) || (this.currentLayers?.fires ?? false));
   }
 
-  /** Pictogrammes des phénomènes de la vigilance en images SDF (teintés par la couleur de l'objet). */
+  /** Pictogrammes fmIcon en images SDF (teintés par `icon-color`) : vigilance météo et filières de l'énergie. */
   private registerEnvironmentIcons(): void {
+    this.registerSdfIcons(ENV_ICON_NAMES, envIconImage);
+    this.registerSdfIcons(ENERGY_ICON_NAMES, energyIconImage);
+  }
+
+  private registerSdfIcons(names: readonly IconName[], idOf: (name: IconName) => string): void {
     if (!this.map) return;
     const SIZE = ENV_ICON_SIZE;
     const GLYPH = ENV_ICON_GLYPH;
@@ -7311,8 +7409,8 @@ export class DeckGLMap {
     canvas.height = SIZE;
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
-    for (const name of ENV_ICON_NAMES) {
-      const id = envIconImage(name);
+    for (const name of names) {
+      const id = idOf(name);
       if (this.map.hasImage(id)) continue;
       const svg = fmIcon(name, { size: GLYPH }).replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" ').replace('stroke="currentColor"', 'stroke="#ffffff"');
       const img = new Image(GLYPH, GLYPH);
@@ -8120,6 +8218,71 @@ export class DeckGLMap {
 
   // ─── Événements consolidés (v2) ───
 
+  setOnEnergyKeyChange(cb: (model: EnergyKeyModel) => void): void {
+    this.onEnergyKeyChange = cb;
+    this.emitEnergyKey();
+  }
+
+  setHiddenEnergyStates(states: ReadonlySet<EnergyState>): void {
+    this.hiddenEnergyStates = new Set(states);
+    this.applyEnergyStateFilters();
+    this.emitEnergyKey();
+  }
+
+  private recordEnergy(key: EnergyLayerKey, entries: EnergyEntry[]): void {
+    this.energyEntries.set(key, entries);
+    this.syncEnergyAlerts();
+    this.emitEnergyKey();
+  }
+
+  private recordEnergyFlows(key: EnergyLayerKey, flows: EnergyFlowCount): void {
+    this.energyFlows.set(key, flows);
+    this.emitEnergyKey();
+  }
+
+  private recordFuelTension(levels: VigilanceLevel[]): void {
+    this.fuelTensionLevels = levels;
+    this.emitEnergyKey();
+  }
+
+  /** Pictos d'alerte des seules couches allumées. */
+  private syncEnergyAlerts(): void {
+    if (!this.map) return;
+    const entries = ENERGY_LAYER_KEYS.filter((k) => this.currentLayers?.[k] === true).flatMap((k) => this.energyEntries.get(k) ?? []);
+    const fc = energyAlertFeatures(entries);
+    // Rien de changé : pas de repeinte (chaque bascule de couche passe ici).
+    const sig = fc.features.map((f) => `${String(f.properties?.id)}:${String(f.properties?.energyState)}:${f.geometry.type === 'Point' ? f.geometry.coordinates.join(',') : ''}`).join('|');
+    if (sig === this.energyAlertSig) return;
+    const src = this.map.getSource(SRC_ENERGY_ALERTS) as maplibregl.GeoJSONSource | undefined;
+    if (!src) return;
+    src.setData(fc);
+    this.energyAlertSig = sig;
+  }
+
+  private emitEnergyKey(): void {
+    if (!this.onEnergyKeyChange) return;
+    const layers: Partial<Record<EnergyLayerKey, boolean>> = {};
+    for (const k of ENERGY_LAYER_KEYS) layers[k] = this.currentLayers?.[k] === true;
+    this.onEnergyKeyChange(buildEnergyKeyModel({
+      layers, entries: this.energyEntries, flows: this.energyFlows, fuelTension: this.fuelTensionLevels, hiddenStates: this.hiddenEnergyStates,
+    }));
+  }
+
+  /** Masquage par état ; la couche nucléaire impose `type == nuclear` sur les calques d'infrastructure. */
+  private applyEnergyStateFilters(): void {
+    if (!this.map) return;
+    const nuclear: maplibregl.FilterSpecification = ['==', ['get', 'type'], 'nuclear'];
+    for (const [id, base] of ENERGY_FILTER_BASES) {
+      if (!this.map.getLayer(id)) continue;
+      const own = (id === LYR_ENERGY_INFRA_CIRCLE || id === LYR_ENERGY_INFRA_LABEL) && this.currentLayers?.nuclearFleet ? nuclear : base;
+      try {
+        this.map.setFilter(id, energyStateFilter(own, this.hiddenEnergyStates));
+      } catch {
+        // Calque pas encore prêt : le prochain appel le rattrapera.
+      }
+    }
+  }
+
   setEventPoints(points: EventMapPoint[]): void {
     // Le plus grave en dernier : dessiné au-dessus, c'est lui que le clic atteint quand des points se superposent.
     this.eventPoints = [...points].sort((a, b) => alertPriority(b, a));
@@ -8883,18 +9046,12 @@ export class DeckGLMap {
     this.setVis(LYR_WIND_PARK_CIRCLE,    vis(layers.windMonitor ?? false));
     this.setVis(LYR_WIND_PARK_LABEL,     vis(layers.windMonitor ?? false));
 
-    if (this.map) {
-      try {
-        if (this.map.getLayer(LYR_ENERGY_INFRA_CIRCLE) && this.map.getLayer(LYR_ENERGY_INFRA_LABEL)) {
-          if (layers.nuclearFleet) {
-            this.map.setFilter(LYR_ENERGY_INFRA_CIRCLE, ['==', ['get', 'type'], 'nuclear']);
-            this.map.setFilter(LYR_ENERGY_INFRA_LABEL, ['==', ['get', 'type'], 'nuclear']);
-          }
-        }
-      } catch {
-        // Silently ignore if layers are not ready
-      }
-    }
+    this.applyEnergyStateFilters();
+    const energyOn = ENERGY_LAYER_KEYS.some((k) => layers[k] === true);
+    this.setVis(LYR_ENERGY_ALERT_DISC, vis(energyOn));
+    this.setVis(LYR_ENERGY_ALERT_ICON, vis(energyOn));
+    this.syncEnergyAlerts();
+    this.emitEnergyKey();
     // Gas layer: réseau + organes vitaux
     const gasVis = vis(layers.gasNetwork ?? false);
     const pipeVis = (gasVis === 'visible' && this.gasPipelineVisible) ? 'visible' : 'none';

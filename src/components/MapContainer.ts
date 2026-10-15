@@ -4,6 +4,8 @@
  */
 
 import type { DeckGLMap } from './DeckGLMap.ts';
+import type { EnergyKeyModel } from './deckgl/energy-map.ts';
+import type { EnergyState } from '../services/energy-state.ts';
 import type { Map as SVGMap } from './Map.ts';
 import type { NewsItem, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, EcowattResponse, FuelTensionDashboard, InfrastructurePoint, MapLayers, MapViewState, MilitaryBase, AirTrafficFlight, ISNRScore, AlertLevelsResponse, AplDataset, AplProfession, EmergencySite, HospitalsDataset, SyndromicResponse, GasNetworkState, SatelliteViewRequest, HydraulicBackboneAsset } from '../types/index.ts';
 import type { MilitaryShip } from '../services/military-ships.ts';
@@ -42,6 +44,7 @@ function isMobileDevice(): boolean {
 export class MapContainer {
   private container: HTMLElement;
   private deckMap: DeckGLMap | null = null;
+  private onEnergyKeyChange: ((model: EnergyKeyModel) => void) | null = null;
   private svgMap: SVGMap | null = null;
   private isMobile: boolean;
   private onItemClick: ((item: NewsItem, point?: { x: number; y: number }) => void) | null = null;
@@ -92,6 +95,7 @@ export class MapContainer {
     if (this.onSovereigntyFeatureClick) this.deckMap.setOnSovereigntyFeatureClick(this.onSovereigntyFeatureClick);
     if (this.onRawMapClick) this.deckMap.setOnRawMapClick(this.onRawMapClick);
     if (this.onSatelliteView) this.deckMap.setOnSatelliteView(this.onSatelliteView);
+    if (this.onEnergyKeyChange) this.deckMap.setOnEnergyKeyChange(this.onEnergyKeyChange);
     await this.deckMap.init();
     await this.deckMap.setRadar2dOverlay(this.radar2dManifest, this.radar2dEnabled);
     this.deckMap.setEchoTopsOverlay(this.radar2dManifest, this.echoTopsEnabled);
@@ -220,6 +224,15 @@ export class MapContainer {
   }
 
   // ─── Événements consolidés (v2) ───
+
+  setOnEnergyKeyChange(cb: (model: EnergyKeyModel) => void): void {
+    this.onEnergyKeyChange = cb;
+    this.deckMap?.setOnEnergyKeyChange(cb);
+  }
+
+  setHiddenEnergyStates(states: ReadonlySet<EnergyState>): void {
+    this.deckMap?.setHiddenEnergyStates(states);
+  }
 
   setEventPoints(points: EventMapPoint[]): void {
     this.deckMap?.setEventPoints(points);
