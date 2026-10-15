@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import type maplibregl from 'maplibre-gl';
 import {
-  buildEnergyKeyModel, energyAlertFeatures, energyEntriesFrom, energyIconImage, energyStateFilter, shapeIconSvg,
+  buildEnergyKeyModel, energyAlertFeatures, energyEntriesFrom, energyIconImage, energyStateFilter, gasStorageStyle, hydroStyle, shapeIconSvg,
   type EnergyEntry, type EnergyLayerKey,
 } from './energy-map.ts';
 import type { EnergyState } from '../../services/energy-state.ts';
@@ -92,5 +92,22 @@ describe('modèle de légende', () => {
     expect(m.fuelTension).toEqual({ rouge: 1, orange: 2, jaune: 0 });
     expect(m.regions).toBe(true);
     expect(m.networks).toEqual({ gas: false, oil: true, drom: false });
+  });
+});
+
+describe('stockages de gaz', () => {
+  it('couleur de l’état du remplissage', () => {
+    expect(gasStorageStyle(25)).toEqual({ energyState: 'tension', color: '#ff9500' });
+    expect(gasStorageStyle(40)).toEqual({ energyState: 'reduit', color: '#ffcc00' });
+    expect(gasStorageStyle(88)).toEqual({ energyState: 'normal', color: '#34c759' });
+    expect(gasStorageStyle(null)).toEqual({ energyState: 'nonSuivi', color: '#c7c7cc' });
+  });
+});
+
+describe('hydraulique', () => {
+  it('stress orange, haut jaune, normal et bas vert', () => {
+    expect(hydroStyle('stress')).toEqual({ energyState: 'tension', color: '#ff9500' });
+    expect(hydroStyle('high')).toEqual({ energyState: 'reduit', color: '#ffcc00' });
+    expect(hydroStyle('low')).toEqual({ energyState: 'normal', color: '#34c759' });
   });
 });

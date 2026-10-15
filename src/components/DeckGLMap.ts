@@ -106,11 +106,12 @@ import {
 } from './deckgl/format-utils.ts';
 import { fmIcon, fmStatusDot, type IconName } from './shared/icons.ts';
 import {
-  buildEnergyKeyModel, energyAlertFeatures, energyEntriesFrom, energyIconImage, energyStateFilter, ENERGY_ICON_NAMES, ENERGY_LAYER_KEYS,
+  buildEnergyKeyModel, energyAlertFeatures, energyEntriesFrom, energyIconImage, energyStateFilter, gasStorageStyle, hydroStyle,
+  ENERGY_ICON_NAMES, ENERGY_LAYER_KEYS,
   ENERGY_SHAPE_DIAMOND, ENERGY_SHAPE_SQUARE, shapeIconSvg,
   type EnergyEntry, type EnergyFlowCount, type EnergyKeyModel, type EnergyLayerKey,
 } from './deckgl/energy-map.ts';
-import type { EnergyState } from '../services/energy-state.ts';
+import { ENERGY_NETWORK_HEX, ENERGY_STATE_HEX, type EnergyState } from '../services/energy-state.ts';
 import type { VigilanceLevel } from '../services/vigilance.ts';
 import {
   dromEnergyAssetFromProperties,
@@ -1506,7 +1507,8 @@ export class DeckGLMap {
       source: SRC_GAS_NETWORK_GRT,
       layout: { 'line-join': 'round', 'line-cap': 'round' },
       paint: {
-        'line-color': '#115E59',
+        // Réseau gazier : inventaire, gris neutre en trait plein (spec 2026-10-15).
+        'line-color': ENERGY_NETWORK_HEX,
         'line-opacity': 0.72,
         'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1, 10, 3]
       }
@@ -1518,7 +1520,8 @@ export class DeckGLMap {
       source: SRC_GAS_NETWORK_TEREGA,
       layout: { 'line-join': 'round', 'line-cap': 'round' },
       paint: {
-        'line-color': '#115E59',
+        // Réseau gazier : inventaire, gris neutre en trait plein (spec 2026-10-15).
+        'line-color': ENERGY_NETWORK_HEX,
         'line-opacity': 0.72,
         'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1, 10, 3]
       }
@@ -1534,22 +1537,27 @@ export class DeckGLMap {
         'circle-radius': ['interpolate', ['linear'], ['get', 'capacity'], 1, 15, 7, 35],
         'circle-color': ['get', 'fillColor'],
         'circle-blur': 0.6,
-        'circle-opacity': 0.4,
+        'circle-opacity': 0.22,
       },
     });
 
-    // ─── Gas Vital Organs: Storage circles ───
+    // ─── Stockages de gaz : carrés à la couleur de l'état du remplissage (spec 2026-10-15) ───
     this.map.addLayer({
       id: LYR_GAS_STORAGES,
-      type: 'circle',
+      type: 'symbol',
       source: SRC_GAS_VITALS,
       filter: ['==', ['get', 'type'], 'storage'],
+      layout: {
+        'icon-image': ENERGY_SHAPE_SQUARE,
+        // Côté de 16 à 36 px (anciens rayons 8 à 18) ; 1 = 32 px.
+        'icon-size': ['interpolate', ['linear'], ['get', 'capacity'], 1, 0.5, 7, 1.12],
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+      },
       paint: {
-        'circle-radius': ['interpolate', ['linear'], ['get', 'capacity'], 1, 8, 7, 18],
-        'circle-color': ['get', 'fillColor'],
-        'circle-opacity': 0.85,
-        'circle-stroke-width': 4,
-        'circle-stroke-color': ['get', 'strokeColor'],
+        'icon-color': ['get', 'fillColor'],
+        'icon-halo-color': '#0a0a12',
+        'icon-halo-width': 1.5,
       },
     });
 
@@ -1574,17 +1582,14 @@ export class DeckGLMap {
       },
     });
 
-    // ─── Gas Vital Organs: Terminal markers ───
+    // ─── Terminaux méthaniers : carrés gris clair, sans état suivi (spec 2026-10-15) ───
     this.map.addLayer({
       id: LYR_GAS_TERMINALS,
-      type: 'circle',
+      type: 'symbol',
       source: SRC_GAS_VITALS,
       filter: ['==', ['get', 'type'], 'terminal'],
-      paint: {
-        'circle-radius': 10,
-        'circle-color': '#A78BFA',
-        'circle-opacity': 0.9,
-      },
+      layout: { 'icon-image': ENERGY_SHAPE_SQUARE, 'icon-size': 0.62, 'icon-allow-overlap': true, 'icon-ignore-placement': true },
+      paint: { 'icon-color': ENERGY_STATE_HEX.nonSuivi, 'icon-halo-color': '#0a0a12', 'icon-halo-width': 1.5 },
     });
 
     // ─── Gas PIR: Arc glow ───
@@ -1694,10 +1699,11 @@ export class DeckGLMap {
       filter: ['has', 'point_count'],
       paint: {
         'circle-radius': ['step', ['get', 'point_count'], 12, 10, 16, 50, 22],
-        'circle-color': '#F59E0B',
+        // Biométhane : inventaire, sans état suivi (spec 2026-10-15).
+        'circle-color': ENERGY_STATE_HEX.nonSuivi,
         'circle-opacity': 0.7,
         'circle-stroke-width': 2,
-        'circle-stroke-color': 'rgba(245, 158, 11, 0.4)',
+        'circle-stroke-color': 'rgba(199, 199, 204, 0.35)',
       },
       layout: { visibility: 'none' },
     });
@@ -1715,7 +1721,7 @@ export class DeckGLMap {
         visibility: 'none',
       },
       paint: {
-        'text-color': '#000',
+        'text-color': '#0a0a0f',
       },
     });
 
@@ -1732,10 +1738,10 @@ export class DeckGLMap {
           10, 4,
           40, 6,
         ],
-        'circle-color': '#F59E0B',
+        'circle-color': ENERGY_STATE_HEX.nonSuivi,
         'circle-opacity': 0.85,
         'circle-stroke-width': 1,
-        'circle-stroke-color': 'rgba(245, 158, 11, 0.3)',
+        'circle-stroke-color': 'rgba(10, 10, 18, 0.6)',
       },
       layout: { visibility: 'none' },
     });
@@ -1755,7 +1761,7 @@ export class DeckGLMap {
         visibility: 'none',
       },
       paint: {
-        'text-color': '#F59E0B',
+        'text-color': '#e8e8ec',
         'text-halo-color': '#0a0a0f',
         'text-halo-width': 1.5,
       },
@@ -5985,15 +5991,15 @@ export class DeckGLMap {
             inventoryPct: terminal.inventoryPct,
             dataDate: terminal.dataDate,
             status: terminal.status,
+            energyState: 'nonSuivi',
           },
         });
       }
 
       // Storages (color-coded circles by fill level)
       for (const storage of state.storages) {
-        const fillColor = this.getStorageFillColor(storage.fillLevel);
-        const strokeColor = storage.fillTrend === 'withdrawing' ? '#EF4444' :
-          storage.fillTrend === 'filling' ? '#22C55E' : '#6B7280';
+        // Couleur = état du remplissage ; le contour de tendance (déduite de la saison) est retiré (spec 2026-10-15).
+        const { energyState, color: fillColor } = gasStorageStyle(storage.fillLevel);
 
         pointFeatures.push({
           type: 'Feature',
@@ -6009,7 +6015,7 @@ export class DeckGLMap {
             flowRateGWhDay: storage.flowRateGWhDay,
             fillLabel: `${storage.fillLevel.toFixed(0)}%`,
             fillColor,
-            strokeColor,
+            energyState,
             trend: storage.fillTrend,
           },
         });
@@ -6017,6 +6023,7 @@ export class DeckGLMap {
 
       const vitalsSource = this.map.getSource(SRC_GAS_VITALS) as maplibregl.GeoJSONSource;
       vitalsSource?.setData({ type: 'FeatureCollection', features: pointFeatures });
+      this.recordEnergy('gasNetwork', energyEntriesFrom(pointFeatures, 'gaz', 'gas'));
 
       // === Build PIR flow arcs ===
       // Gas flow: Cyan/turquoise with softer glow, rapid dash animation
@@ -6037,10 +6044,12 @@ export class DeckGLMap {
       };
       const ecogazSignal = ecogazSignalMap[ecogazRaw] ?? 'vert';
 
+      const gasFlowCount = { exports: 0, imports: 0 };
       for (const pir of state.interconnections) {
         if (Math.abs(pir.flowGWhDay) < 1) continue; // Skip negligible flows
 
         const isImport = pir.flowGWhDay > 0;
+        if (isImport) gasFlowCount.imports += 1; else gasFlowCount.exports += 1;
         const flowAbs = Math.abs(pir.flowGWhDay);
         // Gas flow colors: Cyan (import) / Teal (export) - visually distinct from electric blue
         const color = isImport ? GAS_FLOW_STYLE.importColor : GAS_FLOW_STYLE.exportColor;
@@ -6093,6 +6102,8 @@ export class DeckGLMap {
         });
       }
 
+      this.recordEnergyFlows('gasNetwork', gasFlowCount);
+
       const pirMarkerSrc = this.map.getSource(SRC_GAS_PIR_MARKERS) as maplibregl.GeoJSONSource;
       pirMarkerSrc?.setData({ type: 'FeatureCollection', features: pirMarkerFeatures });
 
@@ -6119,13 +6130,6 @@ export class DeckGLMap {
       this.setVis(LYR_GAS_NETWORK_GRT, v);
       this.setVis(LYR_GAS_NETWORK_TEREGA, v);
     }
-  }
-
-  private getStorageFillColor(fillLevel: number): string {
-    if (fillLevel < 30) return '#1E3A8A';
-    if (fillLevel < 50) return '#0891B2';
-    if (fillLevel < 70) return '#2DD4BF';
-    return '#6EE7B7';
   }
 
   /** Animated chevrons along gas PIR arcs (point-based, same technique as electricity). */
@@ -6244,6 +6248,7 @@ export class DeckGLMap {
         operator: s.operator ?? '',
         capacityGwh: s.capacityGwhYear ?? 0,
         status: s.status,
+        energyState: 'nonSuivi',
       },
     }));
 

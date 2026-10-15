@@ -7,8 +7,9 @@
 import type maplibregl from 'maplibre-gl';
 import type { IconName } from '../shared/icons.ts';
 import type { VigilanceLevel } from '../../services/vigilance.ts';
+import type { HydraulicTrend } from '../../types/index.ts';
 import {
-  ENERGY_SECTOR_ICON, ENERGY_STATE_HEX, ENERGY_STATE_RANK, ENERGY_STATES, isEnergyAlert,
+  ENERGY_SECTOR_ICON, ENERGY_STATE_HEX, ENERGY_STATE_RANK, ENERGY_STATES, gasStorageState, hydroState, isEnergyAlert,
   type EnergySector, type EnergyState,
 } from '../../services/energy-state.ts';
 
@@ -166,4 +167,16 @@ export function buildEnergyKeyModel(input: EnergyKeyInput): EnergyKeyModel {
     metro: on('metroLoad'),
     fuelTension: fuel,
   };
+}
+
+/** Stockage de gaz : couleur de l'état de son remplissage (contour de tendance saisonnière retiré). */
+export function gasStorageStyle(fillPct: number | null): { energyState: EnergyState; color: string } {
+  const energyState = gasStorageState(fillPct);
+  return { energyState, color: ENERGY_STATE_HEX[energyState] };
+}
+
+/** Retenue hydraulique : couleur de l'état de sa tendance (même lecture que le panneau). */
+export function hydroStyle(trend: HydraulicTrend): { energyState: EnergyState; color: string } {
+  const energyState = hydroState(trend);
+  return { energyState, color: ENERGY_STATE_HEX[energyState] };
 }
