@@ -1,12 +1,5 @@
 import type { EolienLayerFeatureProperties, EolienLayerGeoJSON, EolienLive, EolienParkSummary } from './types.ts';
-
-const EOLIEN_KIND_COLORS = {
-  onshore: '#38BDF8',
-  offshore: '#14B8A6',
-  unknown: '#7DD3FC',
-} as const;
-
-const EOLIEN_INACTIVE_COLOR = '#EF4444'; // rouge si défaillant / inactif
+import { ENERGY_STATE_HEX, windState } from '../energy-state.ts';
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -41,7 +34,7 @@ function statusLabel(status: EolienParkSummary['status']): string {
     case 'project':
       return 'Projet';
     case 'inactive':
-      return 'Inactif';
+      return 'Démantelé';
     default:
       return 'Statut non documenté';
   }
@@ -63,10 +56,10 @@ export function buildEolienLayerFeatureCollection(
         : park.kind === 'offshore'
           ? clamp(5 + capacityMw * 0.018, 5.5, 18)
           : clamp(2.8 + Math.sqrt(Math.max(capacityMw, 0)) * 0.18, 3.2, 6.2);
-      // Rouge si inactif/défaillant, sinon couleur par type
-      const color = park.status === 'inactive'
-        ? EOLIEN_INACTIVE_COLOR
-        : EOLIEN_KIND_COLORS[park.kind];
+      // Couleur = état (spec 2026-10-15) : `inactive` vient de etat_mat = dm (démantelé), hors service et non une panne ;
+      // pas de télémesure parc par parc, donc le reste est sans état suivi.
+      const energyState = windState(park.status);
+      const color = ENERGY_STATE_HEX[energyState];
       const opacity = park.status === 'operating'
         ? (park.sourceType === 'turbine' ? 0.88 : (park.kind === 'offshore' ? 0.94 : 0.46))
         : park.status === 'construction'
@@ -95,6 +88,7 @@ export function buildEolienLayerFeatureCollection(
           estimatedProductionMw,
           radius,
           color,
+          energyState,
           ringColor: 'rgba(0,0,0,0)',  // ring désactivé — le statut est porté par la couleur du point
           glowColor: `${color}55`,
           opacity,

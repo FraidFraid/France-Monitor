@@ -1,4 +1,5 @@
 import type { FeatureCollection, Geometry, Point } from 'geojson';
+import type { EnergyState } from '../energy-state.ts';
 
 export type EolienParkKind = 'onshore' | 'offshore' | 'unknown';
 export type EolienParkStatus = 'operating' | 'construction' | 'authorized' | 'project' | 'inactive' | 'unknown';
@@ -77,6 +78,8 @@ export interface EolienLayerFeatureProperties extends EolienParkProperties {
   estimatedProductionMw: number;
   radius: number;
   color: string;
+  /** État de l'énergie (spec 2026-10-15). */
+  energyState: EnergyState;
   ringColor: string;
   glowColor: string;
   opacity: number;

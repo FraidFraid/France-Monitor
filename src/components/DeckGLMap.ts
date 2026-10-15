@@ -111,7 +111,7 @@ import {
   ENERGY_SHAPE_DIAMOND, ENERGY_SHAPE_SQUARE, shapeIconSvg,
   type EnergyEntry, type EnergyFlowCount, type EnergyKeyModel, type EnergyLayerKey,
 } from './deckgl/energy-map.ts';
-import { ENERGY_NETWORK_HEX, ENERGY_STATE_HEX, type EnergyState } from '../services/energy-state.ts';
+import { ENERGY_NETWORK_HEX, ENERGY_STATE_HEX, refineryState, type EnergyState } from '../services/energy-state.ts';
 import type { VigilanceLevel } from '../services/vigilance.ts';
 import {
   dromEnergyAssetFromProperties,
@@ -1982,7 +1982,7 @@ export class DeckGLMap {
         'text-font': ['Open Sans Semibold'],
       },
       paint: {
-        'text-color': '#fef3c7',
+        'text-color': '#e8e8ec',
         'text-halo-color': '#1c1917',
         'text-halo-width': 1.5,
       },
@@ -2211,7 +2211,8 @@ export class DeckGLMap {
       type: 'line',
       source: SRC_DROM_ENERGY_HTA_LINES,
       paint: {
-        'line-color': '#7DD3FC',
+        // Lignes HTA des outre-mer : réseau, gris neutre (spec 2026-10-15).
+        'line-color': '#aeaeb2',
         'line-opacity': ['interpolate', ['linear'], ['zoom'], 7, 0.42, 11, 0.72],
         'line-width': ['interpolate', ['linear'], ['zoom'], 7, 1.1, 11, 2.1, 14, 3],
       },
@@ -2233,24 +2234,11 @@ export class DeckGLMap {
           12,
           ['match', ['get', 'assetType'], 'source_substation', 8.8, 'htb_pylon', 7, 'production_site', 7.8, 7.2],
         ],
-        'circle-color': [
-          'match',
-          ['get', 'assetType'],
-          'source_substation', '#4FD1FF',
-          'htb_pylon', '#3B82F6',
-          'production_site', '#2DD4BF',
-          '#60A5FA',
-        ],
+        // Outre-mer : inventaire sans état suivi, gris clair ; le type se lit à la taille et dans l'infobulle.
+        'circle-color': ENERGY_STATE_HEX.nonSuivi,
         'circle-opacity': 0.92,
-        'circle-stroke-width': 1.5,
-        'circle-stroke-color': [
-          'match',
-          ['get', 'assetType'],
-          'source_substation', '#E0F2FE',
-          'htb_pylon', '#BFDBFE',
-          'production_site', '#CCFBF1',
-          '#DBEAFE',
-        ],
+        'circle-stroke-width': 1,
+        'circle-stroke-color': '#0a0a12',
       },
     });
 
@@ -2351,21 +2339,17 @@ export class DeckGLMap {
       filter: ['has', 'point_count'],
       maxzoom: 8,
       paint: {
-        'circle-color': [
-          'step', ['get', 'point_count'],
-          '#7DD3FC',   // 1-49
-          50,  '#2563EB',  // 50-199
-          200, '#1E3A8A',  // 200+
-        ],
+        // Groupes d'éoliennes : gris clair, le nombre se lit à la taille (spec 2026-10-15).
+        'circle-color': ENERGY_STATE_HEX.nonSuivi,
         'circle-radius': [
           'step', ['get', 'point_count'],
           14,
           50,  20,
           200, 28,
         ],
-        'circle-opacity': 0.88,
-        'circle-stroke-width': 1.5,
-        'circle-stroke-color': 'rgba(255,255,255,0.35)',
+        'circle-opacity': 0.55,
+        'circle-stroke-width': 1,
+        'circle-stroke-color': '#0a0a12',
       },
     });
 
@@ -2380,7 +2364,7 @@ export class DeckGLMap {
         'text-size': 11,
         'text-font': ['Open Sans Bold'],
       },
-      paint: { 'text-color': '#ffffff' },
+      paint: { 'text-color': '#0a0a0f' },
     });
 
     this.map.addLayer({
@@ -6456,30 +6440,22 @@ export class DeckGLMap {
 
     try {
 
-      // Build refinery features — fill in orange/amber, stroke encodes status
+      // Raffineries : triangles à la couleur de l'état déclaré (spec 2026-10-15)
       const refineryFeatures: GeoJSON.Feature[] = data.refineries.map(r => {
-        const isActive = r.status === 'active';
-        const isMaint = r.status === 'maintenance';
-
-        // Active = "soleil" : ambre extrêmement clair et saturé, contour fin très sombre
-        // Maintenance = "goutte foncée" : ambre très sombre/brun, contour clair épais
-        const fillColor = isActive ? '#FCD34D'   // Amber-300 — le plus lumineux, "soleil"
-          : isMaint ? '#78350F'   // Amber-900 — très sombre, "goutte foncée"
-            : '#44403C';  // Stone-700 — arrêt
-
-        const strokeColor = isActive ? '#1C1917'   // Stone-950 — contour fin très sombre
-          : isMaint ? '#FCD34D'   // Amber-300 — contour clair épais
-            : '#44403C';  // Stone-700
-
-        const strokeWidth = isActive ? 2 : isMaint ? 5 : 1;
+        // Couleur = état (spec 2026-10-15) : statut déclaré dans la configuration, non mesuré ;
+        // active = sans état suivi, maintenance ou arrêt = hors service.
+        const energyState = refineryState(r.status);
+        const fillColor = ENERGY_STATE_HEX[energyState];
+        const strokeColor = '#0a0a12';
+        const strokeWidth = 1.5;
 
         // Taille proportionnelle à la capacité — utilisée pour l'icône triangle
         const cap = r.capacityMtPerYear ?? 8;
         const sizeScale = Math.max(0.9, Math.min(1.5, 0.65 + cap * 0.055));
         // Radius du glow (gardé pour la couche circle glow)
         const baseRadius = Math.max(6, Math.min(20, 3 + cap * 0.9));
-        // ▲ actif, ▼ maintenance (triangle inversé = "goutte")
-        const iconRotation = isMaint ? 180 : 0;
+        // Forme = filière : le triangle ne se retourne plus, l'état est dans la couleur.
+        const iconRotation = 0;
 
         return {
           type: 'Feature' as const,
@@ -6490,6 +6466,7 @@ export class DeckGLMap {
             operator: r.operator ?? '',
             capacity: cap,
             status: r.status,
+            energyState,
             fillColor,
             strokeColor,
             strokeWidth,
@@ -6505,15 +6482,10 @@ export class DeckGLMap {
       // Terminal    : anneau lumineux amber + disque central sombre (couche séparée)
       // Distribution: amber intermédiaire
       const depotFeatures: GeoJSON.Feature[] = data.depots.map(d => {
-        const fillColor = d.role === 'strategic' ? '#FEF9C3'   // Yellow-100 — presque blanc, léger
-          : d.role === 'terminal' ? '#F59E0B'   // Amber-500 — anneau lumineux
-            : '#D97706';  // Amber-600 — distribution
-
-        const strokeColor = d.role === 'strategic' ? 'transparent'  // Pas d'anneau
-          : d.role === 'terminal' ? '#1C1917'      // Stone-950 — contour minimal
-            : '#92400E';     // Amber-800 dim
-
-        const strokeWidth = d.role === 'strategic' ? 0 : d.role === 'terminal' ? 1.0 : 1.5;
+        // Dépôts : inventaire sans état suivi, gris clair ; le rôle se lit à la taille et au disque central.
+        const fillColor = ENERGY_STATE_HEX.nonSuivi;
+        const strokeColor = '#0a0a12';
+        const strokeWidth = 1;
         const baseRadius = d.role === 'strategic' ? 10 : d.role === 'terminal' ? 6 : 6;
         // Stratégique = spot clair mais léger (opacité réduite)
         const opacity = d.role === 'strategic' ? 0.65 : 0.95;
@@ -6525,6 +6497,7 @@ export class DeckGLMap {
             id: d.id,
             name: d.name,
             role: d.role,
+            energyState: 'nonSuivi',
             fillColor,
             strokeColor,
             strokeWidth,
@@ -6539,6 +6512,10 @@ export class DeckGLMap {
 
       const depotSrc = this.map.getSource(SRC_OIL_DEPOTS) as maplibregl.GeoJSONSource;
       depotSrc?.setData({ type: 'FeatureCollection', features: depotFeatures });
+      this.recordEnergy('oilNetwork', [
+        ...energyEntriesFrom(refineryFeatures, 'petrole', 'refinery'),
+        ...energyEntriesFrom(depotFeatures, 'petrole', 'depot'),
+      ]);
 
       console.log(`[DeckGLMap/Oil] Infrastructure updated: ${refineryFeatures.length} refineries, ${depotFeatures.length} depots`);
     } catch (e) {
@@ -8011,12 +7988,14 @@ export class DeckGLMap {
             capacityMw: asset.capacityMw ?? null,
             availableCapacityMw: asset.availableCapacityMw ?? null,
             productionType: asset.productionType ?? '',
+            energyState: 'nonSuivi',
           },
         })),
     };
 
     const src = this.map.getSource(SRC_DROM_ENERGY) as maplibregl.GeoJSONSource | undefined;
     src?.setData(fc);
+    this.recordEnergy('dromEnergy', energyEntriesFrom(fc.features, 'electricite', 'drom'));
 
     const linesSrc = this.map.getSource(SRC_DROM_ENERGY_HTA_LINES) as maplibregl.GeoJSONSource | undefined;
     const reunionHtaLines = (dashboard as DromEnergyDashboard & {
@@ -8126,6 +8105,10 @@ export class DeckGLMap {
     const parksSrc = this.map.getSource(SRC_WIND_PARKS) as maplibregl.GeoJSONSource | undefined;
     src?.setData(clusteredFc);
     parksSrc?.setData(parksFc);
+    this.recordEnergy('windMonitor', [
+      ...energyEntriesFrom(clusteredFc.features, 'eolien', 'wind'),
+      ...energyEntriesFrom(parksFc.features, 'eolien', 'windpark'),
+    ]);
   }
 
   // ─── Métropoles Layer ───
@@ -8158,6 +8141,7 @@ export class DeckGLMap {
             color: m.color,
             glowColor: m.glowColor,
             sizeClass: m.sizeClass,
+            energyState: 'nonSuivi',
             mwLabel,
             nationalSharePct: m.nationalSharePct ?? null,
             deltaVsJ1Pct: m.deltaVsJ1Pct ?? null,
@@ -8169,6 +8153,7 @@ export class DeckGLMap {
 
     const src = this.map.getSource(SRC_METRO_LOAD) as maplibregl.GeoJSONSource;
     src?.setData(fc);
+    this.recordEnergy('metroLoad', energyEntriesFrom(fc.features, 'electricite', 'metro'));
   }
 
   // ─── Événements consolidés (v2) ───

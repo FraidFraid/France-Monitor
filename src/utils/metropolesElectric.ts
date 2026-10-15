@@ -8,7 +8,7 @@
  */
 
 import type { MetropoleConsumption } from '../services/metropoles.ts';
-import { levelHex, type VigilanceLevel } from '../services/vigilance.ts';
+import type { VigilanceLevel } from '../services/vigilance.ts';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -50,16 +50,12 @@ export const METRO_LEGEND_LABELS: Record<MetroleSizeClass, string> = {
   small: 'Charge relative faible', medium: 'Charge relative moyenne', large: 'Charge relative forte',
 };
 
-function rgba(hex: string, alpha: number): string {
-  const n = Number.parseInt(hex.slice(1), 16);
-  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
-}
-
-/** Couleurs de la carte, dérivées des jetons de niveau (--sev-*) : MapLibre n'accepte pas var(). */
+// Carte de l'énergie (spec 2026-10-15) : la classe se lit à la taille ; la couleur de niveau reste au panneau (METRO_LEVEL).
+const METRO_NEUTRAL = { color: 'rgba(199,199,204,0.42)', glowColor: 'rgba(199,199,204,0.12)' };
 export const METROPOLE_COLORS: Record<MetroleSizeClass, { color: string; glowColor: string }> = {
-  large: { color: rgba(levelHex(METRO_LEVEL.large), 0.82), glowColor: rgba(levelHex(METRO_LEVEL.large), 0.24) },
-  medium: { color: rgba(levelHex(METRO_LEVEL.medium), 0.78), glowColor: rgba(levelHex(METRO_LEVEL.medium), 0.22) },
-  small: { color: rgba(levelHex(METRO_LEVEL.small), 0.74), glowColor: rgba(levelHex(METRO_LEVEL.small), 0.2) },
+  large: METRO_NEUTRAL,
+  medium: METRO_NEUTRAL,
+  small: METRO_NEUTRAL,
 };
 
 const VISUAL: Record<MetroleSizeClass, { radius: number }> = {
