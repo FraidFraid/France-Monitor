@@ -77,8 +77,9 @@ describe('panneau Charge métropolitaine (spec lot 2 § 3.5)', () => {
     const mobile = /@media \(max-width: 768px\) \{\s*([^{]*)\{\s*position: fixed !important;/.exec(css)?.[1] ?? '';
     expect(mobile).toContain('.metro-load-panel-modal');
   });
-  it('légende de la carte sur les niveaux, libellés « Charge relative … »', () => {
-    expect(app).toContain('label: METRO_LEGEND_LABELS.small, color: levelHex(METRO_LEVEL.small)');
+  it('légende de la carte : bloc Énergie unique (spec 2026-10-15), plus de carte « Charge métropolitaine »', () => {
+    expect(app).toContain('this.mapLegend?.setEnergyKey(buildEnergyKeyHtml(model))');
+    expect(app).not.toContain('METROPOLES_ELECTRIC_LEGEND');
   });
 });
 

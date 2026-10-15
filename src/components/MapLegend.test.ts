@@ -90,3 +90,28 @@ describe('MapLegend · bascule d’un niveau', () => {
     host.remove();
   });
 });
+
+describe('bloc Énergie dans « Lire la carte »', () => {
+  it('le bloc Énergie seul suffit à montrer le bouton ; il suit le bloc des événements', () => {
+    sessionStorage.clear();
+    const host = document.createElement('div');
+    const legend = new MapLegend(host);
+    legend.init();
+    legend.setEnergyKey('<section class="mk" id="energy-test"></section>');
+    expect(host.querySelector('.map-key-btn')).not.toBeNull();
+    host.querySelector<HTMLButtonElement>('.map-key-btn')?.click();
+    legend.setEventsKey('<section class="mk" id="events-test"></section>');
+    const ids = [...host.querySelectorAll('.map-key .mk')].map((s) => s.id);
+    expect(ids).toEqual(['events-test', 'energy-test']);
+    legend.destroy();
+  });
+  it('bloc Énergie vide et rien d’autre : pas de bouton', () => {
+    sessionStorage.clear();
+    const host = document.createElement('div');
+    const legend = new MapLegend(host);
+    legend.init();
+    legend.setEnergyKey('');
+    expect(host.querySelector('.map-key-btn')).toBeNull();
+    legend.destroy();
+  });
+});

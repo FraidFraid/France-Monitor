@@ -71,6 +71,7 @@ export class MapLegend {
     /** Repliée par défaut ; ne reste ouverte que si l'utilisateur l'a explicitement ouverte cette session. */
     private isCollapsed: boolean = !this.readOpenState();
     private eventsKeyHtml = '';
+    private energyKeyHtml = '';
     private onKeyAction: ((action: string) => void) | null = null;
     private readonly onKeydown = (ev: KeyboardEvent): void => {
         if (ev.key !== 'Escape' || this.isCollapsed) return;
@@ -120,6 +121,13 @@ export class MapLegend {
         this.update();
     }
 
+    /** Bloc Énergie (energy-key.ts), placé après le bloc des événements (spec 2026-10-15). */
+    setEnergyKey(html: string): void {
+        if (html === this.energyKeyHtml) return;
+        this.energyKeyHtml = html;
+        this.update();
+    }
+
     setOnKeyAction(callback: (action: string) => void): void {
         this.onKeyAction = callback;
     }
@@ -130,7 +138,7 @@ export class MapLegend {
 
     private render(): string {
         const activeCategories = this.categories.filter(cat => cat.visible !== false);
-        const hasContent = activeCategories.length > 0 || this.eventsKeyHtml !== '';
+        const hasContent = activeCategories.length > 0 || this.eventsKeyHtml !== '' || this.energyKeyHtml !== '';
         if (!hasContent) return '';
         const open = !this.isCollapsed;
         const button = `<button type="button" class="map-key-btn" aria-expanded="${open}" aria-controls="map-key-dialog">`
@@ -142,6 +150,7 @@ export class MapLegend {
                 <header class="map-key__head"><h2>Lire la carte</h2>
                     <button type="button" class="map-key__close" aria-label="Fermer la légende">${fmIcon('x', { size: 14 })}</button></header>
                 ${this.eventsKeyHtml}
+                ${this.energyKeyHtml}
                 ${cards ? `<div class="map-key__layers">${cards}</div>` : ''}
                 <footer class="map-key__foot">Seuls les éléments présents sur la carte sont listés.</footer>
             </section>
@@ -345,7 +354,7 @@ export class MapLegend {
 
     update(): void {
         if (this.element) {
-            const hasContent = this.categories.some(cat => cat.visible !== false) || this.eventsKeyHtml !== '';
+            const hasContent = this.categories.some(cat => cat.visible !== false) || this.eventsKeyHtml !== '' || this.energyKeyHtml !== '';
             this.element.style.display = hasContent ? 'flex' : 'none';
             // Re-rendu complet : on rend le focus clavier et la position de défilement de la bulle.
             const focused = document.activeElement instanceof HTMLElement && this.element.contains(document.activeElement)

@@ -33,7 +33,7 @@ import { levelHex, scoreLevel, type VigilanceLevel } from './services/vigilance.
 import { eventMapPoints } from './services/v2-map.ts';
 import type { ThemeId } from './services/themes.ts';
 import { innerLayerOpen } from './services/escape-layers.ts';
-import { isUiV2, layerActivationOptions, layerStateStorage, legendStatusLabel, moduleInColumn, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
+import { isUiV2, layerActivationOptions, layerStateStorage, moduleInColumn, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
 import { restorePanelPlan, showsSwitcher, switcherPanelOffsetPx, v2ColumnVars, v2SwitcherLayout, v2TabletPanelOffsetPx } from './services/floating-panel-switcher.ts';
 import { settleWithin } from './utils/settle-within.ts';
 import {
@@ -87,12 +87,11 @@ import { classifyWithAI } from './services/ai-classifier.ts';
 import { summarizeWithFallback } from './services/summarization.ts';
 import { geocodeNewsItem } from './services/geocoder.ts';
 import { fetchEcowatt } from './services/ecowatt.ts';
-import { ecowattStatusNote, ecowattToday } from './services/ecowatt-official.ts';
+import { ecowattToday } from './services/ecowatt-official.ts';
 import { fetchBiogasProduction } from './services/biogas.ts';
 import { fetchBiomethaneSites } from './services/biogas-sites.ts';
 import { fetchEnergyRegions, fetchBorderHistory } from './services/energy-regions.ts';
 import { fetchMetropoles, type MetropoleConsumption } from './services/metropoles.ts';
-import { METRO_LEGEND_LABELS, METRO_LEVEL } from './utils/metropolesElectric.ts';
 import type { MetroLoadPanel } from './components/MetroLoadPanel.ts';
 // Environnement (spec 2026-10-04 environnement) : vigilance et crues lues au démarrage (score, situations), feux en arrière-plan.
 import { fetchVigilance, mergeVigilance, vigilanceStatus, type VigilanceState } from './services/environment-vigilance.ts';
@@ -214,14 +213,15 @@ import { edfStatus, fetchPower, iipStatus, mergePower, seiStatus, type PowerStat
 import { fetchInternet, iodaStatus, mergeInternet, radarStatus as cloudflareRadarStatus, type InternetState } from './services/outages-internet.ts';
 import { cloudStatus, fetchCloud, mergeCloud, type CloudState } from './services/outages-cloud.ts';
 import { emptySlot } from './services/sovereignty-source.ts';
-import { cloudLegend, internetLegend, powerLegend, telecomLegend } from './components/layer-panel/outages-legend.ts';
+import { cloudLegend, internetLegend, telecomLegend } from './components/layer-panel/outages-legend.ts';
 import type { OutagesTelecomPanel } from './components/OutagesTelecomPanel.ts';
 import type { OutagesPowerPanel } from './components/OutagesPowerPanel.ts';
 import type { OutagesInternetPanel } from './components/OutagesInternetPanel.ts';
 import type { OutagesCloudPanel } from './components/OutagesCloudPanel.ts';
 import { fetchRTEIIPIncidents } from './services/rte-iip.ts';
-import { fetchNuclearUnavailabilities, buildNuclearStateMap, NUCLEAR_LEGEND_ITEMS } from './services/nuclear-rte.ts';
-import { ENERGY_STATE_HEX } from './services/energy-state.ts';
+import { fetchNuclearUnavailabilities, buildNuclearStateMap } from './services/nuclear-rte.ts';
+import { ENERGY_STATE_HEX, ENERGY_STATES, type EnergyState } from './services/energy-state.ts';
+import { buildEnergyKeyHtml } from './components/map-key/energy-key.ts';
 import { buildNuclearState } from './services/nuclear-correlation.ts';
 import type { NuclearPanel } from './components/NuclearPanel.ts';
 import { SituationMonitor } from './components/SituationMonitor.ts';
@@ -420,6 +420,10 @@ function summarizeNuclearPlantForMap(
     status: 'maintenance',
     notes: impactedUnits ? `Tranches impactées : ${impactedUnits}` : undefined,
   };
+}
+
+function isEnergyStateName(value: string): value is EnergyState {
+  return (ENERGY_STATES as readonly string[]).includes(value);
 }
 
 function buildNuclearInfrastructurePoints(
@@ -772,206 +776,10 @@ const HOSPITALS_LEGEND: LegendCategory = {
   refresh: { label: 'Annuelle' },
 };
 
-// Couleur des régions = solde production/consommation éco2mix (teintes de REGION_BALANCE_COLORS,
-// deckgl/constants.ts), jamais une vigilance : Écowatt est national et dit dans les notes.
-const ENERGY_ECOWATT_LEGEND: LegendCategory = {
-  id: 'powerGrid',
-  title: 'Électricité : solde régional',
-  type: 'categorical',
-  columns: 2,
-  splitIndex: 3,
-  items: [
-    { id: 'balance-export', label: 'Région exportatrice', color: '#3884FF', shape: 'square' },
-    { id: 'balance-even', label: 'Région équilibrée', color: '#5E5CE6', shape: 'square' },
-    { id: 'balance-import', label: 'Région importatrice', color: '#8E44E0', shape: 'square' },
-    // Electric flow arcs: Blue/cyan neon plasma effect
-    { id: 'elec-import', label: 'Import élec.', color: '#FF4B4B', icon: '←', iconSize: 18 },
-    { id: 'elec-export', label: 'Export élec.', color: '#16A34A', icon: '→', iconSize: 18 },
-  ],
-  source: {
-    label: 'RTE Écowatt (national) · éco2mix/ODRÉ',
-    year: new Date().getFullYear(),
-  },
-  refresh: {
-    label: '~15 min'
-  },
-  notes: [
-    'Qualité des données : chargement en cours',
-    'Données de consommation/production nationales aggrégées (estimations partielles J-1, etc.)',
-  ],
-};
-
-
-
-const HYDRAULIC_LEGEND: LegendCategory = {
-  id: 'hydroBackbone',
-  title: 'Backbone énergétique : Hydraulique',
-  type: 'categorical',
-  columns: 2,
-  splitIndex: 3,
-  items: [
-    { id: 'hydro-production', label: 'Hydro production', color: '#3B82F6', shape: 'circle' },
-    { id: 'hydro-step', label: 'STEP / pompage', color: '#8B5CF6', shape: 'circle' },
-    { id: 'hydro-water-regulation', label: 'Régulation / retenue', color: '#9CA3AF', shape: 'circle' },
-    { id: 'hydro-low', label: 'Signal bas', color: '#60A5FA', shape: 'ring' },
-    { id: 'hydro-normal', label: 'Signal normal', color: '#BFDBFE', shape: 'ring' },
-    { id: 'hydro-high', label: 'Signal haut', color: '#2563EB', shape: 'ring' },
-    { id: 'hydro-stress', label: 'Signal stress', color: '#EF4444', shape: 'ring' },
-  ],
-  source: {
-    label: 'Sélection consolidée + Hub’Eau hydrométrie en appui',
-  },
-  refresh: {
-    label: 'Structure statique · score dérivé recalculé ~10 min avec appui Hub’Eau si disponible'
-  },
-  notes: [
-    'Selection d’actifs hydrauliques critiques : couverture non exhaustive',
-    'STEP, barrages > 50 MW, grands réservoirs et actifs insulaires structurants uniquement.',
-    'Stress hydro-énergétique estimé à partir de signaux hydrométriques Hub’Eau + contexte énergie.',
-  ],
-};
-
-const EOLIEN_LEGEND: LegendCategory = {
-  id: 'windMonitor',
-  title: 'Veille Éolienne',
-  type: 'categorical',
-  columns: 2,
-  splitIndex: 3,
-  items: [
-    { id: 'wind-onshore',   label: 'Éolienne terrestre', color: '#38BDF8', shape: 'circle' },
-    { id: 'wind-offshore',  label: 'Parc en mer',        color: '#14B8A6', shape: 'circle' },
-    { id: 'wind-inactive',  label: 'Défaillant',         color: '#EF4444', shape: 'circle' },
-    { id: 'wind-cluster-sm', label: 'Cluster < 50 points', color: '#7DD3FC', shape: 'circle' },
-    { id: 'wind-cluster-md', label: 'Cluster 50 à 199', color: '#2563EB', shape: 'circle' },
-    { id: 'wind-cluster-lg', label: 'Cluster 200+', color: '#1E3A8A', shape: 'circle' },
-  ],
-  source: {
-    label: 'ODRE eco2mix + Géorisques / référentiel éolien',
-  },
-  refresh: {
-    label: 'Live 5 min · parcs cache 1 h'
-  },
-  notes: [
-    'Production nationale live via eco2mix.',
-    'Les parcs servent de fond OSINT cartographique, pas de télémesure parc-à-parc.',
-  ],
-};
-
-const METROPOLES_ELECTRIC_LEGEND: LegendCategory = {
-  id: 'metroLoad',
-  title: 'Charge métropolitaine',
-  type: 'categorical',
-  items: [
-    { id: 'metro-low', label: METRO_LEGEND_LABELS.small, color: levelHex(METRO_LEVEL.small), shape: 'circle' },
-    { id: 'metro-medium', label: METRO_LEGEND_LABELS.medium, color: levelHex(METRO_LEVEL.medium), shape: 'circle' },
-    { id: 'metro-high', label: METRO_LEGEND_LABELS.large, color: levelHex(METRO_LEVEL.large), shape: 'circle' },
-  ],
-  source: {
-    label: 'ODRE / eco2mix-metropoles-tr',
-    year: new Date().getFullYear(),
-  },
-  refresh: {
-    label: '~15 min (lag possible ~1h)'
-  }
-};
-
-const GAS_LEGEND: LegendCategory = {
-  id: 'gasNetwork',
-  title: 'Réseau Gaz',
-  type: 'categorical',
-  columns: 2,
-  splitIndex: 5,
-  items: [
-    { id: 'gas-network', label: 'Gazoduc principal', color: 'rgba(17,94,89,0.72)', icon: '━━━' },
-    { id: 'terminal', label: 'Terminal GNL', color: '#A78BFA', shape: 'circle' },
-    { id: 'storage-high', label: 'Stockage > 70%', color: '#6EE7B7', shape: 'circle' },
-    { id: 'storage-medium', label: 'Stockage 50-70%', color: '#2DD4BF', shape: 'circle' },
-    { id: 'storage-low', label: 'Stockage < 50%', color: '#0891B2', shape: 'circle' },
-    { id: 'storage-critical', label: 'Stockage < 30%', color: '#1E3A8A', shape: 'circle' },
-    { id: 'storage-filling', label: 'Contour vert = remplissage', color: '#22C55E', shape: 'ring' },
-    { id: 'storage-withdrawing', label: 'Contour rouge = soutirage', color: '#EF4444', shape: 'ring' },
-    { id: 'storage-neutral', label: 'Contour gris = neutre/inconnu', color: '#6B7280', shape: 'ring' },
-    { id: 'pir-import', label: 'Import gaz', color: '#A855F7', icon: '←', iconSize: 18 },
-    { id: 'pir-export', label: 'Export gaz', color: '#06B6D4', icon: '→', iconSize: 18 },
-    { id: 'biomethane-site', label: 'Site biométhane', color: '#F59E0B', shape: 'circle' },
-    { id: 'biomethane-cluster', label: 'Cluster biométhane', color: 'rgba(245,158,11,0.7)', shape: 'circle' },
-  ],
-  source: {
-    label: 'PEG NaTran / ODRE / Teréga',
-    year: new Date().getFullYear(),
-  },
-  refresh: {
-    label: '~15 min'
-  },
-  notes: [
-    'Qualité des données : chargement en cours',
-  ],
-};
-
-const OIL_LEGEND: LegendCategory = {
-  id: 'oilNetwork',
-  title: 'Pétrole – Réseau & stocks',
-  type: 'categorical',
-  columns: 2,
-  splitIndex: 5,
-  items: [
-    // Active = triangle ▲ ambre clair, halo sombre fin
-    { id: 'oil-refinery',          label: 'Raffinerie (active)',          color: '#FCD34D', shape: 'triangle-up',   borderColor: '#1C1917', borderWidth: 2 },
-    // Maintenance = triangle ▼ inversé ambre sombre, halo clair épais
-    { id: 'oil-refinery-maint',    label: 'Raffinerie (maintenance)',     color: '#78350F', shape: 'triangle-down', borderColor: '#FCD34D', borderWidth: 4 },
-    // Stratégique : jaune presque blanc, opacité réduite, pas d'anneau
-    { id: 'oil-depot-strategic',   label: 'Dépôt stratégique',           color: 'rgba(254,249,195,0.65)', shape: 'circle' },
-    // Terminal : disque sombre + anneau interne lumineux ("rond dans le rond")
-    { id: 'oil-depot-terminal',    label: 'Terminal pétrolier',           color: '#F59E0B', shape: 'circle', gradient: 'radial-gradient(circle, #1C0800 38%, #F59E0B 38%)', borderColor: '#292524', borderWidth: 1 },
-    // Distribution : amber-600, distinct du marron clair des oléoducs
-    { id: 'oil-depot-distrib',     label: 'Dépôt de distribution',       color: '#D97706', shape: 'circle' },
-    { id: 'oil-pipeline-crude',    label: 'Oléoduc (pétrole brut)',      color: '#78350F', icon: '━━━' },
-    { id: 'oil-pipeline-products', label: 'Oléoduc (produits raffinés)', color: '#a16207', icon: '━━━' },
-    { id: 'oil-import',            label: 'Flux import',                 color: '#C2410C', icon: '←', iconSize: 18 },
-    { id: 'oil-export',            label: 'Flux export',                 color: '#F59E0B', icon: '→', iconSize: 18 },
-  ],
-  source: {
-    label: 'SDES (Chiffres clés de l’énergie 2025, données 2024) + séries mensuelles produits pétroliers data.gouv',
-  },
-  refresh: {
-    label: 'HYBRID / MONTHLY / STRUCTURAL : pas de télémesure temps réel du raffinage ou du réseau'
-  },
-  notes: [
-    'Qualité des données : chargement en cours',
-  ],
-};
-
 // ── Pannes réseau (spec 2026-10-08 panneaux pannes) : légendes de outages-legend.ts, sources appelées réellement ──
-const OUTAGES_ELEC_LEGEND: LegendCategory = powerLegend();
 const OUTAGES_TELECOM_LEGEND: LegendCategory = telecomLegend();
 const OUTAGES_INTERNET_LEGEND: LegendCategory = internetLegend();
 const OUTAGES_CLOUD_LEGEND: LegendCategory = cloudLegend();
-
-function cloneLegend(category: LegendCategory, overrides: Partial<LegendCategory>): LegendCategory {
-  return {
-    ...category,
-    ...overrides,
-    items: overrides.items ?? category.items.map((item) => ({ ...item })),
-    source: overrides.source ?? (category.source ? { ...category.source } : undefined),
-    refresh: overrides.refresh ?? (category.refresh ? { ...category.refresh } : undefined),
-    notes: overrides.notes ?? (category.notes ? [...category.notes] : undefined),
-  };
-}
-
-const NUCLEAR_LEGEND: LegendCategory = {
-  id: 'nuclearFleet',
-  title: 'Nucléaire : Indisponibilités RTE',
-  items: [
-    ...NUCLEAR_LEGEND_ITEMS,
-    { id: 'nuc-remit', label: 'Signal REMIT (alpha)', color: '#111827', shape: 'circle' },
-  ],
-  source: {
-    label: 'RTE Open Data · IIP REMIT',
-    year: new Date().getFullYear(),
-  },
-  refresh: { label: 'Cache applicatif 15 min' },
-  notes: ['REMIT = signal anticipatoire non confirmé par données structurées RTE.'],
-};
 
 const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
   {
@@ -1063,7 +871,6 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     role: 'child',
     dependsOnGroup: true,
     label: 'Réseau électrique / Écowatt',
-    legend: ENERGY_ECOWATT_LEGEND,
   },
   {
     id: 'nuclearFleet',
@@ -1071,7 +878,6 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     role: 'child',
     dependsOnGroup: true,
     label: 'Parc nucléaire',
-    legend: NUCLEAR_LEGEND,
   },
   {
     id: 'gasNetwork',
@@ -1079,7 +885,6 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     role: 'child',
     dependsOnGroup: true,
     label: 'Réseau Gaz',
-    legend: GAS_LEGEND,
   },
   {
     id: 'biomethaneSites',
@@ -1094,7 +899,6 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     role: 'child',
     dependsOnGroup: true,
     label: 'Backbone hydraulique',
-    legend: HYDRAULIC_LEGEND,
   },
   {
     id: 'oilNetwork',
@@ -1102,7 +906,6 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     role: 'child',
     dependsOnGroup: true,
     label: 'Pétrole – Réseau & stocks',
-    legend: OIL_LEGEND,
   },
   {
     id: 'windMonitor',
@@ -1110,7 +913,6 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     role: 'child',
     dependsOnGroup: true,
     label: 'Veille Éolienne',
-    legend: EOLIEN_LEGEND,
   },
 
   {
@@ -1119,7 +921,6 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     role: 'child',
     dependsOnGroup: true,
     label: 'Charge métropolitaine',
-    legend: METROPOLES_ELECTRIC_LEGEND,
   },
   // ─── Health Group ───
   {
@@ -1198,7 +999,6 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     role: 'child',
     dependsOnGroup: true,
     label: 'Électricité',
-    legend: OUTAGES_ELEC_LEGEND,
   },
   {
     id: 'outagesTelecom',
@@ -1416,6 +1216,8 @@ export class App {
   private v2Theme: ThemeId = 'general';
   /** Niveaux masqués depuis la légende (clic sur une ligne de niveau, spec 2026-10-14). */
   private v2HiddenLevels = new Set<VigilanceLevel>();
+  /** États de l'énergie masqués depuis la légende (spec 2026-10-15). */
+  private energyHiddenStates = new Set<EnergyState>();
   private v2EventsState: IntelEventsState | null = null;
   private mapPreview: MapPreviewCard | null = null;
   /** Événement dont l'aperçu attend son détail : un détail arrivé pour un autre point est ignoré. */
@@ -1496,15 +1298,12 @@ export class App {
   private currentEcowattResponse: EcowattResponse | null = null;
   private currentBiogasState: BiogasState | null = null;
   private currentBiomethaneSites: BiomethaneSite[] | null = null;
-  private currentEcowattUsesFallback = false;
   private currentHydraulicAssets: HydraulicBackboneAsset[] = [];
   private currentHydraulicHydrometry: HydraulicHydrometrySnapshot | null = null;
   private currentEolienLive: EolienLive | null = null;
   /** Dernier résultat du baromètre des infrastructures (section Infrastructures de l'onglet État v2). */
   private currentNetworkBarometer: NetworkBarometerResult | null = null;
-  private currentEolienPoints: EolienParkSummary[] = [];
   private currentEolienParks: EolienParkSummary[] = [];
-  private currentEolienError: string | null = null;
   private readonly eolienTracker = new EolienTracker();
 
 
@@ -1808,85 +1607,6 @@ export class App {
     this.mapLegend.setCategoryVisibility('trafficMaritime', this.activeLayers.traffic && this.activeLayers.trafficMaritime);
     this.mapLegend.setCategoryVisibility('trafficAir', this.activeLayers.traffic && this.activeLayers.trafficAir);
     this.mapLegend.setCategoryVisibility('trafficRail', this.activeLayers.traffic && this.activeLayers.trafficRail);
-  }
-
-  private formatLegendSourceStatus(status: 'ok' | 'stale' | 'error'): string {
-    return legendStatusLabel(this.uiV2, status);
-  }
-
-  private refreshEnergyDataLegends(): void {
-    if (!this.mapLegend) return;
-
-    const electricityNotes = this.currentEcowattResponse
-      ? this.currentEcowattUsesFallback
-        ? [
-            'Qualité des données : INDISPONIBLE',
-            'Mix/interconnexions : INDISPONIBLE',
-          ]
-        : [
-            ecowattStatusNote(this.currentEcowattResponse.official, Date.now()),
-            'Couleur des régions : solde production/consommation éco2mix, indicatif, ce n’est pas une vigilance',
-            `Mix et interconnexions : ${this.formatLegendSourceStatus('ok')} (éco2mix/ODRÉ) · réacteurs nucléaires : non inclus ici`,
-          ]
-      : [
-          'Qualité des données : chargement en cours',
-        ];
-
-    const gasNotes = this.currentGasData
-      ? [
-          `EcoGaz : ${this.formatLegendSourceStatus(this.currentGasData.sourceStatus.ecogaz)}`,
-          `Stockages/flux : données ODRE (${this.formatLegendSourceStatus('ok')}) quand disponibles, sinon INDISPONIBLE`,
-          'Terminaux et sites : HISTORIQUE / référentiel local',
-        ]
-      : [
-          'Qualité des données : chargement en cours',
-        ];
-
-    const oilNotes = this.currentOilData
-      ? [
-          'OilNetwork : SDES pétrole 2025 (données 2024) + séries mensuelles produits pétroliers data.gouv – HYBRID / MONTHLY / STRUCTURAL',
-          'Arcs : projection OSINT à partir des parts d’origine, pas du port-à-port mesuré',
-        ]
-      : [
-          'Qualité des données : chargement en cours',
-        ];
-
-
-    const hydraulicNotes = this.currentHydraulicAssets.length > 0
-      ? [
-          `Couche chargée : ${this.currentHydraulicAssets.length} actifs critiques sélectionnés`,
-          `Hub’Eau hydrométrie : ${this.currentHydraulicHydrometry?.detail ?? 'appui en chargement'}`,
-          `Fraîcheur mesures : ${this.currentHydraulicHydrometry?.maxObservationAgeMinutes != null ? `${this.currentHydraulicHydrometry.maxObservationAgeMinutes} min max` : 'non disponible'}`,
-          'Limite : pas de télémesure EDF barrage par barrage.',
-        ]
-      : [
-          'Selection d’actifs hydrauliques critiques : couverture non exhaustive',
-          'Signaux auto-recalculés toutes les 10 minutes quand la couche est active',
-          'Chargement des signaux hydrauliques en cours',
-        ];
-
-    const eolienNotes = this.currentEolienLive
-      ? [
-          `Production live France : ${this.currentEolienLive.production_gw.toFixed(1)} GW`,
-          `Facteur de charge estimé : ${Math.round(this.currentEolienLive.facteur_charge * 100)}%`,
-          `Parcs suivis : ${this.currentEolienParks.length} · points carte : ${this.currentEolienPoints.length}`,
-          'Alerte production critique si la puissance nationale passe sous 3 GW',
-        ]
-      : [
-          'Production live France via eco2mix/ODRE',
-          this.currentEolienError
-            ? `Erreur couche éolienne : ${this.currentEolienError}`
-            : 'Référentiel cartographique parcs terrestres / en mer en chargement',
-        ];
-
-    this.mapLegend.addCategory(cloneLegend(ENERGY_ECOWATT_LEGEND, { notes: electricityNotes }));
-    this.mapLegend.addCategory(NUCLEAR_LEGEND);
-    this.mapLegend.addCategory(cloneLegend(GAS_LEGEND, { notes: gasNotes }));
-    this.mapLegend.addCategory(cloneLegend(HYDRAULIC_LEGEND, { notes: hydraulicNotes }));
-    this.mapLegend.addCategory(cloneLegend(OIL_LEGEND, { notes: oilNotes }));
-    this.mapLegend.addCategory(cloneLegend(EOLIEN_LEGEND, { notes: eolienNotes }));
-
-    this.mapLegend.addCategory(METROPOLES_ELECTRIC_LEGEND);
   }
 
   constructor(container: HTMLElement) {
@@ -5718,11 +5438,23 @@ export class App {
     // Créé avec la légende : un élément ajouté avant l'initialisation de la carte est effacé avec son conteneur.
     this.mapPreview = new MapPreviewCard(mapEl);
     this.mapLegend.setOnKeyAction((action) => {
+      if (action.startsWith('energy:')) {
+        const state = action.slice('energy:'.length);
+        if (!isEnergyStateName(state)) return;
+        if (this.energyHiddenStates.has(state)) this.energyHiddenStates.delete(state);
+        else this.energyHiddenStates.add(state);
+        this.mapContainer?.setHiddenEnergyStates(this.energyHiddenStates);
+        return;
+      }
       const level = action.startsWith('level:') ? action.slice('level:'.length) : '';
       if (level !== 'rouge' && level !== 'orange' && level !== 'jaune' && level !== 'vert') return;
       if (this.v2HiddenLevels.has(level)) this.v2HiddenLevels.delete(level);
       else this.v2HiddenLevels.add(level);
       this.refreshEventPoints();
+    });
+    // Bloc Énergie de « Lire la carte » (spec 2026-10-15) : réémis à chaque donnée et bascule de couche.
+    this.mapContainer?.setOnEnergyKeyChange((model) => {
+      this.mapLegend?.setEnergyKey(buildEnergyKeyHtml(model));
     });
 
     // Wire map hover interactions
@@ -5738,14 +5470,7 @@ export class App {
     this.mapLegend.addCategory(HEALTH_APL_LEGEND);
     this.mapLegend.addCategory(HEALTH_URGENCES_LEGEND);
     this.mapLegend.addCategory(HOSPITALS_LEGEND);
-    this.mapLegend.addCategory(ENERGY_ECOWATT_LEGEND);
-    this.mapLegend.addCategory(NUCLEAR_LEGEND);
-    this.mapLegend.addCategory(GAS_LEGEND);
-    this.mapLegend.addCategory(HYDRAULIC_LEGEND);
-    this.mapLegend.addCategory(OIL_LEGEND);
-    this.mapLegend.addCategory(EOLIEN_LEGEND);
 
-    this.mapLegend.addCategory(METROPOLES_ELECTRIC_LEGEND);
     this.mapLegend.addCategory(VIGILANCE_LEGEND);
     this.mapLegend.addCategory(FLOODS_LEGEND);
     this.mapLegend.addCategory(RADAR_LEGEND);
@@ -5757,11 +5482,9 @@ export class App {
     this.mapLegend.addCategory(DEFENSE_LEGEND);
     this.mapLegend.addCategory(CONNECTIVITY_LEGEND);
     this.mapLegend.addCategory(CYBER_LEGEND);
-    this.mapLegend.addCategory(OUTAGES_ELEC_LEGEND);
     this.mapLegend.addCategory(OUTAGES_TELECOM_LEGEND);
     this.mapLegend.addCategory(OUTAGES_INTERNET_LEGEND);
     this.mapLegend.addCategory(OUTAGES_CLOUD_LEGEND);
-    this.refreshEnergyDataLegends();
 
     this.refreshLegendVisibility();
     this.refreshTrafficLegend();
@@ -6290,7 +6013,6 @@ export class App {
     this.energyPanel?.updateBorderHistory(borderHistory);
     if (Object.keys(ecowatt.mixes).length > 0 || ecowatt.official !== null) {
       this.currentEcowattResponse = ecowatt;
-      this.currentEcowattUsesFallback = false;
       await this.mapContainer?.updateEnergy(ecowatt);
       this.mapContainer?.updateEnergyTooltipData(energyRegions.regions, energyRegions.flows, borderHistory);
       // Signal officiel du jour (API RTE) → à jour ; repli open data (J-1) ou signal absent → figé.
@@ -6303,7 +6025,6 @@ export class App {
         national: { timestamp: new Date(), nuclear: 0, wind: 0, solar: 0, hydro: 0, gas: 0, other: 0, total: 0 },
         interconnections: [], grid: null,
       };
-      this.currentEcowattUsesFallback = true;
       await this.mapContainer?.updateEnergy(this.currentEcowattResponse);
       this.mapContainer?.updateEnergyTooltipData(energyRegions.regions, energyRegions.flows, borderHistory);
       this.statusPanel?.updateSource('Écowatt RTE', { status: 'stale', lastUpdate: new Date() });
@@ -6319,7 +6040,6 @@ export class App {
     this.eolienPanel?.setGrid(this.currentEcowattResponse.grid);
 
     await this.refreshHydraulicLayer();
-    this.refreshEnergyDataLegends();
     this.refreshFranceIntelPanel();
   }
 
@@ -6529,7 +6249,6 @@ export class App {
     if (this.activeLayers.hydroBackbone && this.hydraulicPanel?.isVisible()) {
       this.layoutEnergyFloatingPanels();
     }
-    this.refreshEnergyDataLegends();
   }
 
   private async loadHydraulic(): Promise<void> {
@@ -6541,9 +6260,7 @@ export class App {
 
     try {
       const snapshot = await this.eolienTracker.fetchDashboardSnapshot();
-      this.currentEolienError = null;
       this.currentEolienLive = snapshot.live;
-      this.currentEolienPoints = snapshot.points;
       this.currentEolienParks = snapshot.parks;
 
       // Update barometer wind score + widget tooltip immediately
@@ -6571,19 +6288,15 @@ export class App {
       if (this.activeLayers.windMonitor && this.eolienPanel?.isVisible()) {
         this.layoutEnergyFloatingPanels();
       }
-      this.refreshEnergyDataLegends();
       this.refreshFranceIntelPanel();
     } catch (error) {
       console.warn('[App/Eolien] Source unavailable', error);
       const message = error instanceof Error ? error.message : 'fetch_failed';
-      this.currentEolienError = message;
       this.currentEolienLive = null;
-      this.currentEolienPoints = [];
       this.currentEolienParks = [];
       this.mapContainer?.updateEolien(null, []);
       this.eolienPanel?.showErrorState(message);
       this.statusPanel?.updateSource('Éolien France', { status: 'stale', lastUpdate: new Date(), detail: message });
-      this.refreshEnergyDataLegends();
       this.refreshFranceIntelPanel();
     }
   }
@@ -6713,7 +6426,6 @@ export class App {
       console.log('[App/loadGas] Feature DISABLED, skipping...');
       this.statusPanel?.updateSource('Gaz', { status: 'stale', lastUpdate: null });
       this.currentGasData = null;
-      this.refreshEnergyDataLegends();
       return;
     }
 
@@ -6751,13 +6463,11 @@ export class App {
 
       // Update panel if visible
       this.gasPanel?.update(gasData, biogasState);
-      this.refreshEnergyDataLegends();
 
       console.log(`[App/loadGas] Complete: EcoGaz=${gasData.ecogaz.signal}, Fill=${gasData.nationalStats.averageFillLevel.toFixed(1)}%`);
     } catch (err) {
       console.error('[App/loadGas] Failed:', err);
       this.statusPanel?.updateSource('Gaz', { status: 'error', lastUpdate: new Date() });
-      this.refreshEnergyDataLegends();
     }
   }
 
@@ -6821,7 +6531,6 @@ export class App {
       this.currentOilData = null;
       this.currentFuelTensionData = null;
       await this.mapContainer?.updateFuelTension(null);
-      this.refreshEnergyDataLegends();
       return;
     }
 
@@ -6885,7 +6594,6 @@ export class App {
 
       // Update panel if visible
       this.oilPanel?.update(resolvedOilData, resolvedFuelTension);
-      this.refreshEnergyDataLegends();
       this.refreshFranceIntelPanel();
 
       console.log(`[App/loadOil] Complete: Status=${resolvedOilData.meta.status}, StocksDays=${resolvedOilData.stocks.nationalStocksDays}`);
@@ -6901,7 +6609,6 @@ export class App {
       if (this.currentOilData) {
         this.oilPanel?.update(this.currentOilData, this.currentFuelTensionData);
       }
-      this.refreshEnergyDataLegends();
     }
   }
 
@@ -7484,7 +7191,6 @@ export class App {
       {
         name: 'eolien', task: this.loadEolien().catch(() => {
           this.currentEolienLive = null;
-          this.currentEolienPoints = [];
           this.currentEolienParks = [];
           this.mapContainer?.updateEolien(null, []);
           this.statusPanel?.updateSource('Éolien France', { status: 'error', lastUpdate: new Date() });
