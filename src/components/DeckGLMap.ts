@@ -205,8 +205,6 @@ import {
   LYR_DROM_ENERGY_HTA_LINES,
   LYR_DROM_ENERGY_HIGHLIGHT,
   LYR_DROM_ENERGY_POINTS,
-  LYR_HYDRO_BACKBONE_HALO,
-  LYR_HYDRO_BACKBONE_SIGNAL_RING,
   LYR_HYDRO_BACKBONE_CIRCLE,
   LYR_HYDRO_BACKBONE_LABEL,
   LYR_WIND_CLUSTER,
@@ -312,8 +310,6 @@ import {
   INFRA_COLORS,
   INFRA_VITAL_HALO_COLOR,
   INFRA_NUCLEAR_RING_COLOR,
-  HYDRAULIC_COLORS,
-  HYDRAULIC_TREND_COLORS,
   DEFAULT_VIEW,
   FRANCE_CENTER,
   SRC_ENERGY_ALERTS,
@@ -2272,63 +2268,26 @@ export class DeckGLMap {
       },
     });
 
-    this.map.addLayer({
-      id: LYR_HYDRO_BACKBONE_HALO,
-      type: 'circle',
-      source: SRC_HYDRO_BACKBONE,
-      paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'],
-          4, ['+', 4, ['/', ['get', 'radius'], 2.2]],
-          8, ['+', 5, ['/', ['get', 'radius'], 1.5]],
-          12, ['+', 6, ['/', ['get', 'radius'], 1.1]],
-        ],
-        'circle-color': ['get', 'color'],
-        'circle-opacity': [
-          'case',
-          ['==', ['get', 'hydroTrend'], 'stress'], 0.24,
-          ['==', ['get', 'hydroTrend'], 'high'], 0.18,
-          ['==', ['get', 'hydroTrend'], 'low'], 0.10,
-          0.12,
-        ],
-        'circle-blur': 0.7,
-      },
-    });
-
-    this.map.addLayer({
-      id: LYR_HYDRO_BACKBONE_SIGNAL_RING,
-      type: 'circle',
-      source: SRC_HYDRO_BACKBONE,
-      paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'],
-          4, ['+', ['*', ['get', 'radius'], 0.88], ['*', ['get', 'signalRadiusBoost'], 0.62]],
-          8, ['+', ['*', ['get', 'radius'], 1.02], ['*', ['get', 'signalRadiusBoost'], 0.72]],
-          12, ['+', ['*', ['get', 'radius'], 1.16], ['*', ['get', 'signalRadiusBoost'], 0.82]],
-        ],
-        'circle-color': 'rgba(0,0,0,0)',
-        'circle-stroke-color': ['get', 'signalColor'],
-        'circle-stroke-width': ['interpolate', ['linear'], ['zoom'],
-          4, ['get', 'signalStrokeWidth'],
-          8, ['*', ['get', 'signalStrokeWidth'], 1.12],
-          12, ['*', ['get', 'signalStrokeWidth'], 1.24],
-        ],
-        'circle-opacity': ['get', 'signalOpacity'],
-      },
-    });
-
+    // Hydraulique : losanges à la couleur de l'état (spec 2026-10-15) ; halo et anneau de signal retirés.
     this.map.addLayer({
       id: LYR_HYDRO_BACKBONE_CIRCLE,
-      type: 'circle',
+      type: 'symbol',
       source: SRC_HYDRO_BACKBONE,
-      paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'],
-          4, ['*', ['get', 'radius'], 0.75],
-          8, ['get', 'radius'],
-          12, ['*', ['get', 'radius'], 1.22],
+      layout: {
+        'icon-image': ENERGY_SHAPE_DIAMOND,
+        // Diagonale = ancien diamètre ; 1 = 32 px.
+        'icon-size': ['interpolate', ['linear'], ['zoom'],
+          4, ['/', ['*', ['get', 'radius'], 0.75], 16],
+          8, ['/', ['get', 'radius'], 16],
+          12, ['/', ['*', ['get', 'radius'], 1.22], 16],
         ],
-        'circle-color': ['get', 'color'],
-        'circle-opacity': 0.94,
-        'circle-stroke-width': 0,
-        'circle-stroke-color': 'rgba(0,0,0,0)',
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
+      },
+      paint: {
+        'icon-color': ['get', 'color'],
+        'icon-halo-color': '#0a0a12',
+        'icon-halo-width': 1,
       },
     });
 
@@ -8105,6 +8064,9 @@ export class DeckGLMap {
       type: 'FeatureCollection',
       features: assets.map((asset) => {
         const radius = clamp(4.5 + asset.criticality_score * 0.08, 5, 14);
+        const measured = asset.signals.signalSource === 'DERIVED_REAL_MEASURE_SUPPORT'
+          && asset.signals.dataFreshness !== 'stale' && asset.signals.dataFreshness !== 'unavailable';
+        const style = hydroStyle(asset.signals.hydro_trend, measured);
         const observationTimestamp = asset.signals.observationTimestamp
           ? new Date(asset.signals.observationTimestamp).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })
           : '';
@@ -8128,22 +8090,6 @@ export class DeckGLMap {
             technology: asset.technology ?? '',
             locationAccuracy: asset.location_accuracy ?? '',
             sourceDate: asset.source_date ?? '',
-            signalColor: HYDRAULIC_TREND_COLORS[asset.signals.hydro_trend] ?? '#BFDBFE',
-            signalOpacity:
-              asset.signals.hydro_trend === 'stress' ? 0.98
-                : asset.signals.hydro_trend === 'high' ? 0.92
-                  : asset.signals.hydro_trend === 'low' ? 0.72
-                    : 0.58,
-            signalStrokeWidth:
-              asset.signals.hydro_trend === 'stress' ? 3.2
-                : asset.signals.hydro_trend === 'high' ? 2.6
-                  : asset.signals.hydro_trend === 'low' ? 1.9
-                    : 1.5,
-            signalRadiusBoost:
-              asset.signals.hydro_trend === 'stress' ? 5.6
-                : asset.signals.hydro_trend === 'high' ? 4.4
-                  : asset.signals.hydro_trend === 'low' ? 3.2
-                    : 2.6,
             criticalityScore: asset.criticality_score,
             hydroTrend: asset.signals.hydro_trend,
             lastUpdate: asset.signals.last_update,
@@ -8155,7 +8101,9 @@ export class DeckGLMap {
             confidence: asset.signals.confidence,
             measuredStationCount: asset.signals.measuredStationCount,
             sourceDetail: asset.signals.sourceDetail ?? '',
-            color: HYDRAULIC_COLORS[asset.type] ?? '#3B82F6',
+            id: asset.id,
+            color: style.color,
+            energyState: style.energyState,
             radius,
           },
         };
@@ -8164,6 +8112,7 @@ export class DeckGLMap {
 
     const src = this.map.getSource(SRC_HYDRO_BACKBONE) as maplibregl.GeoJSONSource | undefined;
     src?.setData(fc);
+    this.recordEnergy('hydroBackbone', energyEntriesFrom(fc.features, 'hydraulique', 'hydro'));
   }
 
   updateEolien(live: EolienLive | null, parks: EolienParkSummary[]): void {
@@ -9041,8 +8990,6 @@ export class DeckGLMap {
     this.setVis(LYR_DROM_ENERGY_HTA_LINES, vis(layers.dromEnergy ?? false));
     this.setVis(LYR_DROM_ENERGY_POINTS, vis(layers.dromEnergy ?? false));
     this.setVis(LYR_DROM_ENERGY_HIGHLIGHT, vis(layers.dromEnergy ?? false));
-    this.setVis(LYR_HYDRO_BACKBONE_HALO, vis(layers.hydroBackbone ?? false));
-    this.setVis(LYR_HYDRO_BACKBONE_SIGNAL_RING, vis(layers.hydroBackbone ?? false));
     this.setVis(LYR_HYDRO_BACKBONE_CIRCLE, vis(layers.hydroBackbone ?? false));
     this.setVis(LYR_HYDRO_BACKBONE_LABEL, vis(layers.hydroBackbone ?? false));
     this.setVis(LYR_WIND_CLUSTER,        vis(layers.windMonitor ?? false));

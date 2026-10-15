@@ -110,4 +110,8 @@ describe('hydraulique', () => {
     expect(hydroStyle('high')).toEqual({ energyState: 'reduit', color: '#ffcc00' });
     expect(hydroStyle('low')).toEqual({ energyState: 'normal', color: '#34c759' });
   });
+  it('sans mesure en direct, une retenue normale n’est pas verte ; un stress reste signalé', () => {
+    expect(hydroStyle('normal', false)).toEqual({ energyState: 'nonSuivi', color: '#c7c7cc' });
+    expect(hydroStyle('stress', false)).toEqual({ energyState: 'tension', color: '#ff9500' });
+  });
 });

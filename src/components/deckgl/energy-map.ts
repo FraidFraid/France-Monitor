@@ -175,8 +175,12 @@ export function gasStorageStyle(fillPct: number | null): { energyState: EnergySt
   return { energyState, color: ENERGY_STATE_HEX[energyState] };
 }
 
-/** Retenue hydraulique : couleur de l'état de sa tendance (même lecture que le panneau). */
-export function hydroStyle(trend: HydraulicTrend): { energyState: EnergyState; color: string } {
-  const energyState = hydroState(trend);
+/**
+ * Retenue hydraulique : couleur de l'état de sa tendance (même lecture que le panneau). Le vert n'est donné
+ * qu'à un état mesuré : sans mesure en direct, une retenue « normale » est sans état suivi.
+ */
+export function hydroStyle(trend: HydraulicTrend, measured = true): { energyState: EnergyState; color: string } {
+  const raw = hydroState(trend);
+  const energyState: EnergyState = raw === 'normal' && !measured ? 'nonSuivi' : raw;
   return { energyState, color: ENERGY_STATE_HEX[energyState] };
 }
