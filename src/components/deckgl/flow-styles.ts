@@ -4,16 +4,18 @@
 // ENERGY FLOW STYLES — Distinct visual styles for electricity, gas, and oil
 // ═══════════════════════════════════════════════════════════════════════════
 
+import { ENERGY_FLOW_GLOW_HEX, ENERGY_FLOW_HEX } from '../../services/energy-state.ts';
+
 /**
- * Electric flow style: Red/green neon with pronounced glow effect
+ * Electric flow style: neutral off-white with pronounced glow effect (spec 2026-10-15)
  * Continuous plasma-like appearance, bright and energetic
  */
 export const ELECTRIC_FLOW_STYLE = {
-  // Colors: OSINT style — red/orange import, green export
-  importColor: '#FF4B4B',      // Rouge-orange for import (into France)
-  exportColor: '#16A34A',      // Vert un peu plus fonce pour export (out of France)
-  glowImportColor: '#FF6B6B',  // Softer red glow
-  glowExportColor: '#15803D',  // Deeper green glow
+  // Couleurs neutre : le sens est porté par les chevrons (spec 2026-10-15) ; le rouge et le vert sont réservés aux états.
+  importColor: ENERGY_FLOW_HEX,
+  exportColor: ENERGY_FLOW_HEX,
+  glowImportColor: ENERGY_FLOW_GLOW_HEX,
+  glowExportColor: ENERGY_FLOW_GLOW_HEX,
   // Line properties
   minLineWidth: 3,
   maxLineWidth: 10,
@@ -49,11 +51,11 @@ export function getElectricFlowConfig(): typeof ELECTRIC_FLOW_STYLE {
  * Thinner arcs, rapid dash animation to suggest pipeline flow
  */
 export const GAS_FLOW_STYLE = {
-  // Colors: import = violet électrique, export = cyan électrique
-  importColor: '#A855F7',      // Purple-500 : import (FR reçoit)
-  exportColor: '#06B6D4',      // Cyan-500   : export (FR envoie)
-  glowImportColor: '#7C3AED',  // Violet-600 : halo import
-  glowExportColor: '#0891B2',  // Cyan-600   : halo export
+  // Couleurs neutre : le sens est porté par les chevrons (spec 2026-10-15).
+  importColor: ENERGY_FLOW_HEX,
+  exportColor: ENERGY_FLOW_HEX,
+  glowImportColor: ENERGY_FLOW_GLOW_HEX,
+  glowExportColor: ENERGY_FLOW_GLOW_HEX,
   // Line properties: Thinner than electricity
   minLineWidth: 4,
   maxLineWidth: 10,
@@ -75,11 +77,11 @@ export const GAS_FLOW_STYLE = {
  * Thick arcs, slow dash animation to suggest viscous flow
  */
 export const OIL_FLOW_STYLE = {
-  // Colors: Amber lumineux (export) / Rouille sombre (import) — palette pétrole
-  exportColor: '#F59E0B',      // Amber-500 — ambre chaud lumineux
-  importColor: '#C2410C',      // Orange-700 — rouille sombre (distinct de l'élec rouge)
-  glowExportColor: '#FCD34D',  // Amber-300 — glow doré léger
-  glowImportColor: '#EA580C',  // Orange-600 — glow rouille
+  // Couleurs neutre : le sens est porté par les chevrons (spec 2026-10-15).
+  exportColor: ENERGY_FLOW_HEX,
+  importColor: ENERGY_FLOW_HEX,
+  glowExportColor: ENERGY_FLOW_GLOW_HEX,
+  glowImportColor: ENERGY_FLOW_GLOW_HEX,
   // Line properties: Thicker than others (viscous feel)
   minLineWidth: 4,
   maxLineWidth: 12,

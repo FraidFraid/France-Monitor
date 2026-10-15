@@ -246,9 +246,10 @@ export const OIL_STATUS_COLORS = {
 } as const;
 
 // ═══ Couleurs par type de pipeline ═══
+// Oléoducs : réseau, gris neutre en pointillé (spec 2026-10-15) ; brut et produits se distinguent dans l'infobulle.
 export const OIL_PIPELINE_COLORS = {
-  crude: '#78350f',     // Amber-900 (pétrole brut - foncé)
-  products: '#a16207',  // Amber-700 (produits raffinés - plus clair)
+  crude: '#8e8e93',
+  products: '#8e8e93',
 } as const;
 
 // ═══ Seuils de vigilance (jours de stock) ═══

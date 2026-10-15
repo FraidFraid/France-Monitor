@@ -11,6 +11,8 @@ import type {
 } from '../types/index.ts';
 import { fetchFuelStations, NATIONAL_FUEL_DEPARTMENT_CODES } from './fuel-prices.ts';
 import { Watchdog } from './watchdog.ts';
+import { levelHex } from './vigilance.ts';
+import { fuelTensionVigilance } from './energy-state.ts';
 
 const FUEL_TYPES: FuelType[] = ['gazole', 'sp95', 'sp98', 'e10'];
 const FUEL_TENSION_CACHE_TTL_MS = 5 * 60_000;
@@ -554,17 +556,9 @@ export async function fetchFuelTensionDashboard(departmentCodes?: string[]): Pro
   return request;
 }
 
+/** Tension carburants sur la palette de vigilance (spec 2026-10-15). */
 export function getFuelTensionLevelColor(level: FuelTensionLevel): string {
-  switch (level) {
-    case 'CRITICAL':
-      return '#EF4444';
-    case 'HIGH':
-      return '#F97316';
-    case 'MEDIUM':
-      return '#FBBF24';
-    default:
-      return '#34D399';
-  }
+  return levelHex(fuelTensionVigilance(level));
 }
 
 export function getFuelBadgeColor(badge: FuelFreshness['badge']): string {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildFuelTensionDashboardFromStations, FUEL_TENSION_THRESHOLDS } from './fuel-tension.ts';
+import { buildFuelTensionDashboardFromStations, FUEL_TENSION_THRESHOLDS, getFuelTensionLevelColor } from './fuel-tension.ts';
 import type { FuelStation, FuelStationFuelStatus, FuelType } from '../types/index.ts';
 
 const NOW = Date.parse('2026-10-02T11:30:00Z');
@@ -122,5 +122,14 @@ describe('tension carburants : ruptures, pas prix stables', () => {
     };
     expect([level(14), level(15), level(24), level(25), level(39), level(40)])
       .toEqual(['LOW', 'MEDIUM', 'MEDIUM', 'HIGH', 'HIGH', 'CRITICAL']);
+  });
+});
+
+describe('tension carburants sur la palette de vigilance', () => {
+  it('critique rouge, forte orange, moyenne jaune, faible vert', () => {
+    expect(getFuelTensionLevelColor('CRITICAL')).toBe('#ff3b30');
+    expect(getFuelTensionLevelColor('HIGH')).toBe('#ff9500');
+    expect(getFuelTensionLevelColor('MEDIUM')).toBe('#ffcc00');
+    expect(getFuelTensionLevelColor('LOW')).toBe('#34c759');
   });
 });

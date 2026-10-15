@@ -111,7 +111,7 @@ import {
   ENERGY_SHAPE_DIAMOND, ENERGY_SHAPE_SQUARE, shapeIconSvg,
   type EnergyEntry, type EnergyFlowCount, type EnergyKeyModel, type EnergyLayerKey,
 } from './deckgl/energy-map.ts';
-import { ENERGY_NETWORK_HEX, ENERGY_STATE_HEX, refineryState, type EnergyState } from '../services/energy-state.ts';
+import { ENERGY_NETWORK_HEX, ENERGY_STATE_HEX, fuelTensionVigilance, refineryState, type EnergyState } from '../services/energy-state.ts';
 import type { VigilanceLevel } from '../services/vigilance.ts';
 import {
   dromEnergyAssetFromProperties,
@@ -1864,7 +1864,7 @@ export class DeckGLMap {
       type: 'line',
       source: SRC_OIL_PIPELINES,
       paint: {
-        'line-color': '#d97706',  // Amber-600 glow
+        'line-color': '#8e8e93',  // Halo neutre (spec 2026-10-15)
         'line-width': 6,
         'line-opacity': 0.3,
         'line-blur': 4,
@@ -1884,6 +1884,8 @@ export class DeckGLMap {
         'line-color': ['get', 'color'],
         'line-width': ['get', 'lineWidth'],
         'line-opacity': 0.85,
+        // Oléoduc en pointillé, gazoduc en trait plein (spec 2026-10-15).
+        'line-dasharray': [2, 1.5],
       },
       layout: {
         'line-cap': 'round',
@@ -5680,6 +5682,8 @@ export class DeckGLMap {
 
         const arcSrc = this.map.getSource(SRC_INTERCONN_ARCS) as maplibregl.GeoJSONSource;
         arcSrc?.setData({ type: 'FeatureCollection', features: arcFeatures });
+        const powerImports = this.interconnArcs.filter((a) => a.isImport).length;
+        this.recordEnergyFlows('powerGrid', { exports: this.interconnArcs.length - powerImports, imports: powerImports });
 
         // Start arc flow animation (generates chevron points)
         this.startInterconnAnimation();
@@ -5691,6 +5695,7 @@ export class DeckGLMap {
         const chevSrc = this.map.getSource(SRC_INTERCONN_CHEVRON_PTS) as maplibregl.GeoJSONSource;
         chevSrc?.setData(emptyFC());
         this.interconnArcs = [];
+        this.recordEnergyFlows('powerGrid', { exports: 0, imports: 0 });
         this.stopInterconnAnimation();
       }
     } catch (e) {
@@ -6230,10 +6235,12 @@ export class DeckGLMap {
 
       const { minLineWidth, maxLineWidth, lineWidthDivisor, glowMultiplier, curvature, steps } = OIL_FLOW_STYLE;
 
+      const oilFlowCount = { exports: 0, imports: 0 };
       for (const flow of flows) {
         if (Math.abs(flow.flowKbd) < 1) continue; // Skip negligible flows
 
         const isImport = flow.flowKbd > 0;
+        if (isImport) oilFlowCount.imports += 1; else oilFlowCount.exports += 1;
         const flowAbs = Math.abs(flow.flowKbd);
         const originBreakdown = JSON.stringify(flow.originBreakdown ?? []);
         // Oil flow colors: Amber/brown tones for viscous petroleum feel
@@ -6321,6 +6328,7 @@ export class DeckGLMap {
           isImport,
         });
       }
+      this.recordEnergyFlows('oilNetwork', oilFlowCount);
 
       const oilMarkerSrc = this.map.getSource(SRC_OIL_FLOW_MARKERS) as maplibregl.GeoJSONSource;
       oilMarkerSrc?.setData({ type: 'FeatureCollection', features: oilMarkerFeatures });
@@ -6658,6 +6666,7 @@ export class DeckGLMap {
 
     if (!dashboard || dashboard.summaries.length === 0) {
       src.setData(emptyFC());
+      this.recordFuelTension([]);
       this.clearFuelTensionHoverState();
       this.fuelTensionHoverPopup?.remove();
       return;
@@ -6679,10 +6688,8 @@ export class DeckGLMap {
         const summary = summariesByCode.get(code);
         if (!summary) continue;
         const fillColor = getFuelTensionLevelColor(summary.tensionLevel);
-        const lineColor =
-          summary.tensionLevel === 'CRITICAL' ? '#FF4D4F' :
-          summary.tensionLevel === 'HIGH' ? '#FF5A5F' :
-          '#EF4444';
+        // Contour à la couleur du niveau (palette de vigilance, spec 2026-10-15).
+        const lineColor = fillColor;
         const lineWidth =
           summary.tensionLevel === 'CRITICAL' ? 1.25 :
           summary.tensionLevel === 'HIGH' ? 1.15 :
@@ -6711,6 +6718,10 @@ export class DeckGLMap {
       }
 
       src.setData(geojson);
+      this.recordFuelTension(geojson.features.flatMap((feature) => {
+        const summary = summariesByCode.get(String(feature.properties?.code ?? ''));
+        return summary ? [fuelTensionVigilance(summary.tensionLevel)] : [];
+      }));
     } catch (error) {
       console.warn('[DeckGLMap] Failed to update fuel tension departments', error);
     }
