@@ -115,8 +115,9 @@ import {
 import { buildFlowFeatures, flowArcFromFeature, kmBetween, type FlowArc } from './deckgl/energy-flows.ts';
 import { dimOpacity, ENERGY_FOCUS_LAYERS, energyFocusLayersOf, flowKindsShown, isEnergyLayerKey } from './deckgl/energy-focus.ts';
 import { EnergyPopupController } from './deckgl/energy-popup.ts';
+import { OIL_REFINERIES } from '../config/oil-infrastructure.ts';
 import {
-  effectiveOpacity, ENERGY_HOVER_LAYER_IDS, energyCardFor, pickEnergyHover, tooltipCardHtml, type EnergyHoverContext, type EnergyHoverKind, type HoverCandidate,
+  effectiveOpacity, ENERGY_HOVER_LAYER_IDS, energyCardFor, oilDepotDetailCard, pickEnergyHover, tooltipCardHtml, type EnergyHoverContext, type EnergyHoverKind, type HoverCandidate,
 } from './deckgl/energy-hover.ts';
 import { ENERGY_CHOKE_HEX, ENERGY_DISC_STATE_HEX, ENERGY_SECTOR_HEX, ENERGY_STATE_HEX, type EnergyFlowKind, fuelTensionVigilance, refineryState, type EnergyState } from '../services/energy-state.ts';
 import type { VigilanceLevel } from '../services/vigilance.ts';
@@ -3208,7 +3209,9 @@ export class DeckGLMap {
   }
 
   /** Fiche détaillée de l'objet cliqué : les fiches existantes ; null pour les groupes, détroits et gazoducs (la bulle suffit). */
-  private energyDetailHtml(hit: { kind: EnergyHoverKind; layerId: string; properties: Readonly<Record<string, unknown>> }): string | null {
+  private energyDetailHtml(hit: {
+    kind: EnergyHoverKind; layerId: string; properties: Readonly<Record<string, unknown>>; coordinates?: readonly [number, number];
+  }): string | null {
     const p: Record<string, unknown> = { ...hit.properties };
     switch (hit.kind) {
       case 'infra': return this.buildInfrastructureHoverHtml(p);
@@ -3218,7 +3221,7 @@ export class DeckGLMap {
       case 'biomethane': return this.buildBiomethaneHoverHtml(p);
       case 'metro': return this.buildMetropoleHoverHtml(p);
       case 'refinery': return this.buildOilRefineryHoverHtml(p);
-      case 'oilDepot': return this.buildOilDepotHoverHtml(p);
+      case 'oilDepot': return tooltipCardHtml(oilDepotDetailCard(p, this.oilDepotContext(hit.coordinates)));
       case 'oilPipeline': return this.buildOilPipelineHoverHtml(p);
       case 'flow': return this.energyFlowDetailHtml(p);
       case 'region': return this.buildRegionDetailHtml(String(p.code ?? ''));
@@ -3771,29 +3774,6 @@ export class DeckGLMap {
         </div>
         <div style="margin-top:10px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.08); font-size:11px; color:#9898a8; line-height:1.45;">
           Raffinerie – couche structurelle, signal mensuel agrégé (SDES). Pas de télémesure site par site.
-        </div>
-      </div>
-    `;
-  }
-
-  private buildOilDepotHoverHtml(properties: Record<string, unknown>): string {
-    const role = String(properties.role ?? 'distribution');
-    // Labels et couleurs alignés sur la légende
-    const roleLabel = role === 'strategic' ? 'Dépôt stratégique'
-      : role === 'terminal' ? 'Terminal pétrolier'
-        : 'Dépôt de distribution';
-    const roleColor = role === 'strategic' ? 'rgba(254,249,195,0.65)'   // Couleur exacte de la légende
-      : role === 'terminal' ? '#F59E0B'   // Amber-500 — anneau lumineux
-        : '#D97706';  // Amber-600 — distribution
-
-    return `
-      <div style="color:#e8e8ec; font-family:sans-serif; min-width:220px;">
-        <div style="font-size:14px; font-weight:700; color:#fff;">${this.escapeHtml(String(properties.name ?? 'Dépôt pétrolier'))}</div>
-        <div style="margin:2px 0 10px; font-size:12px; font-weight:600; color:${roleColor};">${this.escapeHtml(roleLabel)}</div>
-        <div style="font-size:11px; color:#9898a8; line-height:1.45;">
-          ${role === 'strategic'
-            ? 'Dépôt stratégique – élément structurel, suivi via indicateurs mensuels de stocks/flux.'
-            : 'Dépôt pétrolier – élément structurel, suivi via indicateurs mensuels de stocks/flux.'}
         </div>
       </div>
     `;
@@ -4945,6 +4925,22 @@ export class DeckGLMap {
     });
   }
 
+  /** Imports de pétrole qui arrivent à moins de 30 km d'un dépôt (son port) et raffineries voisines. */
+  private oilDepotContext(at: readonly [number, number] | undefined): {
+    imports: Array<{ who: string; value: number | null; unit: string }>; refineries: string[];
+  } {
+    if (!at) return { imports: [], refineries: [] };
+    const here: [number, number] = [at[0], at[1]];
+    const near = (c: readonly number[] | undefined): boolean => c !== undefined && kmBetween(here, [c[0], c[1]]) < 30;
+    const imports = this.lastFlowArcs.petrole.flatMap((f) => {
+      const a = flowArcFromFeature('petrole', f);
+      if (!a || !a.isImport || !near(a.coordinates[a.coordinates.length - 1])) return [];
+      return [{ who: a.country || a.name, value: a.flowValue, unit: a.flowUnit }];
+    });
+    const refineries = OIL_REFINERIES.filter((r) => near(r.location)).map((r) => r.name);
+    return { imports, refineries };
+  }
+
   /** Fiche détaillée d'une flèche d'échange : reprend les fiches existantes, à partir de l'arc d'origine (spec 2026-10-16 § 6.4). */
   private energyFlowDetailHtml(p: Readonly<Record<string, unknown>>): string | null {
     const who = String(p.who ?? '');
@@ -5472,6 +5468,8 @@ export class DeckGLMap {
             id: d.id,
             name: d.name,
             role: d.role,
+            capacityM3: d.capacityM3 ?? null,
+            operator: d.operator ?? '',
             energyState: 'nonSuivi',
             fillColor,
             strokeColor,

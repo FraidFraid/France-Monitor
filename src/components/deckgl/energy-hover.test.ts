@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   chokeCard, clusterCard, flowCard, fmtNum, fmtTime, infraCard, powerUnitCard, regionCard, tooltipCardHtml, gasCard,
 } from './energy-hover.ts';
-import { effectiveOpacity, energyCardFor, hydroCard } from './energy-hover.ts';
+import { effectiveOpacity, energyCardFor, hydroCard, oilDepotCard, oilDepotDetailCard } from './energy-hover.ts';
 import { ENERGY_HOVER_LAYER_IDS, pickEnergyHover, type HoverCandidate } from './energy-hover.ts';
 
 describe('gabarit de bulle', () => {
@@ -156,5 +156,26 @@ describe('relecture finale', () => {
     expect(c.rows).toEqual([['Type', 'Production hydraulique'], ['Puissance', fmtNum(81, 'MW')], ['Tendance', 'retenue basse']]);
     expect(c.source).toBe('Hub’Eau (contexte, sans station liée)');
     expect(c.time).toMatch(/^\d{2}:\d{2}$/);
+  });
+});
+
+describe('dépôts pétroliers', () => {
+  it('bulle : type, capacité en m³ (valeur sur une ligne), opérateur', () => {
+    const c = oilDepotCard({ name: 'Frontignan (SAGESS)', role: 'strategic', capacityM3: 450000, operator: 'SAGESS' });
+    expect(c.rows).toEqual([['Type', 'Dépôt stratégique'], ['Capacité', fmtNum(450000, 'm³')], ['Opérateur', 'SAGESS']]);
+    expect(oilDepotCard({ name: 'X', role: 'distribution' }).rows).toEqual([['Type', 'Dépôt'], ['Capacité', 'n.d.'], ['Opérateur', 'n.d.']]);
+  });
+  it('fiche : rôle expliqué, imports qui arrivent au port, raffineries voisines', () => {
+    const c = oilDepotDetailCard({ name: 'Dépôt Fos-sur-Mer', role: 'terminal', capacityM3: 3000000, operator: 'Raffineries' }, {
+      imports: [{ who: 'Moyen-Orient', value: 93, unit: 'kb/j' }, { who: 'Afrique', value: 336, unit: 'kb/j' }],
+      refineries: ['Lavéra', 'Fos-sur-Mer'],
+    });
+    expect(c.hint).toContain('Point d’entrée');
+    expect(c.rows).toContainEqual(['Import · Afrique', fmtNum(336, 'kb/j')]);
+    expect(c.rows).toContainEqual(['Import · Moyen-Orient', fmtNum(93, 'kb/j')]);
+    expect(c.rows.findIndex((r) => r[0] === 'Import · Afrique')).toBeLessThan(c.rows.findIndex((r) => r[0] === 'Import · Moyen-Orient'));
+    expect(c.rows).toContainEqual(['Raffineries à moins de 30 km', 'Lavéra, Fos-sur-Mer']);
+    const s = oilDepotDetailCard({ name: 'Frontignan (SAGESS)', role: 'strategic' }, { imports: [], refineries: [] });
+    expect(s.hint).toContain('SAGESS');
   });
 });

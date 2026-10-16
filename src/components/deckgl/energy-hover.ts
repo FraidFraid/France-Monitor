@@ -106,10 +106,28 @@ export function refineryCard(p: Props): TooltipCard {
     rows: [['Opérateur', s(p.operator) || 'n.d.'], ['Capacité', fmtPos(p.capacity, 'Mt/an', 1)]], source: 'Inventaire' };
 }
 
+const DEPOT_TYPE: Readonly<Record<string, string>> = { strategic: 'Dépôt stratégique', terminal: 'Terminal pétrolier' };
+
 export function oilDepotCard(p: Props): TooltipCard {
-  const role = s(p.role);
   return { sectorHex: H.petrole, title: s(p.name), time: null, state: null,
-    rows: [['Type', role === 'strategic' ? 'Dépôt stratégique' : role === 'terminal' ? 'Terminal pétrolier' : 'Dépôt']], source: 'Inventaire' };
+    rows: [['Type', DEPOT_TYPE[s(p.role)] ?? 'Dépôt'], ['Capacité', fmtPos(p.capacityM3, 'm³')], ['Opérateur', s(p.operator) || 'n.d.']], source: 'Inventaire' };
+}
+
+const DEPOT_ROLE: Readonly<Record<string, string>> = {
+  strategic: 'Stock de sécurité (SAGESS) : réserve obligatoire, mobilisable sur décision de l’État en cas de crise d’approvisionnement.',
+  terminal: 'Point d’entrée du pétrole importé par la mer : sa fermeture coupe les imports qui y arrivent.',
+};
+
+/** Fiche détaillée d'un dépôt (clic) : rôle en clair, capacité, imports arrivant au port, raffineries voisines. */
+export function oilDepotDetailCard(p: Props, ctx: {
+  imports: ReadonlyArray<{ who: string; value: number | null; unit: string }>; refineries: readonly string[];
+}): TooltipCard {
+  const base = oilDepotCard(p);
+  const imports = [...ctx.imports].sort((x, y) => (n(y.value) ?? 0) - (n(x.value) ?? 0))
+    .map((f) => [`Import · ${f.who}`, fmtNum(f.value, f.unit)] as const);
+  const refineries = ctx.refineries.length > 0 ? [['Raffineries à moins de 30 km', ctx.refineries.join(', ')] as const] : [];
+  return { ...base, rows: [...base.rows, ...imports, ...refineries], source: imports.length > 0 ? 'Inventaire, DGEC (origines)' : 'Inventaire',
+    hint: DEPOT_ROLE[s(p.role)] ?? 'Dépôt de distribution : approvisionne les stations de sa zone.' };
 }
 
 const HYDRO_TYPE: Readonly<Record<string, string>> = {
