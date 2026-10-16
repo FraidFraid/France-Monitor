@@ -7,7 +7,7 @@ import {
 } from './energy-map.ts';
 import type { EnergyState } from '../../services/energy-state.ts';
 import {
-  discColorExpr, ENERGY_ALERT_FILTER, ENERGY_DISC_RADIUS, discIconSize, glyphColorExpr, infraGlyphImageExpr, infraSectorHexExpr,
+  companionFilters, discColorExpr, discCompanionLayers, ENERGY_ALERT_FILTER, ENERGY_DISC_RADIUS, discIconSize, glyphColorExpr, infraGlyphImageExpr, infraSectorHexExpr,
   nuclearDiscColorExpr, nuclearOpacityExpr, nuclearRingColorExpr, nuclearRingWidthExpr,
 } from './energy-map.ts';
 import { expression } from '@maplibre/maplibre-gl-style-spec';
@@ -160,5 +160,26 @@ describe('disques des installations', () => {
     expect(evalExpr(ENERGY_ALERT_FILTER, { energyState: 'reduit' })).toBe(false);
     expect(ENERGY_DISC_RADIUS).toEqual({ nuclear: 11, gas: 9, refinery: 9, windPark: 9, powerUnit: 8, hydro: 7, other: 8 });
     expect(discIconSize(19)).toBe(1);
+  });
+});
+
+describe('calques compagnons d’un disque', () => {
+  it('halo sous le disque, limité à l’arrêt et à la tension ; picto au-dessus, même filtre que le disque', () => {
+    const base: maplibregl.FilterSpecification = ['==', ['get', 'kind'], 'imprevue'];
+    const [halo, icon] = discCompanionLayers({ id: 'd', source: 's', filter: base, radius: 8, color: discColorExpr('#eef2f7'), icon: 'energy-icon-zap', iconColor: glyphColorExpr(true) });
+    expect(halo.id).toBe('d-halo');
+    expect(halo.type).toBe('circle');
+    expect((halo as { filter?: unknown }).filter).toEqual(['all', base, ENERGY_ALERT_FILTER]);
+    expect(JSON.stringify(halo.paint)).toContain('15');
+    expect(icon.id).toBe('d-icon');
+    expect((icon as { filter?: unknown }).filter).toEqual(base);
+    expect((icon.layout as Record<string, unknown>)['icon-size']).toBeCloseTo(8 / 19);
+    expect(companionFilters(null)).toEqual({ halo: ENERGY_ALERT_FILTER, icon: null });
+  });
+  it('rayon variable : halo et picto suivent l’expression', () => {
+    const [halo, icon] = discCompanionLayers({ id: 'd', source: 's', filter: null, radius: ['match', ['get', 'type'], 'nuclear', 11, 8], color: '#fff', icon: 'x', iconColor: '#fff' });
+    expect(evalExpr((halo.paint as Record<string, unknown>)['circle-radius'], { type: 'nuclear' })).toBe(18);
+    expect(evalExpr((icon.layout as Record<string, unknown>)['icon-size'], { type: 'x' })).toBeCloseTo(8 / 19);
+    expect((icon as { filter?: unknown }).filter).toBeUndefined();
   });
 });

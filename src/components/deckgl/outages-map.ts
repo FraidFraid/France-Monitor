@@ -7,6 +7,7 @@
 // fichier des polygones) n'ont pas d'entité (V5). Cloud : un cercle par lieu, tous fournisseurs confondus (statut publié le plus grave ;
 // une région sans état publié, GCP et AWS, reste neutre sauf incident) ; référentiel en teinte neutre, un inventaire n'est pas un état. MapLibre ne lit pas les variables CSS : teintes de
 // outages-legend.ts. Couleur et corps d'infobulle calculés ici, dans les propriétés ; tout texte est échappé. Aucune vue importée.
+import type maplibregl from 'maplibre-gl';
 import type { GeoJSONSourceSpecification, LayerSpecification } from 'maplibre-gl';
 import type { OutagesLayerKey } from '../../config/outages-sources.ts';
 import type {
@@ -25,7 +26,8 @@ import {
   LYR_OUT_TELECOM_MAINT, LYR_OUT_TELECOM_RECENT, SRC_OUT_CLOUD_REF, SRC_OUT_CLOUD_ZONES, SRC_OUT_INTERNET, SRC_OUT_POWER, SRC_OUT_TELECOM,
 } from './constants.ts';
 import { escapeHtml } from './format-utils.ts';
-import { ENERGY_STATE_HEX, powerOutageState } from '../../services/energy-state.ts';
+import { ENERGY_SECTOR_HEX, ENERGY_STATE_HEX, powerOutageState } from '../../services/energy-state.ts';
+import { discColorExpr, discCompanionLayers, ENERGY_DISC_RADIUS, energyIconImage, glyphColorExpr } from './energy-map.ts';
 import { resolveAssetCoords } from './iip-geocoding.ts';
 
 type Fc = GeoJSON.FeatureCollection<GeoJSON.Point>;
@@ -102,7 +104,10 @@ export function powerFeatures(p: PowerOutagesResponse | null, now: number): Fc {
     const energyState = powerOutageState(u.kind, late);
     out.push({
       type: 'Feature', geometry: { type: 'Point', coordinates: at },
-      properties: { id: `edf-${i}-${u.name}`, name: u.name, kind: u.kind, energyState, color: ENERGY_STATE_HEX[energyState], body: powerBody(u, late) },
+      properties: {
+        id: `edf-${i}-${u.name}`, name: u.name, kind: u.kind, energyState, color: ENERGY_STATE_HEX[energyState], body: powerBody(u, late),
+        lostMw: u.lostMw, sector: u.sector,
+      },
     });
   }
   return fc(out);
@@ -283,6 +288,22 @@ export function outSourceSpec(): GeoJSONSourceSpecification {
   return { type: 'geojson', data: { type: 'FeatureCollection', features: [] } };
 }
 
+export const POWER_PLANNED_FILTER: maplibregl.FilterSpecification = ['==', ['get', 'kind'], 'planifiee'];
+export const POWER_UNPLANNED_FILTER: maplibregl.FilterSpecification = ['==', ['get', 'kind'], 'imprevue'];
+
+/** Unités EDF (spec 2026-10-16) : disque blanc de l'électricité, couleur de l'état, halo d'alerte dessous, picto dessus. */
+function powerUnitLayers(id: string, filter: maplibregl.FilterSpecification): LayerSpecification[] {
+  const color = discColorExpr(ENERGY_SECTOR_HEX.electricite);
+  const [halo, icon] = discCompanionLayers({
+    id, source: SRC_OUT_POWER, filter, radius: ENERGY_DISC_RADIUS.powerUnit, color, icon: energyIconImage('zap'), iconColor: glyphColorExpr(true),
+  });
+  const disc: LayerSpecification = {
+    id, type: 'circle', source: SRC_OUT_POWER, filter, layout: { visibility: 'none' },
+    paint: { 'circle-radius': ENERGY_DISC_RADIUS.powerUnit, 'circle-color': color, 'circle-stroke-width': 1.5, 'circle-stroke-color': '#05060a' },
+  };
+  return [halo, disc, icon];
+}
+
 /** Couches nouvelles, toutes masquées jusqu'à setLayerVisibility ; couleur portée par chaque objet. */
 export const OUT_LAYERS: readonly LayerSpecification[] = [
   // Surfaces d'abord (sous tous les points) : remplissage des départements en cours, contour de tous les départements en anomalie.
@@ -309,14 +330,8 @@ export const OUT_LAYERS: readonly LayerSpecification[] = [
       'circle-stroke-width': 1, 'circle-stroke-color': '#0a0a0f',
     },
   },
-  {
-    id: LYR_OUT_POWER_PLANNED, type: 'circle', source: SRC_OUT_POWER, filter: ['==', ['get', 'kind'], 'planifiee'], layout: { visibility: 'none' },
-    paint: { 'circle-color': ['get', 'color'], 'circle-radius': 5, 'circle-opacity': 0.8 },
-  },
-  {
-    id: LYR_OUT_POWER_UNPLANNED, type: 'circle', source: SRC_OUT_POWER, filter: ['==', ['get', 'kind'], 'imprevue'], layout: { visibility: 'none' },
-    paint: { 'circle-color': ['get', 'color'], 'circle-radius': 8, 'circle-stroke-width': 1.5, 'circle-stroke-color': '#ffffff' },
-  },
+  ...powerUnitLayers(LYR_OUT_POWER_PLANNED, POWER_PLANNED_FILTER),
+  ...powerUnitLayers(LYR_OUT_POWER_UNPLANNED, POWER_UNPLANNED_FILTER),
   {
     id: LYR_OUT_CLOUD_REF, type: 'circle', source: SRC_OUT_CLOUD_REF, layout: { visibility: 'none' },
     paint: { 'circle-color': ['get', 'color'], 'circle-radius': 3.5, 'circle-opacity': 0.7 },
@@ -330,15 +345,21 @@ export const OUT_LAYERS: readonly LayerSpecification[] = [
 /** Couches de chaque couche Pannes (visibilité) ; les maintenances télécoms ont leur option (setTelecomMaintenanceVisible). */
 export const OUT_LAYER_KEYS: Readonly<Record<OutagesLayerKey, readonly string[]>> = {
   outagesTelecom: [LYR_OUT_TELECOM_LONG, LYR_OUT_TELECOM_RECENT],
-  outagesElec: [LYR_OUT_POWER_PLANNED, LYR_OUT_POWER_UNPLANNED],
+  outagesElec: [
+    `${LYR_OUT_POWER_PLANNED}-halo`, LYR_OUT_POWER_PLANNED, `${LYR_OUT_POWER_PLANNED}-icon`,
+    `${LYR_OUT_POWER_UNPLANNED}-halo`, LYR_OUT_POWER_UNPLANNED, `${LYR_OUT_POWER_UNPLANNED}-icon`,
+  ],
   outagesInternet: [LYR_OUT_INTERNET_FILL, LYR_OUT_INTERNET_LINE],
   outagesCloud: [LYR_OUT_CLOUD_REF, LYR_OUT_CLOUD_ZONES],
 };
 export const OUT_MAINTENANCE_LAYER = LYR_OUT_TELECOM_MAINT;
 
-/** Couches survolées, de la plus haute à la plus basse : celle qu'on voit au-dessus répond. */
+/**
+ * Couches survolées, de la plus haute à la plus basse : celle qu'on voit au-dessus répond. Les unités EDF répondent à
+ * l'arbitre de survol de l'énergie (spec 2026-10-16 § 6).
+ */
 export const OUT_HOVER_LAYERS: readonly string[] = [
-  LYR_OUT_CLOUD_ZONES, LYR_OUT_CLOUD_REF, LYR_OUT_POWER_UNPLANNED, LYR_OUT_POWER_PLANNED, LYR_OUT_TELECOM_RECENT, LYR_OUT_TELECOM_LONG, LYR_OUT_TELECOM_MAINT,
+  LYR_OUT_CLOUD_ZONES, LYR_OUT_CLOUD_REF, LYR_OUT_TELECOM_RECENT, LYR_OUT_TELECOM_LONG, LYR_OUT_TELECOM_MAINT,
   LYR_OUT_INTERNET_LINE, LYR_OUT_INTERNET_FILL,
 ];
 const HOVERABLE: ReadonlySet<string> = new Set(OUT_HOVER_LAYERS);

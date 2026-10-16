@@ -132,6 +132,47 @@ export function discIconSize(radius: number): number {
   return radius / 19;
 }
 
+/** Filtres des compagnons d'un disque : le picto suit le disque, le halo ne garde que l'arrêt et la tension. */
+export function companionFilters(disc: maplibregl.FilterSpecification | null): {
+  halo: maplibregl.FilterSpecification; icon: maplibregl.FilterSpecification | null;
+} {
+  return { halo: disc ? ['all', disc, ENERGY_ALERT_FILTER] as maplibregl.FilterSpecification : ENERGY_ALERT_FILTER, icon: disc };
+}
+
+export interface DiscCompanionInput {
+  id: string;
+  source: string;
+  filter: maplibregl.FilterSpecification | null;
+  radius: number | StyleExpr;
+  color: string | StyleExpr;
+  icon: string | StyleExpr;
+  iconColor: string | StyleExpr;
+}
+
+/**
+ * Calques compagnons d'un disque d'installation (spec 2026-10-16 § 2.2) : `<id>-halo` (à poser sous le disque) et
+ * `<id>-icon` (au-dessus). Ils suivent le disque partout : visibilité, masquage par état, atténuation.
+ */
+export function discCompanionLayers(d: DiscCompanionInput): [maplibregl.CircleLayerSpecification, maplibregl.SymbolLayerSpecification] {
+  const f = companionFilters(d.filter);
+  const haloRadius: number | StyleExpr = typeof d.radius === 'number' ? d.radius + 7 : ['+', d.radius, 7];
+  const iconSize: number | StyleExpr = typeof d.radius === 'number' ? discIconSize(d.radius) : ['/', d.radius, 19];
+  const halo: maplibregl.CircleLayerSpecification = {
+    id: `${d.id}-halo`, type: 'circle', source: d.source, filter: f.halo, layout: { visibility: 'none' },
+    paint: {
+      'circle-radius': haloRadius, 'circle-color': d.color, 'circle-opacity': 0.28,
+      'circle-stroke-width': 1.5, 'circle-stroke-color': d.color, 'circle-stroke-opacity': 0.8,
+    },
+  };
+  const icon: maplibregl.SymbolLayerSpecification = {
+    id: `${d.id}-icon`, type: 'symbol', source: d.source,
+    layout: { visibility: 'none', 'icon-image': d.icon, 'icon-size': iconSize, 'icon-allow-overlap': true, 'icon-ignore-placement': true },
+    paint: { 'icon-color': d.iconColor },
+  };
+  if (f.icon) icon.filter = f.icon;
+  return [halo, icon];
+}
+
 /** Filtre de masquage par état, ajouté au filtre propre du calque (null = aucun filtre). */
 export function energyStateFilter(
   base: maplibregl.FilterSpecification | null,

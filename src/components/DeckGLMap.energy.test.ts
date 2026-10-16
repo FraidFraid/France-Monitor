@@ -1,6 +1,6 @@
 // src/components/DeckGLMap.energy.test.ts
 // @vitest-environment happy-dom
-// Registre de l'énergie (spec 2026-10-15) : légende comptée sur les couches allumées, pictos d'alerte, masquage par état.
+// Registre de l'énergie (spec 2026-10-15, 2026-10-16) : légende comptée sur les couches allumées, masquage par état et compagnons des disques.
 import type maplibregl from 'maplibre-gl';
 import { describe, expect, it } from 'vitest';
 
@@ -8,9 +8,9 @@ import { DeckGLMap } from './DeckGLMap.ts';
 import type { MapLayers } from '../types/index.ts';
 import type { EnergyEntry, EnergyKeyModel } from './deckgl/energy-map.ts';
 import {
-  LYR_BIOMETHANE_CLUSTERS, LYR_BIOMETHANE_SITES, LYR_ENERGY_INFRA_CIRCLE, LYR_ENERGY_INFRA_NUCLEAR_RING, LYR_GAS_STORAGES, LYR_OIL_DEPOTS_HIT,
-  LYR_WIND_CLUSTER, LYR_WIND_CLUSTER_COUNT, SRC_ENERGY_ALERTS,
+  LYR_BIOMETHANE_CLUSTERS, LYR_BIOMETHANE_SITES, LYR_ENERGY_INFRA_CIRCLE, LYR_GAS_STORAGES, LYR_OIL_DEPOTS, LYR_WIND_CLUSTER, LYR_WIND_CLUSTER_ICON,
 } from './deckgl/constants.ts';
+import { ENERGY_ALERT_FILTER } from './deckgl/energy-map.ts';
 
 class FakeMap {
   data = new Map<string, GeoJSON.FeatureCollection>();
@@ -18,7 +18,8 @@ class FakeMap {
   getSource(id: string): unknown { return { setData: (d: GeoJSON.FeatureCollection) => this.data.set(id, d) }; }
   getLayer(): object { return {}; }
   setFilter(id: string, f: unknown): void { this.filters.set(id, f); }
-  setLayoutProperty(): void { /* rien */ }
+  visibility = new Map<string, string>();
+  setLayoutProperty(id: string, _prop: string, v: string): void { this.visibility.set(id, v); }
   getZoom(): number { return 6; }
   getBounds(): { contains: () => boolean } { return { contains: () => true }; }
   project(): { x: number; y: number } { return { x: 0, y: 0 }; }
@@ -43,23 +44,24 @@ function record(deck: DeckGLMap, key: string, entries: EnergyEntry[]): void {
 }
 
 describe('registre de l’énergie', () => {
-  it('compte seulement les couches allumées et dessine les pictos de leurs alertes', () => {
-    const { deck, map, models } = setup();
+  it('compte seulement les couches allumées', () => {
+    const { deck, models } = setup();
     deck.setLayerVisibility({ nuclearFleet: true } as MapLayers);
     record(deck, 'nuclearFleet', [e('a', 'arret'), e('b', 'normal')]);
     record(deck, 'gasNetwork', [e('c', 'tension')]);
     expect(models.at(-1)?.counts.arret).toBe(1);
     expect(models.at(-1)?.counts.tension).toBe(0);
-    expect(map.data.get(SRC_ENERGY_ALERTS)?.features.map((f) => f.properties?.id)).toEqual(['a']);
   });
 
-  it('couche éteinte : plus de picto ni de compte', () => {
+  it('couche éteinte : plus de compte ; le halo et le picto du disque s’éteignent avec lui', () => {
     const { deck, map, models } = setup();
     deck.setLayerVisibility({ nuclearFleet: true } as MapLayers);
     record(deck, 'nuclearFleet', [e('a', 'arret')]);
+    expect(map.visibility.get(`${LYR_ENERGY_INFRA_CIRCLE}-halo`)).toBe('visible');
     deck.setLayerVisibility({ nuclearFleet: false } as MapLayers);
-    expect(map.data.get(SRC_ENERGY_ALERTS)?.features).toHaveLength(0);
     expect(models.at(-1)?.visible).toBe(false);
+    expect(map.visibility.get(`${LYR_ENERGY_INFRA_CIRCLE}-halo`)).toBe('none');
+    expect(map.visibility.get(`${LYR_ENERGY_INFRA_CIRCLE}-icon`)).toBe('none');
   });
 
   it('état masqué : filtre posé sur les calques, gardé quand la couche nucléaire impose son filtre', () => {
@@ -71,13 +73,16 @@ describe('registre de l’énergie', () => {
     expect(map.filters.get(LYR_ENERGY_INFRA_CIRCLE)).toEqual(['all', ['==', ['get', 'type'], 'nuclear'], hide]);
   });
 
-  it('les calques compagnons (anneau nucléaire, zones de survol) suivent le masquage', () => {
+  it('les calques compagnons (halo, picto) et les étiquettes suivent le masquage', () => {
     const { deck, map } = setup();
     deck.setLayerVisibility({ nuclearFleet: true } as MapLayers);
     deck.setHiddenEnergyStates(new Set(['normal']));
     const hide = ['!', ['in', ['coalesce', ['get', 'energyState'], 'nonSuivi'], ['literal', ['normal']]]];
-    expect(map.filters.get(LYR_ENERGY_INFRA_NUCLEAR_RING)).toEqual(['all', ['==', ['get', 'type'], 'nuclear'], hide]);
-    expect(map.filters.get(LYR_OIL_DEPOTS_HIT)).toEqual(hide);
+    const nuc = ['all', ['==', ['get', 'type'], 'nuclear'], hide];
+    expect(map.filters.get(`${LYR_ENERGY_INFRA_CIRCLE}-icon`)).toEqual(nuc);
+    expect(map.filters.get(`${LYR_ENERGY_INFRA_CIRCLE}-halo`)).toEqual(['all', nuc, ENERGY_ALERT_FILTER]);
+    expect(map.filters.get(`${LYR_GAS_STORAGES}-halo`)).toEqual(['all', ['all', ['==', ['get', 'type'], 'storage'], hide], ENERGY_ALERT_FILTER]);
+    expect(map.filters.get(LYR_OIL_DEPOTS)).toEqual(hide);
   });
 
   it('groupes (éoliennes, biométhane) cachés seulement quand tous leurs états possibles sont masqués', () => {
@@ -87,7 +92,7 @@ describe('registre de l’énergie', () => {
     expect(map.filters.get(LYR_BIOMETHANE_CLUSTERS)).toEqual(['all', ['has', 'point_count'], false]);
     deck.setHiddenEnergyStates(new Set(['nonSuivi', 'maintenance']));
     expect(map.filters.get(LYR_WIND_CLUSTER)).toEqual(['all', ['has', 'point_count'], false]);
-    expect(map.filters.get(LYR_WIND_CLUSTER_COUNT)).toEqual(['all', ['has', 'point_count'], false]);
+    expect(map.filters.get(LYR_WIND_CLUSTER_ICON)).toEqual(['all', ['has', 'point_count'], false]);
     deck.setHiddenEnergyStates(new Set());
     expect(map.filters.get(LYR_WIND_CLUSTER)).toEqual(['has', 'point_count']);
     expect(map.filters.get(LYR_BIOMETHANE_SITES)).toEqual(['!', ['has', 'point_count']]);

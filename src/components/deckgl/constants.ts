@@ -80,8 +80,6 @@ export const SRC_MODIS = 'modis-overlay-src';
 export const LYR_MODIS = 'modis-overlay';
 export const SRC_SENTINEL_SCENE = 'sentinel-scene-src';
 export const LYR_SENTINEL_SCENE = 'sentinel-scene-overlay';
-export const LYR_ENERGY_INFRA_VITAL_HALO = 'energy-infra-vital-halo';
-export const LYR_ENERGY_INFRA_NUCLEAR_RING = 'energy-infra-nuclear-ring';
 export const SRC_ASNR_RINGS = 'asnr-rings-src';
 export const LYR_ASNR_RING = 'asnr-ring';
 export const LYR_ENERGY_INFRA_HIGHLIGHT_GLOW = 'energy-infra-highlight-glow';
@@ -96,11 +94,11 @@ export const LYR_HYDRO_BACKBONE_SIGNAL_RING = 'hydro-backbone-signal-ring';
 export const LYR_HYDRO_BACKBONE_CIRCLE = 'hydro-backbone-circles';
 export const LYR_HYDRO_BACKBONE_LABEL = 'hydro-backbone-labels';
 export const LYR_WIND_CLUSTER       = 'wind-cluster';
-export const LYR_WIND_CLUSTER_COUNT = 'wind-cluster-count';
-export const LYR_WIND_TURBINE_HALO          = 'wind-turbine-halo';
+export const LYR_WIND_CLUSTER_ICON  = 'wind-cluster-icon';
+export const LYR_HYDRO_CLUSTER = 'hydro-cluster';
+export const LYR_HYDRO_CLUSTER_ICON = 'hydro-cluster-icon';
 export const LYR_WIND_TURBINE_CIRCLE        = 'wind-turbine-circles';
 export const LYR_WIND_TURBINE_LABEL         = 'wind-turbine-labels';
-export const LYR_WIND_PARK_HALO     = 'wind-park-halo';
 export const LYR_WIND_PARK_CIRCLE   = 'wind-park-circles';
 export const LYR_WIND_PARK_LABEL    = 'wind-park-labels';
 
@@ -114,7 +112,6 @@ export const SRC_GAS_VITALS = 'gas-vitals-src';
 export const SRC_GAS_PIR_ARCS = 'gas-pir-arcs-src';
 export const SRC_GAS_PIR_MARKERS = 'gas-pir-markers-src';
 export const LYR_GAS_TERMINALS = 'gas-terminals';
-export const LYR_GAS_STORAGES_GLOW = 'gas-storages-glow';
 export const LYR_GAS_STORAGES = 'gas-storages';
 export const LYR_GAS_STORAGES_LABEL = 'gas-storages-label';
 export const LYR_GAS_PIR_ARC_GLOW = 'gas-pir-arc-glow';
@@ -126,7 +123,6 @@ export const LYR_GAS_PIR_LABEL = 'gas-pir-label';
 // Biomethane injection sites (GRDF OpenData — 833 sites)
 export const SRC_BIOMETHANE_SITES = 'biomethane-sites-src';
 export const LYR_BIOMETHANE_CLUSTERS = 'biomethane-clusters';
-export const LYR_BIOMETHANE_CLUSTER_COUNT = 'biomethane-cluster-count';
 export const LYR_BIOMETHANE_SITES = 'biomethane-sites';
 export const LYR_BIOMETHANE_SITES_LABEL = 'biomethane-sites-label';
 // Oil/Petroleum flows (refineries, pipelines, imports)
@@ -146,17 +142,12 @@ export const LYR_FUEL_TENSION_LINE = 'fuel-tension-line';
 export const SRC_OIL_PIPELINES = 'oil-pipelines-src';
 export const SRC_OIL_REFINERIES = 'oil-refineries-src';
 export const SRC_OIL_DEPOTS = 'oil-depots-src';
-export const LYR_OIL_PIPELINES_GLOW = 'oil-pipelines-glow';
 export const LYR_OIL_PIPELINES = 'oil-pipelines';
-export const LYR_OIL_REFINERIES_GLOW = 'oil-refineries-glow';
 export const LYR_OIL_REFINERIES = 'oil-refineries';
 export const LYR_OIL_REFINERIES_LABEL = 'oil-refineries-label';
 export const LYR_OIL_DEPOTS = 'oil-depots';
-export const LYR_OIL_DEPOTS_TERMINAL_CENTER = 'oil-depots-terminal-center';
 export const LYR_OIL_DEPOTS_LABEL = 'oil-depots-label';
 // Couches hit invisibles — zone de hover élargie
-export const LYR_OIL_REFINERIES_HIT = 'oil-refineries-hit';
-export const LYR_OIL_DEPOTS_HIT = 'oil-depots-hit';
 export const LYR_OIL_PIPELINES_HIT = 'oil-pipelines-hit';
 export const LYR_OIL_FLOW_ARC_HIT = 'oil-flow-arc-hit';
 export const LYR_OIL_FLOW_MARKER_HIT = 'oil-flow-marker-hit';
@@ -165,7 +156,6 @@ export const LYR_TRAIN_ROUTE = 'train-route-line';
 export const LYR_TRAIN_STATIONS = 'train-stations';
 export const LYR_TRAIN_STATION_LABELS = 'train-station-labels';
 export const SRC_METRO_LOAD = 'metro-load-src';
-export const LYR_METRO_LOAD_GLOW = 'metro-load-glow';
 export const LYR_METRO_LOAD_CIRCLE = 'metro-load-circles';
 export const LYR_METRO_LOAD_LABEL = 'metro-load-labels';
 
@@ -834,6 +824,3 @@ export const SRC_TIDE_GAUGES = 'tide-gauges-src';
 export const LYR_TIDE_GAUGES = 'tide-gauges';
 
 /** Pictos d'alerte de l'énergie (rouge et orange, toutes filières), spec 2026-10-15. */
-export const SRC_ENERGY_ALERTS = 'energy-alerts-src';
-export const LYR_ENERGY_ALERT_DISC = 'energy-alert-disc';
-export const LYR_ENERGY_ALERT_ICON = 'energy-alert-icon';

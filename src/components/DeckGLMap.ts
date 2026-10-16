@@ -52,7 +52,7 @@ import {
 } from './deckgl/sovereignty-map.ts';
 import { SOV_B_LAYERS, SOV_B_SOURCE_IDS, droneZoneFeatures, gnssCellFeatures, sovBSourceSpec } from './deckgl/sovereignty-map-b.ts';
 import {
-  OUT_HOVER_LAYERS, OUT_LAYERS, OUT_LAYER_KEYS, OUT_MAINTENANCE_LAYER, OUT_SOURCE_IDS, cloudReferenceFeatures, cloudZoneFeatures, internetFeatures, outSourceSpec,
+  OUT_HOVER_LAYERS, OUT_LAYERS, OUT_LAYER_KEYS, POWER_PLANNED_FILTER, POWER_UNPLANNED_FILTER, OUT_MAINTENANCE_LAYER, OUT_SOURCE_IDS, cloudReferenceFeatures, cloudZoneFeatures, internetFeatures, outSourceSpec,
   outTooltipHtml, powerFeatures, telecomFeatures, topOutHit,
 } from './deckgl/outages-map.ts';
 import {
@@ -106,12 +106,13 @@ import {
 } from './deckgl/format-utils.ts';
 import { fmIcon, fmStatusDot, type IconName } from './shared/icons.ts';
 import {
-  buildEnergyKeyModel, energyEntriesFrom, energyIconImage, energyStateFilter, gasStorageStyle, hydroStyle,
+  buildEnergyKeyModel, companionFilters, discColorExpr, discCompanionLayers, ENERGY_DISC_RADIUS, energyEntriesFrom, glyphColorExpr,
+  infraGlyphImageExpr, infraSectorHexExpr, nuclearDiscColorExpr, nuclearOpacityExpr, nuclearRingColorExpr, nuclearRingWidthExpr, type StyleExpr, energyIconImage, energyStateFilter, gasStorageStyle, hydroStyle,
   ENERGY_ICON_NAMES, ENERGY_LAYER_KEYS,
   ENERGY_SHAPE_DIAMOND, ENERGY_SHAPE_SQUARE, shapeIconSvg,
   type EnergyEntry, type EnergyFlowCount, type EnergyKeyModel, type EnergyLayerKey,
 } from './deckgl/energy-map.ts';
-import { ENERGY_NETWORK_HEX, ENERGY_STATE_HEX, fuelTensionVigilance, refineryState, type EnergyState } from '../services/energy-state.ts';
+import { ENERGY_DISC_STATE_HEX, ENERGY_SECTOR_HEX, ENERGY_STATE_HEX, fuelTensionVigilance, refineryState, type EnergyState } from '../services/energy-state.ts';
 import type { VigilanceLevel } from '../services/vigilance.ts';
 import {
   dromEnergyAssetFromProperties,
@@ -194,9 +195,7 @@ import {
   LYR_MODIS,
   SRC_SENTINEL_SCENE,
   LYR_SENTINEL_SCENE,
-  LYR_ENERGY_INFRA_VITAL_HALO,
-  LYR_ENERGY_INFRA_NUCLEAR_RING,
-  SRC_ASNR_RINGS,
+      SRC_ASNR_RINGS,
   LYR_ASNR_RING,
   LYR_ENERGY_INFRA_HIGHLIGHT_GLOW,
   LYR_ENERGY_INFRA_HIGHLIGHT_RING,
@@ -208,12 +207,12 @@ import {
   LYR_HYDRO_BACKBONE_CIRCLE,
   LYR_HYDRO_BACKBONE_LABEL,
   LYR_WIND_CLUSTER,
-  LYR_WIND_CLUSTER_COUNT,
-  LYR_WIND_TURBINE_HALO,
-  LYR_WIND_TURBINE_CIRCLE,
+  LYR_WIND_CLUSTER_ICON,
+  LYR_HYDRO_CLUSTER,
+  LYR_HYDRO_CLUSTER_ICON,
+      LYR_WIND_TURBINE_CIRCLE,
   LYR_WIND_TURBINE_LABEL,
-  LYR_WIND_PARK_HALO,
-  LYR_WIND_PARK_CIRCLE,
+    LYR_WIND_PARK_CIRCLE,
   LYR_WIND_PARK_LABEL,
   SRC_GAS_NETWORK_GRT,
   SRC_GAS_NETWORK_TEREGA,
@@ -223,8 +222,7 @@ import {
   SRC_GAS_PIR_ARCS,
   SRC_GAS_PIR_MARKERS,
   LYR_GAS_TERMINALS,
-  LYR_GAS_STORAGES_GLOW,
-  LYR_GAS_STORAGES,
+    LYR_GAS_STORAGES,
   LYR_GAS_STORAGES_LABEL,
   LYR_GAS_PIR_ARC_GLOW,
   LYR_GAS_PIR_ARC,
@@ -234,8 +232,7 @@ import {
   LYR_GAS_PIR_LABEL,
   SRC_BIOMETHANE_SITES,
   LYR_BIOMETHANE_CLUSTERS,
-  LYR_BIOMETHANE_CLUSTER_COUNT,
-  LYR_BIOMETHANE_SITES,
+    LYR_BIOMETHANE_SITES,
   LYR_BIOMETHANE_SITES_LABEL,
   SRC_OIL_FLOW_ARCS,
   SRC_OIL_FLOW_MARKERS,
@@ -252,17 +249,12 @@ import {
   SRC_OIL_PIPELINES,
   SRC_OIL_REFINERIES,
   SRC_OIL_DEPOTS,
-  LYR_OIL_PIPELINES_GLOW,
-  LYR_OIL_PIPELINES,
-  LYR_OIL_REFINERIES_GLOW,
-  LYR_OIL_REFINERIES,
+    LYR_OIL_PIPELINES,
+    LYR_OIL_REFINERIES,
   LYR_OIL_REFINERIES_LABEL,
   LYR_OIL_DEPOTS,
-  LYR_OIL_DEPOTS_TERMINAL_CENTER,
-  LYR_OIL_DEPOTS_LABEL,
-  LYR_OIL_REFINERIES_HIT,
-  LYR_OIL_DEPOTS_HIT,
-  LYR_OIL_PIPELINES_HIT,
+    LYR_OIL_DEPOTS_LABEL,
+      LYR_OIL_PIPELINES_HIT,
   LYR_OIL_FLOW_ARC_HIT,
   LYR_OIL_FLOW_MARKER_HIT,
   LYR_TRAFFIC,
@@ -270,8 +262,7 @@ import {
   LYR_TRAIN_STATIONS,
   LYR_TRAIN_STATION_LABELS,
   SRC_METRO_LOAD,
-  LYR_METRO_LOAD_GLOW,
-  LYR_METRO_LOAD_CIRCLE,
+    LYR_METRO_LOAD_CIRCLE,
   LYR_METRO_LOAD_LABEL,
   SRC_MILITARY_BASES,
   SRC_MILITARY_SHIPS_HIGHLIGHT,
@@ -308,14 +299,9 @@ import {
   AIS_DESTINATION_ALIASES,
   AIS_PORT_LOCODES,
   INFRA_COLORS,
-  INFRA_VITAL_HALO_COLOR,
-  INFRA_NUCLEAR_RING_COLOR,
-  DEFAULT_VIEW,
+      DEFAULT_VIEW,
   FRANCE_CENTER,
-  SRC_ENERGY_ALERTS,
-  LYR_ENERGY_ALERT_DISC,
-  LYR_ENERGY_ALERT_ICON,
-  LYR_OUT_POWER_PLANNED,
+        LYR_OUT_POWER_PLANNED,
   LYR_OUT_POWER_UNPLANNED,
 } from './deckgl/constants.ts';
 
@@ -384,43 +370,44 @@ type InfrastructureRenderPoint = InfrastructurePoint & {
   totalAvailable?: number;
 };
 
+/** Rayon des disques de `infra-src` : nucléaire 11 px, autres types 8 px (spec 2026-10-16 § 2.3). */
+const INFRA_DISC_RADIUS: maplibregl.ExpressionSpecification = ['match', ['get', 'type'], 'nuclear', ENERGY_DISC_RADIUS.nuclear, ENERGY_DISC_RADIUS.other];
+
 /** Calques énergie masquables par état, avec le filtre propre de leur addLayer (spec 2026-10-15). */
 const ENERGY_FILTER_BASES: ReadonlyArray<readonly [string, maplibregl.FilterSpecification | null]> = [
   [LYR_ENERGY_INFRA_CIRCLE, null],
   [LYR_ENERGY_INFRA_LABEL, null],
-  [LYR_OUT_POWER_PLANNED, ['==', ['get', 'kind'], 'planifiee']],
-  [LYR_OUT_POWER_UNPLANNED, ['==', ['get', 'kind'], 'imprevue']],
-  [LYR_GAS_STORAGES_GLOW, ['==', ['get', 'type'], 'storage']],
+  [LYR_OUT_POWER_PLANNED, POWER_PLANNED_FILTER],
+  [LYR_OUT_POWER_UNPLANNED, POWER_UNPLANNED_FILTER],
   [LYR_GAS_STORAGES, ['==', ['get', 'type'], 'storage']],
   [LYR_GAS_STORAGES_LABEL, ['==', ['get', 'type'], 'storage']],
   [LYR_GAS_TERMINALS, ['==', ['get', 'type'], 'terminal']],
-  [LYR_HYDRO_BACKBONE_CIRCLE, null],
-  [LYR_HYDRO_BACKBONE_LABEL, null],
+  [LYR_HYDRO_BACKBONE_CIRCLE, ['!', ['has', 'point_count']]],
+  [LYR_HYDRO_BACKBONE_LABEL, ['!', ['has', 'point_count']]],
   [LYR_WIND_TURBINE_CIRCLE, ['!', ['has', 'point_count']]],
   [LYR_WIND_PARK_CIRCLE, null],
   [LYR_OIL_REFINERIES, null],
-  [LYR_OIL_REFINERIES_GLOW, null],
   [LYR_OIL_DEPOTS, null],
   [LYR_DROM_ENERGY_POINTS, null],
   [LYR_METRO_LOAD_CIRCLE, null],
-  [LYR_METRO_LOAD_GLOW, null],
-  [LYR_ENERGY_ALERT_DISC, null],
-  [LYR_ENERGY_ALERT_ICON, null],
-  // Calques compagnons : anneaux, halos, étiquettes et zones de survol suivent leur objet.
-  [LYR_ENERGY_INFRA_NUCLEAR_RING, ['==', ['get', 'type'], 'nuclear']],
-  [LYR_WIND_TURBINE_HALO, ['!', ['has', 'point_count']]],
+  // Étiquettes : elles suivent leur objet.
   [LYR_WIND_TURBINE_LABEL, ['!', ['has', 'point_count']]],
-  [LYR_WIND_PARK_HALO, null],
   [LYR_WIND_PARK_LABEL, ['==', ['get', 'kind'], 'offshore']],
   [LYR_OIL_REFINERIES_LABEL, null],
-  [LYR_OIL_REFINERIES_HIT, null],
-  [LYR_OIL_DEPOTS_TERMINAL_CENTER, ['==', ['get', 'role'], 'terminal']],
   [LYR_OIL_DEPOTS_LABEL, null],
-  [LYR_OIL_DEPOTS_HIT, null],
   [LYR_METRO_LOAD_LABEL, null],
   [LYR_BIOMETHANE_SITES, ['!', ['has', 'point_count']]],
   [LYR_BIOMETHANE_SITES_LABEL, ['!', ['has', 'point_count']]],
 ];
+
+/**
+ * Disques d'installation qui portent des calques compagnons `-halo` et `-icon` (spec 2026-10-16 § 2.2) : visibilité et
+ * masquage par état leur sont recopiés (setVis, applyEnergyStateFilters).
+ */
+const ENERGY_DISC_IDS: ReadonlySet<string> = new Set([
+  LYR_ENERGY_INFRA_CIRCLE, LYR_OUT_POWER_PLANNED, LYR_OUT_POWER_UNPLANNED, LYR_GAS_STORAGES, LYR_GAS_TERMINALS, LYR_OIL_REFINERIES,
+  LYR_HYDRO_BACKBONE_CIRCLE, LYR_WIND_PARK_CIRCLE,
+]);
 
 /**
  * Groupes (supercluster) : un groupe ne porte pas l'état de ses objets ; il est caché quand tous les états
@@ -428,9 +415,10 @@ const ENERGY_FILTER_BASES: ReadonlyArray<readonly [string, maplibregl.FilterSpec
  */
 const ENERGY_CLUSTER_LAYERS: ReadonlyArray<readonly [string, readonly EnergyState[]]> = [
   [LYR_WIND_CLUSTER, ['nonSuivi', 'maintenance']],
-  [LYR_WIND_CLUSTER_COUNT, ['nonSuivi', 'maintenance']],
+  [LYR_WIND_CLUSTER_ICON, ['nonSuivi', 'maintenance']],
+  [LYR_HYDRO_CLUSTER, ['normal', 'reduit', 'tension', 'nonSuivi']],
+  [LYR_HYDRO_CLUSTER_ICON, ['normal', 'reduit', 'tension', 'nonSuivi']],
   [LYR_BIOMETHANE_CLUSTERS, ['nonSuivi']],
-  [LYR_BIOMETHANE_CLUSTER_COUNT, ['nonSuivi']],
 ];
 
 export class DeckGLMap {
@@ -591,8 +579,6 @@ export class DeckGLMap {
   private fuelTensionLevels: VigilanceLevel[] = [];
   private hiddenEnergyStates: ReadonlySet<EnergyState> = new Set();
   private onEnergyKeyChange: ((model: EnergyKeyModel) => void) | null = null;
-  /** Signature des pictos d'alerte déjà dessinés (null = jamais dessinés). */
-  private energyAlertSig: string | null = null;
   private pulseMarkers: Map<string, HTMLElement> = new Map();
 
   // NOTE: Dynamic dasharray animations disabled due to MapLibre LineAtlas saturation.
@@ -612,7 +598,6 @@ export class DeckGLMap {
   // Gas PIR chevron animation
   private gasChevronAnimFrame: number | null = null;
   private gasChevronPhase = 0;
-  private gasPipelineVisible = false; // controlled by GasPanel toggle only, off by default
   private gasArcs: Array<{
     coords: [number, number][];
     color: string;
@@ -851,13 +836,13 @@ export class DeckGLMap {
     this.map.addSource(SRC_DROM_ENERGY, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_DROM_ENERGY_HTA_LINES, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_DROM_ENERGY_HIGHLIGHT, { type: 'geojson', data: emptyFC() });
-    this.map.addSource(SRC_HYDRO_BACKBONE, { type: 'geojson', data: emptyFC() });
+    // Barrages et éoliennes groupés aux petites échelles ; un groupe compte ses objets à l'arrêt ou sous tension (spec 2026-10-16 § 3).
+    const alertCount: maplibregl.ExpressionSpecification = ['+', ['case', ['in', ['coalesce', ['get', 'energyState'], 'nonSuivi'], ['literal', ['arret', 'tension']]], 1, 0]];
+    this.map.addSource(SRC_HYDRO_BACKBONE, {
+      type: 'geojson', data: emptyFC(), cluster: true, clusterRadius: 45, clusterMaxZoom: 7, clusterProperties: { alerts: alertCount },
+    });
     this.map.addSource(SRC_WIND_TURBINES, {
-      type: 'geojson',
-      data: emptyFC(),
-      cluster: true,
-      clusterMaxZoom: 7,   // éclate au zoom 8+
-      clusterRadius: 40,
+      type: 'geojson', data: emptyFC(), cluster: true, clusterRadius: 70, clusterMaxZoom: 8, clusterProperties: { alerts: alertCount },
     });
     this.map.addSource(SRC_WIND_PARKS, {
       type: 'geojson',
@@ -950,7 +935,8 @@ export class DeckGLMap {
       source: SRC_POWER_REGIONS,
       paint: {
         'fill-color': ['get', 'fillColor'],
-        'fill-opacity': 0.7,
+        // Fond de contexte discret : les installations restent au premier plan (spec 2026-10-16 § 5).
+        'fill-opacity': 0.16,
       },
     });
     this.map.addLayer({
@@ -1528,11 +1514,11 @@ export class DeckGLMap {
       source: SRC_GAS_NETWORK_GRT,
       layout: { 'line-join': 'round', 'line-cap': 'round' },
       paint: {
-        // Réseau gazier : inventaire, gris neutre en trait plein (spec 2026-10-15).
-        'line-color': ENERGY_NETWORK_HEX,
-        'line-opacity': 0.72,
-        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1, 10, 3]
-      }
+        // Gazoduc : teinte du gaz, discrète (spec 2026-10-16 § 5).
+        'line-color': ENERGY_SECTOR_HEX.gaz,
+        'line-opacity': 0.32,
+        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 0.6, 10, 2.2],
+      },
     });
 
     this.map.addLayer({
@@ -1541,46 +1527,29 @@ export class DeckGLMap {
       source: SRC_GAS_NETWORK_TEREGA,
       layout: { 'line-join': 'round', 'line-cap': 'round' },
       paint: {
-        // Réseau gazier : inventaire, gris neutre en trait plein (spec 2026-10-15).
-        'line-color': ENERGY_NETWORK_HEX,
-        'line-opacity': 0.72,
-        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1, 10, 3]
-      }
-    });
-
-    // ─── Gas Vital Organs: Storage glow ───
-    this.map.addLayer({
-      id: LYR_GAS_STORAGES_GLOW,
-      type: 'circle',
-      source: SRC_GAS_VITALS,
-      filter: ['==', ['get', 'type'], 'storage'],
-      paint: {
-        'circle-radius': ['interpolate', ['linear'], ['get', 'capacity'], 1, 15, 7, 35],
-        'circle-color': ['get', 'fillColor'],
-        'circle-blur': 0.6,
-        'circle-opacity': 0.22,
+        // Gazoduc : teinte du gaz, discrète (spec 2026-10-16 § 5).
+        'line-color': ENERGY_SECTOR_HEX.gaz,
+        'line-opacity': 0.32,
+        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 0.6, 10, 2.2],
       },
     });
+
 
     // ─── Stockages de gaz : carrés à la couleur de l'état du remplissage (spec 2026-10-15) ───
     this.map.addLayer({
       id: LYR_GAS_STORAGES,
-      type: 'symbol',
+      type: 'circle',
       source: SRC_GAS_VITALS,
       filter: ['==', ['get', 'type'], 'storage'],
-      layout: {
-        'icon-image': ENERGY_SHAPE_SQUARE,
-        // Côté de 12 à 24 px selon la capacité ; 1 = 32 px (forme à 76 % de l'image).
-        'icon-size': ['interpolate', ['linear'], ['get', 'capacity'], 1, 0.5, 7, 1],
-        'icon-allow-overlap': true,
-        'icon-ignore-placement': true,
-      },
       paint: {
-        'icon-color': ['get', 'fillColor'],
-        'icon-halo-color': '#0a0a12',
-        'icon-halo-width': 1.5,
+        'circle-radius': ENERGY_DISC_RADIUS.gas,
+        'circle-color': discColorExpr(ENERGY_SECTOR_HEX.gaz),
+        'circle-stroke-width': 1.5,
+        'circle-stroke-color': '#05060a',
       },
     });
+    this.addDiscCompanions(LYR_GAS_STORAGES, SRC_GAS_VITALS, ['==', ['get', 'type'], 'storage'], ENERGY_DISC_RADIUS.gas,
+      discColorExpr(ENERGY_SECTOR_HEX.gaz), energyIconImage('flame'), glyphColorExpr(false));
 
     // ─── Gas Vital Organs: Storage labels (zoom > 7) ───
     this.map.addLayer({
@@ -1606,12 +1575,18 @@ export class DeckGLMap {
     // ─── Terminaux méthaniers : carrés gris clair, sans état suivi (spec 2026-10-15) ───
     this.map.addLayer({
       id: LYR_GAS_TERMINALS,
-      type: 'symbol',
+      type: 'circle',
       source: SRC_GAS_VITALS,
       filter: ['==', ['get', 'type'], 'terminal'],
-      layout: { 'icon-image': ENERGY_SHAPE_SQUARE, 'icon-size': 0.55, 'icon-allow-overlap': true, 'icon-ignore-placement': true },
-      paint: { 'icon-color': ENERGY_STATE_HEX.nonSuivi, 'icon-halo-color': '#0a0a12', 'icon-halo-width': 1.5 },
+      paint: {
+        'circle-radius': ENERGY_DISC_RADIUS.gas,
+        'circle-color': discColorExpr(ENERGY_SECTOR_HEX.gaz),
+        'circle-stroke-width': 1.5,
+        'circle-stroke-color': '#05060a',
+      },
     });
+    this.addDiscCompanions(LYR_GAS_TERMINALS, SRC_GAS_VITALS, ['==', ['get', 'type'], 'terminal'], ENERGY_DISC_RADIUS.gas,
+      discColorExpr(ENERGY_SECTOR_HEX.gaz), energyIconImage('flame'), glyphColorExpr(false));
 
     // ─── Gas PIR: Arc glow ───
     // Softer glow than electricity, cyan/teal tones for gas pipeline feel
@@ -1719,32 +1694,16 @@ export class DeckGLMap {
       source: SRC_BIOMETHANE_SITES,
       filter: ['has', 'point_count'],
       paint: {
-        'circle-radius': ['step', ['get', 'point_count'], 12, 10, 16, 50, 22],
-        // Biométhane : inventaire, sans état suivi (spec 2026-10-15).
-        'circle-color': ENERGY_STATE_HEX.nonSuivi,
-        'circle-opacity': 0.7,
-        'circle-stroke-width': 2,
-        'circle-stroke-color': 'rgba(199, 199, 204, 0.35)',
+        // Biométhane : semis discret de petits points roses, sans nombre (spec 2026-10-16 § 3).
+        'circle-radius': ['step', ['get', 'point_count'], 3, 10, 4, 50, 5],
+        'circle-color': ENERGY_SECTOR_HEX.gaz,
+        'circle-opacity': 0.85,
+        'circle-stroke-width': 0.8,
+        'circle-stroke-color': '#05060a',
       },
       layout: { visibility: 'none' },
     });
 
-    // Cluster count labels
-    this.map.addLayer({
-      id: LYR_BIOMETHANE_CLUSTER_COUNT,
-      type: 'symbol',
-      source: SRC_BIOMETHANE_SITES,
-      filter: ['has', 'point_count'],
-      layout: {
-        'text-field': '{point_count_abbreviated}',
-        'text-size': 11,
-        'text-font': ['Noto Sans Bold'],
-        visibility: 'none',
-      },
-      paint: {
-        'text-color': '#0a0a0f',
-      },
-    });
 
     // Individual unclustered points — amber dots
     this.map.addLayer({
@@ -1753,16 +1712,11 @@ export class DeckGLMap {
       source: SRC_BIOMETHANE_SITES,
       filter: ['!', ['has', 'point_count']],
       paint: {
-        'circle-radius': [
-          'interpolate', ['linear'], ['get', 'capacityGwh'],
-          0, 3,
-          10, 4,
-          40, 6,
-        ],
-        'circle-color': ENERGY_STATE_HEX.nonSuivi,
+        'circle-radius': 3,
+        'circle-color': ENERGY_SECTOR_HEX.gaz,
         'circle-opacity': 0.85,
-        'circle-stroke-width': 1,
-        'circle-stroke-color': 'rgba(10, 10, 18, 0.6)',
+        'circle-stroke-width': 0.8,
+        'circle-stroke-color': '#05060a',
       },
       layout: { visibility: 'none' },
     });
@@ -1883,22 +1837,6 @@ export class DeckGLMap {
       },
     });
 
-    // ─── Oil Infrastructure: Pipeline glow ───
-    this.map.addLayer({
-      id: LYR_OIL_PIPELINES_GLOW,
-      type: 'line',
-      source: SRC_OIL_PIPELINES,
-      paint: {
-        'line-color': '#8e8e93',  // Halo neutre (spec 2026-10-15)
-        'line-width': 6,
-        'line-opacity': 0.3,
-        'line-blur': 4,
-      },
-      layout: {
-        'line-cap': 'round',
-        'line-join': 'round',
-      },
-    });
 
     // ─── Oil Infrastructure: Pipelines ───
     this.map.addLayer({
@@ -1906,10 +1844,10 @@ export class DeckGLMap {
       type: 'line',
       source: SRC_OIL_PIPELINES,
       paint: {
-        'line-color': ['get', 'color'],
+        // Oléoduc : teinte du pétrole en pointillé, gazoduc en trait plein (spec 2026-10-16 § 5).
+        'line-color': ENERGY_SECTOR_HEX.petrole,
         'line-width': ['get', 'lineWidth'],
-        'line-opacity': 0.85,
-        // Oléoduc en pointillé, gazoduc en trait plein (spec 2026-10-15).
+        'line-opacity': 0.5,
         'line-dasharray': [2, 1.5],
       },
       layout: {
@@ -1925,11 +1863,12 @@ export class DeckGLMap {
       source: SRC_FUEL_TENSION,
       paint: {
         'fill-color': ['get', 'fillColor'],
+        // Tension faible : rien ; moyenne à critique : voile croissant (spec 2026-10-16 § 5).
         'fill-opacity': [
           'case',
           ['boolean', ['feature-state', 'hover'], false],
           0.32,
-          ['coalesce', ['get', 'fillOpacity'], 0.18],
+          ['match', ['get', 'tensionLevel'], 'LOW', 0, 'MEDIUM', 0.12, 'HIGH', 0.18, 0.24],
         ],
       },
     });
@@ -1944,57 +1883,26 @@ export class DeckGLMap {
           '#FFFFFF',
           ['get', 'lineColor'],
         ],
-        'line-width': [
-          'case',
-          ['boolean', ['feature-state', 'hover'], false],
-          1.9,
-          ['coalesce', ['get', 'lineWidth'], 1.0],
-        ],
-        'line-opacity': 0.95,
+        'line-width': 2.2,
+        'line-opacity': ['match', ['get', 'tensionLevel'], 'LOW', 0, 1],
       },
     });
 
-    // ─── Oil Infrastructure: Refinery glow (halo ambiant derrière le triangle) ───
-    this.map.addLayer({
-      id: LYR_OIL_REFINERIES_GLOW,
-      type: 'circle',
-      source: SRC_OIL_REFINERIES,
-      paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'],
-          4, ['*', ['get', 'sizeScale'], 12],
-          8, ['*', ['get', 'sizeScale'], 22],
-          12, ['*', ['get', 'sizeScale'], 34],
-        ],
-        'circle-color': ['get', 'fillColor'],
-        'circle-opacity': 0.20,
-        'circle-blur': 0.85,
-      },
-    });
 
     // ─── Oil Infrastructure: Refineries — triangles ▲ (▼ si maintenance) ───
     this.map.addLayer({
       id: LYR_OIL_REFINERIES,
-      type: 'symbol',
+      type: 'circle',
       source: SRC_OIL_REFINERIES,
-      layout: {
-        'icon-image': 'triangle-refinery',
-        'icon-size': ['interpolate', ['linear'], ['zoom'],
-          4, ['*', ['get', 'sizeScale'], 0.25],
-          8, ['*', ['get', 'sizeScale'], 0.45],
-          12, ['*', ['get', 'sizeScale'], 0.70],
-        ],
-        'icon-allow-overlap': true,
-        'icon-ignore-placement': true,
-        'icon-anchor': 'center',
-        'icon-rotate': ['get', 'iconRotation'],
-      },
       paint: {
-        'icon-color': ['get', 'fillColor'],
-        'icon-opacity': 0.95,
-        'icon-halo-color': ['get', 'strokeColor'],
-        'icon-halo-width': ['get', 'strokeWidth'],
+        'circle-radius': ENERGY_DISC_RADIUS.refinery,
+        'circle-color': discColorExpr(ENERGY_SECTOR_HEX.petrole),
+        'circle-stroke-width': 1.5,
+        'circle-stroke-color': '#05060a',
       },
     });
+    this.addDiscCompanions(LYR_OIL_REFINERIES, SRC_OIL_REFINERIES, null, ENERGY_DISC_RADIUS.refinery,
+      discColorExpr(ENERGY_SECTOR_HEX.petrole), energyIconImage('fuel'), glyphColorExpr(true));
 
     // ─── Oil Infrastructure: Refinery labels ───
     this.map.addLayer({
@@ -2021,35 +1929,15 @@ export class DeckGLMap {
       type: 'circle',
       source: SRC_OIL_DEPOTS,
       paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'],
-          4, ['*', ['get', 'baseRadius'], 0.65],
-          8, ['get', 'baseRadius'],
-          12, ['*', ['get', 'baseRadius'], 1.4],
-        ],
-        'circle-color': ['get', 'fillColor'],
-        'circle-opacity': ['get', 'opacity'],
-        'circle-stroke-color': ['get', 'strokeColor'],
-        'circle-stroke-width': ['get', 'strokeWidth'],
+        // Dépôts : petits points du pétrole, inventaire (spec 2026-10-16 § 3).
+        'circle-radius': 3.5,
+        'circle-color': ENERGY_SECTOR_HEX.petrole,
+        'circle-opacity': 0.9,
+        'circle-stroke-width': 0.8,
+        'circle-stroke-color': '#05060a',
       },
     });
 
-    // ─── Oil Infrastructure: Terminal inner ring (dark center disc) ───
-    // Drawn on top of the bright depot disc → creates "rond dans le rond" effect
-    this.map.addLayer({
-      id: LYR_OIL_DEPOTS_TERMINAL_CENTER,
-      type: 'circle',
-      source: SRC_OIL_DEPOTS,
-      filter: ['==', ['get', 'role'], 'terminal'],
-      paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'],
-          4, ['*', ['get', 'baseRadius'], 0.30],
-          8, ['*', ['get', 'baseRadius'], 0.48],
-          12, ['*', ['get', 'baseRadius'], 0.62],
-        ],
-        'circle-color': '#1C0800',
-        'circle-opacity': 0.95,
-      },
-    });
 
     // ─── Oil Infrastructure: Depot labels ───
     this.map.addLayer({
@@ -2071,37 +1959,7 @@ export class DeckGLMap {
       },
     });
 
-    // ─── Oil: Couches hit invisibles (zones de hover élargies) ───
-    this.map.addLayer({
-      id: LYR_OIL_REFINERIES_HIT,
-      type: 'circle',
-      source: SRC_OIL_REFINERIES,
-      paint: {
-        // Rayon fixe large indépendant du baseRadius — facilite le hover à tous les zooms
-        'circle-radius': ['interpolate', ['linear'], ['zoom'],
-          4, 24,
-          8, 32,
-          12, 44,
-        ],
-        'circle-opacity': 0,
-        'circle-stroke-width': 0,
-      },
-    });
 
-    this.map.addLayer({
-      id: LYR_OIL_DEPOTS_HIT,
-      type: 'circle',
-      source: SRC_OIL_DEPOTS,
-      paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'],
-          4, ['*', ['get', 'baseRadius'], 2.5],
-          8, ['*', ['get', 'baseRadius'], 3.0],
-          12, ['*', ['get', 'baseRadius'], 3.5],
-        ],
-        'circle-opacity': 0,
-        'circle-stroke-width': 0,
-      },
-    });
 
     this.map.addLayer({
       id: LYR_OIL_PIPELINES_HIT,
@@ -2126,43 +1984,7 @@ export class DeckGLMap {
       paint: { 'circle-radius': 22, 'circle-opacity': 0, 'circle-stroke-width': 0 },
     });
 
-    // ─── Infrastructure: vital halo commun ───
-    this.map.addLayer({
-      id: LYR_ENERGY_INFRA_VITAL_HALO,
-      type: 'circle',
-      source: SRC_INFRA,
-      filter: ['!=', ['get', 'type'], 'nuclear'],
-      paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'],
-          4, ['*', ['get', 'baseRadius'], 1.35],
-          8, ['*', ['get', 'baseRadius'], 1.75],
-          12, ['*', ['get', 'baseRadius'], 2.10],
-        ],
-        'circle-color': 'rgba(0,0,0,0)',
-        'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 4, 1.5, 8, 2.1, 12, 2.8],
-        'circle-stroke-opacity': 0.96,
-        'circle-stroke-color': INFRA_VITAL_HALO_COLOR,
-      },
-    });
 
-    // ─── Infrastructure: nuclear accent ring ───
-    this.map.addLayer({
-      id: LYR_ENERGY_INFRA_NUCLEAR_RING,
-      type: 'circle',
-      source: SRC_INFRA,
-      filter: ['==', ['get', 'type'], 'nuclear'],
-      paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'],
-          4, ['*', ['get', 'baseRadius'], 1.00],
-          8, ['*', ['get', 'baseRadius'], 1.22],
-          12, ['*', ['get', 'baseRadius'], 1.42],
-        ],
-        'circle-color': 'rgba(0,0,0,0)',
-        'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 4, 1.6, 8, 2.2, 12, 2.9],
-        'circle-stroke-opacity': 0.98,
-        'circle-stroke-color': INFRA_NUCLEAR_RING_COLOR,
-      },
-    });
     // Avis de sûreté ASNR (spec 2026-10-13) : anneau orange de moins de 7 jours, gris jusqu'à 30 jours.
     this.map.addLayer(ASNR_RING_LAYER);
 
@@ -2196,17 +2018,17 @@ export class DeckGLMap {
       type: 'circle',
       source: SRC_INFRA,
       paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'],
-          4, ['*', ['get', 'baseRadius'], 0.72],
-          8, ['get', 'baseRadius'],
-          12, ['*', ['get', 'baseRadius'], 1.20],
-        ],
-        'circle-color': ['get', 'color'],
-        'circle-opacity': 0.92,
-        'circle-stroke-width': 0,
-        'circle-stroke-color': 'rgba(0,0,0,0)',
+        // Nucléaire : violet gardé, réduit et maintenance par l'anneau ; autres types : teinte de la filière (spec 2026-10-16 § 2).
+        'circle-radius': INFRA_DISC_RADIUS,
+        'circle-color': ['case', ['==', ['get', 'type'], 'nuclear'], nuclearDiscColorExpr(), discColorExpr(infraSectorHexExpr())],
+        'circle-stroke-color': ['case', ['==', ['get', 'type'], 'nuclear'], nuclearRingColorExpr(), '#05060a'],
+        'circle-stroke-width': ['case', ['==', ['get', 'type'], 'nuclear'], nuclearRingWidthExpr(), 1.5],
+        'circle-opacity': ['case', ['==', ['get', 'type'], 'nuclear'], nuclearOpacityExpr(), 1],
       },
     });
+    this.addDiscCompanions(LYR_ENERGY_INFRA_CIRCLE, SRC_INFRA, null, INFRA_DISC_RADIUS,
+      ['case', ['==', ['get', 'type'], 'nuclear'], nuclearDiscColorExpr(), discColorExpr(infraSectorHexExpr())], infraGlyphImageExpr(),
+      ['match', ['get', 'type'], ['thermal', 'refinery', 'oil-depot'], glyphColorExpr(true), glyphColorExpr(false)]);
 
     // ─── Infrastructure: labels (zoom > 9) ───
     this.map.addLayer({
@@ -2261,8 +2083,8 @@ export class DeckGLMap {
           12,
           ['match', ['get', 'assetType'], 'source_substation', 8.8, 'htb_pylon', 7, 'production_site', 7.8, 7.2],
         ],
-        // Outre-mer : inventaire sans état suivi, gris clair ; le type se lit à la taille et dans l'infobulle.
-        'circle-color': ENERGY_STATE_HEX.nonSuivi,
+        // Outre-mer : disque de l'électricité, couleur de l'état s'il est anormal ; le type se lit à la taille et dans la bulle.
+        'circle-color': discColorExpr(ENERGY_SECTOR_HEX.electricite),
         'circle-opacity': 0.92,
         'circle-stroke-width': 1,
         'circle-stroke-color': '#0a0a12',
@@ -2286,30 +2108,50 @@ export class DeckGLMap {
     // Hydraulique : losanges à la couleur de l'état (spec 2026-10-15) ; halo et anneau de signal retirés.
     this.map.addLayer({
       id: LYR_HYDRO_BACKBONE_CIRCLE,
+      type: 'circle',
+      source: SRC_HYDRO_BACKBONE,
+      filter: ['!', ['has', 'point_count']],
+      paint: {
+        'circle-radius': ENERGY_DISC_RADIUS.hydro,
+        'circle-color': discColorExpr(ENERGY_SECTOR_HEX.hydraulique),
+        'circle-stroke-width': 1.5,
+        'circle-stroke-color': '#05060a',
+      },
+    });
+    this.addDiscCompanions(LYR_HYDRO_BACKBONE_CIRCLE, SRC_HYDRO_BACKBONE, ['!', ['has', 'point_count']], ENERGY_DISC_RADIUS.hydro,
+      discColorExpr(ENERGY_SECTOR_HEX.hydraulique), energyIconImage('droplet'), glyphColorExpr(false));
+    // Groupes de barrages : bleu, orange si l'un d'eux est à l'arrêt ou sous tension (spec 2026-10-16 § 3).
+    this.map.addLayer({
+      id: LYR_HYDRO_CLUSTER,
+      type: 'circle',
+      source: SRC_HYDRO_BACKBONE,
+      filter: ['has', 'point_count'],
+      paint: {
+        'circle-radius': ['step', ['get', 'point_count'], 9, 5, 12, 15, 15],
+        'circle-color': ['case', ['>', ['get', 'alerts'], 0], ENERGY_DISC_STATE_HEX.tension, ENERGY_SECTOR_HEX.hydraulique],
+        'circle-stroke-width': 1.5,
+        'circle-stroke-color': '#05060a',
+      },
+    });
+    this.map.addLayer({
+      id: LYR_HYDRO_CLUSTER_ICON,
       type: 'symbol',
       source: SRC_HYDRO_BACKBONE,
+      filter: ['has', 'point_count'],
       layout: {
-        'icon-image': ENERGY_SHAPE_DIAMOND,
-        // Diagonale = ancien diamètre ; 1 = 32 px.
-        'icon-size': ['interpolate', ['linear'], ['zoom'],
-          4, ['/', ['*', ['get', 'radius'], 0.75], 16],
-          8, ['/', ['get', 'radius'], 16],
-          12, ['/', ['*', ['get', 'radius'], 1.22], 16],
-        ],
+        'icon-image': energyIconImage('droplet'),
+        'icon-size': ['step', ['get', 'point_count'], 0.47, 5, 0.6, 15, 0.75],
         'icon-allow-overlap': true,
         'icon-ignore-placement': true,
       },
-      paint: {
-        'icon-color': ['get', 'color'],
-        'icon-halo-color': '#0a0a12',
-        'icon-halo-width': 1,
-      },
+      paint: { 'icon-color': '#ffffff' },
     });
 
     this.map.addLayer({
       id: LYR_HYDRO_BACKBONE_LABEL,
       type: 'symbol',
       source: SRC_HYDRO_BACKBONE,
+      filter: ['!', ['has', 'point_count']],
       minzoom: 8,
       layout: {
         'text-field': ['get', 'name'],
@@ -2325,90 +2167,49 @@ export class DeckGLMap {
       },
     });
 
-    this.map.addLayer({
-      id: LYR_WIND_TURBINE_HALO,
-      type: 'circle',
-      source: SRC_WIND_TURBINES,
-      filter: ['!', ['has', 'point_count']],
-      paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'],
-          4, ['+', 4.5, ['/', ['get', 'radius'], 2.4]],
-          8, ['+', 5.5, ['/', ['get', 'radius'], 1.7]],
-          12, ['+', 6.4, ['/', ['get', 'radius'], 1.2]],
-        ],
-        'circle-color': ['get', 'color'],
-        'circle-opacity': 0.16,
-        'circle-blur': 0.75,
-      },
-    });
 
-    this.map.addLayer({
-      id: LYR_WIND_PARK_HALO,
-      type: 'circle',
-      source: SRC_WIND_PARKS,
-      paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'],
-          4, ['+', 4.5, ['/', ['get', 'radius'], 2.4]],
-          8, ['+', 5.5, ['/', ['get', 'radius'], 1.7]],
-          12, ['+', 6.4, ['/', ['get', 'radius'], 1.2]],
-        ],
-        'circle-color': ['get', 'color'],
-        'circle-opacity': 0.16,
-        'circle-blur': 0.75,
-      },
-    });
 
     // ─── Éolien : cluster bubbles (zoom < 10) ───
+    // ─── Éolien : groupes cyan, orange si l'une est à l'arrêt ou sous tension ; le nombre est dans la bulle (spec 2026-10-16 § 3) ───
     this.map.addLayer({
       id: LYR_WIND_CLUSTER,
       type: 'circle',
       source: SRC_WIND_TURBINES,
       filter: ['has', 'point_count'],
-      maxzoom: 8,
       paint: {
-        // Groupes d'éoliennes : gris clair, le nombre se lit à la taille (spec 2026-10-15).
-        'circle-color': ENERGY_STATE_HEX.nonSuivi,
-        'circle-radius': [
-          'step', ['get', 'point_count'],
-          14,
-          50,  20,
-          200, 28,
-        ],
-        'circle-opacity': 0.55,
-        'circle-stroke-width': 1,
-        'circle-stroke-color': '#0a0a12',
+        'circle-color': ['case', ['>', ['get', 'alerts'], 0], ENERGY_DISC_STATE_HEX.tension, ENERGY_SECTOR_HEX.eolien],
+        'circle-radius': ['step', ['get', 'point_count'], 8, 100, 11, 400, 14],
+        'circle-opacity': 0.95,
+        'circle-stroke-width': 1.2,
+        'circle-stroke-color': '#05060a',
       },
     });
-
     this.map.addLayer({
-      id: LYR_WIND_CLUSTER_COUNT,
+      id: LYR_WIND_CLUSTER_ICON,
       type: 'symbol',
       source: SRC_WIND_TURBINES,
       filter: ['has', 'point_count'],
-      maxzoom: 8,
       layout: {
-        'text-field': '{point_count_abbreviated}',
-        'text-size': 11,
-        'text-font': ['Open Sans Bold'],
+        'icon-image': energyIconImage('wind'),
+        'icon-size': ['step', ['get', 'point_count'], 0.42, 100, 0.58, 400, 0.74],
+        'icon-allow-overlap': true,
+        'icon-ignore-placement': true,
       },
-      paint: { 'text-color': '#0a0a0f' },
+      paint: { 'icon-color': '#05262a' },
     });
+
 
     this.map.addLayer({
       id: LYR_WIND_TURBINE_CIRCLE,
       type: 'circle',
       source: SRC_WIND_TURBINES,
       filter: ['!', ['has', 'point_count']],
+      minzoom: 8,
       paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'],
-          4, ['*', ['get', 'radius'], 0.78],
-          8, ['get', 'radius'],
-          12, ['*', ['get', 'radius'], 1.22],
-        ],
-        'circle-color': ['get', 'color'],
-        'circle-opacity': ['get', 'opacity'],
-        'circle-stroke-width': 0,
-        'circle-stroke-color': 'rgba(0,0,0,0)',
+        'circle-radius': 3,
+        'circle-color': discColorExpr(ENERGY_SECTOR_HEX.eolien),
+        'circle-stroke-width': 0.8,
+        'circle-stroke-color': '#05060a',
       },
     });
 
@@ -2417,17 +2218,14 @@ export class DeckGLMap {
       type: 'circle',
       source: SRC_WIND_PARKS,
       paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'],
-          4, ['*', ['get', 'radius'], 0.78],
-          8, ['get', 'radius'],
-          12, ['*', ['get', 'radius'], 1.22],
-        ],
-        'circle-color': ['get', 'color'],
-        'circle-opacity': ['get', 'opacity'],
-        'circle-stroke-width': 0,
-        'circle-stroke-color': 'rgba(0,0,0,0)',
+        'circle-radius': ENERGY_DISC_RADIUS.windPark,
+        'circle-color': discColorExpr(ENERGY_SECTOR_HEX.eolien),
+        'circle-stroke-width': 1.5,
+        'circle-stroke-color': '#05060a',
       },
     });
+    this.addDiscCompanions(LYR_WIND_PARK_CIRCLE, SRC_WIND_PARKS, null, ENERGY_DISC_RADIUS.windPark,
+      discColorExpr(ENERGY_SECTOR_HEX.eolien), energyIconImage('wind'), glyphColorExpr(true));
 
     this.map.addLayer({
       id: LYR_WIND_TURBINE_LABEL,
@@ -2469,22 +2267,6 @@ export class DeckGLMap {
       },
     });
 
-    // ─── Métropoles: halo de fond ───
-    this.map.addLayer({
-      id: LYR_METRO_LOAD_GLOW,
-      type: 'circle',
-      source: SRC_METRO_LOAD,
-      paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'],
-          4, ['/', ['get', 'radius'], 1.6],
-          7, ['get', 'radius'],
-          10, ['*', ['get', 'radius'], 1.55],
-        ],
-        'circle-color': ['get', 'glowColor'],
-        'circle-blur': 0.55,
-        'circle-opacity': 1,
-      },
-    });
 
     // ─── Métropoles: cercle principal ───
     this.map.addLayer({
@@ -2497,10 +2279,10 @@ export class DeckGLMap {
           7, ['/', ['get', 'radius'], 1.2],
           10, ['get', 'radius'],
         ],
-        'circle-color': ['get', 'color'],
-        'circle-opacity': 1,
-        'circle-stroke-width': 1.4,
-        'circle-stroke-color': 'rgba(255,255,255,0.34)',
+        // Consommation des métropoles : cercle creux, contexte (spec 2026-10-16 § 5).
+        'circle-color': 'rgba(238,242,247,0.06)',
+        'circle-stroke-width': 1.2,
+        'circle-stroke-color': 'rgba(238,242,247,0.55)',
       },
     });
 
@@ -2526,33 +2308,6 @@ export class DeckGLMap {
       },
     });
 
-    // ─── Énergie : pictos des installations à l'arrêt ou sous tension (spec 2026-10-15) ───
-    this.map.addSource(SRC_ENERGY_ALERTS, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-    this.map.addLayer({
-      id: LYR_ENERGY_ALERT_DISC,
-      type: 'circle',
-      source: SRC_ENERGY_ALERTS,
-      layout: { visibility: 'none' },
-      paint: {
-        'circle-radius': 11,
-        'circle-color': ['get', 'color'],
-        'circle-stroke-width': 1.5,
-        'circle-stroke-color': '#0a0a12',
-      },
-    });
-    this.map.addLayer({
-      id: LYR_ENERGY_ALERT_ICON,
-      type: 'symbol',
-      source: SRC_ENERGY_ALERTS,
-      layout: {
-        visibility: 'none',
-        'icon-image': ['get', 'icon'],
-        'icon-size': 0.5,
-        'icon-allow-overlap': true,
-        'icon-ignore-placement': true,
-      },
-      paint: { 'icon-color': '#ffffff' },
-    });
 
     // ─── Military ───
     // Souveraineté, phase B (tâche B27) : zones drones DGAC (option) puis mailles GNSS, surfaces sous les points.
@@ -2791,9 +2546,6 @@ export class DeckGLMap {
     for (const layer of SOV_LAYERS) this.map.addLayer(layer);
     // Pannes réseau (deckgl/outages-map.ts) : même rang, masquées jusqu'à setLayerVisibility.
     for (const layer of OUT_LAYERS) this.map.addLayer(layer);
-    // Pictos d'alerte de l'énergie au-dessus des pannes EDF (leur rond cerclé de blanc cachait le picto), spec 2026-10-15.
-    this.map.moveLayer(LYR_ENERGY_ALERT_DISC);
-    this.map.moveLayer(LYR_ENERGY_ALERT_ICON);
 
     // Séismes et marégraphes (phase B) au-dessus de toutes les surfaces : ajoutés ici, sous la première couche de points qui suit la dernière surface.
     placeEnvBPoints(this.map);
@@ -3304,15 +3056,15 @@ export class DeckGLMap {
     });
     this.map.on('mouseleave', LYR_OIL_REFINERIES, hideEnrichedHover);
 
-    this.map.on('mouseenter', LYR_OIL_DEPOTS_HIT, () => {
+    this.map.on('mouseenter', LYR_OIL_DEPOTS, () => {
       if (this.map) this.map.getCanvas().style.cursor = 'pointer';
     });
-    this.map.on('mousemove', LYR_OIL_DEPOTS_HIT, (e) => {
+    this.map.on('mousemove', LYR_OIL_DEPOTS, (e) => {
       if (!e.features?.length) return;
       const p = e.features[0].properties || {};
       this.showEnrichedHoverPopup(e.lngLat, this.buildOilDepotHoverHtml(p));
     });
-    this.map.on('mouseleave', LYR_OIL_DEPOTS_HIT, hideEnrichedHover);
+    this.map.on('mouseleave', LYR_OIL_DEPOTS, hideEnrichedHover);
 
     this.map.on('mouseenter', LYR_OIL_PIPELINES_HIT, () => {
       if (this.map) this.map.getCanvas().style.cursor = 'pointer';
@@ -6116,13 +5868,9 @@ export class DeckGLMap {
     }
   }
 
-  setGasPipelineVisible(show: boolean): void {
-    this.gasPipelineVisible = show;
-    if (this.currentLayers?.gasNetwork) {
-      const v = show ? 'visible' : 'none';
-      this.setVis(LYR_GAS_NETWORK_GRT, v);
-      this.setVis(LYR_GAS_NETWORK_TEREGA, v);
-    }
+  /** Sans effet depuis la spec 2026-10-16 § 5 : les gazoducs suivent la couche Gaz. Gardé pour MapContainer. */
+  setGasPipelineVisible(_show: boolean): void {
+    // Rien : les gazoducs s'affichent avec la couche Gaz.
   }
 
   /** Animated chevrons along gas PIR arcs (point-based, same technique as electricity). */
@@ -8231,7 +7979,6 @@ export class DeckGLMap {
 
   private recordEnergy(key: EnergyLayerKey, entries: EnergyEntry[]): void {
     this.energyEntries.set(key, entries);
-    this.syncEnergyAlerts();
     this.emitEnergyKey();
   }
 
@@ -8243,20 +7990,6 @@ export class DeckGLMap {
   private recordFuelTension(levels: VigilanceLevel[]): void {
     this.fuelTensionLevels = levels;
     this.emitEnergyKey();
-  }
-
-  /** Pictos d'alerte des seules couches allumées. */
-  private syncEnergyAlerts(): void {
-    if (!this.map) return;
-    // Provisoire (tâche 2) : les pictos d'alerte disparaissent, la tâche 7 retire ce calque.
-    const fc: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
-    // Rien de changé : pas de repeinte (chaque bascule de couche passe ici).
-    const sig = fc.features.map((f) => `${String(f.properties?.id)}:${String(f.properties?.energyState)}:${f.geometry.type === 'Point' ? f.geometry.coordinates.join(',') : ''}`).join('|');
-    if (sig === this.energyAlertSig) return;
-    const src = this.map.getSource(SRC_ENERGY_ALERTS) as maplibregl.GeoJSONSource | undefined;
-    if (!src) return;
-    src.setData(fc);
-    this.energyAlertSig = sig;
   }
 
   private emitEnergyKey(): void {
@@ -8276,7 +8009,13 @@ export class DeckGLMap {
       if (!this.map.getLayer(id)) continue;
       const own = (id === LYR_ENERGY_INFRA_CIRCLE || id === LYR_ENERGY_INFRA_LABEL) && this.currentLayers?.nuclearFleet ? nuclear : base;
       try {
-        this.map.setFilter(id, energyStateFilter(own, this.hiddenEnergyStates));
+        const f = energyStateFilter(own, this.hiddenEnergyStates);
+        this.map.setFilter(id, f);
+        if (ENERGY_DISC_IDS.has(id)) {
+          const c = companionFilters(f);
+          if (this.map.getLayer(`${id}-halo`)) this.map.setFilter(`${id}-halo`, c.halo);
+          if (this.map.getLayer(`${id}-icon`)) this.map.setFilter(`${id}-icon`, c.icon);
+        }
       } catch {
         // Calque pas encore prêt : le prochain appel le rattrapera.
       }
@@ -9035,8 +8774,6 @@ export class DeckGLMap {
     this.hideEnvironmentHover();
     this.setVis(LYR_ISNR_FILL, vis(layers.stability ?? false));
     this.setVis(LYR_ISNR_LINE, vis(layers.stability ?? false));
-    this.setVis(LYR_ENERGY_INFRA_VITAL_HALO, 'none');
-    this.setVis(LYR_ENERGY_INFRA_NUCLEAR_RING, vis(layers.nuclearFleet ?? false));
     this.setVis(LYR_ASNR_RING, vis(layers.nuclearFleet ?? false));
     this.setVis(LYR_ENERGY_INFRA_HIGHLIGHT_GLOW, vis(layers.nuclearFleet ?? false));
     this.setVis(LYR_ENERGY_INFRA_HIGHLIGHT_RING, vis(layers.nuclearFleet ?? false));
@@ -9046,29 +8783,24 @@ export class DeckGLMap {
     this.setVis(LYR_DROM_ENERGY_POINTS, vis(layers.dromEnergy ?? false));
     this.setVis(LYR_DROM_ENERGY_HIGHLIGHT, vis(layers.dromEnergy ?? false));
     this.setVis(LYR_HYDRO_BACKBONE_CIRCLE, vis(layers.hydroBackbone ?? false));
+    this.setVis(LYR_HYDRO_CLUSTER, vis(layers.hydroBackbone ?? false));
+    this.setVis(LYR_HYDRO_CLUSTER_ICON, vis(layers.hydroBackbone ?? false));
     this.setVis(LYR_HYDRO_BACKBONE_LABEL, vis(layers.hydroBackbone ?? false));
     this.setVis(LYR_WIND_CLUSTER,        vis(layers.windMonitor ?? false));
-    this.setVis(LYR_WIND_CLUSTER_COUNT,  vis(layers.windMonitor ?? false));
-    this.setVis(LYR_WIND_TURBINE_HALO,           vis(layers.windMonitor ?? false));
+    this.setVis(LYR_WIND_CLUSTER_ICON,   vis(layers.windMonitor ?? false));
     this.setVis(LYR_WIND_TURBINE_CIRCLE,         vis(layers.windMonitor ?? false));
     this.setVis(LYR_WIND_TURBINE_LABEL,          vis(layers.windMonitor ?? false));
-    this.setVis(LYR_WIND_PARK_HALO,      vis(layers.windMonitor ?? false));
     this.setVis(LYR_WIND_PARK_CIRCLE,    vis(layers.windMonitor ?? false));
     this.setVis(LYR_WIND_PARK_LABEL,     vis(layers.windMonitor ?? false));
 
     this.applyEnergyStateFilters();
-    const energyOn = ENERGY_LAYER_KEYS.some((k) => layers[k] === true);
-    this.setVis(LYR_ENERGY_ALERT_DISC, vis(energyOn));
-    this.setVis(LYR_ENERGY_ALERT_ICON, vis(energyOn));
-    this.syncEnergyAlerts();
     this.emitEnergyKey();
     // Gas layer: réseau + organes vitaux
     const gasVis = vis(layers.gasNetwork ?? false);
-    const pipeVis = (gasVis === 'visible' && this.gasPipelineVisible) ? 'visible' : 'none';
-    this.setVis(LYR_GAS_NETWORK_GRT, pipeVis);
-    this.setVis(LYR_GAS_NETWORK_TEREGA, pipeVis);
+    // Gazoducs visibles dès que la couche Gaz est allumée (spec 2026-10-16 § 5).
+    this.setVis(LYR_GAS_NETWORK_GRT, gasVis);
+    this.setVis(LYR_GAS_NETWORK_TEREGA, gasVis);
     this.setVis(LYR_GAS_TERMINALS, gasVis);
-    this.setVis(LYR_GAS_STORAGES_GLOW, gasVis);
     this.setVis(LYR_GAS_STORAGES, gasVis);
     this.setVis(LYR_GAS_STORAGES_LABEL, gasVis);
     this.setVis(LYR_GAS_PIR_ARC_GLOW, gasVis);
@@ -9079,21 +8811,15 @@ export class DeckGLMap {
     // Biomethane sites: visible when gasNetwork is active (always shown alongside gas infra)
     const biomVis = vis(layers.gasNetwork ?? false);
     this.setVis(LYR_BIOMETHANE_CLUSTERS, biomVis);
-    this.setVis(LYR_BIOMETHANE_CLUSTER_COUNT, biomVis);
     this.setVis(LYR_BIOMETHANE_SITES, biomVis);
     this.setVis(LYR_BIOMETHANE_SITES_LABEL, biomVis);
     // Oil layer (refineries, depots, pipelines, flows)
     const oilVis = vis(layers.oilNetwork ?? false);
-    this.setVis(LYR_OIL_PIPELINES_GLOW, oilVis);
     this.setVis(LYR_OIL_PIPELINES, oilVis);
-    this.setVis(LYR_OIL_REFINERIES_GLOW, oilVis);
     this.setVis(LYR_OIL_REFINERIES, oilVis);
     this.setVis(LYR_OIL_REFINERIES_LABEL, oilVis);
     this.setVis(LYR_OIL_DEPOTS, oilVis);
-    this.setVis(LYR_OIL_DEPOTS_TERMINAL_CENTER, oilVis);
     this.setVis(LYR_OIL_DEPOTS_LABEL, oilVis);
-    // LYR_OIL_REFINERIES_HIT supprimé — hover géré directement sur le symbol layer
-    this.setVis(LYR_OIL_DEPOTS_HIT, oilVis);
     this.setVis(LYR_OIL_PIPELINES_HIT, oilVis);
     this.setVis(LYR_OIL_FLOW_ARC_HIT, oilVis);
     this.setVis(LYR_OIL_FLOW_MARKER_HIT, oilVis);
@@ -9115,7 +8841,6 @@ export class DeckGLMap {
     this.setVis(LYR_TRAIN_ROUTE,        railVis);
     this.setVis(LYR_TRAIN_STATIONS,     railVis);
     this.setVis(LYR_TRAIN_STATION_LABELS, railVis);
-    this.setVis(LYR_METRO_LOAD_GLOW, vis(layers.metroLoad));
     this.setVis(LYR_METRO_LOAD_CIRCLE, vis(layers.metroLoad));
     this.setVis(LYR_METRO_LOAD_LABEL, vis(layers.metroLoad));
 
@@ -9149,12 +8874,27 @@ export class DeckGLMap {
   // PRIVATE
   // ═══════════════════════════════════════════════════════════════
 
+  /** Pose `<disque>-halo` juste sous le disque et `<disque>-icon` juste au-dessus (spec 2026-10-16 § 2.2). */
+  private addDiscCompanions(discId: string, source: string, filter: maplibregl.FilterSpecification | null, radius: number | StyleExpr,
+    color: string | StyleExpr, icon: string | StyleExpr, iconColor: string | StyleExpr): void {
+    if (!this.map) return;
+    const [halo, iconLayer] = discCompanionLayers({ id: discId, source, filter, radius, color, icon, iconColor });
+    this.map.addLayer(halo, discId);
+    this.map.addLayer(iconLayer);
+  }
+
   private setVis(layerId: string, visibility: string): void {
     if (!this.map) return;
     // Guard: only style existing layers to avoid MapLibre "Cannot style non-existing layer" errors
     try {
       if (this.map.getLayer(layerId)) {
         this.map.setLayoutProperty(layerId, 'visibility', visibility);
+      }
+      // Halo et picto d'un disque d'installation suivent sa visibilité.
+      if (ENERGY_DISC_IDS.has(layerId)) {
+        for (const id of [`${layerId}-halo`, `${layerId}-icon`]) {
+          if (this.map.getLayer(id)) this.map.setLayoutProperty(id, 'visibility', visibility);
+        }
       }
     } catch {
       // Silently ignore - layer may not exist yet during initialization

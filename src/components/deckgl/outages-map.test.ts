@@ -92,6 +92,19 @@ describe('carte des pannes : Électricité', () => {
     expect(new Set(mute.features.map((f) => f.properties?.color))).toEqual(new Set([ENERGY_STATE_HEX.nonSuivi]));
     expect(powerFeatures({ ...p, edfUpdatedAt: '2026-10-01T00:00:00.000Z' }, OUTAGES_FIXTURE_NOW).features[0].properties?.color).not.toBe(ENERGY_STATE_HEX.nonSuivi);
   });
+  it('unités EDF : disque blanc de 8 px, picto zap, propriétés lostMw et sector pour la bulle', () => {
+    const fc = powerFeatures(powerFixtureResponse(), OUTAGES_FIXTURE_NOW);
+    const p = fc.features[0].properties ?? {};
+    expect(typeof p.lostMw).toBe('number');
+    expect(typeof p.sector).toBe('string');
+    const unplanned = OUT_LAYERS.find((l) => l.id === 'out-power-unplanned');
+    expect(unplanned?.type).toBe('circle');
+    expect(JSON.stringify(unplanned && 'paint' in unplanned ? unplanned.paint : {})).toContain('#eef2f7');
+    const icon = OUT_LAYERS.find((l) => l.id === 'out-power-unplanned-icon');
+    expect(JSON.stringify(icon && 'layout' in icon ? icon.layout : {})).toContain('energy-icon-zap');
+    expect(OUT_HOVER_LAYERS).not.toContain('out-power-unplanned');
+    expect(OUT_HOVER_LAYERS).not.toContain('out-power-planned');
+  });
   it('jamais lu : aucune unité', () => {
     expect(powerFeatures(null, OUTAGES_FIXTURE_NOW).features).toEqual([]);
   });
@@ -101,14 +114,17 @@ describe('carte des pannes : couches et infobulle', () => {
   it('couches : toutes cachées jusqu’à setLayerVisibility ; maintenances télécoms à part (option)', () => {
     expect(OUT_LAYERS.every((l) => (l.layout as { visibility?: string } | undefined)?.visibility === 'none')).toBe(true);
     expect(OUT_LAYER_KEYS.outagesTelecom).toEqual(['out-telecom-long', 'out-telecom-recent']);
-    expect(OUT_LAYER_KEYS.outagesElec).toEqual(['out-power-planned', 'out-power-unplanned']);
+    expect(OUT_LAYER_KEYS.outagesElec).toEqual([
+      'out-power-planned-halo', 'out-power-planned', 'out-power-planned-icon', 'out-power-unplanned-halo', 'out-power-unplanned', 'out-power-unplanned-icon',
+    ]);
     expect(OUT_LAYER_KEYS.outagesInternet).toEqual(['out-internet-fill', 'out-internet-line']);
     expect(OUT_LAYER_KEYS.outagesCloud).toEqual(['out-cloud-ref', 'out-cloud-zones']);
     expect(Object.keys(OUT_LAYER_KEYS).sort()).toEqual(['outagesCloud', 'outagesElec', 'outagesInternet', 'outagesTelecom']);
     expect(OUT_MAINTENANCE_LAYER).toBe('out-telecom-maint');
     expect(OUT_LAYERS.map((l) => l.id).sort()).toEqual([...Object.values(OUT_LAYER_KEYS).flat(), OUT_MAINTENANCE_LAYER].sort());
     expect(OUT_SOURCE_IDS).toEqual(['out-telecom-src', 'out-power-src', 'out-internet-src', 'out-cloud-ref-src', 'out-cloud-zones-src']);
-    expect([...OUT_HOVER_LAYERS].sort()).toEqual(OUT_LAYERS.map((l) => l.id).sort());
+    // Les unités EDF répondent à l'arbitre de survol de l'énergie (spec 2026-10-16), pas au survol des pannes.
+    expect([...OUT_HOVER_LAYERS].sort()).toEqual(OUT_LAYERS.map((l) => l.id).filter((id) => !id.startsWith('out-power')).sort());
   });
   it('chaque couche lit une source déclarée ; le remplissage Internet ne montre que les départements en cours, le contour tous', () => {
     for (const l of OUT_LAYERS) expect(OUT_SOURCE_IDS, l.id).toContain((l as { source: string }).source);
@@ -127,11 +143,12 @@ describe('carte des pannes : couches et infobulle', () => {
   it('infobulle : le corps préparé avec la donnée est repris dans le gabarit hm-tip ; null hors des couches survolables ou sans corps', () => {
     const fc = powerFeatures(powerFixtureResponse(), OUTAGES_FIXTURE_NOW);
     const props = fc.features[0].properties ?? {};
-    const html = outTooltipHtml('out-power-unplanned', props);
+    const html = outTooltipHtml('out-telecom-recent', props);
     expect(html).toContain('class="hm-tip"');
     expect(html).toContain(String(props.name));
     expect(outTooltipHtml('sov-aircraft', props)).toBeNull();
-    expect(outTooltipHtml('out-power-unplanned', { name: 'x' })).toBeNull();
+    expect(outTooltipHtml('out-power-unplanned', props)).toBeNull();
+    expect(outTooltipHtml('out-telecom-recent', { name: 'x' })).toBeNull();
     expect(outTooltipHtml('out-telecom-recent', { body: '<b>ok</b>' })).toBe('<div class="hm-tip"><b>ok</b></div>');
   });
   it('le corps d’une infobulle Télécoms échappe les textes de la source', () => {
@@ -142,9 +159,9 @@ describe('carte des pannes : couches et infobulle', () => {
     expect(body).not.toContain('<script');
     expect(body).toContain('&lt;img');
   });
-  it('couche survolée : la plus haute répond (arrêt imprévu avant maintenance)', () => {
-    const hit = topOutHit([{ layer: { id: 'out-telecom-maint' } }, { layer: { id: 'out-power-unplanned' } }]);
-    expect(hit?.layer.id).toBe('out-power-unplanned');
+  it('couche survolée : la plus haute répond (récente avant maintenance) ; les unités EDF n’y répondent plus', () => {
+    const hit = topOutHit([{ layer: { id: 'out-telecom-maint' } }, { layer: { id: 'out-telecom-recent' } }, { layer: { id: 'out-power-unplanned' } }]);
+    expect(hit?.layer.id).toBe('out-telecom-recent');
     expect(topOutHit([])).toBeUndefined();
   });
   it('R1 et typographie : ni tiret cadratin ni « temps réel » dans les corps ; valeur sur une ligne', () => {
