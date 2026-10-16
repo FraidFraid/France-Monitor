@@ -1,6 +1,6 @@
 // src/components/deckgl/energy-focus.test.ts
 import { describe, expect, it } from 'vitest';
-import { ENERGY_FOCUS_KEY, ENERGY_FOCUS_LAYERS, energyFocusKeyHtml, dimOpacity, energyFocusKeysHtml, energyFocusLayersOf, flowKindsShown, isEnergyLayerKey } from './energy-focus.ts';
+import { ENERGY_FOCUS_KEY, ENERGY_FOCUS_LAYERS, energyFocusKeyHtml, dimOpacity, energyChipsPressed, energyFocusKeysHtml, energyFocusLayersOf, flowKindsShown, isEnergyLayerKey, toggleEnergyChip } from './energy-focus.ts';
 import { ENERGY_LAYER_KEYS } from './energy-map.ts';
 import { OUT_LAYER_KEYS } from './outages-map.ts';
 
@@ -58,5 +58,19 @@ describe('atténuation d’une opacité', () => {
     expect(dimOpacity(['interpolate', ['linear'], ['zoom'], 7, 0.42, 11, 0.72], 0.15))
       .toEqual(['interpolate', ['linear'], ['zoom'], 7, ['*', 0.42, 0.15], 11, ['*', 0.72, 0.15]]);
     expect(dimOpacity(['step', ['zoom'], 0, 8, 1], 0.5)).toEqual(['step', ['zoom'], ['*', 0, 0.5], 8, ['*', 1, 0.5]]);
+  });
+});
+
+describe('pastilles Énergie cumulables', () => {
+  it('une pastille est verte si elle est retenue ou si son panneau est ouvert ; ordre des pastilles gardé', () => {
+    const ids = ['powerGrid', 'nuclearFleet', 'oilNetwork', 'military'];
+    expect(energyChipsPressed(ids, new Set(['oilNetwork', 'powerGrid']), () => false)).toEqual(['powerGrid', 'oilNetwork']);
+    expect(energyChipsPressed(ids, new Set(), (id) => id === 'nuclearFleet')).toEqual(['nuclearFleet']);
+    expect(energyChipsPressed(['military'], new Set(), () => true)).toEqual([]);
+  });
+  it('clic : une pastille éteinte s’allume (son panneau s’ouvre), une pastille verte s’éteint', () => {
+    expect(toggleEnergyChip(new Set(['powerGrid']), 'oilNetwork', false)).toEqual({ selected: new Set(['powerGrid', 'oilNetwork']), open: true });
+    expect(toggleEnergyChip(new Set(['powerGrid', 'oilNetwork']), 'powerGrid', true)).toEqual({ selected: new Set(['oilNetwork']), open: false });
+    expect(toggleEnergyChip(new Set(), 'nuclearFleet', true)).toEqual({ selected: new Set(), open: false });
   });
 });

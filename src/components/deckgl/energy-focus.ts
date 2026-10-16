@@ -114,3 +114,22 @@ export function dimOpacity(orig: unknown, factor: number): unknown {
   }
   return ['*', orig, factor];
 }
+
+/** Pastilles Énergie vertes, dans l'ordre des pastilles : retenues par un clic, ou dont le panneau est ouvert. */
+export function energyChipsPressed(ids: readonly string[], selected: ReadonlySet<EnergyLayerKey>, panelOpen: (id: EnergyLayerKey) => boolean): EnergyLayerKey[] {
+  return ids.filter((id): id is EnergyLayerKey => isEnergyLayerKey(id) && (selected.has(id) || panelOpen(id)));
+}
+
+/**
+ * Clic sur une pastille Énergie : verte (retenue ou panneau ouvert) → elle s'éteint ; sinon elle s'allume et son panneau
+ * s'ouvre. Les pastilles vertes se cumulent.
+ */
+export function toggleEnergyChip(selected: ReadonlySet<EnergyLayerKey>, key: EnergyLayerKey, pressed: boolean): { selected: Set<EnergyLayerKey>; open: boolean } {
+  const next = new Set(selected);
+  if (pressed) {
+    next.delete(key);
+    return { selected: next, open: false };
+  }
+  next.add(key);
+  return { selected: next, open: true };
+}

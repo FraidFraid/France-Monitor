@@ -5,7 +5,7 @@
 
 import { MapContainer } from './components/MapContainer.ts';
 import { MapPopup } from './components/MapPopup.ts';
-import { energyFocusKeysHtml, isEnergyLayerKey } from './components/deckgl/energy-focus.ts';
+import { energyChipsPressed, energyFocusKeysHtml, isEnergyLayerKey, toggleEnergyChip } from './components/deckgl/energy-focus.ts';
 import type { EnergyLayerKey } from './components/deckgl/energy-map.ts';
 import { buildArticlePreviewHtml, buildEventPreviewHtml, MapPreviewCard } from './components/MapPreviewCard.ts';
 import { buildEventsKeyHtml } from './components/map-key/events-key.ts';
@@ -5016,9 +5016,13 @@ export class App {
       return i === -1 ? this.watchEntries.length : i;
     };
     const ordered = this.uiV2 && this.v2Theme === 'general' ? [...eligible].sort((a, b) => watchRank(a.id) - watchRank(b.id)) : eligible;
+    // Énergie : pastilles vertes cumulables (retenues par un clic ou panneau ouvert) ; on oublie celles qui ne sont plus proposées.
+    const ids = ordered.map((def) => def.id);
+    for (const k of [...this.energyChipsSelected]) if (!ids.includes(k)) this.energyChipsSelected.delete(k);
+    const energyPressed = energyChipsPressed(ids, this.energyChipsSelected, (id) => this.isFloatingPanelVisible(id));
     el.innerHTML = newsChip + ordered.map((def) => {
-      // Surligné = son panneau est à l'écran ; un clic l'ouvre ou le referme (la couche reste active).
-      const pressed = this.isFloatingPanelVisible(def.id);
+      // Surligné = son panneau est à l'écran (Énergie : ou pastille retenue) ; un clic l'ouvre ou le referme (la couche reste active).
+      const pressed = isEnergyLayerKey(def.id) ? energyPressed.includes(def.id) : this.isFloatingPanelVisible(def.id);
       const level = watchedLevel(def.id);
       const action = t(pressed ? 'app.floatingPanelHide' : 'app.floatingPanelShow', { value: def.label })
         + (level === 'nd' ? ' (source indisponible)' : '');
@@ -5047,19 +5051,30 @@ export class App {
       btn.addEventListener('click', () => {
         const key = btn.dataset['panelKey'] as keyof MapLayers | undefined;
         if (!key) return;
+        if (isEnergyLayerKey(key)) {
+          // Pastilles Énergie cumulables : un seul panneau à droite (le dernier allumé), plusieurs couches mises en avant.
+          const t = toggleEnergyChip(this.energyChipsSelected, key, energyPressed.includes(key));
+          this.energyChipsSelected = t.selected;
+          if (t.open) this.showFloatingPanel(key);
+          else if (this.isFloatingPanelVisible(key)) this.hideFloatingPanel(key);
+          else this.refreshFloatingPanelSwitcher();
+          return;
+        }
         if (this.isFloatingPanelVisible(key)) this.hideFloatingPanel(key);
         else this.showFloatingPanel(key);
       });
     });
     this.layoutFloatingPanelSwitcher();
     // Pastilles Énergie allumées : mise en avant persistante ; la pastille survolée a été réécrite, l'aperçu tombe.
-    this.energyFocusActive = ordered.map((def) => def.id).filter((id): id is EnergyLayerKey => isEnergyLayerKey(id) && this.isFloatingPanelVisible(id));
+    this.energyFocusActive = energyPressed;
     this.energyFocusPreview = null;
     this.syncEnergyFocus();
   }
 
   /** Pastilles Énergie allumées (vertes) et pastille survolée en aperçu. */
   private energyFocusActive: EnergyLayerKey[] = [];
+  /** Pastilles Énergie allumées par un clic (cumulables, indépendantes du panneau affiché). */
+  private energyChipsSelected = new Set<EnergyLayerKey>();
   private energyFocusPreview: EnergyLayerKey | null = null;
 
   private setEnergyFocusPreview(key: EnergyLayerKey | null): void {
