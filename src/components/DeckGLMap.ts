@@ -115,7 +115,7 @@ import {
 import { buildFlowFeatures, flowArcFromFeature, kmBetween, type FlowArc } from './deckgl/energy-flows.ts';
 import { ENERGY_FOCUS_LAYERS, isEnergyLayerKey } from './deckgl/energy-focus.ts';
 import {
-  ENERGY_HOVER_LAYER_IDS, energyCardFor, pickEnergyHover, tooltipCardHtml, type EnergyHoverContext, type EnergyHoverKind, type HoverCandidate,
+  effectiveOpacity, ENERGY_HOVER_LAYER_IDS, energyCardFor, pickEnergyHover, tooltipCardHtml, type EnergyHoverContext, type EnergyHoverKind, type HoverCandidate,
 } from './deckgl/energy-hover.ts';
 import { ENERGY_CHOKE_HEX, ENERGY_DISC_STATE_HEX, ENERGY_SECTOR_HEX, ENERGY_STATE_HEX, type EnergyFlowKind, fuelTensionVigilance, refineryState, type EnergyState } from '../services/energy-state.ts';
 import type { VigilanceLevel } from '../services/vigilance.ts';
@@ -3166,13 +3166,12 @@ export class DeckGLMap {
     return out;
   }
 
-  /** Opacité effective d'un calque : nombre, ou facteur posé par l'atténuation des légendes ; 1 pour une expression. */
+  /** Opacité effective d'un calque pour l'arbitre : facteur d'atténuation des légendes, rapporté à l'opacité d'origine. */
   private layerOpacity(layerId: string, type: string): number {
-    const prop = type === 'line' ? 'line-opacity' : type === 'fill' ? 'fill-opacity' : type === 'symbol' ? 'icon-opacity' : 'circle-opacity';
+    const saved = this.originalOpacities.get(layerId);
+    const prop = saved?.prop ?? (type === 'line' ? 'line-opacity' : type === 'fill' ? 'fill-opacity' : type === 'symbol' ? 'icon-opacity' : 'circle-opacity');
     const v: unknown = this.map?.getPaintProperty(layerId, prop);
-    if (typeof v === 'number') return v;
-    if (Array.isArray(v) && v[0] === '*' && typeof v[2] === 'number') return v[2];
-    return 1;
+    return effectiveOpacity(v, saved?.orig ?? v);
   }
 
   /** Contexte de la bulle : unités EDF d'un site nucléaire (moins de 3 km), bilan RTE d'une région. */

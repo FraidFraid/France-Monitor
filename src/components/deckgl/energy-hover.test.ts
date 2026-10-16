@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   chokeCard, clusterCard, flowCard, fmtNum, fmtTime, infraCard, powerUnitCard, regionCard, tooltipCardHtml, gasCard,
 } from './energy-hover.ts';
-import { energyCardFor } from './energy-hover.ts';
+import { effectiveOpacity, energyCardFor, hydroCard } from './energy-hover.ts';
 import { ENERGY_HOVER_LAYER_IDS, pickEnergyHover, type HoverCandidate } from './energy-hover.ts';
 
 describe('gabarit de bulle', () => {
@@ -116,5 +116,45 @@ describe('gazoducs', () => {
     expect(c?.rows).toEqual([['Nature', 'Gazoduc'], ['Opérateur', 'Teréga'], ['Département', 'Landes']]);
     const g = energyCardFor({ kind: 'gasPipeline', layerId: 'gas-network-grt-line', properties: {} }, {});
     expect(g?.rows[1]).toEqual(['Opérateur', 'GRTgaz']);
+  });
+});
+
+describe('relecture finale', () => {
+  it('opacité : un calque pâle par nature répond ; seul un calque atténué par la légende se tait', () => {
+    expect(effectiveOpacity(0.16, 0.16)).toBe(1);
+    expect(effectiveOpacity(0.16 * 0.15, 0.16)).toBeCloseTo(0.15);
+    expect(effectiveOpacity(['*', ['get', 'x'], 0.15], undefined)).toBe(0.15);
+    expect(effectiveOpacity(['match', ['get', 'x'], 'a', 1, 0.5], undefined)).toBe(1);
+    expect(effectiveOpacity(0, 0)).toBe(0);
+  });
+  it('site nucléaire et ses unités au même point : la bulle du site, qui liste les unités', () => {
+    const at: readonly [number, number] = [5.27, 45.8];
+    const hit = pickEnergyHover([
+      { layerId: 'out-power-unplanned', properties: { energyState: 'arret', name: 'BUGEY 2' }, distancePx: 0, opacity: 1, coordinates: at },
+      { layerId: 'out-power-planned', properties: { energyState: 'maintenance', name: 'BUGEY 3' }, distancePx: 0, opacity: 1, coordinates: at },
+      { layerId: 'energy-infra-circles', properties: { type: 'nuclear', name: 'Bugey', energyState: 'normal' }, distancePx: 0, opacity: 1, coordinates: at },
+    ]);
+    expect(hit?.layerId).toBe('energy-infra-circles');
+    expect(hit?.coordinates).toEqual(at);
+  });
+  it('unité EDF isolée (pas de site nucléaire voisin) : la bulle de l’unité', () => {
+    const hit = pickEnergyHover([
+      { layerId: 'out-power-planned', properties: { name: 'MAREGES' }, distancePx: 0, opacity: 1, coordinates: [2.3, 45.4] },
+      { layerId: 'energy-infra-circles', properties: { type: 'nuclear', name: 'Golfech' }, distancePx: 3, opacity: 1, coordinates: [0.85, 44.1] },
+    ]);
+    expect(hit?.layerId).toBe('out-power-planned');
+  });
+  it('sans mesure : « Disponible » et capacités nulles en n.d., jamais une valeur inventée', () => {
+    const c = infraCard({ type: 'nuclear', name: 'Bugey', energyState: 'nonSuivi', available: 3600, power: 3600 }, []);
+    expect(c.rows[0]).toEqual(['Disponible', 'n.d.']);
+    expect(infraCard({ type: 'thermal', name: 'X', capacity: 0 }, []).rows[0]).toEqual(['Capacité', 'n.d.']);
+    expect(hydroCard({ name: 'B', capacityMw: 0 }).rows[1]).toEqual(['Puissance', 'n.d.']);
+  });
+  it('barrage : libellés lisibles (type, tendance, source), heure lue sur la date brute', () => {
+    const c = hydroCard({ name: 'Sablons', type: 'hydro_production', hydroTrend: 'low', signalSource: 'DERIVED_CONTEXT_ONLY',
+      observationTimestamp: '16/10/2026 09:45', lastUpdate: '2026-10-16T07:45:00Z', capacityMw: 81 });
+    expect(c.rows).toEqual([['Type', 'Production hydraulique'], ['Puissance', fmtNum(81, 'MW')], ['Tendance', 'retenue basse']]);
+    expect(c.source).toBe('Hub’Eau (contexte, sans station liée)');
+    expect(c.time).toMatch(/^\d{2}:\d{2}$/);
   });
 });

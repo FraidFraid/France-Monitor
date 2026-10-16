@@ -2423,12 +2423,15 @@ export class App {
     this.floatingPanelSwitcherEl = floatingPanelSwitcher;
     // Énergie (spec 2026-10-16 § 7) : survoler une pastille ne laisse vive que sa couche et affiche sa légende. Le conteneur est
     // réécrit par innerHTML à chaque rafraîchissement : on écoute le conteneur, une seule fois.
-    floatingPanelSwitcher.addEventListener('mouseover', (ev) => {
+    floatingPanelSwitcher.addEventListener('pointerover', (ev) => {
+      // Au toucher, pas de « sortie » : la carte resterait atténuée.
+      if (ev.pointerType === 'touch') return;
       const chip = ev.target instanceof Element ? ev.target.closest<HTMLElement>('.floating-panel-switcher__chip[data-panel-key]') : null;
       const key = chip?.dataset['panelKey'] ?? null;
       if (chip && key && isEnergyLayerKey(key)) this.showEnergyFocus(key, chip);
     });
-    floatingPanelSwitcher.addEventListener('mouseout', (ev) => {
+    floatingPanelSwitcher.addEventListener('pointerleave', () => this.hideEnergyFocus());
+    floatingPanelSwitcher.addEventListener('pointerout', (ev) => {
       const to = ev.relatedTarget instanceof Element ? ev.relatedTarget : null;
       if (!to?.closest('.floating-panel-switcher__chip[data-panel-key]')) this.hideEnergyFocus();
     });
@@ -4988,6 +4991,8 @@ export class App {
     }
 
     el.hidden = false;
+    // Les pastilles sont réécrites : celle qui était survolée disparaît sans évènement de sortie.
+    this.hideEnergyFocus();
     const newsOn = this.activeLayers.events === true;
     const newsAction = newsOn ? 'Masquer les actualités géolocalisées de la carte' : 'Afficher les actualités géolocalisées sur la carte';
     // Même puce que les autres : pleine quand les points d'actualité (couche « Événements en cours ») sont affichés ; un clic les

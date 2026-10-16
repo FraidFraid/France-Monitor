@@ -8,6 +8,7 @@ import {
   type EnergyFlowKind, type EnergyState,
 } from '../../services/energy-state.ts';
 import { escapeHtml } from './format-utils.ts';
+import { kmBetween } from './energy-flows.ts';
 
 const NBSP = '\u00a0';
 type Props = Readonly<Record<string, unknown>>;
@@ -34,6 +35,12 @@ export function fmtNum(v: unknown, unit: string, digits = 0): string {
   const x = n(v);
   if (x === null) return 'n.d.';
   return `${x.toLocaleString('fr-FR', { maximumFractionDigits: digits, minimumFractionDigits: digits })}${NBSP}${unit}`;
+}
+
+/** Puissance ou capacité : une valeur nulle ou négative est une donnée absente (« n.d. »), jamais « 0 MW ». */
+function fmtPos(v: unknown, unit: string, digits = 0): string {
+  const x = n(v);
+  return x !== null && x > 0 ? fmtNum(x, unit, digits) : 'n.d.';
 }
 
 export function fmtTime(v: unknown): string | null {
@@ -70,11 +77,13 @@ export function infraCard(p: Props, units: ReadonlyArray<{ name: string; lostMw:
     const shown = units.slice(0, 3).map((u) => [readableName(u.name), `${fmtNum(u.lostMw, 'MW')} · ${u.kind === 'imprevue' ? 'arrêt imprévu' : 'maintenance'}`] as const);
     const rest = units.length > 3 ? [['Autres unités', String(units.length - 3)] as const] : [];
     return { sectorHex: H.nucleaire, title: s(p.name), time: null, state: stateOf(p),
-      rows: [['Disponible', `${fmtNum(p.available, 'MW')} sur ${fmtNum(p.power, 'MW')}`], ...shown, ...rest], source: 'RTE, EDF' };
+      // Sans mesure RTE, la disponibilité n'est pas connue : « n.d. », jamais la puissance installée présentée comme disponible.
+      rows: [['Disponible', stateOf(p) === 'nonSuivi' ? 'n.d.' : `${fmtNum(p.available, 'MW')} sur ${fmtPos(p.power, 'MW')}`], ...shown, ...rest],
+      source: 'RTE, EDF' };
   }
   const hex = type === 'hydro' ? H.hydraulique : type.startsWith('gas') ? H.gaz : type === 'refinery' || type === 'oil-depot' ? H.petrole : H.electricite;
   return { sectorHex: hex, title: s(p.name), time: null, state: stateOf(p),
-    rows: [['Capacité', fmtNum(p.capacity, s(p.capacityUnit) || 'MW')], ['Opérateur', s(p.operator) || 'n.d.']], source: 'Inventaire' };
+    rows: [['Capacité', fmtPos(p.capacity, s(p.capacityUnit) || 'MW')], ['Opérateur', s(p.operator) || 'n.d.']], source: 'Inventaire' };
 }
 
 export function powerUnitCard(p: Props): TooltipCard {
@@ -94,7 +103,7 @@ export function gasCard(p: Props): TooltipCard {
 
 export function refineryCard(p: Props): TooltipCard {
   return { sectorHex: H.petrole, title: s(p.name), time: null, state: stateOf(p),
-    rows: [['Opérateur', s(p.operator) || 'n.d.'], ['Capacité', fmtNum(p.capacity, 'Mt/an', 1)]], source: 'Inventaire' };
+    rows: [['Opérateur', s(p.operator) || 'n.d.'], ['Capacité', fmtPos(p.capacity, 'Mt/an', 1)]], source: 'Inventaire' };
 }
 
 export function oilDepotCard(p: Props): TooltipCard {
@@ -103,16 +112,24 @@ export function oilDepotCard(p: Props): TooltipCard {
     rows: [['Type', role === 'strategic' ? 'Dépôt stratégique' : role === 'terminal' ? 'Terminal pétrolier' : 'Dépôt']], source: 'Inventaire' };
 }
 
+const HYDRO_TYPE: Readonly<Record<string, string>> = {
+  hydro_production: 'Production hydraulique', step_storage: 'STEP (stockage par pompage)', water_regulation: 'Régulation des eaux',
+};
+const HYDRO_TREND: Readonly<Record<string, string>> = { low: 'retenue basse', normal: 'normale', high: 'retenue haute', stress: 'retenue en stress' };
+const HYDRO_SOURCE: Readonly<Record<string, string>> = {
+  DERIVED_CONTEXT_ONLY: 'Hub’Eau (contexte, sans station liée)', DERIVED_REAL_MEASURE_SUPPORT: 'Hub’Eau (mesures hydrométriques)',
+};
+
 export function hydroCard(p: Props): TooltipCard {
-  const trend = s(p.hydroTrend);
-  const label = trend === 'stress' ? 'retenue en stress' : trend === 'high' ? 'retenue haute' : trend ? 'normale' : 'n.d.';
-  return { sectorHex: H.hydraulique, title: s(p.name), time: fmtTime(p.observationTimestamp ?? p.lastUpdate), state: stateOf(p),
-    rows: [['Type', s(p.type) || 'n.d.'], ['Puissance', fmtNum(p.capacityMw, 'MW')], ['Tendance', label]], source: s(p.signalSource) || 'Hub’Eau' };
+  // observationTimestamp arrive déjà mis en forme pour la fiche détaillée : l'heure se lit sur la date brute en repli.
+  return { sectorHex: H.hydraulique, title: s(p.name), time: fmtTime(p.observationTimestamp) ?? fmtTime(p.lastUpdate), state: stateOf(p),
+    rows: [['Type', HYDRO_TYPE[s(p.type)] ?? (s(p.type) || 'n.d.')], ['Puissance', fmtPos(p.capacityMw, 'MW')], ['Tendance', HYDRO_TREND[s(p.hydroTrend)] ?? 'n.d.']],
+    source: HYDRO_SOURCE[s(p.signalSource)] ?? 'Hub’Eau' };
 }
 
 export function windCard(p: Props): TooltipCard {
   return { sectorHex: H.eolien, title: s(p.name), time: null, state: stateOf(p),
-    rows: [['Puissance', fmtNum(p.capacityMw, 'MW', 1)], ['Éoliennes', fmtNum(p.turbineCount, '').trim() || 'n.d.']], source: 'ODRÉ' };
+    rows: [['Puissance', fmtPos(p.capacityMw, 'MW', 1)], ['Éoliennes', fmtNum(p.turbineCount, '').trim() || 'n.d.']], source: 'ODRÉ' };
 }
 
 export function biomethaneCard(p: Props): TooltipCard {
@@ -122,7 +139,7 @@ export function biomethaneCard(p: Props): TooltipCard {
 
 export function dromCard(p: Props): TooltipCard {
   return { sectorHex: H.electricite, title: s(p.name), time: null, state: stateOf(p),
-    rows: [['Type', s(p.typeLabel) || 'n.d.'], ['Puissance', fmtNum(p.capacityMw, 'MW', 1)]], source: s(p.datasetLabel) || 'EDF SEI' };
+    rows: [['Type', s(p.typeLabel) || 'n.d.'], ['Puissance', fmtPos(p.capacityMw, 'MW', 1)]], source: s(p.datasetLabel) || 'EDF SEI' };
 }
 
 const CLUSTER_NOUN: Readonly<Record<'hydro' | 'wind' | 'biomethane', [string, string]>> = {
@@ -211,6 +228,25 @@ export interface HoverCandidate {
   coordinates?: readonly [number, number];
 }
 
+/**
+ * Opacité effective d'un calque pour l'arbitre : 1 hors atténuation, quelle que soit sa transparence propre (fond des régions à
+ * 0,16) ; le facteur d'atténuation posé par le survol d'une pastille (« * 0,15 ») sinon.
+ */
+export function effectiveOpacity(current: unknown, original: unknown): number {
+  if (Array.isArray(current)) return current[0] === '*' && typeof current[2] === 'number' ? current[2] : 1;
+  if (typeof current !== 'number') return 1;
+  if (typeof original === 'number' && original > 0) return Math.min(1, current / original);
+  return current > 0 ? 1 : 0;
+}
+
+/** Une unité EDF placée au même endroit qu'un site nucléaire (moins de 3 km) : c'est le site qui répond, il liste ses unités. */
+function siteOfUnit(unit: HoverCandidate, cands: readonly HoverCandidate[]): HoverCandidate | null {
+  const at = unit.coordinates;
+  if (!at) return null;
+  return cands.find((c) => c.layerId === 'energy-infra-circles' && c.properties.type === 'nuclear' && c.opacity >= 0.2 && c.coordinates
+    && kmBetween([c.coordinates[0], c.coordinates[1]], [at[0], at[1]]) < 3) ?? null;
+}
+
 /** Un seul objet répond : le plus prioritaire, puis le plus proche du curseur (spec § 6.2). */
 export function pickEnergyHover(cands: readonly HoverCandidate[]): (HoverCandidate & { kind: EnergyHoverKind }) | null {
   let best: (HoverCandidate & { kind: EnergyHoverKind; rank: number }) | null = null;
@@ -222,6 +258,10 @@ export function pickEnergyHover(cands: readonly HoverCandidate[]): (HoverCandida
     if (best === null || rank < best.rank || (rank === best.rank && c.distancePx < best.distancePx)) best = { ...c, kind: def.kind, rank };
   }
   if (best === null) return null;
+  if (best.kind === 'powerUnit') {
+    const site = siteOfUnit(best, cands);
+    if (site) best = { ...site, kind: 'infra', rank: best.rank };
+  }
   const out: HoverCandidate & { kind: EnergyHoverKind } = {
     layerId: best.layerId, properties: best.properties, distancePx: best.distancePx, opacity: best.opacity, kind: best.kind,
   };
