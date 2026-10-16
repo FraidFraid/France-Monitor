@@ -5,7 +5,7 @@
 
 import { MapContainer } from './components/MapContainer.ts';
 import { MapPopup } from './components/MapPopup.ts';
-import { energyFocusKeyHtml, isEnergyLayerKey } from './components/deckgl/energy-focus.ts';
+import { energyFocusKeysHtml, isEnergyLayerKey } from './components/deckgl/energy-focus.ts';
 import type { EnergyLayerKey } from './components/deckgl/energy-map.ts';
 import { buildArticlePreviewHtml, buildEventPreviewHtml, MapPreviewCard } from './components/MapPreviewCard.ts';
 import { buildEventsKeyHtml } from './components/map-key/events-key.ts';
@@ -2421,20 +2421,17 @@ export class App {
     floatingPanelSwitcher.hidden = true;
     mapArea.appendChild(floatingPanelSwitcher);
     this.floatingPanelSwitcherEl = floatingPanelSwitcher;
-    // Énergie (spec 2026-10-16 § 7) : survoler une pastille ne laisse vive que sa couche et affiche sa légende. Le conteneur est
-    // réécrit par innerHTML à chaque rafraîchissement : on écoute le conteneur, une seule fois.
+    // Énergie (spec 2026-10-16 § 7) : les pastilles allumées (vertes) ne laissent vives que leurs couches, et leurs légendes
+    // courtes se cumulent ; l'état reste tant que les pastilles ne changent pas. Survoler une autre pastille l'ajoute le temps
+    // du survol. Le conteneur est réécrit par innerHTML à chaque rafraîchissement : on écoute le conteneur, une seule fois.
     floatingPanelSwitcher.addEventListener('pointerover', (ev) => {
-      // Au toucher, pas de « sortie » : la carte resterait atténuée.
+      // Au toucher, pas de « sortie » : l'aperçu resterait affiché.
       if (ev.pointerType === 'touch') return;
       const chip = ev.target instanceof Element ? ev.target.closest<HTMLElement>('.floating-panel-switcher__chip[data-panel-key]') : null;
       const key = chip?.dataset['panelKey'] ?? null;
-      if (chip && key && isEnergyLayerKey(key)) this.showEnergyFocus(key, chip);
+      this.setEnergyFocusPreview(key && isEnergyLayerKey(key) ? key : null);
     });
-    floatingPanelSwitcher.addEventListener('pointerleave', () => this.hideEnergyFocus());
-    floatingPanelSwitcher.addEventListener('pointerout', (ev) => {
-      const to = ev.relatedTarget instanceof Element ? ev.relatedTarget : null;
-      if (!to?.closest('.floating-panel-switcher__chip[data-panel-key]')) this.hideEnergyFocus();
-    });
+    floatingPanelSwitcher.addEventListener('pointerleave', () => this.setEnergyFocusPreview(null));
     // La largeur de la carte change la place disponible (repli en icônes) et donc le décalage des panneaux.
     this.addGlobalListener(window, 'resize', () => this.layoutFloatingPanelSwitcher());
     // v2 : la zone carte change de taille sans que la fenêtre bouge (tiroir ouvert ou fermé, onglet Carte du mobile).
@@ -4986,13 +4983,14 @@ export class App {
     if (!showsSwitcher(this.uiV2, eligible.length + (showNews ? 1 : 0))) {
       el.hidden = true;
       el.innerHTML = '';
+      this.energyFocusActive = [];
+      this.energyFocusPreview = null;
+      this.syncEnergyFocus();
       this.layoutFloatingPanelSwitcher();
       return;
     }
 
     el.hidden = false;
-    // Les pastilles sont réécrites : celle qui était survolée disparaît sans évènement de sortie.
-    this.hideEnergyFocus();
     const newsOn = this.activeLayers.events === true;
     const newsAction = newsOn ? 'Masquer les actualités géolocalisées de la carte' : 'Afficher les actualités géolocalisées sur la carte';
     // Même puce que les autres : pleine quand les points d'actualité (couche « Événements en cours ») sont affichés ; un clic les
@@ -5054,28 +5052,42 @@ export class App {
       });
     });
     this.layoutFloatingPanelSwitcher();
+    // Pastilles Énergie allumées : mise en avant persistante ; la pastille survolée a été réécrite, l'aperçu tombe.
+    this.energyFocusActive = ordered.map((def) => def.id).filter((id): id is EnergyLayerKey => isEnergyLayerKey(id) && this.isFloatingPanelVisible(id));
+    this.energyFocusPreview = null;
+    this.syncEnergyFocus();
   }
 
-  /** Survol d'une pastille Énergie : seule sa couche reste vive, sa légende courte s'affiche sous la pastille. */
-  private showEnergyFocus(key: EnergyLayerKey, chip: HTMLElement): void {
-    this.mapContainer?.setLegendHover(key);
+  /** Pastilles Énergie allumées (vertes) et pastille survolée en aperçu. */
+  private energyFocusActive: EnergyLayerKey[] = [];
+  private energyFocusPreview: EnergyLayerKey | null = null;
+
+  private setEnergyFocusPreview(key: EnergyLayerKey | null): void {
+    if (key === this.energyFocusPreview) return;
+    this.energyFocusPreview = key;
+    this.syncEnergyFocus();
+  }
+
+  /** Couches vives et légendes cumulées : pastilles allumées, plus la pastille survolée. */
+  private syncEnergyFocus(): void {
+    const keys = [...this.energyFocusActive];
+    if (this.energyFocusPreview && !keys.includes(this.energyFocusPreview)) keys.push(this.energyFocusPreview);
+    this.mapContainer?.setEnergyFocus(keys);
     let panel = document.getElementById('energy-focus-key');
+    const switcher = this.floatingPanelSwitcherEl;
+    if (keys.length === 0 || !switcher || switcher.hidden) {
+      panel?.remove();
+      return;
+    }
     if (!panel) {
       panel = document.createElement('div');
       panel.id = 'energy-focus-key';
       document.body.appendChild(panel);
     }
-    panel.innerHTML = energyFocusKeyHtml(key);
-    const r = chip.getBoundingClientRect();
+    panel.innerHTML = energyFocusKeysHtml(keys);
+    const r = switcher.getBoundingClientRect();
     panel.style.left = `${Math.round(r.left)}px`;
     panel.style.top = `${Math.round(r.bottom + 6)}px`;
-  }
-
-  private hideEnergyFocus(): void {
-    const panel = document.getElementById('energy-focus-key');
-    if (!panel) return;
-    panel.remove();
-    this.mapContainer?.setLegendHover(null);
   }
 
   /** Referme le panneau flottant `id` sans éteindre sa couche (clic sur son bouton surligné). */

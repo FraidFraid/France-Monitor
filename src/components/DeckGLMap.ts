@@ -113,7 +113,7 @@ import {
   type EnergyEntry, type EnergyFlowCount, type EnergyKeyModel, type EnergyLayerKey,
 } from './deckgl/energy-map.ts';
 import { buildFlowFeatures, flowArcFromFeature, kmBetween, type FlowArc } from './deckgl/energy-flows.ts';
-import { ENERGY_FOCUS_LAYERS, isEnergyLayerKey } from './deckgl/energy-focus.ts';
+import { ENERGY_FOCUS_LAYERS, energyFocusLayersOf, flowKindsShown, isEnergyLayerKey } from './deckgl/energy-focus.ts';
 import { EnergyPopupController } from './deckgl/energy-popup.ts';
 import {
   effectiveOpacity, ENERGY_HOVER_LAYER_IDS, energyCardFor, pickEnergyHover, tooltipCardHtml, type EnergyHoverContext, type EnergyHoverKind, type HoverCandidate,
@@ -362,6 +362,9 @@ const ENERGY_FLOW_HEAD_ICON = 'energy-flow-head';
 const ENERGY_FLOW_DASH_SEQ: ReadonlyArray<number[]> = [[0, 4, 3], [0.5, 4, 2.5], [1, 4, 2], [1.5, 4, 1.5], [2, 4, 1], [2.5, 4, 0.5], [3, 4, 0],
   [0, 0.5, 3, 3.5], [0, 1, 3, 3], [0, 1.5, 3, 2.5], [0, 2, 3, 2], [0, 2.5, 3, 1.5], [0, 3, 3, 1], [0, 3.5, 3, 0.5]];
 
+/** Catégorie interne de setLegendHover : les pastilles Énergie allumées. */
+const ENERGY_FOCUS_CATEGORY = 'energy-focus';
+
 /** Calques de toutes les couches Énergie, atténués au survol d'une pastille (sans doublon : les flèches sont partagées). */
 const ENERGY_FOCUS_ALL: readonly string[] = [...new Set(Object.values(ENERGY_FOCUS_LAYERS).flat())];
 
@@ -507,6 +510,8 @@ export class DeckGLMap {
   private _latestEolienLive: EolienLive | null = null;
   private _mairesPolitiqueData: Array<{c:string;lat:number;lon:number;n:string;nom:string}> | null = null;
   /** Bulle unique de l'énergie ; épinglée = fiche détaillée ouverte par un clic (spec 2026-10-16 § 6). */
+  /** Pastilles Énergie allumées (mise en avant persistante). */
+  private energyFocusKeys: EnergyLayerKey[] = [];
   private readonly energyPopup = new EnergyPopupController(
     (pinned) => new maplibregl.Popup({
       closeButton: pinned, closeOnClick: false, maxWidth: pinned ? '320px' : '280px', className: 'dark-popup', offset: 12,
@@ -4551,8 +4556,20 @@ export class DeckGLMap {
   }
 
   // ─── Legend Highlight (Hover) ───
+  /**
+   * Pastilles Énergie allumées (spec 2026-10-16 § 7) : leurs couches restent vives et les autres s'atténuent, jusqu'à ce que
+   * les pastilles changent. Un survol de légende passe devant le temps du survol, puis on revient ici.
+   */
+  setEnergyFocus(keys: readonly EnergyLayerKey[]): void {
+    this.energyFocusKeys = [...keys];
+    this.rebuildEnergyFlows();
+    this.setLegendHover(null);
+  }
+
   setLegendHover(categoryId: string | null): void {
     if (!this.map) return;
+    // Sans survol en cours, la mise en avant des pastilles allumées s'applique.
+    if (categoryId === null && this.energyFocusKeys.length > 0) categoryId = ENERGY_FOCUS_CATEGORY;
     const previousCategory = this.legendHoverCategory;
     this.legendHoverCategory = categoryId;
     const allLegendLayers = [
@@ -4569,7 +4586,9 @@ export class DeckGLMap {
     ];
 
     let activeLayers: string[] = [];
-    if (categoryId !== null && isEnergyLayerKey(categoryId)) {
+    if (categoryId === ENERGY_FOCUS_CATEGORY) {
+      activeLayers = energyFocusLayersOf(this.energyFocusKeys);
+    } else if (categoryId !== null && isEnergyLayerKey(categoryId)) {
       activeLayers = [...ENERGY_FOCUS_LAYERS[categoryId]];
     } else if (categoryId === 'health') {
       activeLayers = [LYR_HEALTH_ALERT_FILL, LYR_HEALTH_ALERT_LINE];
@@ -4876,14 +4895,12 @@ export class DeckGLMap {
   /** Flèches d'échange des couches allumées (spec 2026-10-16 § 4) ; l'animation tourne tant qu'une flèche est affichée. */
   private rebuildEnergyFlows(): void {
     if (!this.map) return;
-    const on: Record<EnergyFlowKind, boolean> = {
-      elec: this.currentLayers?.powerGrid === true, gaz: this.currentLayers?.gasNetwork === true, petrole: this.currentLayers?.oilNetwork === true,
-    };
-    const kinds: readonly EnergyFlowKind[] = ['elec', 'gaz', 'petrole'];
-    const sig = `${this.flowArcsVersion}:${kinds.map((k) => (on[k] ? '1' : '0')).join('')}`;
+    // Couches allumées ; si des pastilles Énergie sont allumées, seulement leurs filières (« Réseau électrique » : électricité).
+    const kinds = flowKindsShown(this.currentLayers ?? {}, this.energyFocusKeys);
+    const sig = `${this.flowArcsVersion}:${kinds.join(',')}`;
     if (sig === this.energyFlowSig) return;
     this.energyFlowSig = sig;
-    const arcs = kinds.filter((k) => on[k])
+    const arcs = kinds
       .flatMap((k) => this.lastFlowArcs[k].map((f) => flowArcFromFeature(k, f)))
       .filter((a): a is FlowArc => a !== null);
     const fc = buildFlowFeatures(arcs);

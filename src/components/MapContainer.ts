@@ -4,7 +4,7 @@
  */
 
 import type { DeckGLMap } from './DeckGLMap.ts';
-import type { EnergyKeyModel } from './deckgl/energy-map.ts';
+import type { EnergyKeyModel, EnergyLayerKey } from './deckgl/energy-map.ts';
 import type { EnergyState } from '../services/energy-state.ts';
 import type { Map as SVGMap } from './Map.ts';
 import type { NewsItem, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, EcowattResponse, FuelTensionDashboard, InfrastructurePoint, MapLayers, MapViewState, MilitaryBase, AirTrafficFlight, ISNRScore, AlertLevelsResponse, AplDataset, AplProfession, EmergencySite, HospitalsDataset, SyndromicResponse, GasNetworkState, SatelliteViewRequest, HydraulicBackboneAsset } from '../types/index.ts';
@@ -98,6 +98,8 @@ export class MapContainer {
     if (this.onEnergyKeyChange) this.deckMap.setOnEnergyKeyChange(this.onEnergyKeyChange);
     await this.deckMap.init();
     await this.deckMap.setRadar2dOverlay(this.radar2dManifest, this.radar2dEnabled);
+    // Pastilles Énergie allumées avant que la carte soit prête.
+    if (this.energyFocusKeys.length > 0) this.deckMap.setEnergyFocus(this.energyFocusKeys);
     this.deckMap.setEchoTopsOverlay(this.radar2dManifest, this.echoTopsEnabled);
     console.log('[MapContainer] Desktop map (MapLibre) initialized');
   }
@@ -381,6 +383,13 @@ export class MapContainer {
     await this.dromEnergyLoadPromise;
     return this.dromEnergyData;
   }
+
+  /** Pastilles Énergie allumées : seules leurs couches restent vives (carte bureau seulement). */
+  setEnergyFocus(keys: readonly EnergyLayerKey[]): void {
+    this.energyFocusKeys = [...keys];
+    this.deckMap?.setEnergyFocus(keys);
+  }
+  private energyFocusKeys: EnergyLayerKey[] = [];
 
   setLegendHover(categoryId: string | null): void {
     this.deckMap?.setLegendHover(categoryId);

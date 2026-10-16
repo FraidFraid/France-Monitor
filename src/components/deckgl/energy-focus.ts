@@ -15,7 +15,7 @@ import {
 } from './constants.ts';
 import { ENERGY_LAYER_KEYS, type EnergyLayerKey } from './energy-map.ts';
 import { escapeHtml } from './format-utils.ts';
-import { ENERGY_CHOKE_HEX, ENERGY_DISC_STATE_HEX, ENERGY_FLOW_COLORS, ENERGY_SECTOR_HEX } from '../../services/energy-state.ts';
+import { ENERGY_CHOKE_HEX, ENERGY_DISC_STATE_HEX, ENERGY_FLOW_COLORS, ENERGY_SECTOR_HEX, type EnergyFlowKind } from '../../services/energy-state.ts';
 
 /** Disque d'installation et ses compagnons (halo dessous, picto dessus). */
 const disc = (id: string): string[] => [`${id}-halo`, id, `${id}-icon`];
@@ -74,4 +74,24 @@ export function energyFocusKeyHtml(key: EnergyLayerKey): string {
   const k = ENERGY_FOCUS_KEY[key];
   const rows = k.rows.map(([c, t]) => `<div class="ef-row"><i class="ef-dot" style="background:${c}"></i><span>${escapeHtml(t)}</span></div>`).join('');
   return `<div class="ef-key"><div class="ef-title">${escapeHtml(k.title)}</div>${rows}</div>`;
+}
+
+/** Calques vifs quand plusieurs pastilles sont allumées : union, sans doublon. */
+export function energyFocusLayersOf(keys: readonly EnergyLayerKey[]): string[] {
+  return [...new Set(keys.flatMap((k) => ENERGY_FOCUS_LAYERS[k]))];
+}
+
+/** Légendes courtes cumulées des pastilles allumées, dans leur ordre ; vide sans pastille. */
+export function energyFocusKeysHtml(keys: readonly EnergyLayerKey[]): string {
+  return keys.map((k) => energyFocusKeyHtml(k)).join('');
+}
+
+const FLOW_KIND_OF: ReadonlyArray<readonly [EnergyLayerKey, EnergyFlowKind]> = [['powerGrid', 'elec'], ['gasNetwork', 'gaz'], ['oilNetwork', 'petrole']];
+
+/**
+ * Filières dont les flèches sont dessinées : celles des couches allumées ; si des pastilles sont allumées, seulement les leurs
+ * (les calques de flèches sont communs, on filtre donc les données).
+ */
+export function flowKindsShown(layers: Partial<Record<EnergyLayerKey, boolean>>, focus: readonly EnergyLayerKey[]): EnergyFlowKind[] {
+  return FLOW_KIND_OF.filter(([k]) => layers[k] === true && (focus.length === 0 || focus.includes(k))).map(([, kind]) => kind);
 }

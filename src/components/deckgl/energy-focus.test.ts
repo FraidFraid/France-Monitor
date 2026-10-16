@@ -1,6 +1,6 @@
 // src/components/deckgl/energy-focus.test.ts
 import { describe, expect, it } from 'vitest';
-import { ENERGY_FOCUS_KEY, ENERGY_FOCUS_LAYERS, energyFocusKeyHtml, isEnergyLayerKey } from './energy-focus.ts';
+import { ENERGY_FOCUS_KEY, ENERGY_FOCUS_LAYERS, energyFocusKeyHtml, energyFocusKeysHtml, energyFocusLayersOf, flowKindsShown, isEnergyLayerKey } from './energy-focus.ts';
 import { ENERGY_LAYER_KEYS } from './energy-map.ts';
 import { OUT_LAYER_KEYS } from './outages-map.ts';
 
@@ -19,5 +19,34 @@ describe('survol des pastilles Énergie', () => {
     expect(energyFocusKeyHtml('oilNetwork')).not.toContain('—');
     expect(isEnergyLayerKey('oilNetwork')).toBe(true);
     expect(isEnergyLayerKey('trafficRoad')).toBe(false);
+  });
+});
+
+describe('mise en avant persistante des pastilles allumées', () => {
+  it('plusieurs pastilles : union de leurs calques, sans doublon (flèches partagées)', () => {
+    const l = energyFocusLayersOf(['powerGrid', 'oilNetwork']);
+    expect(l).toContain('power-region-fill');
+    expect(l).toContain('oil-refineries');
+    expect(l.filter((id) => id === 'energy-flow-lines')).toHaveLength(1);
+    expect(energyFocusLayersOf([])).toEqual([]);
+  });
+  it('légendes cumulées dans l’ordre des pastilles ; aucune pastille : rien', () => {
+    const html = energyFocusKeysHtml(['nuclearFleet', 'oilNetwork']);
+    expect(html.indexOf('Parc nucléaire')).toBeGreaterThanOrEqual(0);
+    expect(html.indexOf('Parc nucléaire')).toBeLessThan(html.indexOf('Pétrole'));
+    expect(energyFocusKeysHtml([])).toBe('');
+  });
+});
+
+describe('flèches des pastilles allumées', () => {
+  const on = { powerGrid: true, gasNetwork: true, oilNetwork: true };
+  it('sans pastille allumée : toutes les filières des couches allumées', () => {
+    expect(flowKindsShown(on, [])).toEqual(['elec', 'gaz', 'petrole']);
+    expect(flowKindsShown({ gasNetwork: true }, [])).toEqual(['gaz']);
+  });
+  it('« Réseau électrique » allumé : seulement l’électricité ; cumul avec « Pétrole »', () => {
+    expect(flowKindsShown(on, ['powerGrid'])).toEqual(['elec']);
+    expect(flowKindsShown(on, ['powerGrid', 'oilNetwork'])).toEqual(['elec', 'petrole']);
+    expect(flowKindsShown(on, ['nuclearFleet'])).toEqual([]);
   });
 });
