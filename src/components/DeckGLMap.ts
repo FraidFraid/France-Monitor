@@ -107,7 +107,7 @@ import {
 import { fmIcon, fmStatusDot, type IconName } from './shared/icons.ts';
 import {
   buildEnergyKeyModel, companionFilters, discColorExpr, discCompanionLayers, ENERGY_DISC_RADIUS, energyEntriesFrom, glyphColorExpr,
-  infraGlyphImageExpr, infraSectorHexExpr, METRO_LABEL_SIZE, metroLabelOffsetExpr, metroRadiusExpr, nuclearDiscColorExpr, nuclearOpacityExpr, nuclearRingColorExpr, nuclearRingWidthExpr, type StyleExpr, energyIconImage, energyStateFilter, gasStorageStyle, hydroStyle,
+  infraGlyphImageExpr, infraSectorHexExpr, METRO_LABEL_SIZE, oilDepotRadiusExpr, oilDepotStrokeExpr, metroLabelOffsetExpr, metroRadiusExpr, nuclearDiscColorExpr, nuclearOpacityExpr, nuclearRingColorExpr, nuclearRingWidthExpr, type StyleExpr, energyIconImage, energyStateFilter, gasStorageStyle, hydroStyle,
   ENERGY_ICON_NAMES, ENERGY_LAYER_KEYS,
   ENERGY_SHAPE_DIAMOND, ENERGY_SHAPE_SQUARE, shapeIconSvg,
   type EnergyEntry, type EnergyFlowCount, type EnergyKeyModel, type EnergyLayerKey,
@@ -1656,12 +1656,12 @@ export class DeckGLMap {
       type: 'circle',
       source: SRC_OIL_DEPOTS,
       paint: {
-        // Dépôts : petits points du pétrole, inventaire (spec 2026-10-16 § 3).
-        'circle-radius': 3.5,
+        // Dépôts : points du pétrole, stratégiques et terminaux plus gros et cerclés de blanc (spec 2026-10-16 § 3).
+        'circle-radius': oilDepotRadiusExpr(),
         'circle-color': ENERGY_SECTOR_HEX.petrole,
-        'circle-opacity': 0.9,
-        'circle-stroke-width': 0.8,
-        'circle-stroke-color': '#05060a',
+        'circle-opacity': 0.95,
+        'circle-stroke-width': 1.5,
+        'circle-stroke-color': oilDepotStrokeExpr(),
       },
     });
 

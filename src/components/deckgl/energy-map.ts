@@ -124,7 +124,7 @@ export function infraGlyphImageExpr(): StyleExpr {
 }
 
 export const ENERGY_DISC_RADIUS: Readonly<Record<'nuclear' | 'gas' | 'refinery' | 'windPark' | 'powerUnit' | 'hydro' | 'other', number>> = {
-  nuclear: 11, gas: 9, refinery: 9, windPark: 9, powerUnit: 8, hydro: 7, other: 8,
+  nuclear: 11, gas: 9, refinery: 13, windPark: 9, powerUnit: 8, hydro: 7, other: 8,
 };
 
 /** Charge métropolitaine : rayon (zoom 6) d'un cercle dont la surface est proportionnelle à la consommation ; 4 px au moins. */
@@ -150,6 +150,15 @@ export function metroLabelOffsetExpr(): StyleExpr {
 
 /** Taille de l'étiquette des métropoles, accordée au décalage. */
 export const METRO_LABEL_SIZE: StyleExpr = ['interpolate', ['linear'], ['zoom'], 4, METRO_FONT[4], 6, METRO_FONT[6], 9, METRO_FONT[9]];
+
+/** Dépôts pétroliers : stratégiques et terminaux plus gros (7 px), simples dépôts 5 px (16/10/2026 : trop petits pour être vus). */
+export function oilDepotRadiusExpr(): StyleExpr {
+  return ['match', ['get', 'role'], ['strategic', 'terminal'], 7, 5];
+}
+/** Cerclage blanc des dépôts stratégiques et terminaux, sombre pour les autres. */
+export function oilDepotStrokeExpr(): StyleExpr {
+  return ['match', ['get', 'role'], ['strategic', 'terminal'], ENERGY_SECTOR_HEX.electricite, '#05060a'];
+}
 
 /** Les pictos SDF sont dessinés pour un disque de rayon 19 px. */
 export function discIconSize(radius: number): number {

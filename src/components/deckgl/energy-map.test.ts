@@ -7,7 +7,7 @@ import {
 } from './energy-map.ts';
 import type { EnergyState } from '../../services/energy-state.ts';
 import {
-  companionFilters, discColorExpr, discCompanionLayers, metroLabelOffsetExpr, metroRadiusExpr, metroRadiusPx, ENERGY_ALERT_FILTER, ENERGY_DISC_RADIUS, discIconSize, glyphColorExpr, infraGlyphImageExpr, infraSectorHexExpr,
+  companionFilters, discColorExpr, discCompanionLayers, metroLabelOffsetExpr, metroRadiusExpr, metroRadiusPx, oilDepotRadiusExpr, oilDepotStrokeExpr, ENERGY_ALERT_FILTER, ENERGY_DISC_RADIUS, discIconSize, glyphColorExpr, infraGlyphImageExpr, infraSectorHexExpr,
   nuclearDiscColorExpr, nuclearOpacityExpr, nuclearRingColorExpr, nuclearRingWidthExpr,
 } from './energy-map.ts';
 import { expression } from '@maplibre/maplibre-gl-style-spec';
@@ -159,7 +159,7 @@ describe('disques des installations', () => {
   it('halo seulement pour l’arrêt et la tension ; tailles', () => {
     expect(evalExpr(ENERGY_ALERT_FILTER, { energyState: 'arret' })).toBe(true);
     expect(evalExpr(ENERGY_ALERT_FILTER, { energyState: 'reduit' })).toBe(false);
-    expect(ENERGY_DISC_RADIUS).toEqual({ nuclear: 11, gas: 9, refinery: 9, windPark: 9, powerUnit: 8, hydro: 7, other: 8 });
+    expect(ENERGY_DISC_RADIUS).toEqual({ nuclear: 11, gas: 9, refinery: 13, windPark: 9, powerUnit: 8, hydro: 7, other: 8 });
     expect(discIconSize(19)).toBe(1);
   });
 });
@@ -194,5 +194,15 @@ describe('charge métropolitaine : cercles proportionnels', () => {
   });
   it('étiquette juste sous le bord du cercle (décalage en em, police de 11 px au zoom 6)', () => {
     expect(evalExpr(metroLabelOffsetExpr(), { loadMw: 3000 })).toBeCloseTo(0.3 + metroRadiusPx(3000) / 11);
+  });
+});
+
+describe('dépôts pétroliers', () => {
+  it('stratégiques et terminaux plus gros et cerclés de blanc, simples dépôts lisibles (5 px)', () => {
+    expect(evalExpr(oilDepotRadiusExpr(), { role: 'strategic' })).toBe(7);
+    expect(evalExpr(oilDepotRadiusExpr(), { role: 'terminal' })).toBe(7);
+    expect(evalExpr(oilDepotRadiusExpr(), { role: 'depot' })).toBe(5);
+    expect(evalExpr(oilDepotStrokeExpr(), { role: 'terminal' })).toBe('#eef2f7');
+    expect(evalExpr(oilDepotStrokeExpr(), {})).toBe('#05060a');
   });
 });
