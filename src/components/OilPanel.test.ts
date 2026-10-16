@@ -36,18 +36,19 @@ describe('OilPanel', () => {
     expect(c.querySelector('[data-oil-range="1y"]')?.getAttribute('aria-pressed')).toBe('true');
     expect(c.querySelector('[data-oil-range="1m"]')?.getAttribute('aria-pressed')).toBe('false');
   });
-  it('« Afficher sur la carte » : rappel et état exposé', () => {
+  it('départements en tension affichés sur la carte par défaut (la légende les annonce) ; un clic les masque, un autre les remet', () => {
     const { c, p } = mount();
     const onMap = vi.fn();
     p.setOnFuelTensionMapVisibilityChange(onMap);
     p.show(oilFixture(), tensionFixture());
-    (c.querySelector('[data-tab="departments"]') as HTMLButtonElement).click();
-    (c.querySelector('[data-oil-map]') as HTMLButtonElement).click();
-    expect(onMap).toHaveBeenLastCalledWith(true);
     expect(p.isFuelTensionMapVisible()).toBe(true);
+    (c.querySelector('[data-tab="departments"]') as HTMLButtonElement).click();
     expect(c.querySelector('[data-oil-map]')?.textContent).toBe('Masquer de la carte');
     (c.querySelector('[data-oil-map]') as HTMLButtonElement).click();
     expect(onMap).toHaveBeenLastCalledWith(false);
+    expect(p.isFuelTensionMapVisible()).toBe(false);
+    (c.querySelector('[data-oil-map]') as HTMLButtonElement).click();
+    expect(onMap).toHaveBeenLastCalledWith(true);
   });
   it('recherche : filtre la liste et garde le focus dans le champ', () => {
     const { c, p } = mount();
@@ -100,7 +101,7 @@ describe('OilPanel', () => {
     (c.querySelector('[data-tab="departments"]') as HTMLButtonElement).click();
     (c.querySelector('[data-oil-map]') as HTMLButtonElement).click();
     p.update(oilFixture(), tensionFixture());
-    expect(c.querySelector('[data-oil-map]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(c.querySelector('[data-oil-map]')?.getAttribute('aria-pressed')).toBe('false');
     expect(c.querySelector('[data-tab="departments"]')?.getAttribute('aria-selected')).toBe('true');
   });
 });

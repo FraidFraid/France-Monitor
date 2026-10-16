@@ -20,7 +20,8 @@ export class OilPanel {
   private tension: FuelTensionDashboard | null = null;
   private range: FuelPriceChartRange = '1m';
   private search = '';
-  private mapVisible = false;
+  // Départements en tension affichés par défaut : la légende de la carte les annonce (16/10/2026).
+  private mapVisible = true;
   private tab: OilTab;
   private readonly storage = safeStorage();
   private readonly container: HTMLElement;
