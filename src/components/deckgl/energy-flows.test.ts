@@ -1,5 +1,6 @@
 // src/components/deckgl/energy-flows.test.ts
 import { describe, expect, it } from 'vitest';
+import { generateArc } from './geometry-utils.ts';
 import { buildFlowFeatures, flowArcFromFeature, formatFlowValue, kmBetween, stubFromBorder, type FlowArc } from './energy-flows.ts';
 
 const line = (coords: [number, number][]): [number, number][] => coords;
@@ -62,5 +63,21 @@ describe('flèches d’échange', () => {
       properties: { isImport: 'true', country: 'Espagne', flowValue: 661, flowUnit: 'MW', lineWidth: 3 } };
     expect(flowArcFromFeature('elec', f)).toMatchObject({ isImport: true, country: 'Espagne', flowValue: 661, name: '', hubName: '' });
     expect(flowArcFromFeature('elec', { ...f, geometry: { type: 'Point', coordinates: [1, 2] } })).toBeNull();
+  });
+  it('arcs construits comme dans l’app : un trait, une pointe et une étiquette par flux', () => {
+    const mk = (from: [number, number], to: [number, number], props: Record<string, unknown>): GeoJSON.Feature =>
+      ({ type: 'Feature', geometry: { type: 'LineString', coordinates: generateArc(from, to, 0.2, 40) }, properties: { isImport: true, lineWidth: 3, ...props } });
+    const feats = [
+      ['elec', mk([-3.5, 40.4], [2.5, 46.5], { country: 'Espagne', flowValue: 661, flowUnit: 'MW' })],
+      ['gaz', mk([-1.8, 43.3], [2.5, 46.5], { country: 'Espagne', flowValue: 2, flowUnit: 'GWh/j' })],
+      ['petrole', mk([2.0, 17.0], [4.94, 43.43], { name: 'Afrique', hubName: 'Fos / Lavera', flowValue: 336, flowUnit: 'kb/j' })],
+    ] as const;
+    const arcs = feats.map(([k, f]) => flowArcFromFeature(k, f)).filter((a): a is FlowArc => a !== null);
+    const fc = buildFlowFeatures(arcs);
+    expect(fc.lines.features).toHaveLength(3);
+    expect(fc.heads.features).toHaveLength(3);
+    expect(fc.labels.features.map((f) => String(f.properties?.text).split('\n')[1])).toEqual([
+      `import ${(661).toLocaleString('fr-FR')}\u00a0MW`, 'import 2\u00a0GWh/j', 'import 336\u00a0kb/j vers Fos / Lavera',
+    ]);
   });
 });

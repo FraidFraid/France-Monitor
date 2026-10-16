@@ -7,7 +7,6 @@ export const SRC = 'news-src';              // Clusterable news (excludes critic
 export const SRC_CRITICAL = 'news-critical-src';  // Critical alerts (never clustered)
 export const SRC_SEL = 'news-sel-src';
 export const SRC_POWER_REGIONS = 'power-regions-src';
-export const SRC_INTERCONN = 'interconn-src';
 export const SRC_WEATHER = 'weather-depts-src';
 // Santé (spec 2026-10-03 § 3) : régions (alertes Odissé), départements (urgences et APL).
 export const SRC_HEALTH_REGIONS = 'health-regions-src';
@@ -34,14 +33,18 @@ export const LYR_SEL_GLOW = 'news-sel-glow';
 export const LYR_SEL_RING = 'news-sel-ring';
 export const LYR_POWER_REGION_FILL = 'power-region-fill';
 export const LYR_POWER_REGION_LINE = 'power-region-line';
-export const LYR_INTERCONN_LINE = 'interconn-line';
-export const LYR_INTERCONN_LABEL = 'interconn-label';
-export const SRC_INTERCONN_ARCS = 'interconn-arcs-src';
-export const SRC_INTERCONN_CHEVRON_PTS = 'interconn-chevron-pts-src';  // Animated chevron points
-export const LYR_INTERCONN_ARC = 'interconn-arc';
-export const LYR_INTERCONN_ARC_GLOW = 'interconn-arc-glow';
-export const LYR_INTERCONN_HITAREA = 'interconn-arc-hitarea';
-export const LYR_INTERCONN_CHEVRONS = 'interconn-chevrons';  // Animated chevrons for flow direction
+// Échanges avec l'étranger (spec 2026-10-16 § 4) : flèches et détroits.
+export const SRC_ENERGY_FLOWS = 'energy-flows-src';
+export const SRC_ENERGY_FLOW_HEADS = 'energy-flow-heads-src';
+export const SRC_ENERGY_FLOW_LABELS = 'energy-flow-labels-src';
+export const SRC_ENERGY_CHOKES = 'energy-chokes-src';
+export const LYR_ENERGY_FLOW_CASE = 'energy-flow-case';
+export const LYR_ENERGY_FLOW_LINES = 'energy-flow-lines';
+export const LYR_ENERGY_FLOW_ANIM = 'energy-flow-anim';
+export const LYR_ENERGY_FLOW_HEADS = 'energy-flow-heads';
+export const LYR_ENERGY_FLOW_LABELS = 'energy-flow-labels';
+export const LYR_ENERGY_CHOKE = 'energy-choke';
+export const LYR_ENERGY_CHOKE_LABEL = 'energy-choke-label';
 export const LYR_WEATHER_FILL = 'weather-fill';
 export const LYR_WEATHER_LINE = 'weather-line';
 export const LYR_WEATHER_LINE_YELLOW = 'weather-line-yellow';
@@ -109,33 +112,16 @@ export const LYR_GAS_NETWORK_GRT = 'gas-network-grt-line';
 export const LYR_GAS_NETWORK_TEREGA = 'gas-network-terega-line';
 // Gas Vital Organs (terminals, storage, PIR flows)
 export const SRC_GAS_VITALS = 'gas-vitals-src';
-export const SRC_GAS_PIR_ARCS = 'gas-pir-arcs-src';
-export const SRC_GAS_PIR_MARKERS = 'gas-pir-markers-src';
 export const LYR_GAS_TERMINALS = 'gas-terminals';
 export const LYR_GAS_STORAGES = 'gas-storages';
 export const LYR_GAS_STORAGES_LABEL = 'gas-storages-label';
-export const LYR_GAS_PIR_ARC_GLOW = 'gas-pir-arc-glow';
-export const LYR_GAS_PIR_ARC = 'gas-pir-arc';
-export const SRC_GAS_PIR_CHEVRON_PTS = 'gas-pir-chevron-pts-src';
-export const LYR_GAS_PIR_CHEVRONS = 'gas-pir-chevrons';
-export const LYR_GAS_PIR_MARKER = 'gas-pir-marker';
-export const LYR_GAS_PIR_LABEL = 'gas-pir-label';
 // Biomethane injection sites (GRDF OpenData — 833 sites)
 export const SRC_BIOMETHANE_SITES = 'biomethane-sites-src';
 export const LYR_BIOMETHANE_CLUSTERS = 'biomethane-clusters';
 export const LYR_BIOMETHANE_SITES = 'biomethane-sites';
 export const LYR_BIOMETHANE_SITES_LABEL = 'biomethane-sites-label';
 // Oil/Petroleum flows (refineries, pipelines, imports)
-export const SRC_OIL_FLOW_ARCS = 'oil-flow-arcs-src';
-export const SRC_OIL_FLOW_MARKERS = 'oil-flow-markers-src';
-export const SRC_OIL_FLOW_DIRECTION = 'oil-flow-direction-src';
-export const SRC_OIL_FLOW_CHEVRON_PTS = 'oil-flow-chevron-pts-src';
 export const SRC_FUEL_TENSION = 'fuel-tension-depts-src';
-export const LYR_OIL_FLOW_ARC_GLOW = 'oil-flow-arc-glow';
-export const LYR_OIL_FLOW_ARC = 'oil-flow-arc';
-export const LYR_OIL_FLOW_CHEVRONS = 'oil-flow-chevrons';
-export const LYR_OIL_FLOW_MARKER = 'oil-flow-marker';
-export const LYR_OIL_FLOW_LABEL = 'oil-flow-label';
 export const LYR_FUEL_TENSION_FILL = 'fuel-tension-fill';
 export const LYR_FUEL_TENSION_LINE = 'fuel-tension-line';
 // Oil infrastructure (pipelines, refineries, depots)
@@ -149,8 +135,6 @@ export const LYR_OIL_DEPOTS = 'oil-depots';
 export const LYR_OIL_DEPOTS_LABEL = 'oil-depots-label';
 // Couches hit invisibles — zone de hover élargie
 export const LYR_OIL_PIPELINES_HIT = 'oil-pipelines-hit';
-export const LYR_OIL_FLOW_ARC_HIT = 'oil-flow-arc-hit';
-export const LYR_OIL_FLOW_MARKER_HIT = 'oil-flow-marker-hit';
 export const LYR_TRAFFIC = 'traffic-flow';
 export const LYR_TRAIN_ROUTE = 'train-route-line';
 export const LYR_TRAIN_STATIONS = 'train-stations';

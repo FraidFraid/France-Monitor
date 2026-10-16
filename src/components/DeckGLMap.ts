@@ -88,9 +88,9 @@ import { loadDepartementsGeojson } from '../services/departements-geojson.ts';
 // ─── Extracted deckgl modules (constants & pure helpers) ───
 import { resolveAssetCoords } from './deckgl/iip-geocoding.ts';
 import { LYR_SATELLITE, getFrenchStyle } from './deckgl/base-style.ts';
-import { ELECTRIC_FLOW_STYLE, getElectricFlowConfig, GAS_FLOW_STYLE, OIL_FLOW_STYLE } from './deckgl/flow-styles.ts';
+import { getElectricFlowConfig, GAS_FLOW_STYLE, OIL_FLOW_STYLE } from './deckgl/flow-styles.ts';
 export { ELECTRIC_FLOW_STYLE, setElectricFlowConfig, getElectricFlowConfig, GAS_FLOW_STYLE, OIL_FLOW_STYLE } from './deckgl/flow-styles.ts';
-import { emptyFC, generateArc, computeBearingDegrees } from './deckgl/geometry-utils.ts';
+import { emptyFC, generateArc } from './deckgl/geometry-utils.ts';
 import {
   escapeHtml,
   scoreToISNRColor,
@@ -112,7 +112,8 @@ import {
   ENERGY_SHAPE_DIAMOND, ENERGY_SHAPE_SQUARE, shapeIconSvg,
   type EnergyEntry, type EnergyFlowCount, type EnergyKeyModel, type EnergyLayerKey,
 } from './deckgl/energy-map.ts';
-import { ENERGY_DISC_STATE_HEX, ENERGY_SECTOR_HEX, ENERGY_STATE_HEX, fuelTensionVigilance, refineryState, type EnergyState } from '../services/energy-state.ts';
+import { buildFlowFeatures, flowArcFromFeature, type FlowArc } from './deckgl/energy-flows.ts';
+import { ENERGY_CHOKE_HEX, ENERGY_DISC_STATE_HEX, ENERGY_SECTOR_HEX, ENERGY_STATE_HEX, type EnergyFlowKind, fuelTensionVigilance, refineryState, type EnergyState } from '../services/energy-state.ts';
 import type { VigilanceLevel } from '../services/vigilance.ts';
 import {
   dromEnergyAssetFromProperties,
@@ -123,7 +124,6 @@ import {
   SRC_CRITICAL,
   SRC_SEL,
   SRC_POWER_REGIONS,
-  SRC_INTERCONN,
   SRC_WEATHER,
   SRC_HEALTH_REGIONS,
   SRC_HEALTH_DEPTS,
@@ -148,14 +148,6 @@ import {
   LYR_SEL_RING,
   LYR_POWER_REGION_FILL,
   LYR_POWER_REGION_LINE,
-  LYR_INTERCONN_LINE,
-  LYR_INTERCONN_LABEL,
-  SRC_INTERCONN_ARCS,
-  SRC_INTERCONN_CHEVRON_PTS,
-  LYR_INTERCONN_ARC,
-  LYR_INTERCONN_ARC_GLOW,
-  LYR_INTERCONN_HITAREA,
-  LYR_INTERCONN_CHEVRONS,
   LYR_WEATHER_FILL,
   LYR_WEATHER_LINE,
   LYR_WEATHER_LINE_YELLOW,
@@ -195,7 +187,7 @@ import {
   LYR_MODIS,
   SRC_SENTINEL_SCENE,
   LYR_SENTINEL_SCENE,
-      SRC_ASNR_RINGS,
+  SRC_ASNR_RINGS,
   LYR_ASNR_RING,
   LYR_ENERGY_INFRA_HIGHLIGHT_GLOW,
   LYR_ENERGY_INFRA_HIGHLIGHT_RING,
@@ -210,59 +202,40 @@ import {
   LYR_WIND_CLUSTER_ICON,
   LYR_HYDRO_CLUSTER,
   LYR_HYDRO_CLUSTER_ICON,
-      LYR_WIND_TURBINE_CIRCLE,
+  LYR_WIND_TURBINE_CIRCLE,
   LYR_WIND_TURBINE_LABEL,
-    LYR_WIND_PARK_CIRCLE,
+  LYR_WIND_PARK_CIRCLE,
   LYR_WIND_PARK_LABEL,
   SRC_GAS_NETWORK_GRT,
   SRC_GAS_NETWORK_TEREGA,
   LYR_GAS_NETWORK_GRT,
   LYR_GAS_NETWORK_TEREGA,
   SRC_GAS_VITALS,
-  SRC_GAS_PIR_ARCS,
-  SRC_GAS_PIR_MARKERS,
   LYR_GAS_TERMINALS,
-    LYR_GAS_STORAGES,
+  LYR_GAS_STORAGES,
   LYR_GAS_STORAGES_LABEL,
-  LYR_GAS_PIR_ARC_GLOW,
-  LYR_GAS_PIR_ARC,
-  SRC_GAS_PIR_CHEVRON_PTS,
-  LYR_GAS_PIR_CHEVRONS,
-  LYR_GAS_PIR_MARKER,
-  LYR_GAS_PIR_LABEL,
   SRC_BIOMETHANE_SITES,
   LYR_BIOMETHANE_CLUSTERS,
-    LYR_BIOMETHANE_SITES,
+  LYR_BIOMETHANE_SITES,
   LYR_BIOMETHANE_SITES_LABEL,
-  SRC_OIL_FLOW_ARCS,
-  SRC_OIL_FLOW_MARKERS,
-  SRC_OIL_FLOW_DIRECTION,
-  SRC_OIL_FLOW_CHEVRON_PTS,
   SRC_FUEL_TENSION,
-  LYR_OIL_FLOW_ARC_GLOW,
-  LYR_OIL_FLOW_ARC,
-  LYR_OIL_FLOW_CHEVRONS,
-  LYR_OIL_FLOW_MARKER,
-  LYR_OIL_FLOW_LABEL,
   LYR_FUEL_TENSION_FILL,
   LYR_FUEL_TENSION_LINE,
   SRC_OIL_PIPELINES,
   SRC_OIL_REFINERIES,
   SRC_OIL_DEPOTS,
-    LYR_OIL_PIPELINES,
-    LYR_OIL_REFINERIES,
+  LYR_OIL_PIPELINES,
+  LYR_OIL_REFINERIES,
   LYR_OIL_REFINERIES_LABEL,
   LYR_OIL_DEPOTS,
-    LYR_OIL_DEPOTS_LABEL,
-      LYR_OIL_PIPELINES_HIT,
-  LYR_OIL_FLOW_ARC_HIT,
-  LYR_OIL_FLOW_MARKER_HIT,
+  LYR_OIL_DEPOTS_LABEL,
+  LYR_OIL_PIPELINES_HIT,
   LYR_TRAFFIC,
   LYR_TRAIN_ROUTE,
   LYR_TRAIN_STATIONS,
   LYR_TRAIN_STATION_LABELS,
   SRC_METRO_LOAD,
-    LYR_METRO_LOAD_CIRCLE,
+  LYR_METRO_LOAD_CIRCLE,
   LYR_METRO_LOAD_LABEL,
   SRC_MILITARY_BASES,
   SRC_MILITARY_SHIPS_HIGHLIGHT,
@@ -299,10 +272,20 @@ import {
   AIS_DESTINATION_ALIASES,
   AIS_PORT_LOCODES,
   INFRA_COLORS,
-      DEFAULT_VIEW,
-  FRANCE_CENTER,
-        LYR_OUT_POWER_PLANNED,
+  DEFAULT_VIEW,
+  LYR_OUT_POWER_PLANNED,
   LYR_OUT_POWER_UNPLANNED,
+  SRC_ENERGY_FLOWS,
+  SRC_ENERGY_FLOW_HEADS,
+  SRC_ENERGY_FLOW_LABELS,
+  SRC_ENERGY_CHOKES,
+  LYR_ENERGY_FLOW_CASE,
+  LYR_ENERGY_FLOW_LINES,
+  LYR_ENERGY_FLOW_ANIM,
+  LYR_ENERGY_FLOW_HEADS,
+  LYR_ENERGY_FLOW_LABELS,
+  LYR_ENERGY_CHOKE,
+  LYR_ENERGY_CHOKE_LABEL,
 } from './deckgl/constants.ts';
 
 // ─── Satellite basemap toggle control ───
@@ -369,6 +352,11 @@ type InfrastructureRenderPoint = InfrastructurePoint & {
   totalPower?: number;
   totalAvailable?: number;
 };
+
+/** Pointe des flèches d'échange et motifs de tirets de leur animation (spec 2026-10-16 § 4). */
+const ENERGY_FLOW_HEAD_ICON = 'energy-flow-head';
+const ENERGY_FLOW_DASH_SEQ: ReadonlyArray<number[]> = [[0, 4, 3], [0.5, 4, 2.5], [1, 4, 2], [1.5, 4, 1.5], [2, 4, 1], [2.5, 4, 0.5], [3, 4, 0],
+  [0, 0.5, 3, 3.5], [0, 1, 3, 3], [0, 1.5, 3, 2.5], [0, 2, 3, 2], [0, 2.5, 3, 1.5], [0, 3, 3, 1], [0, 3.5, 3, 0.5]];
 
 /** Rayon des disques de `infra-src` : nucléaire 11 px, autres types 8 px (spec 2026-10-16 § 2.3). */
 const INFRA_DISC_RADIUS: maplibregl.ExpressionSpecification = ['match', ['get', 'type'], 'nuclear', ENERGY_DISC_RADIUS.nuclear, ENERGY_DISC_RADIUS.other];
@@ -584,37 +572,14 @@ export class DeckGLMap {
   // NOTE: Dynamic dasharray animations disabled due to MapLibre LineAtlas saturation.
   // Using point-based animation for chevrons (true movement along arcs).
 
-  // Chevron flow animation (point-based - chevrons move along arc paths)
-  private chevronAnimFrame: number | null = null;
-  private chevronPhase = 0;  // Animation phase (0 to 1)
-  // Stored arc data for chevron animation
-  private interconnArcs: Array<{
-    coords: [number, number][];
-    color: string;
-    isImport: boolean;
-    mw: number;
-  }> = [];
-
-  // Gas PIR chevron animation
-  private gasChevronAnimFrame: number | null = null;
-  private gasChevronPhase = 0;
-  private gasArcs: Array<{
-    coords: [number, number][];
-    color: string;
-    flowGWhDay: number;
-  }> = [];
-
-  // Oil flow chevron animation
-  private oilChevronAnimFrame: number | null = null;
-  private oilChevronPhase = 0;
-  private oilArcs: Array<{
-    coords: [number, number][];
-    color: string;
-    flowKbd: number;
-    lineWidth: number;
-    isImport: boolean;
-  }> = [];
-  private oilHoveredFlowName: string | null = null;
+  /** Derniers arcs d'échange construits par filière (données d'entrée des flèches, spec 2026-10-16 § 4). */
+  private lastFlowArcs: Record<EnergyFlowKind, GeoJSON.Feature[]> = { elec: [], gaz: [], petrole: [] };
+  /** Minuterie unique de l'animation des flèches (null = arrêtée). */
+  private energyFlowTimer: ReturnType<typeof setInterval> | null = null;
+  private energyFlowStep = 0;
+  /** Version des arcs d'échange (incrémentée à chaque mise à jour) et dernière signature dessinée : pas de repeinte inutile. */
+  private flowArcsVersion = 0;
+  private energyFlowSig: string | null = null;
 
   // Subsea cable glow pulse animation (uses opacity, not dasharray - safe)
   private subseaPulseAnimFrame: number | null = null;
@@ -768,10 +733,11 @@ export class DeckGLMap {
     // Energy regions
     this.map.addSource(SRC_POWER_REGIONS, { type: 'geojson', data: emptyFC() });
 
-    // Interconnections (point markers + arc lines + animated chevron points)
-    this.map.addSource(SRC_INTERCONN, { type: 'geojson', data: emptyFC() });
-    this.map.addSource(SRC_INTERCONN_ARCS, { type: 'geojson', data: emptyFC(), lineMetrics: true });
-    this.map.addSource(SRC_INTERCONN_CHEVRON_PTS, { type: 'geojson', data: emptyFC() });
+    // Échanges avec l'étranger : flèches construites par energy-flows.ts (spec 2026-10-16 § 4).
+    this.map.addSource(SRC_ENERGY_FLOWS, { type: 'geojson', data: emptyFC() });
+    this.map.addSource(SRC_ENERGY_FLOW_HEADS, { type: 'geojson', data: emptyFC() });
+    this.map.addSource(SRC_ENERGY_FLOW_LABELS, { type: 'geojson', data: emptyFC() });
+    this.map.addSource(SRC_ENERGY_CHOKES, { type: 'geojson', data: emptyFC() });
 
     // Weather departments
     this.map.addSource(SRC_WEATHER, {
@@ -861,15 +827,7 @@ export class DeckGLMap {
 
     // Gas Vital Organs (terminals, storage, PIR flows)
     this.map.addSource(SRC_GAS_VITALS, { type: 'geojson', data: emptyFC() });
-    this.map.addSource(SRC_GAS_PIR_ARCS, { type: 'geojson', data: emptyFC() });
-    this.map.addSource(SRC_GAS_PIR_MARKERS, { type: 'geojson', data: emptyFC() });
-    this.map.addSource(SRC_GAS_PIR_CHEVRON_PTS, { type: 'geojson', data: emptyFC() });
 
-    // Oil/Petroleum flows (refineries, pipelines, imports)
-    this.map.addSource(SRC_OIL_FLOW_ARCS, { type: 'geojson', data: emptyFC() });
-    this.map.addSource(SRC_OIL_FLOW_MARKERS, { type: 'geojson', data: emptyFC() });
-    this.map.addSource(SRC_OIL_FLOW_DIRECTION, { type: 'geojson', data: emptyFC() });
-    this.map.addSource(SRC_OIL_FLOW_CHEVRON_PTS, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_FUEL_TENSION, {
       type: 'geojson',
       data: emptyFC(),
@@ -950,119 +908,16 @@ export class DeckGLMap {
       },
     });
 
-    // ─── Energy: interconnections (curved arcs with flow animation) ───
-    // Electric flow: Blue/cyan neon with pronounced glow (plasma effect)
-    // Glow layer (thick, blurred effect with separate glow color)
-    this.map.addLayer({
-      id: LYR_INTERCONN_ARC_GLOW,
-      type: 'line',
-      source: SRC_INTERCONN_ARCS,
-      paint: {
-        'line-color': ['coalesce', ['get', 'glowColor'], ['get', 'color']],
-        'line-width': ['get', 'glowWidth'],
-        'line-opacity': ELECTRIC_FLOW_STYLE.glowOpacity,
-        'line-blur': ELECTRIC_FLOW_STYLE.glowBlur
-      },
-      layout: {
-        'line-cap': 'round',
-        'line-join': 'round'
-      }
-    });
 
-    // Main arc (solid line, no dash - chevrons will show direction)
-    this.map.addLayer({
-      id: LYR_INTERCONN_ARC,
-      type: 'line',
-      source: SRC_INTERCONN_ARCS,
-      paint: {
-        'line-color': ['get', 'color'],
-        'line-width': ['get', 'lineWidth'],
-        'line-opacity': ELECTRIC_FLOW_STYLE.lineOpacity
-      },
-      layout: {
-        'line-cap': 'round',
-        'line-join': 'round'
-      }
-    });
 
-    // Create chevron icon for flow direction (must await before adding layer)
-    await this.createChevronIcon();
+    // Pointe des flèches d'échange (SDF, teintée par flux).
+    await this.createFlowHeadIcon();
     await this.createRefineryTriangleIcon();
     await this.createEnergyShapeIcons();
 
-    // Chevron symbols as individual animated points along arcs
-    // Points are updated each frame to create continuous movement
-    this.map.addLayer({
-      id: LYR_INTERCONN_CHEVRONS,
-      type: 'symbol',
-      source: SRC_INTERCONN_CHEVRON_PTS,
-      layout: {
-        'icon-image': 'chevron-electric',
-        'icon-size': ['interpolate', ['linear'], ['zoom'],
-          4, ['*', ['get', 'size'], 0.4],
-          8, ['*', ['get', 'size'], 0.7],
-          12, ['*', ['get', 'size'], 1.0]
-        ],
-        'icon-allow-overlap': true,
-        'icon-ignore-placement': true,
-        'icon-pitch-alignment': 'map',
-        'icon-rotation-alignment': 'map',
-        'icon-rotate': ['get', 'rotation']  // Pre-computed rotation per point
-      },
-      paint: {
-        'icon-color': ['get', 'color'],
-        'icon-opacity': 0.95
-      }
-    });
 
-    // Wide invisible hit area — makes arc easier to hover (24px wide, transparent)
-    this.map.addLayer({
-      id: LYR_INTERCONN_HITAREA,
-      type: 'line',
-      source: SRC_INTERCONN_ARCS,
-      paint: {
-        'line-color': 'transparent',
-        'line-width': 24,
-        'line-opacity': 0,
-      },
-      layout: {
-        'line-cap': 'round',
-        'line-join': 'round',
-      },
-    });
 
-    // Circle marker at border point (endpoint indicator)
-    this.map.addLayer({
-      id: LYR_INTERCONN_LINE,
-      type: 'circle',
-      source: SRC_INTERCONN,
-      paint: {
-        'circle-radius': ['get', 'radius'],
-        'circle-color': ['get', 'color'],
-        'circle-opacity': 0.9,
-        'circle-stroke-opacity': 0
-      }
-    });
 
-    // Label next to marker
-    this.map.addLayer({
-      id: LYR_INTERCONN_LABEL,
-      type: 'symbol',
-      source: SRC_INTERCONN,
-      layout: {
-        'text-field': ['get', 'label'],
-        'text-font': ['Open Sans Semibold'],
-        'text-size': 12,
-        'text-anchor': 'left',
-        'text-offset': [1.2, 0],
-        'text-max-width': 10
-      },
-      paint: {
-        'text-color': '#fff',
-        'text-halo-color': 'rgba(0,0,0,0.85)',
-        'text-halo-width': 2
-      }
-    });
 
     // ─── Vigilance : remplissage départemental (deckgl/environment-map.ts : couleur portée par chaque département) ───
     this.map.addLayer({
@@ -1588,93 +1443,10 @@ export class DeckGLMap {
     this.addDiscCompanions(LYR_GAS_TERMINALS, SRC_GAS_VITALS, ['==', ['get', 'type'], 'terminal'], ENERGY_DISC_RADIUS.gas,
       discColorExpr(ENERGY_SECTOR_HEX.gaz), energyIconImage('flame'), glyphColorExpr(false));
 
-    // ─── Gas PIR: Arc glow ───
-    // Softer glow than electricity, cyan/teal tones for gas pipeline feel
-    this.map.addLayer({
-      id: LYR_GAS_PIR_ARC_GLOW,
-      type: 'line',
-      source: SRC_GAS_PIR_ARCS,
-      paint: {
-        'line-color': ['coalesce', ['get', 'glowColor'], ['get', 'color']],
-        'line-width': ['get', 'glowWidth'],
-        'line-opacity': GAS_FLOW_STYLE.glowOpacity,
-        'line-blur': GAS_FLOW_STYLE.glowBlur,
-      },
-      layout: {
-        'line-cap': 'round',
-        'line-join': 'round',
-      },
-    });
 
-    // ─── Gas PIR: Arc (trait plein, chevrons animés pour indiquer le sens) ───
-    this.map.addLayer({
-      id: LYR_GAS_PIR_ARC,
-      type: 'line',
-      source: SRC_GAS_PIR_ARCS,
-      paint: {
-        'line-color': ['get', 'color'],
-        'line-width': ['get', 'lineWidth'],
-        'line-opacity': GAS_FLOW_STYLE.lineOpacity,
-      },
-      layout: {
-        'line-cap': 'round',
-        'line-join': 'round',
-      },
-    });
 
-    // ─── Gas PIR: Animated chevrons (reuse SDF icon, tinted cyan/teal) ───
-    this.map.addLayer({
-      id: LYR_GAS_PIR_CHEVRONS,
-      type: 'symbol',
-      source: SRC_GAS_PIR_CHEVRON_PTS,
-      layout: {
-        'icon-image': 'chevron-electric',
-        'icon-size': ['interpolate', ['linear'], ['zoom'],
-          4, ['*', ['get', 'size'], 0.3],
-          8, ['*', ['get', 'size'], 0.55],
-          12, ['*', ['get', 'size'], 0.8],
-        ],
-        'icon-allow-overlap': true,
-        'icon-ignore-placement': true,
-        'icon-pitch-alignment': 'map',
-        'icon-rotation-alignment': 'map',
-        'icon-rotate': ['get', 'rotation'],
-      },
-      paint: {
-        'icon-color': ['get', 'color'],
-        'icon-opacity': 0.88,
-      },
-    });
 
-    // ─── Gas PIR: Endpoint markers ───
-    this.map.addLayer({
-      id: LYR_GAS_PIR_MARKER,
-      type: 'circle',
-      source: SRC_GAS_PIR_MARKERS,
-      paint: {
-        'circle-radius': ['get', 'radius'],
-        'circle-color': ['get', 'color'],
-        'circle-opacity': 0.9,
-      },
-    });
 
-    // ─── Gas PIR: Labels ───
-    this.map.addLayer({
-      id: LYR_GAS_PIR_LABEL,
-      type: 'symbol',
-      source: SRC_GAS_PIR_MARKERS,
-      layout: {
-        'text-field': ['get', 'label'],
-        'text-size': 11,
-        'text-anchor': 'left',
-        'text-offset': [1.2, 0],
-      },
-      paint: {
-        'text-color': '#e8e8ec',
-        'text-halo-color': '#0a0a0f',
-        'text-halo-width': 1.5,
-      },
-    });
 
     // ═══════════════════════════════════════════════════════════════
     // BIOMETHANE INJECTION SITES — GRDF OpenData, 833 sites, amber dots
@@ -1747,95 +1519,10 @@ export class DeckGLMap {
     // Thick arcs to suggest viscous flow, ready for future oil data
     // ═══════════════════════════════════════════════════════════════
 
-    // ─── Oil Flow: Arc glow ───
-    this.map.addLayer({
-      id: LYR_OIL_FLOW_ARC_GLOW,
-      type: 'line',
-      source: SRC_OIL_FLOW_ARCS,
-      paint: {
-        'line-color': ['coalesce', ['get', 'glowColor'], ['get', 'color']],
-        'line-width': ['get', 'glowWidth'],
-        'line-opacity': OIL_FLOW_STYLE.glowOpacity,
-        'line-blur': OIL_FLOW_STYLE.glowBlur,
-      },
-      layout: {
-        'line-cap': 'round',
-        'line-join': 'round',
-      },
-    });
 
-    // ─── Oil Flow: Animated arc ───
-    // Slow dash animation to suggest viscous/heavy flow
-    this.map.addLayer({
-      id: LYR_OIL_FLOW_ARC,
-      type: 'line',
-      source: SRC_OIL_FLOW_ARCS,
-      paint: {
-        'line-color': ['get', 'color'],
-        'line-width': ['get', 'lineWidth'],
-        'line-opacity': OIL_FLOW_STYLE.lineOpacity,
-      },
-      layout: {
-        'line-cap': 'round',
-        'line-join': 'round',
-      },
-    });
 
-    this.map.addLayer({
-      id: LYR_OIL_FLOW_CHEVRONS,
-      type: 'symbol',
-      source: SRC_OIL_FLOW_CHEVRON_PTS,
-      layout: {
-        'icon-image': 'chevron-electric',
-        'icon-size': ['interpolate', ['linear'], ['zoom'],
-          4, ['*', ['get', 'size'], 0.55],
-          8, ['*', ['get', 'size'], 0.90],
-          12, ['*', ['get', 'size'], 1.25],
-        ],
-        'icon-allow-overlap': true,
-        'icon-ignore-placement': true,
-        'icon-pitch-alignment': 'map',
-        'icon-rotation-alignment': 'map',
-        'icon-rotate': ['get', 'rotation'],
-      },
-      paint: {
-        'icon-color': ['get', 'color'],
-        'icon-opacity': 0.90,
-      },
-    });
 
-    // ─── Oil Flow: Endpoint markers ───
-    this.map.addLayer({
-      id: LYR_OIL_FLOW_MARKER,
-      type: 'circle',
-      source: SRC_OIL_FLOW_MARKERS,
-      paint: {
-        'circle-radius': ['get', 'radius'],
-        'circle-color': ['get', 'color'],
-        'circle-opacity': 0.9,
-        'circle-stroke-color': '#1c1917',  // Stone-900 for dark border
-        'circle-stroke-width': 2,
-      },
-    });
 
-    // ─── Oil Flow: Labels ───
-    this.map.addLayer({
-      id: LYR_OIL_FLOW_LABEL,
-      type: 'symbol',
-      source: SRC_OIL_FLOW_MARKERS,
-      layout: {
-        'text-field': ['get', 'label'],
-        'text-size': 12,
-        'text-anchor': 'left',
-        'text-offset': [1.2, 0],
-        'text-allow-overlap': true,
-      },
-      paint: {
-        'text-color': '#fef3c7',  // Amber-100 for warm text
-        'text-halo-color': '#1c1917',
-        'text-halo-width': 1.8,
-      },
-    });
 
 
     // ─── Oil Infrastructure: Pipelines ───
@@ -1887,6 +1574,26 @@ export class DeckGLMap {
         'line-opacity': ['match', ['get', 'tensionLevel'], 'LOW', 0, 1],
       },
     });
+
+    // ─── Échanges avec l'étranger (spec 2026-10-16 § 4) : liseré sombre, trait, tirets animés, pointe, étiquette ; détroits ───
+    this.map.addLayer({ id: LYR_ENERGY_FLOW_CASE, type: 'line', source: SRC_ENERGY_FLOWS, layout: { 'line-cap': 'butt', 'line-join': 'round' },
+      paint: { 'line-color': '#05060a', 'line-width': ['+', ['get', 'w'], 3] } });
+    this.map.addLayer({ id: LYR_ENERGY_FLOW_LINES, type: 'line', source: SRC_ENERGY_FLOWS, layout: { 'line-cap': 'butt', 'line-join': 'round' },
+      paint: { 'line-color': ['get', 'color'], 'line-width': ['get', 'w'], 'line-opacity': 0.45 } });
+    this.map.addLayer({ id: LYR_ENERGY_FLOW_ANIM, type: 'line', source: SRC_ENERGY_FLOWS, layout: { 'line-cap': 'butt', 'line-join': 'round' },
+      paint: { 'line-color': ['get', 'color'], 'line-width': ['get', 'w'], 'line-dasharray': ENERGY_FLOW_DASH_SEQ[0] } });
+    this.map.addLayer({ id: LYR_ENERGY_FLOW_HEADS, type: 'symbol', source: SRC_ENERGY_FLOW_HEADS,
+      layout: { 'icon-image': ENERGY_FLOW_HEAD_ICON, 'icon-size': ['get', 'size'], 'icon-rotate': ['get', 'rot'], 'icon-rotation-alignment': 'map',
+        'icon-allow-overlap': true, 'icon-ignore-placement': true },
+      paint: { 'icon-color': ['get', 'color'], 'icon-halo-color': '#05060a', 'icon-halo-width': 1.5 } });
+    this.map.addLayer({ id: LYR_ENERGY_FLOW_LABELS, type: 'symbol', source: SRC_ENERGY_FLOW_LABELS,
+      layout: { 'text-field': ['get', 'text'], 'text-font': ['Open Sans Bold'], 'text-size': 12, 'text-offset': [0, 0.6], 'text-anchor': 'top', 'text-padding': 4 },
+      paint: { 'text-color': ['get', 'color'], 'text-halo-color': '#05060a', 'text-halo-width': 2 } });
+    this.map.addLayer({ id: LYR_ENERGY_CHOKE, type: 'circle', source: SRC_ENERGY_CHOKES,
+      paint: { 'circle-radius': 4, 'circle-color': '#05060a', 'circle-stroke-color': ENERGY_CHOKE_HEX, 'circle-stroke-width': 2 } });
+    this.map.addLayer({ id: LYR_ENERGY_CHOKE_LABEL, type: 'symbol', source: SRC_ENERGY_CHOKES,
+      layout: { 'text-field': ['get', 'name'], 'text-font': ['Open Sans Bold'], 'text-size': 11, 'text-offset': [0.8, 0], 'text-anchor': 'left' },
+      paint: { 'text-color': ENERGY_CHOKE_HEX, 'text-halo-color': '#05060a', 'text-halo-width': 2 } });
 
 
     // ─── Oil Infrastructure: Refineries — triangles ▲ (▼ si maintenance) ───
@@ -1969,20 +1676,7 @@ export class DeckGLMap {
       layout: { 'line-cap': 'round', 'line-join': 'round' },
     });
 
-    this.map.addLayer({
-      id: LYR_OIL_FLOW_ARC_HIT,
-      type: 'line',
-      source: SRC_OIL_FLOW_ARCS,
-      paint: { 'line-width': 22, 'line-opacity': 0 },
-      layout: { 'line-cap': 'round', 'line-join': 'round' },
-    });
 
-    this.map.addLayer({
-      id: LYR_OIL_FLOW_MARKER_HIT,
-      type: 'circle',
-      source: SRC_OIL_FLOW_MARKERS,
-      paint: { 'circle-radius': 22, 'circle-opacity': 0, 'circle-stroke-width': 0 },
-    });
 
 
     // Avis de sûreté ASNR (spec 2026-10-13) : anneau orange de moins de 7 jours, gris jusqu'à 30 jours.
@@ -2546,6 +2240,11 @@ export class DeckGLMap {
     for (const layer of SOV_LAYERS) this.map.addLayer(layer);
     // Pannes réseau (deckgl/outages-map.ts) : même rang, masquées jusqu'à setLayerVisibility.
     for (const layer of OUT_LAYERS) this.map.addLayer(layer);
+    // Disques du gaz posés avant les flèches d'échange : remontés au-dessus, comme les autres installations (spec 2026-10-16 § 4).
+    for (const id of [LYR_GAS_STORAGES, LYR_GAS_TERMINALS]) {
+      for (const layerId of [`${id}-halo`, id, `${id}-icon`]) this.map.moveLayer(layerId, `${LYR_OIL_REFINERIES}-halo`);
+    }
+    this.map.moveLayer(LYR_GAS_STORAGES_LABEL, `${LYR_OIL_REFINERIES}-halo`);
 
     // Séismes et marégraphes (phase B) au-dessus de toutes les surfaces : ajoutés ici, sous la première couche de points qui suit la dernière surface.
     placeEnvBPoints(this.map);
@@ -2971,61 +2670,12 @@ export class DeckGLMap {
     });
     this.map.on('mouseleave', LYR_GAS_STORAGES, hideEnrichedHover);
 
-    this.map.on('mouseenter', LYR_GAS_PIR_MARKER, () => {
-      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
+    // Flèches d'échange : fiche détaillée au survol, en attendant l'arbitre unique (spec 2026-10-16 § 6).
+    this.map.on('mousemove', LYR_ENERGY_FLOW_LINES, (e) => {
+      const html = e.features?.length ? this.energyFlowDetailHtml(e.features[0].properties ?? {}) : null;
+      if (html) this.showEnrichedHoverPopup(e.lngLat, html);
     });
-    this.map.on('mousemove', LYR_GAS_PIR_MARKER, (e) => {
-      if (!this.map || !e.features?.length) return;
-      const p = e.features[0].properties || {};
-      const borderCode = String(p.borderCode ?? '');
-      const stats = this.gasFlowStats.get(borderCode);
-      if (stats) {
-        // Tooltip enrichi via popup dédié (évite chevauchement avec enrichedHoverPopup)
-        this.hideEnrichedHoverPopup();
-        if (!this.gasFlowPopup) {
-          this.gasFlowPopup = new maplibregl.Popup({
-            closeButton: false, closeOnClick: false,
-            offset: 14, maxWidth: '280px', className: 'dark-popup',
-          });
-        }
-        this.gasFlowPopup.setLngLat(e.lngLat).setHTML(this.buildGasFlowTooltipHtml(stats)).addTo(this.map);
-      } else {
-        this.showEnrichedHoverPopup(e.lngLat, this.buildGasPirHoverHtml(p));
-      }
-    });
-    this.map.on('mouseleave', LYR_GAS_PIR_MARKER, () => {
-      if (this.map) this.map.getCanvas().style.cursor = '';
-      this.gasFlowPopup?.remove();
-      this.gasFlowPopup = null;
-      this.hideEnrichedHoverPopup();
-    });
-
-    // Hover sur les arcs PIR (même logique que le marker)
-    const showGasArcHover = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
-      if (!this.map || !e.features?.length) return;
-      const p = e.features[0].properties || {};
-      const borderCode = String(p.borderCode ?? '');
-      const stats = this.gasFlowStats.get(borderCode);
-      if (!stats) return;
-      this.hideEnrichedHoverPopup();
-      this.energyRegionPopup?.remove(); this.energyRegionPopup = null;
-      if (!this.gasFlowPopup) {
-        this.gasFlowPopup = new maplibregl.Popup({
-          closeButton: false, closeOnClick: false,
-          offset: 14, maxWidth: '280px', className: 'dark-popup',
-        });
-      }
-      this.gasFlowPopup.setLngLat(e.lngLat).setHTML(this.buildGasFlowTooltipHtml(stats)).addTo(this.map);
-    };
-    this.map.on('mouseenter', LYR_GAS_PIR_ARC, () => {
-      if (this.map) this.map.getCanvas().style.cursor = 'crosshair';
-    });
-    this.map.on('mousemove', LYR_GAS_PIR_ARC, showGasArcHover);
-    this.map.on('mouseleave', LYR_GAS_PIR_ARC, () => {
-      if (this.map) this.map.getCanvas().style.cursor = '';
-      this.gasFlowPopup?.remove();
-      this.gasFlowPopup = null;
-    });
+    this.map.on('mouseleave', LYR_ENERGY_FLOW_LINES, hideEnrichedHover);
 
     this.map.on('mouseenter', LYR_METRO_LOAD_CIRCLE, () => {
       if (this.map) this.map.getCanvas().style.cursor = 'pointer';
@@ -3075,38 +2725,6 @@ export class DeckGLMap {
       this.showEnrichedHoverPopup(e.lngLat, this.buildOilPipelineHoverHtml(p));
     });
     this.map.on('mouseleave', LYR_OIL_PIPELINES_HIT, hideEnrichedHover);
-
-    this.map.on('mouseenter', LYR_OIL_FLOW_MARKER_HIT, () => {
-      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
-    });
-    this.map.on('mousemove', LYR_OIL_FLOW_MARKER_HIT, (e) => {
-      if (!e.features?.length) return;
-      const p = e.features[0].properties as Record<string, unknown>;
-      this.oilHoveredFlowName = String(p.name ?? '');
-      this.updateOilArcHighlight();
-      this.showEnrichedHoverPopup(e.lngLat, this.buildOilFlowHoverHtml(p));
-    });
-    this.map.on('mouseleave', LYR_OIL_FLOW_MARKER_HIT, () => {
-      this.oilHoveredFlowName = null;
-      this.updateOilArcHighlight();
-      hideEnrichedHover();
-    });
-
-    this.map.on('mouseenter', LYR_OIL_FLOW_ARC_HIT, () => {
-      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
-    });
-    this.map.on('mousemove', LYR_OIL_FLOW_ARC_HIT, (e) => {
-      if (!e.features?.length) return;
-      const p = e.features[0].properties as Record<string, unknown>;
-      this.oilHoveredFlowName = String(p.name ?? '');
-      this.updateOilArcHighlight();
-      this.showEnrichedHoverPopup(e.lngLat, this.buildOilFlowHoverHtml(p));
-    });
-    this.map.on('mouseleave', LYR_OIL_FLOW_ARC_HIT, () => {
-      this.oilHoveredFlowName = null;
-      this.updateOilArcHighlight();
-      hideEnrichedHover();
-    });
 
     // ─── Crues : curseur sur un tronçon ; infobulle de initEnvironmentInteractions ; clic : images satellite avant / après (Sentinel-2) ───
     this.map.on('mouseenter', LYR_FLOODS, () => {
@@ -3275,7 +2893,7 @@ export class DeckGLMap {
       if (!this.map || !e.features?.length) return;
       // Arc or gas feature takes priority over the region fill
       const overrideFeats = this.map.queryRenderedFeatures(e.point, {
-        layers: [LYR_INTERCONN_HITAREA, LYR_GAS_TERMINALS, LYR_GAS_STORAGES, LYR_GAS_PIR_MARKER, LYR_HYDRO_BACKBONE_CIRCLE],
+        layers: [LYR_ENERGY_FLOW_LINES, LYR_GAS_TERMINALS, LYR_GAS_STORAGES, LYR_HYDRO_BACKBONE_CIRCLE],
       });
       if (overrideFeats.length) {
         this.energyRegionPopup?.remove();
@@ -3335,87 +2953,6 @@ export class DeckGLMap {
       this.energyRegionPopup.setLngLat(e.lngLat).setHTML(html).addTo(this.map);
     });
 
-    // ─── Energy Flow (Arc) Interactions ───
-    const FLOW_COLORS: Record<string, string> = { export: '#34c759', import: '#ff3b30', balanced: '#8e8e93' };
-    const FLOW_LABELS: Record<string, string> = { export: `Export ${fmIcon('trending-up')}`, import: `Import ${fmIcon('trending-down')}`, balanced: `Équilibré ${fmIcon('arrow-left-right')}` };
-    const utilizationBar = (pct: number, color: string) =>
-      `<div style="height:4px;background:rgba(255,255,255,0.1);border-radius:2px;margin-top:4px;overflow:hidden;">` +
-      `<div style="width:${Math.min(pct, 100).toFixed(0)}%;height:100%;background:${color};border-radius:2px;"></div></div>`;
-    const fmtMWh = (mwh: number) =>
-      Math.abs(mwh) >= 1000 ? `${(mwh / 1000).toFixed(2)} TWh` : `${Math.round(mwh)} MWh`;
-
-    const showFlowHover = (e: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
-      if (!this.map || !e.features?.length) return;
-      const country = String(e.features[0].properties?.country ?? '');
-      const flowId = DeckGLMap.COUNTRY_TO_FLOW_ID[country];
-      const f = flowId ? this.energyFlowStats.get(flowId) : undefined;
-      if (!f) return;
-      // Dismiss gas/infra tooltip so flow arc never stacks with enriched
-      this.hideEnrichedHoverPopup();
-
-      const color = FLOW_COLORS[f.direction] ?? '#8e8e93';
-      const absMW = Math.abs(f.powerMW);
-      const dailyDelta = f.dailyBalanceMWh - f.dailyBalancePrevMWh;
-      const deltaColor = dailyDelta >= 0 ? '#34c759' : '#ff3b30';
-      const deltaSign = dailyDelta >= 0 ? '+' : '';
-
-      // Sparkline 7 jours (vide si historique pas encore chargé)
-      // éCO2mix : >0 = import INTO France. Sparkline convention : >0 = export FR = vert.
-      // On inverse le signe pour aligner les deux : export FR affiché en vert, import en rouge.
-      const rawSeries = flowId ? (this.energyBorderHistory.get(flowId) ?? []) : [];
-      const series = rawSeries.map(v => -v);
-      const sparkline = series.length > 2
-        ? `${sep}
-           <div style="margin-top:2px;">
-             <div style="font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#666;margin-bottom:4px;">7 derniers jours</div>
-             ${buildSparklineSVG(series, { width: 220, height: 44 })}
-             <div style="display:flex;justify-content:space-between;font-size:9px;color:#555;margin-top:2px;">
-               <span>J-7</span><span>↑ export · ↓ import</span><span>Maintenant</span>
-             </div>
-           </div>`
-        : '';
-
-      const html = `
-        <div style="color:#e8e8ec;font-family:sans-serif;min-width:220px;padding:4px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;">
-            <strong style="font-size:13px;color:#fff;">${f.label}</strong>
-            <span style="font-size:11px;padding:2px 7px;border-radius:4px;font-weight:700;color:#000;background:${color};">${FLOW_LABELS[f.direction]}</span>
-          </div>
-          ${sectionLabel('Puissance temps réel')}
-          ${row('Actuelle', absMW >= 1000 ? `${(absMW / 1000).toFixed(2)} GW` : `${Math.round(absMW)} MW`, color)}
-          ${row('Capacité NTC', f.capacityMW >= 1000 ? `${(f.capacityMW / 1000).toFixed(1)} GW` : `${f.capacityMW} MW`)}
-          ${row('Utilisation', `${f.utilizationPct.toFixed(0)} %`)}
-          ${utilizationBar(f.utilizationPct, color)}
-          ${sep}
-          ${sectionLabel('Solde journalier')}
-          ${row('J en cours', fmtMWh(f.dailyBalanceMWh))}
-          ${row('Vs veille', `${deltaSign}${fmtMWh(dailyDelta)}`, deltaColor)}
-          ${sparkline}
-          ${f.summary ? `${sep}<div style="font-size:11px;color:#9898a8;font-style:italic;line-height:1.4;">${escapeHtml(f.summary)}</div>` : ''}
-          ${formatUpdateTime(f.updatedAt) !== '-' ? `<div style="font-size:10px;color:#555;margin-top:6px;">Mis à jour ${formatUpdateTime(f.updatedAt)}</div>` : ''}
-        </div>`;
-
-      if (!this.energyFlowPopup) {
-        this.energyFlowPopup = new maplibregl.Popup({
-          closeButton: false, closeOnClick: false,
-          offset: 16, maxWidth: '280px', className: 'dark-popup',
-        });
-      }
-      this.energyFlowPopup.setLngLat(e.lngLat).setHTML(html).addTo(this.map);
-    };
-
-    this.map.on('mouseenter', LYR_INTERCONN_HITAREA, () => {
-      if (this.map) this.map.getCanvas().style.cursor = 'crosshair';
-      // Close region popup when entering arc hit area
-      this.energyRegionPopup?.remove();
-      this.energyRegionPopup = null;
-    });
-    this.map.on('mouseleave', LYR_INTERCONN_HITAREA, () => {
-      if (this.map) this.map.getCanvas().style.cursor = '';
-      this.energyFlowPopup?.remove();
-      this.energyFlowPopup = null;
-    });
-    this.map.on('mousemove', LYR_INTERCONN_HITAREA, showFlowHover);
 
     // ─── Sites de défense : curseur ; infobulle échappée de initSovereigntyInteractions ; clic : fiche du site (onMilitaryBaseClick) ───
     this.map.on('mouseenter', LYR_MILITARY_BASES_CIRCLE, () => {
@@ -5394,31 +4931,9 @@ export class DeckGLMap {
           'All./Bel.': [7.2, 49.4],        // Lorraine/Luxembourg area
         };
 
-        // Create point features for endpoint markers
-        // Use ELECTRIC_FLOW_STYLE colors: bright cyan/neon green
-        const pointFeatures: GeoJSON.Feature[] = interconnections.map(ic => {
-          const coords = borderCoords[ic.country] || ic.coordinates;
-          const { isImport, color } = resolveFlowDirection(
-            ic.flowMW, ic.country, coords,
-            ELECTRIC_FLOW_STYLE.exportColor, ELECTRIC_FLOW_STYLE.importColor,
-            ELECTRIC_FLOW_STYLE.glowExportColor, ELECTRIC_FLOW_STYLE.glowImportColor,
-          );
-          const flowAbs = Math.abs(ic.flowMW);
-          const sign = isImport ? '+' : '-';
-          const label = `${ic.country}\n${sign}${flowAbs} MW`;
-          const radius = Math.min(14, Math.max(6, 6 + flowAbs / 1000));
-
-          return {
-            type: 'Feature' as const,
-            geometry: { type: 'Point' as const, coordinates: coords },
-            properties: { color, radius, label }
-          };
-        });
-
         // Create arc features (curved lines from France center to border)
         // Electric flow: OSINT style with configurable colors
         const cfg = getElectricFlowConfig();
-        this.interconnArcs = [];  // Reset stored arcs
 
         const arcFeatures: GeoJSON.Feature[] = interconnections.map(ic => {
           const coords = borderCoords[ic.country] || ic.coordinates;
@@ -5435,13 +4950,6 @@ export class DeckGLMap {
 
           const arcCoords = generateArc(arcFrom, arcTo, cfg.curvature, cfg.steps);
 
-          this.interconnArcs.push({
-            coords: arcCoords,
-            color,
-            isImport,
-            mw: flowAbs
-          });
-
           return {
             type: 'Feature' as const,
             geometry: { type: 'LineString' as const, coordinates: arcCoords },
@@ -5451,36 +4959,162 @@ export class DeckGLMap {
               lineWidth,
               glowWidth,
               isImport,
-              country: ic.country
+              country: ic.country,
+              // Valeur propre à chaque pays, reprise par la flèche et sa bulle (spec 2026-10-16 § 4).
+              flowValue: flowAbs,
+              flowUnit: 'MW',
             }
           };
         });
 
-        // Update sources
-        const intSrc = this.map.getSource(SRC_INTERCONN) as maplibregl.GeoJSONSource;
-        intSrc?.setData({ type: 'FeatureCollection', features: pointFeatures });
-
-        const arcSrc = this.map.getSource(SRC_INTERCONN_ARCS) as maplibregl.GeoJSONSource;
-        arcSrc?.setData({ type: 'FeatureCollection', features: arcFeatures });
-        const powerImports = this.interconnArcs.filter((a) => a.isImport).length;
-        this.recordEnergyFlows('powerGrid', { exports: this.interconnArcs.length - powerImports, imports: powerImports });
-
-        // Start arc flow animation (generates chevron points)
-        this.startInterconnAnimation();
+        this.lastFlowArcs.elec = arcFeatures;
+        this.flowArcsVersion += 1;
+        const powerImports = arcFeatures.filter((a) => a.properties?.isImport === true).length;
+        this.recordEnergyFlows('powerGrid', { exports: arcFeatures.length - powerImports, imports: powerImports });
       } else {
-        const intSrc = this.map.getSource(SRC_INTERCONN) as maplibregl.GeoJSONSource;
-        intSrc?.setData(emptyFC());
-        const arcSrc = this.map.getSource(SRC_INTERCONN_ARCS) as maplibregl.GeoJSONSource;
-        arcSrc?.setData(emptyFC());
-        const chevSrc = this.map.getSource(SRC_INTERCONN_CHEVRON_PTS) as maplibregl.GeoJSONSource;
-        chevSrc?.setData(emptyFC());
-        this.interconnArcs = [];
+        this.lastFlowArcs.elec = [];
+        this.flowArcsVersion += 1;
         this.recordEnergyFlows('powerGrid', { exports: 0, imports: 0 });
-        this.stopInterconnAnimation();
       }
+      this.rebuildEnergyFlows();
     } catch (e) {
       console.warn('[DeckGLMap] Failed to load regions for energy layer', e);
     }
+  }
+
+  /** Flèches d'échange des couches allumées (spec 2026-10-16 § 4) ; l'animation tourne tant qu'une flèche est affichée. */
+  private rebuildEnergyFlows(): void {
+    if (!this.map) return;
+    const on: Record<EnergyFlowKind, boolean> = {
+      elec: this.currentLayers?.powerGrid === true, gaz: this.currentLayers?.gasNetwork === true, petrole: this.currentLayers?.oilNetwork === true,
+    };
+    const kinds: readonly EnergyFlowKind[] = ['elec', 'gaz', 'petrole'];
+    const sig = `${this.flowArcsVersion}:${kinds.map((k) => (on[k] ? '1' : '0')).join('')}`;
+    if (sig === this.energyFlowSig) return;
+    this.energyFlowSig = sig;
+    const arcs = kinds.filter((k) => on[k])
+      .flatMap((k) => this.lastFlowArcs[k].map((f) => flowArcFromFeature(k, f)))
+      .filter((a): a is FlowArc => a !== null);
+    const fc = buildFlowFeatures(arcs);
+    const put = (id: string, data: GeoJSON.FeatureCollection): void => {
+      (this.map?.getSource(id) as maplibregl.GeoJSONSource | undefined)?.setData(data);
+    };
+    put(SRC_ENERGY_FLOWS, fc.lines);
+    put(SRC_ENERGY_FLOW_HEADS, fc.heads);
+    put(SRC_ENERGY_FLOW_LABELS, fc.labels);
+    put(SRC_ENERGY_CHOKES, fc.chokes);
+    if (fc.lines.features.length > 0) this.startEnergyFlowAnimation();
+    else this.stopEnergyFlowAnimation();
+  }
+
+  /** Une seule minuterie : les tirets avancent d'un cran toutes les 70 ms (14 motifs fixes, l'atlas des tirets reste borné). */
+  private startEnergyFlowAnimation(): void {
+    if (this.energyFlowTimer !== null) return;
+    this.energyFlowTimer = setInterval(() => {
+      const map = this.map;
+      if (!map?.getLayer(LYR_ENERGY_FLOW_ANIM) || map.getLayoutProperty(LYR_ENERGY_FLOW_ANIM, 'visibility') === 'none') return;
+      this.energyFlowStep = (this.energyFlowStep + 1) % ENERGY_FLOW_DASH_SEQ.length;
+      map.setPaintProperty(LYR_ENERGY_FLOW_ANIM, 'line-dasharray', ENERGY_FLOW_DASH_SEQ[this.energyFlowStep]);
+    }, 70);
+  }
+
+  private stopEnergyFlowAnimation(): void {
+    if (this.energyFlowTimer === null) return;
+    clearInterval(this.energyFlowTimer);
+    this.energyFlowTimer = null;
+  }
+
+  /** Pointe des flèches : triangle blanc SDF 64×64, pointe en haut, teinté par flux. */
+  private async createFlowHeadIcon(): Promise<void> {
+    if (!this.map || this.map.hasImage(ENERGY_FLOW_HEAD_ICON)) return;
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64"><polygon points="32,6 58,56 6,56" fill="white"/></svg>';
+    return new Promise<void>((resolve) => {
+      const img = new Image(64, 64);
+      img.onload = () => {
+        if (this.map && !this.map.hasImage(ENERGY_FLOW_HEAD_ICON)) this.map.addImage(ENERGY_FLOW_HEAD_ICON, img, { sdf: true, pixelRatio: 2 });
+        resolve();
+      };
+      img.onerror = () => resolve();
+      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+    });
+  }
+
+  /** Fiche détaillée d'une flèche d'échange : reprend les fiches existantes, à partir de l'arc d'origine (spec 2026-10-16 § 6.4). */
+  private energyFlowDetailHtml(p: Readonly<Record<string, unknown>>): string | null {
+    const who = String(p.who ?? '');
+    if (p.kind === 'elec') return this.buildInterconnDetailHtml(who);
+    const list = p.kind === 'gaz' ? this.lastFlowArcs.gaz : p.kind === 'petrole' ? this.lastFlowArcs.petrole : [];
+    const arc = list.find((f) => (String(f.properties?.country ?? '') || String(f.properties?.name ?? '')) === who)?.properties;
+    if (!arc) return null;
+    if (p.kind === 'gaz') {
+      const stats = this.gasFlowStats.get(String(arc.borderCode ?? ''));
+      return stats ? this.buildGasFlowTooltipHtml(stats) : this.buildGasPirHoverHtml(arc);
+    }
+    return this.buildOilFlowHoverHtml(arc);
+  }
+
+  /** Fiche détaillée d'une interconnexion électrique (clic sur une flèche, spec 2026-10-16 § 6.4) ; null sans statistiques. */
+  private buildInterconnDetailHtml(country: string): string | null {
+    const flowId = DeckGLMap.COUNTRY_TO_FLOW_ID[country];
+    const f = flowId ? this.energyFlowStats.get(flowId) : undefined;
+    if (!f) return null;
+    const FLOW_COLORS: Record<string, string> = { export: '#34c759', import: '#ff3b30', balanced: '#8e8e93' };
+    const FLOW_LABELS: Record<string, string> = { export: `Export ${fmIcon('trending-up')}`, import: `Import ${fmIcon('trending-down')}`, balanced: `Équilibré ${fmIcon('arrow-left-right')}` };
+    const utilizationBar = (pct: number, color: string) =>
+      `<div style="height:4px;background:rgba(255,255,255,0.1);border-radius:2px;margin-top:4px;overflow:hidden;">` +
+      `<div style="width:${Math.min(pct, 100).toFixed(0)}%;height:100%;background:${color};border-radius:2px;"></div></div>`;
+    const fmtMWh = (mwh: number) =>
+      Math.abs(mwh) >= 1000 ? `${(mwh / 1000).toFixed(2)} TWh` : `${Math.round(mwh)} MWh`;
+    const row = (label: string, value: string, valueColor = '#e8e8ec') =>
+      `<div style="display:flex;justify-content:space-between;gap:12px;font-size:11px;padding:2px 0;">` +
+      `<span style="color:#9898a8;">${label}</span>` +
+      `<span style="color:${valueColor};font-weight:500;">${value}</span></div>`;
+    const sep = `<div style="border-top:1px solid rgba(255,255,255,0.08);margin:6px 0;"></div>`;
+    const sectionLabel = (txt: string) =>
+      `<div style="font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#666;margin-bottom:3px;">${txt}</div>`;
+
+    const color = FLOW_COLORS[f.direction] ?? '#8e8e93';
+    const absMW = Math.abs(f.powerMW);
+    const dailyDelta = f.dailyBalanceMWh - f.dailyBalancePrevMWh;
+    const deltaColor = dailyDelta >= 0 ? '#34c759' : '#ff3b30';
+    const deltaSign = dailyDelta >= 0 ? '+' : '';
+
+    // Sparkline 7 jours (vide si historique pas encore chargé)
+    // éCO2mix : >0 = import INTO France. Sparkline convention : >0 = export FR = vert.
+    // On inverse le signe pour aligner les deux : export FR affiché en vert, import en rouge.
+    const rawSeries = flowId ? (this.energyBorderHistory.get(flowId) ?? []) : [];
+    const series = rawSeries.map(v => -v);
+    const sparkline = series.length > 2
+      ? `${sep}
+         <div style="margin-top:2px;">
+           <div style="font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#666;margin-bottom:4px;">7 derniers jours</div>
+           ${buildSparklineSVG(series, { width: 220, height: 44 })}
+           <div style="display:flex;justify-content:space-between;font-size:9px;color:#555;margin-top:2px;">
+             <span>J-7</span><span>↑ export · ↓ import</span><span>Maintenant</span>
+           </div>
+         </div>`
+      : '';
+
+    const html = `
+      <div style="color:#e8e8ec;font-family:sans-serif;min-width:220px;padding:4px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;">
+          <strong style="font-size:13px;color:#fff;">${f.label}</strong>
+          <span style="font-size:11px;padding:2px 7px;border-radius:4px;font-weight:700;color:#000;background:${color};">${FLOW_LABELS[f.direction]}</span>
+        </div>
+        ${sectionLabel('Puissance temps réel')}
+        ${row('Actuelle', absMW >= 1000 ? `${(absMW / 1000).toFixed(2)} GW` : `${Math.round(absMW)} MW`, color)}
+        ${row('Capacité NTC', f.capacityMW >= 1000 ? `${(f.capacityMW / 1000).toFixed(1)} GW` : `${f.capacityMW} MW`)}
+        ${row('Utilisation', `${f.utilizationPct.toFixed(0)} %`)}
+        ${utilizationBar(f.utilizationPct, color)}
+        ${sep}
+        ${sectionLabel('Solde journalier')}
+        ${row('J en cours', fmtMWh(f.dailyBalanceMWh))}
+        ${row('Vs veille', `${deltaSign}${fmtMWh(dailyDelta)}`, deltaColor)}
+        ${sparkline}
+        ${f.summary ? `${sep}<div style="font-size:11px;color:#9898a8;font-style:italic;line-height:1.4;">${escapeHtml(f.summary)}</div>` : ''}
+        ${formatUpdateTime(f.updatedAt) !== '-' ? `<div style="font-size:10px;color:#555;margin-top:6px;">Mis à jour ${formatUpdateTime(f.updatedAt)}</div>` : ''}
+      </div>`;
+    return html;
   }
 
   /** Met à jour les données d'info-bulles énergie (régions + flux). */
@@ -5497,36 +5131,6 @@ export class DeckGLMap {
       this.energyBorderHistory.clear();
       for (const [id, series] of history) this.energyBorderHistory.set(id, series);
     }
-  }
-
-  /**
-   * Create chevron icon for electric flow visualization.
-   * Uses canvas to draw a simple chevron arrow.
-   */
-  private async createChevronIcon(): Promise<void> {
-    if (!this.map) return;
-    if (this.map.hasImage('chevron-electric')) return;
-
-    // Create chevron SVG - clean arrow pointing RIGHT (0° rotation)
-    const size = 32;
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-      <path d="M8,6 L20,16 L8,26" fill="none" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-    </svg>`;
-
-    return new Promise<void>((resolve) => {
-      const img = new Image(size, size);
-      img.onload = () => {
-        if (!this.map) { resolve(); return; }
-        if (this.map.hasImage('chevron-electric')) { resolve(); return; }
-        this.map.addImage('chevron-electric', img, { sdf: true });
-        resolve();
-      };
-      img.onerror = () => {
-        console.warn('[DeckGLMap] Failed to load chevron icon');
-        resolve();
-      };
-      img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
-    });
   }
 
   /** Triangle SDF icon pour les raffineries (▲ actif, ▼ maintenance via icon-rotate). */
@@ -5594,121 +5198,6 @@ export class DeckGLMap {
     });
   }
 
-  /**
-   * Start the chevron animation for interconnection arcs.
-   * Generates point features that move continuously along arc paths.
-   * Uses requestAnimationFrame for smooth 60fps-friendly rendering.
-   */
-  private startInterconnAnimation(): void {
-    if (this.chevronAnimFrame !== null) return;
-    if (!this.map) return;
-
-    let lastUpdate = 0;
-
-    const animate = (timestamp: number) => {
-      if (!this.map) return;
-
-      const cfg = getElectricFlowConfig();
-      const deltaMs = lastUpdate === 0 ? 16 : Math.min(48, timestamp - lastUpdate);
-      lastUpdate = timestamp;
-
-      // Advance animation phase from elapsed time so motion stays smooth and speed-stable.
-      this.chevronPhase = (this.chevronPhase + cfg.chevronSpeed * deltaMs * 0.00045) % 1;
-
-      // Generate chevron point features for each arc
-      const chevronFeatures: GeoJSON.Feature[] = [];
-
-      for (const arc of this.interconnArcs) {
-        const { coords, color, mw } = arc;
-        if (coords.length < 2) continue;
-
-        // Number of chevrons based on arc length and spacing config
-        // More MW = slightly more chevrons
-        const arcLen = coords.length;
-        const baseCount = Math.max(3, Math.floor(arcLen / (cfg.chevronSpacing / 2)));
-        const mwBonus = Math.min(2, Math.floor(mw / 2000));
-        const numChevrons = baseCount + mwBonus;
-
-        // Size based on MW (proportional, with min/max) - increased base size
-        const sizeBase = cfg.chevronSize * (1.0 + Math.min(0.5, mw / 4000));
-
-        for (let i = 0; i < numChevrons; i++) {
-          // Position along arc (0 to 1), offset by animation phase
-          // Arc direction: imports go border→center, exports go center→border
-          // Both move in direction of increasing t (following the arc)
-          const t = (i / numChevrons + this.chevronPhase) % 1;
-
-          // Get point on arc
-          const [lng, lat] = this.interpolateArcPoint(coords, t);
-
-          // Use the projected tangent so the chevron orientation follows the visible curve.
-          const rotation = this.computeArcScreenRotation(coords, t);
-
-          chevronFeatures.push({
-            type: 'Feature',
-            geometry: { type: 'Point', coordinates: [lng, lat] },
-            properties: { color, rotation, size: sizeBase }
-          });
-        }
-      }
-
-      // Update chevron points source
-      try {
-        const src = this.map.getSource(SRC_INTERCONN_CHEVRON_PTS) as maplibregl.GeoJSONSource;
-        src?.setData({ type: 'FeatureCollection', features: chevronFeatures });
-      } catch {
-        // Source may not be ready
-      }
-
-      this.chevronAnimFrame = requestAnimationFrame(animate);
-    };
-
-    this.chevronAnimFrame = requestAnimationFrame(animate);
-  }
-
-  /**
-   * Stop the interconnection arc animation.
-   */
-  private stopInterconnAnimation(): void {
-    if (this.chevronAnimFrame !== null) {
-      cancelAnimationFrame(this.chevronAnimFrame);
-      this.chevronAnimFrame = null;
-    }
-  }
-
-  private interpolateArcPoint(coords: [number, number][], t: number): [number, number] {
-    if (coords.length === 0) return FRANCE_CENTER;
-    if (coords.length === 1) return coords[0] as [number, number];
-
-    const clampedT = Math.max(0, Math.min(1, t));
-    const scaledIndex = clampedT * (coords.length - 1);
-    const idx = Math.min(Math.floor(scaledIndex), coords.length - 2);
-    const frac = scaledIndex - idx;
-    const p1 = coords[idx] as [number, number];
-    const p2 = coords[idx + 1] as [number, number];
-
-    return [
-      p1[0] + frac * (p2[0] - p1[0]),
-      p1[1] + frac * (p2[1] - p1[1])
-    ];
-  }
-
-  private computeArcScreenRotation(coords: [number, number][], t: number): number {
-    if (!this.map || coords.length < 2) return 0;
-
-    const tangentOffset = 1 / Math.max(24, coords.length - 1);
-    const t0 = Math.max(0, t - tangentOffset);
-    const t1 = Math.min(1, t + tangentOffset);
-    if (t0 === t1) return 0;
-
-    const from = this.interpolateArcPoint(coords, t0);
-    const to = this.interpolateArcPoint(coords, t1);
-    const fromPx = this.map.project(from);
-    const toPx = this.map.project(to);
-
-    return (Math.atan2(toPx.y - fromPx.y, toPx.x - fromPx.x) * 180) / Math.PI;
-  }
-
   // ─── Gas Vital Organs Layer ───
 
   async updateGas(state: import('../types').GasNetworkState): Promise<void> {
@@ -5773,9 +5262,7 @@ export class DeckGLMap {
       // === Build PIR flow arcs ===
       // Gas flow: Cyan/turquoise with softer glow, rapid dash animation
       const FRANCE_CENTER_GAS: [number, number] = [2.5, 46.5];
-      const pirMarkerFeatures: GeoJSON.Feature[] = [];
       const pirArcFeatures: GeoJSON.Feature[] = [];
-      this.gasArcs = [];  // Reset stored arcs for animation
       this.gasFlowStats.clear();
 
       const { minLineWidth, maxLineWidth, lineWidthDivisor, glowMultiplier, curvature, steps } = GAS_FLOW_STYLE;
@@ -5799,19 +5286,9 @@ export class DeckGLMap {
         // Gas flow colors: Cyan (import) / Teal (export) - visually distinct from electric blue
         const color = isImport ? GAS_FLOW_STYLE.importColor : GAS_FLOW_STYLE.exportColor;
         const glowColor = isImport ? GAS_FLOW_STYLE.glowImportColor : GAS_FLOW_STYLE.glowExportColor;
-        const sign = isImport ? '+' : '-';
-        const label = `${pir.country}\n${sign}${flowAbs.toFixed(0)} GWh/j`;
-        const radius = Math.min(12, Math.max(5, 5 + flowAbs / 50));
         // Thinner lines than electricity (gas flows in pipelines)
         const lineWidth = Math.min(maxLineWidth, Math.max(minLineWidth, minLineWidth + flowAbs / lineWidthDivisor));
         const glowWidth = lineWidth * glowMultiplier;
-
-        // Marker at border point
-        pirMarkerFeatures.push({
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: pir.coordinates },
-          properties: { color, radius, label, country: pir.country, borderCode: pir.id },
-        });
 
         // Arc from/to France center with gas-specific curvature
         const arcCoords = isImport
@@ -5821,10 +5298,10 @@ export class DeckGLMap {
         pirArcFeatures.push({
           type: 'Feature',
           geometry: { type: 'LineString', coordinates: arcCoords },
-          properties: { color, glowColor, lineWidth, glowWidth, isImport, country: pir.country, borderCode: pir.id },
+          properties: {
+            color, glowColor, lineWidth, glowWidth, isImport, country: pir.country, borderCode: pir.id, flowValue: flowAbs, flowUnit: 'GWh/j',
+          },
         });
-
-        this.gasArcs.push({ coords: arcCoords, color, flowGWhDay: flowAbs });
 
         // Alimentation du tooltip enrichi
         const gasDir = resolveGasFlowDirection(pir.flowGWhDay, pir.country);
@@ -5849,18 +5326,9 @@ export class DeckGLMap {
 
       this.recordEnergyFlows('gasNetwork', gasFlowCount);
 
-      const pirMarkerSrc = this.map.getSource(SRC_GAS_PIR_MARKERS) as maplibregl.GeoJSONSource;
-      pirMarkerSrc?.setData({ type: 'FeatureCollection', features: pirMarkerFeatures });
-
-      const pirArcSrc = this.map.getSource(SRC_GAS_PIR_ARCS) as maplibregl.GeoJSONSource;
-      pirArcSrc?.setData({ type: 'FeatureCollection', features: pirArcFeatures });
-
-      // Start flow animation if we have arcs
-      if (pirArcFeatures.length > 0) {
-        this.startGasPirAnimation();
-      } else {
-        this.stopGasPirAnimation();
-      }
+      this.lastFlowArcs.gaz = pirArcFeatures;
+      this.flowArcsVersion += 1;
+      this.rebuildEnergyFlows();
 
       console.log(`[DeckGLMap/Gas] Updated: ${state.terminals.length} terminals, ${state.storages.length} storages, ${pirArcFeatures.length} PIR flows`);
     } catch (e) {
@@ -5871,65 +5339,6 @@ export class DeckGLMap {
   /** Sans effet depuis la spec 2026-10-16 § 5 : les gazoducs suivent la couche Gaz. Gardé pour MapContainer. */
   setGasPipelineVisible(_show: boolean): void {
     // Rien : les gazoducs s'affichent avec la couche Gaz.
-  }
-
-  /** Animated chevrons along gas PIR arcs (point-based, same technique as electricity). */
-  private startGasPirAnimation(): void {
-    if (this.gasChevronAnimFrame !== null) return;
-    if (!this.map) return;
-
-    let lastUpdate = 0;
-
-    const animate = (timestamp: number) => {
-      if (!this.map) return;
-
-      const deltaMs = lastUpdate === 0 ? 16 : Math.min(48, timestamp - lastUpdate);
-      lastUpdate = timestamp;
-
-      // Slightly faster than electricity (gas flows more rapidly in pipelines)
-      this.gasChevronPhase = (this.gasChevronPhase + GAS_FLOW_STYLE.animationSpeed * deltaMs * 0.00045) % 1;
-
-      const chevronFeatures: GeoJSON.Feature[] = [];
-
-      for (const arc of this.gasArcs) {
-        const { coords, color, flowGWhDay } = arc;
-        if (coords.length < 2) continue;
-
-        const arcLen = coords.length;
-        const baseCount = Math.max(3, Math.floor(arcLen / 8));
-        const numChevrons = baseCount + Math.min(2, Math.floor(flowGWhDay / 100));
-        const sizeBase = 0.8 * (1.0 + Math.min(0.4, flowGWhDay / 500));
-
-        for (let i = 0; i < numChevrons; i++) {
-          const t = (i / numChevrons + this.gasChevronPhase) % 1;
-          const [lng, lat] = this.interpolateArcPoint(coords, t);
-          const rotation = this.computeArcScreenRotation(coords, t);
-          chevronFeatures.push({
-            type: 'Feature',
-            geometry: { type: 'Point', coordinates: [lng, lat] },
-            properties: { color, rotation, size: sizeBase },
-          });
-        }
-      }
-
-      try {
-        const src = this.map.getSource(SRC_GAS_PIR_CHEVRON_PTS) as maplibregl.GeoJSONSource;
-        src?.setData({ type: 'FeatureCollection', features: chevronFeatures });
-      } catch { /* source not ready */ }
-
-      this.gasChevronAnimFrame = requestAnimationFrame(animate);
-    };
-
-    this.gasChevronAnimFrame = requestAnimationFrame(animate);
-  }
-
-  private stopGasPirAnimation(): void {
-    if (this.gasChevronAnimFrame !== null) {
-      cancelAnimationFrame(this.gasChevronAnimFrame);
-      this.gasChevronAnimFrame = null;
-    }
-    const src = this.map?.getSource(SRC_GAS_PIR_CHEVRON_PTS) as maplibregl.GeoJSONSource | undefined;
-    src?.setData({ type: 'FeatureCollection', features: [] });
   }
 
   private startSubseaPulseAnimation(): void {
@@ -6025,10 +5434,7 @@ export class DeckGLMap {
 
     try {
       const FRANCE_CENTER_OIL: [number, number] = [2.5, 46.5];
-      const oilMarkerFeatures: GeoJSON.Feature[] = [];
       const oilArcFeatures: GeoJSON.Feature[] = [];
-      const oilDirectionFeatures: GeoJSON.Feature[] = [];
-      this.oilArcs = [];
 
       const { minLineWidth, maxLineWidth, lineWidthDivisor, glowMultiplier, curvature, steps } = OIL_FLOW_STYLE;
 
@@ -6049,44 +5455,14 @@ export class DeckGLMap {
         const label = flow.country
           ? `${arrow} ${flow.country}\n${sign}${flowAbs.toFixed(0)} kbd`
           : `${arrow} ${flow.name}\n${sign}${flowAbs.toFixed(0)} kbd`;
-        const radius = Math.min(14, Math.max(6, 6 + flowAbs / 30));
         // Thicker lines than gas (viscous flow)
         const lineWidth = Math.min(maxLineWidth, Math.max(minLineWidth, minLineWidth + flowAbs / lineWidthDivisor));
         const glowWidth = lineWidth * glowMultiplier;
-
-        // Marker at source/destination point
-        oilMarkerFeatures.push({
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: flow.coordinates },
-          properties: {
-            color,
-            radius,
-            label,
-            arrow,
-            name: flow.name,
-            country: flow.country || '',
-            isImport,
-            hubName: flow.hubName || '',
-            originSharePct: flow.originSharePct ?? null,
-            originVolumeMt: flow.originVolumeMt ?? null,
-            originReferenceYear: flow.originReferenceYear ?? null,
-            originSourceLabel: flow.originSourceLabel ?? '',
-            originPartialBreakdown: flow.originPartialBreakdown ? 1 : 0,
-            originBreakdown,
-          },
-        });
 
         // Arc from/to French hub with oil-specific curvature
         const arcCoords = isImport
           ? generateArc(flow.coordinates, franceTarget, curvature, steps)
           : generateArc(franceTarget, flow.coordinates, curvature, steps);
-
-        const directionIndex = Math.max(1, Math.min(arcCoords.length - 2, Math.floor(arcCoords.length * 0.68)));
-        const directionCoord = arcCoords[directionIndex] as [number, number];
-        const bearing = computeBearingDegrees(
-          arcCoords[directionIndex - 1] as [number, number],
-          arcCoords[directionIndex + 1] as [number, number]
-        );
 
         oilArcFeatures.push({
           type: 'Feature',
@@ -6107,133 +5483,21 @@ export class DeckGLMap {
             originSourceLabel: flow.originSourceLabel ?? '',
             originPartialBreakdown: flow.originPartialBreakdown ? 1 : 0,
             originBreakdown,
+            flowValue: flowAbs,
+            flowUnit: 'kb/j',
           },
-        });
-
-        oilDirectionFeatures.push({
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: directionCoord },
-          properties: { bearing },
-        });
-
-        // Store arc for chevron animation
-        this.oilArcs.push({
-          coords: arcCoords as [number, number][],
-          color,
-          flowKbd: flowAbs,
-          lineWidth,
-          isImport,
         });
       }
       this.recordEnergyFlows('oilNetwork', oilFlowCount);
 
-      const oilMarkerSrc = this.map.getSource(SRC_OIL_FLOW_MARKERS) as maplibregl.GeoJSONSource;
-      oilMarkerSrc?.setData({ type: 'FeatureCollection', features: oilMarkerFeatures });
-
-      const oilArcSrc = this.map.getSource(SRC_OIL_FLOW_ARCS) as maplibregl.GeoJSONSource;
-      oilArcSrc?.setData({ type: 'FeatureCollection', features: oilArcFeatures });
-
-      const oilDirectionSrc = this.map.getSource(SRC_OIL_FLOW_DIRECTION) as maplibregl.GeoJSONSource;
-      oilDirectionSrc?.setData({ type: 'FeatureCollection', features: oilDirectionFeatures });
-
-      // Start flow animation if we have arcs
-      if (oilArcFeatures.length > 0) {
-        this.startOilFlowAnimation();
-      } else {
-        this.stopOilFlowAnimation();
-      }
+      this.lastFlowArcs.petrole = oilArcFeatures;
+      this.flowArcsVersion += 1;
+      this.rebuildEnergyFlows();
 
       console.log(`[DeckGLMap/Oil] Updated: ${oilArcFeatures.length} oil flow arcs`);
     } catch (e) {
       console.warn('[DeckGLMap/Oil] Update failed:', e);
     }
-  }
-
-  /**
-   * Start the animation for oil flow arcs.
-   * NOTE: Dynamic line-dasharray animation is DISABLED due to MapLibre LineAtlas
-   * saturation issue ("LineAtlas out of space"). Static dash pattern is used.
-   */
-  private startOilFlowAnimation(): void {
-    if (this.oilChevronAnimFrame !== null) return;
-    if (!this.map) return;
-
-    let lastUpdate = 0;
-
-    const animate = (timestamp: number) => {
-      if (!this.map) return;
-
-      const deltaMs = lastUpdate === 0 ? 16 : Math.min(48, timestamp - lastUpdate);
-      lastUpdate = timestamp;
-
-      // Slower than gas — pétrole visqueux
-      this.oilChevronPhase = (this.oilChevronPhase + OIL_FLOW_STYLE.animationSpeed * deltaMs * 0.00045) % 1;
-
-      const chevronFeatures: GeoJSON.Feature[] = [];
-
-      for (const arc of this.oilArcs) {
-        const { coords, color, flowKbd, lineWidth, isImport } = arc;
-        if (coords.length < 2) continue;
-
-        const arcLen = coords.length;
-        // Pour les arcs longs (import intercontinentaux), on multiplie les chevrons
-        // afin qu'il y en ait toujours quelques-uns dans le viewport France.
-        const baseCount = Math.max(8, Math.floor(arcLen / 5));
-        const rawCount = baseCount + Math.min(4, Math.floor(flowKbd / 150));
-        const numChevrons = isImport
-          ? Math.max(4, Math.round(rawCount * 2 / 3))
-          : Math.max(2, Math.round(rawCount * 2 / 9));  // exports : -33% vs import/3
-        // Taille proportionnelle à l'épaisseur du trait : chevron ≈ 3× lineWidth à zoom France
-        // Export plus petits (vers est/Suisse) pour ne pas saturer
-        const sizeBase = isImport ? lineWidth / 7 : lineWidth / 9;
-
-        for (let i = 0; i < numChevrons; i++) {
-          const t = (i / numChevrons + this.oilChevronPhase) % 1;
-          const [lng, lat] = this.interpolateArcPoint(coords, t);
-          const rotation = this.computeArcScreenRotation(coords, t);
-          chevronFeatures.push({
-            type: 'Feature',
-            geometry: { type: 'Point', coordinates: [lng, lat] },
-            properties: { color, rotation, size: sizeBase },
-          });
-        }
-      }
-
-      try {
-        const src = this.map.getSource(SRC_OIL_FLOW_CHEVRON_PTS) as maplibregl.GeoJSONSource;
-        src?.setData({ type: 'FeatureCollection', features: chevronFeatures });
-      } catch { /* source not ready */ }
-
-      this.oilChevronAnimFrame = requestAnimationFrame(animate);
-    };
-
-    this.oilChevronAnimFrame = requestAnimationFrame(animate);
-  }
-
-  /** Highlight the hovered oil flow arc, desaturate others. */
-  private updateOilArcHighlight(): void {
-    if (!this.map) return;
-    const name = this.oilHoveredFlowName;
-    if (name) {
-      this.map.setPaintProperty(LYR_OIL_FLOW_ARC, 'line-opacity',
-        ['case', ['==', ['get', 'name'], name], 1.0, 0.18]);
-      this.map.setPaintProperty(LYR_OIL_FLOW_ARC_GLOW, 'line-opacity',
-        ['case', ['==', ['get', 'name'], name], 0.55, 0.04]);
-      this.map.setPaintProperty(LYR_OIL_FLOW_CHEVRONS, 'icon-opacity', 0.25);
-    } else {
-      this.map.setPaintProperty(LYR_OIL_FLOW_ARC, 'line-opacity', OIL_FLOW_STYLE.lineOpacity);
-      this.map.setPaintProperty(LYR_OIL_FLOW_ARC_GLOW, 'line-opacity', OIL_FLOW_STYLE.glowOpacity);
-      this.map.setPaintProperty(LYR_OIL_FLOW_CHEVRONS, 'icon-opacity', 0.90);
-    }
-  }
-
-  private stopOilFlowAnimation(): void {
-    if (this.oilChevronAnimFrame !== null) {
-      cancelAnimationFrame(this.oilChevronAnimFrame);
-      this.oilChevronAnimFrame = null;
-    }
-    const src = this.map?.getSource(SRC_OIL_FLOW_CHEVRON_PTS) as maplibregl.GeoJSONSource | undefined;
-    src?.setData({ type: 'FeatureCollection', features: [] });
   }
 
   /**
@@ -8738,12 +8002,12 @@ export class DeckGLMap {
     this.setVis(LYR_GLOW, vis(layers.alerts && layers.news)); // Glow only if both alerts AND news
     this.setVis(LYR_POWER_REGION_FILL, vis(layers.powerGrid));
     this.setVis(LYR_POWER_REGION_LINE, vis(layers.powerGrid));
-    this.setVis(LYR_INTERCONN_ARC, vis(layers.powerGrid));
-    this.setVis(LYR_INTERCONN_ARC_GLOW, vis(layers.powerGrid));
-    this.setVis(LYR_INTERCONN_HITAREA, vis(layers.powerGrid));
-    this.setVis(LYR_INTERCONN_CHEVRONS, vis(layers.powerGrid));
-    this.setVis(LYR_INTERCONN_LINE, vis(layers.powerGrid));
-    this.setVis(LYR_INTERCONN_LABEL, vis(layers.powerGrid));
+    // Flèches d'échange : visibles dès qu'une couche à flux est allumée ; leurs données ne gardent que ces couches (rebuildEnergyFlows).
+    const flowsVis = vis(layers.powerGrid || layers.gasNetwork || layers.oilNetwork);
+    for (const id of [LYR_ENERGY_FLOW_CASE, LYR_ENERGY_FLOW_LINES, LYR_ENERGY_FLOW_ANIM, LYR_ENERGY_FLOW_HEADS, LYR_ENERGY_FLOW_LABELS]) this.setVis(id, flowsVis);
+    this.setVis(LYR_ENERGY_CHOKE, vis(layers.oilNetwork));
+    this.setVis(LYR_ENERGY_CHOKE_LABEL, vis(layers.oilNetwork));
+    this.rebuildEnergyFlows();
     // Environnement (spec 2026-10-04 § 2) : couches de deckgl/environment-map.ts, par couche.
     for (const id of ENV_LAYER_KEYS.environmental) this.setVis(id, vis(envLayerOn(layers, 'environmental')));
     // Santé (spec 2026-10-03 § 3) : un jeu de couches par panneau.
@@ -8803,11 +8067,6 @@ export class DeckGLMap {
     this.setVis(LYR_GAS_TERMINALS, gasVis);
     this.setVis(LYR_GAS_STORAGES, gasVis);
     this.setVis(LYR_GAS_STORAGES_LABEL, gasVis);
-    this.setVis(LYR_GAS_PIR_ARC_GLOW, gasVis);
-    this.setVis(LYR_GAS_PIR_ARC, gasVis);
-    this.setVis(LYR_GAS_PIR_CHEVRONS, gasVis);
-    this.setVis(LYR_GAS_PIR_MARKER, gasVis);
-    this.setVis(LYR_GAS_PIR_LABEL, gasVis);
     // Biomethane sites: visible when gasNetwork is active (always shown alongside gas infra)
     const biomVis = vis(layers.gasNetwork ?? false);
     this.setVis(LYR_BIOMETHANE_CLUSTERS, biomVis);
@@ -8821,13 +8080,6 @@ export class DeckGLMap {
     this.setVis(LYR_OIL_DEPOTS, oilVis);
     this.setVis(LYR_OIL_DEPOTS_LABEL, oilVis);
     this.setVis(LYR_OIL_PIPELINES_HIT, oilVis);
-    this.setVis(LYR_OIL_FLOW_ARC_HIT, oilVis);
-    this.setVis(LYR_OIL_FLOW_MARKER_HIT, oilVis);
-    this.setVis(LYR_OIL_FLOW_ARC_GLOW, oilVis);
-    this.setVis(LYR_OIL_FLOW_ARC, oilVis);
-    this.setVis(LYR_OIL_FLOW_CHEVRONS, oilVis);
-    this.setVis(LYR_OIL_FLOW_MARKER, oilVis);
-    this.setVis(LYR_OIL_FLOW_LABEL, oilVis);
     this.setVis(LYR_FUEL_TENSION_FILL, oilVis);
     this.setVis(LYR_FUEL_TENSION_LINE, oilVis);
     this.setVis(LYR_TRAFFIC, vis(layers.trafficRoad));
@@ -8989,10 +8241,8 @@ export class DeckGLMap {
     this.trafficHoverPopup?.remove();
     this.trafficJamPopup?.remove();
 
-    // Cleanup interconnection animation
-    this.stopInterconnAnimation();
-    this.stopGasPirAnimation();
-    this.stopOilFlowAnimation();
+    // Animation des flèches d'échange
+    this.stopEnergyFlowAnimation();
     this.stopSubseaPulseAnimation();
 
     // Cleanup civil air traffic tween animation
