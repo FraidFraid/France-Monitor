@@ -60,6 +60,33 @@ export const ENERGY_SECTOR_LABEL: Readonly<Record<EnergySector, string>> = {
   nucleaire: 'Nucléaire', electricite: 'Électricité', gaz: 'Gaz', petrole: 'Pétrole', hydraulique: 'Hydraulique', eolien: 'Éolien',
 };
 
+/** Teinte de chaque filière sur la carte (spec 2026-10-16) : disque coloré, picto blanc ou foncé. */
+export const ENERGY_SECTOR_HEX: Readonly<Record<EnergySector, string>> = {
+  nucleaire: '#8b5cf6', hydraulique: '#2f80ff', eolien: '#14c8d8', gaz: '#e64bb4', petrole: '#8fa3bf', electricite: '#eef2f7',
+};
+
+/** Disques clairs : le picto y est foncé pour rester lisible. */
+export const ENERGY_SECTOR_GLYPH_DARK: ReadonlySet<EnergySector> = new Set<EnergySector>(['electricite', 'petrole', 'eolien']);
+
+/** Disque d'un état anormal : l'état prime sur la teinte de la filière. */
+export const ENERGY_DISC_STATE_HEX: Readonly<Record<'arret' | 'tension' | 'reduit' | 'maintenance', string>> = {
+  arret: '#ff3b30', tension: '#ff9500', reduit: '#ffcc00', maintenance: '#5c5f6b',
+};
+
+export type EnergyFlowKind = 'elec' | 'gaz' | 'petrole';
+
+/** Échanges avec l'étranger : une couleur par filière et par sens. */
+export const ENERGY_FLOW_COLORS: Readonly<Record<EnergyFlowKind, { export: string; import: string }>> = {
+  elec: { export: '#2ee59d', import: '#e9f542' },
+  gaz: { export: '#4dc9ff', import: '#ff8a65' },
+  petrole: { export: '#e2e8f0', import: '#e3c58f' },
+};
+
+export const ENERGY_FLOW_KIND_LABEL: Readonly<Record<EnergyFlowKind, string>> = { elec: 'électricité', gaz: 'gaz', petrole: 'pétrole' };
+
+/** Détroits et points de passage obligés du pétrole. */
+export const ENERGY_CHOKE_HEX = '#e3c58f';
+
 /** Réseaux (gazoducs, oléoducs, lignes HTA) : inventaire, gris neutre. */
 export const ENERGY_NETWORK_HEX = '#8e8e93';
 /** Flux d'échange avec l'étranger : blanc cassé, le sens est porté par les chevrons. */
