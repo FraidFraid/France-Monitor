@@ -87,8 +87,6 @@ export const ENERGY_FLOW_KIND_LABEL: Readonly<Record<EnergyFlowKind, string>> = 
 /** Détroits et points de passage obligés du pétrole. */
 export const ENERGY_CHOKE_HEX = '#e3c58f';
 
-/** Réseaux (gazoducs, oléoducs, lignes HTA) : inventaire, gris neutre. */
-export const ENERGY_NETWORK_HEX = '#8e8e93';
 /** Flux d'échange avec l'étranger : blanc cassé, le sens est porté par les chevrons. */
 export const ENERGY_FLOW_HEX = '#e5e5ea';
 export const ENERGY_FLOW_GLOW_HEX = '#8e8e93';

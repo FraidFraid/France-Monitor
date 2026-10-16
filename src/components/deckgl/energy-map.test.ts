@@ -66,22 +66,22 @@ describe('modèle de légende', () => {
     ['gasNetwork', [e('g1', 'tension', 'gaz'), e('g2', 'nonSuivi', 'gaz')]],
     ['windMonitor', [e('w1', 'nonSuivi', 'eolien')]],
   ]);
-  it('ne compte que les couches allumées, pire état par filière en alerte', () => {
+  it('ne compte que les couches allumées ; filières présentes dans l’ordre de la légende', () => {
     const m = buildEnergyKeyModel({
       layers: { nuclearFleet: true, gasNetwork: true, windMonitor: false },
       entries, flows: new Map(), fuelTension: [], hiddenStates: new Set(),
     });
     expect(m.visible).toBe(true);
     expect(m.counts).toEqual({ arret: 1, tension: 1, reduit: 0, maintenance: 0, normal: 2, nonSuivi: 1 });
-    expect(m.alertSectors).toEqual([['nucleaire', 'arret'], ['gaz', 'tension']]);
-    expect(m.shapes).toEqual({ reactor: true, refinery: false, storage: true, hydro: false });
-    expect(m.windClusters).toBe(false);
+    expect(m.sectors).toEqual(['nucleaire', 'gaz']);
+    expect(m.clusters).toBe(false);
+    expect(m.inventory).toEqual({ biomethane: true, depots: false });
   });
   it('aucune couche énergie allumée : rien à montrer', () => {
     const m = buildEnergyKeyModel({ layers: {}, entries, flows: new Map(), fuelTension: [], hiddenStates: new Set() });
     expect(m.visible).toBe(false);
   });
-  it('flux et tension carburants additionnés sur les couches allumées', () => {
+  it('flux par filière des couches allumées, détroits si le pétrole est importé, tension carburants', () => {
     const m = buildEnergyKeyModel({
       layers: { powerGrid: true, oilNetwork: true, gasNetwork: false },
       entries: new Map(),
@@ -91,7 +91,8 @@ describe('modèle de légende', () => {
       fuelTension: ['rouge', 'orange', 'orange', 'vert'],
       hiddenStates: new Set(),
     });
-    expect(m.flows).toEqual({ exports: 4, imports: 5 });
+    expect(m.flowKinds).toEqual([{ kind: 'elec', exports: 4, imports: 2 }, { kind: 'petrole', exports: 0, imports: 3 }]);
+    expect(m.chokes).toBe(true);
     expect(m.fuelTension).toEqual({ rouge: 1, orange: 2, jaune: 0 });
     expect(m.regions).toBe(true);
     expect(m.networks).toEqual({ gas: false, oil: true, drom: false });

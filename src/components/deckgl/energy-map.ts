@@ -10,7 +10,7 @@ import type { IconName } from '../shared/icons.ts';
 import type { VigilanceLevel } from '../../services/vigilance.ts';
 import type { HydraulicTrend } from '../../types/index.ts';
 import {
-  ENERGY_DISC_STATE_HEX, ENERGY_SECTOR_HEX, ENERGY_SECTOR_ICON, ENERGY_STATE_HEX, ENERGY_STATE_RANK, ENERGY_STATES, gasStorageState, hydroState, isEnergyAlert,
+  ENERGY_DISC_STATE_HEX, ENERGY_SECTOR_HEX, ENERGY_SECTOR_ICON, type EnergyFlowKind, ENERGY_STATE_HEX, ENERGY_STATES, gasStorageState, hydroState,
   type EnergySector, type EnergyState,
 } from '../../services/energy-state.ts';
 
@@ -197,34 +197,37 @@ export interface EnergyKeyModel {
   visible: boolean;
   counts: Record<EnergyState, number>;
   hiddenStates: ReadonlySet<EnergyState>;
-  /** Pire état par filière, parmi les alertes, du plus grave au moins grave. */
-  alertSectors: ReadonlyArray<readonly [EnergySector, EnergyState]>;
-  shapes: { reactor: boolean; refinery: boolean; storage: boolean; hydro: boolean };
-  windClusters: boolean;
+  /** Filières présentes dans les couches allumées, dans l'ordre de la légende. */
+  sectors: readonly EnergySector[];
+  /** Barrages ou éoliennes groupés à petite échelle. */
+  clusters: boolean;
   networks: { gas: boolean; oil: boolean; drom: boolean };
-  flows: EnergyFlowCount;
+  /** Échanges par filière des couches allumées. */
+  flowKinds: ReadonlyArray<{ kind: EnergyFlowKind; exports: number; imports: number }>;
+  /** Détroits dessinés : pétrole allumé et importé. */
+  chokes: boolean;
+  inventory: { biomethane: boolean; depots: boolean };
   regions: boolean;
   metro: boolean;
   fuelTension: { rouge: number; orange: number; jaune: number } | null;
 }
 
+const SECTOR_ORDER: readonly EnergySector[] = ['nucleaire', 'hydraulique', 'eolien', 'gaz', 'petrole', 'electricite'];
+const FLOW_LAYERS: ReadonlyArray<readonly [EnergyLayerKey, EnergyFlowKind]> = [['powerGrid', 'elec'], ['gasNetwork', 'gaz'], ['oilNetwork', 'petrole']];
+
 export function buildEnergyKeyModel(input: EnergyKeyInput): EnergyKeyModel {
   const on = (k: EnergyLayerKey): boolean => input.layers[k] === true;
   const counts: Record<EnergyState, number> = { arret: 0, tension: 0, reduit: 0, maintenance: 0, normal: 0, nonSuivi: 0 };
-  const worst = new Map<EnergySector, EnergyState>();
-  const flows: EnergyFlowCount = { exports: 0, imports: 0 };
+  const present = new Set<EnergySector>();
   for (const k of ENERGY_LAYER_KEYS) {
     if (!on(k)) continue;
     for (const x of input.entries.get(k) ?? []) {
       counts[x.state] += 1;
-      if (!isEnergyAlert(x.state)) continue;
-      const prev = worst.get(x.sector);
-      if (prev === undefined || ENERGY_STATE_RANK[x.state] > ENERGY_STATE_RANK[prev]) worst.set(x.sector, x.state);
+      present.add(x.sector);
     }
-    const f = input.flows.get(k);
-    if (f) { flows.exports += f.exports; flows.imports += f.imports; }
   }
-  const alertSectors = [...worst].sort((a, b) => ENERGY_STATE_RANK[b[1]] - ENERGY_STATE_RANK[a[1]]);
+  const flowKinds = FLOW_LAYERS.filter(([k]) => on(k)).map(([k, kind]) => ({ kind, exports: input.flows.get(k)?.exports ?? 0, imports: input.flows.get(k)?.imports ?? 0 }))
+    .filter((f) => f.exports + f.imports > 0);
   const fuel = on('oilNetwork') && input.fuelTension.length > 0
     ? {
         rouge: input.fuelTension.filter((l) => l === 'rouge').length,
@@ -236,11 +239,12 @@ export function buildEnergyKeyModel(input: EnergyKeyInput): EnergyKeyModel {
     visible: ENERGY_LAYER_KEYS.some(on),
     counts,
     hiddenStates: input.hiddenStates,
-    alertSectors,
-    shapes: { reactor: on('nuclearFleet') || on('outagesElec'), refinery: on('oilNetwork'), storage: on('gasNetwork'), hydro: on('hydroBackbone') },
-    windClusters: on('windMonitor'),
+    sectors: SECTOR_ORDER.filter((x) => present.has(x)),
+    clusters: on('windMonitor') || on('hydroBackbone'),
     networks: { gas: on('gasNetwork'), oil: on('oilNetwork'), drom: on('dromEnergy') },
-    flows,
+    flowKinds,
+    chokes: on('oilNetwork') && (input.flows.get('oilNetwork')?.imports ?? 0) > 0,
+    inventory: { biomethane: on('gasNetwork'), depots: on('oilNetwork') },
     regions: on('powerGrid'),
     metro: on('metroLoad'),
     fuelTension: fuel,

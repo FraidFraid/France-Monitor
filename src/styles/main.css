@@ -8354,6 +8354,7 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 .mk-key { margin: 4px 0 2px; }
 .mk-icons { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; font-size: 12.5px; }
 .mk-icons span { display: flex; align-items: center; gap: 7px; white-space: nowrap; }
+.mk-dots { display: inline-flex; gap: 1px; align-items: center; }
 .mk-pic { display: inline-flex; align-items: center; justify-content: center; flex: none; width: calc(var(--r) * 2); height: calc(var(--r) * 2); border-radius: 50%; background: var(--lvl); color: #fff; }
 .map-key__layers .legend-card { min-width: 0; margin-top: 10px; padding: 10px 0 0; border: 0; border-top: 1px solid rgba(255, 255, 255, 0.1); border-radius: 0; background: none; }
 .map-key__layers .legend-card h4 { font-size: 12.5px; font-weight: 600; text-transform: none; letter-spacing: 0; }

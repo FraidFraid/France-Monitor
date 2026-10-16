@@ -101,7 +101,8 @@ describe('DeckGLMap : couches Trafics réécrites', () => {
     expect(deck).toContain('activeLayers = [...TRAFFIC_LAYER_KEYS.trafficRail, LYR_TRAIN_ROUTE, LYR_TRAIN_STATIONS];');
     expect(deck).toContain('activeLayers = [...TRAFFIC_LAYER_KEYS.trafficMaritime];');
     // Contours colorés (anneau des signalements, aéroports, mouillages, urgences, arrêts) atténués avec leur couche.
-    expect(deck).toContain('for (const layerId of TRAFFIC_STROKE_DIM_LAYERS) {');
+    // Les contours des cercles Énergie (spec 2026-10-16 § 7) suivent la même boucle.
+    expect(deck).toContain('for (const layerId of [...TRAFFIC_STROKE_DIM_LAYERS, ...ENERGY_FOCUS_ALL]) {');
     expect(deck).toContain("this.originalOpacities.set(key, { prop: 'circle-stroke-opacity', orig: this.map.getPaintProperty(layerId, 'circle-stroke-opacity') ?? 1 });");
   });
 });
