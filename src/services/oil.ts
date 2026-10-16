@@ -59,7 +59,14 @@ const CACHE_TTL = 30 * 60_000;
 const OIL_PROXY_ENDPOINT = '/api/oil-proxy';
 const FUEL_PRICE_SERIES_ENDPOINT = '/api/fuel-price-series';
 
-const SDES_PETROLE_URL = 'https://www.statistiques.developpement-durable.gouv.fr/edition-numerique/chiffres-cles-energie/fr/12-petrole';
+/**
+ * Chapitre pétrole des Chiffres clés de l'énergie (SDES). Depuis l'édition 2026 (30/09/2026), le chapitre est servi en
+ * `12-petrole.php` ; l'ancienne adresse `fr/12-petrole` renvoie la page d'accueil (aucun chiffre). Essayées dans l'ordre.
+ */
+export const SDES_PETROLE_URLS: readonly string[] = [
+  'https://www.statistiques.developpement-durable.gouv.fr/edition-numerique/chiffres-cles-energie/12-petrole.php',
+  'https://www.statistiques.developpement-durable.gouv.fr/edition-numerique/chiffres-cles-energie/fr/12-petrole',
+];
 const INSEE_PETROLE_URL = 'https://www.insee.fr/fr/statistiques/2119697';
 const UFIP_COMMUNIQUES_URL = 'https://www.energiesetmobilites.fr/presse/communiques';
 const UFIP_SITE_ORIGIN = 'https://www.energiesetmobilites.fr';
@@ -74,20 +81,24 @@ let cache: OilCache | null = null;
 // ─── Données de référence SDES/CPDP (dernier millésime consolidé) ────────────
 // Utilisées comme fallback quand le scraping des pages vivantes échoue.
 const FALLBACK_ANNUAL_STATS: AnnualOilStats = {
-  year: 2024,
-  crudeImportMtep: 45.6,
-  refinedImportMtep: 38.5,
-  refinedExportMtep: 16.0,
-  refinedConsumptionMtep: 60.9,
-  reserveMtep: 7.6,
-  sourceLabel: 'SDES · Chiffres clés de l’énergie 2025 (données 2024)',
+  year: 2025,
+  crudeImportMtep: 46.9,
+  refinedImportMtep: 34.5,
+  refinedExportMtep: 17.5,
+  refinedConsumptionMtep: 60,
+  reserveMtep: 5.0,
+  sourceLabel: 'SDES · Chiffres clés de l’énergie 2026 (données 2025)',
 };
 
+// Insee, provenance du brut importé, 2025 provisoire (paru le 21/05/2026).
+const INSEE_2025 = 'Insee / SDES · Provenance du pétrole brut importé en France (2025 provisoire)';
 const FALLBACK_ORIGINS: OilOriginShare[] = [
-  { label: 'Amérique du Nord',      sharePct: 23.0, volumeMt: 10.5, referenceYear: 2024, sourceLabel: 'SDES · provenance du brut importé (2024)', partialBreakdown: false, breakdown: [] },
-  { label: 'Afrique subsaharienne', sharePct: 21.0, volumeMt: 9.6, referenceYear: 2024, sourceLabel: 'SDES · provenance du brut importé (2024)', partialBreakdown: false, breakdown: [] },
-  { label: 'Afrique du Nord',       sharePct: 17.0, volumeMt: 7.8, referenceYear: 2024, sourceLabel: 'SDES · provenance du brut importé (2024)', partialBreakdown: false, breakdown: [] },
-  { label: 'Autres origines SDES',  sharePct: 39.0, volumeMt: 17.8, referenceYear: 2024, sourceLabel: 'SDES · provenance du brut importé (2024)', partialBreakdown: true, breakdown: [] },
+  { label: 'Afrique', sharePct: 36.6, volumeMt: 16.8, referenceYear: 2025, sourceLabel: INSEE_2025, partialBreakdown: true, breakdown: [] },
+  { label: 'Amérique du Nord', sharePct: 23.1, volumeMt: 10.6, referenceYear: 2025, sourceLabel: INSEE_2025, partialBreakdown: true, breakdown: [] },
+  { label: 'URSS/ex-URSS', sharePct: 15.6, volumeMt: 7.2, referenceYear: 2025, sourceLabel: INSEE_2025, partialBreakdown: true, breakdown: [] },
+  { label: 'Mer du Nord', sharePct: 10.2, volumeMt: 4.7, referenceYear: 2025, sourceLabel: INSEE_2025, partialBreakdown: true, breakdown: [] },
+  { label: 'Moyen-Orient', sharePct: 10.1, volumeMt: 4.6, referenceYear: 2025, sourceLabel: INSEE_2025, partialBreakdown: true, breakdown: [] },
+  { label: 'Autres', sharePct: 4.4, volumeMt: 2.0, referenceYear: 2025, sourceLabel: INSEE_2025, partialBreakdown: false, breakdown: [] },
 ];
 
 const OIL_FRESHNESS_TEXT = {
@@ -771,47 +782,66 @@ function computeProductStocks(rows: MonthlyOilConsumptionRow[], totalStocksTons:
   ];
 }
 
-export async function fetchAnnualOilStatsFromSdes(): Promise<AnnualOilStats> {
-  const html = await fetchProxyText(SDES_PETROLE_URL);
+/** Nombre français : décimale facultative (« 60 Mtep » comme « 46,9 Mtep »). */
+const MTEP = '([0-9]+(?:,[0-9]+)?)\\s*Mtep';
 
+/** Chiffres annuels du chapitre pétrole du SDES. Les espaces de la page sont souvent insécables : `\\s`, jamais une espace. */
+export function parseSdesOilStats(html: string): AnnualOilStats {
   const parsedYear = Number.parseInt(
-    html.match(/Importations de pétrole brut[^]*?TOTAL\s*:\s*[0-9]+,[0-9]+\s*Mtep en (\d{4})/i)?.[1] ?? '',
+    html.match(new RegExp(`Importations de pétrole brut[^]*?TOTAL\\s*:\\s*[0-9]+(?:,[0-9]+)?\\s*Mtep\\s+en\\s+(\\d{4})`, 'i'))?.[1] ?? '',
     10,
   );
   const year = Number.isFinite(parsedYear) ? parsedYear : new Date().getFullYear() - 1;
 
   return {
     year,
-    crudeImportMtep: extractFirstNumber(html, /Importations de pétrole brut[^]*?TOTAL\s*:\s*([0-9]+,[0-9]+)\s*Mtep/i, 'SDES crude imports'),
-    reserveMtep: extractFirstNumber(html, /réserves de pétrole brut\s*\(([0-9]+,[0-9]+)\s*Mtep\)/i, 'SDES reserves'),
+    crudeImportMtep: extractFirstNumber(html, new RegExp(`Importations de pétrole brut[^]*?TOTAL\\s*:\\s*${MTEP}`, 'i'), 'SDES crude imports'),
+    reserveMtep: extractFirstNumber(html, new RegExp(`réserves de pétrole brut\\s*\\(${MTEP}\\)`, 'i'), 'SDES reserves'),
     refinedImportMtep: extractFirstNumber(
       html,
-      new RegExp(`importations de produits raffinés[^]*?contre\\s*([0-9]+,[0-9]+)\\s*Mtep en ${year}[^]*?augmentation des exportations`, 'i'),
+      new RegExp(`importations de produits raffinés[^]*?contre\\s*${MTEP}\\s+en\\s+${year}[^]*?augmentation des exportations`, 'i'),
       'SDES refined imports',
     ),
     refinedExportMtep: extractFirstNumber(
       html,
-      new RegExp(`exportations de ces produits[^]*?contre\\s*([0-9]+,[0-9]+)\\s*Mtep en ${year}`, 'i'),
+      new RegExp(`exportations de ces produits[^]*?contre\\s*${MTEP}\\s+en\\s+${year}`, 'i'),
       'SDES refined exports',
     ),
-    refinedConsumptionMtep: extractFirstNumber(html, /Consommation de produits raffinés[^]*?TOTAL\s*:\s*([0-9]+,[0-9]+)\s*Mtep/i, 'SDES refined consumption'),
-    sourceLabel: `SDES · Chiffres clés de l’énergie (${year})`,
+    refinedConsumptionMtep: extractFirstNumber(html, new RegExp(`Consommation de produits raffinés[^]*?TOTAL\\s*:\\s*${MTEP}`, 'i'), 'SDES refined consumption'),
+    sourceLabel: `SDES · Chiffres clés de l’énergie (données ${year})`,
   };
 }
 
+export async function fetchAnnualOilStatsFromSdes(): Promise<AnnualOilStats> {
+  let lastError: unknown = null;
+  for (const url of SDES_PETROLE_URLS) {
+    try {
+      return parseSdesOilStats(await fetchProxyText(url));
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error('SDES oil chapter unavailable');
+}
+
 export async function fetchOilOriginsFromInsee(): Promise<OilOriginShare[]> {
-  const html = await fetchProxyText(INSEE_PETROLE_URL);
+  return parseInseeOilOrigins(await fetchProxyText(INSEE_PETROLE_URL));
+}
+
+/**
+ * Provenance du brut importé (Insee). Les volumes lus sont ceux de l'avant-dernière colonne (dernière année, en Mt), la part
+ * celle de la dernière (en %) : l'année de référence est celle de la colonne lue, pas la première du tableau.
+ */
+export function parseInseeOilOrigins(html: string): OilOriginShare[] {
   const document = parseHtmlDocument(html);
   const rows = Array.from(document.querySelectorAll('#produit-tableau-figure1 tbody tr'));
   const headerCells = Array.from(document.querySelectorAll('#produit-tableau-figure1 thead th'));
-  const referenceYear = Number.parseInt(
-    headerCells
-      .map((cell) => cell.textContent ?? '')
-      .find((text) => /\d{4}\s*\(p\)/i.test(text) || /\d{4}/.test(text))
-      ?.match(/(\d{4})/)?.[1] ?? '',
-    10,
-  );
-  const sourceLabel = 'Insee / SDES · Provenance du pétrole brut importé en France';
+  // En-têtes : Provenance, années…, dernière année en %. La colonne des volumes lus (5e valeur) est l'avant-dernière.
+  const yearHeaders = headerCells.map((cell) => cell.textContent?.replace(/\s+/g, ' ').trim() ?? '').filter((text) => /\d{4}/.test(text) && !/%/.test(text));
+  const readHeader = yearHeaders[yearHeaders.length - 1] ?? '';
+  const referenceYear = Number.parseInt(readHeader.match(/(\d{4})/)?.[1] ?? '', 10);
+  const provisional = /\(p\)/i.test(readHeader);
+  const sourceLabel = `Insee / SDES · Provenance du pétrole brut importé en France${Number.isFinite(referenceYear) ? ` (${referenceYear}${provisional ? ' provisoire' : ''})` : ''}`;
 
   const origins: OilOriginShare[] = [];
   let currentOrigin: OilOriginShare | null = null;
@@ -1142,7 +1172,7 @@ export async function fetchOilDashboard(): Promise<OilDashboard> {
 
   if (!annualResult.data) {
     if (cache) return cache.data;
-    console.warn('[Oil] SDES unavailable : using latest consolidated SDES fallback (2024)');
+    console.warn('[Oil] SDES unavailable : using latest consolidated SDES fallback (2025)');
     annualResult.data = FALLBACK_ANNUAL_STATS;
     annualResult.status = 'stale';
   }
