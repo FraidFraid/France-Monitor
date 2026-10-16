@@ -114,6 +114,7 @@ import {
 } from './deckgl/energy-map.ts';
 import { buildFlowFeatures, flowArcFromFeature, kmBetween, type FlowArc } from './deckgl/energy-flows.ts';
 import { ENERGY_FOCUS_LAYERS, isEnergyLayerKey } from './deckgl/energy-focus.ts';
+import { EnergyPopupController } from './deckgl/energy-popup.ts';
 import {
   effectiveOpacity, ENERGY_HOVER_LAYER_IDS, energyCardFor, pickEnergyHover, tooltipCardHtml, type EnergyHoverContext, type EnergyHoverKind, type HoverCandidate,
 } from './deckgl/energy-hover.ts';
@@ -506,15 +507,18 @@ export class DeckGLMap {
   private _latestEolienLive: EolienLive | null = null;
   private _mairesPolitiqueData: Array<{c:string;lat:number;lon:number;n:string;nom:string}> | null = null;
   /** Bulle unique de l'énergie ; épinglée = fiche détaillée ouverte par un clic (spec 2026-10-16 § 6). */
-  private energyPopup: maplibregl.Popup | null = null;
-  private energyPinned = false;
-  private energyPopupPinnedMode: boolean | null = null;
+  private readonly energyPopup = new EnergyPopupController(
+    (pinned) => new maplibregl.Popup({
+      closeButton: pinned, closeOnClick: false, maxWidth: pinned ? '320px' : '280px', className: 'dark-popup', offset: 12,
+    }),
+    (popup) => { if (this.map && popup instanceof maplibregl.Popup) popup.addTo(this.map); },
+  );
   private energyHoverRaf = 0;
   private energyCursor = false;
   /** Dernières unités EDF placées (out-power-src), pour la bulle des sites nucléaires. */
   private lastPowerUnits: GeoJSON.Feature[] = [];
   private readonly onEnergyKeydown = (e: KeyboardEvent): void => {
-    if (e.key === 'Escape' && this.energyPinned) this.unpinEnergyPopup();
+    if (e.key === 'Escape' && this.energyPopup.pinned) this.energyPopup.unpin();
   };
   private _lastHoveredFuelDeptId: string | null = null;
   private _previewedWeatherDeptId: number | null = null;
@@ -3103,11 +3107,11 @@ export class DeckGLMap {
     const map = this.map;
     if (!map) return;
     map.on('mousemove', (e) => {
-      if (this.energyPinned) return;
+      if (this.energyPopup.pinned) return;
       cancelAnimationFrame(this.energyHoverRaf);
       this.energyHoverRaf = requestAnimationFrame(() => {
         // Un clic a pu épingler une fiche entre le mouvement et cette image : elle reste.
-        if (this.energyPinned) return;
+        if (this.energyPopup.pinned) return;
         const hit = pickEnergyHover(this.energyCandidatesAt(e.point));
         this.setFuelTensionHover(hit?.kind === 'fuelTension' ? String(hit.properties.code ?? '') : null);
         const card = hit ? energyCardFor(hit, this.energyContextFor(hit)) : null;
@@ -3117,24 +3121,23 @@ export class DeckGLMap {
         }
         map.getCanvas().style.cursor = 'pointer';
         this.energyCursor = true;
-        this.showEnergyPopup(e.lngLat, tooltipCardHtml(card), false);
+        this.energyPopup.show([e.lngLat.lng, e.lngLat.lat], tooltipCardHtml(card));
       });
     });
     map.on('click', (e) => {
       cancelAnimationFrame(this.energyHoverRaf);
       const hit = pickEnergyHover(this.energyCandidatesAt(e.point));
       if (!hit) {
-        if (this.energyPinned) this.unpinEnergyPopup();
+        if (this.energyPopup.pinned) this.energyPopup.unpin();
         return;
       }
       const card = energyCardFor(hit, this.energyContextFor(hit));
       const html = this.energyDetailHtml(hit) ?? (card ? tooltipCardHtml(card) : null);
       if (!html) return;
-      this.energyPinned = true;
-      this.showEnergyPopup(e.lngLat, html, true);
+      this.energyPopup.pin([e.lngLat.lng, e.lngLat.lat], html);
     });
     map.getCanvas().addEventListener('mouseleave', () => {
-      if (!this.energyPinned) this.hideEnergyPopup();
+      if (!this.energyPopup.pinned) this.hideEnergyPopup();
     });
     document.addEventListener('keydown', this.onEnergyKeydown);
   }
@@ -3222,46 +3225,12 @@ export class DeckGLMap {
     }
   }
 
-  /** Une seule fenêtre ; recréée seulement quand on passe de la bulle à la fiche épinglée (bouton de fermeture). */
-  private showEnergyPopup(lngLat: maplibregl.LngLatLike, html: string, pinned: boolean): void {
-    const map = this.map;
-    if (!map) return;
-    if (this.energyPopup === null || this.energyPopupPinnedMode !== pinned) {
-      // Détachée avant d'être retirée : son évènement « close » ne doit pas désépingler la nouvelle fiche.
-      const old = this.energyPopup;
-      this.energyPopup = null;
-      old?.remove();
-      const popup = new maplibregl.Popup({
-        closeButton: pinned, closeOnClick: false, maxWidth: pinned ? '320px' : '280px', className: 'dark-popup', offset: 12,
-      });
-      popup.on('close', () => {
-        if (this.energyPopup === popup) {
-          this.energyPopup = null;
-          this.energyPinned = false;
-        }
-      });
-      this.energyPopup = popup;
-      this.energyPopupPinnedMode = pinned;
-    }
-    this.energyPopup.setLngLat(lngLat).setHTML(html).addTo(map);
-    const el = this.energyPopup.getElement();
-    el.style.pointerEvents = pinned ? 'auto' : 'none';
-    el.style.zIndex = '2000';
-  }
-
   private hideEnergyPopup(): void {
     if (this.energyCursor && this.map) this.map.getCanvas().style.cursor = '';
     this.energyCursor = false;
-    if (this.energyPinned) return;
+    if (this.energyPopup.pinned) return;
     this.setFuelTensionHover(null);
-    this.energyPopup?.remove();
-  }
-
-  private unpinEnergyPopup(): void {
-    this.energyPinned = false;
-    const popup = this.energyPopup;
-    this.energyPopup = null;
-    popup?.remove();
+    this.energyPopup.hide();
   }
 
   /** Contour souligné du département en tension survolé (feature-state hover). */
@@ -8154,8 +8123,7 @@ export class DeckGLMap {
     this.pulseMarkers.clear();
 
     // Cleanup energy/gas tooltips
-    this.energyPopup?.remove();
-    this.energyPopup = null;
+    this.energyPopup.unpin();
     // Le survol de l'énergie n'existe qu'une fois la carte montée (navigateur).
     if (this.energyHoverRaf !== 0) cancelAnimationFrame(this.energyHoverRaf);
     if (typeof document !== 'undefined') document.removeEventListener('keydown', this.onEnergyKeydown);
