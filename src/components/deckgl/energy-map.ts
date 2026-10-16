@@ -1,15 +1,16 @@
 // src/components/deckgl/energy-map.ts
 /**
  * energy-map.ts : partie pure de la carte de l'énergie (spec 2026-10-15). Chaque couche dépose ses objets en
- * entrées {id, état, filière} ; d'ici sortent les pictos d'alerte, les filtres de masquage par état et le
+ * entrées {id, état, filière} ; d'ici sortent les expressions de style des disques, les filtres de masquage par état et le
  * modèle de la légende « Lire la carte ».
  */
 import type maplibregl from 'maplibre-gl';
+import type { ExpressionSpecification } from 'maplibre-gl';
 import type { IconName } from '../shared/icons.ts';
 import type { VigilanceLevel } from '../../services/vigilance.ts';
 import type { HydraulicTrend } from '../../types/index.ts';
 import {
-  ENERGY_SECTOR_ICON, ENERGY_STATE_HEX, ENERGY_STATE_RANK, ENERGY_STATES, gasStorageState, hydroState, isEnergyAlert,
+  ENERGY_DISC_STATE_HEX, ENERGY_SECTOR_HEX, ENERGY_SECTOR_ICON, ENERGY_STATE_HEX, ENERGY_STATE_RANK, ENERGY_STATES, gasStorageState, hydroState, isEnergyAlert,
   type EnergySector, type EnergyState,
 } from '../../services/energy-state.ts';
 
@@ -78,28 +79,57 @@ export function shapeIconSvg(shape: 'square' | 'diamond', size: number): string 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${body}</svg>`;
 }
 
-/** Pictos des objets à l'arrêt ou sous tension, triés pour que le plus grave soit dessiné en dernier. */
-export function energyAlertFeatures(entries: readonly EnergyEntry[]): GeoJSON.FeatureCollection {
-  // Un seul picto par emplacement (un réacteur et son unité EDF se superposent) : le plus grave, à égalité le premier inscrit.
-  const byPlace = new Map<string, EnergyEntry>();
-  for (const x of entries) {
-    if (!isEnergyAlert(x.state)) continue;
-    const key = `${x.coordinates[0].toFixed(4)},${x.coordinates[1].toFixed(4)}`;
-    const prev = byPlace.get(key);
-    if (prev === undefined || ENERGY_STATE_RANK[x.state] > ENERGY_STATE_RANK[prev.state]) byPlace.set(key, x);
-  }
-  const alerts = [...byPlace.values()].sort((a, b) => ENERGY_STATE_RANK[a.state] - ENERGY_STATE_RANK[b.state]);
-  return {
-    type: 'FeatureCollection',
-    features: alerts.map((x) => ({
-      type: 'Feature',
-      geometry: { type: 'Point', coordinates: x.coordinates },
-      properties: {
-        id: x.id, name: x.name, energyState: x.state, color: ENERGY_STATE_HEX[x.state],
-        icon: energyIconImage(ENERGY_SECTOR_ICON[x.sector]),
-      },
-    })),
-  };
+export type StyleExpr = ExpressionSpecification;
+
+const STATE: StyleExpr = ['coalesce', ['get', 'energyState'], 'nonSuivi'];
+
+/** Arrêt ou tension : seuls états qui portent un halo. */
+export const ENERGY_ALERT_FILTER = ['in', STATE, ['literal', ['arret', 'tension']]] as maplibregl.FilterSpecification;
+
+/** Disque d'une installation : couleur de l'état anormal, sinon teinte de la filière (le vert n'est plus dessiné). */
+export function discColorExpr(base: string | StyleExpr): StyleExpr {
+  const d = ENERGY_DISC_STATE_HEX;
+  return ['match', STATE, 'arret', d.arret, 'tension', d.tension, 'reduit', d.reduit, 'maintenance', d.maintenance, base];
+}
+
+export function glyphColorExpr(dark: boolean): StyleExpr {
+  return ['match', STATE, 'reduit', '#1a1a1a', 'maintenance', '#d0d3da', dark ? '#14161c' : '#ffffff'];
+}
+
+/** Nucléaire (choix validé 16/10) : le violet reste sauf arrêt et tension ; réduit et maintenance passent par l'anneau. */
+export function nuclearDiscColorExpr(): StyleExpr {
+  const d = ENERGY_DISC_STATE_HEX;
+  return ['match', STATE, 'arret', d.arret, 'tension', d.tension, ENERGY_SECTOR_HEX.nucleaire];
+}
+export function nuclearRingColorExpr(): StyleExpr {
+  return ['match', STATE, 'reduit', ENERGY_DISC_STATE_HEX.reduit, 'maintenance', '#c9ccd6', '#05060a'];
+}
+export function nuclearRingWidthExpr(): StyleExpr {
+  return ['match', STATE, 'reduit', 3.5, 'maintenance', 3.5, 1.5];
+}
+export function nuclearOpacityExpr(): StyleExpr {
+  return ['match', STATE, 'maintenance', 0.55, 1];
+}
+
+/** `infra-src` mélange les types : la teinte et le picto suivent la propriété `type`. */
+export function infraSectorHexExpr(): StyleExpr {
+  const h = ENERGY_SECTOR_HEX;
+  return ['match', ['get', 'type'], 'nuclear', h.nucleaire, 'hydro', h.hydraulique, 'gas-terminal', h.gaz, 'gas-storage', h.gaz,
+    'refinery', h.petrole, 'oil-depot', h.petrole, h.electricite];
+}
+export function infraGlyphImageExpr(): StyleExpr {
+  return ['match', ['get', 'type'], 'nuclear', energyIconImage('atom'), 'hydro', energyIconImage('droplet'),
+    'gas-terminal', energyIconImage('flame'), 'gas-storage', energyIconImage('flame'), 'refinery', energyIconImage('fuel'),
+    'oil-depot', energyIconImage('fuel'), energyIconImage('zap')];
+}
+
+export const ENERGY_DISC_RADIUS: Readonly<Record<'nuclear' | 'gas' | 'refinery' | 'windPark' | 'powerUnit' | 'hydro' | 'other', number>> = {
+  nuclear: 11, gas: 9, refinery: 9, windPark: 9, powerUnit: 8, hydro: 7, other: 8,
+};
+
+/** Les pictos SDF sont dessinés pour un disque de rayon 19 px. */
+export function discIconSize(radius: number): number {
+  return radius / 19;
 }
 
 /** Filtre de masquage par état, ajouté au filtre propre du calque (null = aucun filtre). */

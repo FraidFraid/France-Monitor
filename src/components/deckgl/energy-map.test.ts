@@ -2,10 +2,22 @@
 import { describe, expect, it } from 'vitest';
 import type maplibregl from 'maplibre-gl';
 import {
-  buildEnergyKeyModel, energyAlertFeatures, energyEntriesFrom, energyIconImage, energyStateFilter, gasStorageStyle, hydroStyle, shapeIconSvg,
+  buildEnergyKeyModel, energyEntriesFrom, energyStateFilter, gasStorageStyle, hydroStyle, shapeIconSvg,
   type EnergyEntry, type EnergyLayerKey,
 } from './energy-map.ts';
 import type { EnergyState } from '../../services/energy-state.ts';
+import {
+  discColorExpr, ENERGY_ALERT_FILTER, ENERGY_DISC_RADIUS, discIconSize, glyphColorExpr, infraGlyphImageExpr, infraSectorHexExpr,
+  nuclearDiscColorExpr, nuclearOpacityExpr, nuclearRingColorExpr, nuclearRingWidthExpr,
+} from './energy-map.ts';
+import { expression } from '@maplibre/maplibre-gl-style-spec';
+
+/** Évalue une expression MapLibre sur un objet de propriétés, comme le ferait la carte. */
+function evalExpr(expr: unknown, properties: Record<string, unknown>): unknown {
+  const parsed = expression.createExpression(expr);
+  if (parsed.result !== 'success') throw new Error(JSON.stringify(parsed.value));
+  return parsed.value.evaluate({ zoom: 6 }, { type: 'Point', properties, geometry: [] } as never);
+}
 
 const e = (id: string, state: EnergyState, sector: EnergyEntry['sector'] = 'nucleaire'): EnergyEntry =>
   ({ id, name: id, state, sector, coordinates: [2, 47] });
@@ -20,23 +32,6 @@ describe('entrées de l’énergie', () => {
       { id: 'a', name: 'A', state: 'arret', sector: 'gaz', coordinates: [1, 45] },
       { id: 'gas-1', name: 'B', state: 'nonSuivi', sector: 'gaz', coordinates: [2, 46] },
     ]);
-  });
-});
-
-describe('pictos d’alerte', () => {
-  it('seuls l’arrêt et la tension, le plus grave en dernier, picto de la filière, couleur de l’état', () => {
-    const at = (x: EnergyEntry, lon: number): EnergyEntry => ({ ...x, coordinates: [lon, 47] });
-    const fc = energyAlertFeatures([at(e('1', 'arret'), 1), at(e('2', 'normal'), 2), at(e('3', 'tension', 'gaz'), 3), at(e('4', 'reduit'), 4)]);
-    expect(fc.features.map((f) => f.properties?.id)).toEqual(['3', '1']);
-    expect(fc.features[0].properties).toMatchObject({ energyState: 'tension', color: '#ff9500', icon: energyIconImage('flame') });
-    expect(fc.features[1].properties).toMatchObject({ energyState: 'arret', color: '#ff3b30', icon: energyIconImage('atom') });
-  });
-});
-
-describe('pictos d’alerte au même endroit', () => {
-  it('un seul picto par emplacement : le plus grave, à égalité le premier inscrit (réacteur avant unité EDF)', () => {
-    const fc = energyAlertFeatures([e('nuc', 'arret'), e('edf', 'arret', 'electricite'), e('gaz', 'tension', 'gaz')]);
-    expect(fc.features.map((f) => f.properties?.id)).toEqual(['nuc']);
   });
 });
 
@@ -121,5 +116,49 @@ describe('hydraulique', () => {
   it('sans mesure fraîche, aucun état : ni vert ni alerte (donnée en retard = sans état suivi)', () => {
     expect(hydroStyle('normal', false)).toEqual({ energyState: 'nonSuivi', color: '#c7c7cc' });
     expect(hydroStyle('stress', false)).toEqual({ energyState: 'nonSuivi', color: '#c7c7cc' });
+  });
+});
+
+describe('disques des installations', () => {
+  it('l’état anormal prime sur la teinte de la filière', () => {
+    const e = discColorExpr('#e64bb4');
+    expect(evalExpr(e, { energyState: 'arret' })).toBe('#ff3b30');
+    expect(evalExpr(e, { energyState: 'tension' })).toBe('#ff9500');
+    expect(evalExpr(e, { energyState: 'reduit' })).toBe('#ffcc00');
+    expect(evalExpr(e, { energyState: 'maintenance' })).toBe('#5c5f6b');
+    expect(evalExpr(e, { energyState: 'normal' })).toBe('#e64bb4');
+    expect(evalExpr(e, {})).toBe('#e64bb4');
+  });
+  it('picto foncé sur fond jaune, gris clair en maintenance, blanc sinon', () => {
+    const light = glyphColorExpr(false);
+    expect(evalExpr(light, { energyState: 'reduit' })).toBe('#1a1a1a');
+    expect(evalExpr(light, { energyState: 'maintenance' })).toBe('#d0d3da');
+    expect(evalExpr(light, { energyState: 'normal' })).toBe('#ffffff');
+    expect(evalExpr(glyphColorExpr(true), { energyState: 'nonSuivi' })).toBe('#14161c');
+  });
+  it('nucléaire : violet gardé, anneau jaune si réduit, gris et atténué en maintenance', () => {
+    expect(evalExpr(nuclearDiscColorExpr(), { energyState: 'reduit' })).toBe('#8b5cf6');
+    expect(evalExpr(nuclearDiscColorExpr(), { energyState: 'arret' })).toBe('#ff3b30');
+    expect(evalExpr(nuclearRingColorExpr(), { energyState: 'reduit' })).toBe('#ffcc00');
+    expect(evalExpr(nuclearRingColorExpr(), { energyState: 'maintenance' })).toBe('#c9ccd6');
+    expect(evalExpr(nuclearRingWidthExpr(), { energyState: 'reduit' })).toBe(3.5);
+    expect(evalExpr(nuclearRingWidthExpr(), { energyState: 'normal' })).toBe(1.5);
+    expect(evalExpr(nuclearOpacityExpr(), { energyState: 'maintenance' })).toBe(0.55);
+    expect(evalExpr(nuclearOpacityExpr(), { energyState: 'normal' })).toBe(1);
+  });
+  it('infrastructures : teinte et picto selon le type', () => {
+    expect(evalExpr(infraSectorHexExpr(), { type: 'nuclear' })).toBe('#8b5cf6');
+    expect(evalExpr(infraSectorHexExpr(), { type: 'gas-storage' })).toBe('#e64bb4');
+    expect(evalExpr(infraSectorHexExpr(), { type: 'refinery' })).toBe('#8fa3bf');
+    expect(evalExpr(infraSectorHexExpr(), { type: 'hydro' })).toBe('#2f80ff');
+    expect(evalExpr(infraSectorHexExpr(), { type: 'thermal' })).toBe('#eef2f7');
+    expect(evalExpr(infraGlyphImageExpr(), { type: 'nuclear' })).toBe('energy-icon-atom');
+    expect(evalExpr(infraGlyphImageExpr(), { type: 'thermal' })).toBe('energy-icon-zap');
+  });
+  it('halo seulement pour l’arrêt et la tension ; tailles', () => {
+    expect(evalExpr(ENERGY_ALERT_FILTER, { energyState: 'arret' })).toBe(true);
+    expect(evalExpr(ENERGY_ALERT_FILTER, { energyState: 'reduit' })).toBe(false);
+    expect(ENERGY_DISC_RADIUS).toEqual({ nuclear: 11, gas: 9, refinery: 9, windPark: 9, powerUnit: 8, hydro: 7, other: 8 });
+    expect(discIconSize(19)).toBe(1);
   });
 });

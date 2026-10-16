@@ -106,7 +106,7 @@ import {
 } from './deckgl/format-utils.ts';
 import { fmIcon, fmStatusDot, type IconName } from './shared/icons.ts';
 import {
-  buildEnergyKeyModel, energyAlertFeatures, energyEntriesFrom, energyIconImage, energyStateFilter, gasStorageStyle, hydroStyle,
+  buildEnergyKeyModel, energyEntriesFrom, energyIconImage, energyStateFilter, gasStorageStyle, hydroStyle,
   ENERGY_ICON_NAMES, ENERGY_LAYER_KEYS,
   ENERGY_SHAPE_DIAMOND, ENERGY_SHAPE_SQUARE, shapeIconSvg,
   type EnergyEntry, type EnergyFlowCount, type EnergyKeyModel, type EnergyLayerKey,
@@ -8248,8 +8248,8 @@ export class DeckGLMap {
   /** Pictos d'alerte des seules couches allumées. */
   private syncEnergyAlerts(): void {
     if (!this.map) return;
-    const entries = ENERGY_LAYER_KEYS.filter((k) => this.currentLayers?.[k] === true).flatMap((k) => this.energyEntries.get(k) ?? []);
-    const fc = energyAlertFeatures(entries);
+    // Provisoire (tâche 2) : les pictos d'alerte disparaissent, la tâche 7 retire ce calque.
+    const fc: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
     // Rien de changé : pas de repeinte (chaque bascule de couche passe ici).
     const sig = fc.features.map((f) => `${String(f.properties?.id)}:${String(f.properties?.energyState)}:${f.geometry.type === 'Point' ? f.geometry.coordinates.join(',') : ''}`).join('|');
     if (sig === this.energyAlertSig) return;
