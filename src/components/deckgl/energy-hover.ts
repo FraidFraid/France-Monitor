@@ -181,3 +181,42 @@ export function regionCard(input: { name: string; consumptionMw: number; product
     rows: [['Consommation', fmtNum(input.consumptionMw, 'MW')], ['Production', fmtNum(input.productionMw, 'MW')],
       ['Solde', `${solde > 0 ? '+' : ''}${fmtNum(solde, 'MW')}`]], source: 'RTE éCO2mix' };
 }
+
+export type EnergyHoverKind =
+  | 'infra' | 'powerUnit' | 'gas' | 'refinery' | 'oilDepot' | 'hydro' | 'wind' | 'biomethane' | 'drom'
+  | 'hydroCluster' | 'windCluster' | 'biomethaneCluster' | 'flow' | 'choke' | 'gasPipeline' | 'oilPipeline' | 'metro' | 'fuelTension' | 'region';
+
+const L = (kind: EnergyHoverKind, rank: number) => ({ kind, rank });
+export const ENERGY_HOVER_LAYERS: Readonly<Record<string, { kind: EnergyHoverKind; rank: number }>> = {
+  'energy-infra-circles': L('infra', 2), 'out-power-unplanned': L('powerUnit', 2), 'out-power-planned': L('powerUnit', 2),
+  'gas-storages': L('gas', 2), 'gas-terminals': L('gas', 2), 'oil-refineries': L('refinery', 2), 'oil-depots': L('oilDepot', 2),
+  'hydro-backbone-circles': L('hydro', 2), 'wind-park-circles': L('wind', 2), 'wind-turbine-circles': L('wind', 2),
+  'biomethane-sites': L('biomethane', 2), 'drom-energy-points': L('drom', 2),
+  'hydro-cluster': L('hydroCluster', 3), 'wind-cluster': L('windCluster', 3), 'biomethane-clusters': L('biomethaneCluster', 3),
+  'energy-flow-lines': L('flow', 4), 'energy-flow-heads': L('flow', 4), 'energy-choke': L('choke', 4),
+  'gas-network-grt-line': L('gasPipeline', 5), 'gas-network-terega-line': L('gasPipeline', 5), 'oil-pipelines': L('oilPipeline', 5),
+  'metro-load-circles': L('metro', 6), 'fuel-tension-fill': L('fuelTension', 7), 'power-region-fill': L('region', 8),
+};
+export const ENERGY_HOVER_LAYER_IDS: readonly string[] = Object.keys(ENERGY_HOVER_LAYERS);
+
+export interface HoverCandidate {
+  layerId: string;
+  properties: Readonly<Record<string, unknown>>;
+  distancePx: number;
+  /** Opacité effective du calque : sous 0,2 (éteint ou atténué par le survol d'une pastille), il ne répond pas. */
+  opacity: number;
+}
+
+/** Un seul objet répond : le plus prioritaire, puis le plus proche du curseur (spec § 6.2). */
+export function pickEnergyHover(cands: readonly HoverCandidate[]): (HoverCandidate & { kind: EnergyHoverKind }) | null {
+  let best: (HoverCandidate & { kind: EnergyHoverKind; rank: number }) | null = null;
+  for (const c of cands) {
+    const def = ENERGY_HOVER_LAYERS[c.layerId];
+    if (!def || c.opacity < 0.2) continue;
+    const st = c.properties.energyState;
+    const rank = def.rank === 2 && (st === 'arret' || st === 'tension') ? 1 : def.rank;
+    if (best === null || rank < best.rank || (rank === best.rank && c.distancePx < best.distancePx)) best = { ...c, kind: def.kind, rank };
+  }
+  if (best === null) return null;
+  return { layerId: best.layerId, properties: best.properties, distancePx: best.distancePx, opacity: best.opacity, kind: best.kind };
+}

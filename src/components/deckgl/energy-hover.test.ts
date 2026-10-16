@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   chokeCard, clusterCard, flowCard, fmtNum, fmtTime, infraCard, powerUnitCard, regionCard, tooltipCardHtml, gasCard,
 } from './energy-hover.ts';
+import { ENERGY_HOVER_LAYER_IDS, pickEnergyHover, type HoverCandidate } from './energy-hover.ts';
 
 describe('gabarit de bulle', () => {
   it('nombres au format français avec unité insécable ; n.d. si absent', () => {
@@ -57,5 +58,32 @@ describe('gabarit de bulle', () => {
   it('région', () => {
     const r = regionCard({ name: 'Grand Est', consumptionMw: 4700, productionMw: 6100, deltaPct: -8.2, updatedAt: null });
     expect(r.rows).toEqual([['Consommation', fmtNum(4700, 'MW')], ['Production', fmtNum(6100, 'MW')], ['Solde', `+${fmtNum(1400, 'MW')}`]]);
+  });
+});
+
+const c = (layerId: string, over: Partial<HoverCandidate> = {}): HoverCandidate => ({ layerId, properties: {}, distancePx: 2, opacity: 1, ...over });
+
+describe('arbitre de survol', () => {
+  it('une alerte passe devant une installation, une installation devant un flux, un flux devant la région', () => {
+    expect(pickEnergyHover([c('power-region-fill'), c('energy-flow-lines'), c('gas-storages')])?.layerId).toBe('gas-storages');
+    expect(pickEnergyHover([c('power-region-fill'), c('energy-flow-lines')])?.kind).toBe('flow');
+    const alert = c('out-power-unplanned', { properties: { energyState: 'arret' }, distancePx: 3 });
+    expect(pickEnergyHover([c('energy-infra-circles', { distancePx: 0 }), alert])?.layerId).toBe('out-power-unplanned');
+  });
+  it('à rang égal, le plus proche du curseur gagne', () => {
+    const a = c('oil-refineries', { distancePx: 3, properties: { name: 'Fos' } });
+    const b = c('gas-terminals', { distancePx: 1, properties: { name: 'Cavaou' } });
+    expect(pickEnergyHover([a, b])?.properties.name).toBe('Cavaou');
+  });
+  it('un calque transparent, atténué ou inconnu ne répond pas ; aucun candidat donne null', () => {
+    expect(pickEnergyHover([c('gas-storages', { opacity: 0 })])).toBeNull();
+    expect(pickEnergyHover([c('gas-storages', { opacity: 0.1 }), c('power-region-fill')])?.kind).toBe('region');
+    expect(pickEnergyHover([c('news-points')])).toBeNull();
+    expect(pickEnergyHover([])).toBeNull();
+  });
+  it('tous les calques du tableau sont interrogés', () => {
+    expect(ENERGY_HOVER_LAYER_IDS).toContain('energy-choke');
+    expect(ENERGY_HOVER_LAYER_IDS).toContain('hydro-cluster');
+    expect(ENERGY_HOVER_LAYER_IDS).not.toContain('interconn-arc-hitarea');
   });
 });
