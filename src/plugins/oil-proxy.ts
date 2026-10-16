@@ -14,6 +14,8 @@ const ALLOWED_DOMAINS = [
   'api.carbu.com',
   'www.jodidata.org',
   'jodidata.org',
+  // Eurostat : stocks pétroliers d'urgence (nrg_stk_oem), 16/10/2026.
+  'ec.europa.eu',
 ];
 
 function isAllowedDomain(url: string): boolean {

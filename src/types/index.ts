@@ -1664,8 +1664,11 @@ export interface OilFreshnessInfo {
 
 export interface OilStocksSnapshot {
   date: string;
-  /** Stocks stratégiques en jours de consommation : null, aucune source publique suivie (16/10/2026). */
+  /** Stocks stratégiques (stocks d'urgence de la directive UE, Eurostat nrg_stk_oem) en jours ; null si la source ne répond pas. */
   nationalStocksDays: number | null;
+  /** Mois des stocks déclarés (AAAA-MM) et minimum légal en jours (90). */
+  stocksMonth: string | null;
+  minimumDays: number | null;
   totalStocksTons: number | null;
   byProduct: OilProductStock[];
   /** Réserves de pétrole brut en gisement (SDES) : ce ne sont pas des stocks. */
@@ -1797,6 +1800,7 @@ export interface OilDashboard {
   depots: OilDepot[];
   sourceStatus: {
     sdes: 'ok' | 'stale' | 'error';
+    eurostat: 'ok' | 'stale' | 'error';
     insee: 'ok' | 'stale' | 'error';
     cpdp: 'ok' | 'stale' | 'error';
     monthlyConsumption: 'ok' | 'stale' | 'error';

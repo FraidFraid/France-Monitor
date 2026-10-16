@@ -39,7 +39,7 @@ describe('vue Pétrole', () => {
     expect(v.head.figure?.captionHtml).toBe(`gazole, moyenne nationale · <span class="lp-val fmk-num lp-lvl lp-lvl--vert">−1,2${NBSP}c en 7${NBSP}j</span>`);
     // fraîcheur du flux : dernier relevé de station, 08:30 − 25 min
     expect(v.head.status).toEqual([`2,1${NBSP}% de stations en anomalie`, 'données de 08:05', 'prix-carburants']);
-    expect(v.head.lead).toBe(`Pas de tension d’approvisionnement. Réserves de brut en gisement : environ 30${NBSP}jours de consommation. 1 raffinerie sur 2 en activité.`);
+    expect(v.head.lead).toBe(`Pas de tension d’approvisionnement. Stocks stratégiques : 97${NBSP}jours (minimum légal 90). 1 raffinerie sur 2 en activité.`);
   });
   it('tension modérée : phrase avec la part d’anomalies', () => {
     const t = tensionFixture({ national: { ...tensionFixture().national, tensionLevel: 'MEDIUM' } });
@@ -83,16 +83,26 @@ describe('vue Pétrole', () => {
     expect(s?.html).toMatch(new RegExp(`fmk-dot--orange[^]*Bouches-du-Rhône \\(13\\)[^]*6,8${NBSP}%[^]*écart 7${NBSP}j : <span class="lp-val fmk-num lp-lvl lp-lvl--orange">\\+2,1${NBSP}c</span>`));
     expect(s?.html).toMatch(/fmk-dot--jaune[^]*Nord \(59\)[^]*écart 7\u00A0j : <span class="lp-val fmk-num">n\.d\.<\/span>/);
   });
-  it('stocks et réserves : stocks stratégiques n.d. (aucune source suivie), réserves en gisement pour ce qu’elles sont, vigilance n.d.', () => {
+  it('stocks et réserves : stocks d’urgence déclarés à l’UE (mois, minimum légal), réserves en gisement à part, vigilance', () => {
     const s = section('stocks');
     expect(s?.title).toBe('Stocks et réserves');
-    expect(s?.summary).toBe(`stocks stratégiques n.d. · gisement 30${NBSP}j`);
+    expect(s?.summary).toBe(`stocks stratégiques 97${NBSP}j · minimum 90${NBSP}j`);
     const h = s?.html ?? '';
-    expect(h).toMatch(/Stocks stratégiques[^]*n\.d\./);
-    expect(h).toContain('obligation légale d’environ 90');
+    expect(h).toContain(`97${NBSP}j · juillet 2026`);
+    expect(h).toContain(`90${NBSP}jours d’importations nettes`);
+    expect(h).toContain('Eurostat');
     expect(h).toContain(`5${NBSP}Mtep · environ 30${NBSP}j`);
+    expect(h).toContain('20 sur 100 · normale');
+  });
+  it('Eurostat indisponible : stocks stratégiques n.d., vigilance n.d., jamais les réserves en gisement à leur place', () => {
+    const base = oilFixture();
+    const data = oilFixture({ stocks: { ...base.stocks, nationalStocksDays: null, stocksMonth: null, minimumDays: null },
+      meta: { ...base.meta, vigilanceScore: null, status: 'unknown' } });
+    expect(view({ data }).head.lead).toContain('Stocks stratégiques : n.d.');
+    const h = section('stocks', { data })?.html ?? '';
+    expect(h).toMatch(/Stocks stratégiques[^]*n\.d\./);
     expect(h).toMatch(/Indice de vigilance[^]*n\.d\./);
-    expect(h).not.toContain('Gazole');
+    expect(section('stocks', { data })?.summary).toBe(`stocks stratégiques n.d. · gisement 30${NBSP}j`);
   });
   it('raffineries : puce verte en activité, grise à l’arrêt, capacité', () => {
     const s = section('refineries');

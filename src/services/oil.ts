@@ -977,15 +977,72 @@ async function settleSource<T>(loader: () => Promise<T>): Promise<{ data: T | nu
   }
 }
 
+/** Stocks pétroliers d'urgence déclarés par la France au titre de la directive 2009/119/CE (Eurostat, mensuel). */
+export const EUROSTAT_STOCKS_URL = 'https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/nrg_stk_oem?geo=FR&lastTimePeriod=6&format=JSON&lang=FR';
+
+export interface EmergencyStocks {
+  /** Stocks en jours au sens de la directive (importations nettes journalières). */
+  days: number;
+  month: string;
+  /** Minimum légal : 90 jours d'importations nettes. */
+  minimumDays: number;
+  /** Niveau minimal exigé, en milliers de tonnes (null si absent). */
+  requiredKt: number | null;
+}
+
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/** Lit le JSON-stat d'Eurostat : dernier mois où les stocks en jours (STK_EUE_DIR) sont renseignés ; null sinon. */
+export function parseEurostatEmergencyStocks(json: unknown): EmergencyStocks | null {
+  if (!isRecord(json) || !Array.isArray(json.id) || !Array.isArray(json.size) || !isRecord(json.dimension) || !isRecord(json.value)) return null;
+  const ids = json.id.map(String);
+  const size = json.size.map(Number);
+  const dims = json.dimension;
+  const values = json.value;
+  const indexOf = (dim: string): Record<string, number> => {
+    const d = dims[dim];
+    const cat = isRecord(d) && isRecord(d.category) && isRecord(d.category.index) ? d.category.index : {};
+    return Object.fromEntries(Object.entries(cat).map(([k, v]) => [k, Number(v)]));
+  };
+  const flat = (pos: Record<string, number>): number => ids.reduce((acc, dim, k) => acc * size[k] + (pos[dim] ?? 0), 0);
+  const read = (flow: string, unit: string, time: string): number | null => {
+    const pos: Record<string, number> = {};
+    for (const dim of ids) {
+      const idx = indexOf(dim);
+      const key = dim === 'stk_flow' ? flow : dim === 'unit' ? unit : dim === 'time' ? time : Object.keys(idx)[0];
+      if (key === undefined || idx[key] === undefined) return null;
+      pos[dim] = idx[key];
+    }
+    const v = values[String(flat(pos))];
+    return typeof v === 'number' && Number.isFinite(v) ? v : null;
+  };
+  const months = Object.entries(indexOf('time')).sort((x, y) => y[1] - x[1]).map(([m]) => m);
+  for (const month of months) {
+    const days = read('STK_EUE_DIR', 'NR', month);
+    if (days === null) continue;
+    const required = read('STK_MIN_CAL', 'THS_T', month);
+    return { days: Math.round(days), month, minimumDays: 90, requiredKt: required === null ? null : Math.round(required) };
+  }
+  return null;
+}
+
+export async function fetchEmergencyStocks(): Promise<EmergencyStocks> {
+  const parsed = parseEurostatEmergencyStocks(await fetchProxyJson<unknown>(EUROSTAT_STOCKS_URL));
+  if (!parsed) throw new Error('No emergency oil stocks parsed from Eurostat');
+  return parsed;
+}
+
 /**
- * Les « réserves de pétrole brut » du SDES sont le pétrole encore en gisement (≈ un mois de consommation), pas les stocks
- * stratégiques (obligation légale ≈ 90 jours, SAGESS / CPSSP) : on les expose pour ce qu'elles sont, et les stocks
- * stratégiques restent inconnus tant qu'aucune source publique n'est suivie (décision du 16/10/2026).
+ * Stocks stratégiques : stocks d'urgence déclarés à l'UE (Eurostat), en jours ; null si la source ne répond pas. Les
+ * « réserves de pétrole brut » du SDES sont le pétrole encore en gisement (≈ un mois) : exposées à part, jamais comme des
+ * stocks (décisions du 16/10/2026).
  */
-export function buildStocksSnapshot(annual: AnnualOilStats): OilStocksSnapshot {
+export function buildStocksSnapshot(annual: AnnualOilStats, emergency: EmergencyStocks | null = null): OilStocksSnapshot {
   return {
-    date: `${annual.year}-12-31`,
-    nationalStocksDays: null,
+    date: emergency ? `${emergency.month}-01` : `${annual.year}-12-31`,
+    nationalStocksDays: emergency?.days ?? null,
+    stocksMonth: emergency?.month ?? null,
+    minimumDays: emergency?.minimumDays ?? null,
     totalStocksTons: null,
     byProduct: [],
     crudeReserveMtep: annual.reserveMtep,
@@ -1102,6 +1159,7 @@ export async function fetchOilDashboard(): Promise<OilDashboard> {
     jodiOilResult,
     jodiGasResult,
     fuelPriceHistoryResult,
+    emergencyStocksResult,
   ] = await Promise.all([
     settleSource(fetchAnnualOilStatsFromSdes),
     settleSource(fetchOilOriginsFromInsee),
@@ -1111,6 +1169,7 @@ export async function fetchOilDashboard(): Promise<OilDashboard> {
     settleSource(fetchJodiOilSnapshot),
     settleSource(fetchJodiGasSnapshot),
     settleSource(fetchFuelPriceHistory),
+    settleSource(fetchEmergencyStocks),
   ]);
 
   if (!annualResult.data) {
@@ -1125,7 +1184,7 @@ export async function fetchOilDashboard(): Promise<OilDashboard> {
     originsResult.status = originsResult.status === 'ok' ? 'stale' : originsResult.status;
   }
 
-  const stocks = buildStocksSnapshot(annualResult.data);
+  const stocks = buildStocksSnapshot(annualResult.data, emergencyStocksResult.data);
   const flows = buildFlowsSnapshot(annualResult.data, deliveriesResult.data?.[0] ?? null);
   const { score, status } = computeVigilanceScore(stocks.nationalStocksDays, flows.trend);
   const harmonized = buildHarmonizedSnapshot(
@@ -1142,6 +1201,7 @@ export async function fetchOilDashboard(): Promise<OilDashboard> {
     monthlyRowsResult.status,
     localConsumptionResult.status,
     fuelPriceHistoryResult.status,
+    emergencyStocksResult.status,
   ].some((sourceStatus) => sourceStatus !== 'ok');
 
   const dashboard: OilDashboard = {
@@ -1163,6 +1223,7 @@ export async function fetchOilDashboard(): Promise<OilDashboard> {
     depots: OIL_DEPOTS.map((depot) => ({ ...depot })),
     sourceStatus: {
       sdes: annualResult.status,
+      eurostat: emergencyStocksResult.status,
       insee: originsResult.status,
       cpdp: deliveriesResult.status,
       monthlyConsumption: monthlyRowsResult.status,

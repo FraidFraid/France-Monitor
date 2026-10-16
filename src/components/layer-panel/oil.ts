@@ -214,8 +214,10 @@ function leadOf(data: OilDashboard, tension: FuelTensionDashboard | null, now: n
   const active = activeRefineries(data);
   return [
     tensionSentence(tension, now),
-    // Réserves en gisement (SDES), pas des stocks stratégiques : ceux-ci n'ont pas de source suivie (16/10/2026).
-    `Réserves de brut en gisement : environ ${frNumber(data.stocks.crudeReserveDays, 0)}${NBSP}jours de consommation.`,
+    // Stocks d'urgence déclarés à l'UE (Eurostat) ; jamais les réserves en gisement du SDES à leur place (16/10/2026).
+    data.stocks.nationalStocksDays === null
+      ? 'Stocks stratégiques : n.d.'
+      : `Stocks stratégiques : ${frNumber(data.stocks.nationalStocksDays, 0)}${NBSP}jours${data.stocks.minimumDays !== null ? ` (minimum légal ${data.stocks.minimumDays})` : ''}.`,
     `${active} ${plural(active, 'raffinerie')} sur ${data.refineries.length} en activité.`,
   ].filter((s): s is string => s !== null).join(' ');
 }
@@ -342,6 +344,13 @@ function tensionSection(input: OilViewInput): FicheSection {
 
 const TREND_WORD = { up: 'en hausse', down: 'en baisse', stable: 'stable' } as const;
 
+/** « 2026-07 » → « juillet 2026 ». */
+function monthWords(month: string): string {
+  const [y, m] = month.split('-').map(Number);
+  if (!y || !m) return month;
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
+
 function stocksSection(input: OilViewInput, data: OilDashboard): FicheSection {
   const { stocks, meta } = data;
   const days = stocks.nationalStocksDays;
@@ -351,17 +360,22 @@ function stocksSection(input: OilViewInput, data: OilDashboard): FicheSection {
     noteHtml: `${escapeHtml(formatTons(p.stocksTons))} · ${valueHtml(TREND_WORD[p.trend], p.trend === 'up' ? 'vert' : p.trend === 'down' ? 'orange' : null)}`,
   })).join('');
   const reserve = stocks.crudeReserveMtep;
-  const stocksText = days === null ? 'n.d.' : `${formatDays(days)}${stocks.totalStocksTons !== null ? ` · ${formatTons(stocks.totalStocksTons)}` : ''}`;
+  const stocksText = days === null ? 'n.d.' : `${formatDays(days)}${stocks.stocksMonth ? ` · ${monthWords(stocks.stocksMonth)}` : ''}`;
   const html = rows
     + kvRow('Stocks stratégiques', escapeHtml(stocksText))
-    + (days === null ? note('Aucune source publique suivie : obligation légale d’environ 90 jours de consommation (SAGESS, CPSSP).') : '')
+    + (stocks.minimumDays !== null ? kvRow('Minimum légal', escapeHtml(`${stocks.minimumDays}${NBSP}jours d’importations nettes`)) : '')
+    + note(days === null
+      ? 'Eurostat injoignable : stocks d’urgence non lus. Obligation légale : 90 jours d’importations nettes (SAGESS, CPSSP).'
+      : 'Stocks pétroliers d’urgence déclarés par la France au titre de la directive 2009/119/CE (Eurostat, mensuel).')
     + kvRow('Réserves de brut en gisement', escapeHtml(`${frNumber(reserve, Number.isInteger(reserve) ? 0 : 1)}${NBSP}Mtep · environ ${formatDays(stocks.crudeReserveDays)}`))
     + kvRow('Indice de vigilance', meta.vigilanceScore === null ? escapeHtml('n.d.') : valueHtml(`${meta.vigilanceScore} sur 100 · ${vigilance.word}`, vigilance.level))
     + (rows ? note(`Barre sur ${STOCK_BAR_DAYS} jours ; rouge sous ${STOCK_THRESHOLD_DAYS} jours, jaune de 30 à 40.`) : '')
     + freshnessNote(meta.freshness.dashboard);
   return {
     id: 'stocks', title: 'Stocks et réserves',
-    summary: escapeHtml(`stocks stratégiques ${days === null ? 'n.d.' : formatDays(days)} · gisement ${formatDays(stocks.crudeReserveDays)}`),
+    summary: escapeHtml(days === null
+      ? `stocks stratégiques n.d. · gisement ${formatDays(stocks.crudeReserveDays)}`
+      : `stocks stratégiques ${formatDays(days)}${stocks.minimumDays !== null ? ` · minimum ${formatDays(stocks.minimumDays)}` : ''}`),
     collapsible: true, open: input.open('stocks', true), html,
   };
 }
