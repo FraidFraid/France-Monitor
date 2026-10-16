@@ -4548,6 +4548,13 @@ button.header-quality-link {
   background: rgba(108, 140, 255, 0.2);
 }
 
+/* Survol d'une pastille Énergie (spec 2026-10-16 § 7) : légende courte de la couche, sous la pastille. */
+#energy-focus-key { position: fixed; z-index: 3000; pointer-events: none; }
+.ef-key { background: #14161c; border: 1px solid #262a33; border-radius: 8px; padding: 8px 10px; font-size: 12px; color: #e8e8ec; max-width: 300px; }
+.ef-title { font-weight: 600; margin-bottom: 6px; }
+.ef-row { display: flex; align-items: center; gap: 8px; padding: 1px 0; }
+.ef-dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 10px; box-shadow: 0 0 0 1.5px #05060a; }
+
 /* Bulle unique de la carte Énergie (spec 2026-10-16 § 6) : pastille de filière, état en mots, valeurs, source. */
 .et-card { min-width: 200px; max-width: 280px; font-size: 12px; color: #e8e8ec; }
 .et-head { display: flex; align-items: center; gap: 8px; font-size: 13px; }

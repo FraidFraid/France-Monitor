@@ -5,6 +5,8 @@
 
 import { MapContainer } from './components/MapContainer.ts';
 import { MapPopup } from './components/MapPopup.ts';
+import { energyFocusKeyHtml, isEnergyLayerKey } from './components/deckgl/energy-focus.ts';
+import type { EnergyLayerKey } from './components/deckgl/energy-map.ts';
 import { buildArticlePreviewHtml, buildEventPreviewHtml, MapPreviewCard } from './components/MapPreviewCard.ts';
 import { buildEventsKeyHtml } from './components/map-key/events-key.ts';
 import { MapLegend, type LegendCategory } from './components/MapLegend.ts';
@@ -2419,6 +2421,17 @@ export class App {
     floatingPanelSwitcher.hidden = true;
     mapArea.appendChild(floatingPanelSwitcher);
     this.floatingPanelSwitcherEl = floatingPanelSwitcher;
+    // Énergie (spec 2026-10-16 § 7) : survoler une pastille ne laisse vive que sa couche et affiche sa légende. Le conteneur est
+    // réécrit par innerHTML à chaque rafraîchissement : on écoute le conteneur, une seule fois.
+    floatingPanelSwitcher.addEventListener('mouseover', (ev) => {
+      const chip = ev.target instanceof Element ? ev.target.closest<HTMLElement>('.floating-panel-switcher__chip[data-panel-key]') : null;
+      const key = chip?.dataset['panelKey'] ?? null;
+      if (chip && key && isEnergyLayerKey(key)) this.showEnergyFocus(key, chip);
+    });
+    floatingPanelSwitcher.addEventListener('mouseout', (ev) => {
+      const to = ev.relatedTarget instanceof Element ? ev.relatedTarget : null;
+      if (!to?.closest('.floating-panel-switcher__chip[data-panel-key]')) this.hideEnergyFocus();
+    });
     // La largeur de la carte change la place disponible (repli en icônes) et donc le décalage des panneaux.
     this.addGlobalListener(window, 'resize', () => this.layoutFloatingPanelSwitcher());
     // v2 : la zone carte change de taille sans que la fenêtre bouge (tiroir ouvert ou fermé, onglet Carte du mobile).
@@ -5036,6 +5049,28 @@ export class App {
       });
     });
     this.layoutFloatingPanelSwitcher();
+  }
+
+  /** Survol d'une pastille Énergie : seule sa couche reste vive, sa légende courte s'affiche sous la pastille. */
+  private showEnergyFocus(key: EnergyLayerKey, chip: HTMLElement): void {
+    this.mapContainer?.setLegendHover(key);
+    let panel = document.getElementById('energy-focus-key');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'energy-focus-key';
+      document.body.appendChild(panel);
+    }
+    panel.innerHTML = energyFocusKeyHtml(key);
+    const r = chip.getBoundingClientRect();
+    panel.style.left = `${Math.round(r.left)}px`;
+    panel.style.top = `${Math.round(r.bottom + 6)}px`;
+  }
+
+  private hideEnergyFocus(): void {
+    const panel = document.getElementById('energy-focus-key');
+    if (!panel) return;
+    panel.remove();
+    this.mapContainer?.setLegendHover(null);
   }
 
   /** Referme le panneau flottant `id` sans éteindre sa couche (clic sur son bouton surligné). */

@@ -113,6 +113,7 @@ import {
   type EnergyEntry, type EnergyFlowCount, type EnergyKeyModel, type EnergyLayerKey,
 } from './deckgl/energy-map.ts';
 import { buildFlowFeatures, flowArcFromFeature, kmBetween, type FlowArc } from './deckgl/energy-flows.ts';
+import { ENERGY_FOCUS_LAYERS, isEnergyLayerKey } from './deckgl/energy-focus.ts';
 import {
   ENERGY_HOVER_LAYER_IDS, energyCardFor, pickEnergyHover, tooltipCardHtml, type EnergyHoverContext, type EnergyHoverKind, type HoverCandidate,
 } from './deckgl/energy-hover.ts';
@@ -359,6 +360,9 @@ type InfrastructureRenderPoint = InfrastructurePoint & {
 const ENERGY_FLOW_HEAD_ICON = 'energy-flow-head';
 const ENERGY_FLOW_DASH_SEQ: ReadonlyArray<number[]> = [[0, 4, 3], [0.5, 4, 2.5], [1, 4, 2], [1.5, 4, 1.5], [2, 4, 1], [2.5, 4, 0.5], [3, 4, 0],
   [0, 0.5, 3, 3.5], [0, 1, 3, 3], [0, 1.5, 3, 2.5], [0, 2, 3, 2], [0, 2.5, 3, 1.5], [0, 3, 3, 1], [0, 3.5, 3, 0.5]];
+
+/** Calques de toutes les couches Énergie, atténués au survol d'une pastille (sans doublon : les flèches sont partagées). */
+const ENERGY_FOCUS_ALL: readonly string[] = [...new Set(Object.values(ENERGY_FOCUS_LAYERS).flat())];
 
 /** Rayon des disques de `infra-src` : nucléaire 11 px, autres types 8 px (spec 2026-10-16 § 2.3). */
 const INFRA_DISC_RADIUS: maplibregl.ExpressionSpecification = ['match', ['get', 'type'], 'nuclear', ENERGY_DISC_RADIUS.nuclear, ENERGY_DISC_RADIUS.other];
@@ -4592,10 +4596,14 @@ export class DeckGLMap {
       ...Object.values(ENV_LAYER_KEYS).flat(), ...FOREST_DANGER_LAYERS,
       // Pannes réseau : les quatre couches (et les maintenances télécoms) s'atténuent avec les autres au survol d'une légende.
       ...Object.values(OUT_LAYER_KEYS).flat(), OUT_MAINTENANCE_LAYER,
+      // Énergie (spec 2026-10-16 § 7) : survol d'une pastille, seule sa couche reste vive.
+      ...ENERGY_FOCUS_ALL,
     ];
 
     let activeLayers: string[] = [];
-    if (categoryId === 'health') {
+    if (categoryId !== null && isEnergyLayerKey(categoryId)) {
+      activeLayers = [...ENERGY_FOCUS_LAYERS[categoryId]];
+    } else if (categoryId === 'health') {
       activeLayers = [LYR_HEALTH_ALERT_FILL, LYR_HEALTH_ALERT_LINE];
     } else if (categoryId === 'healthApl') {
       activeLayers = [LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE];
@@ -4671,8 +4679,8 @@ export class DeckGLMap {
 
     // Contours colorés des Trafics (anneau des signalements AIS, aéroports, mouillages, urgences, arrêts du trajet d'un train) :
     // atténués avec leur couche, en plus du remplissage.
-    for (const layerId of TRAFFIC_STROKE_DIM_LAYERS) {
-      if (!this.map.getLayer(layerId)) continue;
+    for (const layerId of [...TRAFFIC_STROKE_DIM_LAYERS, ...ENERGY_FOCUS_ALL]) {
+      if (!this.map.getLayer(layerId) || this.map.getLayer(layerId)?.type !== 'circle') continue;
       const key = `${layerId}::stroke`;
       if (!this.originalOpacities.has(key)) {
         this.originalOpacities.set(key, { prop: 'circle-stroke-opacity', orig: this.map.getPaintProperty(layerId, 'circle-stroke-opacity') ?? 1 });
