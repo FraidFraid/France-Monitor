@@ -214,7 +214,8 @@ function leadOf(data: OilDashboard, tension: FuelTensionDashboard | null, now: n
   const active = activeRefineries(data);
   return [
     tensionSentence(tension, now),
-    `Stocks stratégiques : ${frNumber(data.stocks.nationalStocksDays, Number.isInteger(data.stocks.nationalStocksDays) ? 0 : 1)}${NBSP}jours.`,
+    // Réserves en gisement (SDES), pas des stocks stratégiques : ceux-ci n'ont pas de source suivie (16/10/2026).
+    `Réserves de brut en gisement : environ ${frNumber(data.stocks.crudeReserveDays, 0)}${NBSP}jours de consommation.`,
     `${active} ${plural(active, 'raffinerie')} sur ${data.refineries.length} en activité.`,
   ].filter((s): s is string => s !== null).join(' ');
 }
@@ -349,13 +350,18 @@ function stocksSection(input: OilViewInput, data: OilDashboard): FicheSection {
     label: p.product, pct: (p.daysCover / STOCK_BAR_DAYS) * 100, value: formatDays(p.daysCover), level: stockLevel(p.daysCover),
     noteHtml: `${escapeHtml(formatTons(p.stocksTons))} · ${valueHtml(TREND_WORD[p.trend], p.trend === 'up' ? 'vert' : p.trend === 'down' ? 'orange' : null)}`,
   })).join('');
+  const reserve = stocks.crudeReserveMtep;
+  const stocksText = days === null ? 'n.d.' : `${formatDays(days)}${stocks.totalStocksTons !== null ? ` · ${formatTons(stocks.totalStocksTons)}` : ''}`;
   const html = rows
-    + kvRow('Total', escapeHtml(`${formatDays(days)} · ${formatTons(stocks.totalStocksTons)}`))
-    + kvRow('Indice de vigilance', valueHtml(`${meta.vigilanceScore} sur 100 · ${vigilance.word}`, vigilance.level))
-    + note(`Barre sur ${STOCK_BAR_DAYS} jours ; rouge sous ${STOCK_THRESHOLD_DAYS} jours, jaune de 30 à 40.`)
+    + kvRow('Stocks stratégiques', escapeHtml(stocksText))
+    + (days === null ? note('Aucune source publique suivie : obligation légale d’environ 90 jours de consommation (SAGESS, CPSSP).') : '')
+    + kvRow('Réserves de brut en gisement', escapeHtml(`${frNumber(reserve, Number.isInteger(reserve) ? 0 : 1)}${NBSP}Mtep · environ ${formatDays(stocks.crudeReserveDays)}`))
+    + kvRow('Indice de vigilance', meta.vigilanceScore === null ? escapeHtml('n.d.') : valueHtml(`${meta.vigilanceScore} sur 100 · ${vigilance.word}`, vigilance.level))
+    + (rows ? note(`Barre sur ${STOCK_BAR_DAYS} jours ; rouge sous ${STOCK_THRESHOLD_DAYS} jours, jaune de 30 à 40.`) : '')
     + freshnessNote(meta.freshness.dashboard);
   return {
-    id: 'stocks', title: 'Stocks stratégiques', summary: escapeHtml(`${formatDays(days)} · seuil ${formatDays(STOCK_THRESHOLD_DAYS)}`),
+    id: 'stocks', title: 'Stocks et réserves',
+    summary: escapeHtml(`stocks stratégiques ${days === null ? 'n.d.' : formatDays(days)} · gisement ${formatDays(stocks.crudeReserveDays)}`),
     collapsible: true, open: input.open('stocks', true), html,
   };
 }

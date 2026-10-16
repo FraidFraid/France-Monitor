@@ -18,7 +18,7 @@ const series = (fuelType: FuelPriceSeries['fuelType'], label: string, latest: nu
 export function oilFixture(over: Partial<OilDashboard> = {}): OilDashboard {
   return {
     meta: {
-      lastUpdate: new Date(OIL_NOW).toISOString(), vigilanceScore: 20, status: 'normal', partialData: false,
+      lastUpdate: new Date(OIL_NOW).toISOString(), vigilanceScore: null, status: 'unknown', partialData: false,
       freshness: {
         dashboard: fresh('STRUCTURAL', 'SDES, bilan 2024'), deliveries: fresh('MONTHLY', 'UFIP, août 2026'),
         infrastructure: fresh('STRUCTURAL', 'Raffineries 2025'), harmonized: fresh('PROVISIONAL', 'JODI, juillet 2026'),
@@ -26,13 +26,8 @@ export function oilFixture(over: Partial<OilDashboard> = {}): OilDashboard {
       },
     },
     stocks: {
-      date: '2026-09-30', nationalStocksDays: 46, totalStocksTons: 17_200_000,
-      byProduct: [
-        { product: 'Gazole', stocksTons: 9_000_000, daysCover: 46, trend: 'stable' },
-        { product: 'Essences', stocksTons: 3_000_000, daysCover: 53, trend: 'up' },
-        { product: 'Carburéacteur', stocksTons: 1_000_000, daysCover: 34, trend: 'down' },
-        { product: 'Fioul lourd', stocksTons: 100_000, daysCover: 22, trend: 'down' },
-      ],
+      // Stocks stratégiques : aucune source suivie ; réserves en gisement du SDES (5,0 Mtep au 01/01/2026, un mois).
+      date: '2025-12-31', nationalStocksDays: null, totalStocksTons: null, byProduct: [], crudeReserveMtep: 5, crudeReserveDays: 30,
     },
     flows: { netImportTonsPerDay: 154_000, trend: 'stable', importTonsPerDay: 210_000, exportTonsPerDay: 56_000, consumptionTonsPerDay: 180_000 },
     origins: [

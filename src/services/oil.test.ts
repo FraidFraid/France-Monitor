@@ -1,7 +1,7 @@
 // src/services/oil.test.ts
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
-import { parseInseeOilOrigins, parseSdesOilStats, SDES_PETROLE_URLS } from './oil.ts';
+import { buildStocksSnapshot, computeVigilanceScore, parseInseeOilOrigins, parseSdesOilStats, SDES_PETROLE_URLS } from './oil.ts';
 import { INSEE_ORIGINES_2026_HTML, SDES_PETROLE_2026_HTML } from './oil.fixture.ts';
 
 describe('pétrole : SDES, chiffres clés (édition 2026)', () => {
@@ -22,5 +22,21 @@ describe('pétrole : Insee, provenance du brut', () => {
     expect(o[0]).toMatchObject({ volumeMt: 16.8, sharePct: 36.6, referenceYear: 2025 });
     expect(o[0].sourceLabel).toContain('2025 provisoire');
     expect(o[3].breakdown).toEqual([{ label: 'Norvège', volumeMt: 4.4, sharePct: 9.6 }]);
+  });
+});
+
+describe('pétrole : stocks et vigilance', () => {
+  const annual = { year: 2025, crudeImportMtep: 46.9, refinedImportMtep: 34.5, refinedExportMtep: 17.5, refinedConsumptionMtep: 60, reserveMtep: 5, sourceLabel: 'SDES' };
+  it('les réserves du SDES sont en gisement, pas des stocks stratégiques : stocks inconnus, réserves exposées', () => {
+    const s = buildStocksSnapshot(annual);
+    expect(s.nationalStocksDays).toBeNull();
+    expect(s.totalStocksTons).toBeNull();
+    expect(s.byProduct).toEqual([]);
+    expect(s.crudeReserveMtep).toBe(5);
+    expect(s.crudeReserveDays).toBe(30);
+  });
+  it('sans stocks stratégiques connus, la vigilance est inconnue (aucune fausse tension vers le score et la note)', () => {
+    expect(computeVigilanceScore(null, 'up')).toEqual({ score: null, status: 'unknown' });
+    expect(computeVigilanceScore(95, 'stable').status).toBe('normal');
   });
 });

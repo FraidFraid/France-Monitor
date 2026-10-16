@@ -345,7 +345,7 @@ function buildSituationSummary(signalCounts, energy, lang) {
       const parts = [];
       if (energy.ecowattSignal === 'red') parts.push('Ecowatt rouge');
       if (energy.fuelTensionLevel && energy.fuelTensionLevel !== 'LOW') parts.push(`carburants ${energy.fuelTensionLevel}`);
-      if (energy.oilVigilanceStatus && energy.oilVigilanceStatus !== 'normal') parts.push(`pétrole ${energy.oilVigilanceStatus}`);
+      if (energy.oilVigilanceStatus === 'tense' || energy.oilVigilanceStatus === 'critical') parts.push(`pétrole ${energy.oilVigilanceStatus}`);
       if ((energy.fuelPriceDelta7dCents ?? 0) >= 8) parts.push(`prix +${energy.fuelPriceDelta7dCents?.toFixed(1)} c/L sur 7j`);
       if (parts.length > 0) lines.push(`Tension énergie : ${parts.join(', ')}`);
     } else if (energy && hasBackgroundEnergyPressure(energy)) {
@@ -373,7 +373,7 @@ function buildSituationSummary(signalCounts, energy, lang) {
       const parts = [];
       if (energy.ecowattSignal === 'red') parts.push('Ecowatt red');
       if (energy.fuelTensionLevel && energy.fuelTensionLevel !== 'LOW') parts.push(`fuel tension ${energy.fuelTensionLevel}`);
-      if (energy.oilVigilanceStatus && energy.oilVigilanceStatus !== 'normal') parts.push(`oil ${energy.oilVigilanceStatus}`);
+      if (energy.oilVigilanceStatus === 'tense' || energy.oilVigilanceStatus === 'critical') parts.push(`oil ${energy.oilVigilanceStatus}`);
       if ((energy.fuelPriceDelta7dCents ?? 0) >= 8) parts.push(`fuel prices +${energy.fuelPriceDelta7dCents?.toFixed(1)} c/L in 7d`);
       if (parts.length > 0) lines.push(`Energy tension: ${parts.join(', ')}`);
     } else if (energy && hasBackgroundEnergyPressure(energy)) {

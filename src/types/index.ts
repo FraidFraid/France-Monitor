@@ -1664,9 +1664,13 @@ export interface OilFreshnessInfo {
 
 export interface OilStocksSnapshot {
   date: string;
-  nationalStocksDays: number; // Total national stock in days of consumption
-  totalStocksTons: number;
+  /** Stocks stratégiques en jours de consommation : null, aucune source publique suivie (16/10/2026). */
+  nationalStocksDays: number | null;
+  totalStocksTons: number | null;
   byProduct: OilProductStock[];
+  /** Réserves de pétrole brut en gisement (SDES) : ce ne sont pas des stocks. */
+  crudeReserveMtep: number;
+  crudeReserveDays: number;
 }
 
 export interface OilFlowsSnapshot {
@@ -1771,7 +1775,7 @@ export interface OilHarmonizedSnapshot {
 export interface OilDashboard {
   meta: {
     lastUpdate: string;
-    vigilanceScore: number; // 0-100, higher = more tension
+    vigilanceScore: number | null; // 0-100, higher = more tension ; null sans stocks stratégiques connus
     status: OilVigilanceStatus;
     partialData: boolean;
     freshness: {

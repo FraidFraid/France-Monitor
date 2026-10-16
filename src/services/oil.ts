@@ -9,7 +9,6 @@ import type {
   OilLocalConsumptionSnapshot,
   OilMonthlyDelivery,
   OilOriginShare,
-  OilProductStock,
   OilStocksSnapshot,
   OilVigilanceStatus,
 } from '../types';
@@ -719,68 +718,6 @@ async function fetchMonthlyOilConsumptionRows(): Promise<MonthlyOilConsumptionRo
     .filter((row) => row.period);
 }
 
-function computeProductStocks(rows: MonthlyOilConsumptionRow[], totalStocksTons: number, nationalStocksDays: number): OilProductStock[] {
-  const latestYear = rows.reduce((maxYear, row) => Math.max(maxYear, row.year), 0);
-  const latestRows = rows.filter((row) => row.year === latestYear);
-  if (latestRows.length === 0) return [];
-
-  const latestRow = latestRows[latestRows.length - 1];
-  const previousYearRow = rows.find((row) =>
-    row.period === `${latestYear - 1}-${latestRow.period.slice(5)}`
-  ) ?? null;
-
-  const annualTotals = {
-    gazole: latestRows.reduce((sum, row) => sum + row.gazole, 0),
-    essence: latestRows.reduce((sum, row) => sum + row.superSansPlomb + row.superEthE85, 0),
-    carburacteur: latestRows.reduce((sum, row) => sum + row.carbureacteur, 0),
-    fod: latestRows.reduce((sum, row) => sum + row.fod, 0),
-    fol: latestRows.reduce((sum, row) => sum + row.fol, 0),
-  };
-
-  const totalVolume = Object.values(annualTotals).reduce((sum, value) => sum + value, 0);
-  if (totalVolume <= 0) return [];
-
-  const compare = (current: number, previous: number | null): 'up' | 'down' | 'stable' => {
-    if (!previous || previous <= 0) return 'stable';
-    const pct = ((current - previous) / previous) * 100;
-    return inferTrendFromPct(pct);
-  };
-
-  const previousEssence = previousYearRow ? previousYearRow.superSansPlomb + previousYearRow.superEthE85 : null;
-
-  return [
-    {
-      product: 'Gazole',
-      stocksTons: Math.round(totalStocksTons * (annualTotals.gazole / totalVolume)),
-      daysCover: nationalStocksDays,
-      trend: compare(latestRow.gazole, previousYearRow?.gazole ?? null),
-    },
-    {
-      product: 'Essence SP',
-      stocksTons: Math.round(totalStocksTons * (annualTotals.essence / totalVolume)),
-      daysCover: nationalStocksDays,
-      trend: compare(latestRow.superSansPlomb + latestRow.superEthE85, previousEssence),
-    },
-    {
-      product: 'Carburéacteur',
-      stocksTons: Math.round(totalStocksTons * (annualTotals.carburacteur / totalVolume)),
-      daysCover: nationalStocksDays,
-      trend: compare(latestRow.carbureacteur, previousYearRow?.carbureacteur ?? null),
-    },
-    {
-      product: 'Fioul domestique',
-      stocksTons: Math.round(totalStocksTons * (annualTotals.fod / totalVolume)),
-      daysCover: nationalStocksDays,
-      trend: compare(latestRow.fod, previousYearRow?.fod ?? null),
-    },
-    {
-      product: 'Fioul lourd',
-      stocksTons: Math.round(totalStocksTons * (annualTotals.fol / totalVolume)),
-      daysCover: nationalStocksDays,
-      trend: compare(latestRow.fol, previousYearRow?.fol ?? null),
-    },
-  ];
-}
 
 /** Nombre français : décimale facultative (« 60 Mtep » comme « 46,9 Mtep »). */
 const MTEP = '([0-9]+(?:,[0-9]+)?)\\s*Mtep';
@@ -1003,7 +940,9 @@ export async function fetchLocalOilConsumption(): Promise<OilLocalConsumptionSna
   };
 }
 
-function computeVigilanceScore(stocksDays: number, deliveriesTrend: 'up' | 'down' | 'stable'): { score: number; status: OilVigilanceStatus } {
+export function computeVigilanceScore(stocksDays: number | null, deliveriesTrend: 'up' | 'down' | 'stable'): { score: number | null; status: OilVigilanceStatus } {
+  // Sans stocks stratégiques connus, pas d'indice : aucune fausse tension vers le score et la note de situation.
+  if (stocksDays === null) return { score: null, status: 'unknown' };
   let baseScore: number;
   let status: OilVigilanceStatus;
 
@@ -1038,15 +977,19 @@ async function settleSource<T>(loader: () => Promise<T>): Promise<{ data: T | nu
   }
 }
 
-function buildStocksSnapshot(annual: AnnualOilStats, monthlyRows: MonthlyOilConsumptionRow[] | null): OilStocksSnapshot {
-  const nationalStocksDays = Math.round((annual.reserveMtep / annual.refinedConsumptionMtep) * 365);
-  const totalStocksTons = Math.round(annual.reserveMtep * 1_000_000);
-
+/**
+ * Les « réserves de pétrole brut » du SDES sont le pétrole encore en gisement (≈ un mois de consommation), pas les stocks
+ * stratégiques (obligation légale ≈ 90 jours, SAGESS / CPSSP) : on les expose pour ce qu'elles sont, et les stocks
+ * stratégiques restent inconnus tant qu'aucune source publique n'est suivie (décision du 16/10/2026).
+ */
+export function buildStocksSnapshot(annual: AnnualOilStats): OilStocksSnapshot {
   return {
     date: `${annual.year}-12-31`,
-    nationalStocksDays,
-    totalStocksTons,
-    byProduct: monthlyRows ? computeProductStocks(monthlyRows, totalStocksTons, nationalStocksDays) : [],
+    nationalStocksDays: null,
+    totalStocksTons: null,
+    byProduct: [],
+    crudeReserveMtep: annual.reserveMtep,
+    crudeReserveDays: Math.round((annual.reserveMtep / annual.refinedConsumptionMtep) * 365),
   };
 }
 
@@ -1182,7 +1125,7 @@ export async function fetchOilDashboard(): Promise<OilDashboard> {
     originsResult.status = originsResult.status === 'ok' ? 'stale' : originsResult.status;
   }
 
-  const stocks = buildStocksSnapshot(annualResult.data, monthlyRowsResult.data);
+  const stocks = buildStocksSnapshot(annualResult.data);
   const flows = buildFlowsSnapshot(annualResult.data, deliveriesResult.data?.[0] ?? null);
   const { score, status } = computeVigilanceScore(stocks.nationalStocksDays, flows.trend);
   const harmonized = buildHarmonizedSnapshot(

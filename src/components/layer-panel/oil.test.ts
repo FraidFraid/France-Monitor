@@ -39,7 +39,7 @@ describe('vue Pétrole', () => {
     expect(v.head.figure?.captionHtml).toBe(`gazole, moyenne nationale · <span class="lp-val fmk-num lp-lvl lp-lvl--vert">−1,2${NBSP}c en 7${NBSP}j</span>`);
     // fraîcheur du flux : dernier relevé de station, 08:30 − 25 min
     expect(v.head.status).toEqual([`2,1${NBSP}% de stations en anomalie`, 'données de 08:05', 'prix-carburants']);
-    expect(v.head.lead).toBe(`Pas de tension d’approvisionnement. Stocks stratégiques : 46${NBSP}jours. 1 raffinerie sur 2 en activité.`);
+    expect(v.head.lead).toBe(`Pas de tension d’approvisionnement. Réserves de brut en gisement : environ 30${NBSP}jours de consommation. 1 raffinerie sur 2 en activité.`);
   });
   it('tension modérée : phrase avec la part d’anomalies', () => {
     const t = tensionFixture({ national: { ...tensionFixture().national, tensionLevel: 'MEDIUM' } });
@@ -83,14 +83,16 @@ describe('vue Pétrole', () => {
     expect(s?.html).toMatch(new RegExp(`fmk-dot--orange[^]*Bouches-du-Rhône \\(13\\)[^]*6,8${NBSP}%[^]*écart 7${NBSP}j : <span class="lp-val fmk-num lp-lvl lp-lvl--orange">\\+2,1${NBSP}c</span>`));
     expect(s?.html).toMatch(/fmk-dot--jaune[^]*Nord \(59\)[^]*écart 7\u00A0j : <span class="lp-val fmk-num">n\.d\.<\/span>/);
   });
-  it('stocks stratégiques : une jauge par produit sur 120 jours, couleurs de seuil, total', () => {
+  it('stocks et réserves : stocks stratégiques n.d. (aucune source suivie), réserves en gisement pour ce qu’elles sont, vigilance n.d.', () => {
     const s = section('stocks');
-    expect(s?.summary).toBe(`46${NBSP}j · seuil 30${NBSP}j`);
+    expect(s?.title).toBe('Stocks et réserves');
+    expect(s?.summary).toBe(`stocks stratégiques n.d. · gisement 30${NBSP}j`);
     const h = s?.html ?? '';
-    expect(h).toMatch(/Gazole[^]*background:var\(--sev-green\)/);
-    expect(h).toMatch(/Carburéacteur[^]*background:var\(--sev-yellow\)/);
-    expect(h).toMatch(/Fioul lourd[^]*background:var\(--sev-red\)/);
-    expect(h).toContain(`46${NBSP}j · 17,2${NBSP}Mt`);
+    expect(h).toMatch(/Stocks stratégiques[^]*n\.d\./);
+    expect(h).toContain('obligation légale d’environ 90');
+    expect(h).toContain(`5${NBSP}Mtep · environ 30${NBSP}j`);
+    expect(h).toMatch(/Indice de vigilance[^]*n\.d\./);
+    expect(h).not.toContain('Gazole');
   });
   it('raffineries : puce verte en activité, grise à l’arrêt, capacité', () => {
     const s = section('refineries');
@@ -191,10 +193,6 @@ describe('vue Pétrole', () => {
     expect(prices).toContain(`en 30${NBSP}j`);
     expect(prices).toMatch(/Fraîcheur : quotidien( · [^<]+)?<\/p>/);
     expect(section('method')?.html).toContain('Prix quotidiens');
-    const stocks = section('stocks')?.html ?? '';
-    expect(stocks).toMatch(/lp-lvl--vert">en hausse/);
-    expect(stocks).toMatch(/lp-lvl--orange">en baisse/);
-    expect(stocks).toContain('20 sur 100 · normale');
     const tension = section('tension')?.html ?? '';
     expect(tension).toContain(`moyenne 50${NBSP}min · médiane 38${NBSP}min`);
     expect(tension).toContain('Anomalies nationales');
