@@ -127,6 +127,30 @@ export const ENERGY_DISC_RADIUS: Readonly<Record<'nuclear' | 'gas' | 'refinery' 
   nuclear: 11, gas: 9, refinery: 9, windPark: 9, powerUnit: 8, hydro: 7, other: 8,
 };
 
+/** Charge métropolitaine : rayon (zoom 6) d'un cercle dont la surface est proportionnelle à la consommation ; 4 px au moins. */
+export function metroRadiusPx(mw: number): number {
+  return Math.max(4, 0.47 * Math.sqrt(Math.max(0, mw)));
+}
+
+/** Même rayon en expression MapLibre (propriété `loadMw`), un peu plus petit en vue large et plus grand en zoom. */
+const METRO_R: StyleExpr = ['max', 4, ['*', 0.47, ['sqrt', ['max', 0, ['coalesce', ['get', 'loadMw'], 0]]]]];
+/** Facteur du rayon selon le zoom : un peu plus petit en vue large, plus grand en zoom. */
+const METRO_ZOOM: ReadonlyArray<readonly [number, number]> = [[4, 0.75], [6, 1], [9, 1.6]];
+/** Taille de l'étiquette selon le zoom (px). */
+const METRO_FONT: Readonly<Record<number, number>> = { 4: 11, 6: 11, 9: 13 };
+
+export function metroRadiusExpr(): StyleExpr {
+  return ['interpolate', ['linear'], ['zoom'], ...METRO_ZOOM.flatMap(([z, k]) => [z, ['*', METRO_R, k]])] as StyleExpr;
+}
+
+/** Décalage (em) de l'étiquette sous le cercle : rayon / taille de police, plus un petit jour. */
+export function metroLabelOffsetExpr(): StyleExpr {
+  return ['interpolate', ['linear'], ['zoom'], ...METRO_ZOOM.flatMap(([z, k]) => [z, ['+', 0.3, ['/', ['*', METRO_R, k], METRO_FONT[z]]]])] as StyleExpr;
+}
+
+/** Taille de l'étiquette des métropoles, accordée au décalage. */
+export const METRO_LABEL_SIZE: StyleExpr = ['interpolate', ['linear'], ['zoom'], 4, METRO_FONT[4], 6, METRO_FONT[6], 9, METRO_FONT[9]];
+
 /** Les pictos SDF sont dessinés pour un disque de rayon 19 px. */
 export function discIconSize(radius: number): number {
   return radius / 19;

@@ -7,7 +7,7 @@ import {
 } from './energy-map.ts';
 import type { EnergyState } from '../../services/energy-state.ts';
 import {
-  companionFilters, discColorExpr, discCompanionLayers, ENERGY_ALERT_FILTER, ENERGY_DISC_RADIUS, discIconSize, glyphColorExpr, infraGlyphImageExpr, infraSectorHexExpr,
+  companionFilters, discColorExpr, discCompanionLayers, metroLabelOffsetExpr, metroRadiusExpr, metroRadiusPx, ENERGY_ALERT_FILTER, ENERGY_DISC_RADIUS, discIconSize, glyphColorExpr, infraGlyphImageExpr, infraSectorHexExpr,
   nuclearDiscColorExpr, nuclearOpacityExpr, nuclearRingColorExpr, nuclearRingWidthExpr,
 } from './energy-map.ts';
 import { expression } from '@maplibre/maplibre-gl-style-spec';
@@ -182,5 +182,17 @@ describe('calques compagnons d’un disque', () => {
     expect(evalExpr((halo.paint as Record<string, unknown>)['circle-radius'], { type: 'nuclear' })).toBe(18);
     expect(evalExpr((icon.layout as Record<string, unknown>)['icon-size'], { type: 'x' })).toBeCloseTo(8 / 19);
     expect((icon as { filter?: unknown }).filter).toBeUndefined();
+  });
+});
+
+describe('charge métropolitaine : cercles proportionnels', () => {
+  it('surface proportionnelle à la consommation, rayon minimal lisible', () => {
+    expect(metroRadiusPx(3000)).toBeCloseTo(0.47 * Math.sqrt(3000));
+    expect(metroRadiusPx(3000) / metroRadiusPx(750)).toBeCloseTo(2);
+    expect(metroRadiusPx(10)).toBe(4);
+    expect(evalExpr(metroRadiusExpr(), { loadMw: 3000 })).toBeCloseTo(metroRadiusPx(3000));
+  });
+  it('étiquette juste sous le bord du cercle (décalage en em, police de 11 px au zoom 6)', () => {
+    expect(evalExpr(metroLabelOffsetExpr(), { loadMw: 3000 })).toBeCloseTo(0.3 + metroRadiusPx(3000) / 11);
   });
 });

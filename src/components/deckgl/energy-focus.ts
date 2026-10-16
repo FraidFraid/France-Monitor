@@ -60,7 +60,7 @@ export const ENERGY_FOCUS_KEY: Readonly<Record<EnergyLayerKey, { title: string; 
   powerGrid: { title: 'Réseau électrique', rows: [[F.elec.export, 'Export d’électricité'], [F.elec.import, 'Import d’électricité'],
     ['#5c6f8f', 'Fond des régions : solde production et consommation']] },
   outagesElec: { title: 'Électricité (unités EDF)', rows: [[D.maintenance, 'Unité en maintenance'], [D.arret, 'À l’arrêt sans préavis']] },
-  metroLoad: { title: 'Charge métropolitaine', rows: [['rgba(238,242,247,0.6)', 'Métropole, taille = consommation']] },
+  metroLoad: { title: 'Charge métropolitaine', rows: [['#eef2f7', 'Métropole : surface du cercle proportionnelle à la consommation (MW)']] },
   dromEnergy: { title: 'Énergie DROM', rows: [[H.electricite, 'Poste, pylône, site de production']] },
 };
 
@@ -94,4 +94,23 @@ const FLOW_KIND_OF: ReadonlyArray<readonly [EnergyLayerKey, EnergyFlowKind]> = [
  */
 export function flowKindsShown(layers: Partial<Record<EnergyLayerKey, boolean>>, focus: readonly EnergyLayerKey[]): EnergyFlowKind[] {
   return FLOW_KIND_OF.filter(([k]) => layers[k] === true && (focus.length === 0 || focus.includes(k))).map(([, kind]) => kind);
+}
+
+const isZoomCurve = (v: unknown): v is unknown[] => Array.isArray(v) && (v[0] === 'interpolate' || v[0] === 'step')
+  && JSON.stringify(v[0] === 'step' ? v[1] : v[2]) === '["zoom"]';
+
+/**
+ * Opacité atténuée d'un facteur. MapLibre n'accepte le zoom qu'en tête d'une interpolation : une courbe sur le zoom est
+ * atténuée palier par palier, le reste est multiplié.
+ */
+export function dimOpacity(orig: unknown, factor: number): unknown {
+  if (typeof orig === 'number') return orig * factor;
+  if (isZoomCurve(orig)) {
+    const head = orig[0] === 'step' ? 2 : 3;
+    const out: unknown[] = orig.slice(0, head);
+    if (orig[0] === 'step') out[2] = ['*', orig[2], factor];
+    for (let i = head + (orig[0] === 'step' ? 1 : 0); i < orig.length; i += 2) out.push(orig[i], ['*', orig[i + 1], factor]);
+    return out;
+  }
+  return ['*', orig, factor];
 }

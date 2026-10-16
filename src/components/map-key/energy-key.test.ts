@@ -83,3 +83,12 @@ describe('légende de l’énergie', () => {
     expect(buildEnergyKeyHtml(base({ fuelTension: { rouge: 1, orange: 0, jaune: 2 }, metro: true }))).not.toContain('—');
   });
 });
+
+describe('légende de la charge métropolitaine', () => {
+  it('cercles emboîtés de référence, valeur et unité sur une ligne', () => {
+    const html = buildEnergyKeyHtml(model({ layers: { metroLoad: true } }));
+    expect(html).toContain('Consommation des métropoles');
+    expect(html).toContain('3 000 MW');
+    expect(html).toContain('200 MW');
+  });
+});

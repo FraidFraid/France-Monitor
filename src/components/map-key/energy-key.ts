@@ -12,6 +12,10 @@ import {
 } from '../../services/energy-state.ts';
 import { levelHex } from '../../services/vigilance.ts';
 import { fmIcon } from '../shared/icons.ts';
+import { nestedCirclesSvg } from './events-key.ts';
+import { metroRadiusPx } from '../deckgl/energy-map.ts';
+
+const NBSP = '\u00a0';
 
 const STROKE = 'rgba(10,10,18,0.9)';
 
@@ -101,8 +105,10 @@ function contextBlock(m: EnergyKeyModel): string {
   if (m.networks.oil) parts.push(staticRow(line(ENERGY_SECTOR_HEX.petrole, true), 'Oléoduc'));
   if (m.networks.drom) parts.push(staticRow(line('#aeaeb2', false), 'Ligne HTA (outre-mer)'));
   if (m.metro) {
-    parts.push(staticRow('<svg width="16" height="16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="rgba(238,242,247,0.06)" stroke="rgba(238,242,247,0.55)" stroke-width="1.2"/></svg>',
-      'Métropole, taille = consommation'));
+    const ref = [3000, 1000, 200];
+    parts.push('<div class="mk-sub">Consommation des métropoles : surface du cercle proportionnelle</div><div class="mk-key">'
+      + nestedCirclesSvg(ref.map(metroRadiusPx), ref.map((v) => `${v.toLocaleString('fr-FR').replace(/\s/g, NBSP)}${NBSP}MW`), 'Consommation des métropoles')
+      + '</div>');
   }
   if (m.inventory.biomethane) parts.push(staticRow(dot(ENERGY_SECTOR_HEX.gaz, 3), 'Site de biométhane'));
   if (m.inventory.depots) parts.push(staticRow(dot(ENERGY_SECTOR_HEX.petrole, 3), 'Dépôt pétrolier'));

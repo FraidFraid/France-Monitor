@@ -1,6 +1,6 @@
 // src/components/deckgl/energy-focus.test.ts
 import { describe, expect, it } from 'vitest';
-import { ENERGY_FOCUS_KEY, ENERGY_FOCUS_LAYERS, energyFocusKeyHtml, energyFocusKeysHtml, energyFocusLayersOf, flowKindsShown, isEnergyLayerKey } from './energy-focus.ts';
+import { ENERGY_FOCUS_KEY, ENERGY_FOCUS_LAYERS, energyFocusKeyHtml, dimOpacity, energyFocusKeysHtml, energyFocusLayersOf, flowKindsShown, isEnergyLayerKey } from './energy-focus.ts';
 import { ENERGY_LAYER_KEYS } from './energy-map.ts';
 import { OUT_LAYER_KEYS } from './outages-map.ts';
 
@@ -48,5 +48,15 @@ describe('flèches des pastilles allumées', () => {
     expect(flowKindsShown(on, ['powerGrid'])).toEqual(['elec']);
     expect(flowKindsShown(on, ['powerGrid', 'oilNetwork'])).toEqual(['elec', 'petrole']);
     expect(flowKindsShown(on, ['nuclearFleet'])).toEqual([]);
+  });
+});
+
+describe('atténuation d’une opacité', () => {
+  it('nombre et expression simple : multipliés ; interpolation sur le zoom : chaque palier multiplié (règle MapLibre)', () => {
+    expect(dimOpacity(0.8, 0.15)).toBeCloseTo(0.12);
+    expect(dimOpacity(['get', 'o'], 0.15)).toEqual(['*', ['get', 'o'], 0.15]);
+    expect(dimOpacity(['interpolate', ['linear'], ['zoom'], 7, 0.42, 11, 0.72], 0.15))
+      .toEqual(['interpolate', ['linear'], ['zoom'], 7, ['*', 0.42, 0.15], 11, ['*', 0.72, 0.15]]);
+    expect(dimOpacity(['step', ['zoom'], 0, 8, 1], 0.5)).toEqual(['step', ['zoom'], ['*', 0, 0.5], 8, ['*', 1, 0.5]]);
   });
 });

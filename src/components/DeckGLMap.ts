@@ -107,13 +107,13 @@ import {
 import { fmIcon, fmStatusDot, type IconName } from './shared/icons.ts';
 import {
   buildEnergyKeyModel, companionFilters, discColorExpr, discCompanionLayers, ENERGY_DISC_RADIUS, energyEntriesFrom, glyphColorExpr,
-  infraGlyphImageExpr, infraSectorHexExpr, nuclearDiscColorExpr, nuclearOpacityExpr, nuclearRingColorExpr, nuclearRingWidthExpr, type StyleExpr, energyIconImage, energyStateFilter, gasStorageStyle, hydroStyle,
+  infraGlyphImageExpr, infraSectorHexExpr, METRO_LABEL_SIZE, metroLabelOffsetExpr, metroRadiusExpr, nuclearDiscColorExpr, nuclearOpacityExpr, nuclearRingColorExpr, nuclearRingWidthExpr, type StyleExpr, energyIconImage, energyStateFilter, gasStorageStyle, hydroStyle,
   ENERGY_ICON_NAMES, ENERGY_LAYER_KEYS,
   ENERGY_SHAPE_DIAMOND, ENERGY_SHAPE_SQUARE, shapeIconSvg,
   type EnergyEntry, type EnergyFlowCount, type EnergyKeyModel, type EnergyLayerKey,
 } from './deckgl/energy-map.ts';
 import { buildFlowFeatures, flowArcFromFeature, kmBetween, type FlowArc } from './deckgl/energy-flows.ts';
-import { ENERGY_FOCUS_LAYERS, energyFocusLayersOf, flowKindsShown, isEnergyLayerKey } from './deckgl/energy-focus.ts';
+import { dimOpacity, ENERGY_FOCUS_LAYERS, energyFocusLayersOf, flowKindsShown, isEnergyLayerKey } from './deckgl/energy-focus.ts';
 import { EnergyPopupController } from './deckgl/energy-popup.ts';
 import {
   effectiveOpacity, ENERGY_HOVER_LAYER_IDS, energyCardFor, pickEnergyHover, tooltipCardHtml, type EnergyHoverContext, type EnergyHoverKind, type HoverCandidate,
@@ -1981,15 +1981,14 @@ export class DeckGLMap {
       type: 'circle',
       source: SRC_METRO_LOAD,
       paint: {
-        'circle-radius': ['interpolate', ['linear'], ['zoom'],
-          4, ['/', ['get', 'radius'], 2.1],
-          7, ['/', ['get', 'radius'], 1.2],
-          10, ['get', 'radius'],
-        ],
-        // Consommation des métropoles : cercle creux, contexte (spec 2026-10-16 § 5).
-        'circle-color': 'rgba(238,242,247,0.06)',
-        'circle-stroke-width': 1.2,
-        'circle-stroke-color': 'rgba(238,242,247,0.55)',
+        // Consommation des métropoles : cercle proportionnel (surface ∝ MW), blanc translucide bien cerné, posé sous les
+        // installations et les flèches (spec 2026-10-16 § 5).
+        'circle-radius': metroRadiusExpr(),
+        'circle-color': '#eef2f7',
+        'circle-opacity': 0.28,
+        'circle-stroke-width': 1.6,
+        'circle-stroke-color': '#eef2f7',
+        'circle-stroke-opacity': 0.9,
       },
     });
 
@@ -2000,9 +1999,10 @@ export class DeckGLMap {
       source: SRC_METRO_LOAD,
       layout: {
         'text-field': ['concat', ['get', 'name'], '\n', ['get', 'mwLabel']],
-        'text-size': ['interpolate', ['linear'], ['zoom'], 4, 10, 8, 12, 11, 13],
-        'text-offset': [0, 1.6],
-        'text-anchor': 'top',
+        // Juste sous le bord du cercle proportionnel, quelle que soit sa taille.
+        'text-size': METRO_LABEL_SIZE,
+        'text-radial-offset': metroLabelOffsetExpr(),
+        'text-variable-anchor': ['top'],
         'text-allow-overlap': true,
         'text-ignore-placement': true,
         'text-font': ['Open Sans Regular'],
@@ -2258,6 +2258,8 @@ export class DeckGLMap {
       for (const layerId of [`${id}-halo`, id, `${id}-icon`]) this.map.moveLayer(layerId, `${LYR_OIL_REFINERIES}-halo`);
     }
     this.map.moveLayer(LYR_GAS_STORAGES_LABEL, `${LYR_OIL_REFINERIES}-halo`);
+    // Cercles de consommation des métropoles : sous les flèches et les installations, qu'ils ne doivent pas voiler.
+    this.map.moveLayer(LYR_METRO_LOAD_CIRCLE, LYR_ENERGY_FLOW_CASE);
 
     // Séismes et marégraphes (phase B) au-dessus de toutes les surfaces : ajoutés ici, sous la première couche de points qui suit la dernière surface.
     placeEnvBPoints(this.map);
@@ -4633,12 +4635,8 @@ export class DeckGLMap {
         return;
       }
       const isTarget = activeLayers.includes(layerId);
-      // If original is an expression, wrap it down to smaller scale
-      if (Array.isArray(orig)) {
-        this.map!.setPaintProperty(layerId, prop, ['*', orig, isTarget ? 1 : 0.15]);
-      } else {
-        this.map!.setPaintProperty(layerId, prop, isTarget ? orig : Number(orig) * 0.15);
-      }
+      // Courbe sur le zoom atténuée palier par palier (MapLibre refuse « * » autour du zoom), le reste multiplié.
+      this.map!.setPaintProperty(layerId, prop, isTarget ? orig : dimOpacity(orig, 0.15));
     };
 
     allLegendLayers.forEach(layerId => {
@@ -7101,7 +7099,8 @@ export class DeckGLMap {
     const fc: GeoJSON.FeatureCollection = {
       type: 'FeatureCollection',
       features: classified.map((m) => {
-        const mwLabel = `${Math.round(m.loadMW).toLocaleString('fr-FR')} MW`;
+        // Nombre et unité jamais séparés (espaces insécables).
+        const mwLabel = `${Math.round(m.loadMW).toLocaleString('fr-FR').replace(/\s/g, '\u00a0')}\u00a0MW`;
         // Format update time for tooltip use
         let updatedAt = '';
         try {
@@ -7117,6 +7116,7 @@ export class DeckGLMap {
             code: m.code,
             name: m.name,
             radius: m.circleRadius,
+            loadMw: m.loadMW,
             color: m.color,
             glowColor: m.glowColor,
             sizeClass: m.sizeClass,
