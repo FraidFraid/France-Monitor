@@ -134,7 +134,6 @@ export const LYR_OIL_REFINERIES_LABEL = 'oil-refineries-label';
 export const LYR_OIL_DEPOTS = 'oil-depots';
 export const LYR_OIL_DEPOTS_LABEL = 'oil-depots-label';
 // Couches hit invisibles — zone de hover élargie
-export const LYR_OIL_PIPELINES_HIT = 'oil-pipelines-hit';
 export const LYR_TRAFFIC = 'traffic-flow';
 export const LYR_TRAIN_ROUTE = 'train-route-line';
 export const LYR_TRAIN_STATIONS = 'train-stations';

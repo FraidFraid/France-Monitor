@@ -80,4 +80,8 @@ describe('flèches d’échange', () => {
       `import ${(661).toLocaleString('fr-FR')}\u00a0MW`, 'import 2\u00a0GWh/j', 'import 336\u00a0kb/j vers Fos / Lavera',
     ]);
   });
+  it('la pointe porte le nom, le sens et la valeur du flux (sa bulle ne dit jamais n.d. à tort)', () => {
+    const fc = buildFlowFeatures([arc({})]);
+    expect(fc.heads.features[0].properties).toMatchObject({ who: 'Allemagne', isImport: true, flowValue: 2878, flowUnit: 'MW', kind: 'elec' });
+  });
 });

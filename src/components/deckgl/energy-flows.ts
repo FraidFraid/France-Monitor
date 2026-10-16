@@ -89,13 +89,12 @@ export function buildFlowFeatures(arcs: readonly FlowArc[]): {
     const w = sea ? Math.min(10, Math.max(2.5, 2 + Math.abs(a.flowValue ?? 0) / 40)) : Math.min(9, Math.max(3, a.lineWidth * 1.4));
     const via = route ? route.via : [];
     for (const id of via) through.set(id, [...(through.get(id) ?? []), { who, value: a.flowValue, unit: a.flowUnit }]);
-    lines.push({
-      type: 'Feature', geometry: { type: 'LineString', coordinates: seg },
-      properties: { color, w, kind: a.kind, isImport: a.isImport, who, flowValue: a.flowValue, flowUnit: a.flowUnit, hubName: a.hubName, via: via.join(',') },
-    });
+    // Le trait et sa pointe portent les mêmes données : la bulle est la même quel que soit l'élément survolé.
+    const shared = { color, kind: a.kind, isImport: a.isImport, who, flowValue: a.flowValue, flowUnit: a.flowUnit, hubName: a.hubName };
+    lines.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: seg }, properties: { ...shared, w, via: via.join(',') } });
     const tip = seg[seg.length - 1];
     const prev = seg[Math.max(0, seg.length - 3)];
-    heads.push(point(tip, { color, rot: bearing(prev, tip), size: w / 6, kind: a.kind }));
+    heads.push(point(tip, { ...shared, rot: bearing(prev, tip), size: w / 6 }));
     // Étiquette côté étranger : départ d'un import, arrivée d'un export.
     const foreign = a.isImport ? seg[0] : tip;
     const hub = a.kind === 'petrole' && a.hubName ? ` ${a.isImport ? 'vers' : 'depuis'} ${a.hubName}` : '';

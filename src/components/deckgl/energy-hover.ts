@@ -177,9 +177,11 @@ export function fuelTensionCard(p: Props): TooltipCard {
 
 export function regionCard(input: { name: string; consumptionMw: number; productionMw: number; deltaPct: number; updatedAt: unknown }): TooltipCard {
   const solde = input.productionMw - input.consumptionMw;
+  // Sans mesure (NaN), pas de solde calculé : « n.d. ».
+  const soldeText = Number.isFinite(solde) ? `${solde > 0 ? '+' : ''}${fmtNum(solde, 'MW')}` : 'n.d.';
   return { sectorHex: H.electricite, title: input.name, time: fmtTime(input.updatedAt), state: null,
     rows: [['Consommation', fmtNum(input.consumptionMw, 'MW')], ['Production', fmtNum(input.productionMw, 'MW')],
-      ['Solde', `${solde > 0 ? '+' : ''}${fmtNum(solde, 'MW')}`]], source: 'RTE éCO2mix' };
+      ['Solde', soldeText]], source: 'RTE éCO2mix' };
 }
 
 export type EnergyHoverKind =
@@ -205,6 +207,8 @@ export interface HoverCandidate {
   distancePx: number;
   /** Opacité effective du calque : sous 0,2 (éteint ou atténué par le survol d'une pastille), il ne répond pas. */
   opacity: number;
+  /** Position d'un objet ponctuel (absente pour les lignes et surfaces). */
+  coordinates?: readonly [number, number];
 }
 
 /** Un seul objet répond : le plus prioritaire, puis le plus proche du curseur (spec § 6.2). */
@@ -218,5 +222,55 @@ export function pickEnergyHover(cands: readonly HoverCandidate[]): (HoverCandida
     if (best === null || rank < best.rank || (rank === best.rank && c.distancePx < best.distancePx)) best = { ...c, kind: def.kind, rank };
   }
   if (best === null) return null;
-  return { layerId: best.layerId, properties: best.properties, distancePx: best.distancePx, opacity: best.opacity, kind: best.kind };
+  const out: HoverCandidate & { kind: EnergyHoverKind } = {
+    layerId: best.layerId, properties: best.properties, distancePx: best.distancePx, opacity: best.opacity, kind: best.kind,
+  };
+  if (best.coordinates) out.coordinates = best.coordinates;
+  return out;
+}
+
+/** Données de contexte d'une bulle, lues par la carte (unités EDF d'un site, bilan d'une région). */
+export interface EnergyHoverContext {
+  units?: ReadonlyArray<{ name: string; lostMw: number | null; kind: string }>;
+  region?: { consumptionMw: number; productionMw: number; deltaPct: number; updatedAt: unknown };
+}
+
+const count = (v: unknown): number => n(v) ?? 0;
+
+/** Bulle courte de l'objet retenu par l'arbitre (spec 2026-10-16 § 6.3). */
+export function energyCardFor(hit: { kind: EnergyHoverKind; layerId?: string; properties: Props }, ctx: EnergyHoverContext): TooltipCard | null {
+  const p = hit.properties;
+  switch (hit.kind) {
+    case 'infra': return infraCard(p, ctx.units ?? []);
+    case 'powerUnit': return powerUnitCard(p);
+    case 'gas': return gasCard(p);
+    case 'refinery': return refineryCard(p);
+    case 'oilDepot': return oilDepotCard(p);
+    case 'hydro': return hydroCard(p);
+    case 'wind': return windCard(p);
+    case 'biomethane': return biomethaneCard(p);
+    case 'drom': return dromCard(p);
+    case 'hydroCluster': return clusterCard('hydro', count(p.point_count), count(p.alerts));
+    case 'windCluster': return clusterCard('wind', count(p.point_count), count(p.alerts));
+    case 'biomethaneCluster': return clusterCard('biomethane', count(p.point_count), 0);
+    case 'flow': return flowCard(p);
+    case 'choke': return chokeCard(p);
+    case 'gasPipeline': {
+      // La donnée des gazoducs ne porte ni nom ni opérateur : l'opérateur est celui du calque (GRTgaz ou Teréga).
+      const card = pipelineCard({ ...p, operator: (hit.layerId ?? '').includes('terega') ? 'Teréga' : 'GRTgaz' }, 'gaz');
+      const dep = s(p.nom_du_departement);
+      return dep ? { ...card, rows: [...card.rows, ['Département', dep]] } : card;
+    }
+    case 'oilPipeline': return pipelineCard(p, 'petrole');
+    case 'metro': return metroCard(p);
+    case 'fuelTension': return fuelTensionCard(p);
+    case 'region': {
+      const r = ctx.region;
+      return regionCard({
+        name: s(p.nom) || s(p.name), consumptionMw: r?.consumptionMw ?? Number.NaN, productionMw: r?.productionMw ?? Number.NaN,
+        deltaPct: r?.deltaPct ?? Number.NaN, updatedAt: r?.updatedAt ?? null,
+      });
+    }
+    default: return null;
+  }
 }

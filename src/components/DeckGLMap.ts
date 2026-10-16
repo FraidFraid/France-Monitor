@@ -112,7 +112,10 @@ import {
   ENERGY_SHAPE_DIAMOND, ENERGY_SHAPE_SQUARE, shapeIconSvg,
   type EnergyEntry, type EnergyFlowCount, type EnergyKeyModel, type EnergyLayerKey,
 } from './deckgl/energy-map.ts';
-import { buildFlowFeatures, flowArcFromFeature, type FlowArc } from './deckgl/energy-flows.ts';
+import { buildFlowFeatures, flowArcFromFeature, kmBetween, type FlowArc } from './deckgl/energy-flows.ts';
+import {
+  ENERGY_HOVER_LAYER_IDS, energyCardFor, pickEnergyHover, tooltipCardHtml, type EnergyHoverContext, type EnergyHoverKind, type HoverCandidate,
+} from './deckgl/energy-hover.ts';
 import { ENERGY_CHOKE_HEX, ENERGY_DISC_STATE_HEX, ENERGY_SECTOR_HEX, ENERGY_STATE_HEX, type EnergyFlowKind, fuelTensionVigilance, refineryState, type EnergyState } from '../services/energy-state.ts';
 import type { VigilanceLevel } from '../services/vigilance.ts';
 import {
@@ -229,7 +232,6 @@ import {
   LYR_OIL_REFINERIES_LABEL,
   LYR_OIL_DEPOTS,
   LYR_OIL_DEPOTS_LABEL,
-  LYR_OIL_PIPELINES_HIT,
   LYR_TRAFFIC,
   LYR_TRAIN_ROUTE,
   LYR_TRAIN_STATIONS,
@@ -487,8 +489,6 @@ export class DeckGLMap {
   /** Trajet tracé : train choisi dans le panneau ; un train survolé le remplace le temps du survol. */
   private chosenTrain: RailTrain | null = null;
   private previewTrain: RailTrain | null = null;
-  private dromEnergyHoverPopup: maplibregl.Popup | null = null;
-  private fuelTensionHoverPopup: maplibregl.Popup | null = null;
   private _modisOverlayEnabled = false;
   private _modisTilesProbe: Promise<void> | null = null;
   private _mtgFrpEnabled = false;
@@ -501,7 +501,17 @@ export class DeckGLMap {
   private radar2dDestroyed = false;
   private _latestEolienLive: EolienLive | null = null;
   private _mairesPolitiqueData: Array<{c:string;lat:number;lon:number;n:string;nom:string}> | null = null;
-  private enrichedHoverPopup: maplibregl.Popup | null = null;
+  /** Bulle unique de l'énergie ; épinglée = fiche détaillée ouverte par un clic (spec 2026-10-16 § 6). */
+  private energyPopup: maplibregl.Popup | null = null;
+  private energyPinned = false;
+  private energyPopupPinnedMode: boolean | null = null;
+  private energyHoverRaf = 0;
+  private energyCursor = false;
+  /** Dernières unités EDF placées (out-power-src), pour la bulle des sites nucléaires. */
+  private lastPowerUnits: GeoJSON.Feature[] = [];
+  private readonly onEnergyKeydown = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape' && this.energyPinned) this.unpinEnergyPopup();
+  };
   private _lastHoveredFuelDeptId: string | null = null;
   private _previewedWeatherDeptId: number | null = null;
   private _selectedWeatherDeptId: number | null = null;
@@ -619,8 +629,6 @@ export class DeckGLMap {
   private energyRegionStats = new Map<string, import('../types/index.ts').RegionEnergyStats>();
   private energyFlowStats = new Map<string, import('../types/index.ts').InterconnectionFlowStats>();
   private energyBorderHistory = new Map<string, number[]>();  // sparkline series
-  private energyRegionPopup: maplibregl.Popup | null = null;
-  private energyFlowPopup: maplibregl.Popup | null = null;
   // Dernier signal Écowatt OFFICIEL reçu (national, RTE) — pour l'info-bulle région, qui
   // n'affiche plus de signal PAR région (Écowatt n'en a jamais eu).
   private lastEcowattOfficial: import('../types/index.ts').EcowattOfficial | null = null;
@@ -628,7 +636,6 @@ export class DeckGLMap {
   // ─── Gas tooltip data ───
   private gasFlowStats = new Map<string, import('../types/index.ts').GasInterconnectionFlowStats>();
   private gasBorderHistory = new Map<string, number[]>(); // sparkline 7j par borderCode
-  private gasFlowPopup: maplibregl.Popup | null = null;
 
   // Correspondance nom pays (propriété GeoJSON arc) → id InterconnectionFlowStats
   private static readonly COUNTRY_TO_FLOW_ID: Record<string, string> = {
@@ -1668,13 +1675,6 @@ export class DeckGLMap {
 
 
 
-    this.map.addLayer({
-      id: LYR_OIL_PIPELINES_HIT,
-      type: 'line',
-      source: SRC_OIL_PIPELINES,
-      paint: { 'line-width': 22, 'line-opacity': 0 },
-      layout: { 'line-cap': 'round', 'line-join': 'round' },
-    });
 
 
 
@@ -2544,187 +2544,8 @@ export class DeckGLMap {
     this.initOutagesInteractions();
 
 
-    this.map.on('mouseenter', LYR_DROM_ENERGY_POINTS, () => {
-      if (!this.map) return;
-      this.map.getCanvas().style.cursor = 'pointer';
-    });
-    this.map.on('mouseleave', LYR_DROM_ENERGY_POINTS, () => {
-      if (!this.map) return;
-      this.map.getCanvas().style.cursor = '';
-      this.dromEnergyHoverPopup?.remove();
-      this.dromEnergyHoverPopup = null;
-    });
-    this.map.on('mousemove', LYR_DROM_ENERGY_POINTS, (e) => {
-      if (!this.map) return;
-      const feature = e.features?.[0];
-      if (!feature) return;
-
-      this.dromEnergyHoverPopup?.remove();
-      this.dromEnergyHoverPopup = null;
-      const asset = dromEnergyAssetFromProperties((feature.properties ?? {}) as Record<string, unknown>);
-      const html = renderDromEnergyTooltipHtml(asset);
-
-      if (!this.dromEnergyHoverPopup) {
-        this.dromEnergyHoverPopup = new maplibregl.Popup({
-          closeButton: false,
-          closeOnClick: false,
-          maxWidth: '280px',
-          className: 'dark-popup',
-        }).addTo(this.map);
-      }
-
-      this.dromEnergyHoverPopup
-        .setLngLat(e.lngLat)
-        .setHTML(html);
-    });
-    this.map.on('click', LYR_DROM_ENERGY_POINTS, (e) => {
-      if (!this.map) return;
-      const feature = e.features?.[0];
-      if (!feature) return;
-
-      const asset = dromEnergyAssetFromProperties((feature.properties ?? {}) as Record<string, unknown>);
-      const html = renderDromEnergyTooltipHtml(asset);
-
-      new maplibregl.Popup({ closeButton: true, closeOnClick: true, maxWidth: '280px', className: 'dark-popup' })
-        .setLngLat(e.lngLat)
-        .setHTML(html)
-        .addTo(this.map);
-    });
-
-    // ─── Enriched Energy Hover Tooltips ───
-    const hideEnrichedHover = () => {
-      if (this.map) this.map.getCanvas().style.cursor = '';
-      this.hideEnrichedHoverPopup();
-    };
-
-    this.map.on('mouseenter', LYR_ENERGY_INFRA_CIRCLE, () => {
-      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
-    });
-    this.map.on('mousemove', LYR_ENERGY_INFRA_CIRCLE, (e) => {
-      if (!this.map || !e.features?.length) return;
-      const p = e.features[0].properties || {};
-      this.showEnrichedHoverPopup(e.lngLat, this.buildInfrastructureHoverHtml(p));
-    });
-    this.map.on('mouseleave', LYR_ENERGY_INFRA_CIRCLE, hideEnrichedHover);
-
-    this.map.on('mouseenter', LYR_HYDRO_BACKBONE_CIRCLE, () => {
-      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
-    });
-    this.map.on('mousemove', LYR_HYDRO_BACKBONE_CIRCLE, (e) => {
-      if (!this.map || !e.features?.length) return;
-      const p = e.features[0].properties || {};
-      this.showEnrichedHoverPopup(e.lngLat, this.buildHydraulicHoverHtml(p));
-    });
-    this.map.on('mouseleave', LYR_HYDRO_BACKBONE_CIRCLE, hideEnrichedHover);
-
-    this.map.on('mouseenter', LYR_WIND_TURBINE_CIRCLE, () => {
-      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
-    });
-    this.map.on('mousemove', LYR_WIND_TURBINE_CIRCLE, (e) => {
-      if (!this.map || !e.features?.length) return;
-      const p = e.features[0].properties || {};
-      this.showEnrichedHoverPopup(e.lngLat, this.buildEolienHoverHtml(p));
-    });
-    this.map.on('mouseleave', LYR_WIND_TURBINE_CIRCLE, hideEnrichedHover);
-
-    this.map.on('mouseenter', LYR_WIND_PARK_CIRCLE, () => {
-      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
-    });
-    this.map.on('mousemove', LYR_WIND_PARK_CIRCLE, (e) => {
-      if (!this.map || !e.features?.length) return;
-      const p = e.features[0].properties || {};
-      this.showEnrichedHoverPopup(e.lngLat, this.buildEolienHoverHtml(p));
-    });
-    this.map.on('mouseleave', LYR_WIND_PARK_CIRCLE, hideEnrichedHover);
-
-    this.map.on('mouseenter', LYR_GAS_TERMINALS, () => {
-      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
-    });
-    this.map.on('mousemove', LYR_GAS_TERMINALS, (e) => {
-      if (!this.map || !e.features?.length) return;
-      const p = e.features[0].properties || {};
-      this.showEnrichedHoverPopup(e.lngLat, this.buildGasHoverHtml(p));
-    });
-    this.map.on('mouseleave', LYR_GAS_TERMINALS, hideEnrichedHover);
-
-    this.map.on('mouseenter', LYR_BIOMETHANE_SITES, () => {
-      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
-    });
-    this.map.on('mousemove', LYR_BIOMETHANE_SITES, (e) => {
-      if (!this.map || !e.features?.length) return;
-      const p = e.features[0].properties || {};
-      this.showEnrichedHoverPopup(e.lngLat, this.buildBiomethaneHoverHtml(p));
-    });
-    this.map.on('mouseleave', LYR_BIOMETHANE_SITES, () => {
-      if (this.map) this.map.getCanvas().style.cursor = '';
-      hideEnrichedHover();
-    });
-
-    this.map.on('mouseenter', LYR_GAS_STORAGES, () => {
-      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
-    });
-    this.map.on('mousemove', LYR_GAS_STORAGES, (e) => {
-      if (!this.map || !e.features?.length) return;
-      const p = e.features[0].properties || {};
-      this.showEnrichedHoverPopup(e.lngLat, this.buildGasHoverHtml(p));
-    });
-    this.map.on('mouseleave', LYR_GAS_STORAGES, hideEnrichedHover);
-
-    // Flèches d'échange : fiche détaillée au survol, en attendant l'arbitre unique (spec 2026-10-16 § 6).
-    this.map.on('mousemove', LYR_ENERGY_FLOW_LINES, (e) => {
-      const html = e.features?.length ? this.energyFlowDetailHtml(e.features[0].properties ?? {}) : null;
-      if (html) this.showEnrichedHoverPopup(e.lngLat, html);
-    });
-    this.map.on('mouseleave', LYR_ENERGY_FLOW_LINES, hideEnrichedHover);
-
-    this.map.on('mouseenter', LYR_METRO_LOAD_CIRCLE, () => {
-      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
-    });
-    this.map.on('mousemove', LYR_METRO_LOAD_CIRCLE, (e) => {
-      if (!this.map || !e.features?.length) return;
-      const p = e.features[0].properties || {};
-      this.showEnrichedHoverPopup(e.lngLat, this.buildMetropoleHoverHtml(p));
-    });
-    this.map.on('mouseleave', LYR_METRO_LOAD_CIRCLE, hideEnrichedHover);
-
-    // Symbol layers: écouter directement sur le layer + bbox élargie pour near-miss
-    this.map.on('mouseenter', LYR_OIL_REFINERIES, () => {
-      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
-    });
-    this.map.on('mousemove', LYR_OIL_REFINERIES, (e) => {
-      if (!this.map) return;
-      // bbox 28px autour du curseur pour couvrir toute la surface du triangle
-      const r = 28;
-      const bbox: [maplibregl.PointLike, maplibregl.PointLike] = [
-        [e.point.x - r, e.point.y - r],
-        [e.point.x + r, e.point.y + r],
-      ];
-      const feats = this.map.queryRenderedFeatures(bbox, { layers: [LYR_OIL_REFINERIES] });
-      const p = feats[0]?.properties ?? e.features?.[0]?.properties ?? {};
-      if (Object.keys(p).length === 0) return;
-      this.showEnrichedHoverPopup(e.lngLat, this.buildOilRefineryHoverHtml(p));
-    });
-    this.map.on('mouseleave', LYR_OIL_REFINERIES, hideEnrichedHover);
-
-    this.map.on('mouseenter', LYR_OIL_DEPOTS, () => {
-      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
-    });
-    this.map.on('mousemove', LYR_OIL_DEPOTS, (e) => {
-      if (!e.features?.length) return;
-      const p = e.features[0].properties || {};
-      this.showEnrichedHoverPopup(e.lngLat, this.buildOilDepotHoverHtml(p));
-    });
-    this.map.on('mouseleave', LYR_OIL_DEPOTS, hideEnrichedHover);
-
-    this.map.on('mouseenter', LYR_OIL_PIPELINES_HIT, () => {
-      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
-    });
-    this.map.on('mousemove', LYR_OIL_PIPELINES_HIT, (e) => {
-      if (!e.features?.length) return;
-      const p = e.features[0].properties || {};
-      this.showEnrichedHoverPopup(e.lngLat, this.buildOilPipelineHoverHtml(p));
-    });
-    this.map.on('mouseleave', LYR_OIL_PIPELINES_HIT, hideEnrichedHover);
+    // Énergie (spec 2026-10-16 § 6) : un seul survol, une seule bulle, fiche détaillée épinglée au clic.
+    this.initEnergyHover();
 
     // ─── Crues : curseur sur un tronçon ; infobulle de initEnvironmentInteractions ; clic : images satellite avant / après (Sentinel-2) ───
     this.map.on('mouseenter', LYR_FLOODS, () => {
@@ -2784,174 +2605,6 @@ export class DeckGLMap {
       this.previewWeatherDepartment(null);
     });
 
-    // ─── Fuel tension department interactions ───
-    this.map.on('mouseenter', LYR_FUEL_TENSION_FILL, () => {
-      if (this.map) this.map.getCanvas().style.cursor = 'pointer';
-    });
-    this.map.on('mouseleave', LYR_FUEL_TENSION_FILL, () => {
-      if (this.map) this.map.getCanvas().style.cursor = '';
-      this.fuelTensionHoverPopup?.remove();
-      this.clearFuelTensionHoverState();
-    });
-    this.map.on('mousemove', LYR_FUEL_TENSION_FILL, (e) => {
-      if (!this.map || !e.features || e.features.length === 0) return;
-
-      const feature = e.features[0];
-      const properties = feature.properties ?? {};
-      const code = String(properties.code ?? '');
-      const departmentName = String(properties.nom ?? properties.name ?? 'Département');
-      const tensionLevel = String(properties.tensionLevel ?? 'LOW');
-      const stationCount = Number(properties.stationCount ?? 0);
-      const anomalyShare = Number(properties.anomalyShare ?? 0);
-      const avgUpdateAgeMinutes = Number(properties.avgUpdateAgeMinutes ?? Number.NaN);
-      const deltaPrice7d = Number(properties.deltaPrice7d ?? Number.NaN);
-      const freshnessBadge = String(properties.freshnessBadge ?? DATA_FRESHNESS_LABELS.TEMPS_REEL);
-      const lineColor = String(properties.lineColor ?? '#EF4444');
-
-      const deltaHtml = Number.isFinite(deltaPrice7d)
-        ? `${deltaPrice7d > 0 ? '+' : ''}${deltaPrice7d.toFixed(1)} cts/L`
-        : 'n.d.';
-      const freshnessHtml = Number.isFinite(avgUpdateAgeMinutes)
-        ? avgUpdateAgeMinutes < 60 ? `${Math.round(avgUpdateAgeMinutes)} min`
-          : avgUpdateAgeMinutes < 24 * 60 ? `${(avgUpdateAgeMinutes / 60).toFixed(1)} h`
-          : `${(avgUpdateAgeMinutes / (24 * 60)).toFixed(1)} j`
-        : 'n.d.';
-
-      const html = `
-        <div style="color:#e8e8ec; font-family:sans-serif; min-width:230px; padding:4px;">
-          <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding-bottom:8px; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.10);">
-            <div style="font-size:10px; letter-spacing:0.08em; text-transform:uppercase; color:#FBBF24; font-weight:800;">Tension carburants</div>
-            <div style="width:8px; height:8px; border-radius:999px; background:${lineColor}; box-shadow:0 0 12px ${lineColor}; flex-shrink:0;"></div>
-          </div>
-          <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:8px;">
-            <div>
-              <strong style="font-size:14px; color:#fff;">${escapeHtml(departmentName)}</strong>
-              <div style="font-size:11px; color:#9898a8;">Département ${escapeHtml(code)}</div>
-            </div>
-            <span style="font-size:10px; padding:2px 8px; border-radius:999px; font-weight:700; color:#fff; background:${lineColor};">${escapeHtml(tensionLevel)}</span>
-          </div>
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-            <div style="background:rgba(255,255,255,0.06); border-radius:6px; padding:6px;">
-              <div style="font-size:10px; color:#9898a8;">Delta 7j</div>
-              <div style="font-size:12px; color:#fff; font-weight:700;">${deltaHtml}</div>
-            </div>
-            <div style="background:rgba(255,255,255,0.06); border-radius:6px; padding:6px;">
-              <div style="font-size:10px; color:#9898a8;">Anomalies</div>
-              <div style="font-size:12px; color:#fff; font-weight:700;">${anomalyShare.toFixed(1)}%</div>
-            </div>
-            <div style="background:rgba(255,255,255,0.06); border-radius:6px; padding:6px;">
-              <div style="font-size:10px; color:#9898a8;">Stations</div>
-              <div style="font-size:12px; color:#fff; font-weight:700;">${stationCount}</div>
-            </div>
-            <div style="background:rgba(255,255,255,0.06); border-radius:6px; padding:6px;">
-              <div style="font-size:10px; color:#9898a8;">Fraîcheur</div>
-              <div style="font-size:12px; color:#fff; font-weight:700;">${freshnessBadge} · ${freshnessHtml}</div>
-            </div>
-          </div>
-        </div>
-      `;
-
-      if (!this.fuelTensionHoverPopup) {
-        this.fuelTensionHoverPopup = new maplibregl.Popup({
-          closeButton: false,
-          closeOnClick: false,
-          offset: 16,
-          maxWidth: '340px',
-          className: 'dark-popup',
-        });
-      }
-      this.fuelTensionHoverPopup.setLngLat(e.lngLat).setHTML(html).addTo(this.map);
-
-      if (this._lastHoveredFuelDeptId !== null && this._lastHoveredFuelDeptId !== code) {
-        this.map.setFeatureState({ source: SRC_FUEL_TENSION, id: this._lastHoveredFuelDeptId }, { hover: false });
-      }
-      this.map.setFeatureState({ source: SRC_FUEL_TENSION, id: code }, { hover: true });
-      this._lastHoveredFuelDeptId = code;
-    });
-
-    // ─── Energy Region Interactions (tooltip on hover) ───
-    const co2Color = (v: number) => v < 100 ? '#34c759' : v < 300 ? '#ff9500' : '#ff3b30';
-    const fmtMW = (mw: number) => mw >= 1000 ? `${(mw / 1000).toFixed(1)} GW` : `${Math.round(mw)} MW`;
-    const fmtDelta = (p: number) => `${p >= 0 ? '+' : ''}${p.toFixed(1)} %`;
-    const row = (label: string, value: string, valueColor = '#e8e8ec') =>
-      `<div style="display:flex;justify-content:space-between;gap:12px;font-size:11px;padding:2px 0;">` +
-      `<span style="color:#9898a8;">${label}</span>` +
-      `<span style="color:${valueColor};font-weight:500;">${value}</span></div>`;
-    const sep = `<div style="border-top:1px solid rgba(255,255,255,0.08);margin:6px 0;"></div>`;
-    const sectionLabel = (txt: string) =>
-      `<div style="font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#666;margin-bottom:3px;">${txt}</div>`;
-
-    this.map.on('mouseenter', LYR_POWER_REGION_FILL, () => {
-      if (this.map) this.map.getCanvas().style.cursor = 'crosshair';
-    });
-    this.map.on('mouseleave', LYR_POWER_REGION_FILL, () => {
-      if (this.map) this.map.getCanvas().style.cursor = '';
-      this.energyRegionPopup?.remove();
-      this.energyRegionPopup = null;
-    });
-    this.map.on('mousemove', LYR_POWER_REGION_FILL, (e) => {
-      if (!this.map || !e.features?.length) return;
-      // Arc or gas feature takes priority over the region fill
-      const overrideFeats = this.map.queryRenderedFeatures(e.point, {
-        layers: [LYR_ENERGY_FLOW_LINES, LYR_GAS_TERMINALS, LYR_GAS_STORAGES, LYR_HYDRO_BACKBONE_CIRCLE],
-      });
-      if (overrideFeats.length) {
-        this.energyRegionPopup?.remove();
-        this.energyRegionPopup = null;
-        return;
-      }
-      const code = String(e.features[0].properties?.code ?? '');
-      const s = this.energyRegionStats.get(code);
-      if (!s) return;
-
-      const p = s.production;
-      const total = p.total || 1;
-      // Écowatt est un signal NATIONAL (RTE) : dernier `official` reçu par updateEnergy, jamais
-      // dérivé des données de la région survolée.
-      const natLevel = ecowattToday(this.lastEcowattOfficial, Date.now());
-      const natLabel = natLevel ? ecowattLevelLabel(natLevel) : 'indisponible';
-      const natColor = natLevel === 'red' ? '#ff3b30' : natLevel === 'orange' ? '#ff9500' : natLevel === 'green' ? '#34c759' : '#888';
-      const deltaColor = s.consumptionDeltaPct <= 0 ? '#34c759' : '#ff3b30';
-
-      const prodRows: [string, number][] = [
-        [`${fmIcon('atom')} Nucléaire`, p.nuclear],
-        [`${fmIcon('droplet')} Hydraulique`, p.hydro],
-        [`${fmIcon('wind')} Éolien`, p.wind],
-        [`${fmIcon('sun')} Solaire`, p.solar],
-        [`${fmIcon('flame')} Thermique`, p.gas],
-      ].filter(([, v]) => (v as number) > 0) as [string, number][];
-
-      const prodRowsHTML = prodRows.map(([lbl, mw]) =>
-        row(lbl, `${fmtMW(mw)} (${((mw / total) * 100).toFixed(0)} %)`)
-      ).join('');
-
-      const html = `
-        <div style="color:#e8e8ec;font-family:sans-serif;min-width:200px;padding:4px;">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px;">
-            <strong style="font-size:13px;color:#fff;">${s.regionName}</strong>
-            <span style="font-size:10px;color:#666;">${formatUpdateTime(s.updatedAt)}</span>
-          </div>
-          ${row('Écowatt (signal national RTE)', natLabel, natColor)}
-          ${sep}
-          ${sectionLabel('Consommation')}
-          ${row('Actuelle', fmtMW(s.consumptionMW))}
-          ${row('Vs J-1', fmtDelta(s.consumptionDeltaPct), deltaColor)}
-          ${sep}
-          ${sectionLabel(`Production : ${fmtMW(p.total)}`)}
-          ${prodRowsHTML}
-          ${row('Bas-carbone', `${s.lowCarbonPct.toFixed(0)} %`, '#34c759')}
-          ${sep}
-          ${row(`${fmIcon('zap')} Intensité CO₂`, `${Math.round(s.carbonIntensity)} gCO₂/kWh`, co2Color(s.carbonIntensity))}
-        </div>`;
-
-      if (!this.energyRegionPopup) {
-        this.energyRegionPopup = new maplibregl.Popup({
-          closeButton: false, closeOnClick: false,
-          offset: 16, maxWidth: '260px', className: 'dark-popup',
-        });
-      }
-      this.energyRegionPopup.setLngLat(e.lngLat).setHTML(html).addTo(this.map);
-    });
 
 
     // ─── Sites de défense : curseur ; infobulle échappée de initSovereigntyInteractions ; clic : fiche du site (onMilitaryBaseClick) ───
@@ -3441,33 +3094,295 @@ export class DeckGLMap {
     this.aisHoverTooltip = null;
   }
 
-  private getEnrichedHoverPopup(): maplibregl.Popup {
-    if (!this.enrichedHoverPopup) {
-      this.enrichedHoverPopup = new maplibregl.Popup({
-        closeButton: false,
-        closeOnClick: false,
-        maxWidth: '320px',
-        className: 'dark-popup',
-        offset: 10,
+  /** Survol unique de l'énergie : l'arbitre choisit un objet, une seule bulle le décrit ; clic = fiche épinglée. */
+  private initEnergyHover(): void {
+    const map = this.map;
+    if (!map) return;
+    map.on('mousemove', (e) => {
+      if (this.energyPinned) return;
+      cancelAnimationFrame(this.energyHoverRaf);
+      this.energyHoverRaf = requestAnimationFrame(() => {
+        // Un clic a pu épingler une fiche entre le mouvement et cette image : elle reste.
+        if (this.energyPinned) return;
+        const hit = pickEnergyHover(this.energyCandidatesAt(e.point));
+        this.setFuelTensionHover(hit?.kind === 'fuelTension' ? String(hit.properties.code ?? '') : null);
+        const card = hit ? energyCardFor(hit, this.energyContextFor(hit)) : null;
+        if (!card) {
+          this.hideEnergyPopup();
+          return;
+        }
+        map.getCanvas().style.cursor = 'pointer';
+        this.energyCursor = true;
+        this.showEnergyPopup(e.lngLat, tooltipCardHtml(card), false);
       });
-    }
-    return this.enrichedHoverPopup;
+    });
+    map.on('click', (e) => {
+      cancelAnimationFrame(this.energyHoverRaf);
+      const hit = pickEnergyHover(this.energyCandidatesAt(e.point));
+      if (!hit) {
+        if (this.energyPinned) this.unpinEnergyPopup();
+        return;
+      }
+      const card = energyCardFor(hit, this.energyContextFor(hit));
+      const html = this.energyDetailHtml(hit) ?? (card ? tooltipCardHtml(card) : null);
+      if (!html) return;
+      this.energyPinned = true;
+      this.showEnergyPopup(e.lngLat, html, true);
+    });
+    map.getCanvas().addEventListener('mouseleave', () => {
+      if (!this.energyPinned) this.hideEnergyPopup();
+    });
+    document.addEventListener('keydown', this.onEnergyKeydown);
   }
 
-  private showEnrichedHoverPopup(lngLat: maplibregl.LngLatLike, html: string): void {
-    if (!this.map) return;
-    // Dismiss energy tooltips so gas/oil/infra never stack with them
-    this.energyRegionPopup?.remove(); this.energyRegionPopup = null;
-    this.energyFlowPopup?.remove(); this.energyFlowPopup = null;
-    const popup = this.getEnrichedHoverPopup();
-    popup.setLngLat(lngLat).setHTML(html).addTo(this.map);
-    const el = popup.getElement();
-    el.style.pointerEvents = 'none';
+  /** Objets de l'énergie sous le curseur (±4 px), avec leur distance au curseur et l'opacité de leur calque. */
+  private energyCandidatesAt(point: maplibregl.Point): HoverCandidate[] {
+    const map = this.map;
+    if (!map) return [];
+    const layers = ENERGY_HOVER_LAYER_IDS.filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+    if (layers.length === 0) return [];
+    const feats = map.queryRenderedFeatures([[point.x - 4, point.y - 4], [point.x + 4, point.y + 4]], { layers });
+    const seen = new Set<string>();
+    const out: HoverCandidate[] = [];
+    for (const f of feats) {
+      const props = f.properties ?? {};
+      const key = `${f.layer.id}|${String(f.id ?? props.id ?? props.cluster_id ?? JSON.stringify(props))}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      // Lignes et surfaces : distance nominale de 3 px (dans la boîte de ±4 px) ; un point posé dessus et visé passe devant.
+      const cand: HoverCandidate = { layerId: f.layer.id, properties: props, distancePx: 3, opacity: this.layerOpacity(f.layer.id, f.layer.type) };
+      if (f.geometry.type === 'Point') {
+        const [lng, lat] = f.geometry.coordinates;
+        const at = map.project([lng, lat]);
+        cand.distancePx = Math.hypot(at.x - point.x, at.y - point.y);
+        cand.coordinates = [lng, lat];
+      }
+      out.push(cand);
+    }
+    return out;
+  }
+
+  /** Opacité effective d'un calque : nombre, ou facteur posé par l'atténuation des légendes ; 1 pour une expression. */
+  private layerOpacity(layerId: string, type: string): number {
+    const prop = type === 'line' ? 'line-opacity' : type === 'fill' ? 'fill-opacity' : type === 'symbol' ? 'icon-opacity' : 'circle-opacity';
+    const v: unknown = this.map?.getPaintProperty(layerId, prop);
+    if (typeof v === 'number') return v;
+    if (Array.isArray(v) && v[0] === '*' && typeof v[2] === 'number') return v[2];
+    return 1;
+  }
+
+  /** Contexte de la bulle : unités EDF d'un site nucléaire (moins de 3 km), bilan RTE d'une région. */
+  private energyContextFor(hit: { kind: EnergyHoverKind; properties: Readonly<Record<string, unknown>>; coordinates?: readonly [number, number] }): EnergyHoverContext {
+    const p = hit.properties;
+    if (hit.kind === 'infra' && p.type === 'nuclear') {
+      const site = hit.coordinates;
+      const near = (c: [number, number]): boolean => site !== undefined && kmBetween([site[0], site[1]], c) < 3;
+      const units = this.lastPowerUnits
+        .filter((f) => f.geometry.type === 'Point' && near([f.geometry.coordinates[0], f.geometry.coordinates[1]]))
+        .map((f) => ({
+          name: String(f.properties?.name ?? ''),
+          lostMw: typeof f.properties?.lostMw === 'number' ? f.properties.lostMw : null,
+          kind: String(f.properties?.kind ?? ''),
+        }));
+      return { units };
+    }
+    if (hit.kind === 'region') {
+      const st = this.energyRegionStats.get(String(p.code ?? ''));
+      if (!st) return {};
+      return { region: { consumptionMw: st.consumptionMW, productionMw: st.production.total, deltaPct: st.consumptionDeltaPct, updatedAt: st.updatedAt } };
+    }
+    return {};
+  }
+
+  /** Fiche détaillée de l'objet cliqué : les fiches existantes ; null pour les groupes, détroits et gazoducs (la bulle suffit). */
+  private energyDetailHtml(hit: { kind: EnergyHoverKind; layerId: string; properties: Readonly<Record<string, unknown>> }): string | null {
+    const p: Record<string, unknown> = { ...hit.properties };
+    switch (hit.kind) {
+      case 'infra': return this.buildInfrastructureHoverHtml(p);
+      case 'hydro': return this.buildHydraulicHoverHtml(p);
+      case 'wind': return this.buildEolienHoverHtml(p);
+      case 'gas': return this.buildGasHoverHtml(p);
+      case 'biomethane': return this.buildBiomethaneHoverHtml(p);
+      case 'metro': return this.buildMetropoleHoverHtml(p);
+      case 'refinery': return this.buildOilRefineryHoverHtml(p);
+      case 'oilDepot': return this.buildOilDepotHoverHtml(p);
+      case 'oilPipeline': return this.buildOilPipelineHoverHtml(p);
+      case 'flow': return this.energyFlowDetailHtml(p);
+      case 'region': return this.buildRegionDetailHtml(String(p.code ?? ''));
+      case 'fuelTension': return this.buildFuelTensionDetailHtml(p);
+      case 'drom': return renderDromEnergyTooltipHtml(dromEnergyAssetFromProperties(p));
+      case 'powerUnit': {
+        const body = p.body;
+        return typeof body === 'string' && body !== '' ? `<div class="hm-tip">${body}</div>` : null;
+      }
+      default: return null;
+    }
+  }
+
+  /** Une seule fenêtre ; recréée seulement quand on passe de la bulle à la fiche épinglée (bouton de fermeture). */
+  private showEnergyPopup(lngLat: maplibregl.LngLatLike, html: string, pinned: boolean): void {
+    const map = this.map;
+    if (!map) return;
+    if (this.energyPopup === null || this.energyPopupPinnedMode !== pinned) {
+      // Détachée avant d'être retirée : son évènement « close » ne doit pas désépingler la nouvelle fiche.
+      const old = this.energyPopup;
+      this.energyPopup = null;
+      old?.remove();
+      const popup = new maplibregl.Popup({
+        closeButton: pinned, closeOnClick: false, maxWidth: pinned ? '320px' : '280px', className: 'dark-popup', offset: 12,
+      });
+      popup.on('close', () => {
+        if (this.energyPopup === popup) {
+          this.energyPopup = null;
+          this.energyPinned = false;
+        }
+      });
+      this.energyPopup = popup;
+      this.energyPopupPinnedMode = pinned;
+    }
+    this.energyPopup.setLngLat(lngLat).setHTML(html).addTo(map);
+    const el = this.energyPopup.getElement();
+    el.style.pointerEvents = pinned ? 'auto' : 'none';
     el.style.zIndex = '2000';
   }
 
-  private hideEnrichedHoverPopup(): void {
-    this.enrichedHoverPopup?.remove();
+  private hideEnergyPopup(): void {
+    if (this.energyCursor && this.map) this.map.getCanvas().style.cursor = '';
+    this.energyCursor = false;
+    if (this.energyPinned) return;
+    this.setFuelTensionHover(null);
+    this.energyPopup?.remove();
+  }
+
+  private unpinEnergyPopup(): void {
+    this.energyPinned = false;
+    const popup = this.energyPopup;
+    this.energyPopup = null;
+    popup?.remove();
+  }
+
+  /** Contour souligné du département en tension survolé (feature-state hover). */
+  private setFuelTensionHover(code: string | null): void {
+    if (!this.map || code === this._lastHoveredFuelDeptId) return;
+    this.clearFuelTensionHoverState();
+    if (code) {
+      this.map.setFeatureState({ source: SRC_FUEL_TENSION, id: code }, { hover: true });
+      this._lastHoveredFuelDeptId = code;
+    }
+  }
+
+  /** Fiche détaillée d'un département en tension carburants (clic, spec 2026-10-16 § 6.4). */
+  private buildFuelTensionDetailHtml(properties: Readonly<Record<string, unknown>>): string {
+    const code = String(properties.code ?? '');
+    const departmentName = String(properties.nom ?? properties.name ?? 'Département');
+    const tensionLevel = String(properties.tensionLevel ?? 'LOW');
+    const stationCount = Number(properties.stationCount ?? 0);
+    const anomalyShare = Number(properties.anomalyShare ?? 0);
+    const avgUpdateAgeMinutes = Number(properties.avgUpdateAgeMinutes ?? Number.NaN);
+    const deltaPrice7d = Number(properties.deltaPrice7d ?? Number.NaN);
+    const freshnessBadge = String(properties.freshnessBadge ?? DATA_FRESHNESS_LABELS.TEMPS_REEL);
+    const lineColor = String(properties.lineColor ?? '#EF4444');
+
+    const deltaHtml = Number.isFinite(deltaPrice7d)
+      ? `${deltaPrice7d > 0 ? '+' : ''}${deltaPrice7d.toFixed(1)} cts/L`
+      : 'n.d.';
+    const freshnessHtml = Number.isFinite(avgUpdateAgeMinutes)
+      ? avgUpdateAgeMinutes < 60 ? `${Math.round(avgUpdateAgeMinutes)} min`
+        : avgUpdateAgeMinutes < 24 * 60 ? `${(avgUpdateAgeMinutes / 60).toFixed(1)} h`
+        : `${(avgUpdateAgeMinutes / (24 * 60)).toFixed(1)} j`
+      : 'n.d.';
+
+    const html = `
+      <div style="color:#e8e8ec; font-family:sans-serif; min-width:230px; padding:4px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:10px; padding-bottom:8px; margin-bottom:8px; border-bottom:1px solid rgba(255,255,255,0.10);">
+          <div style="font-size:10px; letter-spacing:0.08em; text-transform:uppercase; color:#FBBF24; font-weight:800;">Tension carburants</div>
+          <div style="width:8px; height:8px; border-radius:999px; background:${lineColor}; box-shadow:0 0 12px ${lineColor}; flex-shrink:0;"></div>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:8px;">
+          <div>
+            <strong style="font-size:14px; color:#fff;">${escapeHtml(departmentName)}</strong>
+            <div style="font-size:11px; color:#9898a8;">Département ${escapeHtml(code)}</div>
+          </div>
+          <span style="font-size:10px; padding:2px 8px; border-radius:999px; font-weight:700; color:#fff; background:${lineColor};">${escapeHtml(tensionLevel)}</span>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <div style="background:rgba(255,255,255,0.06); border-radius:6px; padding:6px;">
+            <div style="font-size:10px; color:#9898a8;">Delta 7j</div>
+            <div style="font-size:12px; color:#fff; font-weight:700;">${deltaHtml}</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.06); border-radius:6px; padding:6px;">
+            <div style="font-size:10px; color:#9898a8;">Anomalies</div>
+            <div style="font-size:12px; color:#fff; font-weight:700;">${anomalyShare.toFixed(1)}%</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.06); border-radius:6px; padding:6px;">
+            <div style="font-size:10px; color:#9898a8;">Stations</div>
+            <div style="font-size:12px; color:#fff; font-weight:700;">${stationCount}</div>
+          </div>
+          <div style="background:rgba(255,255,255,0.06); border-radius:6px; padding:6px;">
+            <div style="font-size:10px; color:#9898a8;">Fraîcheur</div>
+            <div style="font-size:12px; color:#fff; font-weight:700;">${freshnessBadge} · ${freshnessHtml}</div>
+          </div>
+        </div>
+      </div>
+    `;
+    return html;
+  }
+
+  /** Fiche détaillée d'une région (clic, spec 2026-10-16 § 6.4) ; null sans bilan RTE. */
+  private buildRegionDetailHtml(code: string): string | null {
+    const co2Color = (v: number) => v < 100 ? '#34c759' : v < 300 ? '#ff9500' : '#ff3b30';
+    const fmtMW = (mw: number) => mw >= 1000 ? `${(mw / 1000).toFixed(1)} GW` : `${Math.round(mw)} MW`;
+    const fmtDelta = (p: number) => `${p >= 0 ? '+' : ''}${p.toFixed(1)} %`;
+    const row = (label: string, value: string, valueColor = '#e8e8ec') =>
+      `<div style="display:flex;justify-content:space-between;gap:12px;font-size:11px;padding:2px 0;">` +
+      `<span style="color:#9898a8;">${label}</span>` +
+      `<span style="color:${valueColor};font-weight:500;">${value}</span></div>`;
+    const sep = `<div style="border-top:1px solid rgba(255,255,255,0.08);margin:6px 0;"></div>`;
+    const sectionLabel = (txt: string) =>
+      `<div style="font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#666;margin-bottom:3px;">${txt}</div>`;
+    const s = this.energyRegionStats.get(code);
+    if (!s) return null;
+
+    const p = s.production;
+    const total = p.total || 1;
+    // Écowatt est un signal NATIONAL (RTE) : dernier `official` reçu par updateEnergy, jamais
+    // dérivé des données de la région survolée.
+    const natLevel = ecowattToday(this.lastEcowattOfficial, Date.now());
+    const natLabel = natLevel ? ecowattLevelLabel(natLevel) : 'indisponible';
+    const natColor = natLevel === 'red' ? '#ff3b30' : natLevel === 'orange' ? '#ff9500' : natLevel === 'green' ? '#34c759' : '#888';
+    const deltaColor = s.consumptionDeltaPct <= 0 ? '#34c759' : '#ff3b30';
+
+    const prodRows: [string, number][] = [
+      [`${fmIcon('atom')} Nucléaire`, p.nuclear],
+      [`${fmIcon('droplet')} Hydraulique`, p.hydro],
+      [`${fmIcon('wind')} Éolien`, p.wind],
+      [`${fmIcon('sun')} Solaire`, p.solar],
+      [`${fmIcon('flame')} Thermique`, p.gas],
+    ].filter(([, v]) => (v as number) > 0) as [string, number][];
+
+    const prodRowsHTML = prodRows.map(([lbl, mw]) =>
+      row(lbl, `${fmtMW(mw)} (${((mw / total) * 100).toFixed(0)} %)`)
+    ).join('');
+
+    const html = `
+      <div style="color:#e8e8ec;font-family:sans-serif;min-width:200px;padding:4px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px;">
+          <strong style="font-size:13px;color:#fff;">${s.regionName}</strong>
+          <span style="font-size:10px;color:#666;">${formatUpdateTime(s.updatedAt)}</span>
+        </div>
+        ${row('Écowatt (signal national RTE)', natLabel, natColor)}
+        ${sep}
+        ${sectionLabel('Consommation')}
+        ${row('Actuelle', fmtMW(s.consumptionMW))}
+        ${row('Vs J-1', fmtDelta(s.consumptionDeltaPct), deltaColor)}
+        ${sep}
+        ${sectionLabel(`Production : ${fmtMW(p.total)}`)}
+        ${prodRowsHTML}
+        ${row('Bas-carbone', `${s.lowCarbonPct.toFixed(0)} %`, '#34c759')}
+        ${sep}
+        ${row(`${fmIcon('zap')} Intensité CO₂`, `${Math.round(s.carbonIntensity)} gCO₂/kWh`, co2Color(s.carbonIntensity))}
+      </div>`;
+    return html;
   }
 
   private buildInfrastructureHoverHtml(properties: Record<string, unknown>): string {
@@ -5729,7 +5644,6 @@ export class DeckGLMap {
       src.setData(emptyFC());
       this.recordFuelTension([]);
       this.clearFuelTensionHoverState();
-      this.fuelTensionHoverPopup?.remove();
       return;
     }
 
@@ -7510,6 +7424,7 @@ export class DeckGLMap {
   /** Unités de production en arrêt imprévu ou en maintenance, placées par la liste d'emplacements (sans emplacement : non dessinées). */
   updateOutagesPower(p: PowerOutagesResponse | null, now: number): void {
     const powerFc = powerFeatures(p, now);
+    this.lastPowerUnits = powerFc.features;
     (this.map?.getSource(SRC_OUT_POWER) as maplibregl.GeoJSONSource | undefined)?.setData(powerFc);
     this.recordEnergy('outagesElec', energyEntriesFrom(powerFc.features, 'electricite', 'edf'));
     this.hideOutagesHover();
@@ -8079,7 +7994,6 @@ export class DeckGLMap {
     this.setVis(LYR_OIL_REFINERIES_LABEL, oilVis);
     this.setVis(LYR_OIL_DEPOTS, oilVis);
     this.setVis(LYR_OIL_DEPOTS_LABEL, oilVis);
-    this.setVis(LYR_OIL_PIPELINES_HIT, oilVis);
     this.setVis(LYR_FUEL_TENSION_FILL, oilVis);
     this.setVis(LYR_FUEL_TENSION_LINE, oilVis);
     this.setVis(LYR_TRAFFIC, vis(layers.trafficRoad));
@@ -8233,11 +8147,11 @@ export class DeckGLMap {
     this.pulseMarkers.clear();
 
     // Cleanup energy/gas tooltips
-    this.energyRegionPopup?.remove();
-    this.energyFlowPopup?.remove();
-    this.gasFlowPopup?.remove();
-    this.dromEnergyHoverPopup?.remove();
-    this.dromEnergyHoverPopup = null;
+    this.energyPopup?.remove();
+    this.energyPopup = null;
+    // Le survol de l'énergie n'existe qu'une fois la carte montée (navigateur).
+    if (this.energyHoverRaf !== 0) cancelAnimationFrame(this.energyHoverRaf);
+    if (typeof document !== 'undefined') document.removeEventListener('keydown', this.onEnergyKeydown);
     this.trafficHoverPopup?.remove();
     this.trafficJamPopup?.remove();
 

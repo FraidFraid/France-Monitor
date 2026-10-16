@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   chokeCard, clusterCard, flowCard, fmtNum, fmtTime, infraCard, powerUnitCard, regionCard, tooltipCardHtml, gasCard,
 } from './energy-hover.ts';
+import { energyCardFor } from './energy-hover.ts';
 import { ENERGY_HOVER_LAYER_IDS, pickEnergyHover, type HoverCandidate } from './energy-hover.ts';
 
 describe('gabarit de bulle', () => {
@@ -85,5 +86,35 @@ describe('arbitre de survol', () => {
     expect(ENERGY_HOVER_LAYER_IDS).toContain('energy-choke');
     expect(ENERGY_HOVER_LAYER_IDS).toContain('hydro-cluster');
     expect(ENERGY_HOVER_LAYER_IDS).not.toContain('interconn-arc-hitarea');
+  });
+});
+describe('aiguillage des bulles', () => {
+  it('chaque type de survol donne sa carte ; les données de contexte manquantes donnent n.d.', () => {
+    expect(energyCardFor({ kind: 'windCluster', properties: { point_count: 42, alerts: 2 } }, {})?.title).toBe('42 éoliennes');
+    expect(energyCardFor({ kind: 'region', properties: { code: '44', nom: 'Grand Est' } }, {})?.rows[0]).toEqual(['Consommation', 'n.d.']);
+    expect(energyCardFor({ kind: 'region', properties: { code: '44', nom: 'Grand Est' } }, {})?.rows[2]).toEqual(['Solde', 'n.d.']);
+    expect(energyCardFor({ kind: 'infra', properties: { type: 'nuclear', name: 'Bugey', energyState: 'arret' } }, { units: [] })?.state).toBe('arret');
+  });
+  it('les autres types sont aiguillés vers leur constructeur', () => {
+    expect(energyCardFor({ kind: 'hydroCluster', properties: { point_count: 7, alerts: 0 } }, {})?.title).toBe('7 barrages');
+    expect(energyCardFor({ kind: 'choke', properties: { name: 'Ormuz', flows: '[]' } }, {})?.title).toBe('Ormuz');
+    expect(energyCardFor({ kind: 'gasPipeline', properties: { name: '' } }, {})?.title).toBe('Gazoduc');
+    expect(energyCardFor({ kind: 'powerUnit', properties: { name: 'X', kind: 'imprevue', lostMw: 10 } }, {})?.rows[2]).toEqual(['Nature', 'arrêt imprévu']);
+  });
+});
+
+describe('position de l’objet retenu', () => {
+  it('l’arbitre rend la position du point retenu (bulle d’un site : unités voisines)', () => {
+    const hit = pickEnergyHover([{ layerId: 'energy-infra-circles', properties: {}, distancePx: 1, opacity: 1, coordinates: [5.27, 45.8] }]);
+    expect(hit?.coordinates).toEqual([5.27, 45.8]);
+  });
+});
+
+describe('gazoducs', () => {
+  it('opérateur déduit du calque, département de la donnée', () => {
+    const c = energyCardFor({ kind: 'gasPipeline', layerId: 'gas-network-terega-line', properties: { nom_du_departement: 'Landes' } }, {});
+    expect(c?.rows).toEqual([['Nature', 'Gazoduc'], ['Opérateur', 'Teréga'], ['Département', 'Landes']]);
+    const g = energyCardFor({ kind: 'gasPipeline', layerId: 'gas-network-grt-line', properties: {} }, {});
+    expect(g?.rows[1]).toEqual(['Opérateur', 'GRTgaz']);
   });
 });
