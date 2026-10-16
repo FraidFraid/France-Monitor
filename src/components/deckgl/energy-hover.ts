@@ -180,6 +180,39 @@ export function flowCard(p: Props): TooltipCard {
     time: null, state: null, rows, source: sourceOf[kind], hint: 'Cliquer pour le détail' };
 }
 
+/**
+ * Fiche détaillée d'un flux de pétrole importé (clic) : volume sur la période la plus récente (12 mois Eurostat, ou année
+ * Insee en repli), dernier mois, part, port d'arrivée, débit, détail par pays.
+ */
+export function oilFlowDetailCard(p: Props): TooltipCard {
+  const share = n(p.originSharePct);
+  const volume = n(p.originVolumeMt);
+  const pair = (mt: unknown, pct: unknown, digits: number): string => `${fmtNum(mt, 'Mt', digits)} · ${fmtNum(pct, '%', 1)}`;
+  const period = s(p.originPeriodLabel) || (n(p.originReferenceYear) !== null ? `année ${s(p.originReferenceYear)}` : '');
+  const rows: Array<readonly [string, string]> = [];
+  if (s(p.hubName)) rows.push(['Port d’arrivée', s(p.hubName)]);
+  if (volume !== null || share !== null) rows.push([period ? `Volume, ${period}` : 'Volume', pair(volume, share, 1)]);
+  const lastLabel = s(p.originLastMonthLabel);
+  if (lastLabel) rows.push([lastLabel.charAt(0).toUpperCase() + lastLabel.slice(1), pair(p.originLastMonthMt, p.originLastMonthPct, 2)]);
+  if (n(p.flowValue) !== null) rows.push(['Débit moyen', fmtNum(p.flowValue, s(p.flowUnit) || 'kb/j')]);
+  let breakdown: unknown = p.originBreakdown;
+  if (typeof breakdown === 'string') {
+    try { breakdown = JSON.parse(breakdown); } catch { breakdown = []; }
+  }
+  if (Array.isArray(breakdown)) {
+    for (const item of breakdown.slice(0, 6)) {
+      if (typeof item !== 'object' || item === null) continue;
+      const b = item as Record<string, unknown>;
+      if (s(b.label)) rows.push([`· ${s(b.label)}`, pair(b.volumeMt, b.sharePct, 1)]);
+    }
+  }
+  const partial = p.originPartialBreakdown === 1 || p.originPartialBreakdown === true || p.originPartialBreakdown === '1';
+  const card: TooltipCard = { sectorHex: H.petrole, title: `${s(p.country) || s(p.name)} · pétrole importé`, time: null, state: null, rows,
+    source: s(p.originSourceLabel) || 'DGEC (origines)' };
+  if (partial) card.hint = 'Détail par pays incomplet pour cette origine.';
+  return card;
+}
+
 export function chokeCard(p: Props): TooltipCard {
   let flows: Array<{ who: string; value: number | null; unit: string }> = [];
   try { const parsed: unknown = JSON.parse(s(p.flows) || '[]'); if (Array.isArray(parsed)) flows = parsed as typeof flows; } catch { flows = []; }

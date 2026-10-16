@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   chokeCard, clusterCard, flowCard, fmtNum, fmtTime, infraCard, powerUnitCard, regionCard, tooltipCardHtml, gasCard,
 } from './energy-hover.ts';
-import { effectiveOpacity, energyCardFor, hydroCard, oilDepotCard, oilDepotDetailCard } from './energy-hover.ts';
+import { effectiveOpacity, energyCardFor, hydroCard, oilDepotCard, oilDepotDetailCard, oilFlowDetailCard } from './energy-hover.ts';
 import { ENERGY_HOVER_LAYER_IDS, pickEnergyHover, type HoverCandidate } from './energy-hover.ts';
 
 describe('gabarit de bulle', () => {
@@ -177,5 +177,31 @@ describe('dépôts pétroliers', () => {
     expect(c.rows).toContainEqual(['Raffineries à moins de 30 km', 'Lavéra, Fos-sur-Mer']);
     const s = oilDepotDetailCard({ name: 'Frontignan (SAGESS)', role: 'strategic' }, { imports: [], refineries: [] });
     expect(s.hint).toContain('SAGESS');
+  });
+});
+
+describe('fiche d’un flux de pétrole importé', () => {
+  const props = {
+    country: 'Mer du Nord', hubName: 'Antifer / Le Havre', isImport: true, flowValue: 96, flowUnit: 'kb/j',
+    originSharePct: 10.9, originVolumeMt: 5.16, originPeriodLabel: '12 mois jusqu’à juillet 2026',
+    originLastMonthLabel: 'juillet 2026', originLastMonthMt: 0.47, originLastMonthPct: 11.4,
+    originSourceLabel: 'Eurostat · importations de pétrole brut par pays (mensuel), 12 mois jusqu’à juillet 2026',
+    originPartialBreakdown: 0, originBreakdown: JSON.stringify([{ label: 'Norvège', volumeMt: 4.6, sharePct: 9.7 }, { label: 'Royaume-Uni', volumeMt: 0.56, sharePct: 1.2 }]),
+  };
+  it('période récente, dernier mois, part, port, débit ; nombres au format français', () => {
+    const c = oilFlowDetailCard(props);
+    expect(c.title).toBe('Mer du Nord · pétrole importé');
+    expect(c.rows).toContainEqual(['Port d’arrivée', 'Antifer / Le Havre']);
+    expect(c.rows).toContainEqual(['Volume, 12 mois jusqu’à juillet 2026', `${fmtNum(5.16, 'Mt', 1)} · ${fmtNum(10.9, '%', 1)}`]);
+    expect(c.rows).toContainEqual(['Juillet 2026', `${fmtNum(0.47, 'Mt', 2)} · ${fmtNum(11.4, '%', 1)}`]);
+    expect(c.rows).toContainEqual(['Débit moyen', fmtNum(96, 'kb/j')]);
+    expect(c.rows).toContainEqual(['· Norvège', `${fmtNum(4.6, 'Mt', 1)} · ${fmtNum(9.7, '%', 1)}`]);
+    expect(c.hint).toBeUndefined();
+    expect(c.source).toContain('Eurostat');
+  });
+  it('bilan annuel (repli Insee) : année, et avertissement si le détail par pays est partiel', () => {
+    const c = oilFlowDetailCard({ ...props, originPeriodLabel: undefined, originLastMonthLabel: undefined, originReferenceYear: 2025, originPartialBreakdown: 1 });
+    expect(c.rows).toContainEqual(['Volume, année 2025', `${fmtNum(5.16, 'Mt', 1)} · ${fmtNum(10.9, '%', 1)}`]);
+    expect(c.hint).toBe('Détail par pays incomplet pour cette origine.');
   });
 });

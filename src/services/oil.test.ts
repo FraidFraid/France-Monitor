@@ -1,8 +1,9 @@
 // src/services/oil.test.ts
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
-import { buildStocksSnapshot, computeVigilanceScore, EUROSTAT_STOCKS_URL, parseEurostatEmergencyStocks, parseInseeOilOrigins, parseSdesOilStats, SDES_PETROLE_URLS } from './oil.ts';
+import { buildStocksSnapshot, computeVigilanceScore, EUROSTAT_STOCKS_URL, parseEurostatCrudeImports, parseEurostatEmergencyStocks, parseInseeOilOrigins, parseSdesOilStats, SDES_PETROLE_URLS } from './oil.ts';
 import { EUROSTAT_NRG_STK_OEM_FR } from './oil-eurostat.fixture.ts';
+import { EUROSTAT_NRG_TI_OILM_FR } from './oil-eurostat-imports.fixture.ts';
 import { INSEE_ORIGINES_2026_HTML, SDES_PETROLE_2026_HTML } from './oil.fixture.ts';
 
 describe('pétrole : SDES, chiffres clés (édition 2026)', () => {
@@ -58,5 +59,42 @@ describe('pétrole : stocks stratégiques (Eurostat, stocks d’urgence de la di
   });
   it('adresse : jeu nrg_stk_oem, France, six derniers mois', () => {
     expect(EUROSTAT_STOCKS_URL).toBe('https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/nrg_stk_oem?geo=FR&lastTimePeriod=6&format=JSON&lang=FR');
+  });
+});
+
+describe('pétrole : provenance du brut, mensuelle (Eurostat nrg_ti_oilm)', () => {
+  it('douze derniers mois renseignés (août 2025 à juillet 2026) par grande région, mêmes libellés que l’Insee', () => {
+    const o = parseEurostatCrudeImports(EUROSTAT_NRG_TI_OILM_FR);
+    expect(o?.map((x) => x.label)).toEqual(['Afrique', 'Amérique du Nord', 'URSS/ex-URSS', 'Mer du Nord', 'Moyen-Orient', 'Autres']);
+    const a = o?.[0];
+    expect(a?.volumeMt).toBeCloseTo(16.1, 1);
+    expect(a?.sharePct).toBeCloseTo(34.0, 1);
+    expect(a?.periodLabel).toBe('12 mois jusqu’à juillet 2026');
+    expect(a?.referenceYear).toBe(2026);
+    expect(a?.sourceLabel).toContain('Eurostat');
+    expect(a?.partialBreakdown).toBe(false);
+  });
+  it('détail par pays complet (noms français, du plus gros au plus petit) et dernier mois', () => {
+    const mdn = parseEurostatCrudeImports(EUROSTAT_NRG_TI_OILM_FR)?.find((x) => x.label === 'Mer du Nord');
+    expect(mdn?.breakdown?.[0].label).toBe('Norvège');
+    expect(mdn?.breakdown?.reduce((t, b) => t + b.volumeMt, 0)).toBeCloseTo(mdn?.volumeMt ?? 0, 1);
+    expect(mdn?.lastMonth).toMatchObject({ label: 'juillet 2026' });
+    expect(mdn?.lastMonth?.sharePct).toBeCloseTo(11.4, 1);
+  });
+  it('rien de compté deux fois ni oublié : la somme des régions est le total déclaré (47,4 Mt sur 12 mois)', () => {
+    const o = parseEurostatCrudeImports(EUROSTAT_NRG_TI_OILM_FR) ?? [];
+    expect(o.reduce((t, x) => t + x.volumeMt, 0)).toBeCloseTo(47.4, 1);
+    expect(o.reduce((t, x) => t + x.sharePct, 0)).toBeCloseTo(100, 5);
+  });
+  it('noms de pays en français, jamais en anglais ni en libellé d’agrégat à rallonge', () => {
+    const names = (parseEurostatCrudeImports(EUROSTAT_NRG_TI_OILM_FR) ?? []).flatMap((x) => (x.breakdown ?? []).map((b) => b.label));
+    expect(names).toContain('Royaume-Uni');
+    expect(names).toContain('Irak');
+    expect(names).not.toContain('United Kingdom');
+    expect(names).not.toContain('Iraq');
+    expect(names.some((l) => /agrégat variable/.test(l))).toBe(false);
+  });
+  it('réponse vide : null (repli sur l’Insee)', () => {
+    expect(parseEurostatCrudeImports({})).toBeNull();
   });
 });

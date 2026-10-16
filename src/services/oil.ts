@@ -1026,6 +1026,103 @@ export function parseEurostatEmergencyStocks(json: unknown): EmergencyStocks | n
   return null;
 }
 
+/** Importations mensuelles de pétrole brut de la France par pays (milliers de tonnes), 14 derniers mois. */
+export const EUROSTAT_IMPORTS_URL = 'https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/nrg_ti_oilm?geo=FR&siec=O4100_TOT&unit=THS_T&lastTimePeriod=14&format=JSON&lang=FR';
+
+/** Grandes régions d'origine, mêmes libellés que le tableau de l'Insee (les routes maritimes s'y rattachent). */
+const ORIGIN_REGIONS: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['Afrique', ['DZ', 'LY', 'NG', 'AO', 'CD', 'CG', 'GQ', 'GA', 'CM', 'EG', 'TN', 'GH', 'CI', 'ZA', 'SN', 'MR', 'TD', 'SS', 'BJ', 'LR', 'AFR_OTH']],
+  ['Amérique du Nord', ['US', 'CA', 'MX']],
+  ['URSS/ex-URSS', ['KZ', 'AZ', 'RU', 'TM', 'UZ', 'GE', 'BY', 'UA', 'EX_SU_OTH']],
+  ['Mer du Nord', ['NO', 'UK', 'DK', 'NL']],
+  ['Moyen-Orient', ['SA', 'IQ', 'AE', 'KW', 'IR', 'OM', 'QA', 'YE', 'SY', 'BH', 'ASI_NME_OTH']],
+];
+
+/** Noms laissés en anglais ou en libellé d'agrégat par Eurostat (lang=FR), remplacés par un nom court en français. */
+const PARTNER_FR: Readonly<Record<string, string>> = {
+  UK: 'Royaume-Uni', IQ: 'Irak', TD: 'Tchad', NG: 'Nigéria', CN_X_HK: 'Chine',
+  AFR_OTH: 'Autres pays d’Afrique', EX_SU_OTH: 'Autres pays de l’ex-URSS', EUR_OTH: 'Autres pays d’Europe',
+  AME_OTH: 'Autres pays d’Amérique', ASI_OTH: 'Autres pays d’Asie', ASI_NME_OTH: 'Autres pays du Moyen-Orient',
+  EX_YU_OTH: 'Autres pays de l’ex-Yougoslavie', NSP: 'Origine non précisée',
+};
+
+/** « 2026-07 » → « juillet 2026 ». */
+function monthLabel(month: string): string {
+  const [y, m] = month.split('-').map(Number);
+  if (!y || !m) return month;
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+}
+
+/**
+ * Provenance du brut sur les douze derniers mois renseignés (Eurostat, mensuel), par grande région, avec le détail par
+ * pays et le dernier mois ; null si la réponse est inexploitable (repli sur l'Insee, annuel).
+ */
+export function parseEurostatCrudeImports(json: unknown): OilOriginShare[] | null {
+  if (!isRecord(json) || !Array.isArray(json.id) || !Array.isArray(json.size) || !isRecord(json.dimension) || !isRecord(json.value)) return null;
+  const ids = json.id.map(String);
+  const size = json.size.map(Number);
+  const dims = json.dimension;
+  const values = json.value;
+  const category = (dim: string): { index: Record<string, number>; label: Record<string, string> } => {
+    const d = dims[dim];
+    const cat = isRecord(d) && isRecord(d.category) ? d.category : {};
+    const index = isRecord(cat.index) ? Object.fromEntries(Object.entries(cat.index).map(([k, v]) => [k, Number(v)])) : {};
+    const label = isRecord(cat.label) ? Object.fromEntries(Object.entries(cat.label).map(([k, v]) => [k, String(v)])) : {};
+    return { index, label };
+  };
+  const partners = category('partner');
+  const times = category('time');
+  const read = (partner: string, time: string): number | null => {
+    let flat = 0;
+    for (const [k, dim] of ids.entries()) {
+      const idx = dim === 'partner' ? partners.index[partner] : dim === 'time' ? times.index[time] : 0;
+      if (idx === undefined) return null;
+      flat = flat * size[k] + idx;
+    }
+    const v = values[String(flat)];
+    return typeof v === 'number' && Number.isFinite(v) ? v : null;
+  };
+  const months = Object.keys(times.index).sort().filter((m) => (read('TOTAL', m) ?? 0) > 0);
+  if (months.length === 0) return null;
+  const window = months.slice(-12);
+  const last = window[window.length - 1];
+  const sum = (codes: readonly string[], ms: readonly string[]): number => ms.reduce((t, m) => t + codes.reduce((u, c) => u + (read(c, m) ?? 0), 0), 0);
+  const total = sum(['TOTAL'], window);
+  const totalLast = sum(['TOTAL'], [last]);
+  if (total <= 0) return null;
+  const known = new Set(ORIGIN_REGIONS.flatMap(([, codes]) => codes));
+  // Agrégats d'Eurostat (déjà comptés dans leurs pays) écartés ; les catégories résiduelles (« autres d'Europe »…) vont en « Autres ».
+  const AGGREGATES = new Set(['TOTAL', 'EU27_2020', 'EU28', 'AME_LAT', 'ASI_NME']);
+  const others = Object.keys(partners.index).filter((c) => !AGGREGATES.has(c) && !known.has(c));
+  const regions: ReadonlyArray<readonly [string, readonly string[]]> = [...ORIGIN_REGIONS, ['Autres', others]];
+  const year = Number(last.slice(0, 4));
+  const sourceLabel = `Eurostat · importations de pétrole brut par pays (mensuel), 12 mois jusqu’à ${monthLabel(last)}`;
+  return regions.map(([label, codes]) => {
+    const volumeKt = sum(codes, window);
+    const breakdown = codes
+      .map((c) => ({ label: PARTNER_FR[c] ?? partners.label[c] ?? c, volumeMt: sum([c], window) / 1000, sharePct: (sum([c], window) / total) * 100 }))
+      .filter((b) => b.volumeMt >= 0.05)
+      .sort((x, y) => y.volumeMt - x.volumeMt);
+    const lastKt = sum(codes, [last]);
+    return {
+      label, volumeMt: volumeKt / 1000, sharePct: (volumeKt / total) * 100, referenceYear: year, sourceLabel,
+      periodLabel: `12 mois jusqu’à ${monthLabel(last)}`, partialBreakdown: false, breakdown,
+      lastMonth: { label: monthLabel(last), volumeMt: lastKt / 1000, sharePct: totalLast > 0 ? (lastKt / totalLast) * 100 : 0 },
+    };
+  });
+}
+
+/** Provenance du brut : Eurostat (mensuel, 12 mois glissants) d'abord, l'Insee (annuel) en repli. */
+export async function fetchOilOrigins(): Promise<OilOriginShare[]> {
+  try {
+    const parsed = parseEurostatCrudeImports(await fetchProxyJson<unknown>(EUROSTAT_IMPORTS_URL));
+    if (parsed && parsed.length > 0) return parsed;
+  } catch (error) {
+    console.warn('[Oil] Eurostat imports unavailable, Insee fallback:', error);
+  }
+  return fetchOilOriginsFromInsee();
+}
+
 export async function fetchEmergencyStocks(): Promise<EmergencyStocks> {
   const parsed = parseEurostatEmergencyStocks(await fetchProxyJson<unknown>(EUROSTAT_STOCKS_URL));
   if (!parsed) throw new Error('No emergency oil stocks parsed from Eurostat');
@@ -1162,7 +1259,7 @@ export async function fetchOilDashboard(): Promise<OilDashboard> {
     emergencyStocksResult,
   ] = await Promise.all([
     settleSource(fetchAnnualOilStatsFromSdes),
-    settleSource(fetchOilOriginsFromInsee),
+    settleSource(fetchOilOrigins),
     settleSource(fetchMonthlyDeliveriesFromUfip),
     settleSource(fetchMonthlyOilConsumptionRows),
     settleSource(fetchLocalOilConsumption),

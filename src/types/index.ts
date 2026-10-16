@@ -1690,6 +1690,10 @@ export interface OilOriginShare {
   sharePct: number;
   referenceYear?: number;
   sourceLabel?: string;
+  /** Période couverte en mots (« 12 mois jusqu’à juillet 2026 ») ; absente pour un bilan annuel. */
+  periodLabel?: string;
+  /** Dernier mois renseigné (Eurostat) : volume et part de l'origine ce mois-là. */
+  lastMonth?: { label: string; volumeMt: number; sharePct: number };
   partialBreakdown?: boolean;
   breakdown?: Array<{
     label: string;

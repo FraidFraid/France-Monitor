@@ -117,7 +117,7 @@ import { dimOpacity, ENERGY_FOCUS_LAYERS, energyFocusLayersOf, flowKindsShown, i
 import { EnergyPopupController } from './deckgl/energy-popup.ts';
 import { OIL_REFINERIES } from '../config/oil-infrastructure.ts';
 import {
-  effectiveOpacity, ENERGY_HOVER_LAYER_IDS, energyCardFor, oilDepotDetailCard, pickEnergyHover, tooltipCardHtml, type EnergyHoverContext, type EnergyHoverKind, type HoverCandidate,
+  effectiveOpacity, ENERGY_HOVER_LAYER_IDS, energyCardFor, oilDepotDetailCard, oilFlowDetailCard, pickEnergyHover, tooltipCardHtml, type EnergyHoverContext, type EnergyHoverKind, type HoverCandidate,
 } from './deckgl/energy-hover.ts';
 import { ENERGY_CHOKE_HEX, ENERGY_DISC_STATE_HEX, ENERGY_SECTOR_HEX, ENERGY_STATE_HEX, type EnergyFlowKind, fuelTensionVigilance, refineryState, type EnergyState } from '../services/energy-state.ts';
 import type { VigilanceLevel } from '../services/vigilance.ts';
@@ -3797,85 +3797,6 @@ export class DeckGLMap {
     `;
   }
 
-  private buildOilFlowHoverHtml(properties: Record<string, unknown>): string {
-    const country = String(properties.country ?? properties.name ?? 'Flux pétrolier');
-    const hubName = String(properties.hubName ?? '');
-    // isImport stocké directement dans les properties — pas de parsing fragile du label
-    const isImport = properties.isImport === true || properties.isImport === 1 || properties.isImport === 'true';
-    const label = String(properties.label ?? '').split('\n');
-    const flow = label.length > 1 ? label[1] : '';
-    const originSharePct = Number(properties.originSharePct ?? Number.NaN);
-    const originVolumeMt = Number(properties.originVolumeMt ?? Number.NaN);
-    const originReferenceYear = Number(properties.originReferenceYear ?? Number.NaN);
-    const originSourceLabel = String(properties.originSourceLabel ?? '').trim();
-    const originPartialBreakdown = Number(properties.originPartialBreakdown ?? 0) === 1;
-    const hasOriginShare = Number.isFinite(originSharePct);
-    const hasOriginVolume = Number.isFinite(originVolumeMt);
-    const hasReferenceYear = Number.isFinite(originReferenceYear);
-    let rawBreakdown: unknown[] = [];
-    if (Array.isArray(properties.originBreakdown)) {
-      rawBreakdown = properties.originBreakdown as unknown[];
-    } else if (typeof properties.originBreakdown === 'string' && properties.originBreakdown.trim()) {
-      try {
-        const parsed = JSON.parse(properties.originBreakdown);
-        if (Array.isArray(parsed)) {
-          rawBreakdown = parsed;
-        }
-      } catch {
-        rawBreakdown = [];
-      }
-    }
-    const breakdown = rawBreakdown
-      .map((entry) => {
-        if (!entry || typeof entry !== 'object') return null;
-        const item = entry as Record<string, unknown>;
-        const itemLabel = String(item.label ?? '').trim();
-        const itemVolumeMt = Number(item.volumeMt ?? Number.NaN);
-        const itemSharePct = Number(item.sharePct ?? Number.NaN);
-        if (!itemLabel || !Number.isFinite(itemVolumeMt) || !Number.isFinite(itemSharePct)) {
-          return null;
-        }
-        return {
-          label: itemLabel,
-          volumeMt: itemVolumeMt,
-          sharePct: itemSharePct,
-        };
-      })
-      .filter((entry): entry is { label: string; volumeMt: number; sharePct: number } => entry !== null);
-    const breakdownHtml = breakdown.length > 0
-      ? `
-        <div style="margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.08);">
-          <div style="font-size:12px; margin-bottom:6px; color:#9898a8;">Détail pays</div>
-          ${breakdown.map((entry) => `
-            <div style="display:flex; justify-content:space-between; gap:10px; font-size:11px; margin-bottom:4px;">
-              <span style="color:#e8e8ec;">${this.escapeHtml(entry.label)}</span>
-              <span style="color:#b9bac7; white-space:nowrap;">${entry.sharePct.toFixed(1)}% · ${entry.volumeMt.toFixed(1)} Mt</span>
-            </div>
-          `).join('')}
-          ${originPartialBreakdown ? `<div style="font-size:11px; margin-top:6px; color:#fbbf24;">Détail partiel: ventilation pays incomplète sur cette catégorie</div>` : ''}
-        </div>
-      `
-      : originPartialBreakdown
-        ? `<div style="margin-top:8px; padding-top:8px; border-top:1px solid rgba(255,255,255,0.08); font-size:11px; color:#fbbf24;">Détail partiel: ventilation pays incomplète sur cette catégorie</div>`
-        : '';
-
-    return `
-      <div style="color:#e8e8ec; font-family:sans-serif; min-width:190px; max-width:300px;">
-        <div style="font-size:14px; font-weight:700; color:#fff;">${this.escapeHtml(country)}</div>
-        <div style="margin:2px 0 10px; font-size:12px; font-weight:600; color:${isImport ? '#C2410C' : '#F59E0B'};">
-          ${isImport ? `Flux import ${fmIcon('trending-down')}` : `Flux export ${fmIcon('trending-up')}`}
-        </div>
-        ${hubName ? `<div style="font-size:12px; margin-bottom:6px;"><span style="color:#9898a8;">Hub</span> <strong>${this.escapeHtml(hubName)}</strong></div>` : ''}
-        ${hasOriginShare ? `<div style="font-size:12px; margin-bottom:6px;"><span style="color:#9898a8;">Part origine</span> <strong>${originSharePct.toFixed(1)}%</strong></div>` : ''}
-        ${hasOriginVolume ? `<div style="font-size:12px; margin-bottom:6px;"><span style="color:#9898a8;">Volume annuel</span> <strong>${originVolumeMt.toFixed(1)} Mt</strong></div>` : ''}
-        ${hasReferenceYear ? `<div style="font-size:12px; margin-bottom:6px;"><span style="color:#9898a8;">Année de référence</span> <strong>${originReferenceYear}</strong></div>` : ''}
-        ${flow ? `<div style="font-size:12px;"><span style="color:#9898a8;">Flux</span> <strong>${this.escapeHtml(flow)}</strong></div>` : ''}
-        ${originSourceLabel ? `<div style="font-size:11px; margin-top:8px; color:#9898a8;">Source: ${this.escapeHtml(originSourceLabel)}</div>` : ''}
-        ${breakdownHtml}
-      </div>
-    `;
-  }
-
   private buildMetropoleHoverHtml(properties: Record<string, unknown>): string {
     const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const name = esc(String(properties.name ?? 'Métropole'));
@@ -4952,7 +4873,7 @@ export class DeckGLMap {
       const stats = this.gasFlowStats.get(String(arc.borderCode ?? ''));
       return stats ? this.buildGasFlowTooltipHtml(stats) : this.buildGasPirHoverHtml(arc);
     }
-    return this.buildOilFlowHoverHtml(arc);
+    return tooltipCardHtml(oilFlowDetailCard(arc));
   }
 
   /** Fiche détaillée d'une interconnexion électrique (clic sur une flèche, spec 2026-10-16 § 6.4) ; null sans statistiques. */
@@ -5329,6 +5250,8 @@ export class DeckGLMap {
     originVolumeMt?: number;
     originReferenceYear?: number;
     originSourceLabel?: string;
+    originPeriodLabel?: string;
+    originLastMonth?: { label: string; volumeMt: number; sharePct: number };
     originPartialBreakdown?: boolean;
     originBreakdown?: Array<{ label: string; volumeMt: number; sharePct: number }>;
   }>): Promise<void> {
@@ -5383,6 +5306,10 @@ export class DeckGLMap {
             originVolumeMt: flow.originVolumeMt ?? null,
             originReferenceYear: flow.originReferenceYear ?? null,
             originSourceLabel: flow.originSourceLabel ?? '',
+            originPeriodLabel: flow.originPeriodLabel ?? '',
+            originLastMonthLabel: flow.originLastMonth?.label ?? '',
+            originLastMonthMt: flow.originLastMonth?.volumeMt ?? null,
+            originLastMonthPct: flow.originLastMonth?.sharePct ?? null,
             originPartialBreakdown: flow.originPartialBreakdown ? 1 : 0,
             originBreakdown,
             flowValue: flowAbs,

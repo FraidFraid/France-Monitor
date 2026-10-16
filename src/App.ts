@@ -6693,6 +6693,8 @@ export class App {
     originVolumeMt?: number;
     originReferenceYear?: number;
     originSourceLabel?: string;
+    originPeriodLabel?: string;
+    originLastMonth?: { label: string; volumeMt: number; sharePct: number };
     originPartialBreakdown?: boolean;
     originBreakdown?: Array<{
       label: string;
@@ -6719,6 +6721,8 @@ export class App {
         originVolumeMt: origin.volumeMt,
         originReferenceYear: origin.referenceYear,
         originSourceLabel: origin.sourceLabel,
+        originPeriodLabel: origin.periodLabel,
+        originLastMonth: origin.lastMonth,
         originPartialBreakdown: origin.partialBreakdown,
         originBreakdown: origin.breakdown,
       };
