@@ -1,4 +1,4 @@
-// Maquette de la carte « Sécurité et défense » (17/10/2026), développement seulement (?maquette=securite).
+// Carte « Sécurité et défense » (17/10/2026) : chargée par DeckGLMap, active seulement quand l'onglet Sécurité et défense est choisi.
 // Lecture décisionnelle : le département est l'unité, la carte est calme par défaut, une seule bulle, fiche au format note.
 // Seuils des communications réglables pour la revue : ?maquette=securite&seuils=3,10,25
 (function () {
@@ -85,6 +85,7 @@
     'mqs-cz-fill': 'subseaCables', 'mqs-cz-line': 'subseaCables', 'mqs-anch-line': 'subseaCables', 'mqs-landings-label': ['subseaCables', 'cyber'],
     'mqs-dc-ref': ['outagesCloud', 'cyber'], 'mqs-bases-closed': 'military' };
   // Aucune pastille active : toutes les couches sont affichées ; une pastille active : sa couche en avant, le détail des autres retiré.
+  const isSec = () => document.querySelector('button.tb-theme[data-theme="security"]')?.getAttribute('aria-pressed') === 'true';
   const allMode = () => S.focus.size === 0 && !preview;
   const isOn = (k) => allMode() || S.focus.has(k) || preview === k;
   const pill = (k) => S.focus.has(k) || preview === k;
@@ -93,6 +94,19 @@
     const P = (id, k, v) => { try { if (m.getLayer(id) && JSON.stringify(m.getPaintProperty(id, k)) !== JSON.stringify(v)) m.setPaintProperty(id, k, v); } catch (e) { /* calque d'un autre type */ } };
     const V = (id, on) => { if (m.getLayer(id) && m.getLayoutProperty(id, 'visibility') !== (on ? 'visible' : 'none')) m.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'); };
     const T_ = (id, v) => { if (m.getLayer(id) && JSON.stringify(m.getLayoutProperty(id, 'text-field')) !== JSON.stringify(v)) m.setLayoutProperty(id, 'text-field', v); };
+    // Hors de l'onglet Sécurité : la carte de l'application reprend la main (calques, bulles, opacités).
+    const sec = isSec();
+    document.body.classList.toggle('mqs-on', sec);
+    legend.style.display = sec ? '' : 'none'; cyber.style.display = sec ? '' : 'none';
+    if (!sec) {
+      if (S.wasSec) {
+        for (const l of m.getStyle().layers) if (l.id.startsWith('mqs-')) V(l.id, false);
+        pop.style.display = 'none'; popAt = null; closeFiche(); S.focus.clear(); preview = null;
+        for (const [k, v] of baseOpacity) { const [id, prop] = k.split('|'); try { if (m.getLayer(id)) m.setPaintProperty(id, prop, v); } catch (e) { /* propriété absente */ } }
+      }
+      S.wasSec = false; return;
+    }
+    S.wasSec = true;
     for (const id of HIDE) V(id, false);
     // L'app masque les calques qu'elle ne connaît pas : ceux de la maquette sont remis visibles.
     // Hiérarchie : par défaut, l'anormal et les infrastructures ; le détail de chaque couche n'apparaît qu'avec sa pastille (clic ou survol).
@@ -763,6 +777,7 @@
     hoveredDept = code;
   };
   const onMove = (e) => {
+    if (!isSec()) return;
     const hit = pick(e.point);
     const canvas = S.m.getCanvas();
     if (!hit) { pop.style.display = 'none'; popAt = null; S.hoverKey = null; setDeptHover(null); canvas.style.cursor = ''; return; }
@@ -969,7 +984,7 @@
   };
 
   const css = `
-  .maplibregl-popup, .military-tooltip, .wm-popup, .deck-tooltip { display: none !important; }
+  body.mqs-on .maplibregl-popup, body.mqs-on .military-tooltip, body.mqs-on .wm-popup, body.mqs-on .deck-tooltip { display: none !important; }
   .mqs-pop .et-card { max-width: 400px; } .mqs-pop .et-row b { white-space: normal; text-align: right; } .mqs-pop .et-row span { flex: 0 0 auto; max-width: 45%; }
   .mqs-pop { position: absolute; left: 0; top: 0; z-index: 30; pointer-events: none; display: none; background: var(--bg-surface, #14161c); border: 1px solid var(--border-color, #2a2e37);
     border-radius: 8px; padding: 10px 12px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
@@ -1018,14 +1033,10 @@
   const start = async () => {
     for (let i = 0; i < 200 && !window._franceMonitorMap; i += 1) await wait(100);
     S.m = window._franceMonitorMap;
-    ({ fmIcon } = await import('/src/components/shared/icons.ts'));
-    // Thème Sécurité et défense
-    for (let i = 0; i < 60; i += 1) {
-      const b = document.querySelector('button.tb-theme[data-theme="security"]');
-      if (b && b.getAttribute('aria-pressed') === 'true') break;
-      if (b) b.click();
-      await wait(500);
-    }
+    const lib = window.__fmMaquette ?? {};
+    fmIcon = lib.fmIcon ?? (await import('/src/components/shared/icons.ts')).fmIcon;
+    // Rien n'est chargé tant que l'onglet Sécurité et défense n'a pas été ouvert.
+    while (!isSec()) await wait(1000);
     for (let i = 0; i < 120 && !S.m.getLayer('military-bases-circle'); i += 1) await wait(250);
     const [geo, deptShapes] = await Promise.all([getJson('/maquette-securite-geo.json'), getJson('/data/departements.geojson')]);
     S.geo = { zones: geo.zones, deptShapes: deptShapes.features };
@@ -1035,7 +1046,7 @@
     host.append(pop, panel, legend, cyber);
     wireChips();
     // Sites de défense : liste interne complète, fermés compris (affichés en gris), avec source et date de vérification.
-    const { ALL_MILITARY_INSTALLATIONS } = await import('/src/config/military-bases-db.ts');
+    const ALL_MILITARY_INSTALLATIONS = lib.ALL_MILITARY_INSTALLATIONS ?? (await import('/src/config/military-bases-db.ts')).ALL_MILITARY_INSTALLATIONS;
     S.bases = ALL_MILITARY_INSTALLATIONS.map((b) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: b.coordinates }, properties: { ...b } }));
     S.bases ??= [];
     [S.cablesFile, S.osm, S.world, S.suite] = await Promise.all([getJson('/data/subsea-cables.json'), getJson('/data/defense-osm-works.json'), getJson('/maquette-cables-monde.json'), getJson('/maquette-cables-suite.json')]);
@@ -1054,12 +1065,14 @@
     await load();
     setInterval(load, 5 * 60 * 1000);
     S.m.on('idle', calm);
+    // Changement d'onglet : la carte Sécurité se retire ou revient sans attendre un mouvement de la carte.
+    setInterval(() => { if (isSec() !== Boolean(S.wasSec)) applyFocus(); }, 700);
     S.m.on('move', placePop);
     S.m.on('mousemove', onMove);
     S.m.getCanvas().addEventListener('mouseleave', () => { pop.style.display = 'none'; popAt = null; S.hoverKey = null; setDeptHover(null); });
     // Clic : la fiche de la maquette remplace les fenêtres et déplacements de l'app (capturé avant MapLibre).
     host.addEventListener('click', (e) => {
-      if (e.target !== S.m.getCanvas()) return;
+      if (e.target !== S.m.getCanvas() || !isSec()) return;
       e.stopPropagation();
       const r = S.m.getCanvas().getBoundingClientRect();
       const hit = pick([e.clientX - r.left, e.clientY - r.top]);

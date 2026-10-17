@@ -719,12 +719,15 @@ export class DeckGLMap {
     this.map.addControl(new SatelliteBasemapControl(this), 'top-right');
 
     await new Promise<void>((r) => this.map!.on('load', r));
-    // Maquette de la carte Sécurité et défense (17/10/2026), en développement seulement : ?maquette=securite.
-    if (import.meta.env.DEV && new URLSearchParams(location.search).get('maquette') === 'securite') {
-      const sc = document.createElement('script');
-      // Horodatage : le navigateur ne garde jamais une ancienne version du script en cache.
-      sc.src = `/maquette-securite.js?t=${Date.now()}`;
-      document.head.appendChild(sc);
+    // Carte Sécurité et défense (17/10/2026) : script autonome, actif seulement dans l'onglet Sécurité et défense ; ?maquette=off la coupe.
+    if (new URLSearchParams(location.search).get('maquette') !== 'off') {
+      void Promise.all([import('./shared/icons'), import('@/config/military-bases-db')]).then(([icons, bases]) => {
+        (window as unknown as { __fmMaquette?: object }).__fmMaquette = { fmIcon: icons.fmIcon, ALL_MILITARY_INSTALLATIONS: bases.ALL_MILITARY_INSTALLATIONS };
+        const sc = document.createElement('script');
+        // Version du jour : le navigateur ne garde pas une ancienne version plus d'une journée.
+        sc.src = `/maquette-securite.js?v=${new Date().toISOString().slice(0, 10)}`;
+        document.head.appendChild(sc);
+      });
     }
     await this.loadIconAtlas();
     this.registerEnvironmentIcons();
