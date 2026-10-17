@@ -14,13 +14,14 @@ describe('carte de la phase B', () => {
       "export { airDeptFeatures, droughtDeptFeatures, quakeFeatures, tideGaugeFeatures } from './environment-map-b.ts';"]) expect(envMap).toContain(part);
   });
   it('DeckGLMap : quatre méthodes, départements lus par getDepartmentsGeojson (cache de la tâche 15), données posées comme à la tâche 15 (setData puis infobulle fermée)', () => {
-    for (const part of ['async updateDroughtLayer(d: DroughtResponse | null, now: number): Promise<void>', 'droughtDeptFeatures(geo, d, now)',
+    for (const part of ['async updateDroughtLayer(d: DroughtResponse | null, now: number): Promise<void>', 'droughtDeptFeatures(geo, d, now, this.droughtCrisisOnly)',
       'async updateAirQualityLayer(a: AirQualityResponse | null, now: number): Promise<void>', 'airDeptFeatures(geo, a, now)',
       'updateEarthquakesLayer(q: EarthquakesResponse | null, now: number): void', 'quakeFeatures(q, now)',
       'updateSeaLevelsLayer(s: SeaLevelsResponse | null, v: VigilanceResponse | null, now: number): void', 'tideGaugeFeatures(s, v, now)']) {
       expect(deck).toContain(part);
     }
-    expect(deck).toContain('(this.map.getSource(SRC_DROUGHT) as maplibregl.GeoJSONSource | undefined)?.setData(geo ? droughtDeptFeatures(geo, d, now) : emptyFC());');
+    // Vue générale : départements en crise seulement (12/10/2026).
+    expect(deck).toContain('(this.map.getSource(SRC_DROUGHT) as maplibregl.GeoJSONSource | undefined)?.setData(geo ? droughtDeptFeatures(geo, d, now, this.droughtCrisisOnly) : emptyFC());');
     expect(deck).toContain('(this.map.getSource(SRC_AIR_QUALITY) as maplibregl.GeoJSONSource | undefined)?.setData(geo ? airDeptFeatures(geo, a, now) : emptyFC());');
     expect(deck).not.toContain('setEnvSource(');
   });

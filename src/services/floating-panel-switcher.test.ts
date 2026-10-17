@@ -76,33 +76,31 @@ describe('showsSwitcher — un panneau doit toujours pouvoir s’ouvrir', () => 
 });
 
 describe('v2SwitcherLayout : repli selon la place réelle, libellé gardé sinon', () => {
-  const ROW = 500;
 
-  it('ordinateur, tiroir fermé : libellés, sur la ligne de Carte | Satellite si la rangée y tient', () => {
-    expect(v2SwitcherLayout(1280, 900, false, ROW)).toEqual({ iconOnly: false, belowControls: false });
+  it('ordinateur, tiroir fermé : libellés, toujours sur la ligne de Carte | Satellite (la rangée défile, 12/10/2026)', () => {
+    expect(v2SwitcherLayout(1280, 900, false)).toEqual({ iconOnly: false });
   });
 
   it('ordinateur, tiroir ouvert : il retire sa largeur à la carte (il la recouvre)', () => {
-    expect(v2SwitcherLayout(1440, 900, true, ROW).belowControls).toBe(true);
-    expect(v2SwitcherLayout(1440, 440, true, ROW).iconOnly).toBe(true);
+    expect(v2SwitcherLayout(1440, 900, true)).toEqual({ iconOnly: false });
+    expect(v2SwitcherLayout(1440, 440, true).iconOnly).toBe(true);
   });
 
   it('tablette : le tiroir est une colonne à part, la largeur de la carte l’exclut déjà (pas de repli en icônes)', () => {
     // 1100 px, tiroir ouvert : carte de 360 px ; sans soustraire encore 300 px, les libellés restent.
-    expect(v2SwitcherLayout(1100, 360, true, ROW)).toEqual({ iconOnly: false, belowControls: true });
-    expect(v2SwitcherLayout(900, 240, true, ROW).iconOnly).toBe(false);
+    expect(v2SwitcherLayout(1100, 360, true)).toEqual({ iconOnly: false });
+    expect(v2SwitcherLayout(900, 240, true).iconOnly).toBe(false);
     // 1024 px, tiroir fermé : carte large, une rangée à côté du sélecteur.
-    expect(v2SwitcherLayout(1024, 784, false, ROW)).toEqual({ iconOnly: false, belowControls: false });
+    expect(v2SwitcherLayout(1024, 784, false)).toEqual({ iconOnly: false });
   });
 
   it('tablette : icône seule seulement si la carte est vraiment trop étroite', () => {
-    expect(v2SwitcherLayout(800, 170, false, ROW).iconOnly).toBe(true);
+    expect(v2SwitcherLayout(800, 170, false).iconOnly).toBe(true);
   });
 
   it('mobile (≤ 768 px) : icône seule toujours, quelle que soit la largeur de la rangée ; jamais sous les contrôles', () => {
-    expect(v2SwitcherLayout(390, 390, false, 300)).toEqual({ iconOnly: true, belowControls: false });
-    expect(v2SwitcherLayout(390, 390, false, ROW)).toEqual({ iconOnly: true, belowControls: false });
-    expect(v2SwitcherLayout(768, 500, true, 100)).toEqual({ iconOnly: true, belowControls: false });
+    expect(v2SwitcherLayout(390, 390, false)).toEqual({ iconOnly: true });
+        expect(v2SwitcherLayout(768, 500, true)).toEqual({ iconOnly: true });
   });
 });
 

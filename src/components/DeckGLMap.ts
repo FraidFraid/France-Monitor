@@ -7087,9 +7087,17 @@ export class DeckGLMap {
     this.envB.drought = d;
     const geo = await this.getDepartmentsGeojson();
     if (!this.map) return;
-    (this.map.getSource(SRC_DROUGHT) as maplibregl.GeoJSONSource | undefined)?.setData(geo ? droughtDeptFeatures(geo, d, now) : emptyFC());
+    (this.map.getSource(SRC_DROUGHT) as maplibregl.GeoJSONSource | undefined)?.setData(geo ? droughtDeptFeatures(geo, d, now, this.droughtCrisisOnly) : emptyFC());
     this.hideEnvironmentHover();
   }
+
+  /** Vue générale (12/10/2026) : la couche sécheresse ne remplit que les départements en crise ; ailleurs, tous ses arrêtés. */
+  setDroughtCrisisOnly(on: boolean): void {
+    if (this.droughtCrisisOnly === on) return;
+    this.droughtCrisisOnly = on;
+    void this.updateDroughtLayer(this.envB.drought, Date.now());
+  }
+  private droughtCrisisOnly = false;
 
   /** Qualité de l'air : indice ATMO le plus haut du jour par département (palette L1). */
   async updateAirQualityLayer(a: AirQualityResponse | null, now: number): Promise<void> {
