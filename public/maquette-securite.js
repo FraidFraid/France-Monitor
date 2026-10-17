@@ -10,6 +10,7 @@
   const T = (q.get('seuils') || '3,10,25').split(',').map(Number);
   const esc = (v) => String(v ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const num = (n) => Number(n).toLocaleString('fr-FR').replace(/\s/g, NB);
+  const dur = (sec) => { const m = Math.round((sec ?? 0) / 60); return m < 60 ? `${m}${NB}min` : `${Math.floor(m / 60)}${NB}h${m % 60 ? `${NB}${pad(m % 60)}` : ''}`; };
   const pad = (n) => String(n).padStart(2, '0');
   const when = (iso) => {
     if (!iso) return 'n.d.';
@@ -56,6 +57,11 @@
   const SHAPE = { air: 'M14 3 L25 24 L3 24 Z', navy: 'M5 5 H23 V23 H5 Z', army: 'M14 2 L26 14 L14 26 L2 14 Z', joint: 'M14 3 A11 11 0 1 1 13.99 3 Z', other: 'M14 3 L25 11 L21 24 L7 24 L3 11 Z' };
   const shape = (t, solid, fill, stroke) => image(`mqs-shp-${t}-${solid ? 'p' : 'd'}-${fill}`,
     `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28"><path d="${SHAPE[t]}" fill="${fill}" stroke="${stroke}" stroke-width="2.2" stroke-linejoin="round" ${solid ? '' : 'stroke-dasharray="3.5 2.5"'}/></svg>`, 28);
+  // Site mobile coupé : disque magenta plein, initiale de l'opérateur, anneau à la couleur d'état du département.
+  const OP_LETTER = { Orange: 'O', SFR: 'S', 'Bouygues Telecom': 'B', Free: 'F' };
+  const opDisc = (L, ring) => image(`mqs-op-${L}-${ring}`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="18.5" fill="#e879f9" stroke="${ring}" stroke-width="${ring === '#0b1020' ? 2 : 4}"/>`
+    + `<text x="22" y="29.5" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="21" font-weight="700" fill="#0b1020">${L}</text></svg>`, 44);
   const noHeading = (k, color) => image(`mqs-nohd-${k}`,
     `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><circle cx="20" cy="20" r="11" fill="${color}" stroke="#ffffff" stroke-width="2"/></svg>`, 40);
 
@@ -68,7 +74,7 @@
   const HIDE = ['out-telecom-long', 'out-telecom-recent', 'out-internet-fill', 'out-internet-line', 'sov-aircraft', 'sov-aircraft-label', 'sov-aircraft-abroad',
     'military-bases-circle', 'military-bases-label', 'submarine-cables-glow', 'submarine-cables-core', 'out-cloud-ref', 'out-cloud-zones', 'submarine-cables-landing'];
   // Calques de détail réservés à leur pastille.
-  const PILL_ONLY = { 'mqs-cable-label': 'subseaCables', 'mqs-low-disc': 'outagesTelecom', 'mqs-low-count': 'outagesTelecom', 'mqs-inet-past': 'outagesInternet',
+  const PILL_ONLY = { 'mqs-cable-label': 'subseaCables', 'mqs-low-disc': 'outagesTelecom', 'mqs-low-count': 'outagesTelecom', 'mqs-inet-past': 'outagesInternet', 'mqs-inet-past-fill': 'outagesInternet', 'mqs-inet-disc': 'outagesInternet', 'mqs-inet-label': 'outagesInternet',
     'mqs-cz-fill': 'subseaCables', 'mqs-cz-line': 'subseaCables', 'mqs-anch-line': 'subseaCables', 'mqs-landings-label': ['subseaCables', 'cyber'],
     'mqs-dc-ref': ['outagesCloud', 'cyber'], 'mqs-bases-closed': 'military' };
   // Aucune pastille active : toutes les couches sont affichées ; une pastille active : sa couche en avant, le détail des autres retiré.
@@ -93,6 +99,7 @@
     }
     // Pression par département (score global) : contour toujours, remplissage quand sa pastille est allumée.
     // Pression par département (score global) : aplat léger en fond quand tout est affiché, plein avec sa pastille ; les symboles restent au-dessus.
+    V('mqs-low-disc', false); V('mqs-low-count', false); V('mqs-inet-past', false);
     V('isnr-line', false); V('isnr-fill', isOn('stability'));
     // Manifestations : toujours (l'actualité du jour). Criminalité (statistique annuelle SSMSI) : villes par défaut, aplat des départements avec sa pastille seulement,
     // pour ne pas confondre son contour avec celui du niveau télécoms.
@@ -191,8 +198,11 @@
     setData('mqs-low', fc([...S.agg.values()].filter((a) => a.level === 'vert' && a.sites.length > 0).map((a) => pt(a.at, { code: a.code, n: a.sites.length }))));
     // Détail au zoom : sites récents (bord à la couleur du département), stock ancien en semis gris
     const tel = S.data.telecom?.sites ?? [];
-    setData('mqs-sites', fc(tel.filter((s) => s.lat && s.lon).map((s) => pt([s.lon, s.lat], { id: s.id, cls: s.cls,
-      ring: s.cls === 'recente' ? L1[S.agg.get(s.dept)?.level ?? 'vert'] === L1.vert ? CAT.telecom : L1[S.agg.get(s.dept).level] : CAT.telecom }))));
+    setData('mqs-sites', fc(tel.filter((s) => s.lat && s.lon).map((s) => pt([s.lon, s.lat], { id: s.id, cls: s.cls, op: OP_LETTER[s.operator] ?? 'X',
+      ring: s.cls === 'recente' && (S.agg.get(s.dept)?.level ?? 'vert') !== 'vert' ? L1[S.agg.get(s.dept).level] : '#0b1020' }))));
+    // Internet : un repère par département touché sur 7 jours (durée cumulée), orange plein si une coupure est en cours.
+    setData('mqs-inet-pts', fc([...S.agg.values()].filter((a) => a.inet.length || a.inetPast.length).map((a) => { const sec = [...a.inet, ...a.inetPast].reduce((n, e) => n + (e.durationSec ?? 0), 0);
+      return pt(a.at, { code: a.code, ongoing: a.inet.length > 0, label: a.inet.length ? 'en cours' : dur(sec) }); })));
     // Aéronefs au-dessus de la France : identité complète (O10)
     const mil = S.data.military;
     setData('mqs-air', fc([...(mil?.aircraft ?? []).map((a) => ({ ...a, abroad: false })), ...(mil?.abroad ?? []).map((a) => ({ ...a, abroad: true }))]
@@ -251,6 +261,7 @@
       for (const t of Object.keys(SHAPE)) { await shape(t, true, BASE_HEX[t], '#ffffff'); await shape(t, false, BASE_HEX[t], '#ffffff'); await shape(t, false, 'none', '#8a93a6'); }
       const icd = { air: await disc('plane', '#ffffff', BASE_HEX.air, true), navy: await disc('anchor', '#ffffff', BASE_HEX.navy, true), army: await disc('shield', '#ffffff', BASE_HEX.army, true),
         joint: await disc('swords', '#ffffff', BASE_HEX.joint, true), other: await disc('landmark', '#ffffff', BASE_HEX.other, true) };
+      for (const L of ['O', 'S', 'B', 'F', 'X']) for (const ring of ['#0b1020', L1.jaune, L1.orange, L1.rouge]) await opDisc(L, ring);
       await chevron('f', CAT.defense); await chevron('o', CAT.defenseOther); await chevron('a', '#8a93a6');
       await noHeading('f', CAT.defense); await noHeading('o', CAT.defenseOther); await noHeading('a', '#8a93a6');
       const b = before();
@@ -295,10 +306,14 @@
           'icon-size': ['match', ['get', 'status'], 'vert', 0.95, 1.05], 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'symbol-sort-key': ['match', ['get', 'status'], 'vert', 0, 1],
           'text-field': '', 'text-size': 12.5, 'text-font': ['Open Sans Semibold'], 'text-anchor': 'left', 'text-offset': [1.3, 0], 'text-allow-overlap': true },
         paint: { 'icon-opacity': 1, 'text-color': ['get', 'color'], 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.5 } }, b);
+      // Pannes anciennes (stock) : semis magenta pâle ; maintenances : gris clair. Jamais une alerte.
       m.addLayer({ id: 'mqs-sites-long', type: 'circle', source: 'mqs-sites', minzoom: 7, filter: ['!=', ['get', 'cls'], 'recente'],
-        paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 1.6, 10, 3], 'circle-color': CAT.telecom, 'circle-opacity': 0.55 } }, b);
-      m.addLayer({ id: 'mqs-sites-recent', type: 'circle', source: 'mqs-sites', minzoom: 7, filter: ['==', ['get', 'cls'], 'recente'],
-        paint: { 'circle-radius': 4.5, 'circle-color': DARK, 'circle-stroke-color': ['get', 'ring'], 'circle-stroke-width': 2 } }, b);
+        paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 1.5, 10, 3], 'circle-color': ['match', ['get', 'cls'], 'maintenance', '#c7c7cc', '#a855f7'], 'circle-opacity': 0.5 } }, b);
+      m.addLayer({ id: 'mqs-sites-recent', type: 'symbol', source: 'mqs-sites', minzoom: 7, filter: ['==', ['get', 'cls'], 'recente'],
+        layout: { 'icon-image': ['concat', 'mqs-op-', ['get', 'op'], '-', ['get', 'ring']], 'icon-size': ['interpolate', ['linear'], ['zoom'], 4, 0.55, 6, 0.65, 9, 0.75, 12, 0.85],
+          'icon-allow-overlap': true, 'icon-ignore-placement': true }, paint: { 'icon-opacity': 1 } }, b);
+      m.addLayer({ id: 'mqs-inet-past-fill', type: 'fill', source: 'mqs-depts', filter: ['all', ['==', ['get', 'inetPast'], true], ['==', ['get', 'inet'], false]],
+        paint: { 'fill-color': CAT.internet, 'fill-opacity': 0.13 } }, b);
       m.addLayer({ id: 'mqs-landings', type: 'circle', source: 'mqs-landings',
         paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, ['+', 2.5, ['*', 1.6, ['sqrt', ['get', 'n']]]], 8, ['+', 4, ['*', 2.4, ['sqrt', ['get', 'n']]]]],
           'circle-color': CAT.cables, 'circle-opacity': 0.9, 'circle-stroke-color': '#05060a', 'circle-stroke-width': 1.2 } }, b);
@@ -332,6 +347,11 @@
       m.addLayer({ id: 'mqs-agg-count', type: 'symbol', source: 'mqs-agg', maxzoom: 7,
         layout: { 'text-field': ['to-string', ['get', 'n']], 'text-size': 11, 'text-font': ['Open Sans Semibold'], 'text-allow-overlap': true },
         paint: { 'text-color': ['match', ['get', 'level'], 'jaune', '#1a1a1a', '#ffffff'] } });
+      m.addLayer({ id: 'mqs-inet-disc', type: 'circle', source: 'mqs-inet-pts',
+        paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 5, 8, 8], 'circle-color': ['case', ['get', 'ongoing'], L1.orange, DARK], 'circle-stroke-color': ['case', ['get', 'ongoing'], '#ffffff', CAT.internet], 'circle-stroke-width': 2 } });
+      m.addLayer({ id: 'mqs-inet-label', type: 'symbol', source: 'mqs-inet-pts',
+        layout: { 'text-field': ['get', 'label'], 'text-size': 10.5, 'text-font': ['Open Sans Semibold'], 'text-anchor': 'left', 'text-offset': [0.9, 0], 'text-optional': true },
+        paint: { 'text-color': ['case', ['get', 'ongoing'], L1.orange, CAT.internet], 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.4 } });
       m.addLayer({ id: 'mqs-air-sym', type: 'symbol', source: 'mqs-air',
         layout: { 'icon-image': ['concat', ['case', ['get', 'hasTrack'], 'mqs-chev-', 'mqs-nohd-'], ['case', ['get', 'abroad'], 'a', ['get', 'fr'], 'f', 'o']],
           'icon-rotate': ['get', 'track'], 'icon-rotation-alignment': 'map', 'icon-size': 0.75, 'icon-allow-overlap': true,
@@ -354,7 +374,7 @@
     protests: ['protests', 'protests-label'],
     crime: ['mqs-crime-city', 'crime-city', 'crime-city-label', 'crime-fill', 'crime-line'],
     outagesTelecom: ['mqs-dept-level', 'mqs-dept-level-line', 'mqs-agg-disc', 'mqs-agg-count', 'mqs-low-disc', 'mqs-low-count', 'mqs-sites-recent', 'mqs-sites-long'],
-    outagesInternet: ['mqs-inet', 'mqs-inet-past'],
+    outagesInternet: ['mqs-inet', 'mqs-inet-past-fill', 'mqs-inet-disc', 'mqs-inet-label'],
     outagesCloud: ['mqs-cloud-sym', 'mqs-dc-ref'],
   };
   const OPACITY = { circle: ['circle-opacity', 'circle-stroke-opacity'], symbol: ['icon-opacity', 'text-opacity'], line: ['line-opacity'], fill: ['fill-opacity'] };
@@ -475,8 +495,30 @@
       rows: [['Voix', s.voice === 'HS' ? 'coupée' : s.voice === 'OK' ? 'disponible' : 'non publiée'], ['Données', s.data === 'HS' ? 'coupées' : s.data === 'OK' ? 'disponibles' : 'non publiées'],
         ['Technologies', (s.techs ?? []).join(', ') || 'n.d.'], ['Cause publiée', s.detail ?? (s.cause === 'maintenance' ? 'maintenance' : 'incident, sans détail')],
         ['Autres sites coupés dans la commune', same.length ? same.map((x) => x.operator).join(', ') : 'aucun'],
-        ['Département', a ? `${num(a.sites.length)} récents · ${WORD[a.level]}` : 'n.d.']],
+        ['Sites coupés à moins de 10' + NB + 'km', (() => { const n = (S.data.telecom?.sites ?? []).filter((x) => x.cls === 'recente' && x.id !== s.id && x.lat && km([s.lon, s.lat], [x.lon, x.lat]) <= 10); return n.length ? `${n.length} (${[...new Set(n.map((x) => x.operator))].join(', ')})` : 'aucun'; })()],
+        ['Opérateur en France', (() => { const o = (S.data.telecom?.byOperator ?? []).find((x) => x.operator === s.operator); return o ? `${num(o.recent)} récentes, ${num(o.long)} anciennes, ${num(o.maintenance)} en maintenance` : 'n.d.'; })()],
+        ['Département', a ? `${plural(a.sites.length, 'site')} coupé${a.sites.length > 1 ? 's' : ''} < 24${NB}h · ${WORD[a.level]}` : 'n.d.']],
       hint: 'Clic : fiche du département', source: telecomSource() };
+  };
+  // Internet : coupures du département sur 7 jours, coupures nationales ou d'opérateur (sans lieu), visibilité des grands réseaux.
+  const SIGNAL = { 'ping-slash24': 'sonde ping', bgp: 'routes BGP', 'merit-nt': 'télescope réseau', gtr: 'trafic Google' };
+  const evRow = (e) => `${when(e.start)} · ${e.ongoing ? `en cours ${ago(e.start)}` : dur(e.durationSec)} · ${SIGNAL[e.signal] ?? e.signal}`;
+  const inetCard = (a) => {
+    const d = S.data.internet;
+    const evs = [...a.inet, ...a.inetPast].sort((x, y) => String(y.start).localeCompare(String(x.start)));
+    const total = evs.reduce((n, e) => n + (e.durationSec ?? 0), 0);
+    const wide = (d?.events ?? []).filter((e) => e.scope !== 'departement');
+    const rows = [['Coupures sur 7' + NB + 'j', `${evs.length} · ${dur(total)} au total`],
+      ...evs.slice(0, 5).map((e, i) => [i ? '' : 'Détail', evRow(e)]), evs.length > 5 ? ['', `+${evs.length - 5}${NB}autres`] : null,
+      (() => { const t = evs[0]?.start; const same = t ? [...S.agg.values()].filter((x) => [...x.inet, ...x.inetPast].some((e) => e.start === t)).length : 0;
+        return same > 3 ? ['Même créneau ailleurs', `${same} départements coupés le ${when(t)} : panne large ou artefact de mesure, pas locale`] : null; })(),
+      ['Sites mobiles coupés < 24' + NB + 'h', a.sites.length ? `${num(a.sites.length)} (${WORD[a.level].toLowerCase()})` : 'aucun'],
+      wide.length ? ['Coupures sans lieu (France, opérateurs)', wide.slice(0, 4).map((e) => `${e.label} ${dur(e.durationSec)} le ${when(e.start)}`).join(' ; ')] : null,
+      (d?.ripe?.networks ?? []).length ? ['Visibilité des réseaux (RIPE)', d.ripe.networks.map((n) => `${n.name} ${String(n.visibilityPct).replace('.', ',')}${NB}%`).join(', ')] : null,
+      ['Cloudflare Radar', d?.radar?.readAt ? `lu ${when(d.radar.readAt)}` : `indisponible${(d?.errors ?? []).length ? ` (${d.errors[0].replace(/^Cloudflare Radar : /, '')})` : ''}`],
+    ].filter(Boolean);
+    return { dot: a.inet.length ? L1.orange : CAT.internet, title: `${a.nom} (${a.code})`, state: a.inet.length ? `Coupure Internet en cours ${ago(a.inet[0].start)}` : 'Aucune coupure en cours · terminées sur 7 jours', stateHex: a.inet.length ? L1.orange : '#c7c7cc',
+      rows, hint: 'Une absence d’anomalie n’est pas une absence de panne · clic : fiche du département', source: `IODA (Georgia Tech), lu ${when(d?.iodaReadAt)} · RIPE Stat, relevé du ${when(d?.ripe?.snapshotAt)}` };
   };
   const cableWatch = () => (S.data.cablesWatch?.evaluated ? 'veille active' : `veille des navires coupée (${(S.data.cablesWatch?.errors ?? [])[0] ?? 'source injoignable'})`);
   // Cloud et centres de données : bulles complètes (état publié, incidents, maintenances, voisinage, sources).
@@ -585,15 +627,19 @@
   const deptAt = (c) => { if (!c) return null; for (const f of S.geo.deptShapes) if (inGeom(c, f.geometry)) return S.agg.get(f.properties.code); return null; };
 
   // Arbitre : une seule cible, la plus signifiante sous le pointeur.
-  const PRIORITY = ['mqs-air-sym', 'sov-emergencies', 'protests', 'mqs-cloud-sym', 'mqs-sites-recent', 'mqs-agg-disc', 'mqs-low-disc', 'crime-city', 'mqs-crime-city', 'mqs-bases-sym', 'mqs-bases-closed', 'sov-navy-reference', 'sov-navy-observed', 'mqs-landings', 'mqs-world-lp', 'mqs-dc-ref', 'mqs-suite-end', 'mqs-world-hit', 'mqs-suite-hit', 'submarine-cables-hitarea', 'mqs-anch-line', 'mqs-cz-fill', 'mqs-sites-long', 'crime-fill', 'mqs-dept-fill'];
+  const PRIORITY = ['mqs-air-sym', 'sov-emergencies', 'protests', 'mqs-cloud-sym', 'mqs-inet-disc', 'mqs-sites-recent', 'mqs-agg-disc', 'mqs-low-disc', 'crime-city', 'mqs-crime-city', 'mqs-bases-sym', 'mqs-bases-closed', 'sov-navy-reference', 'sov-navy-observed', 'mqs-landings', 'mqs-world-lp', 'mqs-dc-ref', 'mqs-suite-end', 'mqs-world-hit', 'mqs-suite-hit', 'submarine-cables-hitarea', 'mqs-anch-line', 'mqs-cz-fill', 'mqs-sites-long', 'crime-fill', 'mqs-dept-fill'];
   const pick = (point) => {
-    const layers = PRIORITY.filter((id) => S.m.getLayer(id));
+    // Une pastille active : seuls ses calques (et les départements) répondent au survol ; un calque estompé ne donne jamais de bulle.
+    const on = new Set(S.focus); if (preview) on.add(preview);
+    const live = (id) => !on.size || !Object.values(GROUPS).some((ls) => ls.includes(id)) || Object.entries(GROUPS).some(([g, ls]) => on.has(g) && ls.includes(id));
+    const layers = PRIORITY.filter((id) => S.m.getLayer(id) && live(id));
     const hits = S.m.queryRenderedFeatures(point, { layers });
     if (!hits.length) return null;
     hits.sort((a, b) => PRIORITY.indexOf(a.layer.id) - PRIORITY.indexOf(b.layer.id));
     const f = hits[0], p = f.properties, id = f.layer.id;
     if (id === 'mqs-air-sym') { const a = airOf(p.hex); return a && { key: `air:${p.hex}`, kind: 'air', id: p.hex, card: airCard(a), at: [a.lon, a.lat] }; }
     if (id === 'mqs-agg-disc' || id === 'mqs-low-disc' || id === 'mqs-dept-fill') { const a = S.agg.get(p.code); return a && { key: `dept:${a.code}`, kind: 'dept', id: a.code, card: deptCard(a), at: id === 'mqs-dept-fill' ? null : a.at }; }
+    if (id === 'mqs-inet-disc') { const a = S.agg.get(p.code); return a && { key: `inet:${a.code}`, kind: 'dept', id: a.code, card: inetCard(a), at: a.at }; }
     if (id === 'mqs-sites-recent' || id === 'mqs-sites-long') { const s = (S.data.telecom?.sites ?? []).find((x) => x.id === p.id); return s && { key: `site:${s.id}`, kind: 'site', id: s.id, card: siteCard(s), at: [s.lon, s.lat] }; }
     if (id === 'mqs-bases-sym') return { key: `base:${p.id}`, kind: 'base', id: p.id, card: baseCard(p), at: f.geometry.coordinates };
     if (id === 'mqs-cloud-sym') { const cs = S.cloudSites?.[p.i]; return cs && { key: `cloud:${p.i}`, kind: 'cloud', id: p.i, card: cloudSiteCard(cs), at: cs.at }; }
@@ -816,8 +862,8 @@
       <div class="mqs-row mqs-note">Au large, suite du tracé d’après TeleGeography ou OpenStreetMap ; ${swatch('#c7c7cc', 'ring')}fin du relevé du Shom sans suite publiée.</div>
       <div class="mqs-row">${swatch(CAT.cables, 'disc')}Atterrage : taille = nombre de câbles au même endroit</div>
       <div class="mqs-row mqs-note">Avec la pastille : zones de protection des câbles (aplat cyan) et mouillages qui les recoupent (pointillé blanc).</div>
-      <div class="mqs-row">${swatch(CAT.telecom, 'ring')}Sites mobiles coupés (détail avec la pastille)</div>
-      <div class="mqs-row">${swatch(CAT.internet, 'dash')}Coupure Internet terminée depuis moins de 7${NB}jours</div>
+      <div class="mqs-row">${swatch(CAT.telecom, 'disc')}Site mobile coupé depuis moins de 24${NB}h, lettre = opérateur (O, S, B, F), anneau = état du département ${swatch('#a855f7', 'disc')}panne plus ancienne ${swatch('#c7c7cc', 'disc')}maintenance</div>
+      <div class="mqs-row">${swatch(CAT.internet, 'ring')}Coupure Internet terminée sur 7${NB}jours (durée cumulée, département teinté) ${swatch(L1.orange, 'disc')}coupure en cours</div>
       <div class="mqs-row">${icon('cloud', '#fff', CAT.cloud)}Site cloud (pages d’état, zones regroupées ; couleur d’état si incident) ${icon('server', '#fff', CAT.dc)}centre de données en service ${icon('server', CAT.dc, DARK)}en projet (avec la pastille)</div>
       <div class="mqs-row">${swatch('#ec4899', 'disc')}Manifestation annoncée ${swatch(L1.orange, 'disc')}signalée par la presse ${swatch(L1.rouge, 'disc')}heurts, taille selon le nombre</div>
       <div class="mqs-row mqs-note">${swatch(L1.rouge, 'ring')}Criminalité (SSMSI, annuelle) : ville à 2 fois la moyenne nationale ou plus en violences physiques hors famille ; avec la pastille, toutes les villes et départements pour l’indicateur choisi dans le panneau.</div>
