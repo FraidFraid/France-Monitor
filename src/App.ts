@@ -116,6 +116,10 @@ import type { DisastersPanel } from './components/DisastersPanel.ts';
 import type { ProtestsPanel } from './components/ProtestsPanel.ts';
 import { PROTESTS_POLL_MS, fetchProtests, mergeProtests, type ProtestsState } from './services/protests.ts';
 import { PROTESTS_LEGEND, protestsLegend } from './components/layer-panel/manifestations-legend.ts';
+import type { CriminalitePanel } from './components/CriminalitePanel.ts';
+import { fetchCrimeDataset } from './services/crime.ts';
+import { CRIME_LEGEND, crimeLegend } from './components/layer-panel/criminalite-legend.ts';
+import type { CrimeDataset } from './types/index.ts';
 import { departementCentroid } from './config/departements.ts';
 import { radarStatus, type RadarProfileState } from './services/environment-radar.ts';
 import { clusterFireDetections } from './services/fire-clustering.ts';
@@ -561,6 +565,7 @@ const DEFAULT_LAYERS: MapLayers = {
   outagesInternet: false,
   outagesCloud: false,
   protests: false,
+  crime: false,
   stability: false,
   cyber: false,
   gasNetwork: false,
@@ -627,6 +632,7 @@ const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
   { id: 'outagesInternet', label: 'Internet', icon: 'globe', layerKeys: ['outagesInternet'] },
   { id: 'outagesCloud', label: 'Cloud et hébergement', icon: 'cloud', layerKeys: ['outagesCloud'] },
   { id: 'protests', label: 'Manifestations', icon: 'megaphone', layerKeys: ['protests'] },
+  { id: 'crime', label: 'Criminalité', icon: 'siren', layerKeys: ['crime'] },
 ];
 
 /** Lignes Souveraineté de la phase B : chacune n'est écrite que par son lecteur (tâche B28), jamais par un service de la phase A. */
@@ -1108,6 +1114,13 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     label: 'MANIFESTATIONS',
     legend: PROTESTS_LEGEND,
   },
+  // ─── Criminalité (spec 2026-10-17) : couche autonome du thème Sécurité, fichier annuel lu une fois, aucune relève ───
+  {
+    id: 'crime',
+    role: 'standalone',
+    label: 'CRIMINALITÉ',
+    legend: CRIME_LEGEND,
+  },
 
 ];
 
@@ -1143,6 +1156,10 @@ export class App {
   private protestsPanel: ProtestsPanel | null = null;
   private currentProtests: ProtestsState | null = null;
   private protestsPanelPromise: Promise<void> | null = null;
+  private crimePanel: CriminalitePanel | null = null;
+  private crimePanelPromise: Promise<void> | null = null;
+  private currentCrime: CrimeDataset | null = null;
+  private crimeError: string | null = null;
   private protestsPoll: PausableTimer | null = null;
   private weatherRadarPanel: WeatherRadarPanel | null = null;
   private maritimePanel: MaritimePanel | null = null;
@@ -2945,6 +2962,7 @@ export class App {
       'outagesInternet',
       'outagesCloud',
       'protests',
+      'crime',
     ];
 
     const activeKeys = restoreOrder.filter((key) => this.activeLayers[key]);
@@ -3193,6 +3211,15 @@ export class App {
       } else {
         this.protestsPanel?.hide({ silent: true });
         this.syncProtestsPolling();
+      }
+    }
+
+    // Panneau Criminalité (spec 2026-10-17) : fichier annuel lu une fois à l'ouverture, aucune relève ; masquage silencieux à l'extinction.
+    if (key === 'crime') {
+      if (enabled) {
+        this.openCrimePanel();
+      } else {
+        this.crimePanel?.hide({ silent: true });
       }
     }
 
@@ -4395,6 +4422,73 @@ export class App {
     this.mapLegend.setCategories([{ ...protestsLegend(this.currentProtests?.data ?? null, Date.now()), visible: this.activeLayers.protests }]);
   }
 
+  // ─── Criminalité (spec 2026-10-17 criminalité) : délinquance enregistrée SSMSI, fichier statique annuel ───
+
+  /** Panneau Criminalité, créé à la demande ; indicateur choisi transmis à la carte, villes recentrées sur la carte WebGL seulement. */
+  private ensureCrimePanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.crimePanelPromise ??= import('./components/CriminalitePanel.ts').then(({ CriminalitePanel }) => {
+      const panel = new CriminalitePanel(container);
+      panel.setOnClose(() => this.closeCrimeLayer());
+      panel.setOnIndicator((key) => {
+        this.mapContainer?.setCrimeIndicator(key);
+        this.refreshCrimeLegend();
+      });
+      if (this.mapContainer?.canFocusMap()) panel.setOnFocusPlace((lat, lon) => this.mapContainer?.flyTo(lon, lat, 11));
+      panel.mount();
+      this.crimePanel = panel;
+      this.mapContainer?.setCrimeIndicator(panel.getIndicator());
+      if (this.activeLayers.crime) panel.show(this.currentCrime, this.crimeError);
+    });
+    return this.crimePanelPromise;
+  }
+
+  /** Croix du panneau : éteint la couche comme une case décochée. */
+  private closeCrimeLayer(): void {
+    if (this.activeLayers.crime) {
+      this.onLayerToggle('crime', false);
+      this.layerPanel?.updateLayers(this.activeLayers);
+    }
+  }
+
+  /** Ouverture (case, restauration) : panneau sur le fichier déjà lu, carte repeinte, fichier lu une fois sinon. */
+  private openCrimePanel(): void {
+    this.crimePanel?.show(this.currentCrime, this.crimeError);
+    if (this.crimePanel) this.mapContainer?.setCrimeIndicator(this.crimePanel.getIndicator());
+    if (this.currentCrime) this.mapContainer?.updateCrimeLayer(this.currentCrime);
+    this.refreshCrimeLegend();
+    if (this.currentCrime === null) this.loadCrime().catch((err) => console.error('[App] Lecture Criminalité en échec', err));
+  }
+
+  /** Rond de ville cliqué sur la carte : panneau ouvert sur la ligne de la ville. */
+  private onCrimeMapClick(cityCode: string): void {
+    void this.ensureCrimePanel().then(() => {
+      if (!this.isFloatingPanelVisible('crime')) this.showFloatingPanel('crime');
+      this.crimePanel?.focusCity(cityCode);
+    });
+  }
+
+  /** Lecture unique à la fois (mémorisée par le service) : panneau, carte et légende mis à jour ; un échec est dit, relu à la réouverture. */
+  private loadCrime(): Promise<void> {
+    return dedupe('crime', async () => {
+      try {
+        this.currentCrime = await fetchCrimeDataset();
+        this.crimeError = null;
+      } catch (err) {
+        this.crimeError = err instanceof Error ? err.message : 'Criminalité : lecture impossible';
+      }
+      this.mapContainer?.updateCrimeLayer(this.currentCrime);
+      this.crimePanel?.update(this.currentCrime, this.crimeError);
+      this.refreshCrimeLegend();
+    });
+  }
+
+  private refreshCrimeLegend(): void {
+    if (!this.mapLegend) return;
+    this.mapLegend.setCategories([{ ...crimeLegend(this.currentCrime, this.crimePanel?.getIndicator() ?? 'homicides'), visible: this.activeLayers.crime }]);
+  }
+
   // ─── Souveraineté, phase B (tâche B28 ; contrats § 4.4 point 15, § 6 ; amendement 7, O7, O15, O17, S15) ───
   // Grille GNSS et météo spatiale (score : lue avec chaque lecture de la couche Défense), registre des gels (couche Défense active ou
   // panneau ouvert), grands réseaux et points d'échange (couche Connectivité active ou panneau ouvert), fichier des zones drones (une fois
@@ -4920,6 +5014,7 @@ export class App {
       case 'earthquakes': return [this.ensureEarthquakesPanel()];
       case 'disasters': return [this.ensureDisastersPanel()];
       case 'protests': return [this.ensureProtestsPanel()];
+      case 'crime': return [this.ensureCrimePanel()];
       case 'trafficRoad': return [this.ensureTrafficPanel()];
       case 'trafficAir': return [this.ensureAirTrafficPanel()];
       case 'trafficRail': return [this.ensureTransportPanel()];
@@ -4991,6 +5086,7 @@ export class App {
       case 'outagesInternet': return this.outagesInternetPanel;
       case 'outagesCloud': return this.outagesCloudPanel;
       case 'protests': return this.protestsPanel;
+      case 'crime': return this.crimePanel;
       default: return null;
     }
   }
@@ -5485,6 +5581,8 @@ export class App {
     this.mapContainer.setOnRadarPointPick((lat, lon) => this.loadRadarProfile(lat, lon));
     // Clic sur un point Manifestations : panneau ouvert sur les lignes de cette commune.
     this.mapContainer.setOnProtestClick((key) => this.onProtestMapClick(key));
+    // Clic sur un rond de ville Criminalité : panneau ouvert sur la ligne de cette ville.
+    this.mapContainer.setOnCrimeCityClick((code) => this.onCrimeMapClick(code));
     // Clic sur un objet Souveraineté (contrats § 4.4 point 19) : fiche d'un bâtiment, ou panneau de sa couche.
     this.mapContainer.setOnSovereigntyFeatureClick((layerId, props) => this.onSovereigntyMapClick(layerId, props));
     // Sync URL when map view changes

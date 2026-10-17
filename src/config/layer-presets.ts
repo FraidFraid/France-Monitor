@@ -70,6 +70,7 @@ export const ALL_PRESETABLE_LAYER_KEYS: ReadonlyArray<keyof MapLayers> = [
   'outagesInternet',
   'outagesCloud',
   'protests',
+  'crime',
 ];
 
 /**
@@ -78,7 +79,7 @@ export const ALL_PRESETABLE_LAYER_KEYS: ReadonlyArray<keyof MapLayers> = [
  */
 export const THEME_LAYERS: Readonly<Record<Exclude<LayerPresetId, 'general'>, ReadonlyArray<keyof MapLayers>>> = {
   energy: ['powerGrid', 'nuclearFleet', 'gasNetwork', 'oilNetwork', 'outagesElec', 'hydroBackbone', 'windMonitor', 'dromEnergy', 'metroLoad'],
-  security: ['military', 'cyber', 'outagesTelecom', 'outagesInternet', 'outagesCloud', 'subseaCables', 'protests', 'news', 'stability'],
+  security: ['military', 'cyber', 'outagesTelecom', 'outagesInternet', 'outagesCloud', 'subseaCables', 'protests', 'crime', 'news', 'stability'],
   health: ['health', 'healthOscour', 'hospitals', 'healthApl'],
   environment: ['environmental', 'floods', 'weatherRadar', 'fires', 'airQuality', 'drought', 'earthquakes', 'disasters'],
   transport: ['trafficRoad', 'trafficRail', 'trafficMaritime', 'trafficAir'],

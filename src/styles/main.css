@@ -5711,6 +5711,7 @@ button.header-quality-link {
   .quakes-panel-modal,
   .disasters-panel-modal,
   .protests-panel-modal,
+  .crime-panel-modal,
   .gas-panel-modal,
   .nuclear-panel-modal,
   .oil-panel-modal,
@@ -5763,6 +5764,7 @@ button.header-quality-link {
   .quakes-panel-modal::before,
   .disasters-panel-modal::before,
   .protests-panel-modal::before,
+  .crime-panel-modal::before,
   .gas-panel-modal::before,
   .nuclear-panel-modal::before,
   .oil-panel-modal::before,
@@ -7748,6 +7750,7 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
   #app.ui-v2 .quakes-panel-modal,
   #app.ui-v2 .disasters-panel-modal,
   #app.ui-v2 .protests-panel-modal,
+  #app.ui-v2 .crime-panel-modal,
   #app.ui-v2 .gas-panel-modal,
   #app.ui-v2 .nuclear-panel-modal,
   #app.ui-v2 .oil-panel-modal,
@@ -8355,3 +8358,8 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 #app .protests-panel-modal .fmk .fmk-sec--ref .fmk-kv-v { overflow-wrap: anywhere; }
 .lp .lp-subhead { margin: 8px 0 2px; color: var(--text-secondary); font-size: 12px; font-weight: 600; }
 .lp .lp-badge { display: inline-block; padding: 0 6px; border-radius: 8px; background: var(--sev-red); color: #fff; font-size: 10.5px; font-weight: 600; white-space: nowrap; }
+
+/* Criminalité (spec 2026-10-17) : « Méthode et sources » en phrases, comme Manifestations. */
+#app .crime-panel-modal .fmk .fmk-sec--ref .fmk-kv { grid-template-columns: 8rem minmax(0, 1fr); }
+#app .crime-panel-modal .fmk .fmk-sec--ref .fmk-kv-v { overflow-wrap: anywhere; }
+.lp .lp-toolbar .lp-select { max-width: 100%; }

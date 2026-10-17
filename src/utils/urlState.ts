@@ -56,6 +56,7 @@ const LAYER_KEYS: (keyof MapLayers)[] = [
     'outagesInternet',
     'outagesCloud',
     'protests',
+    'crime',
     'cyber',
     'gasNetwork',
     'oilNetwork',

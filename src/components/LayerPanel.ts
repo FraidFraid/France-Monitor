@@ -58,6 +58,7 @@ const LAYER_DEFS: LayerDef[] = [
   { key: 'outagesInternet', label: 'INTERNET', icon: fmIcon('globe'), sublayerOf: 'outages' },
   { key: 'outagesCloud',    label: 'CLOUD ET HÉBERGEMENT', icon: fmIcon('cloud'), sublayerOf: 'outages' },
   { key: 'protests', label: 'MANIFESTATIONS', icon: `<span style="color:#ec4899;">${fmIcon('megaphone')}</span>` },
+  { key: 'crime', label: 'CRIMINALITÉ', icon: `<span style="color:#6366f1;">${fmIcon('siren')}</span>` },
 ];
 
 /** Entrées affichées : « Événements en cours » n'existe que dans la v2 (la v1 ne change pas). */
@@ -676,6 +677,9 @@ export class LayerPanel {
       ]),
       this.helpSection(fmIcon('megaphone'), 'Manifestations', [
         this.helpItem(fmIcon('megaphone'), 'Manifestations', 'Rendez-vous annoncés par l’agenda militant (Démosphère, non confirmés) et manifestations signalées par la presse mondiale (GDELT, 24\u00a0h) ; le lieu d’un signalement est souvent approximatif. Aucun effet sur l’indice de stabilité.', 'live'),
+      ]),
+      this.helpSection(fmIcon('siren'), 'Criminalité', [
+        this.helpItem(fmIcon('siren'), 'Criminalité', 'Délinquance enregistrée par la police et la gendarmerie (SSMSI, ministère de l’Intérieur), par département et par ville de 20\u00a0000 habitants et plus ; homicides au département seulement. Données annuelles : plaintes et constatations, pas la délinquance réelle. Aucun effet sur l’indice de stabilité.'),
       ]),
     ].join('');
   }

@@ -21,6 +21,7 @@ import type {
   SubseaCablesFile, TelecomOutagesResponse,
 } from '../types/index.ts';
 import type { AirQualityResponse, AsnrResponse, DisastersResponse, ProtestsResponse, DroughtResponse, EmsResponse, EarthquakesResponse, FiresResponse, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
+import type { CrimeDataset, CrimeIndicatorKey } from '../types/index.ts';
 import type { UrgencesSyndrome } from './layer-panel/health-format.ts';
 
 /** Detect if the device is mobile (no WebGL or small screen) */
@@ -63,6 +64,9 @@ export class MapContainer {
   private onRadarPointPick: ((lat: number, lon: number) => void) | null = null;
   private radarPick: { lat: number; lon: number } | null = null;
   private onProtestClick: ((placeKey: string) => void) | null = null;
+  private onCrimeCityClick: ((cityCode: string) => void) | null = null;
+  private crimeData: CrimeDataset | null = null;
+  private crimeIndicator: CrimeIndicatorKey | null = null;
   private onSovereigntyFeatureClick: ((layerId: string, props: Record<string, unknown>) => void) | null = null;
 
   constructor(container: HTMLElement) {
@@ -95,6 +99,9 @@ export class MapContainer {
     if (this.radarPick) this.deckMap.setRadarPick(this.radarPick);
     if (this.onSovereigntyFeatureClick) this.deckMap.setOnSovereigntyFeatureClick(this.onSovereigntyFeatureClick);
     if (this.onProtestClick) this.deckMap.setOnProtestClick(this.onProtestClick);
+    if (this.onCrimeCityClick) this.deckMap.setOnCrimeCityClick(this.onCrimeCityClick);
+    if (this.crimeIndicator) this.deckMap.setCrimeIndicator(this.crimeIndicator);
+    if (this.crimeData) this.deckMap.updateCrimeLayer(this.crimeData);
     if (this.onRawMapClick) this.deckMap.setOnRawMapClick(this.onRawMapClick);
     if (this.onSatelliteView) this.deckMap.setOnSatelliteView(this.onSatelliteView);
     if (this.onEnergyKeyChange) this.deckMap.setOnEnergyKeyChange(this.onEnergyKeyChange);
@@ -547,6 +554,22 @@ export class MapContainer {
   setOnProtestClick(handler: (placeKey: string) => void): void {
     this.onProtestClick = handler;
     this.deckMap?.setOnProtestClick(handler);
+  }
+
+  /** Criminalité : fichier annuel (gardé ici pour une carte créée après la lecture). */
+  updateCrimeLayer(data: CrimeDataset | null): void {
+    this.crimeData = data;
+    this.deckMap?.updateCrimeLayer(data);
+  }
+
+  setCrimeIndicator(key: CrimeIndicatorKey): void {
+    this.crimeIndicator = key;
+    this.deckMap?.setCrimeIndicator(key);
+  }
+
+  setOnCrimeCityClick(handler: (cityCode: string) => void): void {
+    this.onCrimeCityClick = handler;
+    this.deckMap?.setOnCrimeCityClick(handler);
   }
 
   updateDisastersLayer(d: DisastersResponse | null, now: number): void {

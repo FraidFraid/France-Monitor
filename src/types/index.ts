@@ -127,6 +127,8 @@ export interface MapLayers {
   outagesCloud: boolean;
   /** Manifestations : agenda militant Démosphère et signal de la presse GDELT (spec 2026-10-17 manifestations). */
   protests: boolean;
+  /** Criminalité : délinquance enregistrée SSMSI, départements et villes de 20 000 habitants et plus (spec 2026-10-17 criminalité). */
+  crime: boolean;
   stability: boolean;
   cyber: boolean;
   gasNetwork: boolean;
@@ -3203,18 +3205,20 @@ export interface CloudOutagesResponse {
   errors: string[];
 }
 
-// ═══ Manifestations : annonces Démosphère et signal presse GDELT (spec 2026-10-17 manifestations) ═══
+// ═══ Manifestations : annonces Démosphère, presse française ingérée et signal presse GDELT (spec 2026-10-17 manifestations) ═══
 
-export type ProtestSource = 'demosphere' | 'gdelt';
-/** annonce : rendez-vous publié à l'avance (Démosphère), jamais confirmé ; signale : relevé dans la presse (GDELT). */
+export type ProtestSource = 'demosphere' | 'presse' | 'gdelt';
+/** annonce : rendez-vous publié à l'avance (Démosphère), jamais confirmé ; signale : relevé dans la presse (française ou GDELT). */
 export type ProtestStatus = 'annonce' | 'signale';
 
-/** Article de presse relevé par GDELT (un par adresse, sans doublon). */
+/** Article de presse relevé (un par adresse ou par dépêche, sans doublon). */
 export interface ProtestArticle {
   url: string;
   domain: string;
-  seenAt: string;                      // ISO 8601 UTC : DATEADDED GDELT
-  violent: boolean;                    // code CAMEO 145 (heurts, émeute)
+  seenAt: string;                      // ISO 8601 UTC : publication (presse française) ou DATEADDED GDELT
+  violent: boolean;                    // heurts ou tensions dans le titre ; GDELT : code CAMEO 145
+  title: string | null;                // titre de l'article (presse française) ; GDELT : null
+  outlet: string | null;               // journal (« Le Dauphiné ») ; GDELT : null
 }
 
 /** Manifestation annoncée ou signalée. Sans lieu lisible : lat/lon null (listée, jamais placée sur la carte). */
@@ -3222,22 +3226,69 @@ export interface ProtestItem {
   id: string;
   source: ProtestSource;
   status: ProtestStatus;
-  title: string;                       // titre Démosphère ; GDELT : libellé français du code CAMEO dominant
-  startsAt: string | null;             // ISO 8601 UTC ; Démosphère : début du rendez-vous ; GDELT : dernier article
+  title: string;                       // titre Démosphère ; presse : « Heurts ou tensions » ou « Manifestation ou rassemblement » ; GDELT : libellé CAMEO
+  startsAt: string | null;             // ISO 8601 UTC ; Démosphère : début du rendez-vous ; presse et GDELT : dernier article
   allDay: boolean;                     // rendez-vous Démosphère sans heure
-  city: string | null;                 // commune (référentiel geo.api.gouv.fr) ou lieu GDELT
-  dept: string | null;                 // code département (« 31 », « 2A »)
+  city: string | null;                 // commune, ou département pour un titre qui ne nomme que lui
+  dept: string | null;                 // code département (« 31 », « 2A »), Démosphère seulement
   lat: number | null; lon: number | null;
-  url: string | null;                  // fiche Démosphère ; GDELT : article le plus récent
-  edition: string | null;              // édition Démosphère (« Toulouse ») ; GDELT : null
-  violent: boolean;                    // GDELT : au moins un article de heurts ; Démosphère : toujours false
-  articles: ProtestArticle[];          // GDELT seulement (au plus 8, plus récent d'abord) ; Démosphère : []
+  url: string | null;                  // fiche Démosphère ; presse et GDELT : article le plus récent
+  edition: string | null;              // édition Démosphère (« Toulouse ») ; sinon null
+  violent: boolean;                    // presse et GDELT : au moins un article de heurts ; Démosphère : toujours false
+  participants: number | null;         // presse : plus grand chiffre cité pour ce seul lieu (« 800 personnes ») ; sinon null
+  precision: 'commune' | 'departement' | null; // null : sans lieu
+  articles: ProtestArticle[];          // presse et GDELT (au plus 8, plus récent d'abord) ; Démosphère : []
+  articleCount: number;                // nombre total d'articles du lieu (dépêches reprises comptées une fois)
 }
 
 export interface ProtestsResponse {
-  readAt: string | null;               // dernière lecture réussie d'une des deux sources
+  readAt: string | null;               // dernière lecture réussie d'une des trois sources
   items: ProtestItem[];                // signalés d'abord, puis annonces par heure de début
   demosphere: { readAt: string | null; editions: number; failedEditions: string[]; scanned: number };
   gdelt: { readAt: string | null; files: number; missingFiles: number };
+  presse: { readAt: string | null; scanned: number; matched: number; unplaced: number };
   errors: string[];
+}
+
+// ═══ Criminalité : délinquance enregistrée SSMSI, département et villes de 20 000 habitants et plus (spec 2026-10-17 criminalité) ═══
+
+/** Clé d'indicateur SSMSI (liste fixe de scripts/build-crime.mjs). */
+export type CrimeIndicatorKey =
+  | 'homicides' | 'tentatives' | 'violencesIntrafamiliales' | 'violencesPhysiques' | 'violencesSexuelles' | 'volsArmes' | 'volsViolents'
+  | 'volsSansViolence' | 'cambriolages' | 'volsVehicules' | 'volsDansVehicules' | 'volsAccessoires' | 'degradations'
+  | 'stupefiantsUsage' | 'stupefiantsTrafic' | 'escroqueries';
+
+export interface CrimeIndicator {
+  key: CrimeIndicatorKey;
+  label: string;
+  communal: boolean;                   // false : homicides et tentatives, publiés au département seulement
+  base: 'habitants' | 'logements';     // dénominateur du taux pour mille (logements : cambriolages)
+}
+
+/** [nombre, taux pour mille, nombre de l'année précédente] ; nombre null et taux renseigné : estimation lissée (secret statistique). */
+export type CrimeValue = [number | null, number | null, number | null];
+
+export interface CrimeDepartment {
+  code: string; name: string; population: number | null;
+  values: Partial<Record<CrimeIndicatorKey, CrimeValue>>;
+  homicides: Array<{ year: number; count: number | null }>;
+}
+
+export interface CrimeCity {
+  code: string; name: string; dept: string; lat: number; lon: number; population: number;
+  values: Partial<Record<CrimeIndicatorKey, CrimeValue>>;   // indicateurs communaux seulement
+}
+
+/** public/data/crime.json, produit par scripts/build-crime.mjs. */
+export interface CrimeDataset {
+  year: number;
+  previousYear: number | null;
+  publishedAt: string | null;          // AAAA-MM-JJ : mise à jour du jeu data.gouv
+  source: string;
+  sourceUrl: string;
+  cityMinPopulation: number;
+  indicators: CrimeIndicator[];
+  france: Partial<Record<CrimeIndicatorKey, Array<{ year: number; count: number; rate: number | null }>>>;
+  departments: CrimeDepartment[];
+  cities: CrimeCity[];
 }
