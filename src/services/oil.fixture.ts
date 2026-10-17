@@ -7,28 +7,28 @@ export const SDES_PETROLE_2026_HTML = `"contenu">
 
 <div id="_idContainer112" class="Bloc-de-texte-standard">
 			<h1 class="h1">Pétrole</h1>
-			<h2 class="h2">Importations de pétrole brut* par origine<br><span class="h2-noir">TOTAL : 46,9 Mtep en 2025, soit 546 TWh</span>
+			<h2 class="h2">Importations de pétrole brut* par origine<br><span class="h2-noir">TOTAL\u00a0: 46,9\u00a0Mtep en 2025, soit 546\u00a0TWh</span>
 </h2>
 			<div class="image"><a href="./image/importations-petrole-brut-origine-2026-cgdd.svg" data-fancybox="images"><img class="image" src="./image/importations-petrole-brut-origine-2026-cgdd.svg" alt=""></a></div>
 			<p class="source-graph">(p) = provisoire.<br>* Y compris de faibles quantités de condensats à destination du raffinage et de la pétrochimie, d’additifs oxygénés (non issus de biomasse) et d’autres produits à distiller, à partir de 1990.<br><sup>1</sup> Algérie, Égypte, Lybie, Maroc, Tunisie.<br><sup>2</sup> Danemark, Norvège, Pays-Bas et Royaume-Uni.<br><sup>3</sup
 e la consommation nationale de pétrole.</p>
-			<p class="paragraphe paragraphe-esp">Au 1<sup>er</sup> janvier 2026, les réserves de pétrole brut (5,0 Mtep) de la France représentent environ un mois de consommation nationale.</p>
+			<p class="paragraphe paragraphe-esp">Au 1<sup>er</sup>\u00a0janvier 2026, les réserves de pétrole brut (5,0\u00a0Mtep) de la France représentent environ un\u00a0mois de consommation nationale.</p>
 			<p class="ancre ancre2" id="ancre2"> </p>
 			<h2 class="h2">Importations et exportations de produits pétroliers raffinés, production nette de produits finis des raffineries</h2>
 			<div class="image"><a href="./image/importations-exportations-produits-petroliers-2026-cgdd.svg" data-fancybox="images"><img class="image" src="./image/importations-exportations-produits-petroliers-2026-cgdd.svg" alt=""></a></div>
-			<p class="source-graph">(p) = provisoire.<br>Champ : jusqu’à l’année 2010 incluse, le périmètre géographique est la France métropolitaine. À partir de 2011, il inclut en out
-entre 2021 (33,2 Mtep) et 2025 (17,0 Mtep, soit 197 TWh). Cette amélioration du solde s’explique par une diminution des importations de produits raffinés (45,8 Mtep en 2021 contre 34,5 Mtep en 2025) couplée à une augmentation des exportations de ces produits (12,6 Mtep en 2021 contre 17,5 Mtep en 2025).</p>
+			<p class="source-graph">(p) = provisoire.<br>Champ : jusqu’à l’année 2010 incluse, le périmètre géographique est la France métropolitaine. À\u00a0partir\u00a0de\u00a02011, il inclut en out
+entre 2021 (33,2\u00a0Mtep) et 2025 (17,0\u00a0Mtep, soit 197\u00a0TWh). Cette amélioration du solde s’explique par une\u00a0diminution des importations de produits raffinés (45,8\u00a0Mtep en 2021 contre 34,5\u00a0Mtep en 2025) couplée à une augmentation des exportations de ces produits (12,6\u00a0Mtep en 2021 contre 17,5\u00a0Mtep en\u00a02025).</p>
 			<p class="ancre ancre3" id="ancre3"> </p>
-			<h2 class="h2">Consommation de produits raffinés* par secteur<br><span class="h2-noir">TOTAL : 60 Mtep en 2025 soit 700</span> <span class="h2-noir">TWh</span>
+			<h2 class="h2">Consommation de produits raffinés* par secteur<br><span class="h2-noir">TOTAL : 60 Mtep en 2025 soit 700</span>\u00a0<span class="h2-noir">TWh</span>
 </h2>
 			<div class="image"><a href="./image/consommation-produits-raffines-secteur-2026-cgdd.svg" data-fancybox="images"><img class="image" src="./image/consommation-produits-raffines-secteur-2026-cgdd.svg" alt=""></a></div>
 			<p class="source-graph">* Hors biocarburants et soutes maritimes et aérien
-oduits (12,6 Mtep en 2021 contre 17,5 Mtep en 2025).</p>
+oduits (12,6\u00a0Mtep en 2021 contre 17,5\u00a0Mtep en\u00a02025).</p>
 			<p class="ancre ancre3" id="ancre3"> </p>
-			<h2 class="h2">Consommation de produits raffinés* par secteur<br><span class="h2-noir">TOTAL : 60 Mtep en 2025 soit 700</span> <span class="h2-noir">TWh</span>
+			<h2 class="h2">Consommation de produits raffinés* par secteur<br><span class="h2-noir">TOTAL : 60 Mtep en 2025 soit 700</span>\u00a0<span class="h2-noir">TWh</span>
 </h2>
 			<div class="image"><a href="./image/consommation-produits-raffines-secteur-2026-cgdd.svg" data-fancybox="images"><img class="image" src="./image/consommation-produits-raffines-secteur-2026-cgdd.svg" alt=""></a></div>
-			<p class="source-graph">* Hors biocarburants et soutes maritimes et aériennes internationales.<br>** Les consommations des armées sont comptabilisées ici au sein du secteur tertiaire.<br>(p) = provisoire.<br>Champ : jusqu’à l’année 2010 incluse, le périmètre géographique est la France métropolitaine. À partir de 2011, il inc`;
+			<p class="source-graph">* Hors biocarburants et soutes maritimes et aériennes internationales.<br>** Les consommations des armées sont comptabilisées ici au sein du secteur tertiaire.<br>(p) = provisoire.<br>Champ : jusqu’à l’année 2010 incluse, le périmètre géographique est la France métropolitaine. À\u00a0partir\u00a0de\u00a02011, il inc`;
 
 export const INSEE_ORIGINES_2026_HTML = `<table id="produit-tableau-figure1" class="tableau-produit" style="">
 <caption>Provenance du pétrole brut importé en France (en millions de tonnes)</caption>

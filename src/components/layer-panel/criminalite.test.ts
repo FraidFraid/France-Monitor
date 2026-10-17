@@ -61,7 +61,7 @@ describe('sections', () => {
     const sec = view().sections[0];
     expect((sec.html.match(/class="lp-row/g) ?? [])).toHaveLength(15);
     const t = visibleText(sec.html);
-    expect(t).toContain('pour 100 000 hab.');
+    expect(t).toContain('pour\u00a0100\u00a0000\u00a0hab.');
     expect(t).toContain('Pas de chiffre par ville : le ministère de l’Intérieur ne publie les homicides qu’au département.');
     expect(sec.html).toContain('<svg');
     expect(t).toContain('2016');
@@ -82,7 +82,7 @@ describe('sections', () => {
     expect(sec.html).toContain('is-link');
     const t = visibleText(sec.html);
     expect(t).toMatch(/ · \d/);
-    expect(t).toMatch(/vs 2024/);
+    expect(t).toMatch(/vs\u00a02024/);
     expect(t).toContain('‰');
   });
   it('villes sans lien quand la carte ne peut pas recentrer', () => {
@@ -92,7 +92,7 @@ describe('sections', () => {
   it('départements : 15 lignes avec le rapport à la France', () => {
     const sec = view('cambriolages').sections[2];
     expect(sec.html.match(/class="lp-row/g)).toHaveLength(15);
-    expect(visibleText(sec.html)).toMatch(/fois la France|fois la France/);
+    expect(visibleText(sec.html)).toMatch(/fois\u00a0la France|fois la France/);
   });
   it('France : les 16 indicateurs avec nombre, taux et évolution', () => {
     const sec = view().sections[3];
@@ -116,8 +116,8 @@ describe('sections', () => {
 describe('estimé, formats et typographie', () => {
   it('un nombre masqué par le secret statistique est dit « estimé »', () => {
     expect(readingNote({ count: null, rate: 1.2, estimated: true, previous: null }, 2024)).toBe('estimé');
-    expect(readingNote({ count: 12, rate: 1.2, estimated: false, previous: 10 }, 2024)).toBe('12 faits · +20 % vs 2024');
-    expect(readingNote({ count: 1, rate: 1.2, estimated: false, previous: null }, 2024)).toContain('1 fait');
+    expect(readingNote({ count: 12, rate: 1.2, estimated: false, previous: 10 }, 2024)).toBe('12\u00a0faits · +20\u00a0%\u00a0vs\u00a02024');
+    expect(readingNote({ count: 1, rate: 1.2, estimated: false, previous: null }, 2024)).toContain('1\u00a0fait');
   });
   it('une ville au nombre masqué mais au taux publié figure au classement, dite « estimé »', () => {
     const base = ds();
@@ -128,11 +128,11 @@ describe('estimé, formats et typographie', () => {
     expect(first).toContain('estimé');
   });
   it('taux : homicides pour 100 000, autres en ‰, jamais « 0,0 »', () => {
-    expect(formatCrimeRate('homicides', 0.0143)).toBe('1,4 pour 100 000 hab.');
-    expect(formatCrimeRate('volsArmes', 0.0574)).toBe('0,057 ‰');
-    expect(formatCrimeRate('cambriolages', 8.6726)).toBe('8,7 ‰');
+    expect(formatCrimeRate('homicides', 0.0143)).toBe('1,4\u00a0pour\u00a0100\u00a0000\u00a0hab.');
+    expect(formatCrimeRate('volsArmes', 0.0574)).toBe('0,057\u00a0‰');
+    expect(formatCrimeRate('cambriolages', 8.6726)).toBe('8,7\u00a0‰');
     expect(formatCrimeRate('cambriolages', null)).toBe('n.d.');
-    expect(formatEvolution(110, 100)).toBe('+10 %');
+    expect(formatEvolution(110, 100)).toBe('+10\u00a0%');
     expect(formatEvolution(null, 100)).toBe('n.d.');
   });
   it('aucun nombre séparé de son unité par une espace sécable, aucun tiret cadratin', () => {

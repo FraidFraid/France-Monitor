@@ -8,8 +8,8 @@ import { ENERGY_HOVER_LAYER_IDS, pickEnergyHover, type HoverCandidate } from './
 
 describe('gabarit de bulle', () => {
   it('nombres au format français avec unité insécable ; n.d. si absent', () => {
-    expect(fmtNum(1310, 'MW')).toBe(`${(1310).toLocaleString('fr-FR')} MW`);
-    expect(fmtNum(10.12, '%', 1)).toBe('10,1 %');
+    expect(fmtNum(1310, 'MW')).toBe(`${(1310).toLocaleString('fr-FR')}\u00a0MW`);
+    expect(fmtNum(10.12, '%', 1)).toBe('10,1\u00a0%');
     expect(fmtNum(undefined, 'MW')).toBe('n.d.');
     expect(fmtNum(Number.NaN, 'MW')).toBe('n.d.');
   });
@@ -19,7 +19,7 @@ describe('gabarit de bulle', () => {
   });
   it('titre, état en mots et en couleur, lignes, source ; jamais de tiret cadratin ni de undefined', () => {
     const html = tooltipCardHtml({ sectorHex: '#8b5cf6', title: 'Belleville <1>', time: '09:45', state: 'maintenance',
-      rows: [['Indisponible', '1 310 MW']], source: 'EDF' });
+      rows: [['Indisponible', '1\u00a0310\u00a0MW']], source: 'EDF' });
     expect(html).toContain('Belleville &lt;1&gt;');
     expect(html).toContain('Arrêt annoncé ou hors service');
     expect(html).toContain('Source : EDF · 09:45');

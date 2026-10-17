@@ -11,7 +11,7 @@ const arc = (over: Partial<FlowArc>): FlowArc => ({
 
 describe('flèches d’échange', () => {
   it('valeur au format français, unité insécable, n.d. si absente', () => {
-    expect(formatFlowValue(2878, 'MW')).toBe(`${(2878).toLocaleString('fr-FR')} MW`);
+    expect(formatFlowValue(2878, 'MW')).toBe(`${(2878).toLocaleString('fr-FR')}\u00a0MW`);
     expect(formatFlowValue(null, 'MW')).toBe('n.d.');
   });
   it('segment de 110 km depuis la frontière, orienté import vers l’intérieur, export vers la frontière', () => {
