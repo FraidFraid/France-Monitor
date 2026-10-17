@@ -5,16 +5,16 @@ import { PROTESTS_URL, isProtestsLate, isProtestsResponse } from './protests.ts'
 
 const item = (over: Partial<ProtestItem> = {}): ProtestItem => ({
   id: 'demosphere:1', source: 'demosphere', status: 'annonce', title: 'Manifestation pour les retraites', startsAt: '2026-10-17T13:00:00.000Z',
-  allDay: false, city: 'Toulouse', dept: '31', lat: 43.6, lon: 1.44, url: 'https://demosphere.net/rv/1', edition: 'Toulouse', violent: false, articles: [], ...over,
+  allDay: false, city: 'Toulouse', dept: '31', lat: 43.6, lon: 1.44, url: 'https://demosphere.net/rv/1', edition: 'Toulouse', violent: false, participants: null, precision: 'commune', articles: [], articleCount: 0, ...over,
 });
 const gdelt = (over: Partial<ProtestItem> = {}): ProtestItem => item({
   id: 'gdelt:paris', source: 'gdelt', status: 'signale', title: 'Manifestation', city: 'Paris', dept: null, lat: null, lon: null, edition: null, violent: true,
-  articles: [{ url: 'https://exemple.fr/a', domain: 'exemple.fr', seenAt: '2026-10-17T09:00:00.000Z', violent: true }], ...over,
+  articles: [{ url: 'https://exemple.fr/a', domain: 'exemple.fr', seenAt: '2026-10-17T09:00:00.000Z', violent: true, title: null, outlet: null }], ...over,
 });
 const body = (items: ProtestItem[] = [item(), gdelt()]): ProtestsResponse => ({
   readAt: '2026-10-17T09:05:00.000Z', items,
   demosphere: { readAt: '2026-10-17T09:05:00.000Z', editions: 19, failedEditions: [], scanned: 120 },
-  gdelt: { readAt: '2026-10-17T09:00:00.000Z', files: 96, missingFiles: 0 }, errors: [],
+  gdelt: { readAt: '2026-10-17T09:00:00.000Z', files: 96, missingFiles: 0 }, presse: { readAt: null, scanned: 0, matched: 0, unplaced: 0 }, errors: [],
 });
 
 describe('isProtestsResponse', () => {

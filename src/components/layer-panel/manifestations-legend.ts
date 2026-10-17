@@ -15,10 +15,10 @@ export const PROTESTS_LEGEND: LegendCategory = {
     { id: 'protest-reported', label: 'Signalé par la presse', color: PROTEST_REPORTED_HEX, shape: 'circle' },
     { id: 'protest-announced', label: 'Annoncé (agenda militant)', color: PROTEST_ANNOUNCED_HEX, shape: 'circle' },
   ],
-  source: { label: 'Démosphère (agenda militant) · GDELT (presse mondiale)' },
+  source: { label: 'Démosphère (agenda militant) · presse française · GDELT (presse mondiale)' },
   refresh: { label: `Relève toutes les 10${NBSP}min` },
   notes: [
-    'Un rendez-vous annoncé n’est pas une manifestation constatée. Le lieu d’un signalement de presse est souvent approximatif.',
+    'Un rendez-vous annoncé n’est pas une manifestation constatée. Presse : ville ou département nommé dans le titre ; GDELT : lieu souvent approximatif.',
     'Plusieurs éléments au même point : un seul rond, taille et nombre en étiquette.',
   ],
 };

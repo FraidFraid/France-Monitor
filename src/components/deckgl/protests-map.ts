@@ -70,10 +70,16 @@ function body(g: ProtestGroup): string {
   const n = g.items.length;
   const signaled = g.items.filter((x) => x.status === 'signale').length;
   const announced = n - signaled;
+  const press = g.items.filter((x) => x.source === 'presse');
+  const articles = g.items.reduce((sum, x) => sum + (x.status === 'signale' ? Math.max(1, x.articleCount) : 0), 0);
+  const people = press.reduce<number | null>((m, x) => (x.participants !== null && (m === null || x.participants > m) ? x.participants : m), null);
   const rows: Array<[string, string]> = [['Niveau', KIND_WORD[g.kind]]];
-  if (signaled > 0) rows.push(['Presse (24 h)', String(signaled)]);
+  if (signaled > 0) rows.push(['Articles (24\u00a0h)', String(articles)]);
+  if (people !== null) rows.push(['Plus haut chiffre cité', `${people.toLocaleString('fr-FR')}\u00a0pers.`]);
   if (announced > 0) rows.push(['Annoncés', String(announced)]);
-  const titles = g.items.slice(0, 3).map((x) => `<div class="hm-sub">${escapeHtml(x.title)}</div>`).join('');
+  // Presse française : le titre du dernier article dit ce qui se passe, mieux que le libellé générique.
+  const lines = g.items.map((x) => (x.source === 'presse' ? x.articles[0]?.title ?? x.title : x.title));
+  const titles = lines.slice(0, 3).map((t) => `<div class="hm-sub">${escapeHtml(t.length > 120 ? `${t.slice(0, 119)}…` : t)}</div>`).join('');
   return `<b>${escapeHtml(g.city ?? 'Lieu n.d.')}</b>${titles}`
     + rows.map(([k, v]) => `<div class="hm-row"><span>${escapeHtml(k)}</span><span>${escapeHtml(v)}</span></div>`).join('')
     + '<div class="hm-note">Un rendez-vous annoncé n’est pas une manifestation constatée.</div>';

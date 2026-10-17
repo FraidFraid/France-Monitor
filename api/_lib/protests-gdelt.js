@@ -139,7 +139,10 @@ export function groupGdelt(events, now) {
       url: articles[0].url,
       edition: null,
       violent: articles.some((a) => a.violent),
-      articles: articles.slice(0, MAX_ARTICLES).map((a) => ({ ...a, seenAt: new Date(a.seenAt).toISOString() })),
+      participants: null,
+      precision: first.lat !== null ? 'commune' : null,
+      articles: articles.slice(0, MAX_ARTICLES).map((a) => ({ ...a, seenAt: new Date(a.seenAt).toISOString(), title: null, outlet: null })),
+      articleCount: articles.length,
     });
   }
   return items;

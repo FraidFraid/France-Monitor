@@ -11,9 +11,22 @@ import {
   __resetGdeltForTests, GDELT_LAST_UPDATE, groupGdelt, latestExportStamp, parseExport, unzipFirstEntry, windowStamps,
 } from '../api/_lib/protests-gdelt.js';
 import { sortProtests } from '../api/_lib/protests.js';
+import { loadPress } from '../api/_lib/protests-press.js';
 import type { ProtestItem, ProtestsResponse } from '../src/types/index.ts';
 import handler, { CACHE_CONTROL } from '../api/_handlers/social/protests.js';
 import { callHandler, respond, stubFetch } from './helpers/traffic-fixtures.ts';
+
+// La presse française vient de la base des articles : simulée ici, testée seule dans tests/social-protests-press.test.ts.
+vi.mock('../api/_lib/protests-press.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/_lib/protests-press.js')>()), loadPress: vi.fn(),
+}));
+const pressItem = (city: string, lat: number, lon: number): ProtestItem => ({
+  id: `presse:${lat},${lon}`, source: 'presse', status: 'signale', title: 'Heurts ou tensions', startsAt: '2026-10-17T10:30:00.000Z', allDay: false,
+  city, dept: null, lat, lon, url: 'https://exemple.fr/a', edition: null, violent: true, participants: 800, precision: 'commune',
+  articles: [{ url: 'https://exemple.fr/a', domain: 'exemple.fr', seenAt: '2026-10-17T10:30:00.000Z', violent: true, title: `Tensions à ${city}`, outlet: 'Exemple' }],
+  articleCount: 3,
+});
+const pressOk = (items: ProtestItem[]) => vi.mocked(loadPress).mockResolvedValue({ items, matched: 5, unplaced: 2, scanned: 40 });
 
 const fixture = (name: string): string => readFileSync(new URL(`./fixtures/social/${name}`, import.meta.url), 'utf8');
 const ZIP = readFileSync(new URL('./fixtures/social/gdelt-20261017110000.export.CSV.zip', import.meta.url));
@@ -110,7 +123,7 @@ describe('manifestations d’une édition', () => {
       id: 'demosphere:https://toulouse.demosphere.net/rv/' + items[0].id.split('/').pop(),
       source: 'demosphere', status: 'annonce', title: 'MANIFESTATIONS LYCEENNES, TRAVAILLEUSES, GJ.',
       startsAt: '2026-10-17T12:00:00.000Z', allDay: false, city: 'Toulouse', dept: '31', lat: 43.6007, lon: 1.4328,
-      url: items[0].url, edition: 'Toulouse', violent: false, articles: [],
+      url: items[0].url, edition: 'Toulouse', violent: false, participants: null, precision: 'commune', articles: [], articleCount: 0,
     }]);
   });
   it('commencée depuis plus de 6 h ou à plus de 7 jours : écartée', () => {
@@ -193,15 +206,18 @@ describe('route', () => {
     return respond('inattendu', 500);
   }
 
-  it('deux sources : annonces localisées, Paris signalé avec heurts ; en-tête de cache', async () => {
+  it('trois sources : annonces localisées, presse française, Paris signalé par GDELT avec heurts ; en-tête de cache', async () => {
     stubFetch((url) => route(url));
+    pressOk([pressItem('Marseille', 43.3, 5.37)]);
     const { status, body, cache } = await callHandler<ProtestsResponse>(handler);
     expect(status).toBe(200);
     expect(cache).toBe(CACHE_CONTROL);
     expect(body.errors).toEqual([]);
     expect(body.gdelt).toEqual({ readAt: '2026-10-17T11:00:00.000Z', files: 1, missingFiles: 95 });
+    expect(body.presse).toEqual({ readAt: '2026-10-17T11:00:00.000Z', scanned: 40, matched: 5, unplaced: 2 });
     expect(body.demosphere).toMatchObject({ editions: DEMOSPHERE_EDITIONS.length, failedEditions: [] });
-    expect(body.items[0]).toMatchObject({ source: 'gdelt', city: 'Paris', violent: true });
+    expect(body.items.find((i) => i.source === 'gdelt' && i.city === 'Paris')).toMatchObject({ violent: true });
+    expect(body.items.find((i) => i.source === 'presse')).toMatchObject({ city: 'Marseille', participants: 800 });
     const announced = body.items.filter((i) => i.status === 'annonce');
     expect(announced.every((i) => i.lat !== null)).toBe(true);
     expect(announced.some((i) => i.title.startsWith('Répète'))).toBe(false);
@@ -209,20 +225,30 @@ describe('route', () => {
     expect(new Set(announced.map((i) => i.city))).toEqual(new Set(['Le Mans', 'Toulouse', 'Nîmes', 'Strasbourg', 'Dunkerque']));
   });
 
+  it('un lieu GDELT déjà relevé par la presse française n’est pas répété', async () => {
+    stubFetch((url) => route(url));
+    pressOk([pressItem('Paris', 48.86, 2.35)]);
+    const { body } = await callHandler<ProtestsResponse>(handler);
+    expect(body.items.filter((i) => i.city === 'Paris').map((i) => i.source)).toEqual(['presse']);
+  });
+
   it('GDELT en panne : annonces servies, panne nommée', async () => {
     stubFetch((url) => route(url, { gdeltDown: true }));
+    pressOk([]);
     const { status, body } = await callHandler<ProtestsResponse>(handler);
     expect(status).toBe(200);
     expect(body.errors).toEqual(['GDELT : HTTP 503']);
     expect(body.items.every((i) => i.source === 'demosphere')).toBe(true);
   });
 
-  it('les deux sources en panne : 502 avec les pannes nommées', async () => {
+  it('les trois sources en panne : 502 avec les pannes nommées', async () => {
     stubFetch((url) => route(url, { gdeltDown: true, demosphereDown: true }));
+    vi.mocked(loadPress).mockRejectedValue(new Error('base des articles non configurée'));
     const { status, body } = await callHandler<ProtestsResponse>(handler);
     expect(status).toBe(502);
     expect(body.readAt).toBeNull();
-    expect(body.errors).toHaveLength(2);
-    expect(body.errors[1]).toBe('GDELT : HTTP 503');
+    expect(body.errors).toHaveLength(3);
+    expect(body.errors[1]).toMatch(/^Presse française : /);
+    expect(body.errors[2]).toBe('GDELT : HTTP 503');
   });
 });

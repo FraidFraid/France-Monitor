@@ -1,6 +1,6 @@
 // src/components/layer-panel/manifestations.ts : vue pure du panneau Manifestations (spec 2026-10-17 manifestations) ; aucun accès réseau
-// ni DOM. Deux natures jamais mêlées : le signal de la presse mondiale (GDELT, 24 h) et l'agenda militant (Démosphère), qui n'annonce
-// que des rendez-vous, jamais des manifestations constatées. Aucun effet sur l'indice de stabilité. Textes tiers échappés.
+// ni DOM. Natures jamais mêlées : ce que la presse a rapporté (presse française ingérée, ville par ville, et presse mondiale GDELT, 24 h)
+// et l'agenda militant (Démosphère), qui n'annonce que des rendez-vous, jamais des manifestations constatées. Aucun effet sur l'indice de stabilité. Textes tiers échappés.
 import type { ProtestItem, ProtestsResponse } from '../../types/index.ts';
 import { isProtestsLate } from '../../services/protests.ts';
 import { parisDayOf } from '../../services/environment-levels.ts';
@@ -45,6 +45,10 @@ export function longDay(day: string): string {
 
 export interface ProtestBuckets {
   signaled: ProtestItem[];
+  /** Signalés par la presse française (le plus d'articles d'abord). */
+  press: ProtestItem[];
+  /** Signalés par GDELT seulement. */
+  world: ProtestItem[];
   today: ProtestItem[];
   /** Jours à venir (ordre croissant) et leurs annonces. */
   upcoming: Array<{ day: string; items: ProtestItem[] }>;
@@ -55,15 +59,20 @@ export interface ProtestBuckets {
 /** Répartition des items : annonces d'un jour passé encore en cours (moins de 6 h) rangées avec « aujourd'hui ». */
 export function bucketProtests(items: readonly ProtestItem[], now: number): ProtestBuckets {
   const todayKey = parisDayOf(now);
-  const out: ProtestBuckets = { signaled: [], today: [], upcoming: [], unplaced: [] };
+  const out: ProtestBuckets = { signaled: [], press: [], world: [], today: [], upcoming: [], unplaced: [] };
   const byDay = new Map<string, ProtestItem[]>();
   for (const x of items) {
-    if (x.status === 'signale') { out.signaled.push(x); continue; }
+    if (x.status === 'signale') {
+      out.signaled.push(x);
+      (x.source === 'presse' ? out.press : out.world).push(x);
+      continue;
+    }
     if (x.lat === null || x.lon === null) { out.unplaced.push(x); continue; }
     const day = dayOfIso(x.startsAt);
     if (day === null || day <= todayKey) { out.today.push(x); continue; }
     byDay.set(day, [...(byDay.get(day) ?? []), x]);
   }
+  out.press.sort((a, b) => b.articleCount - a.articleCount || Date.parse(b.startsAt ?? '') - Date.parse(a.startsAt ?? ''));
   out.upcoming = [...byDay.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([day, list]) => ({ day, items: list }));
   return out;
 }
@@ -129,10 +138,50 @@ function groupedByCity(items: readonly ProtestItem[], canFocus: boolean): string
   return [...groups.entries()].map(([place, list]) => `<p class="lp-subhead">${escapeHtml(place)}</p>${list.map((x) => announcedRow(x, canFocus)).join('')}`).join('');
 }
 
+const TITLE_MAX = 110;
+const clip = (t: string): string => (t.length > TITLE_MAX ? `${t.slice(0, TITLE_MAX - 1).trimEnd()}…` : t);
+
+/** « 800 pers. » sans coupure entre nombre et unité. */
+export function participantsLabel(n: number | null): string | null {
+  return n === null ? null : `${n.toLocaleString('fr-FR').replace(/\s/g, NBSP)}${NBSP}pers.`;
+}
+
+/** Deux articles les plus récents : « Le Dauphiné 14:30 · titre » (lien), puis le total. */
+function pressArticles(x: ProtestItem): string {
+  const shown = x.articles.slice(0, 2).map((a) => {
+    const clock = parisClock(a.seenAt);
+    const who = `${a.outlet ?? a.domain}${clock ? `${NBSP}${clock}` : ''}`;
+    return `${escapeHtml(who)} : ${sourceLinkHtml(clip(a.title ?? a.domain), a.url)}`;
+  });
+  const more = x.articleCount > shown.length ? ` · ${plural(x.articleCount, 'article')} en 24${NBSP}h` : '';
+  return shown.join('<br>') + more;
+}
+
+function pressRow(x: ProtestItem, canFocus: boolean): string {
+  const place = x.city && x.city !== '' ? `${x.city}${x.precision === 'departement' ? ' (département)' : ''}` : NO_PLACE;
+  const key = protestPlaceKey(x);
+  // Chiffre cité par un titre qui ne nomme que ce lieu : un plancher, pas un comptage (Paris peut n'avoir qu'« une centaine » cité).
+  const figure = participantsLabel(x.participants);
+  const cited = figure ? `<br>Plus haut chiffre cité dans un titre : ${escapeHtml(figure)}` : '';
+  return listRow({
+    text: place, valueHtml: x.violent ? '<span class="lp-badge">heurts</span>' : null, level: x.violent ? 'rouge' : 'orange',
+    noteHtml: pressArticles(x) + cited,
+    data: key !== null ? { protest: key } : undefined, link: canFocus && key !== null,
+  });
+}
+
 function pressSection(b: ProtestBuckets, canFocus: boolean, open: OpenFn): FicheSection {
-  const html = b.signaled.length === 0 ? emptyLine('Aucune manifestation signalée par la presse mondiale ces 24 heures.')
-    : b.signaled.map((x) => signaledRow(x, canFocus)).join('');
-  return { id: 'presse', title: 'Signalé par la presse (24 h)', collapsible: true, open: open('presse', true), summary: plural(b.signaled.length, 'signalement'), html };
+  const html = b.press.length === 0 ? emptyLine('Aucune manifestation rapportée par la presse française ces 24 heures.')
+    : b.press.map((x) => pressRow(x, canFocus)).join('');
+  const clashes = b.press.filter((x) => x.violent).length;
+  const summary = `${plural(b.press.length, 'lieu', 'lieux')}${clashes > 0 ? ` · ${clashes} avec heurts` : ''}`;
+  return { id: 'presse', title: 'Rapporté par la presse française (24 h)', collapsible: true, open: open('presse', true), summary, html };
+}
+
+function worldSection(b: ProtestBuckets, canFocus: boolean, open: OpenFn): FicheSection {
+  const html = b.world.length === 0 ? emptyLine('Aucun autre signalement de la presse mondiale ces 24 heures.')
+    : b.world.map((x) => signaledRow(x, canFocus)).join('');
+  return { id: 'monde', title: 'Presse mondiale, GDELT (24 h)', collapsible: true, open: open('monde', false), summary: plural(b.world.length, 'signalement'), html };
 }
 
 function todaySection(b: ProtestBuckets, canFocus: boolean, open: OpenFn): FicheSection {
@@ -160,15 +209,18 @@ function methodSection(d: ProtestsResponse, now: number, open: OpenFn): FicheSec
   const gdeltLate = isProtestsLate(d.gdelt.readAt, now);
   const demoState = d.demosphere.readAt === null ? 'injoignable' : stamp('relevé', d.demosphere.readAt, demoLate, now);
   const gdeltState = d.gdelt.readAt === null ? 'injoignable' : stamp('relevé', d.gdelt.readAt, gdeltLate, now);
+  const presseState = d.presse.readAt === null ? 'injoignable' : stamp('relevé', d.presse.readAt, isProtestsLate(d.presse.readAt, now), now);
   const failed = d.demosphere.failedEditions.length > 0 ? note(`Éditions Démosphère illisibles : ${d.demosphere.failedEditions.join(', ')}.`) : '';
   const html = kvRow('Démosphère', `${sourceLinkHtml('Démosphère', DEMOSPHERE_URL)} · ${escapeHtml(demoState)}`)
     + note(`Annonces : agenda militant Démosphère, ${d.demosphere.editions}${NBSP}éditions locales lues, couverture inégale selon les villes, Paris presque vide. Filtre sur le titre. Un rendez-vous annoncé n’est pas une manifestation constatée.`)
     + failed
+    + kvRow('Presse française', escapeHtml(presseState))
+    + note(`Presse : titres des journaux nationaux et régionaux déjà suivis par France${NBSP}Monitor, lus toutes les 5${NBSP}min. Lieu = ville ou département nommé dans le titre ; une dépêche reprise par plusieurs journaux compte une fois ; « heurts » dès que le titre parle de tensions, d’affrontements ou d’interpellations. ${d.presse.matched}${NBSP}titres retenus, dont ${d.presse.unplaced}${NBSP}sans lieu (articles nationaux).`)
     + kvRow('GDELT', `${sourceLinkHtml('GDELT', GDELT_URL)} · ${escapeHtml(gdeltState)}`)
     + note(`Presse : GDELT (presse mondiale), mise à jour toutes les 15${NBSP}min ; le lieu n’est que rarement plus précis que la ville, souvent absent.`)
     + note('Cette couche n’a aucun effet sur l’indice de stabilité, les situations ni la synthèse.')
     + readErrors(d.errors);
-  return { id: 'methode', title: 'Méthode et sources', collapsible: true, open: open('methode', false), tone: 'reference', summary: 'Démosphère · GDELT', html };
+  return { id: 'methode', title: 'Méthode et sources', collapsible: true, open: open('methode', false), tone: 'reference', summary: 'Démosphère · presse · GDELT', html };
 }
 
 export function buildManifestationsView(input: ManifestationsViewInput): LayerView {
@@ -196,7 +248,7 @@ export function buildManifestationsView(input: ManifestationsViewInput): LayerVi
       figure: { value: String(protestsTodayCount(data.items, now)), caption: 'aujourd’hui', level: level === 'nd' ? null : level },
       status: [stamp('relevé', data.readAt, late, now)],
     },
-    sections: [pressSection(b, canFocus, open), todaySection(b, canFocus, open), upcomingSection(b, canFocus, open), unplacedSection(b, open), methodSection(data, now, open)],
+    sections: [pressSection(b, canFocus, open), worldSection(b, canFocus, open), todaySection(b, canFocus, open), upcomingSection(b, canFocus, open), unplacedSection(b, open), methodSection(data, now, open)],
     bodyHtml: error !== null ? sourceErrorCallout(Number.isFinite(readMs) ? readMs : null, now) : undefined,
   };
 }

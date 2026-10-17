@@ -8,12 +8,12 @@ import {
 
 const ann = (over: Partial<ProtestItem> = {}): ProtestItem => ({
   id: 'd1', source: 'demosphere', status: 'annonce', title: 'Rassemblement', startsAt: '2026-10-17T13:00:00.000Z', allDay: false,
-  city: 'Toulouse', dept: '31', lat: 43.6, lon: 1.44, url: null, edition: null, violent: false, articles: [], ...over,
+  city: 'Toulouse', dept: '31', lat: 43.6, lon: 1.44, url: null, edition: null, violent: false, participants: null, precision: 'commune', articles: [], articleCount: 0, ...over,
 });
 const sig = (over: Partial<ProtestItem> = {}): ProtestItem => ann({ id: 'g1', source: 'gdelt', status: 'signale', city: 'Paris', lat: 48.85, lon: 2.35, ...over });
 const response = (items: ProtestItem[]): ProtestsResponse => ({
   readAt: '2026-10-17T09:00:00.000Z', items,
-  demosphere: { readAt: null, editions: 19, failedEditions: [], scanned: 0 }, gdelt: { readAt: null, files: 0, missingFiles: 0 }, errors: [],
+  demosphere: { readAt: null, editions: 19, failedEditions: [], scanned: 0 }, gdelt: { readAt: null, files: 0, missingFiles: 0 }, presse: { readAt: null, scanned: 0, matched: 0, unplaced: 0 }, errors: [],
 });
 
 describe('groupProtests', () => {

@@ -154,7 +154,7 @@ export function locateCommune(location, index) {
 }
 
 /** Communes d'un département (référentiel stable, 7 jours de cache). Lève si la réponse n'en contient aucune. */
-async function deptCommunes(dept) {
+export async function deptCommunes(dept) {
   return cachedSource(`protests:communes:${dept}`, { ttlSec: COMMUNES_TTL_SEC }, async () => {
     const list = await fetchStrictJson(deptCommunesUrl(dept), { timeoutMs: FEED_TIMEOUT_MS });
     if (!Array.isArray(list) || list.length === 0) throw new Error(`aucune commune pour le département ${dept}`);
@@ -217,7 +217,10 @@ export function protestsOfEdition(edition, events, index, now, fallback = new Ma
       url: ev.url,
       edition: edition.label,
       violent: false,
+      participants: null,
+      precision: commune ? 'commune' : null,
       articles: [],
+      articleCount: 0,
     });
   }
   return out;

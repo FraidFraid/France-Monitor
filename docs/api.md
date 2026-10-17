@@ -31,7 +31,7 @@ L'API est au stade **0.1.0 (expérimental)**. Aucune garantie de stabilité form
 | `GET /api/environment/air` | Qualité de l'air (Atmo France) : épisodes de pollution de J à J+2 et indice ATMO de J par département. |
 | `GET /api/environment/earthquakes` | Séismes des 7 derniers jours en France et à 20 km autour (BCSF-RéNaSS, EMSC en repli). |
 | `GET /api/environment/disasters` | Alertes catastrophes GDACS des 7 derniers jours : territoire français (tous niveaux) et monde (orange, rouge). |
-| `GET /api/social/protests` | Manifestations : rendez-vous annoncés sur Démosphère (éditions françaises, -6 h à +7 jours, commune exacte) et signal presse GDELT sur 24 h (un relevé par lieu, heurts signalés). Une annonce n'est pas une manifestation constatée. |
+| `GET /api/social/protests` | Manifestations : rendez-vous annoncés sur Démosphère (éditions françaises, -6 h à +7 jours, commune exacte) manifestations rapportées sur 24 h par la presse française ingérée (une entrée par ville ou département nommé dans le titre, participants cités, heurts) et signal presse GDELT sur 24 h (un relevé par lieu, heurts signalés). Une annonce n'est pas une manifestation constatée. |
 | `GET /api/environment/ems` | Activations Copernicus EMS (cartographie satellite d'urgence) : en cours et 12 derniers mois sur le territoire français, nombre d'activations en cours ailleurs. |
 | `GET /api/finance/stability` | Stabilité financière : CISS France et zone euro, taux directeurs, €STR et EUR/USD (BCE), écart OAT-Bund à 10 ans (TradingView, un point par jour gardé 400 jours). |
 | `GET /api/environment/sea-levels` | Hauteurs d'eau des marégraphes du SHOM (19 ports), variation sur 1 h et courbe de 24 h. |

@@ -438,11 +438,11 @@
       "get": {
         "tags": ["Société"],
         "operationId": "getSocialProtests",
-        "summary": "Manifestations : rendez-vous annoncés (Démosphère) et signal de la presse mondiale (GDELT)",
-        "description": "Rendez-vous de manifestation des éditions françaises de Démosphère (agenda militant participatif), commencés depuis moins de 6 h ou à venir dans les 7 jours, placés sur la commune exacte du référentiel geo.api.gouv.fr (sinon sans lieu) ; manifestations en France relevées par GDELT dans la presse mondiale sur 24 h, un relevé par lieu (rarement plus précis que la ville). Une annonce n'est pas une manifestation constatée. Aucun effet sur l'indice de stabilité.\n\nCache CDN visé : `s-maxage=300, stale-while-revalidate=600` (plus court si la réponse est partielle).",
+        "summary": "Manifestations : rendez-vous annoncés (Démosphère), presse française ingérée et signal de la presse mondiale (GDELT)",
+        "description": "Rendez-vous de manifestation des éditions françaises de Démosphère (agenda militant participatif), commencés depuis moins de 6 h ou à venir dans les 7 jours, placés sur la commune exacte du référentiel geo.api.gouv.fr (sinon sans lieu) ; manifestations rapportées sur 24 h par les titres de la presse française déjà ingérée, une entrée par ville ou département nommé dans le titre ; manifestations en France relevées par GDELT dans la presse mondiale sur 24 h, un relevé par lieu (rarement plus précis que la ville), omis quand la presse française couvre déjà la ville. Une annonce n'est pas une manifestation constatée. Aucun effet sur l'indice de stabilité.\n\nCache CDN visé : `s-maxage=300, stale-while-revalidate=600` (plus court si la réponse est partielle).",
         "responses": {
           "200": {
-            "description": "Au moins une des deux sources lue ; une panne (source ou édition) est nommée dans `errors`.",
+            "description": "Au moins une des trois sources lue ; une panne (source ou édition) est nommée dans `errors`.",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProtestsResponse" } } }
           },
           "502": {
@@ -1001,7 +1001,7 @@
               "type": "object",
               "properties": {
                 "id": { "type": "string" },
-                "source": { "type": "string", "enum": ["demosphere", "gdelt"] },
+                "source": { "type": "string", "enum": ["demosphere", "presse", "gdelt"] },
                 "status": { "type": "string", "enum": ["annonce", "signale"], "description": "`annonce` : rendez-vous publié à l'avance, jamais confirmé ; `signale` : relevé dans la presse." },
                 "title": { "type": "string" },
                 "startsAt": { "type": ["string", "null"], "format": "date-time" },
@@ -1011,15 +1011,19 @@
                 "lat": { "type": ["number", "null"] },
                 "lon": { "type": ["number", "null"] },
                 "url": { "type": ["string", "null"] },
-                "edition": { "type": ["string", "null"], "description": "Édition Démosphère ; `null` pour GDELT." },
-                "violent": { "type": "boolean", "description": "GDELT : au moins un article de heurts (code CAMEO 145)." },
+                "edition": { "type": ["string", "null"], "description": "Édition Démosphère ; sinon `null`." },
+                "violent": { "type": "boolean", "description": "Presse : au moins un titre de heurts ou tensions ; GDELT : code CAMEO 145." },
+                "participants": { "type": ["integer", "null"], "description": "Presse française : plus grand nombre de participants cité pour ce seul lieu." },
+                "precision": { "type": ["string", "null"], "enum": ["commune", "departement", null] },
+                "articleCount": { "type": "integer", "description": "Articles du lieu sur 24 h (dépêche reprise comptée une fois)." },
                 "articles": {
                   "type": "array",
                   "items": {
                     "type": "object",
                     "properties": {
                       "url": { "type": "string" }, "domain": { "type": "string" },
-                      "seenAt": { "type": "string", "format": "date-time" }, "violent": { "type": "boolean" }
+                      "seenAt": { "type": "string", "format": "date-time" }, "violent": { "type": "boolean" },
+                      "title": { "type": ["string", "null"] }, "outlet": { "type": ["string", "null"] }
                     }
                   }
                 }
@@ -1028,6 +1032,7 @@
           },
           "demosphere": { "type": "object", "description": "`readAt`, `editions` lues, `failedEditions`, `scanned` (rendez-vous parcourus)." },
           "gdelt": { "type": "object", "description": "`readAt`, `files` (exports de 15 min lus), `missingFiles`." },
+          "presse": { "type": "object", "description": "`readAt`, `scanned` (titres candidats lus en base), `matched` (titres de manifestation), `unplaced` (dont sans lieu)." },
           "errors": { "type": "array", "items": { "type": "string" } }
         }
       },
