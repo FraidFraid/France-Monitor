@@ -43,7 +43,9 @@
       if (!S.m.hasImage(id)) S.m.addImage(id, x.getImageData(0, 0, size, size), { pixelRatio: 2 }); res(id); };
     img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
   });
-  const glyph = (name, color) => fmIcon(name, { size: 24 }).replace(/^<svg[^>]*>/, `<g fill="none" stroke="${color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">`).replace('</svg>', '</g>');
+  // Pictos absents du jeu de l'app (tracé Lucide « server »).
+  const EXTRA = { server: '<rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/>' };
+  const glyph = (name, color) => EXTRA[name] ? `<g fill="none" stroke="${color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${EXTRA[name]}</g>` : fmIcon(name, { size: 24 }).replace(/^<svg[^>]*>/, `<g fill="none" stroke="${color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">`).replace('</svg>', '</g>');
   const disc = (name, ring, fill, dashed) => image(`mqs-${name}-${ring}-${fill}-${dashed ? 'd' : 'p'}`,
     `<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="19" fill="${fill}" stroke="${ring}" stroke-width="2.5" ${dashed ? 'stroke-dasharray="5 4"' : ''}/>`
     + `<g transform="translate(11 11) scale(0.9167)">${glyph(name, ring === MUTE ? MUTE : LIGHT_FILL.has(fill) ? '#0b1020' : '#ffffff')}</g></svg>`, 44);
@@ -72,6 +74,7 @@
   // Aucune pastille active : toutes les couches sont affichées ; une pastille active : sa couche en avant, le détail des autres retiré.
   const allMode = () => S.focus.size === 0 && !preview;
   const isOn = (k) => allMode() || S.focus.has(k) || preview === k;
+  const pill = (k) => S.focus.has(k) || preview === k;
   const calm = () => {
     const m = S.m;
     const P = (id, k, v) => { try { if (m.getLayer(id) && JSON.stringify(m.getPaintProperty(id, k)) !== JSON.stringify(v)) m.setPaintProperty(id, k, v); } catch (e) { /* calque d'un autre type */ } };
@@ -93,7 +96,6 @@
     V('isnr-line', false); V('isnr-fill', isOn('stability'));
     // Manifestations : toujours (l'actualité du jour). Criminalité (statistique annuelle SSMSI) : villes par défaut, aplat des départements avec sa pastille seulement,
     // pour ne pas confondre son contour avec celui du niveau télécoms.
-    const pill = (k) => S.focus.has(k) || preview === k;
     V('protests', isOn('protests')); V('protests-label', isOn('protests'));
     // Sans pastille : toutes les couches, criminalité comprise (aplat des départements + villes à 2 fois la moyenne) ; le contour reste réservé à la pastille.
     V('mqs-crime-city', isOn('crime') && !pill('crime')); V('crime-city', pill('crime')); V('crime-city-label', pill('crime')); V('crime-fill', isOn('crime')); V('crime-line', pill('crime'));
@@ -102,7 +104,12 @@
     const zr = (id, min) => { try { if (m.getLayer(id) && m.getLayer(id).minzoom !== min) m.setLayerZoomRange(id, min, 24); } catch (e) { /* calque absent */ } };
     zr('mqs-sites-recent', isOn('outagesTelecom') ? 0 : 7);
     zr('mqs-sites-long', isOn('outagesTelecom') ? 0 : 8);
-    if (m.getLayer('mqs-cloud-sym')) m.setFilter('mqs-cloud-sym', isOn('outagesCloud') || isOn('cyber') ? null : ['any', ['!=', ['get', 'status'], 'vert'], ['>=', ['zoom'], 8]]);
+    // Cloud : sans pastille, seuls les sites en incident ; avec Cloud ou Cyber, tous les sites et les centres de données, nommés.
+    const cloudPill = pill('outagesCloud') || pill('cyber');
+    const T_ = (id, v) => { if (m.getLayer(id) && JSON.stringify(m.getLayoutProperty(id, 'text-field')) !== JSON.stringify(v)) m.setLayoutProperty(id, 'text-field', v); };
+    if (m.getLayer('mqs-cloud-sym')) m.setFilter('mqs-cloud-sym', cloudPill ? null : ['!=', ['get', 'status'], 'vert']);
+    T_('mqs-cloud-sym', cloudPill ? ['get', 'label'] : '');
+    T_('mqs-dc-ref', cloudPill ? ['get', 'name'] : '');
     if (m.getLayer('mqs-bases-sym')) m.setLayoutProperty('mqs-bases-sym', 'text-field', isOn('military') ? ['get', 'name'] : ['step', ['zoom'], '', 8, ['get', 'name']]);
   };
 
@@ -213,21 +220,33 @@
     const cloud = S.data.cloud;
     const inc = new Map();
     for (const i of cloud?.incidents ?? []) if (i.state === 'en-cours') for (const z of i.zones) inc.set(`${i.provider}:${z}`, i);
-    const zones = [];
+    // Un symbole par site (Paris, Gravelines, Roubaix…) : les zones des fournisseurs y sont regroupées, l'état est le pire des zones.
+    const RANK = { vert: 0, jaune: 1, orange: 2, rouge: 3 };
+    const sites = new Map();
     for (const p of cloud?.providers ?? []) for (const z of p.zones ?? []) {
-      if (z.lat === undefined || z.lon === undefined) continue;
+      if (z.lat == null || z.lon == null) continue;
+      const k = `${z.lat.toFixed(1)},${z.lon.toFixed(1)}`;
+      const s = sites.get(k) ?? { at: [z.lon, z.lat], name: z.label.replace(/\s*\(.*\)$/, '').replace(/^Région parisienne$/, 'Paris'), zones: [] };
       const i = inc.get(`${p.provider}:${z.id}`);
-      zones.push(pt([z.lon, z.lat], { id: `${p.provider}:${z.id}`, provider: p.label, label: z.label, status: i ? (i.impact === 'critical' ? 'rouge' : i.impact === 'major' ? 'orange' : 'jaune') : 'vert' }));
+      const status = i ? (i.impact === 'critical' ? 'rouge' : i.impact === 'major' ? 'orange' : 'jaune') : z.status === 'degraded' ? 'jaune' : 'vert';
+      s.zones.push({ provider: p.provider, plabel: p.label, z, i, status });
+      sites.set(k, s);
     }
-    setData('mqs-cloud', fc(zones));
+    S.cloudSites = [...sites.values()].map((s) => ({ ...s, status: s.zones.reduce((w, z) => (RANK[z.status] > RANK[w] ? z.status : w), 'vert'),
+      providers: [...new Set(s.zones.map((z) => z.plabel))] }));
+    setData('mqs-cloud', fc(S.cloudSites.map((s, i) => pt(s.at, { i, status: s.status, color: s.status === 'vert' ? CAT.cloud : L1[s.status],
+      label: `${s.name} · ${s.providers.length > 2 ? `${s.providers.length}${NB}fournisseurs` : s.providers.join(', ')}` }))));
     S.dcDept = new Map((cloud?.reference?.datacenters ?? []).filter((x) => x.lat != null).map((x) => [x.id, deptCodeAt([x.lon, x.lat])]));
-    setData('mqs-dc', fc((cloud?.reference?.datacenters ?? []).filter((x) => x.lat != null).map((x) => pt([x.lon, x.lat], { id: x.id }))));
+    // Centres de données : picto serveur ; trait pointillé = en projet ou en construction.
+    setData('mqs-dc', fc((cloud?.reference?.datacenters ?? []).filter((x) => x.lat != null).map((x) => pt([x.lon, x.lat], { id: x.id, name: x.name,
+      proj: /projet|construction|fast/i.test(x.stage ?? '') }))));
 
     if (!m.getLayer('mqs-zones-line')) {
       const ic = {
         air: await disc('plane', '#ffffff', BASE_HEX.air), navy: await disc('anchor', '#ffffff', BASE_HEX.navy), army: await disc('shield', '#ffffff', BASE_HEX.army),
         joint: await disc('swords', '#ffffff', BASE_HEX.joint), other: await disc('landmark', '#ffffff', BASE_HEX.other),
         cloudOk: await disc('cloud', '#ffffff', CAT.cloud), cloudJ: await disc('cloud', L1.jaune, DARK), cloudO: await disc('cloud', L1.orange, DARK), cloudR: await disc('cloud', L1.rouge, DARK),
+        dc: await disc('server', CAT.cloud, DARK), dcProj: await disc('server', CAT.cloud, DARK, true),
       };
       for (const t of Object.keys(SHAPE)) { await shape(t, true, BASE_HEX[t], '#ffffff'); await shape(t, false, BASE_HEX[t], '#ffffff'); await shape(t, false, 'none', '#8a93a6'); }
       const icd = { air: await disc('plane', '#ffffff', BASE_HEX.air, true), navy: await disc('anchor', '#ffffff', BASE_HEX.navy, true), army: await disc('shield', '#ffffff', BASE_HEX.army, true),
@@ -256,7 +275,10 @@
       m.addLayer({ id: 'mqs-cz-fill', type: 'fill', source: 'mqs-cz', paint: { 'fill-color': CAT.cables, 'fill-opacity': 0.14 } }, b);
       m.addLayer({ id: 'mqs-cz-line', type: 'line', source: 'mqs-cz', paint: { 'line-color': CAT.cables, 'line-width': 1, 'line-opacity': 0.7 } }, b);
       m.addLayer({ id: 'mqs-anch-line', type: 'line', source: 'mqs-anch', paint: { 'line-color': '#e8e8ec', 'line-width': 1.2, 'line-dasharray': [2, 2], 'line-opacity': 0.85 } }, b);
-      m.addLayer({ id: 'mqs-dc-ref', type: 'circle', source: 'mqs-dc', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 2.5, 9, 4.5], 'circle-color': '#05060a', 'circle-stroke-color': CAT.cloud, 'circle-stroke-width': 1.4 } }, b);
+      m.addLayer({ id: 'mqs-dc-ref', type: 'symbol', source: 'mqs-dc',
+        layout: { 'icon-image': ['case', ['get', 'proj'], ic.dcProj, ic.dc], 'icon-size': ['interpolate', ['linear'], ['zoom'], 4, 0.55, 7, 0.7, 11, 0.85], 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+          'text-field': '', 'text-size': 9.5, 'text-font': ['Open Sans Semibold'], 'text-variable-anchor': ['top', 'bottom', 'right', 'left'], 'text-radial-offset': 1, 'text-optional': true },
+        paint: { 'icon-opacity': 1, 'text-color': CAT.cloud, 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.3 } }, b);
       m.addLayer({ id: 'mqs-dept-hover', type: 'line', source: 'mqs-depts', filter: ['==', ['get', 'code'], ''], paint: { 'line-color': '#ffffff', 'line-width': 1.5, 'line-opacity': 0.8 } }, b);
       m.addLayer({ id: 'mqs-inet-past', type: 'line', source: 'mqs-depts', filter: ['all', ['==', ['get', 'inetPast'], true], ['==', ['get', 'inet'], false]],
         paint: { 'line-color': CAT.internet, 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1.4, 8, 2.2], 'line-opacity': 0.9, 'line-dasharray': [2, 1.5] } }, b);
@@ -268,9 +290,11 @@
       m.addLayer({ id: 'mqs-zones-label', type: 'symbol', source: 'mqs-zone-labels', maxzoom: 7,
         layout: { 'text-field': ['get', 'name'], 'text-size': 10, 'text-font': ['Open Sans Semibold'], 'text-letter-spacing': 0.12, 'text-transform': 'uppercase', 'text-allow-overlap': false },
         paint: { 'text-color': '#8c93a1', 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.4 } }, b);
-      m.addLayer({ id: 'mqs-cloud-sym', type: 'symbol', source: 'mqs-cloud', filter: ['any', ['!=', ['get', 'status'], 'vert'], ['>=', ['zoom'], 8]],
+      m.addLayer({ id: 'mqs-cloud-sym', type: 'symbol', source: 'mqs-cloud', filter: ['!=', ['get', 'status'], 'vert'],
         layout: { 'icon-image': ['match', ['get', 'status'], 'jaune', ic.cloudJ, 'orange', ic.cloudO, 'rouge', ic.cloudR, ic.cloudOk],
-          'icon-size': ['match', ['get', 'status'], 'vert', 0.5, 0.7], 'icon-allow-overlap': true } }, b);
+          'icon-size': ['match', ['get', 'status'], 'vert', 0.8, 0.95], 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'symbol-sort-key': ['match', ['get', 'status'], 'vert', 0, 1],
+          'text-field': '', 'text-size': 11.5, 'text-font': ['Open Sans Semibold'], 'text-anchor': 'left', 'text-offset': [1.3, 0], 'text-allow-overlap': true },
+        paint: { 'icon-opacity': 1, 'text-color': ['get', 'color'], 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.5 } }, b);
       m.addLayer({ id: 'mqs-sites-long', type: 'circle', source: 'mqs-sites', minzoom: 7, filter: ['!=', ['get', 'cls'], 'recente'],
         paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 1.6, 10, 3], 'circle-color': CAT.telecom, 'circle-opacity': 0.55 } }, b);
       m.addLayer({ id: 'mqs-sites-recent', type: 'circle', source: 'mqs-sites', minzoom: 7, filter: ['==', ['get', 'cls'], 'recente'],
@@ -349,7 +373,7 @@
         if (!baseOpacity.has(k)) baseOpacity.set(k, m.getPaintProperty(id, p) ?? 1);
         const dim = on.size > 0 && !gs.some((g) => on.has(g));
         const base = baseOpacity.get(k);
-        try { m.setPaintProperty(id, p, dim ? (typeof base === 'number' ? base * 0.15 : 0.12) : base); } catch (e) { /* propriété absente */ }
+        try { m.setPaintProperty(id, p, dim ? (typeof base === 'number' ? base * 0.07 : 0.06) : base); } catch (e) { /* propriété absente */ }
       }
     }
     cyber.classList.toggle('is-focus', on.has('cyber'));
@@ -378,7 +402,10 @@
   const pop = document.createElement('div');
   pop.className = 'mqs-pop';
   let popAt = null;
-  const placePop = () => { if (!popAt) return; const p = S.m.project(popAt); pop.style.transform = `translate(${Math.round(p.x + 14)}px, ${Math.round(p.y + 14)}px)`; };
+  // Bulle toujours entière dans la carte : basculée à gauche ou au-dessus du point si elle déborde.
+  const placePop = () => { if (!popAt) return; const p = S.m.project(popAt); const c = S.m.getCanvas(), W = c.clientWidth, H = c.clientHeight, w = pop.offsetWidth, h = pop.offsetHeight;
+    const x = p.x + 14 + w > W - 8 ? p.x - 14 - w : p.x + 14, y = Math.min(Math.max(8, p.y + 14), Math.max(8, H - h - 8));
+    pop.style.transform = `translate(${Math.round(Math.max(8, x))}px, ${Math.round(y)}px)`; };
   const card = (c) => `<div class="et-card"><div class="et-head"><i class="et-dot" style="background:${c.dot}"></i><strong>${esc(c.title)}</strong></div>`
     + (c.state ? `<div class="et-state" style="color:${c.stateHex}">${esc(c.state)}</div>` : '')
     + c.rows.map(([k, v]) => `<div class="et-row"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')
@@ -452,24 +479,65 @@
       hint: 'Clic : fiche du département', source: telecomSource() };
   };
   const cableWatch = () => (S.data.cablesWatch?.evaluated ? 'veille active' : `veille des navires coupée (${(S.data.cablesWatch?.errors ?? [])[0] ?? 'source injoignable'})`);
-  const cloudCard = (p) => {
+  // Cloud et centres de données : bulles complètes (état publié, incidents, maintenances, voisinage, sources).
+  const PROV_OF = [['ovhcloud', /^ovh/i], ['scaleway', /scaleway|iliad|online/i], ['aws', /^aws|amazon/i], ['gcp', /^gcp|google/i], ['cloudflare', /cloudflare/i], ['outscale', /outscale|dassault/i], ['azure', /microsoft|azure/i]];
+  const SRC_WORD = { 'static backbone': 'liste interne des grands sites cloud', 'uMap projets data centers France': 'carte uMap des projets de centres de données',
+    'OpenStreetMap France datacenters snapshot': 'OpenStreetMap (ODbL)', 'DataCenterMap live browser snapshot': 'DataCenterMap' };
+  const zoneShort = (z) => z.z.id;
+  const cloudSiteCard = (s) => {
     const c = S.data.cloud;
-    const i = (c?.incidents ?? []).find((x) => x.state === 'en-cours' && x.zones.some((z) => `${x.provider}:${z}` === p.id));
-    const [prov, zid] = p.id.split(':');
-    const mt = (c?.maintenances ?? []).filter((x) => x.provider === prov && x.inProgress && x.zones.includes(zid));
-    const z = (c?.providers ?? []).find((x) => x.provider === prov)?.zones.find((x) => x.id === zid);
-    const elsewhere = (c?.elsewhere ?? []).filter((x) => x.provider === prov && x.state === 'en-cours').length;
     const rows = [];
-    if (i) rows.push(['Incident', i.title], ['Impact déclaré', IMPACT[i.impact] ?? i.impact], ['Début', when(i.start)]);
-    if (mt.length) rows.push(['Maintenance en cours', `${mt[0].title}${mt[0].end ? `, jusqu’au ${when(mt[0].end)}` : ''}${mt.length > 1 ? ` (+${mt.length - 1})` : ''}`]);
-    rows.push(['État publié', z?.updatedAt ? `mis à jour le ${when(z.updatedAt)}` : 'n.d.']);
-    if (elsewhere) rows.push([`Autres incidents ${p.provider}`, `${elsewhere} en cours, sans zone en France`]);
-    return { dot: p.status === 'vert' ? CAT.cloud : L1[p.status], title: `${p.provider} · ${p.label}`, state: i ? `Incident en cours ${ago(i.start)}` : mt.length ? 'Opérationnel · maintenance en cours' : 'Opérationnel', stateHex: i ? L1[p.status] : '#c7c7cc',
-      rows, source: `page d’état ${p.provider}, lue ${when(c?.readAt)}` };
+    for (const prov of s.providers) {
+      const zs = s.zones.filter((z) => z.plabel === prov);
+      const ko = zs.filter((z) => z.status !== 'vert');
+      rows.push([prov, `${plural(zs.length, 'zone')}${ko.length ? `, dont ${ko.length}${NB}dégradée${ko.length > 1 ? 's' : ''} (${ko.map(zoneShort).join(', ')})` : ', toutes opérationnelles'}`]);
+    }
+    const incs = [...new Map(s.zones.filter((z) => z.i).map((z) => [z.i.id, z])).values()];
+    for (const z of incs) rows.push([`Incident ${z.plabel}`, `${z.i.title.replace(/^(\[[^\]]*\]\s*-?\s*)+/, '')} · impact ${IMPACT[z.i.impact] ?? z.i.impact} · ${ago(z.i.start)}`]);
+    const deg = s.zones.filter((z) => !z.i && z.z.status === 'degraded');
+    if (deg.length) rows.push(['Dégradé sans incident publié', deg.map(zoneShort).join(', ')]);
+    const keys = new Set(s.zones.map((z) => `${z.provider}:${z.z.id}`));
+    const mt = (c?.maintenances ?? []).filter((x) => x.inProgress && x.zones.some((z) => keys.has(`${x.provider}:${z}`)));
+    for (const x of mt.slice(0, 3)) rows.push(['Maintenance en cours', `${x.title.replace(/^(\[[^\]]*\]\s*-?\s*)+/, '')}${x.end ? `, jusqu’au ${when(x.end)}` : ''}`]);
+    if (mt.length > 3) rows.push(['', `+${mt.length - 3}${NB}autres maintenances`]);
+    const provs = new Set(s.zones.map((z) => z.provider));
+    const elsewhere = (c?.elsewhere ?? []).filter((x) => provs.has(x.provider) && x.state === 'en-cours');
+    if (elsewhere.length) rows.push(['Incidents sans zone en France', `${elsewhere.length} (${[...new Set(elsewhere.map((x) => (c.providers.find((p) => p.provider === x.provider)?.label ?? x.provider)))].join(', ')})`]);
+    const dcs = (c?.reference?.datacenters ?? []).filter((x) => x.lat != null && km(s.at, [x.lon, x.lat]) <= 25);
+    rows.push(['Centres de données à moins de 25' + NB + 'km', dcs.length ? `${dcs.length} (${dcs.slice(0, 4).map((x) => x.name).join(', ')}${dcs.length > 4 ? ` +${dcs.length - 4}` : ''})` : 'aucun dans l’inventaire']);
+    const ix = (c?.reference?.exchanges ?? []).filter((x) => x.city && x.city.toLowerCase() === s.name.toLowerCase());
+    if (ix.length) rows.push(['Points d’échange Internet', `${ix.length} (${ix.slice(0, 4).map((x) => x.name).join(', ')}${ix.length > 4 ? ` +${ix.length - 4}` : ''})`]);
+    const upd = s.zones.map((z) => z.z.updatedAt).filter(Boolean).sort().pop();
+    rows.push(['Dernière mise à jour publiée', upd ? when(upd) : 'n.d.']);
+    const url = incs[0]?.i.url ?? null;
+    return { dot: s.status === 'vert' ? CAT.cloud : L1[s.status], title: `Cloud · ${s.name}`, url,
+      state: incs.length ? `${WORD[s.status]} · ${plural(incs.length, 'incident')} en cours` : deg.length ? 'Vigilance · zone dégradée' : mt.length ? 'Opérationnel · maintenance en cours' : 'Opérationnel',
+      stateHex: s.status === 'vert' ? '#c7c7cc' : L1[s.status], rows,
+      hint: url ? 'Clic : ouvrir l’incident sur la page d’état' : 'Position : ville du site, pas l’adresse des bâtiments',
+      source: `pages d’état ${s.providers.join(', ')}, lues ${when(c?.readAt)}` };
   };
-  const dcCard = (x) => ({ dot: CAT.cloud, title: x.name, state: 'Centre de données · inventaire', stateHex: '#c7c7cc',
-    rows: [['Exploitant', x.operator ?? 'n.d.'], ['Ville', x.city ?? 'n.d.'], ['Département', S.agg.get(S.dcDept?.get(x.id))?.nom ?? 'n.d.']].concat(x.power ? [['Puissance', x.power]] : []),
-    hint: 'Aucun état publié pour ce site : pas une page d’état', source: x.source });
+  const dcCard = (x) => {
+    const c = S.data.cloud;
+    const code = S.dcDept?.get(x.id);
+    const near = (S.cloudSites ?? []).filter((s) => km(s.at, [x.lon, x.lat]) <= 25);
+    const prov = PROV_OF.find(([, re]) => re.test(x.operator ?? x.name ?? ''))?.[0];
+    const plab = prov && (c?.providers ?? []).find((p) => p.provider === prov)?.label;
+    const incs = prov ? [...(c?.incidents ?? []), ...(c?.elsewhere ?? [])].filter((i) => i.provider === prov && i.state === 'en-cours') : [];
+    const sameDept = (c?.reference?.datacenters ?? []).filter((d) => d.id !== x.id && code && S.dcDept?.get(d.id) === code).length;
+    const city = x.city && !/^[a-z]+-[a-z]+-?\d/.test(x.city) ? x.city : / - ([^-]+)$/.exec(x.name ?? '')?.[1]?.trim() ?? null;
+    const ix = city ? (c?.reference?.exchanges ?? []).filter((e) => e.city?.toLowerCase() === city.toLowerCase()) : [];
+    const cy = (S.data.cyber?.certfr?.alerts ?? []).filter((a) => a.status === 'en-cours');
+    const rows = [['Exploitant', x.operator ?? 'non publié'], ['Stade', x.stage ?? 'non précisé'], ['Puissance', x.power ? x.power.replace(/ MW/g, `${NB}MW`) : 'non publiée'],
+      ['Commune', city ?? 'non publiée'], ['Département', code ? `${S.agg.get(code)?.nom ?? code} (${code})` : 'n.d.'],
+      ['État publié', plab ? (incs.length ? `${plab} : ${plural(incs.length, 'incident')} en cours (${incs.slice(0, 2).map((i) => i.title.replace(/^(\[[^\]]*\]\s*-?\s*)+/, '')).join(' ; ')})` : `${plab} : aucun incident en cours`) : 'aucune page d’état pour cet exploitant'],
+      near.length ? ['Site cloud proche', near.map((s) => `${s.name} (${WORD[s.status].toLowerCase()})`).join(', ')] : null,
+      ix.length ? ['Points d’échange Internet', `${ix.length} à ${city} (${ix.slice(0, 3).map((e) => e.name).join(', ')}${ix.length > 3 ? ` +${ix.length - 3}` : ''})`] : null,
+      ['Autres centres du département', sameDept ? num(sameDept) : 'aucun'],
+      ['Vigilance cyber nationale', cy.length ? `${plural(cy.length, 'alerte')} CERT-FR en cours, aucune localisée` : 'aucune alerte CERT-FR en cours'],
+      ['Position', `${x.lat.toFixed(3)}, ${x.lon.toFixed(3)}`]].filter(Boolean);
+    return { dot: CAT.cloud, title: x.name, state: `Centre de données · ${/projet|construction|fast/i.test(x.stage ?? '') ? 'projet, pas en service' : 'inventaire'}`, stateHex: '#c7c7cc', rows,
+      hint: 'Inventaire : aucun état publié pour le bâtiment lui-même', source: `${SRC_WORD[x.source] ?? x.source}, inventaire du ${when(c?.reference?.generatedAt)}` };
+  };
   const TG_SRC = 'TeleGeography, Submarine Cable Map (CC BY-NC-SA 3.0), lu le 17/10/2026';
   const placeName = (n) => n.replace(/, France$/, '');
   const worldCableCard = (c) => {
@@ -527,7 +595,7 @@
     if (id === 'mqs-agg-disc' || id === 'mqs-low-disc' || id === 'mqs-dept-fill') { const a = S.agg.get(p.code); return a && { key: `dept:${a.code}`, kind: 'dept', id: a.code, card: deptCard(a), at: id === 'mqs-dept-fill' ? null : a.at }; }
     if (id === 'mqs-sites-recent' || id === 'mqs-sites-long') { const s = (S.data.telecom?.sites ?? []).find((x) => x.id === p.id); return s && { key: `site:${s.id}`, kind: 'site', id: s.id, card: siteCard(s), at: [s.lon, s.lat] }; }
     if (id === 'mqs-bases-sym') return { key: `base:${p.id}`, kind: 'base', id: p.id, card: baseCard(p), at: f.geometry.coordinates };
-    if (id === 'mqs-cloud-sym') return { key: `cloud:${p.id}`, kind: 'cloud', id: p.id, card: cloudCard(p), at: f.geometry.coordinates };
+    if (id === 'mqs-cloud-sym') { const cs = S.cloudSites?.[p.i]; return cs && { key: `cloud:${p.i}`, kind: 'cloud', id: p.i, card: cloudSiteCard(cs), at: cs.at }; }
     if (id === 'mqs-suite-hit' || id === 'mqs-suite-end') { const f = S.suite?.features[p.i]; return f && { key: `su:${p.i}`, kind: 'suite', id: p.i, card: suiteCard(f), at: null }; }
     if (id === 'mqs-world-hit') { const c = S.world?.cables[p.id]; return c && { key: `wc:${c.id}`, kind: 'wcable', id: c.id, card: worldCableCard(c), at: null }; }
     if (id === 'mqs-world-lp') { const l = S.world.landings.find((x) => x.id === p.id); return l && { key: `wl:${l.id}`, kind: 'wland', id: l.id, card: worldLandingCard(l), at: l.at }; }
@@ -726,7 +794,7 @@
   const legend = document.createElement('div');
   legend.className = 'mqs-legend';
   const swatch = (color, shape) => `<i class="mqs-sw mqs-sw-${shape}" style="--c:${color}"></i>`;
-  const icon = (name, color, bg) => `<span class="mqs-ic"${bg ? ` style="background:${bg};border-color:${bg}"` : ''}>${fmIcon(name, { size: 14 }).replace('<svg', `<svg style="color:${color ?? INK}"`)}</span>`;
+  const icon = (name, color, bg) => `<span class="mqs-ic"${bg ? ` style="background:${bg};border-color:${bg}"` : ''}>${EXTRA[name] ? `<svg width="14" height="14" viewBox="0 0 24 24" style="color:${color ?? INK}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${EXTRA[name]}</svg>` : fmIcon(name, { size: 14 }).replace('<svg', `<svg style="color:${color ?? INK}"`)}</span>`;
   // Remplace le bouton « Légende » de l'app (un seul point d'entrée), fermée par défaut comme les autres thèmes.
   const shapeSw = (t, solid) => `<svg width="13" height="13" viewBox="0 0 28 28" style="flex:0 0 13px"><path d="${SHAPE[t]}" fill="${BASE_HEX[t]}" stroke="#fff" stroke-width="2.5" ${solid ? '' : 'stroke-dasharray="3.5 2.5"'}/></svg>`;
   const renderLegend = () => {
@@ -749,7 +817,7 @@
       <div class="mqs-row mqs-note">Avec la pastille : zones de protection des câbles (aplat cyan) et mouillages qui les recoupent (pointillé blanc).</div>
       <div class="mqs-row">${swatch(CAT.telecom, 'ring')}Sites mobiles coupés (détail avec la pastille)</div>
       <div class="mqs-row">${swatch(CAT.internet, 'dash')}Coupure Internet terminée depuis moins de 7${NB}jours</div>
-      <div class="mqs-row">${icon('cloud', '#fff', CAT.cloud)}Zone cloud (page d’état) ${swatch(CAT.cloud, 'ring')}centre de données (inventaire, avec la pastille)</div>
+      <div class="mqs-row">${icon('cloud', '#fff', CAT.cloud)}Site cloud (pages d’état, zones regroupées ; couleur d’état si incident) ${icon('server', CAT.cloud, DARK)}centre de données, pointillé = projet (avec la pastille)</div>
       <div class="mqs-row">${swatch('#ec4899', 'disc')}Manifestation annoncée ${swatch(L1.orange, 'disc')}signalée par la presse ${swatch(L1.rouge, 'disc')}heurts, taille selon le nombre</div>
       <div class="mqs-row mqs-note">${swatch(L1.rouge, 'ring')}Criminalité (SSMSI, annuelle) : ville à 2 fois la moyenne nationale ou plus en violences physiques hors famille ; avec la pastille, toutes les villes et départements pour l’indicateur choisi dans le panneau.</div>
       <div class="mqs-row">${swatch('#e8e8ec', 'dash')}Zone de défense et de sécurité</div>
@@ -812,7 +880,7 @@
   .mqs-cy-s { color: #6e6e80; font-size: 10.5px; margin-top: 4px; }
   .mqs-sw-ring { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--c); background: #05060a; }
   .mqs-note { color: #9898a8; font-size: 11px; }
-  .mqs-cyber.is-focus { border-color: #ffcc00; box-shadow: 0 0 0 2px rgba(255,204,0,.35); } .mqs-cyber.is-dim { opacity: .35; }
+  .mqs-cyber.is-focus { border-color: #ffcc00; box-shadow: 0 0 0 2px rgba(255,204,0,.35); } .mqs-cyber.is-dim { display: none; }
   .mqs-chip { display: inline-flex; align-items: center; gap: 5px; background: #1c2029; color: #d9dde5; border: 1px solid #2a2e37; border-radius: 999px; padding: 2px 10px 2px 3px; cursor: pointer; font-size: 11.5px; }
   .mqs-chip[aria-pressed="true"] { background: #e8e8ec; color: #111; } .mqs-chip[aria-pressed="true"] .mqs-ic { border-color: #111; }
   .mqs-chip-h { color: #6e6e80; font-size: 10.5px; padding: 0 4px; }
@@ -872,6 +940,7 @@
       if (!hit) { closeFiche(); return; }
       pop.style.display = 'none'; popAt = null; S.hoverKey = null;
       if (hit.kind === 'base' && S.audit.get(hit.id)?.source) { window.open(S.audit.get(hit.id).source, '_blank', 'noopener'); return; }
+      if (hit.card?.url) { window.open(hit.card.url, '_blank', 'noopener'); return; }
       if (hit.kind === 'dept' || hit.kind === 'air' || hit.kind === 'base') openFiche(hit.kind, hit.id);
       else if (hit.kind === 'site') { const s = (S.data.telecom?.sites ?? []).find((x) => x.id === hit.id); if (s) openFiche('dept', s.dept); }
     }, true);
