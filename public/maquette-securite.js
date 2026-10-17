@@ -51,6 +51,9 @@
   // Aéronef : chevron orienté selon le cap, à la couleur de sa famille (France, autre pays, hors de France) ; sans cap : rond.
   const chevron = (k, color) => image(`mqs-chev-${k}`,
     `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><path d="M20 4 L32 34 L20 27 L8 34 Z" fill="${color}" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/></svg>`, 40);
+  const SHAPE = { air: 'M14 3 L25 24 L3 24 Z', navy: 'M5 5 H23 V23 H5 Z', army: 'M14 2 L26 14 L14 26 L2 14 Z', joint: 'M14 3 A11 11 0 1 1 13.99 3 Z', other: 'M14 3 L25 11 L21 24 L7 24 L3 11 Z' };
+  const shape = (t, solid, fill, stroke) => image(`mqs-shp-${t}-${solid ? 'p' : 'd'}-${fill}`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 28 28"><path d="${SHAPE[t]}" fill="${fill}" stroke="${stroke}" stroke-width="2.2" stroke-linejoin="round" ${solid ? '' : 'stroke-dasharray="3.5 2.5"'}/></svg>`, 28);
   const noHeading = (k, color) => image(`mqs-nohd-${k}`,
     `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><circle cx="20" cy="20" r="11" fill="${color}" stroke="#ffffff" stroke-width="2"/></svg>`, 40);
 
@@ -58,9 +61,11 @@
   const CAT = { defense: '#4a9eff', defenseOther: '#b388ff', cables: '#22d3ee', telecom: '#e879f9', internet: '#2dd4bf', cloud: '#818cf8' };
   // ─── Calques d'origine : remplacés par ceux de la maquette ───
   const HIDE = ['out-telecom-long', 'out-telecom-recent', 'out-internet-fill', 'out-internet-line', 'sov-aircraft', 'sov-aircraft-label', 'sov-aircraft-abroad',
-    'military-bases-circle', 'military-bases-label', 'submarine-cables-glow', 'submarine-cables-core', 'out-cloud-ref', 'out-cloud-zones'];
+    'military-bases-circle', 'military-bases-label', 'submarine-cables-glow', 'submarine-cables-core', 'out-cloud-ref', 'out-cloud-zones', 'submarine-cables-landing'];
   // Calques de détail réservés à leur pastille.
-  const PILL_ONLY = { 'mqs-cable-label': 'subseaCables', 'mqs-low-disc': 'outagesTelecom', 'mqs-low-count': 'outagesTelecom', 'mqs-inet-past': 'outagesInternet' };
+  const PILL_ONLY = { 'mqs-cable-label': 'subseaCables', 'mqs-low-disc': 'outagesTelecom', 'mqs-low-count': 'outagesTelecom', 'mqs-inet-past': 'outagesInternet',
+    'mqs-cz-fill': 'subseaCables', 'mqs-cz-line': 'subseaCables', 'mqs-anch-line': 'subseaCables', 'mqs-landings-label': 'subseaCables',
+    'mqs-dc-ref': 'outagesCloud', 'mqs-bases-closed': 'military' };
   const isOn = (k) => S.focus.has(k) || preview === k;
   const calm = () => {
     const m = S.m;
@@ -72,7 +77,8 @@
     for (const l of m.getStyle().layers) if (l.id.startsWith('mqs-')) V(l.id, !PILL_ONLY[l.id] || isOn(PILL_ONLY[l.id]));
     // Câbles : cyan franc (catégorie), sans halo néon ; ils passeraient à la couleur L1 sur alerte de la veille.
     if (!baseOpacity.size) {
-      P('submarine-cables-line', 'line-color', CAT.cables); P('submarine-cables-line', 'line-opacity', 0.85);
+      // Hors service selon le Shom : gris, jamais une alerte.
+      P('submarine-cables-line', 'line-color', ['case', ['==', ['get', 'outOfService'], true], '#6e7585', CAT.cables]); P('submarine-cables-line', 'line-opacity', 0.85);
       P('submarine-cables-line', 'line-width', ['interpolate', ['linear'], ['zoom'], 4, 1.2, 8, 2.2]);
       P('submarine-cables-landing', 'circle-color', CAT.cables); P('submarine-cables-landing', 'circle-radius', ['interpolate', ['linear'], ['zoom'], 4, 2.5, 8, 4.5]);
       P('submarine-cables-landing', 'circle-stroke-width', 1); P('submarine-cables-landing', 'circle-stroke-color', '#05060a');
@@ -86,6 +92,64 @@
     zr('mqs-sites-long', isOn('outagesTelecom') ? 0 : 8);
     if (m.getLayer('mqs-cloud-sym')) m.setFilter('mqs-cloud-sym', isOn('outagesCloud') ? null : ['any', ['!=', ['get', 'status'], 'vert'], ['>=', ['zoom'], 8]]);
     if (m.getLayer('mqs-bases-sym')) m.setLayoutProperty('mqs-bases-sym', 'text-field', isOn('military') ? ['get', 'name'] : ['step', ['zoom'], '', 8, ['get', 'name']]);
+  };
+
+  // ─── Vérification des sites de la liste interne (17/10/2026) ───
+  // Fermetures confirmées par une source publique ; incohérences relevées à la relecture (unité, lieu ou doublon), à vérifier avant correction de la liste.
+  const CLOSED = {
+    'BA-103': 'fermée en 2012 (restructurations de 2008, réponse ministérielle à l’Assemblée nationale)',
+    'BA-128': 'dissoute le 31/08/2012 (Bulletin officiel des armées)',
+    'BA-112': 'fermée en 2011, foyer dissous le 01/06/2011 (Bulletin officiel des armées)',
+    'BN-RCY': 'base aéronavale fermée le 02/07/2011, aéroport civil seul (Bulletin officiel des armées)',
+  };
+  const DOUBT = {
+    'BA-117': 'doublon probable : Luxeuil-Saint-Sauveur est la BA 116, la BA 117 est Paris',
+    'BA-101': 'fermeture annoncée dès 2009, date effective non confirmée',
+    'BA-124': 'fermeture probable (années 1990), non confirmée',
+    'BA-122': 'fermeture probable, non confirmée',
+    'AT-VANNES': 'le 1er RIMa est en garnison à Angoulême ; Vannes accueille le 3e RIMa',
+    'AT-PAMIERS': 'le 1er RPIMa est à Bayonne ; Pamiers accueille le 1er RCP',
+    'AT-NIMES': 'unité et lieu incohérents (1er REC, Nîmes, Laudun)',
+    'AT-ORANGE': 'unité et lieu incohérents (1er REG)',
+    'AT-ANGERS': 'nom, lieu et identifiant incohérents (ENSOA, Le Mans, Angers)',
+    'AT-CARPIQUET': 'unité à vérifier (12e RC)',
+    'ALAT-RENNES': 'le 3e RHC est à Étain',
+    'ALAT-VALENCE': 'le 5e RHC est à Pau',
+    'ALAT-ESSEY': 'unité inconnue (« 1er RHC AZUR »)',
+    'GND-NIMES': 'unité inconnue (« Gicat 6 »)',
+    'HQ-ROCQUENCOURT': 'le SHAPE a quitté la France en 1967',
+    'GRAVES-ONERA': 'GRAVES n’est pas sur le plateau d’Albion',
+    'SIMU-GRAMAT': 'le CESTA est au Barp ; Gramat est un autre centre du CEA',
+  };
+  const OSM_KINDS = new Set(['airfield', 'base', 'barracks', 'naval_base', 'range', 'training_area', 'office', 'school', 'yes']);
+  const km = (a, b) => { const r = Math.PI / 180, dLat = (b[1] - a[1]) * r, dLon = (b[0] - a[0]) * r;
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(a[1] * r) * Math.cos(b[1] * r) * Math.sin(dLon / 2) ** 2; return 12742 * Math.asin(Math.sqrt(h)); };
+  const audit = () => {
+    S.audit = new Map();
+    const osm = (S.osm?.items ?? []).filter((i) => OSM_KINDS.has(i.kind));
+    for (const b of S.bases) {
+      const id = b.properties.id, c = b.geometry.coordinates;
+      let best = null, d = Infinity;
+      for (const o of osm) { const x = km(c, [o.lon, o.lat]); if (x < d) { d = x; best = o; } }
+      const status = CLOSED[id] ? 'ferme' : DOUBT[id] ? 'doute' : d <= 3 ? 'recoupe' : 'seul';
+      S.audit.set(id, { status, note: CLOSED[id] ?? DOUBT[id] ?? null, osm: d <= 3 ? best : null, osmKm: d, dept: deptCodeAt(c) });
+    }
+  };
+  const ZONE_SEAT = { Paris: 'Paris', Nord: 'Lille', Est: 'Metz', Ouest: 'Rennes', 'Sud-Ouest': 'Bordeaux', Sud: 'Marseille', 'Sud-Est': 'Lyon' };
+  const CARD = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
+  const cardinal = (t) => CARD[Math.round(((t % 360) + 360) % 360 / 45) % 8];
+  const clock = (iso) => { if (!iso) return 'n.d.'; const p = Object.fromEntries(new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' }).formatToParts(new Date(iso)).map((x) => [x.type, x.value])); return `${p.hour}${NB}h${NB}${p.minute}`; };
+  const minsAgo = (iso) => { const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000); return m < 1 ? 'à l’instant' : m < 60 ? `il y a ${m}${NB}min` : `il y a ${Math.round(m / 60)}${NB}h`; };
+  const IMPACT = { minor: 'mineur', major: 'majeur', critical: 'critique', none: 'aucun' };
+  // Atterrages regroupés par commune : la taille dit combien de câbles arrivent au même endroit (concentration du risque).
+  const landingsByPlace = () => {
+    const g = new Map();
+    for (const c of S.cablesFile?.cables ?? []) for (const l of c.landings) {
+      const k = `${l.commune}|${l.dept}`;
+      const x = g.get(k) ?? { commune: l.commune, dept: l.dept, pts: [], cables: new Map() };
+      x.pts.push([l.lon, l.lat]); x.cables.set(c.id, c); g.set(k, x);
+    }
+    return [...g.values()].map((x) => ({ ...x, at: [x.pts.reduce((s, p) => s + p[0], 0) / x.pts.length, x.pts.reduce((s, p) => s + p[1], 0) / x.pts.length], n: x.cables.size }));
   };
 
   // ─── Agrégation par département ───
@@ -136,8 +200,16 @@
     setData('mqs-air', fc([...(mil?.aircraft ?? []).map((a) => ({ ...a, abroad: false })), ...(mil?.abroad ?? []).map((a) => ({ ...a, abroad: true }))]
       .filter((a) => a.lat != null && a.lon != null).map((a) => pt([a.lon, a.lat], { hex: a.hex, fr: a.family === 'francais', abroad: a.abroad, track: a.track ?? 0,
         hasTrack: a.track !== null && a.track !== undefined, label: [a.callsign, a.registration].filter(Boolean).join(' · ') }))));
-    // Sites de défense : forme = armée, aucune couleur (rien d'anormal à signaler sur un site)
-    setData('mqs-bases', fc(S.bases.map((b) => pt(b.geometry.coordinates, { id: b.properties.id, name: b.properties.name, type: b.properties.type }))));
+    // Sites de défense : forme = armée ; trait plein = recoupé par OpenStreetMap, pointillé = non recoupé ; fermés à part (gris, pastille Défense).
+    setData('mqs-bases', fc(S.bases.map((b) => { const au = S.audit.get(b.properties.id);
+      const t = ['air', 'navy', 'army', 'joint'].includes(b.properties.type) ? b.properties.type : 'other';
+      return pt(b.geometry.coordinates, { id: b.properties.id, name: b.properties.name, type: t, status: au?.status ?? 'seul', solid: au?.status === 'recoupe' }); })));
+    // Atterrages par commune, zones de protection des câbles et mouillages qui les recoupent (Shom)
+    S.landings = landingsByPlace();
+    setData('mqs-landings', fc(S.landings.map((l, i) => pt(l.at, { i, n: l.n, name: l.n >= 3 ? `${l.commune} · ${l.n}` : '' }))));
+    setData('mqs-cz', fc((S.cablesFile?.cableZones ?? []).map((z, i) => ({ type: 'Feature', geometry: { type: 'MultiPolygon', coordinates: z.polygons }, properties: { i } }))));
+    setData('mqs-anch', fc((S.cablesFile?.anchorageZones ?? []).map((z, i) => ({ z, i })).filter(({ z }) => z.crossesCableZone)
+      .map(({ z, i }) => ({ type: 'Feature', geometry: { type: 'MultiPolygon', coordinates: z.polygons }, properties: { i } }))));
     // Cloud : seules les zones en incident en cours sont dessinées en couleur ; référentiel au zoom
     const cloud = S.data.cloud;
     const inc = new Map();
@@ -149,6 +221,8 @@
       zones.push(pt([z.lon, z.lat], { id: `${p.provider}:${z.id}`, provider: p.label, label: z.label, status: i ? (i.impact === 'critical' ? 'rouge' : i.impact === 'major' ? 'orange' : 'jaune') : 'vert' }));
     }
     setData('mqs-cloud', fc(zones));
+    S.dcDept = new Map((cloud?.reference?.datacenters ?? []).filter((x) => x.lat != null).map((x) => [x.id, deptCodeAt([x.lon, x.lat])]));
+    setData('mqs-dc', fc((cloud?.reference?.datacenters ?? []).filter((x) => x.lat != null).map((x) => pt([x.lon, x.lat], { id: x.id }))));
 
     if (!m.getLayer('mqs-zones-line')) {
       const ic = {
@@ -156,12 +230,20 @@
         joint: await disc('swords', '#ffffff', CAT.defense), other: await disc('landmark', '#ffffff', CAT.defense),
         cloudOk: await disc('cloud', '#ffffff', CAT.cloud), cloudJ: await disc('cloud', L1.jaune, DARK), cloudO: await disc('cloud', L1.orange, DARK), cloudR: await disc('cloud', L1.rouge, DARK),
       };
+      for (const t of Object.keys(SHAPE)) { await shape(t, true, CAT.defense, '#ffffff'); await shape(t, false, CAT.defense, '#ffffff'); await shape(t, false, 'none', '#8a93a6'); }
+      const icd = { air: await disc('plane', '#ffffff', CAT.defense, true), navy: await disc('anchor', '#ffffff', CAT.defense, true), army: await disc('shield', '#ffffff', CAT.defense, true),
+        joint: await disc('swords', '#ffffff', CAT.defense, true), other: await disc('landmark', '#ffffff', CAT.defense, true) };
       await chevron('f', CAT.defense); await chevron('o', CAT.defenseOther); await chevron('a', '#8a93a6');
       await noHeading('f', CAT.defense); await noHeading('o', CAT.defenseOther); await noHeading('a', '#8a93a6');
       const b = before();
       m.addLayer({ id: 'mqs-dept-fill', type: 'fill', source: 'mqs-depts', paint: { 'fill-color': '#ffffff', 'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.06, 0] } }, b);
       // Département en anomalie : teinte légère à sa couleur d'état (le niveau reste lisible même quand les disques se touchent, en Île-de-France).
-      m.addLayer({ id: 'mqs-dept-level', type: 'fill', source: 'mqs-depts', filter: ['!=', ['get', 'level'], 'vert'], paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.16 } }, b);
+      m.addLayer({ id: 'mqs-dept-level', type: 'fill', source: 'mqs-depts', filter: ['!=', ['get', 'level'], 'vert'], paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.07 } }, b);
+      m.addLayer({ id: 'mqs-dept-level-line', type: 'line', source: 'mqs-depts', filter: ['!=', ['get', 'level'], 'vert'], paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1.2, 8, 2.4], 'line-opacity': 0.9 } }, b);
+      m.addLayer({ id: 'mqs-cz-fill', type: 'fill', source: 'mqs-cz', paint: { 'fill-color': CAT.cables, 'fill-opacity': 0.14 } }, b);
+      m.addLayer({ id: 'mqs-cz-line', type: 'line', source: 'mqs-cz', paint: { 'line-color': CAT.cables, 'line-width': 1, 'line-opacity': 0.7 } }, b);
+      m.addLayer({ id: 'mqs-anch-line', type: 'line', source: 'mqs-anch', paint: { 'line-color': '#e8e8ec', 'line-width': 1.2, 'line-dasharray': [2, 2], 'line-opacity': 0.85 } }, b);
+      m.addLayer({ id: 'mqs-dc-ref', type: 'circle', source: 'mqs-dc', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 2.5, 9, 4.5], 'circle-color': '#05060a', 'circle-stroke-color': CAT.cloud, 'circle-stroke-width': 1.4 } }, b);
       m.addLayer({ id: 'mqs-dept-hover', type: 'line', source: 'mqs-depts', filter: ['==', ['get', 'code'], ''], paint: { 'line-color': '#ffffff', 'line-width': 1.5, 'line-opacity': 0.8 } }, b);
       m.addLayer({ id: 'mqs-inet-past', type: 'line', source: 'mqs-depts', filter: ['all', ['==', ['get', 'inetPast'], true], ['==', ['get', 'inet'], false]],
         paint: { 'line-color': CAT.internet, 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1.4, 8, 2.2], 'line-opacity': 0.9, 'line-dasharray': [2, 1.5] } }, b);
@@ -180,9 +262,22 @@
         paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 1.6, 10, 3], 'circle-color': CAT.telecom, 'circle-opacity': 0.55 } }, b);
       m.addLayer({ id: 'mqs-sites-recent', type: 'circle', source: 'mqs-sites', minzoom: 7, filter: ['==', ['get', 'cls'], 'recente'],
         paint: { 'circle-radius': 4.5, 'circle-color': DARK, 'circle-stroke-color': ['get', 'ring'], 'circle-stroke-width': 2 } }, b);
-      m.addLayer({ id: 'mqs-bases-sym', type: 'symbol', source: 'mqs-bases',
-        layout: { 'icon-image': ['match', ['get', 'type'], 'air', ic.air, 'navy', ic.navy, 'army', ic.army, 'joint', ic.joint, ic.other],
-          'icon-size': ['interpolate', ['linear'], ['zoom'], 4, 0.42, 7, 0.6, 10, 0.85], 'icon-allow-overlap': true,
+      m.addLayer({ id: 'mqs-landings', type: 'circle', source: 'mqs-landings',
+        paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, ['+', 2.5, ['*', 1.6, ['sqrt', ['get', 'n']]]], 8, ['+', 4, ['*', 2.4, ['sqrt', ['get', 'n']]]]],
+          'circle-color': CAT.cables, 'circle-opacity': 0.9, 'circle-stroke-color': '#05060a', 'circle-stroke-width': 1.2 } }, b);
+      m.addLayer({ id: 'mqs-landings-label', type: 'symbol', source: 'mqs-landings', filter: ['!=', ['get', 'name'], ''],
+        layout: { 'text-field': ['get', 'name'], 'text-size': 10.5, 'text-font': ['Open Sans Semibold'], 'text-offset': [0.9, 0], 'text-anchor': 'left', 'text-optional': true },
+        paint: { 'text-color': CAT.cables, 'text-halo-color': '#05060a', 'text-halo-width': 1.4 } }, b);
+      m.addLayer({ id: 'mqs-bases-closed', type: 'symbol', source: 'mqs-bases', filter: ['==', ['get', 'status'], 'ferme'],
+        layout: { 'icon-image': ['concat', 'mqs-shp-', ['get', 'type'], '-d-none'], 'icon-size': 0.9, 'icon-allow-overlap': true,
+          'text-field': ['concat', ['get', 'name'], ' (fermé)'], 'text-size': 9.5, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-font': ['Open Sans Semibold'], 'text-optional': true },
+        paint: { 'text-color': '#8a93a6', 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.2 } }, b);
+      // Échelle de la France : forme géométrique (lisible à 12 px) ; au zoom : picto dans le disque.
+      const pictoOf = (set) => ['match', ['get', 'type'], 'air', set.air, 'navy', set.navy, 'army', set.army, 'joint', set.joint, set.other];
+      m.addLayer({ id: 'mqs-bases-sym', type: 'symbol', source: 'mqs-bases', filter: ['!=', ['get', 'status'], 'ferme'],
+        layout: { 'icon-image': ['step', ['zoom'], ['concat', 'mqs-shp-', ['get', 'type'], ['case', ['get', 'solid'], '-p-', '-d-'], CAT.defense], 7,
+            ['case', ['get', 'solid'], pictoOf(ic), pictoOf(icd)]],
+          'icon-size': ['interpolate', ['linear'], ['zoom'], 4, 1.25, 6.99, 1.6, 7, 0.6, 10, 0.85], 'icon-allow-overlap': true,
           'text-field': ['step', ['zoom'], '', 8, ['get', 'name']], 'text-size': 10, 'text-offset': [0, 1.2], 'text-anchor': 'top', 'text-font': ['Open Sans Semibold'], 'text-optional': true },
         paint: { 'icon-opacity': 1, 'text-color': '#bcd8ff', 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.3 } }, b);
       m.addLayer({ id: 'mqs-low-disc', type: 'circle', source: 'mqs-low', maxzoom: 7,
@@ -210,13 +305,13 @@
 
   // ─── Pastilles de l'application : mise en avant cumulable, le reste estompé (comme les pastilles Énergie) ───
   const GROUPS = {
-    military: ['mqs-bases-sym', 'mqs-air-sym', 'sov-emergencies', 'sov-navy-reference', 'sov-navy-observed', 'sov-gnss-fill', 'sov-gnss-line'],
-    subseaCables: ['submarine-cables-line', 'submarine-cables-landing', 'mqs-cable-label'],
+    military: ['mqs-bases-sym', 'mqs-bases-closed', 'mqs-air-sym', 'sov-emergencies', 'sov-navy-reference', 'sov-navy-observed', 'sov-gnss-fill', 'sov-gnss-line'],
+    subseaCables: ['submarine-cables-line', 'mqs-landings', 'mqs-landings-label', 'mqs-cable-label', 'mqs-cz-fill', 'mqs-cz-line', 'mqs-anch-line'],
     cyber: [],
     stability: ['isnr-line', 'isnr-fill'],
-    outagesTelecom: ['mqs-dept-level', 'mqs-agg-disc', 'mqs-agg-count', 'mqs-low-disc', 'mqs-low-count', 'mqs-sites-recent', 'mqs-sites-long'],
+    outagesTelecom: ['mqs-dept-level', 'mqs-dept-level-line', 'mqs-agg-disc', 'mqs-agg-count', 'mqs-low-disc', 'mqs-low-count', 'mqs-sites-recent', 'mqs-sites-long'],
     outagesInternet: ['mqs-inet', 'mqs-inet-past'],
-    outagesCloud: ['mqs-cloud-sym'],
+    outagesCloud: ['mqs-cloud-sym', 'mqs-dc-ref'],
   };
   const OPACITY = { circle: ['circle-opacity', 'circle-stroke-opacity'], symbol: ['icon-opacity', 'text-opacity'], line: ['line-opacity'], fill: ['fill-opacity'] };
   const baseOpacity = new Map();
@@ -269,40 +364,112 @@
     + `<div class="et-src">Source : ${esc(c.source)}</div></div>`;
 
   const telecomSource = () => `ARCEP, fichier du ${when(S.data.telecom?.file?.publishedAt)}`;
+  // Ce qui est exposé dans un département : sites de défense, atterrages de câbles, centres de données (inventaires, pas des alertes).
+  const exposure = (code) => {
+    const bases = S.bases.filter((b) => { const au = S.audit.get(b.properties.id); return au?.dept === code && au.status !== 'ferme'; });
+    const land = (S.landings ?? []).filter((l) => l.dept === code);
+    const dcs = (S.data.cloud?.reference?.datacenters ?? []).filter((x) => x.lat != null && S.dcDept?.get(x.id) === code);
+    return { bases, land, cables: land.reduce((n, l) => n + l.n, 0), dcs };
+  };
+  const plural = (n, w) => `${num(n)}${NB}${w}${n > 1 ? 's' : ''}`;
   const deptCard = (a) => {
     if (!a) return null;
-    const ops = Object.entries(a.ops).sort((x, y) => y[1] - x[1]).map(([o, n]) => `${o} ${n}`).join(', ');
-    return { dot: a.level === 'vert' ? CAT.telecom : L1[a.level], title: `${a.nom} (${a.code})`, state: a.level === 'vert' ? 'Normal · sous le seuil' : `${WORD[a.level]} · communications`, stateHex: a.level === 'vert' ? '#c7c7cc' : L1[a.level],
-      rows: [['Sites mobiles coupés < 24' + NB + 'h', String(a.sites.length)], ['Opérateurs', ops || 'aucun'], ['Coupure Internet en cours', a.inet.length ? 'oui (IODA)' : 'non'],
-        ['Zone de défense', a.zone]],
-      hint: 'Clic : fiche du département', source: telecomSource() };
+    const ops = Object.entries(a.ops).sort((x, y) => y[1] - x[1]).map(([o, n]) => `${o}${NB}${n}`).join(', ');
+    const ranked = [...S.agg.values()].filter((x) => x.sites.length).sort((x, y) => y.sites.length - x.sites.length);
+    const rank = a.sites.length ? ranked.findIndex((x) => x.code === a.code) + 1 : 0;
+    const communes = [...new Set(a.sites.map((x) => x.commune).filter(Boolean))];
+    const ex = exposure(a.code);
+    const air = (S.data.military?.aircraft ?? []).filter((x) => x.dept === a.code);
+    const rows = [
+      ['Sites mobiles coupés < 24' + NB + 'h', a.sites.length ? `${num(a.sites.length)} (${rank === 1 ? '1er' : `${rank}e`} sur ${ranked.length} départements)` : 'aucun'],
+      a.sites.length ? ['Voix · données coupées', `${num(a.voice)} · ${num(a.data)}`] : null,
+      a.sites.length ? ['Opérateurs', ops] : null,
+      communes.length ? ['Communes', communes.slice(0, 3).join(', ') + (communes.length > 3 ? ` +${communes.length - 3}` : '')] : null,
+      ['Pannes plus anciennes', `${num(a.longCount)}${a.undated ? ` + ${num(a.undated)} sans date` : ''}`],
+      ['Internet (IODA)', a.inet.length ? `coupure en cours ${ago(a.inet[0].start)}` : a.inetPast.length ? `aucune en cours · ${plural(a.inetPast.length, 'coupure')} sur 7${NB}j` : 'aucune coupure sur 7' + NB + 'j'],
+      ['Exposé', [ex.bases.length ? plural(ex.bases.length, 'site') + ' de défense' : null, ex.land.length ? `${plural(ex.cables, 'câble')} atterrant` : null, ex.dcs.length ? plural(ex.dcs.length, 'centre') + ' de données' : null].filter(Boolean).join(' · ') || 'rien dans les inventaires'],
+      air.length ? ['Aéronefs militaires au-dessus', air.map((x) => x.callsign || x.registration || x.hex).join(', ')] : null,
+      ['Zone de défense', `${a.zone} (préfet de zone : ${ZONE_SEAT[a.zone] ?? 'n.d.'})`],
+    ].filter(Boolean);
+    return { dot: a.level === 'vert' ? CAT.telecom : L1[a.level], title: `${a.nom} (${a.code})`, state: a.level === 'vert' ? 'Normal · sous le seuil de vigilance' : `${WORD[a.level]} · communications`, stateHex: a.level === 'vert' ? '#c7c7cc' : L1[a.level],
+      rows, hint: 'Clic : fiche du département', source: `${telecomSource()} · IODA · ADS-B` };
   };
   const airOf = (hex) => [...(S.data.military?.aircraft ?? []), ...(S.data.military?.abroad ?? []).map((a) => ({ ...a, abroadOnly: true }))].find((a) => a.hex === hex);
-  const airCard = (a) => ({ dot: a.family === 'francais' ? CAT.defense : CAT.defenseOther, title: [a.callsign, a.registration].filter(Boolean).join(' · ') || a.hex,
-    state: `${a.family === 'francais' ? 'Aéronef militaire français' : `Aéronef militaire · ${a.country ?? 'pays n.d.'}`}${a.abroadOnly ? ' · hors de France' : ''}`, stateHex: '#c7c7cc',
-    rows: [['Type', a.type ?? 'n.d.'], ['Altitude', a.altitudeFt != null ? `${num(a.altitudeFt)}${NB}ft` : 'n.d.'], ['Vitesse', a.speedKt != null ? `${num(Math.round(a.speedKt))}${NB}kt` : 'n.d.'],
-      ['Cap', a.track != null ? `${Math.round(a.track)}${NB}°` : 'n.d.'], ['Vu', when(a.seenAt)]],
-    hint: 'Clic : fiche', source: 'ADS-B (adsb.lol), positions publiques' });
+  const airCard = (a) => {
+    const over = a.abroadOnly ? 'hors de France, jamais compté' : a.dept ? `au-dessus de ${S.agg.get(a.dept)?.nom ?? a.dept} (${a.dept})` : 'en mer, eaux françaises';
+    return { dot: a.abroadOnly ? '#8a93a6' : a.family === 'francais' ? CAT.defense : CAT.defenseOther, title: `${[a.callsign, a.registration].filter(Boolean).join(' · ') || a.hex} · ${a.type ?? 'type n.d.'}`,
+      state: `${a.family === 'francais' ? 'Militaire ou d’État, français' : `Militaire · ${a.country ?? 'pays non identifié (bloc OACI)'}`} · ${over}`, stateHex: '#c7c7cc',
+      rows: [['Immatriculation', a.registration ?? 'n.d.'], ['Adresse OACI', a.hex], ['Pays', a.country ?? 'non identifié (bloc OACI)'],
+        ['Altitude', a.altitudeFt != null ? `${num(a.altitudeFt)}${NB}ft (${num(Math.round(a.altitudeFt * 0.3048 / 10) * 10)}${NB}m)` : 'n.d.'],
+        ['Vitesse', a.speedKt != null ? `${num(Math.round(a.speedKt))}${NB}kt (${num(Math.round(a.speedKt * 1.852))}${NB}km/h)` : 'n.d.'],
+        ['Cap', a.track != null ? `${Math.round(a.track)}° (${cardinal(a.track)})` : 'n.d.'], ['Vu à', a.seenAt ? `${clock(a.seenAt)} (${minsAgo(a.seenAt)})` : 'n.d.']],
+      hint: 'Un appareil absent du flux n’est pas absent du ciel · clic : fiche', source: 'adsb.lol (ODbL 1.0), positions publiques' };
+  };
   const BASE_WORD = { air: 'air', navy: 'marine', army: 'terre', joint: 'interarmées', fortification: 'fortification', other: 'autre' };
-  const baseCard = (p) => ({ dot: CAT.defense, title: p.name, state: `Site ${BASE_WORD[p.type] ?? 'autre'} · contexte`, stateHex: '#c7c7cc',
-    rows: [['Département', deptAt(S.bases.find((b) => b.properties.id === p.id)?.geometry.coordinates)?.nom ?? 'n.d.']],
-    hint: 'Aucune donnée en direct sur ce site', source: 'liste interne de sites publics, sans date par site' });
-  const siteCard = (s) => ({ dot: s.cls === 'recente' && S.agg.get(s.dept)?.level !== 'vert' ? L1[S.agg.get(s.dept).level] : CAT.telecom,
-    title: `${s.operator} · ${s.commune ?? 'commune n.d.'}`, state: s.cls === 'recente' ? `Hors service ${ago(s.since)}` : s.cls === 'sans-date' ? 'Hors service · date de début non publiée' : `Hors service ${ago(s.since)} (stock ancien)`,
-    stateHex: '#e8e8ec', rows: [['Données', s.data === 'HS' ? 'coupées' : s.data ?? 'n.d.'], ['Voix', s.voice === 'HS' ? 'coupée' : s.voice ?? 'non publiée'], ['Technologies', (s.techs ?? []).join(', ') || 'n.d.'],
-      ['Cause', s.cause ?? 'n.d.']], source: telecomSource() });
+  const CHECK = { recoupe: 'recoupé par OpenStreetMap', seul: 'non recoupé par OpenStreetMap', doute: 'à vérifier', ferme: 'fermé' };
+  const baseCard = (p) => {
+    const au = S.audit.get(p.id);
+    const rows = [['Département', au?.dept ? `${S.agg.get(au.dept)?.nom ?? au.dept} (${au.dept})` : 'hors métropole'], ['Vérification', au?.status === 'seul' && !au.dept ? 'non recoupé (fichier OpenStreetMap limité à la métropole)' : CHECK[au?.status ?? 'seul']]];
+    if (au?.osm) rows.push(['Objet OpenStreetMap', `${au.osm.name ?? 'sans nom'} (${au.osm.kind}, à ${num(Math.round(au.osmKm * 10) / 10)}${NB}km)`]);
+    if (au?.note) rows.push([au.status === 'ferme' ? 'Fermeture' : 'Relecture', au.note]);
+    return { dot: au?.status === 'ferme' ? '#8a93a6' : CAT.defense, title: p.name, state: `Site ${BASE_WORD[p.type] ?? 'autre'}${au?.status === 'ferme' ? ' · fermé' : ''}`, stateHex: '#c7c7cc', rows,
+      hint: 'Aucune donnée en direct sur ce site (amendement O13 : nom et catégorie seulement)', source: `liste interne, sans date par site · OpenStreetMap (ODbL), fichier du ${when(S.osm?.generatedAt)}` };
+  };
+  const siteCard = (s) => {
+    const a = S.agg.get(s.dept);
+    const same = (S.data.telecom?.sites ?? []).filter((x) => x.insee === s.insee && x.id !== s.id && x.cls === 'recente');
+    const since = s.since ? `depuis le ${when(s.since)} (${ago(s.since).replace('depuis ', '')})` : 'date de début non publiée';
+    return { dot: s.cls === 'recente' && a?.level !== 'vert' ? L1[a.level] : CAT.telecom,
+      title: `${s.operator} · ${s.commune ?? 'commune n.d.'} (${s.dept})`, state: `${s.cause === 'maintenance' ? 'En maintenance' : 'Hors service'} ${since}${s.cls === 'longue' ? ' · panne ancienne' : ''}`, stateHex: '#e8e8ec',
+      rows: [['Voix', s.voice === 'HS' ? 'coupée' : s.voice === 'OK' ? 'disponible' : 'non publiée'], ['Données', s.data === 'HS' ? 'coupées' : s.data === 'OK' ? 'disponibles' : 'non publiées'],
+        ['Technologies', (s.techs ?? []).join(', ') || 'n.d.'], ['Cause publiée', s.detail ?? (s.cause === 'maintenance' ? 'maintenance' : 'incident, sans détail')],
+        ['Autres sites coupés dans la commune', same.length ? same.map((x) => x.operator).join(', ') : 'aucun'],
+        ['Département', a ? `${num(a.sites.length)} récents · ${WORD[a.level]}` : 'n.d.']],
+      hint: 'Clic : fiche du département', source: telecomSource() };
+  };
   const cableWatch = () => (S.data.cablesWatch?.evaluated ? 'veille active' : `veille des navires coupée (${(S.data.cablesWatch?.errors ?? [])[0] ?? 'source injoignable'})`);
   const cloudCard = (p) => {
-    const i = (S.data.cloud?.incidents ?? []).find((x) => x.state === 'en-cours' && x.zones.some((z) => `${x.provider}:${z}` === p.id));
-    return { dot: p.status === 'vert' ? CAT.cloud : L1[p.status], title: `${p.provider} · ${p.label}`, state: i ? `Incident en cours ${ago(i.start)}` : 'Opérationnel', stateHex: i ? L1[p.status] : '#c7c7cc',
-      rows: i ? [['Incident', i.title], ['Impact déclaré', i.impact]] : [], source: `page d'état ${p.provider}` };
+    const c = S.data.cloud;
+    const i = (c?.incidents ?? []).find((x) => x.state === 'en-cours' && x.zones.some((z) => `${x.provider}:${z}` === p.id));
+    const [prov, zid] = p.id.split(':');
+    const mt = (c?.maintenances ?? []).filter((x) => x.provider === prov && x.inProgress && x.zones.includes(zid));
+    const z = (c?.providers ?? []).find((x) => x.provider === prov)?.zones.find((x) => x.id === zid);
+    const elsewhere = (c?.elsewhere ?? []).filter((x) => x.provider === prov && x.state === 'en-cours').length;
+    const rows = [];
+    if (i) rows.push(['Incident', i.title], ['Impact déclaré', IMPACT[i.impact] ?? i.impact], ['Début', when(i.start)]);
+    if (mt.length) rows.push(['Maintenance en cours', `${mt[0].title}${mt[0].end ? `, jusqu’au ${when(mt[0].end)}` : ''}${mt.length > 1 ? ` (+${mt.length - 1})` : ''}`]);
+    rows.push(['État publié', z?.updatedAt ? `mis à jour le ${when(z.updatedAt)}` : 'n.d.']);
+    if (elsewhere) rows.push([`Autres incidents ${p.provider}`, `${elsewhere} en cours, sans zone en France`]);
+    return { dot: p.status === 'vert' ? CAT.cloud : L1[p.status], title: `${p.provider} · ${p.label}`, state: i ? `Incident en cours ${ago(i.start)}` : mt.length ? 'Opérationnel · maintenance en cours' : 'Opérationnel', stateHex: i ? L1[p.status] : '#c7c7cc',
+      rows, source: `page d’état ${p.provider}, lue ${when(c?.readAt)}` };
+  };
+  const dcCard = (x) => ({ dot: CAT.cloud, title: x.name, state: 'Centre de données · inventaire', stateHex: '#c7c7cc',
+    rows: [['Exploitant', x.operator ?? 'n.d.'], ['Ville', x.city ?? 'n.d.'], ['Département', S.agg.get(S.dcDept?.get(x.id))?.nom ?? 'n.d.']].concat(x.power ? [['Puissance', x.power]] : []),
+    hint: 'Aucun état publié pour ce site : pas une page d’état', source: x.source });
+  // Bulles d'origine (câbles, Marine, urgences) : reprises en entier, au gabarit de la maquette.
+  const parseBody = (html) => {
+    const d = document.createElement('div'); d.innerHTML = html ?? '';
+    return { title: d.querySelector('b')?.textContent ?? '', sub: d.querySelector('.hm-sub')?.textContent ?? '',
+      rows: [...d.querySelectorAll('.hm-row')].map((r) => [...r.children].map((c) => c.textContent)), notes: [...d.querySelectorAll('.hm-note')].map((n) => n.textContent) };
+  };
+  const landingCard = (l) => {
+    const cables = [...l.cables.values()];
+    const named = cables.filter((c) => c.name).map((c) => c.name);
+    const ops = [...new Set(cables.map((c) => c.operator).filter(Boolean))];
+    const off = cables.filter((c) => c.outOfService).length;
+    return { dot: CAT.cables, title: `${l.commune || 'atterrage'} (${l.dept})`, state: `Atterrage · ${plural(l.n, 'câble')}${off ? `, dont ${off} hors service` : ''}`, stateHex: '#c7c7cc',
+      rows: [['Câbles nommés', named.length ? named.slice(0, 4).join(', ') + (named.length > 4 ? ` +${named.length - 4}` : '') : 'aucun nom publié'],
+        ['Sans nom (Shom)', num(cables.length - named.length)], ops.length ? ['Exploitants', ops.join(', ')] : null,
+        ['Veille des navires', S.data.cablesWatch?.evaluated ? 'active' : 'coupée']].filter(Boolean),
+      hint: S.data.cablesWatch?.evaluated ? 'Taille du rond = nombre de câbles au même atterrage' : cableWatch(), source: 'Shom (CC BY-SA, 2019) · OpenStreetMap (ODbL)' };
   };
   const strong = (html) => { const d = document.createElement('div'); d.innerHTML = html ?? ''; return d.querySelector('strong, b, .hm-tip-title')?.textContent ?? d.textContent.slice(0, 60); };
 
+  const deptCodeAt = (c) => { if (!c) return null; for (const f of S.geo.deptShapes) if (inGeom(c, f.geometry)) return f.properties.code; return null; };
   const deptAt = (c) => { if (!c) return null; for (const f of S.geo.deptShapes) if (inGeom(c, f.geometry)) return S.agg.get(f.properties.code); return null; };
 
   // Arbitre : une seule cible, la plus signifiante sous le pointeur.
-  const PRIORITY = ['mqs-air-sym', 'sov-emergencies', 'mqs-cloud-sym', 'mqs-sites-recent', 'mqs-agg-disc', 'mqs-low-disc', 'mqs-bases-sym', 'sov-navy-reference', 'sov-navy-observed', 'submarine-cables-landing', 'submarine-cables-hitarea', 'mqs-sites-long', 'mqs-dept-fill'];
+  const PRIORITY = ['mqs-air-sym', 'sov-emergencies', 'mqs-cloud-sym', 'mqs-sites-recent', 'mqs-agg-disc', 'mqs-low-disc', 'mqs-bases-sym', 'mqs-bases-closed', 'sov-navy-reference', 'sov-navy-observed', 'mqs-landings', 'mqs-dc-ref', 'submarine-cables-hitarea', 'mqs-anch-line', 'mqs-cz-fill', 'mqs-sites-long', 'mqs-dept-fill'];
   const pick = (point) => {
     const layers = PRIORITY.filter((id) => S.m.getLayer(id));
     const hits = S.m.queryRenderedFeatures(point, { layers });
@@ -314,15 +481,23 @@
     if (id === 'mqs-sites-recent' || id === 'mqs-sites-long') { const s = (S.data.telecom?.sites ?? []).find((x) => x.id === p.id); return s && { key: `site:${s.id}`, kind: 'site', id: s.id, card: siteCard(s), at: [s.lon, s.lat] }; }
     if (id === 'mqs-bases-sym') return { key: `base:${p.id}`, kind: 'base', id: p.id, card: baseCard(p), at: f.geometry.coordinates };
     if (id === 'mqs-cloud-sym') return { key: `cloud:${p.id}`, kind: 'cloud', id: p.id, card: cloudCard(p), at: f.geometry.coordinates };
-    if (id === 'submarine-cables-hitarea' || id === 'submarine-cables-landing') {
-      const title = id === 'submarine-cables-landing' ? strong(p.body) : p.name || 'câble sous-marin';
-      return { key: `cable:${p.id ?? title}`, kind: 'cable', id: title, at: null,
-        card: { dot: CAT.cables, title, state: id === 'submarine-cables-landing' ? 'Atterrage · contexte' : 'Câble sous-marin · contexte', stateHex: '#c7c7cc',
-          rows: [['Veille des navires', S.data.cablesWatch?.evaluated ? 'active' : 'coupée']], hint: S.data.cablesWatch?.evaluated ? null : cableWatch(), source: 'OpenStreetMap, TeleGeography' } };
+    if (id === 'mqs-landings') { const l = S.landings[p.i]; return l && { key: `land:${p.i}`, kind: 'landing', id: p.i, card: landingCard(l), at: l.at }; }
+    if (id === 'mqs-dc-ref') { const x = (S.data.cloud?.reference?.datacenters ?? []).find((d) => d.id === p.id); return x && { key: `dc:${x.id}`, kind: 'dc', id: x.id, card: dcCard(x), at: [x.lon, x.lat] }; }
+    if (id === 'mqs-cz-fill') { const z = S.cablesFile.cableZones[p.i]; return { key: `cz:${p.i}`, kind: 'cz', id: p.i, at: null,
+      card: { dot: CAT.cables, title: z.name ?? 'Zone de protection de câbles', state: `Réglementation de navigation · câbles ${z.cableCategory === 'power' ? 'd’énergie' : z.cableCategory === 'telecom' ? 'de télécommunication' : 'sous-marins'}`, stateHex: '#c7c7cc',
+        rows: [['Prescription', z.info ?? 'non précisée']], hint: 'Mouillage et chalutage réglementés au-dessus des câbles', source: 'Shom, Réglementation navigation (Licence ouverte 2.0, 2021)' } }; }
+    if (id === 'mqs-anch-line') { const z = S.cablesFile.anchorageZones[p.i]; return z && { key: `an:${p.i}`, kind: 'anch', id: p.i, at: null,
+      card: { dot: '#e8e8ec', title: z.name ?? 'Zone de mouillage', state: 'Mouillage qui recoupe une zone de câbles', stateHex: '#c7c7cc',
+        rows: [['Usage', z.info ?? 'n.d.'], ['Mouillage interdit', z.anchoringProhibited ? 'oui' : 'non']], hint: 'Point d’attention : une ancre qui chasse peut sectionner un câble', source: 'Shom, Réglementation navigation (Licence ouverte 2.0, 2021)' } }; }
+    if (id === 'submarine-cables-hitarea') {
+      const o = parseBody(p.body);
+      return { key: `cable:${p.id}`, kind: 'cable', id: p.id, at: null,
+        card: { dot: p.outOfService ? '#6e7585' : CAT.cables, title: o.title || 'câble sous-marin', state: o.sub, stateHex: '#c7c7cc',
+          rows: [...o.rows, ['Veille des navires', S.data.cablesWatch?.evaluated ? 'active' : 'coupée']], hint: o.notes.join(' '), source: 'Shom · OpenStreetMap' } };
     }
     if (id === 'sov-emergencies' || id.startsWith('sov-navy')) return { key: `${id}:${p.id}`, kind: 'raw', id: p.id, at: f.geometry.coordinates,
-      card: { dot: p.color ?? '#8a93a6', title: strong(p.body), state: id === 'sov-emergencies' ? 'Code d’urgence transpondeur' : 'Bâtiment de la Marine · port base (référence)', stateHex: p.color ?? '#c7c7cc',
-        rows: [], hint: id === 'sov-emergencies' ? null : 'Position de référence, pas une observation', source: id === 'sov-emergencies' ? 'ADS-B' : 'liste publique, AIS coupé' } };
+      card: { dot: p.color ?? '#8a93a6', title: strong(p.body), state: parseBody(p.body).sub || (id === 'sov-emergencies' ? 'Code d’urgence transpondeur' : 'Bâtiment de la Marine · port base (référence)'), stateHex: p.color ?? '#c7c7cc',
+        rows: parseBody(p.body).rows, hint: id === 'sov-emergencies' ? null : 'Position de référence, pas une observation', source: id === 'sov-emergencies' ? 'ADS-B' : 'liste publique, AIS coupé' } };
     return null;
   };
 
@@ -373,7 +548,8 @@
     const ops = Object.entries(a.ops).sort((x, y) => y[1] - x[1]);
     const communes = [...new Set(a.sites.map((s) => s.commune).filter(Boolean))];
     const inDept = (c) => deptAt(c)?.code === a.code;
-    const bases = S.bases.filter((b) => inDept(b.geometry.coordinates)).map((b) => b.properties.name);
+    const ex = exposure(a.code);
+    const bases = ex.bases.map((b) => b.properties.name + (S.audit.get(b.properties.id)?.status === 'recoupe' ? '' : ' (non recoupé)'));
     const air = (d.military?.aircraft ?? []).filter((x) => x.dept === a.code);
     const now = when(new Date().toISOString());
     const what = a.sites.length
@@ -385,6 +561,8 @@
     const impact = [
       communes.length ? `Communes touchées : ${communes.slice(0, 8).join(', ')}${communes.length > 8 ? ` et ${communes.length - 8}${NB}autres` : ''}.` : 'Aucune commune touchée par une panne récente.',
       `Sites de défense dans le département : ${bases.length ? bases.join(', ') : 'aucun dans la liste'} (aucune donnée en direct sur ces sites).`,
+      ex.land.length ? `Atterrages de câbles : ${ex.land.map((l) => `${l.commune} (${plural(l.n, 'câble')})`).join(', ')}.` : 'Aucun atterrage de câble sous-marin.',
+      ex.dcs.length ? `Centres de données : ${ex.dcs.map((x) => x.name).slice(0, 6).join(', ')}${ex.dcs.length > 6 ? ` et ${ex.dcs.length - 6}${NB}autres` : ''}.` : 'Aucun centre de données inventorié.',
       air.length ? `Aéronefs militaires au-dessus du département : ${air.map((x) => [x.callsign, x.registration].filter(Boolean).join(' · ')).join(' ; ')}.` : 'Aucun aéronef militaire relevé au-dessus du département au dernier relevé.',
     ];
     const evo = `France entière : ${num(tel?.summary?.recent ?? 0)}${NB}sites récents ; ${num(tel?.summary?.newSincePrevious ?? 0)}${NB}nouveaux et ${num(tel?.summary?.resolvedSincePrevious ?? 0)}${NB}rétablis depuis le fichier précédent.`;
@@ -441,6 +619,7 @@
   const swatch = (color, shape) => `<i class="mqs-sw mqs-sw-${shape}" style="--c:${color}"></i>`;
   const icon = (name, color, bg) => `<span class="mqs-ic"${bg ? ` style="background:${bg};border-color:${bg}"` : ''}>${fmIcon(name, { size: 14 }).replace('<svg', `<svg style="color:${color ?? INK}"`)}</span>`;
   // Remplace le bouton « Légende » de l'app (un seul point d'entrée), fermée par défaut comme les autres thèmes.
+  const shapeSw = (t, solid) => `<svg width="13" height="13" viewBox="0 0 28 28" style="flex:0 0 13px"><path d="${SHAPE[t]}" fill="${CAT.defense}" stroke="#fff" stroke-width="2.5" ${solid ? '' : 'stroke-dasharray="3.5 2.5"'}/></svg>`;
   const renderLegend = () => {
     const open = legend.dataset.open === 'true';
     const src = freshness(), ko = src.filter((r) => r[2] !== 'ok').length;
@@ -451,11 +630,15 @@
       <div class="mqs-row">${swatch(L1.jaune, 'disc')}Vigilance ${swatch(L1.orange, 'disc')}Alerte ${swatch(L1.rouge, 'disc')}Crise</div>
       <div class="mqs-row mqs-note">Disque = sites mobiles coupés depuis moins de 24${NB}h dans le département (seuils ${T.join(' / ')}), taille selon le nombre ; département teinté à son état ; orange aussi pour une coupure Internet en cours.</div>
       <h5>Couche : une couleur par catégorie</h5>
-      <div class="mqs-row">${icon('shield', '#fff', CAT.defense)}Défense <span class="mqs-chev" style="color:${CAT.defense}">▲</span>aéronef français <span class="mqs-chev" style="color:${CAT.defenseOther}">▲</span>autre pays</div>
-      <div class="mqs-row">${swatch(CAT.cables, 'line')}Câbles sous-marins et atterrages</div>
+      <div class="mqs-row">${['air', 'navy', 'army', 'joint'].map((t) => `${shapeSw(t, true)}${BASE_WORD[t]}`).join(' ')}</div>
+      <div class="mqs-row mqs-note">${shapeSw('air', false)}Site de défense : la forme dit l’armée ; pointillé = non recoupé par OpenStreetMap ; fermés en gris avec la pastille.</div>
+      <div class="mqs-row"><span class="mqs-chev" style="color:${CAT.defense}">➤</span>aéronef militaire français <span class="mqs-chev" style="color:${CAT.defenseOther}">➤</span>autre pays, orienté selon le cap</div>
+      <div class="mqs-row">${swatch(CAT.cables, 'line')}Câble sous-marin ${swatch('#6e7585', 'line')}hors service</div>
+      <div class="mqs-row">${swatch(CAT.cables, 'disc')}Atterrage : taille = nombre de câbles au même endroit</div>
+      <div class="mqs-row mqs-note">Avec la pastille : zones de protection des câbles (aplat cyan) et mouillages qui les recoupent (pointillé blanc).</div>
       <div class="mqs-row">${swatch(CAT.telecom, 'ring')}Sites mobiles coupés (détail avec la pastille)</div>
       <div class="mqs-row">${swatch(CAT.internet, 'dash')}Coupure Internet terminée depuis moins de 7${NB}jours</div>
-      <div class="mqs-row">${icon('cloud', '#fff', CAT.cloud)}Centres de données</div>
+      <div class="mqs-row">${icon('cloud', '#fff', CAT.cloud)}Zone cloud (page d’état) ${swatch(CAT.cloud, 'ring')}centre de données (inventaire, avec la pastille)</div>
       <div class="mqs-row">${swatch('#e8e8ec', 'dash')}Zone de défense et de sécurité</div>
       <div class="mqs-row mqs-note">Les pastilles en haut révèlent le détail d’une couche (clic, cumulable ; survol pour un aperçu).</div>
       <details${ko ? ' open' : ''}><summary>Sources · ${src.length - ko}${NB}à jour, ${ko}${NB}en défaut</summary>${src.map(([k, v, st]) => `<div class="mqs-row mqs-src"><i class="mqs-src-${st}"></i><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}</details>`;
@@ -547,6 +730,8 @@
       await wait(500);
     }
     S.bases ??= [];
+    [S.cablesFile, S.osm] = await Promise.all([getJson('/data/subsea-cables.json'), getJson('/data/defense-osm-works.json')]);
+    audit();
     const load = async () => {
       const [telecom, internet, military, cablesWatch, gnss, cyberData, cloud] = await Promise.all(['/api/outages/telecom', '/api/outages/internet', '/api/sovereignty/military',
         '/api/sovereignty/cables-watch', '/api/sovereignty/gnss', '/api/sovereignty/cyber', '/api/outages/cloud'].map(getJson));
