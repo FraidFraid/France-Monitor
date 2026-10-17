@@ -64,8 +64,8 @@
     'military-bases-circle', 'military-bases-label', 'submarine-cables-glow', 'submarine-cables-core', 'out-cloud-ref', 'out-cloud-zones', 'submarine-cables-landing'];
   // Calques de détail réservés à leur pastille.
   const PILL_ONLY = { 'mqs-cable-label': 'subseaCables', 'mqs-low-disc': 'outagesTelecom', 'mqs-low-count': 'outagesTelecom', 'mqs-inet-past': 'outagesInternet',
-    'mqs-cz-fill': 'subseaCables', 'mqs-cz-line': 'subseaCables', 'mqs-anch-line': 'subseaCables', 'mqs-landings-label': 'subseaCables',
-    'mqs-dc-ref': 'outagesCloud', 'mqs-bases-closed': 'military' };
+    'mqs-cz-fill': 'subseaCables', 'mqs-cz-line': 'subseaCables', 'mqs-anch-line': 'subseaCables', 'mqs-landings-label': ['subseaCables', 'cyber'],
+    'mqs-dc-ref': ['outagesCloud', 'cyber'], 'mqs-bases-closed': 'military' };
   // Aucune pastille active : toutes les couches sont affichées ; une pastille active : sa couche en avant, le détail des autres retiré.
   const allMode = () => S.focus.size === 0 && !preview;
   const isOn = (k) => allMode() || S.focus.has(k) || preview === k;
@@ -76,7 +76,7 @@
     for (const id of HIDE) V(id, false);
     // L'app masque les calques qu'elle ne connaît pas : ceux de la maquette sont remis visibles.
     // Hiérarchie : par défaut, l'anormal et les infrastructures ; le détail de chaque couche n'apparaît qu'avec sa pastille (clic ou survol).
-    for (const l of m.getStyle().layers) if (l.id.startsWith('mqs-')) V(l.id, !PILL_ONLY[l.id] || isOn(PILL_ONLY[l.id]));
+    for (const l of m.getStyle().layers) if (l.id.startsWith('mqs-')) V(l.id, !PILL_ONLY[l.id] || [].concat(PILL_ONLY[l.id]).some(isOn));
     // Câbles : cyan franc (catégorie), sans halo néon ; ils passeraient à la couleur L1 sur alerte de la veille.
     if (!baseOpacity.size) {
       // Hors service selon le Shom : gris, jamais une alerte.
@@ -93,7 +93,7 @@
     const zr = (id, min) => { try { if (m.getLayer(id) && m.getLayer(id).minzoom !== min) m.setLayerZoomRange(id, min, 24); } catch (e) { /* calque absent */ } };
     zr('mqs-sites-recent', isOn('outagesTelecom') ? 0 : 7);
     zr('mqs-sites-long', isOn('outagesTelecom') ? 0 : 8);
-    if (m.getLayer('mqs-cloud-sym')) m.setFilter('mqs-cloud-sym', isOn('outagesCloud') ? null : ['any', ['!=', ['get', 'status'], 'vert'], ['>=', ['zoom'], 8]]);
+    if (m.getLayer('mqs-cloud-sym')) m.setFilter('mqs-cloud-sym', isOn('outagesCloud') || isOn('cyber') ? null : ['any', ['!=', ['get', 'status'], 'vert'], ['>=', ['zoom'], 8]]);
     if (m.getLayer('mqs-bases-sym')) m.setLayoutProperty('mqs-bases-sym', 'text-field', isOn('military') ? ['get', 'name'] : ['step', ['zoom'], '', 8, ['get', 'name']]);
   };
 
@@ -190,6 +190,8 @@
     S.landings = landingsByPlace();
     setData('mqs-landings', fc(S.landings.map((l, i) => pt(l.at, { i, n: l.n, name: l.n >= 3 ? `${l.commune} · ${l.n}` : '' }))));
     setData('mqs-world', S.world?.routes ? { ...S.world.routes, features: S.world.routes.features.map((f) => ({ ...f, properties: { id: f.properties.id, planned: S.world.cables[f.properties.id]?.planned ?? false } })) } : fc([]));
+    // Suite des câbles du Shom au-delà des eaux françaises (OpenStreetMap) et bouts sans suite publiée.
+    setData('mqs-suite', fc((S.suite?.features ?? []).map((f, i) => ({ ...f, properties: { ...f.properties, i, disused: f.properties.disused ?? false } }))));
     setData('mqs-world-lp', fc((S.world?.landings ?? []).filter((l) => l.country !== 'France').map((l) => pt(l.at, { id: l.id }))));
     setData('mqs-cz', fc((S.cablesFile?.cableZones ?? []).map((z, i) => ({ type: 'Feature', geometry: { type: 'MultiPolygon', coordinates: z.polygons }, properties: { i } }))));
     setData('mqs-anch', fc((S.cablesFile?.anchorageZones ?? []).map((z, i) => ({ z, i })).filter(({ z }) => z.crossesCableZone)
@@ -230,6 +232,11 @@
         paint: { 'line-color': CAT.cables, 'line-width': ['interpolate', ['linear'], ['zoom'], 2, 0.9, 6, 1.4, 9, 2], 'line-opacity': 0.8 } }, under);
       m.addLayer({ id: 'mqs-world-planned', type: 'line', source: 'mqs-world', filter: ['get', 'planned'],
         paint: { 'line-color': CAT.cables, 'line-width': ['interpolate', ['linear'], ['zoom'], 2, 0.9, 6, 1.4, 9, 2], 'line-opacity': 0.8, 'line-dasharray': [3, 2.5] } }, under);
+      m.addLayer({ id: 'mqs-suite-line', type: 'line', source: 'mqs-suite', filter: ['==', ['get', 'kind'], 'osm'],
+        paint: { 'line-color': ['case', ['get', 'disused'], '#6e7585', CAT.cables], 'line-width': ['interpolate', ['linear'], ['zoom'], 2, 0.9, 6, 1.4, 9, 2], 'line-opacity': 0.8 } }, under);
+      m.addLayer({ id: 'mqs-suite-hit', type: 'line', source: 'mqs-suite', filter: ['==', ['get', 'kind'], 'osm'], paint: { 'line-color': '#000000', 'line-opacity': 0, 'line-width': 10 } }, under);
+      m.addLayer({ id: 'mqs-suite-end', type: 'circle', source: 'mqs-suite', filter: ['==', ['get', 'kind'], 'end'],
+        paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 2, 9, 4], 'circle-color': '#05060a', 'circle-stroke-color': '#c7c7cc', 'circle-stroke-width': 1.2 } });
       m.addLayer({ id: 'mqs-world-hit', type: 'line', source: 'mqs-world', paint: { 'line-color': '#000000', 'line-opacity': 0, 'line-width': 10 } }, under);
       m.addLayer({ id: 'mqs-world-lp', type: 'circle', source: 'mqs-world-lp',
         paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 2, 2, 8, 4], 'circle-color': '#05060a', 'circle-stroke-color': CAT.cables, 'circle-stroke-width': 1.4 } });
@@ -299,8 +306,9 @@
   // ─── Pastilles de l'application : mise en avant cumulable, le reste estompé (comme les pastilles Énergie) ───
   const GROUPS = {
     military: ['mqs-bases-sym', 'mqs-bases-closed', 'mqs-air-sym', 'sov-emergencies', 'sov-navy-reference', 'sov-navy-observed', 'sov-gnss-fill', 'sov-gnss-line'],
-    subseaCables: ['mqs-world-line', 'mqs-world-planned', 'mqs-world-lp', 'submarine-cables-line', 'mqs-landings', 'mqs-landings-label', 'mqs-cable-label', 'mqs-cz-fill', 'mqs-cz-line', 'mqs-anch-line'],
-    cyber: [],
+    subseaCables: ['mqs-world-line', 'mqs-world-planned', 'mqs-suite-line', 'mqs-suite-end', 'mqs-world-lp', 'submarine-cables-line', 'mqs-landings', 'mqs-landings-label', 'mqs-cable-label', 'mqs-cz-fill', 'mqs-cz-line', 'mqs-anch-line'],
+    // Cyber : aucun incident localisé publiquement ; la pastille montre l'infrastructure numérique exposée (centres de données, zones cloud, atterrages).
+    cyber: ['mqs-dc-ref', 'mqs-cloud-sym', 'mqs-landings', 'mqs-landings-label', 'submarine-cables-line'],
     stability: [],
     outagesTelecom: ['mqs-dept-level', 'mqs-dept-level-line', 'mqs-agg-disc', 'mqs-agg-count', 'mqs-low-disc', 'mqs-low-count', 'mqs-sites-recent', 'mqs-sites-long'],
     outagesInternet: ['mqs-inet', 'mqs-inet-past'],
@@ -313,12 +321,14 @@
     const m = S.m;
     const on = new Set(S.focus); if (preview) on.add(preview);
     calm();
-    for (const [g, layers] of Object.entries(GROUPS)) for (const id of layers) {
+    const owners = new Map();
+    for (const [g, layers] of Object.entries(GROUPS)) for (const id of layers) owners.set(id, [...(owners.get(id) ?? []), g]);
+    for (const [id, gs] of owners) {
       const l = m.getLayer(id); if (!l) continue;
       for (const p of OPACITY[l.type] ?? []) {
         const k = `${id}|${p}`;
         if (!baseOpacity.has(k)) baseOpacity.set(k, m.getPaintProperty(id, p) ?? 1);
-        const dim = on.size > 0 && !on.has(g);
+        const dim = on.size > 0 && !gs.some((g) => on.has(g));
         const base = baseOpacity.get(k);
         try { m.setPaintProperty(id, p, dim ? (typeof base === 'number' ? base * 0.15 : 0.12) : base); } catch (e) { /* propriété absente */ }
       }
@@ -454,6 +464,13 @@
         ['Veille des navires', S.data.cablesWatch?.evaluated ? 'active' : 'coupée']],
       hint: 'Tracé schématique au large ; le tracé précis près des côtes est celui du Shom', source: TG_SRC };
   };
+  const OSM_SRC = 'OpenStreetMap (contributeurs, ODbL), lu le 17/10/2026';
+  const suiteCard = (f) => f.properties.kind === 'end'
+    ? { dot: '#c7c7cc', title: 'Fin du relevé du Shom', state: 'Suite du câble non publiée', stateHex: '#c7c7cc',
+      rows: [['Câble', `Shom ${f.properties.shom.split('/').pop()}`]], hint: 'Le Shom ne relève que les eaux sous juridiction française ; ni TeleGeography ni OpenStreetMap ne donnent la suite de ce câble', source: 'Shom, câbles sous-marins (CC BY-SA)' }
+    : { dot: f.properties.disused ? '#6e7585' : CAT.cables, title: f.properties.name ?? 'Câble sans nom', state: f.properties.disused ? 'Hors service selon OpenStreetMap' : f.properties.power ? 'Câble électrique' : 'Câble de télécommunication',
+      stateHex: '#c7c7cc', rows: [['Tracé', 'suite au large du relevé du Shom'], ['Objets OSM', f.properties.osm.join(', ')]],
+      hint: 'Tracé d’après OpenStreetMap, non vérifié par une source officielle', source: OSM_SRC };
   const worldLandingCard = (l) => ({ dot: CAT.cables, title: l.name, state: `Atterrage hors de France · ${plural(l.cables.length, 'câble')} vers la France`, stateHex: '#c7c7cc',
     rows: [['Câbles', l.cables.map((id) => S.world.cables[id]?.name ?? id).join(', ')]], source: TG_SRC });
   // Bulles d'origine (câbles, Marine, urgences) : reprises en entier, au gabarit de la maquette.
@@ -480,7 +497,7 @@
   const deptAt = (c) => { if (!c) return null; for (const f of S.geo.deptShapes) if (inGeom(c, f.geometry)) return S.agg.get(f.properties.code); return null; };
 
   // Arbitre : une seule cible, la plus signifiante sous le pointeur.
-  const PRIORITY = ['mqs-air-sym', 'sov-emergencies', 'mqs-cloud-sym', 'mqs-sites-recent', 'mqs-agg-disc', 'mqs-low-disc', 'mqs-bases-sym', 'mqs-bases-closed', 'sov-navy-reference', 'sov-navy-observed', 'mqs-landings', 'mqs-world-lp', 'mqs-dc-ref', 'mqs-world-hit', 'submarine-cables-hitarea', 'mqs-anch-line', 'mqs-cz-fill', 'mqs-sites-long', 'mqs-dept-fill'];
+  const PRIORITY = ['mqs-air-sym', 'sov-emergencies', 'mqs-cloud-sym', 'mqs-sites-recent', 'mqs-agg-disc', 'mqs-low-disc', 'mqs-bases-sym', 'mqs-bases-closed', 'sov-navy-reference', 'sov-navy-observed', 'mqs-landings', 'mqs-world-lp', 'mqs-dc-ref', 'mqs-suite-end', 'mqs-world-hit', 'mqs-suite-hit', 'submarine-cables-hitarea', 'mqs-anch-line', 'mqs-cz-fill', 'mqs-sites-long', 'mqs-dept-fill'];
   const pick = (point) => {
     const layers = PRIORITY.filter((id) => S.m.getLayer(id));
     const hits = S.m.queryRenderedFeatures(point, { layers });
@@ -492,6 +509,7 @@
     if (id === 'mqs-sites-recent' || id === 'mqs-sites-long') { const s = (S.data.telecom?.sites ?? []).find((x) => x.id === p.id); return s && { key: `site:${s.id}`, kind: 'site', id: s.id, card: siteCard(s), at: [s.lon, s.lat] }; }
     if (id === 'mqs-bases-sym') return { key: `base:${p.id}`, kind: 'base', id: p.id, card: baseCard(p), at: f.geometry.coordinates };
     if (id === 'mqs-cloud-sym') return { key: `cloud:${p.id}`, kind: 'cloud', id: p.id, card: cloudCard(p), at: f.geometry.coordinates };
+    if (id === 'mqs-suite-hit' || id === 'mqs-suite-end') { const f = S.suite?.features[p.i]; return f && { key: `su:${p.i}`, kind: 'suite', id: p.i, card: suiteCard(f), at: null }; }
     if (id === 'mqs-world-hit') { const c = S.world?.cables[p.id]; return c && { key: `wc:${c.id}`, kind: 'wcable', id: c.id, card: worldCableCard(c), at: null }; }
     if (id === 'mqs-world-lp') { const l = S.world.landings.find((x) => x.id === p.id); return l && { key: `wl:${l.id}`, kind: 'wland', id: l.id, card: worldLandingCard(l), at: l.at }; }
     if (id === 'mqs-landings') { const l = S.landings[p.i]; return l && { key: `land:${p.i}`, kind: 'landing', id: p.i, card: landingCard(l), at: l.at }; }
@@ -536,14 +554,14 @@
   panel.className = 'mqs-fiche';
   const sec = (title, body) => `<section><h4>${esc(title)}</h4>${body}</section>`;
   const li = (items) => `<ul>${items.map((x) => `<li>${x}</li>`).join('')}</ul>`;
-  const spark = (hist) => {
+  const spark = (hist, key = 'recent', cap) => {
     if (!hist?.length) return '';
-    const w = 300, h = 44, max = Math.max(...hist.map((x) => x.recent), 1);
-    const pts = hist.map((x, i) => `${Math.round((i / (hist.length - 1)) * w)},${Math.round(h - (x.recent / max) * (h - 6) - 3)}`).join(' ');
+    const w = 300, h = 44, max = Math.max(...hist.map((x) => x[key]), 1);
+    const pts = hist.map((x, i) => `${Math.round((i / (hist.length - 1)) * w)},${Math.round(h - (x[key] / max) * (h - 6) - 3)}`).join(' ');
     const last = hist[hist.length - 1];
     return `<svg class="mqs-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><polyline points="${pts}" fill="none" stroke="#8a93a6" stroke-width="1.5"/>`
-      + `<circle cx="${w}" cy="${Math.round(h - (last.recent / max) * (h - 6) - 3)}" r="3" fill="#e8e8ec"/></svg>`
-      + `<div class="mqs-spark-cap">Sites récents, France entière, ${hist.length}${NB}derniers fichiers (max ${num(max)})</div>`;
+      + `<circle cx="${w}" cy="${Math.round(h - (last[key] / max) * (h - 6) - 3)}" r="3" fill="#e8e8ec"/></svg>`
+      + `<div class="mqs-spark-cap">${cap ?? `Sites récents, France entière, ${hist.length}${NB}derniers fichiers`} (max ${num(max)})</div>`;
   };
   const freshness = () => {
     const d = S.data, rows = [];
@@ -553,6 +571,9 @@
     rows.push(['ADS-B (aéronefs)', d.military?.readAt ? `lu ${when(d.military.readAt)}` : 'indisponible', d.military?.readAt ? 'ok' : 'ko']);
     rows.push(['AIS (navires, câbles)', d.cablesWatch?.evaluated ? `lu ${when(d.cablesWatch.readAt)}` : `coupé${(d.cablesWatch?.errors ?? [])[0] ? ` (${d.cablesWatch.errors[0]})` : ', aucun message reçu'}`, d.cablesWatch?.evaluated ? 'ok' : 'ko']);
     rows.push(['GNSS (brouillage)', d.gnss?.readAt ? `lu ${when(d.gnss.readAt)}${(d.gnss.errors ?? []).length ? ` · ${d.gnss.errors[0]}` : ''}` : 'indisponible', d.gnss?.readAt && !(d.gnss.errors ?? []).length ? 'ok' : 'part']);
+    rows.push(['CERT-FR (alertes)', d.cyber?.certfr?.readAt ? `lu ${when(d.cyber.certfr.readAt)}` : 'indisponible', d.cyber?.certfr?.readAt ? 'ok' : 'ko']);
+    rows.push(['CISA KEV (failles exploitées)', d.cyber?.kev?.readAt ? `catalogue ${d.cyber.kev.catalogVersion}, lu ${when(d.cyber.kev.readAt)}` : 'indisponible', d.cyber?.kev?.readAt ? 'ok' : 'ko']);
+    rows.push(['Ransomware.live (revendications)', d.cyber?.ransomware?.checkedAt ? `lu ${when(d.cyber.ransomware.checkedAt)}` : 'indisponible', d.cyber?.ransomware?.checkedAt ? 'ok' : 'ko']);
     rows.push(['Pages d’état cloud', d.cloud?.readAt ? `lu ${when(d.cloud.readAt)}` : 'indisponible', d.cloud?.readAt ? 'ok' : 'ko']);
     return rows;
   };
@@ -599,6 +620,53 @@
     blocks: [['Ce qui se passe', ['Aucune donnée en direct sur ce site.']], ['Impact', [`Département : ${deptAt(b.geometry.coordinates)?.nom ?? 'n.d.'}.`]],
       ['Ce qu’on ne sait pas', ['Statut actuel du site non vérifié sur une source officielle (liste interne sans date par site).', 'Unités, aéronefs et effectifs : non affichés (amendement O13).']]] });
 
+  // Fiche cyber : national, jamais critique (plafond vigilance) ; la carte montre ce qui est exposé, pas des incidents localisés.
+  const day = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : 'n.d.');
+  const SECTOR = { Technology: 'technologie', Healthcare: 'santé', 'Professional Services': 'services aux entreprises', 'Agriculture and Food Production': 'agriculture et agroalimentaire',
+    'Energy & Utilities': 'énergie et réseaux', 'Financial Services': 'finance', Manufacturing: 'industrie', 'Retail & E-Commerce': 'commerce', 'Public Sector': 'secteur public', Education: 'éducation',
+    'Transportation/Logistics': 'transport et logistique', Construction: 'construction', Telecommunication: 'télécoms', Government: 'administration', 'Hospitality and Tourism': 'tourisme' };
+  const cyberNote = () => {
+    const c = S.data.cyber ?? {}, cert = c.certfr ?? {}, kev = c.kev ?? {}, rw = c.ransomware ?? {};
+    const open = (cert.alerts ?? []).filter((x) => x.status === 'en-cours');
+    const closed = (cert.alerts ?? []).filter((x) => x.status !== 'en-cours').slice(0, 3);
+    const week = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
+    const kev7 = (kev.recent ?? []).filter((x) => x.dateAdded >= week);
+    const kw = kev.weeks ?? [], kevAvg = kw.length > 1 ? kw.slice(0, -1).reduce((n, x) => n + x.added, 0) / (kw.length - 1) : null;
+    const avis7 = (cert.avis ?? []).filter((x) => (x.lastVersion ?? x.firstVersion) >= week).length;
+    const dcs = (S.data.cloud?.reference?.datacenters ?? []).filter((x) => x.lat != null);
+    const dcTop = [...dcs.reduce((g, x) => g.set(S.agg.get(S.dcDept?.get(x.id))?.nom ?? 'n.d.', (g.get(S.agg.get(S.dcDept?.get(x.id))?.nom ?? 'n.d.') ?? 0) + 1), new Map())].sort((a, b) => b[1] - a[1]).slice(0, 4);
+    const land = [...(S.landings ?? [])].sort((a, b) => b.n - a.n);
+    const zonesKo = Object.values(S.data.cloud?.providers ?? {}).flatMap((p) => p.zones ?? []).filter((z) => z.status && z.status !== 'vert');
+    const pct = (r) => `${r >= 1 ? '+' : ''}${Math.round((r - 1) * 100)}${NB}%`;
+    return { sources: ['CERT-FR', 'CISA', 'Ransomware', 'Pages'], title: 'Vigilance cyber', sub: 'France entière · national, jamais critique (plafond : vigilance)', level: open.length ? 'jaune' : null, at: when(new Date().toISOString()),
+      blocks: [
+        ['Ce qui se passe', [
+          open.length ? `${open.length}${NB}alertes CERT-FR en cours, dont ${open.filter((x) => x.exploited).length}${NB}exploitées :` : 'Aucune alerte CERT-FR en cours.',
+          ...open.map((x) => `${x.title} (${x.ref}, depuis le ${day(x.firstVersion)}${x.lastVersion !== x.firstVersion ? `, mise à jour le ${day(x.lastVersion)}` : ''})${x.exploitedQuote ? ` : « ${x.exploitedQuote} »` : ''}`),
+          closed.length ? `Clôturées récemment : ${closed.map((x) => `${x.title} (${x.closedAt ? `le ${day(x.closedAt)}` : 'date n.d.'})`).join(' ; ')}.` : null,
+          `${avis7}${NB}avis CERT-FR publiés ou mis à jour en 7${NB}jours.`,
+        ].filter(Boolean)],
+        ['Failles exploitées (CISA KEV)', [
+          `${kev7.length}${NB}faille${kev7.length > 1 ? 's' : ''} ajoutée${kev7.length > 1 ? 's' : ''} en 7${NB}jours${kevAvg != null ? ` (moyenne ${num(Math.round(kevAvg * 10) / 10)}${NB}par semaine sur ${kw.length - 1}${NB}semaines)` : ''} ; ${num(kev.count ?? 0)}${NB}au catalogue.`,
+          ...kev7.slice(0, 6).map((x) => `${x.vendor} ${x.product} (${x.cve}), ajoutée le ${day(x.dateAdded)}, correctif exigé avant le ${day(x.dueDate)}${x.ransomware ? ', utilisée par des rançongiciels' : ''}${x.certfrRefs?.length ? `, reprise par le CERT-FR (${x.certfrRefs.join(', ')})` : ''}.`),
+        ]],
+        ['Rançongiciels (revendications visant la France)', [
+          `${rw.last30 ?? 'n.d.'}${NB}revendications en 30${NB}jours, pour ${num(Math.round(rw.baseline30 ?? 0))}${NB}en moyenne${rw.baseline30 ? ` (${pct(rw.last30 / rw.baseline30)})` : ''} ; ${rw.weekCount ?? 'n.d.'}${NB}cette semaine.`,
+          (rw.sectors30 ?? []).length ? `Secteurs : ${rw.sectors30.filter((x) => !/Other|Not Found/.test(x.label)).slice(0, 5).map((x) => `${SECTOR[x.label] ?? x.label} ${x.count}`).join(', ')}.` : null,
+          (rw.groups30 ?? []).length ? `Groupes : ${rw.groups30.slice(0, 5).map((x) => `${x.label} ${x.count}`).join(', ')}.` : null,
+        ].filter(Boolean)],
+        ['Exposition (sur la carte avec la pastille)', [
+          `${dcs.length}${NB}centres de données inventoriés, surtout ${dcTop.map(([k, n]) => `${k} ${n}`).join(', ')}.`,
+          `${land.length}${NB}points d’atterrage de câbles sous-marins, les plus concentrés : ${land.slice(0, 3).map((l) => `${l.commune} (${plural(l.n, 'câble')})`).join(', ')}.`,
+          zonesKo.length ? `${zonesKo.length}${NB}zone${zonesKo.length > 1 ? 's' : ''} cloud dégradée${zonesKo.length > 1 ? 's' : ''} selon les pages d’état.` : 'Zones cloud en France : aucune dégradation déclarée sur les pages d’état.',
+        ]],
+        ['Évolution', [`Revendications de rançongiciels par semaine, ${(rw.weeks ?? []).length}${NB}semaines.`]],
+        ['Ce qu’on ne sait pas', [
+          'Lieu des incidents : ni le CERT-FR ni les revendications ne donnent de localisation publique ; aucune victime n’est placée sur la carte.',
+          'Revendications non confirmées par les victimes (Ransomware.live).',
+          'Exposition réelle des équipements français aux failles citées : non mesurée (pas de balayage).',
+        ]]], spark: rw.weeks, sparkKey: 'count', sparkCap: 'Revendications par semaine visant la France' };
+  };
   // Sources propres à la fiche : un aéronef ne dépend que de l'ADS-B, un site de la liste interne.
   const sourcesOf = (n) => (n.sources ? freshness().filter(([k]) => n.sources.some((x) => k.startsWith(x))) : freshness());
   const noteText = (n) => [`${n.title} · ${n.sub}`, `Situation au ${n.at}`, ...n.blocks.map(([h, xs]) => `${h} : ${xs.join(' ')}`),
@@ -609,12 +677,13 @@
     if (kind === 'dept') { const a = S.agg.get(key); if (a) n = deptNote(a); }
     if (kind === 'air') { const a = airOf(key); if (a) n = airNote(a); }
     if (kind === 'base') { const b = S.bases.find((x) => x.properties.id === key); if (b) n = baseNote(b); }
+    if (kind === 'cyber') n = cyberNote();
     if (!n) { if (!silent) closeFiche(); return; }
     S.fiche = { kind, key };
     const lvl = n.level ? `<span class="mqs-lvl" style="background:${L1[n.level]};color:${n.level === 'jaune' ? '#1a1a1a' : '#fff'}">${WORD[n.level]}</span>` : '';
     panel.innerHTML = `<header><div><h3>${esc(n.title)}</h3><div class="mqs-sub">${lvl}${esc(n.sub)}</div><div class="mqs-at">Situation au ${n.at}</div></div>`
       + `<button class="mqs-x" aria-label="Fermer">×</button></header>`
-      + n.blocks.map(([h, xs]) => sec(h, li(xs.map(esc)) + (h === 'Évolution' && n.spark ? spark(n.spark) : ''))).join('')
+      + n.blocks.map(([h, xs]) => sec(h, li(xs.map(esc)) + (h === 'Évolution' && n.spark ? spark(n.spark, n.sparkKey, n.sparkCap) : ''))).join('')
       + sec('Sources et confiance', sourcesOf(n).length === 0 ? '<ul><li>Liste interne de sites publics, sans date par site.</li></ul>' : `<table>${sourcesOf(n).map(([k, v, st]) => `<tr><td><i class="mqs-src-${st}"></i>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</table>`)
       + `<footer><button class="mqs-copy">Copier pour la note</button><span class="mqs-copied"></span></footer>`;
     panel.style.display = 'flex';
@@ -648,6 +717,7 @@
       <div class="mqs-row mqs-note">${shapeSw('air', false)}Site de défense : la forme dit l’armée ; trait plein = source publique citée, pointillé = sans source ; fermés en gris.</div>
       <div class="mqs-row"><span class="mqs-chev" style="color:${CAT.defense}">➤</span>aéronef militaire français <span class="mqs-chev" style="color:${CAT.defenseOther}">➤</span>autre pays, orienté selon le cap</div>
       <div class="mqs-row">${swatch(CAT.cables, 'line')}Câble sous-marin, tracé complet ${swatch(CAT.cables, 'dash')}prévu ${swatch('#6e7585', 'line')}hors service</div>
+      <div class="mqs-row mqs-note">Au large, suite du tracé d’après TeleGeography ou OpenStreetMap ; ${swatch('#c7c7cc', 'ring')}fin du relevé du Shom sans suite publiée.</div>
       <div class="mqs-row">${swatch(CAT.cables, 'disc')}Atterrage : taille = nombre de câbles au même endroit</div>
       <div class="mqs-row mqs-note">Avec la pastille : zones de protection des câbles (aplat cyan) et mouillages qui les recoupent (pointillé blanc).</div>
       <div class="mqs-row">${swatch(CAT.telecom, 'ring')}Sites mobiles coupés (détail avec la pastille)</div>
@@ -668,7 +738,8 @@
     const exploited = open.filter((x) => x.exploited).length;
     cyber.innerHTML = `<div class="mqs-cy-h">${icon('shield', open.length ? L1.jaune : MUTE)}<b>Cyber</b><span>${open.length ? `${open.length}${NB}alertes CERT-FR en cours, dont ${exploited}${NB}exploitées` : 'aucune alerte CERT-FR en cours'}</span></div>`
       + (open.length ? `<div class="mqs-cy-l">${open.slice(0, 3).map((x) => `<a href="${esc(x.url)}" target="_blank" rel="noopener" title="${esc(x.title)}">${esc(x.title)}</a>`).join('')}</div>` : '')
-      + `<div class="mqs-cy-s">National, sans lieu sur la carte · plafond : vigilance</div>`;
+      + `<div class="mqs-cy-s">National · pastille : infrastructure exposée sur la carte · <a href="#" class="mqs-cy-more">fiche détaillée</a></div>`;
+    const more = cyber.querySelector('.mqs-cy-more'); if (more) more.onclick = (e) => { e.preventDefault(); openFiche('cyber', 'fr'); };
   };
 
   const css = `
@@ -741,7 +812,7 @@
     const { ALL_MILITARY_INSTALLATIONS } = await import('/src/config/military-bases-db.ts');
     S.bases = ALL_MILITARY_INSTALLATIONS.map((b) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: b.coordinates }, properties: { ...b } }));
     S.bases ??= [];
-    [S.cablesFile, S.osm, S.world] = await Promise.all([getJson('/data/subsea-cables.json'), getJson('/data/defense-osm-works.json'), getJson('/maquette-cables-monde.json')]);
+    [S.cablesFile, S.osm, S.world, S.suite] = await Promise.all([getJson('/data/subsea-cables.json'), getJson('/data/defense-osm-works.json'), getJson('/maquette-cables-monde.json'), getJson('/maquette-cables-suite.json')]);
     audit();
     const load = async () => {
       const [telecom, internet, military, cablesWatch, gnss, cyberData, cloud] = await Promise.all(['/api/outages/telecom', '/api/outages/internet', '/api/sovereignty/military',
