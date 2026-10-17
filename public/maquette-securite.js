@@ -48,28 +48,39 @@
     `<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="19" fill="${fill}" stroke="${ring}" stroke-width="2.5" ${dashed ? 'stroke-dasharray="5 4"' : ''}/>`
     + `<g transform="translate(11 11) scale(0.9167)">${glyph(name, ring === MUTE ? MUTE : '#ffffff')}</g></svg>`, 44);
   // Aéronef : chevron orienté selon le cap (plein = français, creux = autre pays) ; sans cap : rond.
-  const chevron = (filled) => image(`mqs-chev-${filled ? 'f' : 'o'}`,
-    `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><path d="M20 4 L32 34 L20 27 L8 34 Z" fill="${filled ? '#ffffff' : '#0b0d12'}" stroke="#ffffff" stroke-width="2.4" stroke-linejoin="round"/></svg>`, 40);
-  const noHeading = (filled) => image(`mqs-nohd-${filled ? 'f' : 'o'}`,
-    `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><circle cx="20" cy="20" r="11" fill="${filled ? '#ffffff' : '#0b0d12'}" stroke="#ffffff" stroke-width="2.4"/></svg>`, 40);
+  // Aéronef : chevron orienté selon le cap, à la couleur de sa famille (France, autre pays, hors de France) ; sans cap : rond.
+  const chevron = (k, color) => image(`mqs-chev-${k}`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><path d="M20 4 L32 34 L20 27 L8 34 Z" fill="${color}" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/></svg>`, 40);
+  const noHeading = (k, color) => image(`mqs-nohd-${k}`,
+    `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><circle cx="20" cy="20" r="11" fill="${color}" stroke="#ffffff" stroke-width="2"/></svg>`, 40);
 
-  // ─── Calques d'origine : cachés (remplacés) ou calmés ───
+  // ─── Couleurs de catégorie : franches, une par couche, jamais celles de l'échelle L1 (réservées aux états) ───
+  const CAT = { defense: '#4a9eff', defenseOther: '#b388ff', cables: '#22d3ee', telecom: '#e879f9', internet: '#2dd4bf', cloud: '#818cf8' };
+  // ─── Calques d'origine : remplacés par ceux de la maquette ───
   const HIDE = ['out-telecom-long', 'out-telecom-recent', 'out-internet-fill', 'out-internet-line', 'sov-aircraft', 'sov-aircraft-label', 'sov-aircraft-abroad',
-    'military-bases-circle', 'military-bases-label', 'submarine-cables-glow', 'submarine-cables-core', 'out-cloud-ref', 'out-cloud-zones', 'isnr-fill'];
+    'military-bases-circle', 'military-bases-label', 'submarine-cables-glow', 'submarine-cables-core', 'out-cloud-ref', 'out-cloud-zones'];
   const calm = () => {
     const m = S.m;
     const P = (id, k, v) => { try { if (m.getLayer(id) && JSON.stringify(m.getPaintProperty(id, k)) !== JSON.stringify(v)) m.setPaintProperty(id, k, v); } catch (e) { /* calque d'un autre type */ } };
-    for (const id of HIDE) if (m.getLayer(id) && m.getLayoutProperty(id, 'visibility') !== 'none') m.setLayoutProperty(id, 'visibility', 'none');
+    const V = (id, on) => { if (m.getLayer(id) && m.getLayoutProperty(id, 'visibility') !== (on ? 'visible' : 'none')) m.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'); };
+    for (const id of HIDE) V(id, false);
     // L'app masque les calques qu'elle ne connaît pas : ceux de la maquette sont remis visibles.
-    for (const l of m.getStyle().layers) if (l.id.startsWith('mqs-') && m.getLayoutProperty(l.id, 'visibility') === 'none') m.setLayoutProperty(l.id, 'visibility', 'visible');
-    // Câbles : trait fin neutre ; ils ne prennent une couleur qu'en cas d'alerte de la veille (aucune aujourd'hui : veille coupée).
-    P('submarine-cables-line', 'line-color', '#8a93a6'); P('submarine-cables-line', 'line-opacity', 0.45); P('submarine-cables-line', 'line-width', 1);
-    P('submarine-cables-landing', 'circle-color', '#8a93a6'); P('submarine-cables-landing', 'circle-radius', 2.5); P('submarine-cables-landing', 'circle-stroke-width', 0);
-    P('submarine-cables-landing', 'circle-opacity', 0.8);
-    // Pression du département (score global) : hors carte par défaut, deux jaunes se confondaient ; visible seulement par sa pastille.
-    const showPressure = S.focus.has('pression');
-    if (m.getLayer('isnr-line') && m.getLayoutProperty('isnr-line', 'visibility') !== (showPressure ? 'visible' : 'none')) m.setLayoutProperty('isnr-line', 'visibility', showPressure ? 'visible' : 'none');
-    P('isnr-line', 'line-width', 2.2);
+    for (const l of m.getStyle().layers) if (l.id.startsWith('mqs-')) V(l.id, l.id !== 'mqs-cable-label' || S.focus.has('subseaCables'));
+    // Câbles : cyan franc (catégorie), sans halo néon ; ils passeraient à la couleur L1 sur alerte de la veille.
+    if (!baseOpacity.size) {
+      P('submarine-cables-line', 'line-color', CAT.cables); P('submarine-cables-line', 'line-opacity', 0.85);
+      P('submarine-cables-line', 'line-width', ['interpolate', ['linear'], ['zoom'], 4, 1.2, 8, 2.2]);
+      P('submarine-cables-landing', 'circle-color', CAT.cables); P('submarine-cables-landing', 'circle-radius', ['interpolate', ['linear'], ['zoom'], 4, 2.5, 8, 4.5]);
+      P('submarine-cables-landing', 'circle-stroke-width', 1); P('submarine-cables-landing', 'circle-stroke-color', '#05060a');
+    }
+    // Pression par département (score global) : contour toujours, remplissage quand sa pastille est allumée.
+    V('isnr-line', true); V('isnr-fill', S.focus.has('stability'));
+    // Détail porté au premier plan par une pastille : sites télécoms et référentiel cloud dès la vue France.
+    const zr = (id, min) => { try { if (m.getLayer(id) && m.getLayer(id).minzoom !== min) m.setLayerZoomRange(id, min, 24); } catch (e) { /* calque absent */ } };
+    zr('mqs-sites-recent', S.focus.has('outagesTelecom') ? 0 : 7);
+    zr('mqs-sites-long', S.focus.has('outagesTelecom') ? 0 : 7);
+    if (m.getLayer('mqs-cloud-sym')) m.setFilter('mqs-cloud-sym', S.focus.has('outagesCloud') ? null : ['any', ['!=', ['get', 'status'], 'vert'], ['>=', ['zoom'], 6]]);
+    if (m.getLayer('mqs-bases-sym')) m.setLayoutProperty('mqs-bases-sym', 'text-field', S.focus.has('military') ? ['get', 'name'] : ['step', ['zoom'], '', 8, ['get', 'name']]);
   };
 
   // ─── Agrégation par département ───
@@ -105,17 +116,20 @@
     setData('mqs-zone-labels', fc(Object.entries(zoneAt).map(([z, pts]) => pt([pts.reduce((s, p) => s + p[0], 0) / pts.length, pts.reduce((s, p) => s + p[1], 0) / pts.length], { name: `Zone ${z}` }))));
     // Départements (survol, clic, coupure Internet en cours)
     setData('mqs-depts', fc(S.geo.deptShapes.map((f) => ({ ...f, properties: { code: f.properties.code, nom: f.properties.nom,
-      inet: (S.agg.get(f.properties.code)?.inet.length ?? 0) > 0 } }))));
+      inet: (S.agg.get(f.properties.code)?.inet.length ?? 0) > 0, inetPast: (S.agg.get(f.properties.code)?.inetPast.length ?? 0) > 0 } }))));
     // Symboles agrégés : rien quand tout est normal
     setData('mqs-agg', fc([...S.agg.values()].filter((a) => a.level !== 'vert').map((a) => pt(a.at, { code: a.code, n: a.sites.length, level: a.level, color: L1[a.level] }))));
+    // Sous le seuil : le compte reste lisible, à la couleur de la couche (information, pas alerte)
+    setData('mqs-low', fc([...S.agg.values()].filter((a) => a.level === 'vert' && a.sites.length > 0).map((a) => pt(a.at, { code: a.code, n: a.sites.length }))));
     // Détail au zoom : sites récents (bord à la couleur du département), stock ancien en semis gris
     const tel = S.data.telecom?.sites ?? [];
     setData('mqs-sites', fc(tel.filter((s) => s.lat && s.lon).map((s) => pt([s.lon, s.lat], { id: s.id, cls: s.cls,
-      ring: s.cls === 'recente' ? L1[S.agg.get(s.dept)?.level ?? 'vert'] === L1.vert ? INK : L1[S.agg.get(s.dept).level] : MUTE }))));
+      ring: s.cls === 'recente' ? L1[S.agg.get(s.dept)?.level ?? 'vert'] === L1.vert ? CAT.telecom : L1[S.agg.get(s.dept).level] : CAT.telecom }))));
     // Aéronefs au-dessus de la France : identité complète (O10)
     const mil = S.data.military;
-    setData('mqs-air', fc((mil?.aircraft ?? []).map((a) => pt([a.lon, a.lat], { hex: a.hex, fr: a.family === 'francais', track: a.track ?? 0, hasTrack: a.track !== null && a.track !== undefined,
-      label: [a.callsign, a.registration].filter(Boolean).join(' · ') }))));
+    setData('mqs-air', fc([...(mil?.aircraft ?? []).map((a) => ({ ...a, abroad: false })), ...(mil?.abroad ?? []).map((a) => ({ ...a, abroad: true }))]
+      .filter((a) => a.lat != null && a.lon != null).map((a) => pt([a.lon, a.lat], { hex: a.hex, fr: a.family === 'francais', abroad: a.abroad, track: a.track ?? 0,
+        hasTrack: a.track !== null && a.track !== undefined, label: [a.callsign, a.registration].filter(Boolean).join(' · ') }))));
     // Sites de défense : forme = armée, aucune couleur (rien d'anormal à signaler sur un site)
     setData('mqs-bases', fc(S.bases.map((b) => pt(b.geometry.coordinates, { id: b.properties.id, name: b.properties.name, type: b.properties.type }))));
     // Cloud : seules les zones en incident en cours sont dessinées en couleur ; référentiel au zoom
@@ -132,14 +146,20 @@
 
     if (!m.getLayer('mqs-zones-line')) {
       const ic = {
-        air: await disc('plane', INK, DARK), navy: await disc('anchor', INK, DARK), army: await disc('shield', INK, DARK),
-        joint: await disc('swords', INK, DARK), other: await disc('landmark', INK, DARK),
-        cloudOk: await disc('cloud', MUTE, DARK), cloudJ: await disc('cloud', L1.jaune, DARK), cloudO: await disc('cloud', L1.orange, DARK), cloudR: await disc('cloud', L1.rouge, DARK),
+        air: await disc('plane', '#ffffff', CAT.defense), navy: await disc('anchor', '#ffffff', CAT.defense), army: await disc('shield', '#ffffff', CAT.defense),
+        joint: await disc('swords', '#ffffff', CAT.defense), other: await disc('landmark', '#ffffff', CAT.defense),
+        cloudOk: await disc('cloud', '#ffffff', CAT.cloud), cloudJ: await disc('cloud', L1.jaune, DARK), cloudO: await disc('cloud', L1.orange, DARK), cloudR: await disc('cloud', L1.rouge, DARK),
       };
-      await chevron(true); await chevron(false); await noHeading(true); await noHeading(false);
+      await chevron('f', CAT.defense); await chevron('o', CAT.defenseOther); await chevron('a', '#8a93a6');
+      await noHeading('f', CAT.defense); await noHeading('o', CAT.defenseOther); await noHeading('a', '#8a93a6');
       const b = before();
       m.addLayer({ id: 'mqs-dept-fill', type: 'fill', source: 'mqs-depts', paint: { 'fill-color': '#ffffff', 'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.06, 0] } }, b);
       m.addLayer({ id: 'mqs-dept-hover', type: 'line', source: 'mqs-depts', filter: ['==', ['get', 'code'], ''], paint: { 'line-color': '#ffffff', 'line-width': 1.5, 'line-opacity': 0.8 } }, b);
+      m.addLayer({ id: 'mqs-inet-past', type: 'line', source: 'mqs-depts', filter: ['all', ['==', ['get', 'inetPast'], true], ['==', ['get', 'inet'], false]],
+        paint: { 'line-color': CAT.internet, 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1.1, 8, 2], 'line-opacity': 0.8 } }, b);
+      m.addLayer({ id: 'mqs-cable-label', type: 'symbol', source: 'submarine-cables-src',
+        layout: { 'symbol-placement': 'line', 'text-field': ['get', 'name'], 'text-size': 10, 'text-font': ['Open Sans Semibold'], 'symbol-spacing': 400 },
+        paint: { 'text-color': CAT.cables, 'text-halo-color': '#05060a', 'text-halo-width': 1.4 } });
       m.addLayer({ id: 'mqs-inet', type: 'line', source: 'mqs-depts', filter: ['==', ['get', 'inet'], true], paint: { 'line-color': L1.orange, 'line-width': 2.5 } }, b);
       m.addLayer({ id: 'mqs-zones-line', type: 'line', source: 'mqs-zones', paint: { 'line-color': '#e8e8ec', 'line-opacity': 0.75, 'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1.6, 8, 2.6], 'line-dasharray': [3, 2] } }, b);
       m.addLayer({ id: 'mqs-zones-label', type: 'symbol', source: 'mqs-zone-labels', maxzoom: 7,
@@ -148,15 +168,19 @@
       m.addLayer({ id: 'mqs-cloud-sym', type: 'symbol', source: 'mqs-cloud', filter: ['any', ['!=', ['get', 'status'], 'vert'], ['>=', ['zoom'], 8]],
         layout: { 'icon-image': ['match', ['get', 'status'], 'jaune', ic.cloudJ, 'orange', ic.cloudO, 'rouge', ic.cloudR, ic.cloudOk],
           'icon-size': ['match', ['get', 'status'], 'vert', 0.5, 0.7], 'icon-allow-overlap': true } }, b);
-      m.addLayer({ id: 'mqs-sites-long', type: 'circle', source: 'mqs-sites', minzoom: 9, filter: ['!=', ['get', 'cls'], 'recente'],
-        paint: { 'circle-radius': 2, 'circle-color': MUTE, 'circle-opacity': 0.6 } }, b);
+      m.addLayer({ id: 'mqs-sites-long', type: 'circle', source: 'mqs-sites', minzoom: 7, filter: ['!=', ['get', 'cls'], 'recente'],
+        paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 1.6, 10, 3], 'circle-color': CAT.telecom, 'circle-opacity': 0.55 } }, b);
       m.addLayer({ id: 'mqs-sites-recent', type: 'circle', source: 'mqs-sites', minzoom: 7, filter: ['==', ['get', 'cls'], 'recente'],
         paint: { 'circle-radius': 4.5, 'circle-color': DARK, 'circle-stroke-color': ['get', 'ring'], 'circle-stroke-width': 2 } }, b);
       m.addLayer({ id: 'mqs-bases-sym', type: 'symbol', source: 'mqs-bases',
         layout: { 'icon-image': ['match', ['get', 'type'], 'air', ic.air, 'navy', ic.navy, 'army', ic.army, 'joint', ic.joint, ic.other],
           'icon-size': ['interpolate', ['linear'], ['zoom'], 4, 0.42, 7, 0.6, 10, 0.85], 'icon-allow-overlap': true,
           'text-field': ['step', ['zoom'], '', 8, ['get', 'name']], 'text-size': 10, 'text-offset': [0, 1.2], 'text-anchor': 'top', 'text-font': ['Open Sans Semibold'], 'text-optional': true },
-        paint: { 'icon-opacity': 0.85, 'text-color': '#aab0bc', 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.3 } }, b);
+        paint: { 'icon-opacity': 1, 'text-color': '#bcd8ff', 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.3 } }, b);
+      m.addLayer({ id: 'mqs-low-disc', type: 'circle', source: 'mqs-low', maxzoom: 7,
+        paint: { 'circle-radius': ['+', 6, ['*', 2, ['sqrt', ['get', 'n']]]], 'circle-color': '#05060a', 'circle-opacity': 0.85, 'circle-stroke-color': CAT.telecom, 'circle-stroke-width': 1.6 } });
+      m.addLayer({ id: 'mqs-low-count', type: 'symbol', source: 'mqs-low', maxzoom: 7,
+        layout: { 'text-field': ['to-string', ['get', 'n']], 'text-size': 10, 'text-font': ['Open Sans Semibold'], 'text-allow-overlap': true }, paint: { 'text-color': CAT.telecom } });
       m.addLayer({ id: 'mqs-agg-disc', type: 'circle', source: 'mqs-agg', maxzoom: 7,
         paint: { 'circle-radius': ['min', 26, ['+', 7, ['*', 3, ['sqrt', ['get', 'n']]]]], 'circle-color': ['get', 'color'], 'circle-opacity': 0.92,
           'circle-stroke-color': '#05060a', 'circle-stroke-width': 1.5 } });
@@ -164,7 +188,7 @@
         layout: { 'text-field': ['to-string', ['get', 'n']], 'text-size': 11, 'text-font': ['Open Sans Semibold'], 'text-allow-overlap': true },
         paint: { 'text-color': ['match', ['get', 'level'], 'jaune', '#1a1a1a', '#ffffff'] } });
       m.addLayer({ id: 'mqs-air-sym', type: 'symbol', source: 'mqs-air',
-        layout: { 'icon-image': ['case', ['get', 'hasTrack'], ['case', ['get', 'fr'], 'mqs-chev-f', 'mqs-chev-o'], ['case', ['get', 'fr'], 'mqs-nohd-f', 'mqs-nohd-o']],
+        layout: { 'icon-image': ['concat', ['case', ['get', 'hasTrack'], 'mqs-chev-', 'mqs-nohd-'], ['case', ['get', 'abroad'], 'a', ['get', 'fr'], 'f', 'o']],
           'icon-rotate': ['get', 'track'], 'icon-rotation-alignment': 'map', 'icon-size': 0.75, 'icon-allow-overlap': true,
           'text-field': ['get', 'label'], 'text-size': 10, 'text-offset': [0, 1.3], 'text-anchor': 'top', 'text-font': ['Open Sans Semibold'], 'text-optional': true },
         paint: { 'text-color': '#e8e8ec', 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.5 } });
@@ -174,29 +198,53 @@
     if (S.fiche) openFiche(S.fiche.kind, S.fiche.key, true);
   };
 
-  // ─── Pastilles : mise en avant cumulable, le reste estompé ───
+  // ─── Pastilles de l'application : mise en avant cumulable, le reste estompé (comme les pastilles Énergie) ───
   const GROUPS = {
-    comms: { label: 'Communications', icon: 'signal', layers: ['mqs-agg-disc', 'mqs-agg-count', 'mqs-sites-recent', 'mqs-sites-long', 'mqs-inet', 'mqs-cloud-sym'] },
-    defense: { label: 'Défense', icon: 'shield', layers: ['mqs-bases-sym', 'mqs-air-sym', 'sov-emergencies', 'sov-navy-reference', 'sov-navy-observed', 'sov-gnss-fill', 'sov-gnss-line'] },
-    reseaux: { label: 'Câbles', icon: 'waves', layers: ['submarine-cables-line', 'submarine-cables-landing'] },
-    pression: { label: 'Pression', icon: 'activity', layers: ['isnr-line'] },
+    military: ['mqs-bases-sym', 'mqs-air-sym', 'sov-emergencies', 'sov-navy-reference', 'sov-navy-observed', 'sov-gnss-fill', 'sov-gnss-line'],
+    subseaCables: ['submarine-cables-line', 'submarine-cables-landing', 'mqs-cable-label'],
+    cyber: [],
+    stability: ['isnr-line', 'isnr-fill'],
+    outagesTelecom: ['mqs-agg-disc', 'mqs-agg-count', 'mqs-low-disc', 'mqs-low-count', 'mqs-sites-recent', 'mqs-sites-long'],
+    outagesInternet: ['mqs-inet', 'mqs-inet-past'],
+    outagesCloud: ['mqs-cloud-sym'],
   };
   const OPACITY = { circle: ['circle-opacity', 'circle-stroke-opacity'], symbol: ['icon-opacity', 'text-opacity'], line: ['line-opacity'], fill: ['fill-opacity'] };
   const baseOpacity = new Map();
+  let preview = null;
   const applyFocus = () => {
     const m = S.m;
-    for (const [g, def] of Object.entries(GROUPS)) for (const id of def.layers) {
+    const on = new Set(S.focus); if (preview) on.add(preview);
+    calm();
+    for (const [g, layers] of Object.entries(GROUPS)) for (const id of layers) {
       const l = m.getLayer(id); if (!l) continue;
       for (const p of OPACITY[l.type] ?? []) {
         const k = `${id}|${p}`;
         if (!baseOpacity.has(k)) baseOpacity.set(k, m.getPaintProperty(id, p) ?? 1);
-        const dim = S.focus.size > 0 && !S.focus.has(g);
+        const dim = on.size > 0 && !on.has(g);
         const base = baseOpacity.get(k);
-        try { m.setPaintProperty(id, p, dim ? (typeof base === 'number' ? base * 0.18 : 0.15) : base); } catch (e) { /* propriété absente */ }
+        try { m.setPaintProperty(id, p, dim ? (typeof base === 'number' ? base * 0.15 : 0.12) : base); } catch (e) { /* propriété absente */ }
       }
     }
-    document.querySelectorAll('.mqs-chip').forEach((c) => c.setAttribute('aria-pressed', String(S.focus.has(c.dataset.g))));
-    calm();
+    cyber.classList.toggle('is-focus', on.has('cyber'));
+    cyber.classList.toggle('is-dim', on.size > 0 && !on.has('cyber'));
+    syncChips();
+  };
+  // Les pastilles de l'app gardent leur rôle (ouvrir le panneau) ; la maquette y ajoute la mise en avant sur la carte.
+  const chipKey = (el) => el?.closest?.('.floating-panel-switcher__chip[data-panel-key]')?.dataset.panelKey;
+  const syncChips = () => document.querySelectorAll('.floating-panel-switcher__chip[data-panel-key]').forEach((c) => {
+    if (!(c.dataset.panelKey in GROUPS)) return;
+    const pressed = S.focus.has(c.dataset.panelKey);
+    if (c.classList.contains('is-active') !== pressed) c.classList.toggle('is-active', pressed);
+    if (c.getAttribute('aria-pressed') !== String(pressed)) c.setAttribute('aria-pressed', String(pressed));
+  });
+  const wireChips = () => {
+    document.addEventListener('click', (e) => {
+      const k = chipKey(e.target); if (!k || !(k in GROUPS)) return;
+      S.focus.has(k) ? S.focus.delete(k) : S.focus.add(k);
+      preview = null; applyFocus();
+    }, true);
+    document.addEventListener('mouseover', (e) => { const k = chipKey(e.target); const next = k in GROUPS ? k : null; if (next !== preview) { preview = next; applyFocus(); } });
+    new MutationObserver(syncChips).observe(document.body, { subtree: true, childList: true });
   };
 
   // ─── Bulle unique ───
@@ -212,30 +260,31 @@
 
   const telecomSource = () => `ARCEP, fichier du ${when(S.data.telecom?.file?.publishedAt)}`;
   const deptCard = (a) => {
+    if (!a) return null;
     const ops = Object.entries(a.ops).sort((x, y) => y[1] - x[1]).map(([o, n]) => `${o} ${n}`).join(', ');
-    return { dot: L1[a.level], title: `${a.nom} (${a.code})`, state: a.level === 'vert' ? 'Normal · sous le seuil' : `${WORD[a.level]} · communications`, stateHex: a.level === 'vert' ? '#c7c7cc' : L1[a.level],
+    return { dot: a.level === 'vert' ? CAT.telecom : L1[a.level], title: `${a.nom} (${a.code})`, state: a.level === 'vert' ? 'Normal · sous le seuil' : `${WORD[a.level]} · communications`, stateHex: a.level === 'vert' ? '#c7c7cc' : L1[a.level],
       rows: [['Sites mobiles coupés < 24' + NB + 'h', String(a.sites.length)], ['Opérateurs', ops || 'aucun'], ['Coupure Internet en cours', a.inet.length ? 'oui (IODA)' : 'non'],
         ['Zone de défense', a.zone]],
       hint: 'Clic : fiche du département', source: telecomSource() };
   };
-  const airOf = (hex) => (S.data.military?.aircraft ?? []).find((a) => a.hex === hex);
-  const airCard = (a) => ({ dot: a.family === 'francais' ? '#ffffff' : '#8a93a6', title: [a.callsign, a.registration].filter(Boolean).join(' · ') || a.hex,
-    state: a.family === 'francais' ? 'Aéronef militaire français' : `Aéronef militaire · ${a.country ?? 'pays n.d.'}`, stateHex: '#c7c7cc',
+  const airOf = (hex) => [...(S.data.military?.aircraft ?? []), ...(S.data.military?.abroad ?? []).map((a) => ({ ...a, abroadOnly: true }))].find((a) => a.hex === hex);
+  const airCard = (a) => ({ dot: a.family === 'francais' ? CAT.defense : CAT.defenseOther, title: [a.callsign, a.registration].filter(Boolean).join(' · ') || a.hex,
+    state: `${a.family === 'francais' ? 'Aéronef militaire français' : `Aéronef militaire · ${a.country ?? 'pays n.d.'}`}${a.abroadOnly ? ' · hors de France' : ''}`, stateHex: '#c7c7cc',
     rows: [['Type', a.type ?? 'n.d.'], ['Altitude', a.altitudeFt != null ? `${num(a.altitudeFt)}${NB}ft` : 'n.d.'], ['Vitesse', a.speedKt != null ? `${num(Math.round(a.speedKt))}${NB}kt` : 'n.d.'],
       ['Cap', a.track != null ? `${Math.round(a.track)}${NB}°` : 'n.d.'], ['Vu', when(a.seenAt)]],
     hint: 'Clic : fiche', source: 'ADS-B (adsb.lol), positions publiques' });
   const BASE_WORD = { air: 'air', navy: 'marine', army: 'terre', joint: 'interarmées', fortification: 'fortification', other: 'autre' };
-  const baseCard = (p) => ({ dot: '#8a93a6', title: p.name, state: `Site ${BASE_WORD[p.type] ?? 'autre'} · contexte`, stateHex: '#c7c7cc',
+  const baseCard = (p) => ({ dot: CAT.defense, title: p.name, state: `Site ${BASE_WORD[p.type] ?? 'autre'} · contexte`, stateHex: '#c7c7cc',
     rows: [['Département', deptAt(S.bases.find((b) => b.properties.id === p.id)?.geometry.coordinates)?.nom ?? 'n.d.']],
     hint: 'Aucune donnée en direct sur ce site', source: 'liste interne de sites publics, sans date par site' });
-  const siteCard = (s) => ({ dot: s.cls === 'recente' ? L1[S.agg.get(s.dept)?.level ?? 'vert'] === L1.vert ? INK : L1[S.agg.get(s.dept).level] : MUTE,
+  const siteCard = (s) => ({ dot: s.cls === 'recente' && S.agg.get(s.dept)?.level !== 'vert' ? L1[S.agg.get(s.dept).level] : CAT.telecom,
     title: `${s.operator} · ${s.commune ?? 'commune n.d.'}`, state: s.cls === 'recente' ? `Hors service ${ago(s.since)}` : s.cls === 'sans-date' ? 'Hors service · date de début non publiée' : `Hors service ${ago(s.since)} (stock ancien)`,
     stateHex: '#e8e8ec', rows: [['Données', s.data === 'HS' ? 'coupées' : s.data ?? 'n.d.'], ['Voix', s.voice === 'HS' ? 'coupée' : s.voice ?? 'non publiée'], ['Technologies', (s.techs ?? []).join(', ') || 'n.d.'],
       ['Cause', s.cause ?? 'n.d.']], source: telecomSource() });
   const cableWatch = () => (S.data.cablesWatch?.evaluated ? 'veille active' : `veille des navires coupée (${(S.data.cablesWatch?.errors ?? [])[0] ?? 'source injoignable'})`);
   const cloudCard = (p) => {
     const i = (S.data.cloud?.incidents ?? []).find((x) => x.state === 'en-cours' && x.zones.some((z) => `${x.provider}:${z}` === p.id));
-    return { dot: p.status === 'vert' ? MUTE : L1[p.status], title: `${p.provider} · ${p.label}`, state: i ? `Incident en cours ${ago(i.start)}` : 'Opérationnel', stateHex: i ? L1[p.status] : '#c7c7cc',
+    return { dot: p.status === 'vert' ? CAT.cloud : L1[p.status], title: `${p.provider} · ${p.label}`, state: i ? `Incident en cours ${ago(i.start)}` : 'Opérationnel', stateHex: i ? L1[p.status] : '#c7c7cc',
       rows: i ? [['Incident', i.title], ['Impact déclaré', i.impact]] : [], source: `page d'état ${p.provider}` };
   };
   const strong = (html) => { const d = document.createElement('div'); d.innerHTML = html ?? ''; return d.querySelector('strong, b, .hm-tip-title')?.textContent ?? d.textContent.slice(0, 60); };
@@ -243,7 +292,7 @@
   const deptAt = (c) => { if (!c) return null; for (const f of S.geo.deptShapes) if (inGeom(c, f.geometry)) return S.agg.get(f.properties.code); return null; };
 
   // Arbitre : une seule cible, la plus signifiante sous le pointeur.
-  const PRIORITY = ['mqs-air-sym', 'sov-emergencies', 'mqs-cloud-sym', 'mqs-sites-recent', 'mqs-agg-disc', 'mqs-bases-sym', 'sov-navy-reference', 'sov-navy-observed', 'submarine-cables-landing', 'submarine-cables-hitarea', 'mqs-sites-long', 'mqs-dept-fill'];
+  const PRIORITY = ['mqs-air-sym', 'sov-emergencies', 'mqs-cloud-sym', 'mqs-sites-recent', 'mqs-agg-disc', 'mqs-low-disc', 'mqs-bases-sym', 'sov-navy-reference', 'sov-navy-observed', 'submarine-cables-landing', 'submarine-cables-hitarea', 'mqs-sites-long', 'mqs-dept-fill'];
   const pick = (point) => {
     const layers = PRIORITY.filter((id) => S.m.getLayer(id));
     const hits = S.m.queryRenderedFeatures(point, { layers });
@@ -251,14 +300,14 @@
     hits.sort((a, b) => PRIORITY.indexOf(a.layer.id) - PRIORITY.indexOf(b.layer.id));
     const f = hits[0], p = f.properties, id = f.layer.id;
     if (id === 'mqs-air-sym') { const a = airOf(p.hex); return a && { key: `air:${p.hex}`, kind: 'air', id: p.hex, card: airCard(a), at: [a.lon, a.lat] }; }
-    if (id === 'mqs-agg-disc' || id === 'mqs-dept-fill') { const a = S.agg.get(p.code); return a && { key: `dept:${a.code}`, kind: 'dept', id: a.code, card: deptCard(a), at: id === 'mqs-dept-fill' ? null : a.at }; }
+    if (id === 'mqs-agg-disc' || id === 'mqs-low-disc' || id === 'mqs-dept-fill') { const a = S.agg.get(p.code); return a && { key: `dept:${a.code}`, kind: 'dept', id: a.code, card: deptCard(a), at: id === 'mqs-dept-fill' ? null : a.at }; }
     if (id === 'mqs-sites-recent' || id === 'mqs-sites-long') { const s = (S.data.telecom?.sites ?? []).find((x) => x.id === p.id); return s && { key: `site:${s.id}`, kind: 'site', id: s.id, card: siteCard(s), at: [s.lon, s.lat] }; }
     if (id === 'mqs-bases-sym') return { key: `base:${p.id}`, kind: 'base', id: p.id, card: baseCard(p), at: f.geometry.coordinates };
     if (id === 'mqs-cloud-sym') return { key: `cloud:${p.id}`, kind: 'cloud', id: p.id, card: cloudCard(p), at: f.geometry.coordinates };
     if (id === 'submarine-cables-hitarea' || id === 'submarine-cables-landing') {
       const title = id === 'submarine-cables-landing' ? strong(p.body) : p.name || 'câble sous-marin';
       return { key: `cable:${p.id ?? title}`, kind: 'cable', id: title, at: null,
-        card: { dot: '#8a93a6', title, state: id === 'submarine-cables-landing' ? 'Atterrage · contexte' : 'Câble sous-marin · contexte', stateHex: '#c7c7cc',
+        card: { dot: CAT.cables, title, state: id === 'submarine-cables-landing' ? 'Atterrage · contexte' : 'Câble sous-marin · contexte', stateHex: '#c7c7cc',
           rows: [['Veille des navires', S.data.cablesWatch?.evaluated ? 'active' : 'coupée']], hint: S.data.cablesWatch?.evaluated ? null : cableWatch(), source: 'OpenStreetMap, TeleGeography' } };
     }
     if (id === 'sov-emergencies' || id.startsWith('sov-navy')) return { key: `${id}:${p.id}`, kind: 'raw', id: p.id, at: f.geometry.coordinates,
@@ -379,24 +428,24 @@
   const legend = document.createElement('div');
   legend.className = 'mqs-legend';
   const swatch = (color, shape) => `<i class="mqs-sw mqs-sw-${shape}" style="--c:${color}"></i>`;
-  const icon = (name, color) => `<span class="mqs-ic">${fmIcon(name, { size: 14 }).replace('<svg', `<svg style="color:${color ?? INK}"`)}</span>`;
+  const icon = (name, color, bg) => `<span class="mqs-ic"${bg ? ` style="background:${bg};border-color:${bg}"` : ''}>${fmIcon(name, { size: 14 }).replace('<svg', `<svg style="color:${color ?? INK}"`)}</span>`;
   const renderLegend = () => {
     const open = legend.dataset.open !== 'false';
-    legend.innerHTML = `<button class="mqs-leg-toggle">${open ? 'Masquer la légende' : 'Lire la carte'}</button>` + (open ? `<h5>Mettre en avant (cumulable)</h5><div class="mqs-chips-slot"></div>
-      <h5>Couleur = état (seuils des communications : ${T.join(' / ')} sites coupés &lt; 24${NB}h)</h5>
-      <div class="mqs-row">${swatch(L1.jaune, 'disc')}Vigilance</div><div class="mqs-row">${swatch(L1.orange, 'disc')}Alerte, ou coupure Internet en cours</div>
-      <div class="mqs-row">${swatch(L1.rouge, 'disc')}Crise</div><div class="mqs-row">${swatch('#1c2029', 'none')}Rien : situation normale</div>
-      <h5>Taille = nombre de sites mobiles coupés &lt; 24${NB}h par département ; détail site par site à partir du zoom 7</h5>
-      <h5>Forme = catégorie (gris : contexte, aucune mesure en direct)</h5>
-      <div class="mqs-row">${icon('plane')}${icon('anchor')}${icon('shield')}${icon('swords')}Sites de défense (air, marine, terre, interarmées)</div>
-      <div class="mqs-row"><span class="mqs-chev">▲</span><span class="mqs-chev mqs-chev-o">▲</span>Aéronef militaire orienté selon son cap (plein : France, creux : autre pays)</div>
-      <div class="mqs-row">${icon('cloud', MUTE)}Centre de données (coloré seulement en incident)</div>
-      <h5>Trait</h5>
-      <div class="mqs-row">${swatch('#c9ccd6', 'dash')}Zone de défense et de sécurité</div>
-      <div class="mqs-row">${swatch('#8a93a6', 'line')}Câble sous-marin (coloré seulement en alerte de la veille)</div>
-      <div class="mqs-row">${swatch(L1.orange, 'line')}Pastille Pression : contour du département à la couleur de son score</div>
+    legend.innerHTML = `<button class="mqs-leg-toggle">${open ? 'Masquer la légende' : 'Lire la carte'}</button>` + (open ? `
+      <h5>Couleur de la couche = catégorie</h5>
+      <div class="mqs-row">${icon('shield', '#fff', CAT.defense)}Défense : sites, aéronefs français ${swatch(CAT.defenseOther, 'disc')} autres pays</div>
+      <div class="mqs-row">${swatch(CAT.cables, 'line')}Connectivité : câbles sous-marins et atterrages</div>
+      <div class="mqs-row">${swatch(CAT.telecom, 'ring')}Télécoms mobiles : sites coupés, compte par département</div>
+      <div class="mqs-row">${swatch(CAT.internet, 'line')}Internet : coupure terminée depuis moins de 7${NB}jours</div>
+      <div class="mqs-row">${icon('cloud', '#fff', CAT.cloud)}Cloud et hébergement : centres de données</div>
+      <h5>Rouge, orange, jaune = état anormal, sur toute couche</h5>
+      <div class="mqs-row">${swatch(L1.jaune, 'disc')}Vigilance · ${swatch(L1.orange, 'disc')}Alerte · ${swatch(L1.rouge, 'disc')}Crise</div>
+      <div class="mqs-row mqs-note">Télécoms : ${T.join(' / ')} sites coupés depuis moins de 24${NB}h dans le département ; orange aussi pour une coupure Internet en cours.</div>
+      <h5>Taille = nombre ; orientation = cap</h5>
+      <div class="mqs-row"><span class="mqs-chev" style="color:${CAT.defense}">▲</span>Aéronef militaire orienté selon son cap, nom et immatriculation affichés</div>
+      <h5>Trait blanc pointillé = zone de défense et de sécurité</h5>
+      <div class="mqs-row mqs-note">Pastilles en haut : un clic met la couche en avant (cumulable), le survol la montre un instant.</div>
       <h5>Sources</h5>${freshness().map(([k, v, st]) => `<div class="mqs-row mqs-src"><i class="mqs-src-${st}"></i><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}` : '');
-    legend.querySelector('.mqs-chips-slot')?.replaceWith(chips);
     legend.querySelector('.mqs-leg-toggle').onclick = () => { legend.dataset.open = String(!open); renderLegend(); };
   };
 
@@ -410,14 +459,6 @@
     cyber.innerHTML = `<div class="mqs-cy-h">${icon('shield', open.length ? L1.jaune : MUTE)}<b>Cyber</b><span>${open.length ? `${open.length}${NB}alertes CERT-FR en cours, dont ${exploited}${NB}exploitées` : 'aucune alerte CERT-FR en cours'}</span></div>`
       + (open.length ? `<div class="mqs-cy-l">${open.slice(0, 3).map((x) => `<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a>`).join('')}</div>` : '')
       + `<div class="mqs-cy-s">Hors carte : une alerte nationale n’a pas de lieu. Plafond : vigilance (jaune).</div>`;
-  };
-
-  // ─── Pastilles ───
-  const chips = document.createElement('div');
-  chips.className = 'mqs-chips';
-  const renderChips = () => {
-    chips.innerHTML = Object.entries(GROUPS).map(([g, d]) => `<button class="mqs-chip" data-g="${g}" aria-pressed="false">${icon(d.icon)}${esc(d.label)}</button>`).join('');
-    chips.querySelectorAll('.mqs-chip').forEach((b) => { b.onclick = () => { const g = b.dataset.g; S.focus.has(g) ? S.focus.delete(g) : S.focus.add(g); applyFocus(); }; });
   };
 
   const css = `
@@ -453,7 +494,9 @@
   .mqs-cy-h { display: flex; align-items: center; gap: 6px; } .mqs-cy-h span { color: #aab0bc; }
   .mqs-cy-l a { display: block; color: #d9dde5; text-decoration: none; margin: 3px 0 0 24px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } .mqs-cy-l a:hover { text-decoration: underline; }
   .mqs-cy-s { color: #6e6e80; font-size: 10.5px; margin-top: 4px; }
-  .mqs-chips { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin: 8px 0 2px; }
+  .mqs-sw-ring { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--c); background: #05060a; }
+  .mqs-note { color: #9898a8; font-size: 11px; }
+  .mqs-cyber.is-focus { border-color: #ffcc00; box-shadow: 0 0 0 2px rgba(255,204,0,.35); } .mqs-cyber.is-dim { opacity: .35; }
   .mqs-chip { display: inline-flex; align-items: center; gap: 5px; background: #1c2029; color: #d9dde5; border: 1px solid #2a2e37; border-radius: 999px; padding: 2px 10px 2px 3px; cursor: pointer; font-size: 11.5px; }
   .mqs-chip[aria-pressed="true"] { background: #e8e8ec; color: #111; } .mqs-chip[aria-pressed="true"] .mqs-ic { border-color: #111; }
   .mqs-chip-h { color: #6e6e80; font-size: 10.5px; padding: 0 4px; }
@@ -477,7 +520,7 @@
     const style = document.createElement('style'); style.textContent = css; document.head.appendChild(style);
     const host = S.m.getContainer();
     host.append(pop, panel, legend, cyber);
-    renderChips();
+    wireChips();
     // Sites de défense : lus dans la source de la carte (liste interne)
     for (let i = 0; i < 40; i += 1) {
       const src = S.m.getSource('military-bases-src');
