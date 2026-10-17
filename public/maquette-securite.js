@@ -46,7 +46,7 @@
   const glyph = (name, color) => fmIcon(name, { size: 24 }).replace(/^<svg[^>]*>/, `<g fill="none" stroke="${color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">`).replace('</svg>', '</g>');
   const disc = (name, ring, fill, dashed) => image(`mqs-${name}-${ring}-${fill}-${dashed ? 'd' : 'p'}`,
     `<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="19" fill="${fill}" stroke="${ring}" stroke-width="2.5" ${dashed ? 'stroke-dasharray="5 4"' : ''}/>`
-    + `<g transform="translate(11 11) scale(0.9167)">${glyph(name, ring === MUTE ? MUTE : '#ffffff')}</g></svg>`, 44);
+    + `<g transform="translate(11 11) scale(0.9167)">${glyph(name, ring === MUTE ? MUTE : LIGHT_FILL.has(fill) ? '#0b1020' : '#ffffff')}</g></svg>`, 44);
   // Aéronef : chevron orienté selon le cap (plein = français, creux = autre pays) ; sans cap : rond.
   // Aéronef : chevron orienté selon le cap, à la couleur de sa famille (France, autre pays, hors de France) ; sans cap : rond.
   const chevron = (k, color) => image(`mqs-chev-${k}`,
@@ -58,6 +58,9 @@
     `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><circle cx="20" cy="20" r="11" fill="${color}" stroke="#ffffff" stroke-width="2"/></svg>`, 40);
 
   // ─── Couleurs de catégorie : franches, une par couche, jamais celles de l'échelle L1 (réservées aux états) ───
+  // Sites de défense : une couleur par armée en plus de la forme (bleu ciel = air, bleu marine = mer, sable = terre, blanc = interarmées, ardoise = autres).
+  const BASE_HEX = { air: '#7cc4ff', navy: '#2f6bff', army: '#c8a165', joint: '#f1f5f9', other: '#94a3b8' };
+  const LIGHT_FILL = new Set(['#7cc4ff', '#c8a165', '#f1f5f9']);
   const CAT = { defense: '#4a9eff', defenseOther: '#b388ff', cables: '#22d3ee', telecom: '#e879f9', internet: '#2dd4bf', cloud: '#818cf8' };
   // ─── Calques d'origine : remplacés par ceux de la maquette ───
   const HIDE = ['out-telecom-long', 'out-telecom-recent', 'out-internet-fill', 'out-internet-line', 'sov-aircraft', 'sov-aircraft-label', 'sov-aircraft-abroad',
@@ -92,7 +95,8 @@
     // pour ne pas confondre son contour avec celui du niveau télécoms.
     const pill = (k) => S.focus.has(k) || preview === k;
     V('protests', isOn('protests')); V('protests-label', isOn('protests'));
-    V('mqs-crime-city', isOn('crime') && !pill('crime')); V('crime-city', pill('crime')); V('crime-city-label', pill('crime')); V('crime-fill', pill('crime')); V('crime-line', pill('crime'));
+    // Sans pastille : toutes les couches, criminalité comprise (aplat des départements + villes à 2 fois la moyenne) ; le contour reste réservé à la pastille.
+    V('mqs-crime-city', isOn('crime') && !pill('crime')); V('crime-city', pill('crime')); V('crime-city-label', pill('crime')); V('crime-fill', isOn('crime')); V('crime-line', pill('crime'));
     P('isnr-fill', 'fill-opacity', S.focus.has('stability') || preview === 'stability' ? 0.65 : 0.2);
     // Détail porté au premier plan par une pastille : sites télécoms et référentiel cloud dès la vue France.
     const zr = (id, min) => { try { if (m.getLayer(id) && m.getLayer(id).minzoom !== min) m.setLayerZoomRange(id, min, 24); } catch (e) { /* calque absent */ } };
@@ -190,10 +194,13 @@
     // Sites de défense : forme = armée ; trait plein = source publique citée, pointillé = sans source ; fermés à part (gris).
     setData('mqs-bases', fc(S.bases.map((b) => { const au = S.audit.get(b.properties.id);
       const t = ['air', 'navy', 'army', 'joint'].includes(b.properties.type) ? b.properties.type : 'other';
-      return pt(b.geometry.coordinates, { id: b.properties.id, name: b.properties.name, type: t, status: au?.status ?? 'seul', solid: au?.status === 'source' }); })));
+      return pt(b.geometry.coordinates, { id: b.properties.id, name: b.properties.name, type: t, color: BASE_HEX[t], status: au?.status ?? 'seul', solid: au?.status === 'source' }); })));
     // Atterrages par commune, zones de protection des câbles et mouillages qui les recoupent (Shom)
     S.landings = landingsByPlace();
     setData('mqs-crime', S.crimeFc ?? fc([]));
+    if (S.mk && S.data.protests?.items) setData('protests-src', S.mk.protestFeatures(S.data.protests));
+    // Départements : indicateur par défaut de la couche (homicides) tant que l'app n'a pas peint le sien.
+    if (S.mk && S.crimeDs && !S.crimeDeptSet && S.geo?.deptShapes) { setData('crime-depts-src', S.mk.crimeDeptFeatures(fc(S.geo.deptShapes), S.crimeDs, 'homicides')); S.crimeDeptSet = true; }
     setData('mqs-landings', fc(S.landings.map((l, i) => pt(l.at, { i, n: l.n, name: l.n >= 3 ? `${l.commune} · ${l.n}` : '' }))));
     setData('mqs-world', S.world?.routes ? { ...S.world.routes, features: S.world.routes.features.map((f) => ({ ...f, properties: { id: f.properties.id, planned: S.world.cables[f.properties.id]?.planned ?? false } })) } : fc([]));
     // Suite des câbles du Shom au-delà des eaux françaises (OpenStreetMap) et bouts sans suite publiée.
@@ -218,13 +225,13 @@
 
     if (!m.getLayer('mqs-zones-line')) {
       const ic = {
-        air: await disc('plane', '#ffffff', CAT.defense), navy: await disc('anchor', '#ffffff', CAT.defense), army: await disc('shield', '#ffffff', CAT.defense),
-        joint: await disc('swords', '#ffffff', CAT.defense), other: await disc('landmark', '#ffffff', CAT.defense),
+        air: await disc('plane', '#ffffff', BASE_HEX.air), navy: await disc('anchor', '#ffffff', BASE_HEX.navy), army: await disc('shield', '#ffffff', BASE_HEX.army),
+        joint: await disc('swords', '#ffffff', BASE_HEX.joint), other: await disc('landmark', '#ffffff', BASE_HEX.other),
         cloudOk: await disc('cloud', '#ffffff', CAT.cloud), cloudJ: await disc('cloud', L1.jaune, DARK), cloudO: await disc('cloud', L1.orange, DARK), cloudR: await disc('cloud', L1.rouge, DARK),
       };
-      for (const t of Object.keys(SHAPE)) { await shape(t, true, CAT.defense, '#ffffff'); await shape(t, false, CAT.defense, '#ffffff'); await shape(t, false, 'none', '#8a93a6'); }
-      const icd = { air: await disc('plane', '#ffffff', CAT.defense, true), navy: await disc('anchor', '#ffffff', CAT.defense, true), army: await disc('shield', '#ffffff', CAT.defense, true),
-        joint: await disc('swords', '#ffffff', CAT.defense, true), other: await disc('landmark', '#ffffff', CAT.defense, true) };
+      for (const t of Object.keys(SHAPE)) { await shape(t, true, BASE_HEX[t], '#ffffff'); await shape(t, false, BASE_HEX[t], '#ffffff'); await shape(t, false, 'none', '#8a93a6'); }
+      const icd = { air: await disc('plane', '#ffffff', BASE_HEX.air, true), navy: await disc('anchor', '#ffffff', BASE_HEX.navy, true), army: await disc('shield', '#ffffff', BASE_HEX.army, true),
+        joint: await disc('swords', '#ffffff', BASE_HEX.joint, true), other: await disc('landmark', '#ffffff', BASE_HEX.other, true) };
       await chevron('f', CAT.defense); await chevron('o', CAT.defenseOther); await chevron('a', '#8a93a6');
       await noHeading('f', CAT.defense); await noHeading('o', CAT.defenseOther); await noHeading('a', '#8a93a6');
       const b = before();
@@ -284,11 +291,12 @@
       // Échelle de la France : forme géométrique (lisible à 12 px) ; au zoom : picto dans le disque.
       const pictoOf = (set) => ['match', ['get', 'type'], 'air', set.air, 'navy', set.navy, 'army', set.army, 'joint', set.joint, set.other];
       m.addLayer({ id: 'mqs-bases-sym', type: 'symbol', source: 'mqs-bases', filter: ['!=', ['get', 'status'], 'ferme'],
-        layout: { 'icon-image': ['step', ['zoom'], ['concat', 'mqs-shp-', ['get', 'type'], ['case', ['get', 'solid'], '-p-', '-d-'], CAT.defense], 7,
+        layout: { 'icon-image': ['step', ['zoom'], ['concat', 'mqs-shp-', ['get', 'type'], ['case', ['get', 'solid'], '-p-', '-d-'], ['get', 'color']], 7,
             ['case', ['get', 'solid'], pictoOf(ic), pictoOf(icd)]],
           'icon-size': ['interpolate', ['linear'], ['zoom'], 4, 1.25, 6.99, 1.6, 7, 0.6, 10, 0.85], 'icon-allow-overlap': true,
-          'text-field': ['step', ['zoom'], '', 8, ['get', 'name']], 'text-size': 10, 'text-offset': [0, 1.2], 'text-anchor': 'top', 'text-font': ['Open Sans Semibold'], 'text-optional': true },
-        paint: { 'icon-opacity': 1, 'text-color': '#bcd8ff', 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.3 } }, b);
+          'text-field': ['step', ['zoom'], '', 8, ['get', 'name']], 'text-size': 10, 'text-variable-anchor': ['top', 'bottom', 'right', 'left', 'top-right', 'bottom-left'], 'text-radial-offset': 1.1,
+          'text-justify': 'auto', 'text-font': ['Open Sans Semibold'], 'text-optional': true },
+        paint: { 'icon-opacity': 1, 'text-color': ['get', 'color'], 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.3 } }, b);
       m.addLayer({ id: 'mqs-low-disc', type: 'circle', source: 'mqs-low', maxzoom: 7,
         paint: { 'circle-radius': ['+', 5, ['*', 2, ['sqrt', ['get', 'n']]]], 'circle-color': '#05060a', 'circle-opacity': 0.85, 'circle-stroke-color': CAT.telecom, 'circle-stroke-width': 1.6 } });
       m.addLayer({ id: 'mqs-low-count', type: 'symbol', source: 'mqs-low', maxzoom: 7,
@@ -428,7 +436,7 @@
     if (au?.source) rows.push(['Source', host(au.source)]);
     if (au?.note) rows.push([au.status === 'ferme' ? 'Fermeture' : 'Correction', au.note]);
     if (au?.osm) rows.push(['Recoupé par OpenStreetMap', `${au.osm.name ?? 'sans nom'} (à ${num(Math.round(au.osmKm * 10) / 10)}${NB}km)`]);
-    return { dot: au?.status === 'ferme' ? '#8a93a6' : CAT.defense, title: p.name, state: `Site ${BASE_WORD[p.type] ?? 'autre'}${au?.status === 'ferme' ? ' · fermé' : ''}`, stateHex: '#c7c7cc', rows,
+    return { dot: au?.status === 'ferme' ? '#8a93a6' : BASE_HEX[p.type] ?? BASE_HEX.other, title: p.name, state: `Site ${BASE_WORD[p.type] ?? 'autre'}${au?.status === 'ferme' ? ' · fermé' : ''}`, stateHex: '#c7c7cc', rows,
       hint: au?.source ? 'Clic : ouvrir la source' : 'Aucune donnée en direct sur ce site (O13 : nom, catégorie et lien seulement)', source: `liste interne vérifiée le 17/10/2026 · OpenStreetMap (ODbL), fichier du ${when(S.osm?.generatedAt)}` };
   };
   const siteCard = (s) => {
@@ -720,7 +728,7 @@
   const swatch = (color, shape) => `<i class="mqs-sw mqs-sw-${shape}" style="--c:${color}"></i>`;
   const icon = (name, color, bg) => `<span class="mqs-ic"${bg ? ` style="background:${bg};border-color:${bg}"` : ''}>${fmIcon(name, { size: 14 }).replace('<svg', `<svg style="color:${color ?? INK}"`)}</span>`;
   // Remplace le bouton « Légende » de l'app (un seul point d'entrée), fermée par défaut comme les autres thèmes.
-  const shapeSw = (t, solid) => `<svg width="13" height="13" viewBox="0 0 28 28" style="flex:0 0 13px"><path d="${SHAPE[t]}" fill="${CAT.defense}" stroke="#fff" stroke-width="2.5" ${solid ? '' : 'stroke-dasharray="3.5 2.5"'}/></svg>`;
+  const shapeSw = (t, solid) => `<svg width="13" height="13" viewBox="0 0 28 28" style="flex:0 0 13px"><path d="${SHAPE[t]}" fill="${BASE_HEX[t]}" stroke="#fff" stroke-width="2.5" ${solid ? '' : 'stroke-dasharray="3.5 2.5"'}/></svg>`;
   const renderLegend = () => {
     const open = legend.dataset.open === 'true';
     const src = freshness(), ko = src.filter((r) => r[2] !== 'ok').length;
@@ -732,7 +740,7 @@
       <div class="mqs-row mqs-note">Disque = sites mobiles coupés depuis moins de 24${NB}h dans le département (seuils ${T.join(' / ')}), taille selon le nombre ; contour du département à son état ; orange aussi pour une coupure Internet en cours.</div>
       <div class="mqs-row mqs-note">Aplat léger du département = pression globale (score), plein avec sa pastille.</div>
       <h5>Couche : une couleur par catégorie</h5>
-      <div class="mqs-row">${['air', 'navy', 'army', 'joint'].map((t) => `${shapeSw(t, true)}${BASE_WORD[t]}`).join(' ')}</div>
+      <div class="mqs-row">${['air', 'navy', 'army', 'joint', 'other'].map((t) => `${shapeSw(t, true)}${BASE_WORD[t] ?? 'autre'}`).join(' ')}</div>
       <div class="mqs-row mqs-note">${shapeSw('air', false)}Site de défense : la forme dit l’armée ; trait plein = source publique citée, pointillé = sans source ; fermés en gris.</div>
       <div class="mqs-row"><span class="mqs-chev" style="color:${CAT.defense}">➤</span>aéronef militaire français <span class="mqs-chev" style="color:${CAT.defenseOther}">➤</span>autre pays, orienté selon le cap</div>
       <div class="mqs-row">${swatch(CAT.cables, 'line')}Câble sous-marin, tracé complet ${swatch(CAT.cables, 'dash')}prévu ${swatch('#6e7585', 'line')}hors service</div>
@@ -835,12 +843,18 @@
     S.bases ??= [];
     [S.cablesFile, S.osm, S.world, S.suite] = await Promise.all([getJson('/data/subsea-cables.json'), getJson('/data/defense-osm-works.json'), getJson('/maquette-cables-monde.json'), getJson('/maquette-cables-suite.json')]);
     // Criminalité en vue d'ensemble : un indicateur communal fixe (violences physiques hors famille), l'indicateur du panneau s'applique avec la pastille.
-    try { const { crimeCityFeatures } = await import('/src/components/deckgl/crime-map.ts'); S.crimeFc = crimeCityFeatures(await getJson('/data/crime.json'), 'violencesPhysiques'); } catch (e) { S.crimeFc = null; }
+    // Manifestations et Criminalité : données lues par la maquette elle-même, car l'app ne les charge que si la couche est cochée (un état enregistré plus ancien ne la coche pas).
+    try {
+      const [pm, cm] = await Promise.all([import('/src/components/deckgl/protests-map.ts'), import('/src/components/deckgl/crime-map.ts')]);
+      S.mk = { protestFeatures: pm.protestFeatures, crimeDeptFeatures: cm.crimeDeptFeatures };
+      S.crimeDs = await getJson('/data/crime.json');
+      S.crimeFc = cm.crimeCityFeatures(S.crimeDs, 'violencesPhysiques');
+    } catch (e) { S.crimeFc = null; }
     audit();
     const load = async () => {
-      const [telecom, internet, military, cablesWatch, gnss, cyberData, cloud] = await Promise.all(['/api/outages/telecom', '/api/outages/internet', '/api/sovereignty/military',
-        '/api/sovereignty/cables-watch', '/api/sovereignty/gnss', '/api/sovereignty/cyber', '/api/outages/cloud'].map(getJson));
-      S.data = { telecom, internet, military, cablesWatch, gnss, cyber: cyberData, cloud };
+      const [telecom, internet, military, cablesWatch, gnss, cyberData, cloud, protests] = await Promise.all(['/api/outages/telecom', '/api/outages/internet', '/api/sovereignty/military',
+        '/api/sovereignty/cables-watch', '/api/sovereignty/gnss', '/api/sovereignty/cyber', '/api/outages/cloud', '/api/social/protests'].map(getJson));
+      S.data = { telecom, internet, military, cablesWatch, gnss, cyber: cyberData, cloud, protests };
       await draw();
     };
     await load();
