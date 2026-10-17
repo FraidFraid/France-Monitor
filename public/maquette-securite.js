@@ -98,32 +98,7 @@
   };
 
   // ─── Vérification des sites de la liste interne (17/10/2026) ───
-  // Fermetures confirmées par une source publique ; incohérences relevées à la relecture (unité, lieu ou doublon), à vérifier avant correction de la liste.
-  const CLOSED = {
-    'BA-103': 'fermée en 2012 (restructurations de 2008, réponse ministérielle à l’Assemblée nationale)',
-    'BA-128': 'dissoute le 31/08/2012 (Bulletin officiel des armées)',
-    'BA-112': 'fermée en 2011, foyer dissous le 01/06/2011 (Bulletin officiel des armées)',
-    'BN-RCY': 'base aéronavale fermée le 02/07/2011, aéroport civil seul (Bulletin officiel des armées)',
-  };
-  const DOUBT = {
-    'BA-117': 'doublon probable : Luxeuil-Saint-Sauveur est la BA 116, la BA 117 est Paris',
-    'BA-101': 'fermeture annoncée dès 2009, date effective non confirmée',
-    'BA-124': 'fermeture probable (années 1990), non confirmée',
-    'BA-122': 'fermeture probable, non confirmée',
-    'AT-VANNES': 'le 1er RIMa est en garnison à Angoulême ; Vannes accueille le 3e RIMa',
-    'AT-PAMIERS': 'le 1er RPIMa est à Bayonne ; Pamiers accueille le 1er RCP',
-    'AT-NIMES': 'unité et lieu incohérents (1er REC, Nîmes, Laudun)',
-    'AT-ORANGE': 'unité et lieu incohérents (1er REG)',
-    'AT-ANGERS': 'nom, lieu et identifiant incohérents (ENSOA, Le Mans, Angers)',
-    'AT-CARPIQUET': 'unité à vérifier (12e RC)',
-    'ALAT-RENNES': 'le 3e RHC est à Étain',
-    'ALAT-VALENCE': 'le 5e RHC est à Pau',
-    'ALAT-ESSEY': 'unité inconnue (« 1er RHC AZUR »)',
-    'GND-NIMES': 'unité inconnue (« Gicat 6 »)',
-    'HQ-ROCQUENCOURT': 'le SHAPE a quitté la France en 1967',
-    'GRAVES-ONERA': 'GRAVES n’est pas sur le plateau d’Albion',
-    'SIMU-GRAMAT': 'le CESTA est au Barp ; Gramat est un autre centre du CEA',
-  };
+  // La liste interne porte désormais sa source publique, sa date de vérification et ses fermetures (relecture du 17/10/2026).
   const OSM_KINDS = new Set(['airfield', 'base', 'barracks', 'naval_base', 'range', 'training_area', 'office', 'school', 'yes']);
   const km = (a, b) => { const r = Math.PI / 180, dLat = (b[1] - a[1]) * r, dLon = (b[0] - a[0]) * r;
     const h = Math.sin(dLat / 2) ** 2 + Math.cos(a[1] * r) * Math.cos(b[1] * r) * Math.sin(dLon / 2) ** 2; return 12742 * Math.asin(Math.sqrt(h)); };
@@ -134,8 +109,9 @@
       const id = b.properties.id, c = b.geometry.coordinates;
       let best = null, d = Infinity;
       for (const o of osm) { const x = km(c, [o.lon, o.lat]); if (x < d) { d = x; best = o; } }
-      const status = CLOSED[id] ? 'ferme' : DOUBT[id] ? 'doute' : d <= 3 ? 'recoupe' : 'seul';
-      S.audit.set(id, { status, note: CLOSED[id] ?? DOUBT[id] ?? null, osm: d <= 3 ? best : null, osmKm: d, dept: deptCodeAt(c) });
+      const db = b.properties;
+      const status = db.status === 'closed' ? 'ferme' : db.source ? 'source' : 'seul';
+      S.audit.set(id, { status, note: db.note ?? null, source: db.source ?? null, checkedAt: db.checkedAt ?? null, osm: d <= 3 ? best : null, osmKm: d, dept: deptCodeAt(c) });
     }
   };
   const ZONE_SEAT = { Paris: 'Paris', Nord: 'Lille', Est: 'Metz', Ouest: 'Rennes', 'Sud-Ouest': 'Bordeaux', Sud: 'Marseille', 'Sud-Est': 'Lyon' };
@@ -206,10 +182,10 @@
     setData('mqs-air', fc([...(mil?.aircraft ?? []).map((a) => ({ ...a, abroad: false })), ...(mil?.abroad ?? []).map((a) => ({ ...a, abroad: true }))]
       .filter((a) => a.lat != null && a.lon != null).map((a) => pt([a.lon, a.lat], { hex: a.hex, fr: a.family === 'francais', abroad: a.abroad, track: a.track ?? 0,
         hasTrack: a.track !== null && a.track !== undefined, label: [a.callsign, a.registration].filter(Boolean).join(' · ') }))));
-    // Sites de défense : forme = armée ; trait plein = recoupé par OpenStreetMap, pointillé = non recoupé ; fermés à part (gris, pastille Défense).
+    // Sites de défense : forme = armée ; trait plein = source publique citée, pointillé = sans source ; fermés à part (gris).
     setData('mqs-bases', fc(S.bases.map((b) => { const au = S.audit.get(b.properties.id);
       const t = ['air', 'navy', 'army', 'joint'].includes(b.properties.type) ? b.properties.type : 'other';
-      return pt(b.geometry.coordinates, { id: b.properties.id, name: b.properties.name, type: t, status: au?.status ?? 'seul', solid: au?.status === 'recoupe' }); })));
+      return pt(b.geometry.coordinates, { id: b.properties.id, name: b.properties.name, type: t, status: au?.status ?? 'seul', solid: au?.status === 'source' }); })));
     // Atterrages par commune, zones de protection des câbles et mouillages qui les recoupent (Shom)
     S.landings = landingsByPlace();
     setData('mqs-landings', fc(S.landings.map((l, i) => pt(l.at, { i, n: l.n, name: l.n >= 3 ? `${l.commune} · ${l.n}` : '' }))));
@@ -423,14 +399,16 @@
       hint: 'Un appareil absent du flux n’est pas absent du ciel · clic : fiche', source: 'adsb.lol (ODbL 1.0), positions publiques' };
   };
   const BASE_WORD = { air: 'air', navy: 'marine', army: 'terre', joint: 'interarmées', fortification: 'fortification', other: 'autre' };
-  const CHECK = { recoupe: 'recoupé par OpenStreetMap', seul: 'non recoupé par OpenStreetMap', doute: 'à vérifier', ferme: 'fermé' };
+  const CHECK = { source: 'source publique citée', seul: 'sans source publique, à vérifier', ferme: 'fermé' };
+  const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return u; } };
   const baseCard = (p) => {
     const au = S.audit.get(p.id);
-    const rows = [['Département', au?.dept ? `${S.agg.get(au.dept)?.nom ?? au.dept} (${au.dept})` : 'hors métropole'], ['Vérification', au?.status === 'seul' && !au.dept ? 'non recoupé (fichier OpenStreetMap limité à la métropole)' : CHECK[au?.status ?? 'seul']]];
-    if (au?.osm) rows.push(['Objet OpenStreetMap', `${au.osm.name ?? 'sans nom'} (${au.osm.kind}, à ${num(Math.round(au.osmKm * 10) / 10)}${NB}km)`]);
-    if (au?.note) rows.push([au.status === 'ferme' ? 'Fermeture' : 'Relecture', au.note]);
+    const rows = [['Département', au?.dept ? `${S.agg.get(au.dept)?.nom ?? au.dept} (${au.dept})` : 'hors métropole'], ['Vérification', `${CHECK[au?.status ?? 'seul']}${au?.checkedAt ? `, le ${au.checkedAt.split('-').reverse().join('/')}` : ''}`]];
+    if (au?.source) rows.push(['Source', host(au.source)]);
+    if (au?.note) rows.push([au.status === 'ferme' ? 'Fermeture' : 'Correction', au.note]);
+    if (au?.osm) rows.push(['Recoupé par OpenStreetMap', `${au.osm.name ?? 'sans nom'} (à ${num(Math.round(au.osmKm * 10) / 10)}${NB}km)`]);
     return { dot: au?.status === 'ferme' ? '#8a93a6' : CAT.defense, title: p.name, state: `Site ${BASE_WORD[p.type] ?? 'autre'}${au?.status === 'ferme' ? ' · fermé' : ''}`, stateHex: '#c7c7cc', rows,
-      hint: 'Aucune donnée en direct sur ce site (amendement O13 : nom et catégorie seulement)', source: `liste interne, sans date par site · OpenStreetMap (ODbL), fichier du ${when(S.osm?.generatedAt)}` };
+      hint: au?.source ? 'Clic : ouvrir la source' : 'Aucune donnée en direct sur ce site (O13 : nom, catégorie et lien seulement)', source: `liste interne vérifiée le 17/10/2026 · OpenStreetMap (ODbL), fichier du ${when(S.osm?.generatedAt)}` };
   };
   const siteCard = (s) => {
     const a = S.agg.get(s.dept);
@@ -584,7 +562,7 @@
     const communes = [...new Set(a.sites.map((s) => s.commune).filter(Boolean))];
     const inDept = (c) => deptAt(c)?.code === a.code;
     const ex = exposure(a.code);
-    const bases = ex.bases.map((b) => b.properties.name + (S.audit.get(b.properties.id)?.status === 'recoupe' ? '' : ' (non recoupé)'));
+    const bases = ex.bases.map((b) => b.properties.name + (S.audit.get(b.properties.id)?.status === 'source' ? '' : ' (sans source)'));
     const air = (d.military?.aircraft ?? []).filter((x) => x.dept === a.code);
     const now = when(new Date().toISOString());
     const what = a.sites.length
@@ -667,7 +645,7 @@
       <div class="mqs-row mqs-note">Aplat léger du département = pression globale (score), plein avec sa pastille.</div>
       <h5>Couche : une couleur par catégorie</h5>
       <div class="mqs-row">${['air', 'navy', 'army', 'joint'].map((t) => `${shapeSw(t, true)}${BASE_WORD[t]}`).join(' ')}</div>
-      <div class="mqs-row mqs-note">${shapeSw('air', false)}Site de défense : la forme dit l’armée ; pointillé = non recoupé par OpenStreetMap ; fermés en gris avec la pastille.</div>
+      <div class="mqs-row mqs-note">${shapeSw('air', false)}Site de défense : la forme dit l’armée ; trait plein = source publique citée, pointillé = sans source ; fermés en gris.</div>
       <div class="mqs-row"><span class="mqs-chev" style="color:${CAT.defense}">➤</span>aéronef militaire français <span class="mqs-chev" style="color:${CAT.defenseOther}">➤</span>autre pays, orienté selon le cap</div>
       <div class="mqs-row">${swatch(CAT.cables, 'line')}Câble sous-marin, tracé complet ${swatch(CAT.cables, 'dash')}prévu ${swatch('#6e7585', 'line')}hors service</div>
       <div class="mqs-row">${swatch(CAT.cables, 'disc')}Atterrage : taille = nombre de câbles au même endroit</div>
@@ -759,13 +737,9 @@
     const host = S.m.getContainer();
     host.append(pop, panel, legend, cyber);
     wireChips();
-    // Sites de défense : lus dans la source de la carte (liste interne)
-    for (let i = 0; i < 40; i += 1) {
-      const src = S.m.getSource('military-bases-src');
-      const data = src && (await src.getData());
-      if (data?.features?.length) { S.bases = data.features; break; }
-      await wait(500);
-    }
+    // Sites de défense : liste interne complète, fermés compris (affichés en gris), avec source et date de vérification.
+    const { ALL_MILITARY_INSTALLATIONS } = await import('/src/config/military-bases-db.ts');
+    S.bases = ALL_MILITARY_INSTALLATIONS.map((b) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: b.coordinates }, properties: { ...b } }));
     S.bases ??= [];
     [S.cablesFile, S.osm, S.world] = await Promise.all([getJson('/data/subsea-cables.json'), getJson('/data/defense-osm-works.json'), getJson('/maquette-cables-monde.json')]);
     audit();
@@ -789,6 +763,7 @@
       const hit = pick([e.clientX - r.left, e.clientY - r.top]);
       if (!hit) { closeFiche(); return; }
       pop.style.display = 'none'; popAt = null; S.hoverKey = null;
+      if (hit.kind === 'base' && S.audit.get(hit.id)?.source) { window.open(S.audit.get(hit.id).source, '_blank', 'noopener'); return; }
       if (hit.kind === 'dept' || hit.kind === 'air' || hit.kind === 'base') openFiche(hit.kind, hit.id);
       else if (hit.kind === 'site') { const s = (S.data.telecom?.sites ?? []).find((x) => x.id === hit.id); if (s) openFiche('dept', s.dept); }
     }, true);
