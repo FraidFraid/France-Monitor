@@ -1,0 +1,20 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//demosphere.net//NONSGML kigkonsult.se iCalcreator 2.22.1//
+METHOD:PUBLISH
+X-WR-CALNAME:Démosphère
+X-WR-CALDESC:Gard & Cévennes
+X-WR-RELCALID:d906fce9fb87154892ad167d8eaf0544
+X-WR-TIMEZONE:Europe/Paris
+BEGIN:VEVENT
+UID:https://gard.demosphere.net/rv/10377
+DTSTAMP:20261017T120000Z
+DESCRIPTION:plus d'infos sur : https://gard.demosphere.net/rv/10377
+DTSTART:20261017T120000Z
+DTEND:20261017T130000Z
+GEO:00;0
+LOCATION:Nîmes\, \nJardins de la Fontaine
+SUMMARY:Convergence des luttes - Rassemblement aux Jardins de la Fontaine
+URL:https://gard.demosphere.net/rv/10377
+END:VEVENT
+END:VCALENDAR

@@ -1,0 +1,33 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//demosphere.net//NONSGML kigkonsult.se iCalcreator 2.22.1//
+METHOD:PUBLISH
+X-WR-CALNAME:Démosphère Sarthe
+X-WR-CALDESC:agenda alternatif de la région sarthoise
+X-WR-RELCALID:dfd8dc32456126d639da161d64a464db
+X-WR-TIMEZONE:Europe/Paris
+BEGIN:VEVENT
+UID:https://sarthe.demosphere.net/rv/7137
+DTSTAMP:20261017T080000Z
+DESCRIPTION:plus d'infos sur : https://sarthe.demosphere.net/rv/7137
+DTSTART:20261017T080000Z
+DTEND:20261017T090000Z
+GEO:00;0
+LOCATION:Le Mans\, \nStation-service Super U Le Mans Libération \n186 Avenu
+ e de la Libération
+SUMMARY:Manifestons en gilets jaunes !
+URL:https://sarthe.demosphere.net/rv/7137
+END:VEVENT
+BEGIN:VEVENT
+UID:https://sarthe.demosphere.net/rv/7144
+DTSTAMP:20261017T120000Z
+DESCRIPTION:plus d'infos sur : https://sarthe.demosphere.net/rv/7144
+DTSTART:20261017T120000Z
+DTEND:20261017T130000Z
+GEO:00;0
+LOCATION:Le Mans\, \nPlace de la République\, Le Mans
+SUMMARY:Manifestation Gilets Jaunes suivie d'une Assemblée pour organiser l
+ es suites !
+URL:https://sarthe.demosphere.net/rv/7144
+END:VEVENT
+END:VCALENDAR

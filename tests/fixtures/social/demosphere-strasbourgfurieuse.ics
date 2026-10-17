@@ -1,0 +1,33 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//demosphere.net//NONSGML kigkonsult.se iCalcreator 2.22.1//
+METHOD:PUBLISH
+X-WR-CALNAME:Strasbourg furieuse
+X-WR-CALDESC:agenda militant de Strasbourg et ses environs
+X-WR-RELCALID:3e86f051630fe544dd310267e4fa87cd
+X-WR-TIMEZONE:Europe/Paris
+BEGIN:VEVENT
+UID:https://strasbourgfurieuse.demosphere.net/rv/10037
+DTSTAMP:20261017T100000Z
+DESCRIPTION:plus d'infos sur : https://strasbourgfurieuse.demosphere.net/rv
+ /10037
+DTSTART:20261017T100000Z
+DTEND:20261017T110000Z
+GEO:00;0
+LOCATION:Centre\, \nPlace de la république \n67000 Strasbourg
+SUMMARY:Répète d'avant manif de LA FAUNE FURIEUSE !!!
+URL:https://strasbourgfurieuse.demosphere.net/rv/10037
+END:VEVENT
+BEGIN:VEVENT
+UID:https://strasbourgfurieuse.demosphere.net/rv/9968
+DTSTAMP:20261017T140000Z
+DESCRIPTION:plus d'infos sur : https://strasbourgfurieuse.demosphere.net/rv
+ /9968
+DTSTART:20261017T140000Z
+DTEND:20261017T150000Z
+GEO:00;0
+LOCATION:Strasbourg\, \nPlace Kléber \n67000 Strasbourg\, France
+SUMMARY:Manifestation 17 octobre 1961 Un crime d'Etat qu'on n'oublie pas
+URL:https://strasbourgfurieuse.demosphere.net/rv/9968
+END:VEVENT
+END:VCALENDAR

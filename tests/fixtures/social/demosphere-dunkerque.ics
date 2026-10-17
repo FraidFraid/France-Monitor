@@ -1,0 +1,20 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//demosphere.net//NONSGML kigkonsult.se iCalcreator 2.22.1//
+METHOD:PUBLISH
+X-WR-CALNAME:Démosphère Dunkerque
+X-WR-CALDESC:Agenda alternatif de la région Littoral Flandre
+X-WR-RELCALID:b4e054b4a67a81984ce83d61c55132bc
+X-WR-TIMEZONE:Europe/Paris
+BEGIN:VEVENT
+UID:https://dunkerque.demosphere.net/rv/4562
+DTSTAMP:20261017T120000Z
+DESCRIPTION:plus d'infos sur : https://dunkerque.demosphere.net/rv/4562
+DTSTART:20261017T120000Z
+DTEND:20261017T130000Z
+GEO:00;0
+LOCATION:#Dunkerque\, \nPlace Jean Bart
+SUMMARY:Manifestation unitaire / Convergence des luttes (Dunkerque)
+URL:https://dunkerque.demosphere.net/rv/4562
+END:VEVENT
+END:VCALENDAR

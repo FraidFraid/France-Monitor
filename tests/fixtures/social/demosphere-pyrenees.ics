@@ -1,0 +1,20 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//demosphere.net//NONSGML kigkonsult.se iCalcreator 2.22.1//
+METHOD:PUBLISH
+X-WR-CALNAME:Démosphère Pyrénées
+X-WR-CALDESC:agenda alternatif du Comminges et des Hautes-Pyrénées
+X-WR-RELCALID:785eabc45b6d33f34fcd10f6c6a4804d
+X-WR-TIMEZONE:Europe/Paris
+BEGIN:VEVENT
+UID:https://pyrenees.demosphere.net/rv/51721
+DTSTAMP:20261206T090000Z
+DESCRIPTION:plus d'infos sur : https://pyrenees.demosphere.net/rv/51721
+DTSTART:20261206T090000Z
+DTEND:20261206T100000Z
+GEO:00;0
+LOCATION:Saux-et-Pomarède\, \nFoyer rural \n31800 Saux-et-Pomarède
+SUMMARY:Marché de Noël Solidaire
+URL:https://pyrenees.demosphere.net/rv/51721
+END:VEVENT
+END:VCALENDAR

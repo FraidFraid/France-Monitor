@@ -1,0 +1,20 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//demosphere.net//NONSGML kigkonsult.se iCalcreator 2.22.1//
+METHOD:PUBLISH
+X-WR-CALNAME:Démosphère Rennes
+X-WR-CALDESC:Rennes - Bretagne
+X-WR-RELCALID:a52f31e85e6f39b583dd9f5f545fef3f
+X-WR-TIMEZONE:Europe/Paris
+BEGIN:VEVENT
+UID:https://rennes.demosphere.net/rdv/19795
+DTSTAMP:20261017T040000Z
+DESCRIPTION:plus d'infos sur : https://rennes.demosphere.net/rdv/19795
+DTSTART:20261017T040000Z
+DTEND:20261017T050000Z
+GEO:00;0
+LOCATION:Rennes\, \nPlace de la République \nRennes
+SUMMARY:Manifestation Gilets Jaunes
+URL:https://rennes.demosphere.net/rdv/19795
+END:VEVENT
+END:VCALENDAR

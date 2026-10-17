@@ -13,8 +13,12 @@ import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/laye
 import { COORDINATE_SYSTEM } from '@deck.gl/core';
 import type { MapViewState, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, NewsItem, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, AirTrafficFlight, EcowattResponse, AisShipData, OilDashboard, SatelliteViewRequest, HydraulicBackboneAsset } from '../types/index.ts';
 import { emsZoneFeatures } from './deckgl/environment-map-ems.ts';
+import { PROTEST_LAYERS, PROTEST_LAYER_IDS, protestFeatures } from './deckgl/protests-map.ts';
+import { CRIME_CITY_LAYERS, CRIME_LAYERS, CRIME_LAYER_IDS, crimeCityFeatures, crimeDeptFeatures } from './deckgl/crime-map.ts';
+import { DEFAULT_CRIME_INDICATOR } from '../services/crime.ts';
 import { ASNR_RING_LAYER, asnrRingFeatures } from './deckgl/nuclear-map-asnr.ts';
-import type { AirQualityResponse, AsnrResponse, DisastersResponse, DroughtResponse, EmsResponse, EarthquakesResponse, FiresResponse, FloodSection, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
+import type { CrimeDataset, CrimeIndicatorKey } from '../types/index.ts';
+import type { AirQualityResponse, AsnrResponse, DisastersResponse, ProtestsResponse, DroughtResponse, EmsResponse, EarthquakesResponse, FiresResponse, FloodSection, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
 import { ecowattToday, ecowattLevelLabel } from '../services/ecowatt-official.ts';
 import { DATA_FRESHNESS_LABELS } from '../types/index.ts';
 import type { AlertLevelsResponse, AplDataset, AplProfession, EmergencySite, HospitalsDataset, SyndromicResponse } from '../types/index.ts';
@@ -183,6 +187,12 @@ import {
   SRC_AIR_QUALITY,
   SRC_QUAKES,
   SRC_DISASTERS,
+  SRC_PROTESTS,
+  LYR_PROTESTS,
+  SRC_CRIME_DEPTS,
+  SRC_CRIME_CITIES,
+  LYR_CRIME_FILL,
+  LYR_CRIME_CITY,
   SRC_EMS_ZONES,
   SRC_TIDE_GAUGES,
   LYR_DROUGHT_FILL,
@@ -468,6 +478,18 @@ export class DeckGLMap {
   private envB: EnvBData = { drought: null, air: null, quakes: null, seaLevels: null, vigilance: null };
   /** Dernière réponse GDACS (gardée couche masquée, repeinte au réaffichage). */
   private disastersData: DisastersResponse | null = null;
+  /** Manifestations : clic sur un point (clé de position), infobulle au survol (spec 2026-10-17 manifestations). */
+  private onProtestClick: ((placeKey: string) => void) | null = null;
+  private protestHoverPopup: maplibregl.Popup | null = null;
+  private protestHoverShown = false;
+  private protestsData: ProtestsResponse | null = null;
+  /** Criminalité (spec 2026-10-17 criminalité) : fichier annuel, indicateur choisi dans le panneau, infobulle au survol, repeinte différée couche masquée. */
+  private crimeData: CrimeDataset | null = null;
+  private crimeIndicator: CrimeIndicatorKey = DEFAULT_CRIME_INDICATOR;
+  private crimeDirty = false;
+  private crimeHoverPopup: maplibregl.Popup | null = null;
+  private crimeHoverShown = false;
+  private onCrimeCityClick: ((cityCode: string) => void) | null = null;
   private emsData: EmsResponse | null = null;
   private asnrData: AsnrResponse | null = null;
   private _forestDangerFill = false;
@@ -801,6 +823,9 @@ export class DeckGLMap {
     this.map.addSource(SRC_FIRES_HIGHLIGHT, { type: 'geojson', data: emptyFC() });
     // Environnement (spec 2026-10-04 § 2) : météo des forêts, détections hors de France, stations des tronçons, point du profil radar.
     for (const id of ENV_SOURCE_IDS) this.map.addSource(id, envSourceSpec());
+    this.map.addSource(SRC_PROTESTS, envSourceSpec());
+    this.map.addSource(SRC_CRIME_DEPTS, { type: 'geojson', data: emptyFC() });
+    this.map.addSource(SRC_CRIME_CITIES, envSourceSpec());
 
     // NASA GIBS — dernière image VIIRS publiée (fumée / cicatrices)
     this.map.addSource(SRC_MODIS, {
@@ -1067,6 +1092,8 @@ export class DeckGLMap {
       source: SRC_HEALTH_DEPTS,
       paint: { 'line-color': 'rgba(255, 255, 255, 0.25)', 'line-width': 0.6 },
     });
+    // Criminalité (deckgl/crime-map.ts) : départements peints sous les points, masqués jusqu'à setLayerVisibility.
+    for (const layer of CRIME_LAYERS) this.map.addLayer(layer);
     // ─── ISNR: stability department fill ───
     this.map.addLayer({
       id: LYR_ISNR_FILL,
@@ -2268,6 +2295,10 @@ export class DeckGLMap {
     this.map.moveLayer(LYR_GAS_STORAGES_LABEL, `${LYR_OIL_REFINERIES}-halo`);
     // Cercles de consommation des métropoles : sous les flèches et les installations, qu'ils ne doivent pas voiler.
     this.map.moveLayer(LYR_METRO_LOAD_CIRCLE, LYR_ENERGY_FLOW_CASE);
+    // Manifestations (deckgl/protests-map.ts) : points regroupés par position, masqués jusqu'à setLayerVisibility.
+    for (const layer of PROTEST_LAYERS) this.map.addLayer(layer);
+    // Criminalité : ronds des villes au-dessus des surfaces, masqués jusqu'à setLayerVisibility.
+    for (const layer of CRIME_CITY_LAYERS) this.map.addLayer(layer);
 
     // Séismes et marégraphes (phase B) au-dessus de toutes les surfaces : ajoutés ici, sous la première couche de points qui suit la dernière surface.
     placeEnvBPoints(this.map);
@@ -2565,6 +2596,8 @@ export class DeckGLMap {
     // Couches Souveraineté : infobulle au survol, clic transmis à App.ts (initSovereigntyInteractions).
     this.initSovereigntyInteractions();
     this.initOutagesInteractions();
+    this.initProtestsInteractions();
+    this.initCrimeInteractions();
 
 
     // Énergie (spec 2026-10-16 § 6) : un seul survol, une seule bulle, fiche détaillée épinglée au clic.
@@ -4493,6 +4526,8 @@ export class DeckGLMap {
       ...Object.values(OUT_LAYER_KEYS).flat(), OUT_MAINTENANCE_LAYER,
       // Énergie (spec 2026-10-16 § 7) : survol d'une pastille, seule sa couche reste vive.
       ...ENERGY_FOCUS_ALL,
+      ...PROTEST_LAYER_IDS,
+      ...CRIME_LAYER_IDS,
     ];
 
     let activeLayers: string[] = [];
@@ -4516,6 +4551,10 @@ export class DeckGLMap {
       activeLayers = [...OUT_LAYER_KEYS.outagesInternet];
     } else if (categoryId === 'outagesCloud') {
       activeLayers = [...OUT_LAYER_KEYS.outagesCloud];
+    } else if (categoryId === 'protests') {
+      activeLayers = [...PROTEST_LAYER_IDS];
+    } else if (categoryId === 'crime') {
+      activeLayers = [...CRIME_LAYER_IDS];
     } else if (categoryId === 'trafficRoad') {
       activeLayers = [LYR_TRAFFIC, ...TRAFFIC_LAYER_KEYS.trafficRoad];
     } else if (categoryId === 'trafficAir') {
@@ -6223,7 +6262,7 @@ export class DeckGLMap {
       // Surfaces départementales exclues (comme la vigilance et la météo des forêts) : elles couvrent la carte et bloqueraient le profil radar ; séismes et marégraphes restent.
       // Même règle pour le remplissage des départements en anomalie Internet (le contour reste cliquable).
       ...ENV_HOVER_LAYERS.filter((id) => id !== LYR_WEATHER_FILL && id !== LYR_FOREST_DANGER_FILL && id !== LYR_DROUGHT_FILL && id !== LYR_AIR_FILL), LYR_WEATHER_ICONS,
-      LYR_POINTS, LYR_CLUSTER_CIRCLE, LYR_MILITARY_BASES_CIRCLE, LYR_HOSPITALS,
+      LYR_POINTS, LYR_CLUSTER_CIRCLE, LYR_MILITARY_BASES_CIRCLE, LYR_HOSPITALS, LYR_PROTESTS, LYR_CRIME_CITY,
       ...Object.values(TRAFFIC_LAYER_KEYS).flat(), ...OUT_HOVER_LAYERS.filter((id) => id !== LYR_OUT_INTERNET_FILL), ...SOV_HOVER_LAYERS,
     ].filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
     return ids.length > 0 && map.queryRenderedFeatures(point, { layers: ids }).length > 0;
@@ -7383,6 +7422,120 @@ export class DeckGLMap {
     if (coords) this.flyTo(coords[0], coords[1], 9);
   }
 
+  /** Manifestations : points regroupés par position (deckgl/protests-map.ts). */
+  updateProtestsLayer(r: ProtestsResponse | null): void {
+    this.protestsData = r;
+    (this.map?.getSource(SRC_PROTESTS) as maplibregl.GeoJSONSource | undefined)?.setData(protestFeatures(r));
+    this.hideProtestsHover();
+  }
+
+  /** Clic sur un point de la couche Manifestations : App.ts ouvre le panneau sur les lignes de cette commune. */
+  setOnProtestClick(handler: (placeKey: string) => void): void {
+    this.onProtestClick = handler;
+  }
+
+  private hideProtestsHover(): void {
+    if (!this.protestHoverShown) return;
+    this.protestHoverShown = false;
+    this.protestHoverPopup?.remove();
+  }
+
+  /** Couche Manifestations : infobulle préparée et échappée au survol, curseur main, clic transmis à App.ts. */
+  private initProtestsInteractions(): void {
+    const map = this.map;
+    if (!map) return;
+    const shown = (): boolean => map.getLayer(LYR_PROTESTS) !== undefined && map.getLayoutProperty(LYR_PROTESTS, 'visibility') !== 'none';
+    map.on('mousemove', (e) => {
+      const hit = shown() ? map.queryRenderedFeatures(e.point, { layers: [LYR_PROTESTS] })[0] : undefined;
+      const html = hit ? String(hit.properties?.['body'] ?? '') : '';
+      if (!html) {
+        this.hideProtestsHover();
+        return;
+      }
+      this.protestHoverShown = true;
+      const popup = this.protestHoverPopup
+        ?? new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12, maxWidth: '300px', className: 'dark-popup hm-hover' });
+      this.protestHoverPopup = popup;
+      popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
+    });
+    map.on('mouseout', () => this.hideProtestsHover());
+    map.on('click', (e) => {
+      if (!this.onProtestClick || !shown()) return;
+      const hit = map.queryRenderedFeatures(e.point, { layers: [LYR_PROTESTS] })[0];
+      const key = hit ? String(hit.properties?.['place'] ?? '') : '';
+      if (key) this.onProtestClick(key);
+    });
+  }
+
+  /** Criminalité : fichier annuel (null : vide la carte). Repeint à l'affichage si la couche est masquée. */
+  updateCrimeLayer(data: CrimeDataset | null): void {
+    this.crimeData = data;
+    this.hideCrimeHover();
+    void this.renderCrime();
+  }
+
+  /** Sélecteur d'indicateur du panneau : repeint les départements et les villes. */
+  setCrimeIndicator(key: CrimeIndicatorKey): void {
+    this.crimeIndicator = key;
+    this.hideCrimeHover();
+    void this.renderCrime();
+  }
+
+  /** Clic sur un rond de ville de la couche Criminalité : App.ts ouvre le panneau sur la ligne de cette ville (code commune). */
+  setOnCrimeCityClick(handler: (cityCode: string) => void): void {
+    this.onCrimeCityClick = handler;
+  }
+
+  private async renderCrime(): Promise<void> {
+    if (!this.map || !this.currentLayers?.crime) {
+      this.crimeDirty = true;
+      return;
+    }
+    const map = this.map;
+    this.crimeDirty = false;
+    // Départements : contours lus une fois (mémorisés), peints pour l'indicateur choisi.
+    const base = this.crimeData ? await this.getDepartmentsGeojson() : null;
+    (map.getSource(SRC_CRIME_DEPTS) as maplibregl.GeoJSONSource | undefined)?.setData(crimeDeptFeatures(base, this.crimeData, this.crimeIndicator));
+    (map.getSource(SRC_CRIME_CITIES) as maplibregl.GeoJSONSource | undefined)?.setData(crimeCityFeatures(this.crimeData, this.crimeIndicator));
+  }
+
+  private hideCrimeHover(): void {
+    if (!this.crimeHoverShown) return;
+    this.crimeHoverShown = false;
+    this.crimeHoverPopup?.remove();
+  }
+
+  /** Couche Criminalité : infobulle préparée et échappée au survol (ville d'abord, puis département), clic sur une ville relayé. */
+  private initCrimeInteractions(): void {
+    const map = this.map;
+    if (!map) return;
+    const shown = (): boolean => map.getLayer(LYR_CRIME_CITY) !== undefined && map.getLayoutProperty(LYR_CRIME_CITY, 'visibility') !== 'none';
+    map.on('mousemove', (e) => {
+      let html = '';
+      if (shown()) {
+        const city = map.queryRenderedFeatures(e.point, { layers: [LYR_CRIME_CITY] })[0];
+        const dept = city ? undefined : map.queryRenderedFeatures(e.point, { layers: [LYR_CRIME_FILL] })[0];
+        html = String(city?.properties?.['body'] ?? dept?.properties?.['crimeBody'] ?? '');
+      }
+      if (!html) {
+        this.hideCrimeHover();
+        return;
+      }
+      this.crimeHoverShown = true;
+      const popup = this.crimeHoverPopup
+        ?? new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12, maxWidth: '300px', className: 'dark-popup hm-hover' });
+      this.crimeHoverPopup = popup;
+      popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
+    });
+    map.on('mouseout', () => this.hideCrimeHover());
+    map.on('click', (e) => {
+      if (!this.onCrimeCityClick || !shown()) return;
+      const hit = map.queryRenderedFeatures(e.point, { layers: [LYR_CRIME_CITY] })[0];
+      const code = hit ? String(hit.properties?.['id'] ?? '') : '';
+      if (code) this.onCrimeCityClick(code);
+    });
+  }
+
   private hideOutagesHover(): void {
     if (!this.outHoverShown) return;
     this.outHoverShown = false;
@@ -7822,6 +7975,7 @@ export class DeckGLMap {
     this.repaintEnvironmentOnShow(before, layers);
     this.repaintSovereigntyOnShow(before, layers);
     if (layers.health && this.healthRegionsDirty) void this.renderHealthRegions();
+    if (layers.crime && this.crimeDirty) void this.renderCrime();
     if ((layers.healthOscour || layers.healthApl) && this.healthDeptsDirty) void this.renderHealthDepartments();
     if (layers.stability && this._pendingIsnrScores !== null) {
       const scores = this._pendingIsnrScores;
@@ -7873,6 +8027,12 @@ export class DeckGLMap {
     for (const id of ENV_LAYER_KEYS.airQuality) this.setVis(id, vis(envLayerOn(layers, 'airQuality')));
     for (const id of ENV_LAYER_KEYS.earthquakes) this.setVis(id, vis(envLayerOn(layers, 'earthquakes')));
     for (const id of ENV_LAYER_KEYS.disasters) this.setVis(id, vis(envLayerOn(layers, 'disasters')));
+    for (const id of PROTEST_LAYER_IDS) this.setVis(id, vis(layers.protests ?? false));
+    for (const id of CRIME_LAYER_IDS) this.setVis(id, vis(layers.crime ?? false));
+    this.hideCrimeHover();
+    this.hideProtestsHover();
+    // Couche réaffichée ou carte prête après la lecture : points reposés depuis la dernière réponse.
+    if (layers.protests) (this.map?.getSource(SRC_PROTESTS) as maplibregl.GeoJSONSource | undefined)?.setData(protestFeatures(this.protestsData));
     this.setVis(RADAR_2D_LAYER_ID, vis(this.radar2dShown()));
     this.setVis(ECHO_TOPS_LAYER_ID, vis(this.echoTopsShown(this._echoTopsEnabled)));
     this.hideEnvironmentHover();
