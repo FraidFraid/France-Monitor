@@ -198,8 +198,8 @@ describe('sites de défense, ouvrages OpenStreetMap', () => {
       expect(body).not.toContain('hm-row');
     }
     // La liste ne porte plus de description depuis la tâche A17 (O13) ; un champ en trop ne passe toujours pas dans l'infobulle.
-    const base = { ...ACTIVE_INSTALLATIONS.filter((b) => b.id === 'BA-103')[0], description: 'Description non sourcée' };
-    expect(base.id).toBe('BA-103');
+    const base = { ...ACTIVE_INSTALLATIONS.filter((b) => b.id === 'BA-105')[0], description: 'Description non sourcée' };
+    expect(base.id).toBe('BA-105');
     expect(String(props(defenseSiteFeatures([base]).features[0])['body'])).not.toContain('Description non sourcée');
   });
   it('ouvrages OpenStreetMap : couleur de catégorie, licence et date du fichier ; fichier absent : rien', () => {

@@ -370,13 +370,13 @@ describe('Marine nationale (O11, O12, S2)', () => {
 describe('sites de défense (O13)', () => {
   it('base curée par catégorie, outre-mer et étranger dits ; option des ouvrages OpenStreetMap datée et sous licence', () => {
     expect(summarizeCuratedSites(ACTIVE_INSTALLATIONS)).toEqual({
-      total: 112, byType: { air: 31, navy: 18, army: 34, joint: 29, fortification: 0, other: 0 }, overseas: 9, abroad: 4,
+      total: 105, byType: { air: 29, navy: 16, army: 39, joint: 13, fortification: 0, other: 8 }, overseas: 8, abroad: 2,
     });
     const s = sectionOf('sites');
-    expect(s?.summary).toBe('112\u00a0sites');
+    expect(s?.summary).toBe('105\u00a0sites');
     const t = visibleText(s?.html ?? '');
-    for (const row of ['Bases aériennes31', 'Bases navales18', 'Sites de l’armée de terre34', 'Sites interarmées29', 'dont outre-mer9',
-      'dont forces françaises à l’étranger4']) expect(t).toContain(row);
+    for (const row of ['Bases aériennes29', 'Bases navales16', 'Sites de l’armée de terre39', 'Sites interarmées13', 'Autres sites8', 'dont outre-mer8',
+      'dont forces françaises à l’étranger2']) expect(t).toContain(row);
     expect(t).not.toContain('Fortifications');
     expect(t).toContain('Liste interne de sites publics (ministère des Armées, Wikipédia, OpenStreetMap), sans date par site.');
     expect(t).toContain('Chaque site : nom, catégorie et lien officiel s’il existe ; ni description, ni unités.');
@@ -385,7 +385,7 @@ describe('sites de défense (O13)', () => {
     expect(s?.html).toContain('<button type="button" class="lp-toggle" data-osm-works aria-pressed="false">Afficher les ouvrages OpenStreetMap</button>');
     const meta = { generatedAt: '2026-10-04T13:05:00Z', osmBase: '2026-10-04T12:40:00Z', licence: 'ODbL 1.0' as const, source: '© les contributeurs d’OpenStreetMap', count: 1301 };
     const shown = sectionOf('sites', { sites: { ...SITES, osm: { meta, error: null, shown: true } } });
-    expect(shown?.summary).toBe('112\u00a0sites · 1\u202F301\u00a0ouvrages OpenStreetMap');
+    expect(shown?.summary).toBe('105\u00a0sites · 1\u202F301\u00a0ouvrages OpenStreetMap');
     expect(visibleText(shown?.html ?? '')).toContain('Ouvrages OpenStreetMap : 1\u202F301\u00a0points en France, fichier du 04/10/2026 (base OSM du 04/10 14:40), © les contributeurs d’OpenStreetMap, ODbL 1.0.');
     expect(shown?.html).toContain('data-osm-works aria-pressed="true">Masquer les ouvrages OpenStreetMap</button>');
     expect(visibleText(sectionOf('sites', { sites: { ...SITES, osm: { meta: null, error: 'HTTP 404', shown: true } } })?.html ?? ''))
