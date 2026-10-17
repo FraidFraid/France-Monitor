@@ -66,7 +66,9 @@
   const PILL_ONLY = { 'mqs-cable-label': 'subseaCables', 'mqs-low-disc': 'outagesTelecom', 'mqs-low-count': 'outagesTelecom', 'mqs-inet-past': 'outagesInternet',
     'mqs-cz-fill': 'subseaCables', 'mqs-cz-line': 'subseaCables', 'mqs-anch-line': 'subseaCables', 'mqs-landings-label': 'subseaCables',
     'mqs-dc-ref': 'outagesCloud', 'mqs-bases-closed': 'military' };
-  const isOn = (k) => S.focus.has(k) || preview === k;
+  // Aucune pastille active : toutes les couches sont affichées ; une pastille active : sa couche en avant, le détail des autres retiré.
+  const allMode = () => S.focus.size === 0 && !preview;
+  const isOn = (k) => allMode() || S.focus.has(k) || preview === k;
   const calm = () => {
     const m = S.m;
     const P = (id, k, v) => { try { if (m.getLayer(id) && JSON.stringify(m.getPaintProperty(id, k)) !== JSON.stringify(v)) m.setPaintProperty(id, k, v); } catch (e) { /* calque d'un autre type */ } };
@@ -84,8 +86,9 @@
       P('submarine-cables-landing', 'circle-stroke-width', 1); P('submarine-cables-landing', 'circle-stroke-color', '#05060a');
     }
     // Pression par département (score global) : contour toujours, remplissage quand sa pastille est allumée.
-    // Pression par département : ni contour ni remplissage par défaut (ils doublaient les disques jaunes) ; remplissage avec sa pastille.
+    // Pression par département (score global) : aplat léger en fond quand tout est affiché, plein avec sa pastille ; les symboles restent au-dessus.
     V('isnr-line', false); V('isnr-fill', isOn('stability'));
+    P('isnr-fill', 'fill-opacity', S.focus.has('stability') || preview === 'stability' ? 0.65 : 0.2);
     // Détail porté au premier plan par une pastille : sites télécoms et référentiel cloud dès la vue France.
     const zr = (id, min) => { try { if (m.getLayer(id) && m.getLayer(id).minzoom !== min) m.setLayerZoomRange(id, min, 24); } catch (e) { /* calque absent */ } };
     zr('mqs-sites-recent', isOn('outagesTelecom') ? 0 : 7);
@@ -149,7 +152,10 @@
       const x = g.get(k) ?? { commune: l.commune, dept: l.dept, pts: [], cables: new Map() };
       x.pts.push([l.lon, l.lat]); x.cables.set(c.id, c); g.set(k, x);
     }
-    return [...g.values()].map((x) => ({ ...x, at: [x.pts.reduce((s, p) => s + p[0], 0) / x.pts.length, x.pts.reduce((s, p) => s + p[1], 0) / x.pts.length], n: x.cables.size }));
+    const tg = (S.world?.landings ?? []).filter((l) => l.country === 'France');
+    return [...g.values()].map((x) => { const at = [x.pts.reduce((s, p) => s + p[0], 0) / x.pts.length, x.pts.reduce((s, p) => s + p[1], 0) / x.pts.length];
+      const near = tg.filter((l) => km(at, l.at) <= 20).flatMap((l) => l.cables);
+      return { ...x, at, n: x.cables.size, tg: [...new Set(near)].map((id) => S.world.cables[id]).filter(Boolean) }; });
   };
 
   // ─── Agrégation par département ───
@@ -207,6 +213,8 @@
     // Atterrages par commune, zones de protection des câbles et mouillages qui les recoupent (Shom)
     S.landings = landingsByPlace();
     setData('mqs-landings', fc(S.landings.map((l, i) => pt(l.at, { i, n: l.n, name: l.n >= 3 ? `${l.commune} · ${l.n}` : '' }))));
+    setData('mqs-world', S.world?.routes ? { ...S.world.routes, features: S.world.routes.features.map((f) => ({ ...f, properties: { id: f.properties.id, planned: S.world.cables[f.properties.id]?.planned ?? false } })) } : fc([]));
+    setData('mqs-world-lp', fc((S.world?.landings ?? []).filter((l) => l.country !== 'France').map((l) => pt(l.at, { id: l.id }))));
     setData('mqs-cz', fc((S.cablesFile?.cableZones ?? []).map((z, i) => ({ type: 'Feature', geometry: { type: 'MultiPolygon', coordinates: z.polygons }, properties: { i } }))));
     setData('mqs-anch', fc((S.cablesFile?.anchorageZones ?? []).map((z, i) => ({ z, i })).filter(({ z }) => z.crossesCableZone)
       .map(({ z, i }) => ({ type: 'Feature', geometry: { type: 'MultiPolygon', coordinates: z.polygons }, properties: { i } }))));
@@ -238,8 +246,17 @@
       const b = before();
       m.addLayer({ id: 'mqs-dept-fill', type: 'fill', source: 'mqs-depts', paint: { 'fill-color': '#ffffff', 'fill-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.06, 0] } }, b);
       // Département en anomalie : teinte légère à sa couleur d'état (le niveau reste lisible même quand les disques se touchent, en Île-de-France).
-      m.addLayer({ id: 'mqs-dept-level', type: 'fill', source: 'mqs-depts', filter: ['!=', ['get', 'level'], 'vert'], paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.07 } }, b);
+      m.addLayer({ id: 'mqs-dept-level', type: 'fill', source: 'mqs-depts', filter: ['!=', ['get', 'level'], 'vert'], paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0 } }, b);
       m.addLayer({ id: 'mqs-dept-level-line', type: 'line', source: 'mqs-depts', filter: ['!=', ['get', 'level'], 'vert'], paint: { 'line-color': ['get', 'color'], 'line-width': ['interpolate', ['linear'], ['zoom'], 4, 1.2, 8, 2.4], 'line-opacity': 0.9 } }, b);
+      // Tracé complet des câbles qui atterrissent en France (TeleGeography), sous les tracés précis du Shom ; pointillé = câble prévu.
+      const under = m.getLayer('submarine-cables-line') ? 'submarine-cables-line' : b;
+      m.addLayer({ id: 'mqs-world-line', type: 'line', source: 'mqs-world', filter: ['!', ['get', 'planned']],
+        paint: { 'line-color': CAT.cables, 'line-width': ['interpolate', ['linear'], ['zoom'], 2, 0.9, 6, 1.4, 9, 2], 'line-opacity': 0.8 } }, under);
+      m.addLayer({ id: 'mqs-world-planned', type: 'line', source: 'mqs-world', filter: ['get', 'planned'],
+        paint: { 'line-color': CAT.cables, 'line-width': ['interpolate', ['linear'], ['zoom'], 2, 0.9, 6, 1.4, 9, 2], 'line-opacity': 0.8, 'line-dasharray': [3, 2.5] } }, under);
+      m.addLayer({ id: 'mqs-world-hit', type: 'line', source: 'mqs-world', paint: { 'line-color': '#000000', 'line-opacity': 0, 'line-width': 10 } }, under);
+      m.addLayer({ id: 'mqs-world-lp', type: 'circle', source: 'mqs-world-lp',
+        paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 2, 2, 8, 4], 'circle-color': '#05060a', 'circle-stroke-color': CAT.cables, 'circle-stroke-width': 1.4 } });
       m.addLayer({ id: 'mqs-cz-fill', type: 'fill', source: 'mqs-cz', paint: { 'fill-color': CAT.cables, 'fill-opacity': 0.14 } }, b);
       m.addLayer({ id: 'mqs-cz-line', type: 'line', source: 'mqs-cz', paint: { 'line-color': CAT.cables, 'line-width': 1, 'line-opacity': 0.7 } }, b);
       m.addLayer({ id: 'mqs-anch-line', type: 'line', source: 'mqs-anch', paint: { 'line-color': '#e8e8ec', 'line-width': 1.2, 'line-dasharray': [2, 2], 'line-opacity': 0.85 } }, b);
@@ -306,9 +323,9 @@
   // ─── Pastilles de l'application : mise en avant cumulable, le reste estompé (comme les pastilles Énergie) ───
   const GROUPS = {
     military: ['mqs-bases-sym', 'mqs-bases-closed', 'mqs-air-sym', 'sov-emergencies', 'sov-navy-reference', 'sov-navy-observed', 'sov-gnss-fill', 'sov-gnss-line'],
-    subseaCables: ['submarine-cables-line', 'mqs-landings', 'mqs-landings-label', 'mqs-cable-label', 'mqs-cz-fill', 'mqs-cz-line', 'mqs-anch-line'],
+    subseaCables: ['mqs-world-line', 'mqs-world-planned', 'mqs-world-lp', 'submarine-cables-line', 'mqs-landings', 'mqs-landings-label', 'mqs-cable-label', 'mqs-cz-fill', 'mqs-cz-line', 'mqs-anch-line'],
     cyber: [],
-    stability: ['isnr-line', 'isnr-fill'],
+    stability: [],
     outagesTelecom: ['mqs-dept-level', 'mqs-dept-level-line', 'mqs-agg-disc', 'mqs-agg-count', 'mqs-low-disc', 'mqs-low-count', 'mqs-sites-recent', 'mqs-sites-long'],
     outagesInternet: ['mqs-inet', 'mqs-inet-past'],
     outagesCloud: ['mqs-cloud-sym', 'mqs-dc-ref'],
@@ -446,6 +463,21 @@
   const dcCard = (x) => ({ dot: CAT.cloud, title: x.name, state: 'Centre de données · inventaire', stateHex: '#c7c7cc',
     rows: [['Exploitant', x.operator ?? 'n.d.'], ['Ville', x.city ?? 'n.d.'], ['Département', S.agg.get(S.dcDept?.get(x.id))?.nom ?? 'n.d.']].concat(x.power ? [['Puissance', x.power]] : []),
     hint: 'Aucun état publié pour ce site : pas une page d’état', source: x.source });
+  const TG_SRC = 'TeleGeography, Submarine Cable Map (CC BY-NC-SA 3.0), lu le 17/10/2026';
+  const placeName = (n) => n.replace(/, France$/, '');
+  const worldCableCard = (c) => {
+    const fr = c.landings.filter((l) => l.fr).map((l) => placeName(l.name));
+    const countries = [...new Set(c.landings.filter((l) => !l.fr).map((l) => l.country))];
+    const owners = (c.owners ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+    return { dot: CAT.cables, title: c.name, state: c.planned ? `Câble prévu${c.rfs ? `, mise en service annoncée ${c.rfs}` : ''}` : `Câble en service${c.rfsYear ? ` depuis ${c.rfsYear}` : ''}`, stateHex: '#c7c7cc',
+      rows: [['Longueur', c.length ? c.length.replace(/,/g, NB).replace(' km', `${NB}km`) : 'n.d.'], ['Atterrages en France', fr.join(', ') || 'n.d.'],
+        ['Autres pays', countries.length ? `${countries.length} : ${countries.slice(0, 5).join(', ')}${countries.length > 5 ? ` +${countries.length - 5}` : ''}` : 'aucun'],
+        ['Propriétaires', owners.length ? owners.slice(0, 5).join(', ') + (owners.length > 5 ? ` +${owners.length - 5}` : '') : 'n.d.'], ['Fournisseur', c.suppliers ?? 'n.d.'],
+        ['Veille des navires', S.data.cablesWatch?.evaluated ? 'active' : 'coupée']],
+      hint: 'Tracé schématique au large ; le tracé précis près des côtes est celui du Shom', source: TG_SRC };
+  };
+  const worldLandingCard = (l) => ({ dot: CAT.cables, title: l.name, state: `Atterrage hors de France · ${plural(l.cables.length, 'câble')} vers la France`, stateHex: '#c7c7cc',
+    rows: [['Câbles', l.cables.map((id) => S.world.cables[id]?.name ?? id).join(', ')]], source: TG_SRC });
   // Bulles d'origine (câbles, Marine, urgences) : reprises en entier, au gabarit de la maquette.
   const parseBody = (html) => {
     const d = document.createElement('div'); d.innerHTML = html ?? '';
@@ -458,10 +490,11 @@
     const ops = [...new Set(cables.map((c) => c.operator).filter(Boolean))];
     const off = cables.filter((c) => c.outOfService).length;
     return { dot: CAT.cables, title: `${l.commune || 'atterrage'} (${l.dept})`, state: `Atterrage · ${plural(l.n, 'câble')}${off ? `, dont ${off} hors service` : ''}`, stateHex: '#c7c7cc',
-      rows: [['Câbles nommés', named.length ? named.slice(0, 4).join(', ') + (named.length > 4 ? ` +${named.length - 4}` : '') : 'aucun nom publié'],
-        ['Sans nom (Shom)', num(cables.length - named.length)], ops.length ? ['Exploitants', ops.join(', ')] : null,
+      rows: [['Câbles internationaux', l.tg.length ? l.tg.map((c) => c.name).slice(0, 6).join(', ') + (l.tg.length > 6 ? ` +${l.tg.length - 6}` : '') : 'aucun (TeleGeography)'],
+        named.length ? ['Autres câbles nommés', named.slice(0, 4).join(', ')] : null,
+        ['Tracés du Shom', `${num(cables.length)}, dont ${num(cables.length - named.length)} sans nom`], ops.length ? ['Exploitants', ops.join(', ')] : null,
         ['Veille des navires', S.data.cablesWatch?.evaluated ? 'active' : 'coupée']].filter(Boolean),
-      hint: S.data.cablesWatch?.evaluated ? 'Taille du rond = nombre de câbles au même atterrage' : cableWatch(), source: 'Shom (CC BY-SA, 2019) · OpenStreetMap (ODbL)' };
+      hint: S.data.cablesWatch?.evaluated ? 'Taille du rond = nombre de câbles au même atterrage' : cableWatch(), source: 'Shom (CC BY-SA, 2019) · OpenStreetMap (ODbL) · TeleGeography (CC BY-NC-SA 3.0)' };
   };
   const strong = (html) => { const d = document.createElement('div'); d.innerHTML = html ?? ''; return d.querySelector('strong, b, .hm-tip-title')?.textContent ?? d.textContent.slice(0, 60); };
 
@@ -469,7 +502,7 @@
   const deptAt = (c) => { if (!c) return null; for (const f of S.geo.deptShapes) if (inGeom(c, f.geometry)) return S.agg.get(f.properties.code); return null; };
 
   // Arbitre : une seule cible, la plus signifiante sous le pointeur.
-  const PRIORITY = ['mqs-air-sym', 'sov-emergencies', 'mqs-cloud-sym', 'mqs-sites-recent', 'mqs-agg-disc', 'mqs-low-disc', 'mqs-bases-sym', 'mqs-bases-closed', 'sov-navy-reference', 'sov-navy-observed', 'mqs-landings', 'mqs-dc-ref', 'submarine-cables-hitarea', 'mqs-anch-line', 'mqs-cz-fill', 'mqs-sites-long', 'mqs-dept-fill'];
+  const PRIORITY = ['mqs-air-sym', 'sov-emergencies', 'mqs-cloud-sym', 'mqs-sites-recent', 'mqs-agg-disc', 'mqs-low-disc', 'mqs-bases-sym', 'mqs-bases-closed', 'sov-navy-reference', 'sov-navy-observed', 'mqs-landings', 'mqs-world-lp', 'mqs-dc-ref', 'mqs-world-hit', 'submarine-cables-hitarea', 'mqs-anch-line', 'mqs-cz-fill', 'mqs-sites-long', 'mqs-dept-fill'];
   const pick = (point) => {
     const layers = PRIORITY.filter((id) => S.m.getLayer(id));
     const hits = S.m.queryRenderedFeatures(point, { layers });
@@ -481,6 +514,8 @@
     if (id === 'mqs-sites-recent' || id === 'mqs-sites-long') { const s = (S.data.telecom?.sites ?? []).find((x) => x.id === p.id); return s && { key: `site:${s.id}`, kind: 'site', id: s.id, card: siteCard(s), at: [s.lon, s.lat] }; }
     if (id === 'mqs-bases-sym') return { key: `base:${p.id}`, kind: 'base', id: p.id, card: baseCard(p), at: f.geometry.coordinates };
     if (id === 'mqs-cloud-sym') return { key: `cloud:${p.id}`, kind: 'cloud', id: p.id, card: cloudCard(p), at: f.geometry.coordinates };
+    if (id === 'mqs-world-hit') { const c = S.world?.cables[p.id]; return c && { key: `wc:${c.id}`, kind: 'wcable', id: c.id, card: worldCableCard(c), at: null }; }
+    if (id === 'mqs-world-lp') { const l = S.world.landings.find((x) => x.id === p.id); return l && { key: `wl:${l.id}`, kind: 'wland', id: l.id, card: worldLandingCard(l), at: l.at }; }
     if (id === 'mqs-landings') { const l = S.landings[p.i]; return l && { key: `land:${p.i}`, kind: 'landing', id: p.i, card: landingCard(l), at: l.at }; }
     if (id === 'mqs-dc-ref') { const x = (S.data.cloud?.reference?.datacenters ?? []).find((d) => d.id === p.id); return x && { key: `dc:${x.id}`, kind: 'dc', id: x.id, card: dcCard(x), at: [x.lon, x.lat] }; }
     if (id === 'mqs-cz-fill') { const z = S.cablesFile.cableZones[p.i]; return { key: `cz:${p.i}`, kind: 'cz', id: p.i, at: null,
@@ -628,19 +663,20 @@
       <header><h4>Lire la carte</h4><button class="mqs-x mqs-leg-toggle" aria-label="Fermer">×</button></header>
       <h5>État : seulement ce qui est anormal</h5>
       <div class="mqs-row">${swatch(L1.jaune, 'disc')}Vigilance ${swatch(L1.orange, 'disc')}Alerte ${swatch(L1.rouge, 'disc')}Crise</div>
-      <div class="mqs-row mqs-note">Disque = sites mobiles coupés depuis moins de 24${NB}h dans le département (seuils ${T.join(' / ')}), taille selon le nombre ; département teinté à son état ; orange aussi pour une coupure Internet en cours.</div>
+      <div class="mqs-row mqs-note">Disque = sites mobiles coupés depuis moins de 24${NB}h dans le département (seuils ${T.join(' / ')}), taille selon le nombre ; contour du département à son état ; orange aussi pour une coupure Internet en cours.</div>
+      <div class="mqs-row mqs-note">Aplat léger du département = pression globale (score), plein avec sa pastille.</div>
       <h5>Couche : une couleur par catégorie</h5>
       <div class="mqs-row">${['air', 'navy', 'army', 'joint'].map((t) => `${shapeSw(t, true)}${BASE_WORD[t]}`).join(' ')}</div>
       <div class="mqs-row mqs-note">${shapeSw('air', false)}Site de défense : la forme dit l’armée ; pointillé = non recoupé par OpenStreetMap ; fermés en gris avec la pastille.</div>
       <div class="mqs-row"><span class="mqs-chev" style="color:${CAT.defense}">➤</span>aéronef militaire français <span class="mqs-chev" style="color:${CAT.defenseOther}">➤</span>autre pays, orienté selon le cap</div>
-      <div class="mqs-row">${swatch(CAT.cables, 'line')}Câble sous-marin ${swatch('#6e7585', 'line')}hors service</div>
+      <div class="mqs-row">${swatch(CAT.cables, 'line')}Câble sous-marin, tracé complet ${swatch(CAT.cables, 'dash')}prévu ${swatch('#6e7585', 'line')}hors service</div>
       <div class="mqs-row">${swatch(CAT.cables, 'disc')}Atterrage : taille = nombre de câbles au même endroit</div>
       <div class="mqs-row mqs-note">Avec la pastille : zones de protection des câbles (aplat cyan) et mouillages qui les recoupent (pointillé blanc).</div>
       <div class="mqs-row">${swatch(CAT.telecom, 'ring')}Sites mobiles coupés (détail avec la pastille)</div>
       <div class="mqs-row">${swatch(CAT.internet, 'dash')}Coupure Internet terminée depuis moins de 7${NB}jours</div>
       <div class="mqs-row">${icon('cloud', '#fff', CAT.cloud)}Zone cloud (page d’état) ${swatch(CAT.cloud, 'ring')}centre de données (inventaire, avec la pastille)</div>
       <div class="mqs-row">${swatch('#e8e8ec', 'dash')}Zone de défense et de sécurité</div>
-      <div class="mqs-row mqs-note">Les pastilles en haut révèlent le détail d’une couche (clic, cumulable ; survol pour un aperçu).</div>
+      <div class="mqs-row mqs-note">Sans pastille active, toutes les couches sont affichées. Une pastille met sa couche en avant et estompe les autres (clic, cumulable ; survol pour un aperçu).</div>
       <details${ko ? ' open' : ''}><summary>Sources · ${src.length - ko}${NB}à jour, ${ko}${NB}en défaut</summary>${src.map(([k, v, st]) => `<div class="mqs-row mqs-src"><i class="mqs-src-${st}"></i><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}</details>`;
     legend.querySelectorAll('.mqs-leg-toggle').forEach((b) => { b.onclick = () => { legend.dataset.open = String(!open); renderLegend(); }; });
   };
@@ -659,6 +695,7 @@
 
   const css = `
   .maplibregl-popup, .military-tooltip, .wm-popup, .deck-tooltip { display: none !important; }
+  .mqs-pop .et-card { max-width: 400px; } .mqs-pop .et-row b { white-space: normal; text-align: right; } .mqs-pop .et-row span { flex: 0 0 auto; max-width: 45%; }
   .mqs-pop { position: absolute; left: 0; top: 0; z-index: 30; pointer-events: none; display: none; background: var(--bg-surface, #14161c); border: 1px solid var(--border-color, #2a2e37);
     border-radius: 8px; padding: 10px 12px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
   .mqs-fiche { position: absolute; right: 12px; top: 110px; bottom: 64px; width: 370px; z-index: 31; display: none; flex-direction: column; gap: 10px; overflow-y: auto;
@@ -730,7 +767,7 @@
       await wait(500);
     }
     S.bases ??= [];
-    [S.cablesFile, S.osm] = await Promise.all([getJson('/data/subsea-cables.json'), getJson('/data/defense-osm-works.json')]);
+    [S.cablesFile, S.osm, S.world] = await Promise.all([getJson('/data/subsea-cables.json'), getJson('/data/defense-osm-works.json'), getJson('/maquette-cables-monde.json')]);
     audit();
     const load = async () => {
       const [telecom, internet, military, cablesWatch, gnss, cyberData, cloud] = await Promise.all(['/api/outages/telecom', '/api/outages/internet', '/api/sovereignty/military',
