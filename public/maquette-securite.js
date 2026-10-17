@@ -88,6 +88,11 @@
     // Pression par département (score global) : contour toujours, remplissage quand sa pastille est allumée.
     // Pression par département (score global) : aplat léger en fond quand tout est affiché, plein avec sa pastille ; les symboles restent au-dessus.
     V('isnr-line', false); V('isnr-fill', isOn('stability'));
+    // Manifestations : toujours (l'actualité du jour). Criminalité (statistique annuelle SSMSI) : villes par défaut, aplat des départements avec sa pastille seulement,
+    // pour ne pas confondre son contour avec celui du niveau télécoms.
+    const pill = (k) => S.focus.has(k) || preview === k;
+    V('protests', isOn('protests')); V('protests-label', isOn('protests'));
+    V('mqs-crime-city', isOn('crime') && !pill('crime')); V('crime-city', pill('crime')); V('crime-city-label', pill('crime')); V('crime-fill', pill('crime')); V('crime-line', pill('crime'));
     P('isnr-fill', 'fill-opacity', S.focus.has('stability') || preview === 'stability' ? 0.65 : 0.2);
     // Détail porté au premier plan par une pastille : sites télécoms et référentiel cloud dès la vue France.
     const zr = (id, min) => { try { if (m.getLayer(id) && m.getLayer(id).minzoom !== min) m.setLayerZoomRange(id, min, 24); } catch (e) { /* calque absent */ } };
@@ -188,6 +193,7 @@
       return pt(b.geometry.coordinates, { id: b.properties.id, name: b.properties.name, type: t, status: au?.status ?? 'seul', solid: au?.status === 'source' }); })));
     // Atterrages par commune, zones de protection des câbles et mouillages qui les recoupent (Shom)
     S.landings = landingsByPlace();
+    setData('mqs-crime', S.crimeFc ?? fc([]));
     setData('mqs-landings', fc(S.landings.map((l, i) => pt(l.at, { i, n: l.n, name: l.n >= 3 ? `${l.commune} · ${l.n}` : '' }))));
     setData('mqs-world', S.world?.routes ? { ...S.world.routes, features: S.world.routes.features.map((f) => ({ ...f, properties: { id: f.properties.id, planned: S.world.cables[f.properties.id]?.planned ?? false } })) } : fc([]));
     // Suite des câbles du Shom au-delà des eaux françaises (OpenStreetMap) et bouts sans suite publiée.
@@ -268,6 +274,9 @@
       m.addLayer({ id: 'mqs-landings-label', type: 'symbol', source: 'mqs-landings', filter: ['!=', ['get', 'name'], ''],
         layout: { 'text-field': ['get', 'name'], 'text-size': 10.5, 'text-font': ['Open Sans Semibold'], 'text-offset': [0.9, 0], 'text-anchor': 'left', 'text-optional': true },
         paint: { 'text-color': CAT.cables, 'text-halo-color': '#05060a', 'text-halo-width': 1.4 } }, b);
+      // Vue d'ensemble : seulement les villes à 2 fois la moyenne nationale ou plus, en anneau (une statistique annuelle, pas un événement : jamais un disque plein).
+      m.addLayer({ id: 'mqs-crime-city', type: 'circle', source: 'mqs-crime', filter: ['all', ['>=', ['get', 'sortKey'], 200], ['!', ['get', 'estimated']]], layout: { 'circle-sort-key': ['get', 'sortKey'] },
+        paint: { 'circle-color': 'rgba(0,0,0,0)', 'circle-radius': ['*', 0.8, ['get', 'radius']], 'circle-stroke-color': ['get', 'color'], 'circle-stroke-width': 2, 'circle-stroke-opacity': 0.95 } }, b);
       m.addLayer({ id: 'mqs-bases-closed', type: 'symbol', source: 'mqs-bases', filter: ['==', ['get', 'status'], 'ferme'],
         layout: { 'icon-image': ['concat', 'mqs-shp-', ['get', 'type'], '-d-none'], 'icon-size': 0.9, 'icon-allow-overlap': true,
           'text-field': ['concat', ['get', 'name'], ' (fermé)'], 'text-size': 9.5, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-font': ['Open Sans Semibold'], 'text-optional': true },
@@ -310,6 +319,8 @@
     // Cyber : aucun incident localisé publiquement ; la pastille montre l'infrastructure numérique exposée (centres de données, zones cloud, atterrages).
     cyber: ['mqs-dc-ref', 'mqs-cloud-sym', 'mqs-landings', 'mqs-landings-label', 'submarine-cables-line'],
     stability: [],
+    protests: ['protests', 'protests-label'],
+    crime: ['mqs-crime-city', 'crime-city', 'crime-city-label', 'crime-fill', 'crime-line'],
     outagesTelecom: ['mqs-dept-level', 'mqs-dept-level-line', 'mqs-agg-disc', 'mqs-agg-count', 'mqs-low-disc', 'mqs-low-count', 'mqs-sites-recent', 'mqs-sites-long'],
     outagesInternet: ['mqs-inet', 'mqs-inet-past'],
     outagesCloud: ['mqs-cloud-sym', 'mqs-dc-ref'],
@@ -497,7 +508,7 @@
   const deptAt = (c) => { if (!c) return null; for (const f of S.geo.deptShapes) if (inGeom(c, f.geometry)) return S.agg.get(f.properties.code); return null; };
 
   // Arbitre : une seule cible, la plus signifiante sous le pointeur.
-  const PRIORITY = ['mqs-air-sym', 'sov-emergencies', 'mqs-cloud-sym', 'mqs-sites-recent', 'mqs-agg-disc', 'mqs-low-disc', 'mqs-bases-sym', 'mqs-bases-closed', 'sov-navy-reference', 'sov-navy-observed', 'mqs-landings', 'mqs-world-lp', 'mqs-dc-ref', 'mqs-suite-end', 'mqs-world-hit', 'mqs-suite-hit', 'submarine-cables-hitarea', 'mqs-anch-line', 'mqs-cz-fill', 'mqs-sites-long', 'mqs-dept-fill'];
+  const PRIORITY = ['mqs-air-sym', 'sov-emergencies', 'protests', 'mqs-cloud-sym', 'mqs-sites-recent', 'mqs-agg-disc', 'mqs-low-disc', 'crime-city', 'mqs-crime-city', 'mqs-bases-sym', 'mqs-bases-closed', 'sov-navy-reference', 'sov-navy-observed', 'mqs-landings', 'mqs-world-lp', 'mqs-dc-ref', 'mqs-suite-end', 'mqs-world-hit', 'mqs-suite-hit', 'submarine-cables-hitarea', 'mqs-anch-line', 'mqs-cz-fill', 'mqs-sites-long', 'crime-fill', 'mqs-dept-fill'];
   const pick = (point) => {
     const layers = PRIORITY.filter((id) => S.m.getLayer(id));
     const hits = S.m.queryRenderedFeatures(point, { layers });
@@ -526,6 +537,14 @@
         card: { dot: p.outOfService ? '#6e7585' : CAT.cables, title: o.title || 'câble sous-marin', state: o.sub, stateHex: '#c7c7cc',
           rows: [...o.rows, ['Veille des navires', S.data.cablesWatch?.evaluated ? 'active' : 'coupée']], hint: o.notes.join(' '), source: 'Shom · OpenStreetMap' } };
     }
+    if (id === 'protests') { const o = parseBody(p.body); const d = document.createElement('div'); d.innerHTML = p.body ?? '';
+      const titles = [...d.querySelectorAll('.hm-sub')].map((x) => x.textContent);
+      return { key: `pr:${p.id}`, kind: 'raw', id: p.id, at: f.geometry.coordinates,
+        card: { dot: p.color, title: o.title, state: o.rows.find((r) => r[0] === 'Niveau')?.[1] ?? 'Manifestation', stateHex: p.color,
+          rows: [...titles.map((t, i) => [i ? '' : 'Titres', t]), ...o.rows.filter((r) => r[0] !== 'Niveau')], hint: o.notes[0] ?? null, source: 'Démosphère (agenda) · presse française · GDELT' } }; }
+    if (id === 'crime-city' || id === 'mqs-crime-city' || id === 'crime-fill') { const pt = id !== 'crime-fill'; const o = parseBody(pt ? p.body : p.crimeBody); const col = pt ? p.color : p.crimeColor;
+      return { key: `cr:${id}:${p.id ?? p.code}`, kind: 'raw', id: p.id ?? p.code, at: pt ? f.geometry.coordinates : null,
+        card: { dot: col, title: o.title, state: o.sub, stateHex: '#c7c7cc', rows: o.rows, hint: o.notes[0] ?? 'Statistique annuelle, pas un événement en cours', source: 'SSMSI, ministère de l’Intérieur (data.gouv.fr), données annuelles' } }; }
     if (id === 'sov-emergencies' || id.startsWith('sov-navy')) return { key: `${id}:${p.id}`, kind: 'raw', id: p.id, at: f.geometry.coordinates,
       card: { dot: p.color ?? '#8a93a6', title: strong(p.body), state: parseBody(p.body).sub || (id === 'sov-emergencies' ? 'Code d’urgence transpondeur' : 'Bâtiment de la Marine · port base (référence)'), stateHex: p.color ?? '#c7c7cc',
         rows: parseBody(p.body).rows, hint: id === 'sov-emergencies' ? null : 'Position de référence, pas une observation', source: id === 'sov-emergencies' ? 'ADS-B' : 'liste publique, AIS coupé' } };
@@ -723,6 +742,8 @@
       <div class="mqs-row">${swatch(CAT.telecom, 'ring')}Sites mobiles coupés (détail avec la pastille)</div>
       <div class="mqs-row">${swatch(CAT.internet, 'dash')}Coupure Internet terminée depuis moins de 7${NB}jours</div>
       <div class="mqs-row">${icon('cloud', '#fff', CAT.cloud)}Zone cloud (page d’état) ${swatch(CAT.cloud, 'ring')}centre de données (inventaire, avec la pastille)</div>
+      <div class="mqs-row">${swatch('#ec4899', 'disc')}Manifestation annoncée ${swatch(L1.orange, 'disc')}signalée par la presse ${swatch(L1.rouge, 'disc')}heurts, taille selon le nombre</div>
+      <div class="mqs-row mqs-note">${swatch(L1.rouge, 'ring')}Criminalité (SSMSI, annuelle) : ville à 2 fois la moyenne nationale ou plus en violences physiques hors famille ; avec la pastille, toutes les villes et départements pour l’indicateur choisi dans le panneau.</div>
       <div class="mqs-row">${swatch('#e8e8ec', 'dash')}Zone de défense et de sécurité</div>
       <div class="mqs-row mqs-note">Sans pastille active, toutes les couches sont affichées. Une pastille met sa couche en avant et estompe les autres (clic, cumulable ; survol pour un aperçu).</div>
       <details${ko ? ' open' : ''}><summary>Sources · ${src.length - ko}${NB}à jour, ${ko}${NB}en défaut</summary>${src.map(([k, v, st]) => `<div class="mqs-row mqs-src"><i class="mqs-src-${st}"></i><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}</details>`;
@@ -813,6 +834,8 @@
     S.bases = ALL_MILITARY_INSTALLATIONS.map((b) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: b.coordinates }, properties: { ...b } }));
     S.bases ??= [];
     [S.cablesFile, S.osm, S.world, S.suite] = await Promise.all([getJson('/data/subsea-cables.json'), getJson('/data/defense-osm-works.json'), getJson('/maquette-cables-monde.json'), getJson('/maquette-cables-suite.json')]);
+    // Criminalité en vue d'ensemble : un indicateur communal fixe (violences physiques hors famille), l'indicateur du panneau s'applique avec la pastille.
+    try { const { crimeCityFeatures } = await import('/src/components/deckgl/crime-map.ts'); S.crimeFc = crimeCityFeatures(await getJson('/data/crime.json'), 'violencesPhysiques'); } catch (e) { S.crimeFc = null; }
     audit();
     const load = async () => {
       const [telecom, internet, military, cablesWatch, gnss, cyberData, cloud] = await Promise.all(['/api/outages/telecom', '/api/outages/internet', '/api/sovereignty/military',
