@@ -1,7 +1,7 @@
 // src/components/layer-panel/oil.ts : vue pure du panneau Pétrole (spec lot 2) ; aucun accès réseau ni DOM.
 import type {
   FuelPriceSeries, FuelPriceSeriesKey, FuelTensionBadge, FuelTensionDashboard, FuelTensionDepartmentSummary, FuelTensionLevel,
-  FuelType, OilDashboard, OilFreshnessInfo, OilFreshnessLevel, OilVigilanceStatus,
+  FuelType, OilDashboard, OilFreshnessInfo, OilFreshnessLevel, OilOriginShare, OilVigilanceStatus,
 } from '../../types/index.ts';
 import type { VigilanceLevel } from '../../services/vigilance.ts';
 import { FUEL_TENSION_THRESHOLDS } from '../../services/fuel-tension.ts';
@@ -478,7 +478,7 @@ function flowsSection(input: OilViewInput, data: OilDashboard): FicheSection {
     + kvRow('Solde', tone(balance, net >= 0 ? 'lp-imp' : 'lp-exp'))
     + kvRow('Tendance', valueHtml(TREND_WORD[f.trend], f.trend === 'up' ? 'orange' : f.trend === 'down' ? 'vert' : null))
     + note('Flux estimés à partir d’un bilan annuel et de signaux mensuels, pas de flux mesurés en direct.')
-    + freshnessNote(data.meta.freshness.dashboard);
+    + note(`Fraîcheur : bilan annuel${data.meta.freshness.dashboard.asOf ? ` · ${asOfWords(data.meta.freshness.dashboard.asOf)}` : ''}`);
   return { id: 'flows', title: 'Flux', summary: tone(balance, net >= 0 ? 'lp-imp' : 'lp-exp'), collapsible: true, open: input.open('flows', true), html };
 }
 
@@ -487,9 +487,22 @@ function originsSection(input: OilViewInput, data: OilDashboard): FicheSection {
   const base = { id: 'origins', title: 'Origine du brut', collapsible: true, open: input.open('origins', true) };
   if (top.length === 0) return { ...base, summary: 'n.d.', html: emptyLine('Origines du brut non publiées.') };
   const html = top.map((o) => barRow({
-    label: o.label, pct: o.sharePct, value: formatPct(o.sharePct, 1), color: 'var(--cat-crude)', dot: false, note: o.sourceLabel ?? null,
-  })).join('') + freshnessNote(data.meta.freshness.dashboard);
+    label: o.label, pct: o.sharePct, value: formatPct(o.sharePct, 1), color: 'var(--cat-crude)', dot: false,
+  })).join('') + originsSourceNote(top[0]) + originsFreshnessNote(data, top[0]);
   return { ...base, summary: escapeHtml(`${top[0].label} ${formatPct(top[0].sharePct, 1)}`), html };
+}
+
+/** Source et période de la série, une seule fois sous les jauges (toutes les origines viennent de la même série). */
+function originsSourceNote(o: OilOriginShare): string {
+  const text = [o.sourceLabel, o.periodLabel].filter((t): t is string => Boolean(t)).join(', ');
+  return text ? note(text) : '';
+}
+
+/** Fraîcheur de la série d'origines elle-même : Eurostat mensuel (dernier mois), sinon Insee annuel (année de référence). */
+function originsFreshnessNote(data: OilDashboard, o: OilOriginShare): string {
+  if (o.lastMonth) return note(`Fraîcheur : mensuel · ${o.lastMonth.label}`);
+  if (o.referenceYear) return note(`Fraîcheur : annuel · ${o.referenceYear}`);
+  return freshnessNote(data.meta.freshness.dashboard);
 }
 
 function deliveriesSection(input: OilViewInput, data: OilDashboard): FicheSection {

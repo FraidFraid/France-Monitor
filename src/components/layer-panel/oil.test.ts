@@ -171,6 +171,27 @@ describe('vue Pétrole', () => {
     expect(renderLayerView('oilNetwork', view({ tab: 'departments', search: 'zzz' }))).toContain('Aucun département ne correspond à la recherche.');
     expect(renderLayerView('oilNetwork', view({ tab: 'departments', mapVisible: true }))).toContain('aria-pressed="true">Masquer de la carte</button>');
   });
+  it('origine du brut : fraîcheur et source de la série affichée, une seule fois', () => {
+    const src = 'Eurostat · importations de pétrole brut par pays (mensuel)';
+    const eurostat = oilFixture({ origins: [
+      { label: 'Afrique', volumeMt: 16, sharePct: 34, sourceLabel: src, periodLabel: '12 mois jusqu’à juillet 2026',
+        lastMonth: { label: 'juillet 2026', volumeMt: 1.4, sharePct: 33 } },
+      { label: 'Mer du Nord', volumeMt: 5.2, sharePct: 10.9, sourceLabel: src, periodLabel: '12 mois jusqu’à juillet 2026',
+        lastMonth: { label: 'juillet 2026', volumeMt: 0.47, sharePct: 11.4 } },
+    ] });
+    const h = visibleText(section('origins', { tab: 'supply', data: eurostat })?.html ?? '');
+    expect(h).toContain('Fraîcheur : mensuel · juillet 2026');
+    expect(h).not.toContain('2025');
+    expect(h.split(src).length - 1).toBe(1);
+    expect(h).toContain('12 mois jusqu’à juillet 2026');
+    const insee = oilFixture({ origins: [{ label: 'Afrique', volumeMt: 16.8, sharePct: 36.6, referenceYear: 2025, sourceLabel: 'Insee' }] });
+    expect(visibleText(section('origins', { tab: 'supply', data: insee })?.html ?? '')).toContain('Fraîcheur : annuel · 2025');
+  });
+  it('flux : bilan annuel nommé comme tel', () => {
+    const base = oilFixture();
+    const data = oilFixture({ meta: { ...base.meta, freshness: { ...base.meta.freshness, dashboard: { ...base.meta.freshness.dashboard, asOf: '2025' } } } });
+    expect(visibleText(section('flows', { tab: 'supply', data })?.html ?? '')).toContain('Fraîcheur : bilan annuel · 2025');
+  });
   it('approvisionnement : flux estimés, origines en jauge de catégorie, livraisons UFIP, vue harmonisée', () => {
     const v = view({ tab: 'supply' });
     expect(v.sections.map((s) => s.id)).toEqual(['flows', 'origins', 'deliveries', 'harmonized']);
