@@ -125,6 +125,8 @@ export interface MapLayers {
   outagesTelecom: boolean;
   outagesInternet: boolean;
   outagesCloud: boolean;
+  /** Manifestations : agenda militant Démosphère et signal de la presse GDELT (spec 2026-10-17 manifestations). */
+  protests: boolean;
   stability: boolean;
   cyber: boolean;
   gasNetwork: boolean;
@@ -3198,5 +3200,44 @@ export interface CloudOutagesResponse {
   maintenances: CloudMaintenance[]; // France, en cours d'abord puis à 7 jours
   elsewhere: CloudIncident[];       // incidents des mêmes pages hors France : listés à part, jamais comptés ni colorés
   reference: { generatedAt: string | null; datacenters: CloudReferenceSite[]; exchanges: CloudExchange[] };   // generatedAt : dernière lecture réussie d'une de ses sources (DRIEAT, uMap, PeeringDB), null si aucune
+  errors: string[];
+}
+
+// ═══ Manifestations : annonces Démosphère et signal presse GDELT (spec 2026-10-17 manifestations) ═══
+
+export type ProtestSource = 'demosphere' | 'gdelt';
+/** annonce : rendez-vous publié à l'avance (Démosphère), jamais confirmé ; signale : relevé dans la presse (GDELT). */
+export type ProtestStatus = 'annonce' | 'signale';
+
+/** Article de presse relevé par GDELT (un par adresse, sans doublon). */
+export interface ProtestArticle {
+  url: string;
+  domain: string;
+  seenAt: string;                      // ISO 8601 UTC : DATEADDED GDELT
+  violent: boolean;                    // code CAMEO 145 (heurts, émeute)
+}
+
+/** Manifestation annoncée ou signalée. Sans lieu lisible : lat/lon null (listée, jamais placée sur la carte). */
+export interface ProtestItem {
+  id: string;
+  source: ProtestSource;
+  status: ProtestStatus;
+  title: string;                       // titre Démosphère ; GDELT : libellé français du code CAMEO dominant
+  startsAt: string | null;             // ISO 8601 UTC ; Démosphère : début du rendez-vous ; GDELT : dernier article
+  allDay: boolean;                     // rendez-vous Démosphère sans heure
+  city: string | null;                 // commune (référentiel geo.api.gouv.fr) ou lieu GDELT
+  dept: string | null;                 // code département (« 31 », « 2A »)
+  lat: number | null; lon: number | null;
+  url: string | null;                  // fiche Démosphère ; GDELT : article le plus récent
+  edition: string | null;              // édition Démosphère (« Toulouse ») ; GDELT : null
+  violent: boolean;                    // GDELT : au moins un article de heurts ; Démosphère : toujours false
+  articles: ProtestArticle[];          // GDELT seulement (au plus 8, plus récent d'abord) ; Démosphère : []
+}
+
+export interface ProtestsResponse {
+  readAt: string | null;               // dernière lecture réussie d'une des deux sources
+  items: ProtestItem[];                // signalés d'abord, puis annonces par heure de début
+  demosphere: { readAt: string | null; editions: number; failedEditions: string[]; scanned: number };
+  gdelt: { readAt: string | null; files: number; missingFiles: number };
   errors: string[];
 }

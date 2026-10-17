@@ -57,6 +57,7 @@ const LAYER_DEFS: LayerDef[] = [
   { key: 'outagesTelecom',  label: 'TÉLÉCOMS MOBILES', icon: fmIcon('satellite-dish'), sublayerOf: 'outages' },
   { key: 'outagesInternet', label: 'INTERNET', icon: fmIcon('globe'), sublayerOf: 'outages' },
   { key: 'outagesCloud',    label: 'CLOUD ET HÉBERGEMENT', icon: fmIcon('cloud'), sublayerOf: 'outages' },
+  { key: 'protests', label: 'MANIFESTATIONS', icon: `<span style="color:#ec4899;">${fmIcon('megaphone')}</span>` },
 ];
 
 /** Entrées affichées : « Événements en cours » n'existe que dans la v2 (la v1 ne change pas). */
@@ -672,6 +673,9 @@ export class LayerPanel {
         this.helpItem(fmIcon('satellite-dish'), 'Télécoms mobiles', 'Sites mobiles indisponibles déclarés par les opérateurs (fichier ARCEP quotidien) : pannes imprévues récentes et plus anciennes, par opérateur et par département, maintenances en option sur la carte.'),
         this.helpItem(fmIcon('globe'), 'Internet', 'Anomalies Internet en France : IODA (pays, départements, grands opérateurs), Cloudflare Radar si le jeton est posé, visibilité des grands réseaux (RIPEstat) ; un événement ouvert depuis plus de 7 jours est écarté.'),
         this.helpItem(fmIcon('cloud'), 'Cloud et hébergement', 'Incidents des pages d’état touchant une zone française (OVHcloud, Scaleway, Cloudflare, Google Cloud, AWS, Outscale), comptés une fois ; maintenances ; référentiel des centres de données et points d’échange, présenté comme inventaire.'),
+      ]),
+      this.helpSection(fmIcon('megaphone'), 'Manifestations', [
+        this.helpItem(fmIcon('megaphone'), 'Manifestations', 'Rendez-vous annoncés par l’agenda militant (Démosphère, non confirmés) et manifestations signalées par la presse mondiale (GDELT, 24\u00a0h) ; le lieu d’un signalement est souvent approximatif. Aucun effet sur l’indice de stabilité.', 'live'),
       ]),
     ].join('');
   }

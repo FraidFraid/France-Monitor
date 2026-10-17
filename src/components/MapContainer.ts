@@ -20,7 +20,7 @@ import type {
   CablesWatchResponse, CloudOutagesResponse, DefenseOsmWorksFile, DroneZonesFile, GnssResponse, InternetOutagesResponse, MilitaryResponse, PowerOutagesResponse,
   SubseaCablesFile, TelecomOutagesResponse,
 } from '../types/index.ts';
-import type { AirQualityResponse, AsnrResponse, DisastersResponse, DroughtResponse, EmsResponse, EarthquakesResponse, FiresResponse, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
+import type { AirQualityResponse, AsnrResponse, DisastersResponse, ProtestsResponse, DroughtResponse, EmsResponse, EarthquakesResponse, FiresResponse, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
 import type { UrgencesSyndrome } from './layer-panel/health-format.ts';
 
 /** Detect if the device is mobile (no WebGL or small screen) */
@@ -62,6 +62,7 @@ export class MapContainer {
   private echoTopsEnabled = false;
   private onRadarPointPick: ((lat: number, lon: number) => void) | null = null;
   private radarPick: { lat: number; lon: number } | null = null;
+  private onProtestClick: ((placeKey: string) => void) | null = null;
   private onSovereigntyFeatureClick: ((layerId: string, props: Record<string, unknown>) => void) | null = null;
 
   constructor(container: HTMLElement) {
@@ -93,6 +94,7 @@ export class MapContainer {
     if (this.onRadarPointPick) this.deckMap.setOnRadarPointPick(this.onRadarPointPick);
     if (this.radarPick) this.deckMap.setRadarPick(this.radarPick);
     if (this.onSovereigntyFeatureClick) this.deckMap.setOnSovereigntyFeatureClick(this.onSovereigntyFeatureClick);
+    if (this.onProtestClick) this.deckMap.setOnProtestClick(this.onProtestClick);
     if (this.onRawMapClick) this.deckMap.setOnRawMapClick(this.onRawMapClick);
     if (this.onSatelliteView) this.deckMap.setOnSatelliteView(this.onSatelliteView);
     if (this.onEnergyKeyChange) this.deckMap.setOnEnergyKeyChange(this.onEnergyKeyChange);
@@ -536,6 +538,15 @@ export class MapContainer {
 
   updateEarthquakesLayer(q: EarthquakesResponse | null, now: number): void {
     this.deckMap?.updateEarthquakesLayer(q, now);
+  }
+
+  updateProtestsLayer(r: ProtestsResponse | null): void {
+    this.deckMap?.updateProtestsLayer(r);
+  }
+
+  setOnProtestClick(handler: (placeKey: string) => void): void {
+    this.onProtestClick = handler;
+    this.deckMap?.setOnProtestClick(handler);
   }
 
   updateDisastersLayer(d: DisastersResponse | null, now: number): void {

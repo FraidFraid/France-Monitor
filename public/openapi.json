@@ -31,6 +31,7 @@
     { "name": "Énergie", "description": "Mix électrique régional/national et flux gaziers aux frontières." },
     { "name": "Finance", "description": "Stabilité financière : indicateurs de la BCE et écart de taux OAT-Bund." },
     { "name": "Environnement", "description": "Vigilance météo, crues, feux de forêt (détections satellite, foyers, météo des forêts), sécheresse, qualité de l'air, séismes et marégraphes." },
+    { "name": "Société", "description": "Mouvements sociaux : manifestations annoncées (agenda militant) et signalées par la presse." },
     { "name": "Souveraineté", "description": "Défense (aéronefs militaires ou d'État visibles en ADS-B, page Vigipirate du SGDSN, précision de position GNSS et météo spatiale, registre des gels), connectivité (câbles télécom sous-marins, grands réseaux, points d'échange), vigilance cyber (CERT-FR, vulnérabilités exploitées, revendications agrégées) : mesures datées de sources ouvertes, sans lieu inventé." }
   ],
   "paths": {
@@ -429,6 +430,24 @@
           "502": {
             "description": "Aucune requête GDACS lue : même corps, pannes nommées dans `errors`, jamais mis en cache.",
             "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DisastersResponse" } } }
+          }
+        }
+      }
+    },
+    "/api/social/protests": {
+      "get": {
+        "tags": ["Société"],
+        "operationId": "getSocialProtests",
+        "summary": "Manifestations : rendez-vous annoncés (Démosphère) et signal de la presse mondiale (GDELT)",
+        "description": "Rendez-vous de manifestation des éditions françaises de Démosphère (agenda militant participatif), commencés depuis moins de 6 h ou à venir dans les 7 jours, placés sur la commune exacte du référentiel geo.api.gouv.fr (sinon sans lieu) ; manifestations en France relevées par GDELT dans la presse mondiale sur 24 h, un relevé par lieu (rarement plus précis que la ville). Une annonce n'est pas une manifestation constatée. Aucun effet sur l'indice de stabilité.\n\nCache CDN visé : `s-maxage=300, stale-while-revalidate=600` (plus court si la réponse est partielle).",
+        "responses": {
+          "200": {
+            "description": "Au moins une des deux sources lue ; une panne (source ou édition) est nommée dans `errors`.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProtestsResponse" } } }
+          },
+          "502": {
+            "description": "Aucune source lue : même corps, pannes nommées dans `errors`, jamais mis en cache.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProtestsResponse" } } }
           }
         }
       }
@@ -969,6 +988,48 @@
           "errors": { "type": "array", "description": "Pannes nommées (« GDACS Guadeloupe : HTTP 500 »).", "items": { "type": "string" } }
         },
         "required": ["readAt", "alerts", "errors"]
+      },
+      "ProtestsResponse": {
+        "type": "object",
+        "description": "Manifestations annoncées et signalées, type `ProtestsResponse` de `src/types/index.ts`.",
+        "properties": {
+          "readAt": { "type": ["string", "null"], "format": "date-time", "description": "Relevé du serveur ; `null` : aucune source lue." },
+          "items": {
+            "type": "array",
+            "description": "Signalés d'abord (plus récent d'abord), puis annonces par heure de début.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string" },
+                "source": { "type": "string", "enum": ["demosphere", "gdelt"] },
+                "status": { "type": "string", "enum": ["annonce", "signale"], "description": "`annonce` : rendez-vous publié à l'avance, jamais confirmé ; `signale` : relevé dans la presse." },
+                "title": { "type": "string" },
+                "startsAt": { "type": ["string", "null"], "format": "date-time" },
+                "allDay": { "type": "boolean" },
+                "city": { "type": ["string", "null"] },
+                "dept": { "type": ["string", "null"] },
+                "lat": { "type": ["number", "null"] },
+                "lon": { "type": ["number", "null"] },
+                "url": { "type": ["string", "null"] },
+                "edition": { "type": ["string", "null"], "description": "Édition Démosphère ; `null` pour GDELT." },
+                "violent": { "type": "boolean", "description": "GDELT : au moins un article de heurts (code CAMEO 145)." },
+                "articles": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "url": { "type": "string" }, "domain": { "type": "string" },
+                      "seenAt": { "type": "string", "format": "date-time" }, "violent": { "type": "boolean" }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "demosphere": { "type": "object", "description": "`readAt`, `editions` lues, `failedEditions`, `scanned` (rendez-vous parcourus)." },
+          "gdelt": { "type": "object", "description": "`readAt`, `files` (exports de 15 min lus), `missingFiles`." },
+          "errors": { "type": "array", "items": { "type": "string" } }
+        }
       },
       "EmsResponse": {
         "type": "object",

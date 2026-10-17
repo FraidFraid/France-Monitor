@@ -113,6 +113,7 @@ const DEFAULT_LAYERS: MapLayers = {
   outagesTelecom: false,
   outagesInternet: false,
   outagesCloud: false,
+  protests: false,
   stability: false,
   cyber: false,
   gasNetwork: false,

@@ -13,8 +13,9 @@ import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/laye
 import { COORDINATE_SYSTEM } from '@deck.gl/core';
 import type { MapViewState, AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailTrain, RoadNationalResponse, RoadUrbanResponse, NewsItem, FuelTensionDashboard, InfrastructurePoint, MapLayers, MilitaryBase, AirTrafficFlight, EcowattResponse, AisShipData, OilDashboard, SatelliteViewRequest, HydraulicBackboneAsset } from '../types/index.ts';
 import { emsZoneFeatures } from './deckgl/environment-map-ems.ts';
+import { PROTEST_LAYERS, PROTEST_LAYER_IDS, protestFeatures } from './deckgl/protests-map.ts';
 import { ASNR_RING_LAYER, asnrRingFeatures } from './deckgl/nuclear-map-asnr.ts';
-import type { AirQualityResponse, AsnrResponse, DisastersResponse, DroughtResponse, EmsResponse, EarthquakesResponse, FiresResponse, FloodSection, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
+import type { AirQualityResponse, AsnrResponse, DisastersResponse, ProtestsResponse, DroughtResponse, EmsResponse, EarthquakesResponse, FiresResponse, FloodSection, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
 import { ecowattToday, ecowattLevelLabel } from '../services/ecowatt-official.ts';
 import { DATA_FRESHNESS_LABELS } from '../types/index.ts';
 import type { AlertLevelsResponse, AplDataset, AplProfession, EmergencySite, HospitalsDataset, SyndromicResponse } from '../types/index.ts';
@@ -184,6 +185,8 @@ import {
   SRC_AIR_QUALITY,
   SRC_QUAKES,
   SRC_DISASTERS,
+  SRC_PROTESTS,
+  LYR_PROTESTS,
   SRC_EMS_ZONES,
   SRC_TIDE_GAUGES,
   LYR_DROUGHT_FILL,
@@ -481,6 +484,11 @@ export class DeckGLMap {
   private envB: EnvBData = { drought: null, air: null, quakes: null, seaLevels: null, vigilance: null };
   /** Dernière réponse GDACS (gardée couche masquée, repeinte au réaffichage). */
   private disastersData: DisastersResponse | null = null;
+  /** Manifestations : clic sur un point (clé de position), infobulle au survol (spec 2026-10-17 manifestations). */
+  private onProtestClick: ((placeKey: string) => void) | null = null;
+  private protestHoverPopup: maplibregl.Popup | null = null;
+  private protestHoverShown = false;
+  private protestsData: ProtestsResponse | null = null;
   private emsData: EmsResponse | null = null;
   private asnrData: AsnrResponse | null = null;
   private _forestDangerFill = false;
@@ -822,6 +830,7 @@ export class DeckGLMap {
     this.map.addSource(SRC_FIRES_HIGHLIGHT, { type: 'geojson', data: emptyFC() });
     // Environnement (spec 2026-10-04 § 2) : météo des forêts, détections hors de France, stations des tronçons, point du profil radar.
     for (const id of ENV_SOURCE_IDS) this.map.addSource(id, envSourceSpec());
+    this.map.addSource(SRC_PROTESTS, envSourceSpec());
 
     // NASA GIBS — dernière image VIIRS publiée (fumée / cicatrices)
     this.map.addSource(SRC_MODIS, {
@@ -2791,6 +2800,8 @@ export class DeckGLMap {
     for (const layer of SOV_LAYERS) this.map.addLayer(layer);
     // Pannes réseau (deckgl/outages-map.ts) : même rang, masquées jusqu'à setLayerVisibility.
     for (const layer of OUT_LAYERS) this.map.addLayer(layer);
+    // Manifestations (deckgl/protests-map.ts) : points regroupés par position, masqués jusqu'à setLayerVisibility.
+    for (const layer of PROTEST_LAYERS) this.map.addLayer(layer);
     // Pictos d'alerte de l'énergie au-dessus des pannes EDF (leur rond cerclé de blanc cachait le picto), spec 2026-10-15.
     this.map.moveLayer(LYR_ENERGY_ALERT_DISC);
     this.map.moveLayer(LYR_ENERGY_ALERT_ICON);
@@ -3091,6 +3102,7 @@ export class DeckGLMap {
     // Couches Souveraineté : infobulle au survol, clic transmis à App.ts (initSovereigntyInteractions).
     this.initSovereigntyInteractions();
     this.initOutagesInteractions();
+    this.initProtestsInteractions();
 
 
     this.map.on('mouseenter', LYR_DROM_ENERGY_POINTS, () => {
@@ -5388,6 +5400,7 @@ export class DeckGLMap {
       ...Object.values(ENV_LAYER_KEYS).flat(), ...FOREST_DANGER_LAYERS,
       // Pannes réseau : les quatre couches (et les maintenances télécoms) s'atténuent avec les autres au survol d'une légende.
       ...Object.values(OUT_LAYER_KEYS).flat(), OUT_MAINTENANCE_LAYER,
+      ...PROTEST_LAYER_IDS,
     ];
 
     let activeLayers: string[] = [];
@@ -5407,6 +5420,8 @@ export class DeckGLMap {
       activeLayers = [...OUT_LAYER_KEYS.outagesInternet];
     } else if (categoryId === 'outagesCloud') {
       activeLayers = [...OUT_LAYER_KEYS.outagesCloud];
+    } else if (categoryId === 'protests') {
+      activeLayers = [...PROTEST_LAYER_IDS];
     } else if (categoryId === 'trafficRoad') {
       activeLayers = [LYR_TRAFFIC, ...TRAFFIC_LAYER_KEYS.trafficRoad];
     } else if (categoryId === 'trafficAir') {
@@ -7374,7 +7389,7 @@ export class DeckGLMap {
       // Surfaces départementales exclues (comme la vigilance et la météo des forêts) : elles couvrent la carte et bloqueraient le profil radar ; séismes et marégraphes restent.
       // Même règle pour le remplissage des départements en anomalie Internet (le contour reste cliquable).
       ...ENV_HOVER_LAYERS.filter((id) => id !== LYR_WEATHER_FILL && id !== LYR_FOREST_DANGER_FILL && id !== LYR_DROUGHT_FILL && id !== LYR_AIR_FILL), LYR_WEATHER_ICONS,
-      LYR_POINTS, LYR_CLUSTER_CIRCLE, LYR_MILITARY_BASES_CIRCLE, LYR_HOSPITALS,
+      LYR_POINTS, LYR_CLUSTER_CIRCLE, LYR_MILITARY_BASES_CIRCLE, LYR_HOSPITALS, LYR_PROTESTS,
       ...Object.values(TRAFFIC_LAYER_KEYS).flat(), ...OUT_HOVER_LAYERS.filter((id) => id !== LYR_OUT_INTERNET_FILL), ...SOV_HOVER_LAYERS,
     ].filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
     return ids.length > 0 && map.queryRenderedFeatures(point, { layers: ids }).length > 0;
@@ -8540,6 +8555,51 @@ export class DeckGLMap {
     if (coords) this.flyTo(coords[0], coords[1], 9);
   }
 
+  /** Manifestations : points regroupés par position (deckgl/protests-map.ts). */
+  updateProtestsLayer(r: ProtestsResponse | null): void {
+    this.protestsData = r;
+    (this.map?.getSource(SRC_PROTESTS) as maplibregl.GeoJSONSource | undefined)?.setData(protestFeatures(r));
+    this.hideProtestsHover();
+  }
+
+  /** Clic sur un point de la couche Manifestations : App.ts ouvre le panneau sur les lignes de cette commune. */
+  setOnProtestClick(handler: (placeKey: string) => void): void {
+    this.onProtestClick = handler;
+  }
+
+  private hideProtestsHover(): void {
+    if (!this.protestHoverShown) return;
+    this.protestHoverShown = false;
+    this.protestHoverPopup?.remove();
+  }
+
+  /** Couche Manifestations : infobulle préparée et échappée au survol, curseur main, clic transmis à App.ts. */
+  private initProtestsInteractions(): void {
+    const map = this.map;
+    if (!map) return;
+    const shown = (): boolean => map.getLayer(LYR_PROTESTS) !== undefined && map.getLayoutProperty(LYR_PROTESTS, 'visibility') !== 'none';
+    map.on('mousemove', (e) => {
+      const hit = shown() ? map.queryRenderedFeatures(e.point, { layers: [LYR_PROTESTS] })[0] : undefined;
+      const html = hit ? String(hit.properties?.['body'] ?? '') : '';
+      if (!html) {
+        this.hideProtestsHover();
+        return;
+      }
+      this.protestHoverShown = true;
+      const popup = this.protestHoverPopup
+        ?? new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12, maxWidth: '300px', className: 'dark-popup hm-hover' });
+      this.protestHoverPopup = popup;
+      popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
+    });
+    map.on('mouseout', () => this.hideProtestsHover());
+    map.on('click', (e) => {
+      if (!this.onProtestClick || !shown()) return;
+      const hit = map.queryRenderedFeatures(e.point, { layers: [LYR_PROTESTS] })[0];
+      const key = hit ? String(hit.properties?.['place'] ?? '') : '';
+      if (key) this.onProtestClick(key);
+    });
+  }
+
   private hideOutagesHover(): void {
     if (!this.outHoverShown) return;
     this.outHoverShown = false;
@@ -9030,6 +9090,10 @@ export class DeckGLMap {
     for (const id of ENV_LAYER_KEYS.airQuality) this.setVis(id, vis(envLayerOn(layers, 'airQuality')));
     for (const id of ENV_LAYER_KEYS.earthquakes) this.setVis(id, vis(envLayerOn(layers, 'earthquakes')));
     for (const id of ENV_LAYER_KEYS.disasters) this.setVis(id, vis(envLayerOn(layers, 'disasters')));
+    for (const id of PROTEST_LAYER_IDS) this.setVis(id, vis(layers.protests ?? false));
+    this.hideProtestsHover();
+    // Couche réaffichée ou carte prête après la lecture : points reposés depuis la dernière réponse.
+    if (layers.protests) (this.map?.getSource(SRC_PROTESTS) as maplibregl.GeoJSONSource | undefined)?.setData(protestFeatures(this.protestsData));
     this.setVis(RADAR_2D_LAYER_ID, vis(this.radar2dShown()));
     this.setVis(ECHO_TOPS_LAYER_ID, vis(this.echoTopsShown(this._echoTopsEnabled)));
     this.hideEnvironmentHover();

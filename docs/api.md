@@ -31,6 +31,7 @@ L'API est au stade **0.1.0 (expérimental)**. Aucune garantie de stabilité form
 | `GET /api/environment/air` | Qualité de l'air (Atmo France) : épisodes de pollution de J à J+2 et indice ATMO de J par département. |
 | `GET /api/environment/earthquakes` | Séismes des 7 derniers jours en France et à 20 km autour (BCSF-RéNaSS, EMSC en repli). |
 | `GET /api/environment/disasters` | Alertes catastrophes GDACS des 7 derniers jours : territoire français (tous niveaux) et monde (orange, rouge). |
+| `GET /api/social/protests` | Manifestations : rendez-vous annoncés sur Démosphère (éditions françaises, -6 h à +7 jours, commune exacte) et signal presse GDELT sur 24 h (un relevé par lieu, heurts signalés). Une annonce n'est pas une manifestation constatée. |
 | `GET /api/environment/ems` | Activations Copernicus EMS (cartographie satellite d'urgence) : en cours et 12 derniers mois sur le territoire français, nombre d'activations en cours ailleurs. |
 | `GET /api/finance/stability` | Stabilité financière : CISS France et zone euro, taux directeurs, €STR et EUR/USD (BCE), écart OAT-Bund à 10 ans (TradingView, un point par jour gardé 400 jours). |
 | `GET /api/environment/sea-levels` | Hauteurs d'eau des marégraphes du SHOM (19 ports), variation sur 1 h et courbe de 24 h. |
@@ -77,7 +78,7 @@ Chaque fonction positionne une directive de cache CDN (`s-maxage`) qui reflète 
 | `/api/energy/ecowatt` | ~15 min |
 | `/api/energy/gas-pir` | ~30 min |
 | `/api/environment/fires`, `/api/environment/vigilance`, `/api/environment/floods` | 5 min (30 s pendant une collecte ou une lecture en cours) |
-| `/api/environment/earthquakes`, `/api/environment/sea-levels`, `/api/environment/disasters` | 5 min |
+| `/api/environment/earthquakes`, `/api/environment/sea-levels`, `/api/environment/disasters`, `/api/social/protests` | 5 min |
 | `/api/environment/ems` | 15 min (liste relue toutes les 30 min) |
 | `/api/environment/air` | 30 min |
 | `/api/finance/stability` | 15 min (séries BCE relues chaque heure, écart toutes les 15 min) |

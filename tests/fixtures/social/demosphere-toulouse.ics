@@ -1,0 +1,76 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//demosphere.net//NONSGML kigkonsult.se iCalcreator 2.22.1//
+METHOD:PUBLISH
+X-WR-CALNAME:Démosphère Toulouse
+X-WR-CALDESC:L'agenda toulousain militant et participatif
+X-WR-RELCALID:9a936ed268a55a47dead000eed0bd8bd
+X-WR-TIMEZONE:Europe/Paris
+BEGIN:VEVENT
+UID:https://toulouse.demosphere.net/rv/36235
+DTSTAMP:20261017T013300Z
+DESCRIPTION:plus d'infos sur : https://toulouse.demosphere.net/rv/36235
+DTSTART;VALUE=DATE:20261017
+GEO:00;0
+LOCATION:Toulouse 31200\, \nPlace Micoulaud \nToulouse
+SUMMARY:Journee mondiale du refus de la misère . Defendons la paix pour un 
+ monde habitable
+URL:https://toulouse.demosphere.net/rv/36235
+END:VEVENT
+BEGIN:VEVENT
+UID:https://toulouse.demosphere.net/rv/35515
+DTSTAMP:20261017T070000Z
+DESCRIPTION:plus d'infos sur : https://toulouse.demosphere.net/rv/35515
+DTSTART:20261017T070000Z
+DTEND:20261017T080000Z
+GEO:00;0
+LOCATION:St Orens 31650\, \nRue du Stade \n31650\, Saint Orens de Gameville
+SUMMARY:Café Bricol' à St-Orens de Gameville de 9h00 à 12h00
+URL:https://toulouse.demosphere.net/rv/35515
+END:VEVENT
+BEGIN:VEVENT
+UID:https://toulouse.demosphere.net/rv/36211
+DTSTAMP:20261017T110000Z
+DESCRIPTION:plus d'infos sur : https://toulouse.demosphere.net/rv/36211
+DTSTART:20261017T110000Z
+DTEND:20261017T120000Z
+GEO:00;0
+LOCATION:Toulouse 31000\, \nPlace Belfort
+SUMMARY:📣 Formation sécurité en manif 📣
+URL:https://toulouse.demosphere.net/rv/36211
+END:VEVENT
+BEGIN:VEVENT
+UID:https://toulouse.demosphere.net/rv/36210
+DTSTAMP:20261017T120000Z
+DESCRIPTION:plus d'infos sur : https://toulouse.demosphere.net/rv/36210
+DTSTART:20261017T120000Z
+DTEND:20261017T130000Z
+GEO:00;0
+LOCATION:Toulouse 31000\, \nMetro Jean Jaurès
+SUMMARY:MANIFESTATIONS LYCEENNES\, TRAVAILLEUSES\, GJ.
+URL:https://toulouse.demosphere.net/rv/36210
+END:VEVENT
+BEGIN:VEVENT
+UID:https://toulouse.demosphere.net/rv/35827
+DTSTAMP:20261017T073000Z
+DESCRIPTION:plus d'infos sur : https://toulouse.demosphere.net/rv/35827
+DTSTART:20261017T073000Z
+DTEND:20261017T083000Z
+GEO:00;0
+LOCATION:Toulouse 31000\, \nBourse du travail \n19\, place Saint Sernin \nT
+ oulouse\, France
+SUMMARY:Permanence syndicale CGT des bureaux d'étude
+URL:https://toulouse.demosphere.net/rv/35827
+END:VEVENT
+BEGIN:VEVENT
+UID:https://toulouse.demosphere.net/rv/35985
+DTSTAMP:20261024T083000Z
+DESCRIPTION:plus d'infos sur : https://toulouse.demosphere.net/rv/35985
+DTSTART:20261024T083000Z
+DTEND:20261024T093000Z
+GEO:00;0
+LOCATION:Orléans\, \n
+SUMMARY:Ni congrès ni meeting pour le RN à Orléans les 24 et 25 octobre !
+URL:https://toulouse.demosphere.net/rv/35985
+END:VEVENT
+END:VCALENDAR
