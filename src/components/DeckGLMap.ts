@@ -697,6 +697,13 @@ export class DeckGLMap {
     this.map.addControl(new SatelliteBasemapControl(this), 'top-right');
 
     await new Promise<void>((r) => this.map!.on('load', r));
+    // Maquette de la carte Sécurité et défense (17/10/2026), en développement seulement : ?maquette=securite.
+    if (import.meta.env.DEV && new URLSearchParams(location.search).get('maquette') === 'securite') {
+      const sc = document.createElement('script');
+      // Horodatage : le navigateur ne garde jamais une ancienne version du script en cache.
+      sc.src = `/maquette-securite.js?t=${Date.now()}`;
+      document.head.appendChild(sc);
+    }
     await this.loadIconAtlas();
     this.registerEnvironmentIcons();
 
