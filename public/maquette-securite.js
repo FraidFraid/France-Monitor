@@ -70,9 +70,16 @@
   const BASE_HEX = { air: '#7cc4ff', navy: '#2f6bff', army: '#c8a165', joint: '#f1f5f9', other: '#94a3b8' };
   const LIGHT_FILL = new Set(['#7cc4ff', '#c8a165', '#f1f5f9']);
   const CAT = { defense: '#4a9eff', defenseOther: '#b388ff', cables: '#22d3ee', telecom: '#e879f9', internet: '#2dd4bf', cloud: '#818cf8', dc: '#f472b6' };
+  // Manifestations : rose = catégorie (annoncée en anneau, rapportée en plein), rouge L1 = heurts (anormal).
+  const PROT = { annonce: '#f9a8d4', signale: '#ec4899' };
+  // Criminalité : statistique annuelle, jamais les couleurs d'alerte ; rampe violette, plus clair = plus élevé que la moyenne nationale.
+  const CRIME_RAMP = [[2, '#f5f3ff', '2 fois la moyenne ou plus'], [1.6, '#c4b5fd', '1,6 à 2 fois'], [1.25, '#8b5cf6', '1,25 à 1,6 fois'], [0.8, '#5b4a9e', 'proche de la moyenne'], [0, '#3a3456', 'sous la moyenne']];
+  const crimeHex = (ratio) => (ratio == null ? '#2a2a33' : CRIME_RAMP.find(([t]) => ratio >= t)[1]);
+  const fr2 = (x) => (x == null ? 'n.d.' : x.toFixed(x >= 10 ? 0 : 1).replace('.', ','));
   // ─── Calques d'origine : remplacés par ceux de la maquette ───
   const HIDE = ['out-telecom-long', 'out-telecom-recent', 'out-internet-fill', 'out-internet-line', 'sov-aircraft', 'sov-aircraft-label', 'sov-aircraft-abroad',
-    'military-bases-circle', 'military-bases-label', 'submarine-cables-glow', 'submarine-cables-core', 'out-cloud-ref', 'out-cloud-zones', 'submarine-cables-landing'];
+    'military-bases-circle', 'military-bases-label', 'submarine-cables-glow', 'submarine-cables-core', 'out-cloud-ref', 'out-cloud-zones', 'submarine-cables-landing',
+    'protests', 'protests-label', 'crime-city', 'crime-city-label', 'crime-fill', 'crime-line'];
   // Calques de détail réservés à leur pastille.
   const PILL_ONLY = { 'mqs-cable-label': 'subseaCables', 'mqs-low-disc': 'outagesTelecom', 'mqs-low-count': 'outagesTelecom', 'mqs-inet-past': 'outagesInternet', 'mqs-inet-past-fill': 'outagesInternet', 'mqs-inet-disc': 'outagesInternet', 'mqs-inet-label': 'outagesInternet',
     'mqs-cz-fill': 'subseaCables', 'mqs-cz-line': 'subseaCables', 'mqs-anch-line': 'subseaCables', 'mqs-landings-label': ['subseaCables', 'cyber'],
@@ -85,6 +92,7 @@
     const m = S.m;
     const P = (id, k, v) => { try { if (m.getLayer(id) && JSON.stringify(m.getPaintProperty(id, k)) !== JSON.stringify(v)) m.setPaintProperty(id, k, v); } catch (e) { /* calque d'un autre type */ } };
     const V = (id, on) => { if (m.getLayer(id) && m.getLayoutProperty(id, 'visibility') !== (on ? 'visible' : 'none')) m.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none'); };
+    const T_ = (id, v) => { if (m.getLayer(id) && JSON.stringify(m.getLayoutProperty(id, 'text-field')) !== JSON.stringify(v)) m.setLayoutProperty(id, 'text-field', v); };
     for (const id of HIDE) V(id, false);
     // L'app masque les calques qu'elle ne connaît pas : ceux de la maquette sont remis visibles.
     // Hiérarchie : par défaut, l'anormal et les infrastructures ; le détail de chaque couche n'apparaît qu'avec sa pastille (clic ou survol).
@@ -103,9 +111,10 @@
     V('isnr-line', false); V('isnr-fill', isOn('stability'));
     // Manifestations : toujours (l'actualité du jour). Criminalité (statistique annuelle SSMSI) : villes par défaut, aplat des départements avec sa pastille seulement,
     // pour ne pas confondre son contour avec celui du niveau télécoms.
-    V('protests', isOn('protests')); V('protests-label', isOn('protests'));
     // Sans pastille : toutes les couches, criminalité comprise (aplat des départements + villes à 2 fois la moyenne) ; le contour reste réservé à la pastille.
-    V('mqs-crime-city', isOn('crime') && !pill('crime')); V('crime-city', pill('crime')); V('crime-city-label', pill('crime')); V('crime-fill', isOn('crime')); V('crime-line', pill('crime'));
+    V('mqs-crime-city', isOn('crime') && !pill('crime')); V('mqs-crime-c', pill('crime')); V('mqs-crime-c-label', pill('crime')); V('mqs-crime-d-fill', isOn('crime')); V('mqs-crime-d-line', pill('crime'));
+    P('mqs-crime-d-fill', 'fill-opacity', pill('crime') ? ['get', 'op'] : 0.12);
+    T_('mqs-prot-label', pill('protests') ? ['get', 'label'] : ['case', ['>=', ['get', 'n'], 20], ['get', 'label'], '']);
     P('isnr-fill', 'fill-opacity', S.focus.has('stability') || preview === 'stability' ? 0.65 : 0.2);
     // Détail porté au premier plan par une pastille : sites télécoms et référentiel cloud dès la vue France.
     const zr = (id, min) => { try { if (m.getLayer(id) && m.getLayer(id).minzoom !== min) m.setLayerZoomRange(id, min, 24); } catch (e) { /* calque absent */ } };
@@ -113,7 +122,6 @@
     zr('mqs-sites-long', isOn('outagesTelecom') ? 0 : 8);
     // Cloud : sans pastille, seuls les sites en incident ; avec Cloud ou Cyber, tous les sites et les centres de données, nommés.
     const cloudPill = pill('outagesCloud') || pill('cyber');
-    const T_ = (id, v) => { if (m.getLayer(id) && JSON.stringify(m.getLayoutProperty(id, 'text-field')) !== JSON.stringify(v)) m.setLayoutProperty(id, 'text-field', v); };
     if (m.getLayer('mqs-cloud-sym')) m.setFilter('mqs-cloud-sym', cloudPill ? null : ['!=', ['get', 'status'], 'vert']);
     T_('mqs-cloud-sym', cloudPill ? ['get', 'label'] : '');
     T_('mqs-dc-ref', cloudPill ? ['get', 'name'] : '');
@@ -214,10 +222,17 @@
       return pt(b.geometry.coordinates, { id: b.properties.id, name: b.properties.name, type: t, color: BASE_HEX[t], status: au?.status ?? 'seul', solid: au?.status === 'source' }); })));
     // Atterrages par commune, zones de protection des câbles et mouillages qui les recoupent (Shom)
     S.landings = landingsByPlace();
-    setData('mqs-crime', S.crimeFc ?? fc([]));
-    if (S.mk && S.data.protests?.items) setData('protests-src', S.mk.protestFeatures(S.data.protests));
+    // Manifestations : annoncée (agenda), rapportée sans heurts, heurts ; taille = articles de presse sur 24 h.
+    S.prot = (S.data.protests?.items ?? []).filter((x) => x.lat != null && x.lon != null);
+    setData('mqs-prot', fc(S.prot.map((x, i) => pt([x.lon, x.lat], { i, kind: x.status === 'annonce' ? 'annonce' : x.violent ? 'heurts' : 'signale', n: x.articleCount ?? (x.articles ?? []).length,
+      label: `${x.city ?? x.edition ?? ''}${x.participants ? ` · ${num(x.participants)}${NB}pers.` : ''}` }))));
+    // Criminalité : indicateur du panneau ; villes seulement pour les indicateurs communaux (sinon violences physiques hors famille).
+    crimeCompute();
+    setData('mqs-crime', fc((S.crime?.cities ?? []).map((c, i) => pt([c.city.lon, c.city.lat], { i, ratio: c.ratio ?? 0, sortKey: Math.round((c.ratio ?? 0) * 100), estimated: c.est,
+      color: crimeHex(c.ratio), r: Math.min(15, 3 + 1.6 * Math.log2(Math.max(1, c.city.population / 20000))), label: c.ratio >= 1.6 || c.city.population >= 250000 ? `${c.city.name} · ${fr2(c.ratio)}${NB}×` : '' }))));
+    setData('mqs-crime-d', fc((S.geo?.deptShapes ?? []).map((f) => { const d = S.crime?.depts.get(f.properties.code);
+      return { ...f, properties: { code: f.properties.code, color: crimeHex(d?.ratio), op: d?.ratio == null ? 0 : d.ratio >= 1.25 ? 0.5 : d.ratio >= 0.8 ? 0.3 : 0.12 } }; })));
     // Départements : indicateur par défaut de la couche (homicides) tant que l'app n'a pas peint le sien.
-    if (S.mk && S.crimeDs && !S.crimeDeptSet && S.geo?.deptShapes) { setData('crime-depts-src', S.mk.crimeDeptFeatures(fc(S.geo.deptShapes), S.crimeDs, 'homicides')); S.crimeDeptSet = true; }
     setData('mqs-landings', fc(S.landings.map((l, i) => pt(l.at, { i, n: l.n, name: l.n >= 3 ? `${l.commune} · ${l.n}` : '' }))));
     setData('mqs-world', S.world?.routes ? { ...S.world.routes, features: S.world.routes.features.map((f) => ({ ...f, properties: { id: f.properties.id, planned: S.world.cables[f.properties.id]?.planned ?? false } })) } : fc([]));
     // Suite des câbles du Shom au-delà des eaux françaises (OpenStreetMap) et bouts sans suite publiée.
@@ -321,8 +336,23 @@
         layout: { 'text-field': ['get', 'name'], 'text-size': 10.5, 'text-font': ['Open Sans Semibold'], 'text-offset': [0.9, 0], 'text-anchor': 'left', 'text-optional': true },
         paint: { 'text-color': CAT.cables, 'text-halo-color': '#05060a', 'text-halo-width': 1.4 } }, b);
       // Vue d'ensemble : seulement les villes à 2 fois la moyenne nationale ou plus, en anneau (une statistique annuelle, pas un événement : jamais un disque plein).
+      m.addLayer({ id: 'mqs-crime-d-fill', type: 'fill', source: 'mqs-crime-d', paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.12 } }, b);
+      m.addLayer({ id: 'mqs-crime-d-line', type: 'line', source: 'mqs-crime-d', filter: ['>', ['get', 'op'], 0.2], paint: { 'line-color': ['get', 'color'], 'line-width': 1, 'line-opacity': 0.7 } }, b);
+      m.addLayer({ id: 'mqs-crime-c', type: 'circle', source: 'mqs-crime', layout: { 'circle-sort-key': ['get', 'sortKey'] },
+        paint: { 'circle-radius': ['get', 'r'], 'circle-color': ['get', 'color'], 'circle-opacity': ['case', ['get', 'estimated'], 0.35, 0.92],
+          'circle-stroke-color': '#0a0a0f', 'circle-stroke-width': 1.2 } }, b);
+      m.addLayer({ id: 'mqs-crime-c-label', type: 'symbol', source: 'mqs-crime', filter: ['!=', ['get', 'label'], ''], layout: { 'symbol-sort-key': ['-', 0, ['get', 'sortKey']],
+        'text-field': ['get', 'label'], 'text-size': 10.5, 'text-font': ['Open Sans Semibold'], 'text-variable-anchor': ['left', 'right', 'top', 'bottom'], 'text-radial-offset': 0.9, 'text-optional': true },
+        paint: { 'text-color': ['get', 'color'], 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.4 } }, b);
+      m.addLayer({ id: 'mqs-prot', type: 'circle', source: 'mqs-prot', layout: { 'circle-sort-key': ['get', 'n'] },
+        paint: { 'circle-radius': ['interpolate', ['linear'], ['get', 'n'], 0, 5, 10, 7.5, 40, 11, 120, 16],
+          'circle-color': ['match', ['get', 'kind'], 'heurts', L1.rouge, 'signale', PROT.signale, DARK],
+          'circle-stroke-color': ['match', ['get', 'kind'], 'annonce', PROT.annonce, '#ffffff'], 'circle-stroke-width': ['match', ['get', 'kind'], 'annonce', 2, 1.5] } });
+      m.addLayer({ id: 'mqs-prot-label', type: 'symbol', source: 'mqs-prot', layout: { 'symbol-sort-key': ['-', 0, ['get', 'n']],
+        'text-field': '', 'text-size': 10.5, 'text-font': ['Open Sans Semibold'], 'text-variable-anchor': ['top', 'bottom', 'right', 'left'], 'text-radial-offset': 1.2, 'text-optional': true },
+        paint: { 'text-color': ['match', ['get', 'kind'], 'heurts', '#ff8a80', PROT.annonce], 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.4 } });
       m.addLayer({ id: 'mqs-crime-city', type: 'circle', source: 'mqs-crime', filter: ['all', ['>=', ['get', 'sortKey'], 200], ['!', ['get', 'estimated']]], layout: { 'circle-sort-key': ['get', 'sortKey'] },
-        paint: { 'circle-color': 'rgba(0,0,0,0)', 'circle-radius': ['*', 0.8, ['get', 'radius']], 'circle-stroke-color': ['get', 'color'], 'circle-stroke-width': 2, 'circle-stroke-opacity': 0.95 } }, b);
+        paint: { 'circle-color': 'rgba(0,0,0,0)', 'circle-radius': ['+', 2, ['get', 'r']], 'circle-stroke-color': ['get', 'color'], 'circle-stroke-width': 2, 'circle-stroke-opacity': 0.95 } }, b);
       m.addLayer({ id: 'mqs-bases-closed', type: 'symbol', source: 'mqs-bases', filter: ['==', ['get', 'status'], 'ferme'],
         layout: { 'icon-image': ['concat', 'mqs-shp-', ['get', 'type'], '-d-none'], 'icon-size': 0.9, 'icon-allow-overlap': true,
           'text-field': ['concat', ['get', 'name'], ' (fermé)'], 'text-size': 9.5, 'text-offset': [0, 1.1], 'text-anchor': 'top', 'text-font': ['Open Sans Semibold'], 'text-optional': true },
@@ -371,8 +401,8 @@
     // Cyber : aucun incident localisé publiquement ; la pastille montre l'infrastructure numérique exposée (centres de données, zones cloud, atterrages).
     cyber: ['mqs-dc-ref', 'mqs-cloud-sym', 'mqs-landings', 'mqs-landings-label', 'submarine-cables-line'],
     stability: [],
-    protests: ['protests', 'protests-label'],
-    crime: ['mqs-crime-city', 'crime-city', 'crime-city-label', 'crime-fill', 'crime-line'],
+    protests: ['mqs-prot', 'mqs-prot-label'],
+    crime: ['mqs-crime-city', 'mqs-crime-c', 'mqs-crime-c-label', 'mqs-crime-d-fill', 'mqs-crime-d-line'],
     outagesTelecom: ['mqs-dept-level', 'mqs-dept-level-line', 'mqs-agg-disc', 'mqs-agg-count', 'mqs-low-disc', 'mqs-low-count', 'mqs-sites-recent', 'mqs-sites-long'],
     outagesInternet: ['mqs-inet', 'mqs-inet-past-fill', 'mqs-inet-disc', 'mqs-inet-label'],
     outagesCloud: ['mqs-cloud-sym', 'mqs-dc-ref'],
@@ -520,6 +550,63 @@
     return { dot: a.inet.length ? L1.orange : CAT.internet, title: `${a.nom} (${a.code})`, state: a.inet.length ? `Coupure Internet en cours ${ago(a.inet[0].start)}` : 'Aucune coupure en cours · terminées sur 7 jours', stateHex: a.inet.length ? L1.orange : '#c7c7cc',
       rows, hint: 'Une absence d’anomalie n’est pas une absence de panne · clic : fiche du département', source: `IODA (Georgia Tech), lu ${when(d?.iodaReadAt)} · RIPE Stat, relevé du ${when(d?.ripe?.snapshotAt)}` };
   };
+  // ─── Criminalité : calculs et bulles ───
+  const crimeKey = () => { let k = null; try { k = JSON.parse(localStorage.getItem('fm.layer.tabs') || '{}')['crime.indicator']; } catch (e) { /* stockage refusé */ }
+    return (S.crimeDs?.indicators ?? []).some((i) => i.key === k) ? k : 'homicides'; };
+  const indOf = (k) => (S.crimeDs?.indicators ?? []).find((i) => i.key === k);
+  const frRate = (k) => (S.crimeDs?.france?.[k] ?? []).find((x) => x.year === S.crimeDs.year)?.rate ?? null;
+  const reading = (vals, k) => { const v = vals?.[k]; if (!v) return null; const [count, rate, prev] = v; const f = frRate(k);
+    return { count, rate, prev, est: count === null && rate !== null, ratio: rate != null && f ? rate / f : null }; };
+  const highOthers = (vals, skip) => (S.crimeDs?.indicators ?? []).filter((i) => i.key !== skip).map((i) => ({ i, r: reading(vals, i.key) })).filter((x) => x.r?.ratio >= 1.5)
+    .sort((a, b) => b.r.ratio - a.r.ratio).slice(0, 4).map((x) => `${x.i.label} ${fr2(x.r.ratio)}${NB}×`).join(', ') || 'aucun à 1,5 fois la moyenne ou plus';
+  const crimeCompute = () => {
+    const ds = S.crimeDs; if (!ds?.cities) { S.crime = null; return; }
+    const key = crimeKey(), ckey = indOf(key)?.communal ? key : 'violencesPhysiques';
+    const cities = ds.cities.map((city) => ({ city, ...reading(city.values, ckey) })).filter((c) => c.rate != null);
+    [...cities].sort((a, b) => b.rate - a.rate).forEach((c, i) => { c.rank = i + 1; });
+    const depts = new Map(ds.departments.map((d) => [d.code, { d, ...reading(d.values, key) }]));
+    [...depts.values()].filter((x) => x.rate != null).sort((a, b) => b.rate - a.rate).forEach((x, i) => { x.rank = i + 1; });
+    S.crime = { key, ckey, cities, depts, nDepts: [...depts.values()].filter((x) => x.rate != null).length };
+  };
+  const per = (k) => `pour 1${NB}000 ${indOf(k)?.base === 'logements' ? 'logements' : 'habitants'}`;
+  const evo = (c, prev) => (c == null || prev == null || prev === 0 ? 'n.d.' : `${c >= prev ? '+' : ''}${fr2(((c - prev) / prev) * 100)}${NB}% (${num(prev)} en ${S.crimeDs.previousYear})`);
+  const crimeSrc = () => `SSMSI, ministère de l’Intérieur, données ${S.crimeDs?.year} publiées le ${(S.crimeDs?.publishedAt ?? '').split('-').reverse().join('/')}`;
+  const crimeCityCard = (c) => {
+    const C = S.crime, d = C.depts.get(c.city.dept);
+    const rows = [['Indicateur', `${indOf(C.ckey)?.label}${C.ckey !== C.key ? ` (${indOf(C.key)?.label} : chiffre départemental seulement)` : ''}`],
+      [`Faits ${S.crimeDs.year}`, c.est ? 'estimé (secret statistique)' : num(c.count)], ['Taux', `${fr2(c.rate)} ${per(C.ckey)}`],
+      ['Rapport à la France', `${fr2(c.ratio)}${NB}×`], ['Rang', `${c.rank}e sur ${C.cities.length} villes de 20${NB}000 habitants et plus`],
+      ['Évolution', c.est ? 'n.d.' : evo(c.count, c.prev)], ['Autres indicateurs élevés', highOthers(c.city.values, C.ckey)],
+      ['Population', `${num(c.city.population)} habitants`],
+      ['Département', d ? `${d.d.name} (${c.city.dept}) : ${indOf(C.key)?.label.toLowerCase()} ${fr2(d.ratio)}${NB}× la moyenne` : c.city.dept]];
+    return { dot: crimeHex(c.ratio), title: c.city.name, state: `${fr2(c.ratio)}${NB}× la moyenne nationale`, stateHex: '#c7c7cc', rows,
+      hint: 'Faits enregistrés par la police et la gendarmerie sur l’année : une statistique, pas un événement en cours', source: crimeSrc() };
+  };
+  const crimeDeptCard = (x) => {
+    const C = S.crime;
+    const hot = C.cities.filter((c) => c.city.dept === x.d.code && c.ratio >= 2).map((c) => c.city.name);
+    const rows = [['Indicateur', indOf(C.key)?.label], [`Faits ${S.crimeDs.year}`, x.est ? 'estimé (secret statistique)' : num(x.count)], ['Taux', `${fr2(x.rate)} ${per(C.key)}`],
+      ['Rapport à la France', `${fr2(x.ratio)}${NB}×`], ['Rang', x.rank ? `${x.rank}e sur ${C.nDepts} départements` : 'n.d.'], ['Évolution', evo(x.count, x.prev)],
+      ['Autres indicateurs élevés', highOthers(x.d.values, C.key)], ['Villes à 2 fois la moyenne', hot.length ? `${hot.slice(0, 5).join(', ')}${hot.length > 5 ? ` +${hot.length - 5}` : ''} (${indOf(C.ckey)?.label.toLowerCase()})` : 'aucune'],
+      ['Population', `${num(x.d.population)} habitants`]];
+    return { dot: crimeHex(x.ratio), title: `${x.d.name} (${x.d.code})`, state: x.ratio == null ? 'Non publié' : `${fr2(x.ratio)}${NB}× la moyenne nationale`, stateHex: '#c7c7cc', rows,
+      hint: 'Indicateur choisi dans le panneau Criminalité · statistique annuelle', source: crimeSrc() };
+  };
+  // ─── Manifestations : bulle complète ───
+  const PROT_WORD = { annonce: 'Annoncée (agenda militant), pas constatée', signale: 'Rapportée par la presse, sans heurts', heurts: 'Heurts ou tensions rapportés par la presse' };
+  const protCard = (x) => {
+    const kind = x.status === 'annonce' ? 'annonce' : x.violent ? 'heurts' : 'signale';
+    const arts = [...(x.articles ?? [])].sort((a, b) => String(b.seenAt).localeCompare(String(a.seenAt)));
+    const rows = [[x.status === 'annonce' ? 'Prévue' : 'Dernier article', x.status === 'annonce' ? (x.allDay ? `le ${day(x.startsAt)}, toute la journée` : when(x.startsAt)) : when(arts[0]?.seenAt ?? x.startsAt)],
+      x.participants ? ['Plus haut chiffre cité', `${num(x.participants)} personnes (titre de presse)`] : null,
+      x.status !== 'annonce' ? ['Articles sur 24' + NB + 'h', `${num(x.articleCount ?? arts.length)}, dont ${arts.filter((a) => a.violent).length} sur ${arts.length} lus parlant de heurts`] : null,
+      ...arts.slice(0, 5).map((a) => [`${a.outlet ?? a.domain}${a.seenAt ? ` · ${clock(a.seenAt)}` : ''}${a.violent ? ' · heurts' : ''}`, a.title ?? a.url]),
+      x.status === 'annonce' ? ['Rendez-vous', x.title] : null,
+      ['Lieu', x.precision === 'departement' ? `${x.city ?? x.dept} : département seulement, point au chef-lieu` : `${x.city ?? 'n.d.'}${x.dept ? ` (${x.dept})` : ''}`]].filter(Boolean);
+    return { dot: kind === 'heurts' ? L1.rouge : PROT[kind] ?? PROT.signale, title: x.city ?? x.edition ?? 'Manifestation', state: PROT_WORD[kind], stateHex: kind === 'heurts' ? L1.rouge : '#c7c7cc', rows, url: x.url,
+      hint: `${x.status === 'annonce' ? 'Un rendez-vous annoncé n’est pas une manifestation constatée' : 'Classement d’après les titres de presse, à confirmer'} · clic : ouvrir ${x.status === 'annonce' ? 'l’annonce' : 'l’article'}`,
+      source: x.source === 'demosphere' ? `Démosphère, édition ${x.edition ?? 'n.d.'}` : x.source === 'gdelt' ? 'GDELT (presse internationale)' : `presse française ingérée, relevé ${when(S.data.protests?.readAt)}` };
+  };
   const cableWatch = () => (S.data.cablesWatch?.evaluated ? 'veille active' : `veille des navires coupée (${(S.data.cablesWatch?.errors ?? [])[0] ?? 'source injoignable'})`);
   // Cloud et centres de données : bulles complètes (état publié, incidents, maintenances, voisinage, sources).
   const PROV_OF = [['ovhcloud', /^ovh/i], ['scaleway', /scaleway|iliad|online/i], ['aws', /^aws|amazon/i], ['gcp', /^gcp|google/i], ['cloudflare', /cloudflare/i], ['outscale', /outscale|dassault/i], ['azure', /microsoft|azure/i]];
@@ -627,7 +714,7 @@
   const deptAt = (c) => { if (!c) return null; for (const f of S.geo.deptShapes) if (inGeom(c, f.geometry)) return S.agg.get(f.properties.code); return null; };
 
   // Arbitre : une seule cible, la plus signifiante sous le pointeur.
-  const PRIORITY = ['mqs-air-sym', 'sov-emergencies', 'protests', 'mqs-cloud-sym', 'mqs-inet-disc', 'mqs-sites-recent', 'mqs-agg-disc', 'mqs-low-disc', 'crime-city', 'mqs-crime-city', 'mqs-bases-sym', 'mqs-bases-closed', 'sov-navy-reference', 'sov-navy-observed', 'mqs-landings', 'mqs-world-lp', 'mqs-dc-ref', 'mqs-suite-end', 'mqs-world-hit', 'mqs-suite-hit', 'submarine-cables-hitarea', 'mqs-anch-line', 'mqs-cz-fill', 'mqs-sites-long', 'crime-fill', 'mqs-dept-fill'];
+  const PRIORITY = ['mqs-air-sym', 'sov-emergencies', 'mqs-prot', 'mqs-cloud-sym', 'mqs-inet-disc', 'mqs-sites-recent', 'mqs-agg-disc', 'mqs-low-disc', 'mqs-crime-c', 'mqs-crime-city', 'mqs-bases-sym', 'mqs-bases-closed', 'sov-navy-reference', 'sov-navy-observed', 'mqs-landings', 'mqs-world-lp', 'mqs-dc-ref', 'mqs-suite-end', 'mqs-world-hit', 'mqs-suite-hit', 'submarine-cables-hitarea', 'mqs-anch-line', 'mqs-cz-fill', 'mqs-sites-long', 'mqs-crime-d-fill', 'mqs-dept-fill'];
   const pick = (point) => {
     // Une pastille active : seuls ses calques (et les départements) répondent au survol ; un calque estompé ne donne jamais de bulle.
     const on = new Set(S.focus); if (preview) on.add(preview);
@@ -660,14 +747,9 @@
         card: { dot: p.outOfService ? '#6e7585' : CAT.cables, title: o.title || 'câble sous-marin', state: o.sub, stateHex: '#c7c7cc',
           rows: [...o.rows, ['Veille des navires', S.data.cablesWatch?.evaluated ? 'active' : 'coupée']], hint: o.notes.join(' '), source: 'Shom · OpenStreetMap' } };
     }
-    if (id === 'protests') { const o = parseBody(p.body); const d = document.createElement('div'); d.innerHTML = p.body ?? '';
-      const titles = [...d.querySelectorAll('.hm-sub')].map((x) => x.textContent);
-      return { key: `pr:${p.id}`, kind: 'raw', id: p.id, at: f.geometry.coordinates,
-        card: { dot: p.color, title: o.title, state: o.rows.find((r) => r[0] === 'Niveau')?.[1] ?? 'Manifestation', stateHex: p.color,
-          rows: [...titles.map((t, i) => [i ? '' : 'Titres', t]), ...o.rows.filter((r) => r[0] !== 'Niveau')], hint: o.notes[0] ?? null, source: 'Démosphère (agenda) · presse française · GDELT' } }; }
-    if (id === 'crime-city' || id === 'mqs-crime-city' || id === 'crime-fill') { const pt = id !== 'crime-fill'; const o = parseBody(pt ? p.body : p.crimeBody); const col = pt ? p.color : p.crimeColor;
-      return { key: `cr:${id}:${p.id ?? p.code}`, kind: 'raw', id: p.id ?? p.code, at: pt ? f.geometry.coordinates : null,
-        card: { dot: col, title: o.title, state: o.sub, stateHex: '#c7c7cc', rows: o.rows, hint: o.notes[0] ?? 'Statistique annuelle, pas un événement en cours', source: 'SSMSI, ministère de l’Intérieur (data.gouv.fr), données annuelles' } }; }
+    if (id === 'mqs-prot') { const x = S.prot?.[p.i]; return x && { key: `pr:${x.id}`, kind: 'raw', id: x.id, at: [x.lon, x.lat], card: protCard(x) }; }
+    if (id === 'mqs-crime-c' || id === 'mqs-crime-city') { const c = S.crime?.cities[p.i]; return c && { key: `cr:${c.city.code}`, kind: 'raw', id: c.city.code, at: [c.city.lon, c.city.lat], card: crimeCityCard(c) }; }
+    if (id === 'mqs-crime-d-fill') { const d = S.crime?.depts.get(p.code); return d && { key: `crd:${p.code}`, kind: 'raw', id: p.code, at: null, card: crimeDeptCard(d) }; }
     if (id === 'sov-emergencies' || id.startsWith('sov-navy')) return { key: `${id}:${p.id}`, kind: 'raw', id: p.id, at: f.geometry.coordinates,
       card: { dot: p.color ?? '#8a93a6', title: strong(p.body), state: parseBody(p.body).sub || (id === 'sov-emergencies' ? 'Code d’urgence transpondeur' : 'Bâtiment de la Marine · port base (référence)'), stateHex: p.color ?? '#c7c7cc',
         rows: parseBody(p.body).rows, hint: id === 'sov-emergencies' ? null : 'Position de référence, pas une observation', source: id === 'sov-emergencies' ? 'ADS-B' : 'liste publique, AIS coupé' } };
@@ -865,8 +947,8 @@
       <div class="mqs-row">${swatch(CAT.telecom, 'disc')}Site mobile coupé depuis moins de 24${NB}h, lettre = opérateur (O, S, B, F), anneau = état du département ${swatch('#a855f7', 'disc')}panne plus ancienne ${swatch('#c7c7cc', 'disc')}maintenance</div>
       <div class="mqs-row">${swatch(CAT.internet, 'ring')}Coupure Internet terminée sur 7${NB}jours (durée cumulée, département teinté) ${swatch(L1.orange, 'disc')}coupure en cours</div>
       <div class="mqs-row">${icon('cloud', '#fff', CAT.cloud)}Site cloud (pages d’état, zones regroupées ; couleur d’état si incident) ${icon('server', '#fff', CAT.dc)}centre de données en service ${icon('server', CAT.dc, DARK)}en projet (avec la pastille)</div>
-      <div class="mqs-row">${swatch('#ec4899', 'disc')}Manifestation annoncée ${swatch(L1.orange, 'disc')}signalée par la presse ${swatch(L1.rouge, 'disc')}heurts, taille selon le nombre</div>
-      <div class="mqs-row mqs-note">${swatch(L1.rouge, 'ring')}Criminalité (SSMSI, annuelle) : ville à 2 fois la moyenne nationale ou plus en violences physiques hors famille ; avec la pastille, toutes les villes et départements pour l’indicateur choisi dans le panneau.</div>
+      <div class="mqs-row">${swatch(PROT.annonce, 'ring')}Manifestation annoncée ${swatch(PROT.signale, 'disc')}rapportée sans heurts ${swatch(L1.rouge, 'disc')}heurts ou tensions ; taille = articles sur 24${NB}h</div>
+      <div class="mqs-row mqs-note">Criminalité (SSMSI, annuelle, jamais une alerte) : ${CRIME_RAMP.slice(0, 4).map(([, c, w]) => `${swatch(c, 'disc')}${w}`).join(' ')} la moyenne nationale. Sans pastille, villes à 2 fois ou plus en anneau ; avec la pastille, toutes les villes de 20${NB}000 habitants et plus et les départements, pour l’indicateur du panneau.</div>
       <div class="mqs-row">${swatch('#e8e8ec', 'dash')}Zone de défense et de sécurité</div>
       <div class="mqs-row mqs-note">Sans pastille active, toutes les couches sont affichées. Une pastille met sa couche en avant et estompe les autres (clic, cumulable ; survol pour un aperçu).</div>
       <details${ko ? ' open' : ''}><summary>Sources · ${src.length - ko}${NB}à jour, ${ko}${NB}en défaut</summary>${src.map(([k, v, st]) => `<div class="mqs-row mqs-src"><i class="mqs-src-${st}"></i><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}</details>`;
@@ -959,12 +1041,9 @@
     [S.cablesFile, S.osm, S.world, S.suite] = await Promise.all([getJson('/data/subsea-cables.json'), getJson('/data/defense-osm-works.json'), getJson('/maquette-cables-monde.json'), getJson('/maquette-cables-suite.json')]);
     // Criminalité en vue d'ensemble : un indicateur communal fixe (violences physiques hors famille), l'indicateur du panneau s'applique avec la pastille.
     // Manifestations et Criminalité : données lues par la maquette elle-même, car l'app ne les charge que si la couche est cochée (un état enregistré plus ancien ne la coche pas).
-    try {
-      const [pm, cm] = await Promise.all([import('/src/components/deckgl/protests-map.ts'), import('/src/components/deckgl/crime-map.ts')]);
-      S.mk = { protestFeatures: pm.protestFeatures, crimeDeptFeatures: cm.crimeDeptFeatures };
-      S.crimeDs = await getJson('/data/crime.json');
-      S.crimeFc = cm.crimeCityFeatures(S.crimeDs, 'violencesPhysiques');
-    } catch (e) { S.crimeFc = null; }
+    S.crimeDs = await getJson('/data/crime.json');
+    // Indicateur changé dans le panneau Criminalité : la carte suit.
+    document.addEventListener('change', (e) => { if (e.target?.matches?.('select[data-crime-indicator]')) setTimeout(draw, 50); });
     audit();
     const load = async () => {
       const [telecom, internet, military, cablesWatch, gnss, cyberData, cloud, protests] = await Promise.all(['/api/outages/telecom', '/api/outages/internet', '/api/sovereignty/military',
