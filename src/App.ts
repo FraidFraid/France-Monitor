@@ -2456,6 +2456,13 @@ export class App {
     floatingPanelSwitcher.hidden = true;
     mapArea.appendChild(floatingPanelSwitcher);
     this.floatingPanelSwitcherEl = floatingPanelSwitcher;
+    // Cartes Sécurité et Santé (public/maquette-*.js) : leurs pastilles se cumulent sur la carte ; elles décident du panneau de droite
+    // (celui de la dernière pastille allumée, aucun quand toutes sont éteintes) par cette passerelle, comme les pastilles Énergie.
+    (window as unknown as { __fmPanels?: object }).__fmPanels = {
+      isVisible: (key: string): boolean => this.isFloatingPanelVisible(key as keyof MapLayers),
+      show: (key: string): void => this.showFloatingPanel(key as keyof MapLayers),
+      hide: (key: string): void => this.hideFloatingPanel(key as keyof MapLayers),
+    };
     // Énergie (spec 2026-10-16 § 7) : les pastilles allumées (vertes) ne laissent vives que leurs couches, et leurs légendes
     // courtes se cumulent ; l'état reste tant que les pastilles ne changent pas. Survoler une autre pastille l'ajoute le temps
     // du survol. Le conteneur est réécrit par innerHTML à chaque rafraîchissement : on écoute le conteneur, une seule fois.

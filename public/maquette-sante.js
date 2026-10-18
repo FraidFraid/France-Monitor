@@ -471,7 +471,20 @@
     document.addEventListener('click', (e) => {
       if (!isHealth()) return;
       const k = chipKey(e.target);
-      if (k && k in GROUPS) { S.focus.has(k) ? S.focus.delete(k) : S.focus.add(k); preview = null; applyFocus(); return; }
+      if (k && k in GROUPS) {
+        const wasOn = S.focus.has(k);
+        wasOn ? S.focus.delete(k) : S.focus.add(k); preview = null; applyFocus();
+        // Panneau de droite = celui de la dernière pastille allumée qui en a un (Eau, Canicule, Mortalité n'en ont pas) ; aucun si toutes
+        // sont éteintes : la pastille surlignée et le panneau affiché ne se contredisent jamais (passerelle __fmPanels de l'app).
+        const P = window.__fmPanels;
+        if (P) {
+          const hasPanel = (x) => !EXTRA_CHIPS.some(([id]) => id === x);
+          const last = [...S.focus].filter(hasPanel).pop();
+          if (last) { if (!P.isVisible(last)) P.show(last); } else if (hasPanel(k) && P.isVisible(k)) P.hide(k);
+          e.stopPropagation();
+        }
+        return;
+      }
       // Choix du syndrome ou de la profession dans les panneaux : la carte suit.
       const syn = e.target?.closest?.('[data-urg-syndrome]')?.dataset.urgSyndrome;
       if (syn && syn !== S.syndrome) { S.syndrome = syn; setTimeout(draw, 30); }

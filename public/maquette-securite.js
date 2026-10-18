@@ -467,11 +467,23 @@
     if (c.classList.contains('is-active') !== pressed) c.classList.toggle('is-active', pressed);
     if (c.getAttribute('aria-pressed') !== String(pressed)) c.setAttribute('aria-pressed', String(pressed));
   });
+  // Panneau de droite = celui de la dernière pastille allumée, aucun quand toutes sont éteintes (passerelle __fmPanels de l'app) :
+  // la pastille surlignée et le panneau affiché ne se contredisent jamais.
+  const followPanel = (k, wasOn) => {
+    const P = window.__fmPanels;
+    if (!P) return false;
+    const last = [...S.focus].pop();
+    if (last) { if (!P.isVisible(last)) P.show(last); } else if (wasOn && P.isVisible(k)) P.hide(k);
+    return true;
+  };
   const wireChips = () => {
     document.addEventListener('click', (e) => {
+      if (!isSec()) return;
       const k = chipKey(e.target); if (!k || !(k in GROUPS)) return;
-      S.focus.has(k) ? S.focus.delete(k) : S.focus.add(k);
+      const wasOn = S.focus.has(k);
+      wasOn ? S.focus.delete(k) : S.focus.add(k);
       preview = null; applyFocus();
+      if (followPanel(k, wasOn)) e.stopPropagation();
     }, true);
     document.addEventListener('mouseover', (e) => { const k = chipKey(e.target); const next = k in GROUPS ? k : null; if (next !== preview) { preview = next; applyFocus(); } });
     new MutationObserver(syncChips).observe(document.body, { subtree: true, childList: true });
