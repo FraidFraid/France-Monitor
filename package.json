@@ -35,7 +35,8 @@
     "build:crime": "node scripts/build-crime.mjs",
     "build:ehpad": "node scripts/build-ehpad.mjs",
     "build:eau-potable": "node scripts/build-eau-potable.mjs",
-    "build:deces": "node scripts/build-deces.mjs"
+    "build:deces": "node scripts/build-deces.mjs",
+    "build:webcams": "node scripts/build-webcams.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
