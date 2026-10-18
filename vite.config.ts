@@ -198,6 +198,10 @@ export default defineConfig(({ mode }) => {
             'data/history-dev.json', // données de démonstration du plugin de dev uniquement
             'data/drom-energy/raw/*.geojson',
             'data/drone-restrictions.json', // zones drones DGAC (1,5 Mo), lues à l'ouverture de la couche
+            // Carte Santé : lus à l'ouverture de l'onglet ; eau et décès réécrits chaque semaine par le minuteur fm-eau-potable.
+            'data/ehpad.json',
+            'data/eau-potable.json',
+            'data/deces.json',
           ],
           // Abaissé de 3 Mo à 1 Mo : les gros GeoJSON/JSON ci-dessus sont
           // exclus explicitement du precache : ce plafond n'a plus besoin de
