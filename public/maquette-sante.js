@@ -750,24 +750,36 @@
     const bad = neighbours(a).filter((x) => x.driver);
     const bluf = [`${a.driver ? `${SYN[a.driver]} aux urgences ${signed(a.syn[a.driver].ratio - 1)} au-dessus du maximum des 3${NB}saisons (${WORD[a.urg].toLowerCase()}, ${synRank(a, a.driver)})` : 'Urgences dans les normales des saisons précédentes'}${bad.length ? ` ; ${bad.length}${NB}département${bad.length > 1 ? 's' : ''} voisin${bad.length > 1 ? 's' : ''} aussi en anomalie` : ''}.`,
       `Capacité : ${reaLine(a)} ; accès aux généralistes ${a.apl?.apl?.mg != null ? `${num(a.apl.apl.mg / S.data.apl.france.apl.mg, 2)}${NB}fois la moyenne` : 'n.d.'}.`];
-    impact.push(`Départements voisins : ${neighLine(a)}.`);
-    if (vaccLine(a)) impact.push(`Vaccination des 65 ans et plus (${S.vaccYear}) : ${vaccLine(a)}.`);
-    if (historyLine(a)) impact.push(`Antécédents ${S.arboYear} (déclarations obligatoires) : ${historyLine(a)}.`);
-    if (heatLine(a)) impact.push(`Canicule : ${heatLine(a)}. Avec ${ehpadLine(a) ?? 'n.d.'} : population à protéger en été.`);
+    happen.push(`Départements voisins : ${neighLine(a)}.`);
+    // Capacités : hôpitaux, personnes âgées, accès aux soins, vaccination.
+    const hospB = [`Hôpitaux : ${hospLine(a)}.`, `Capacité : ${reaLine(a)}.`,
+      ...(a.apl?.pop ? [`Population : ${num(a.apl.pop)} habitants${passPer(a) != null ? ` ; ${num(passPer(a))} passages aux urgences pour 1${NB}000 habitants par an` : ''}.`] : [])];
+    const oldB = [ehpadLine(a) ? `${ehpadLine(a)}.` : 'Aucun EHPAD recensé dans le FINESS.', ...(vaccLine(a) ? [`Vaccination des 65 ans et plus (${S.vaccYear}) : ${vaccLine(a)}.`] : [])];
+    const aplB = impact.filter((x) => /^Accès aux soins|population sous 2,5/.test(x)).map((x) => x.replace(/^Accès aux soins : g/, 'G'));
+    // Environnement : eau du robinet, eaux usées, canicule, antécédents.
     const wa = S.water.get(a.code);
+    const waterB = [];
+    let envLevel = null;
     if (wa) { const byV = (v) => wa.communes.filter((c) => c.v === v).map((c) => commune(c.nom));
-      if (byV('restriction').length) happen.push(`Eau du robinet, restriction de consommation annoncée : ${byV('restriction').join(', ')} (jusqu’au ${day(wa.last)}).`);
-      if (byV('ciblee').length) happen.push(`Eau du robinet déconseillée aux publics sensibles : ${byV('ciblee').join(', ')}.`);
-      if (byV('bact').length) happen.push(`Eau du robinet non conforme en bactériologie : ${byV('bact').join(', ')}.`);
-      if (byV('pc').length) impact.push(`Eau du robinet, limites physico-chimiques dépassées (consommable ou non précisé) : ${byV('pc').length}${NB}commune${byV('pc').length > 1 ? 's' : ''}.`); }
+      if (byV('restriction').length) { waterB.push(`Restriction de consommation annoncée : ${byV('restriction').join(', ')}.`); envLevel = 'orange'; }
+      if (byV('ciblee').length) { waterB.push(`Déconseillée aux publics sensibles : ${byV('ciblee').join(', ')}.`); envLevel ??= 'jaune'; }
+      if (byV('bact').length) { waterB.push(`Non conforme en bactériologie : ${byV('bact').join(', ')}.`); envLevel ??= 'jaune'; }
+      if (byV('pc').length) waterB.push(`Limites physico-chimiques dépassées, eau consommable ou non précisé : ${byV('pc').join(', ')}.`);
+      waterB.push(`Prélèvements du ${day(S.data.water?.from)} au ${day(S.data.water?.to)} (publication mensuelle).`); }
+    else waterB.push(`Aucun prélèvement non conforme du ${day(S.data.water?.from)} au ${day(S.data.water?.to)}.`);
     const st = S.stations.filter((x) => x.at && deptAt(x.at)?.code === a.code);
-    for (const x of st) happen.push(`Eaux usées, ${commune(x.m.commune)} : ${x.last ? `${num(x.last.v)} en ${wk(x.last.w)}${x.two ? `, ${signed(x.last.v / x.two - 1)} sur 2 semaines` : ''}${x.ly ? `, ${signed(x.last.v / x.ly - 1)} sur un an` : ''}` : 'n.d.'}.`);
-    if (a.apl?.pop) impact.push(`Population : ${num(a.apl.pop)} habitants${passPer(a) != null ? ` ; ${num(passPer(a))} passages aux urgences pour 1${NB}000 habitants par an` : ''}.`);
-    impact.splice(1, 0, `Capacité : ${reaLine(a)}.`);
-    if (ehpadLine(a)) impact.push(`Personnes âgées dépendantes : ${ehpadLine(a)}.`);
+    const wwB = st.length ? st.map((x) => { if (RANK[x.level] >= 1) envLevel ??= 'jaune';
+      return `${commune(x.m.commune)} (${num(x.m.population)} hab. raccordés) : ${x.last ? `${num(x.last.v)} en ${wk(x.last.w)}${x.two ? `, ${signed(x.last.v / x.two - 1)} sur 2 semaines` : ''}${x.ly ? `, ${signed(x.last.v / x.ly - 1)} sur un an` : ''}` : 'n.d.'}${RANK[x.level] >= 1 ? ' : en hausse' : ''}.`; })
+      : ['Aucune station SUM’Eau dans le département.'];
+    const heatB = heatLine(a) ? [`${heatLine(a)}.`, ...(ehpadLine(a) ? [`Population à protéger en été : ${ehpadLine(a)}.`] : [])] : ['n.d.'];
+    const histB = historyLine(a) ? [`${historyLine(a)}.`] : ['Aucun cas déclaré.'];
     return { title: `${a.nom} (${a.code})`, sub: 'Santé · note de situation', level: RANK[a.urg] >= 1 ? a.urg : null, at: when(new Date().toISOString()),
       gauges: Object.keys(SYN).filter((k) => a.syn[k]).map((k) => synGauge(k, a.syn[k])),
-      blocks: [['À retenir', bluf], ['Ce qui se passe', happen], ['Impact et capacités', impact], ['Évolution', evo], ['Ce qu’on ne sait pas', unknown]],
+      tabLevel: { Situation: RANK[a.urg] >= 1 ? a.urg : null, Environnement: envLevel },
+      blocks: [['À retenir', bluf, 'Situation'], ['Ce qui se passe', happen, 'Situation'],
+        ['Hôpitaux et réanimation', hospB, 'Capacités'], ['Personnes âgées', oldB, 'Capacités'], ['Accès aux soins', aplB, 'Capacités'],
+        ['Eau du robinet', waterB, 'Environnement'], ['Eaux usées (SARS-CoV-2)', wwB, 'Environnement'], ['Canicule', heatB, 'Environnement'], [`Antécédents ${S.arboYear} (arboviroses, légionellose)`, histB, 'Environnement'],
+        ['Évolution', evo, 'Évolution'], ['Ce qu’on ne sait pas', unknown, 'Sources']],
       charts: deptCharts(a, k),
       sources: ['OSCOUR', 'Odissé', 'DREES', 'Eau du robinet', 'Eaux usées', 'Déclarations', 'Couverture', 'FINESS', 'Canicule'] };
   };
@@ -805,15 +817,21 @@
     if (!n) { if (!silent) closeFiche(); return; }
     S.fiche = { kind, key };
     const lvl = n.level ? `<span class="mqh-lvl" style="background:${L1[n.level]};color:${n.level === 'jaune' ? '#1a1a1a' : '#fff'}">${WORD[n.level]}</span>` : '';
+    // Onglets : chaque bloc porte le sien ; « Sources » regroupe ce qu'on ne sait pas et la table des sources.
+    const tabs = n.blocks.some((b) => b[2]) ? [...new Set([...n.blocks.map((b) => b[2]).filter(Boolean), 'Sources'])] : null;
+    if (tabs && !tabs.includes(S.ficheTab)) S.ficheTab = tabs[0];
+    const shown = (tab) => !tabs || tab === S.ficheTab;
     panel.innerHTML = `<header><div><h3>${esc(n.title)}</h3><div class="mqh-sub">${lvl}${esc(n.sub)}</div><div class="mqh-at">Situation au ${n.at}</div></div>`
       + `<button class="mqh-x" aria-label="Fermer">×</button></header>`
-      + n.blocks.map(([h, xs]) => sec(h, (h === 'Ce qui se passe' && n.gauges ? `<div class="mqh-gs">${n.gauges.map(gauge).join('')}</div><div class="mqh-g-cap">Barre = part des passages de la semaine ; trait blanc = maximum des 3${NB}saisons précédentes.</div>` : '') + li(xs.map(esc)) + (h === 'Évolution' && n.charts ? n.charts : ''))).join('')
-      + sec('Sources et confiance', `<table>${sourcesOf(n).map(([k, v, st]) => `<tr><td><i class="mqh-src-${st}"></i>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</table>`
-        + (n.link ? `<p><a href="${esc(n.link)}" target="_blank" rel="noopener">Fiche FINESS de l’établissement</a></p>` : ''))
+      + (tabs ? `<nav class="mqh-tabs">${tabs.map((t) => `<button data-tab="${esc(t)}" aria-pressed="${t === S.ficheTab}">${n.tabLevel?.[t] ? `<i style="background:${L1[n.tabLevel[t]]}"></i>` : ''}${esc(t)}</button>`).join('')}</nav>` : '')
+      + n.blocks.filter((b) => shown(b[2] ?? null)).map(([h, xs]) => sec(h, (h === 'Ce qui se passe' && n.gauges ? `<div class="mqh-gs">${n.gauges.map(gauge).join('')}</div><div class="mqh-g-cap">Barre = part des passages de la semaine ; trait blanc = maximum des 3${NB}saisons précédentes.</div>` : '') + li(xs.map(esc)) + (h === 'Évolution' && n.charts ? n.charts : ''))).join('')
+      + (!shown('Sources') ? '' : sec('Sources et confiance', `<table>${sourcesOf(n).map(([k, v, st]) => `<tr><td><i class="mqh-src-${st}"></i>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</table>`
+        + (n.link ? `<p><a href="${esc(n.link)}" target="_blank" rel="noopener">Fiche FINESS de l’établissement</a></p>` : '')))
       + `<footer><button class="mqh-copy">Copier pour la note</button><span class="mqh-copied"></span></footer>`;
     panel.style.display = 'flex';
     if (legend.dataset.open === 'true') { legend.dataset.open = 'false'; renderLegend(); }
     panel.querySelector('.mqh-x').onclick = closeFiche;
+    panel.querySelectorAll('.mqh-tabs button').forEach((b) => { b.onclick = () => { S.ficheTab = b.dataset.tab; openFiche(kind, key, true); panel.scrollTop = 0; }; });
     panel.querySelector('.mqh-copy').onclick = async () => {
       try { await navigator.clipboard.writeText(noteText(n)); panel.querySelector('.mqh-copied').textContent = 'Copié'; } catch (e) { panel.querySelector('.mqh-copied').textContent = 'Copie refusée par le navigateur'; }
     };
@@ -935,6 +953,9 @@
   .mqh-g-h { display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px; color: #aab0bc; } .mqh-g-h b { font-weight: 600; white-space: nowrap; }
   .mqh-g-t { position: relative; height: 6px; border-radius: 3px; background: #262a33; margin-top: 2px; }
   .mqh-g-f { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; } .mqh-g-m { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: #ffffff; }
+  .mqh-tabs { display: flex; gap: 4px; flex-wrap: wrap; border-bottom: 1px solid #23262e; padding-bottom: 6px; position: sticky; top: -14px; background: #12141a; z-index: 1; padding-top: 4px; }
+  .mqh-tabs button { background: none; border: 1px solid transparent; color: #9aa1ae; border-radius: 6px; padding: 3px 8px; cursor: pointer; font-size: 11.5px; display: inline-flex; align-items: center; gap: 5px; }
+  .mqh-tabs button[aria-pressed="true"] { background: #1f232c; color: #e8e8ec; border-color: #2f3440; } .mqh-tabs i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
   .mqh-chart { margin-top: 8px; } .mqh-chart-t { color: #aab0bc; font-size: 11px; margin-bottom: 3px; } .mqh-chart-svg { width: 100%; height: auto; display: block; }
   .mqh-chart-c { color: #8a8f9c; font-size: 10.5px; margin-top: 3px; line-height: 1.4; }
   .mqh-ages { width: 100%; font-size: 11px; margin-top: 4px; } .mqh-ages th { color: #6e6e80; font-weight: 500; text-align: right; } .mqh-ages td { text-align: right; white-space: nowrap; }
