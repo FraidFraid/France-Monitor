@@ -180,14 +180,16 @@
       r.senti.push({ ...t, label: SENTI[t.indicator] ?? t.indicator, nat, ratio: nat ? t.rate / nat : null });
     }
     S.regions = regs;
-    // Eau du robinet (Hub'Eau) : un prélèvement non conforme en bactériologie = une ligne E. coli ou entérocoques ; regroupé par commune puis par département.
+    // Eau du robinet (scripts/build-eau-potable.mjs, Hub'Eau) : niveau de la commune = pire prélèvement.
+    // Restriction générale = orange ; restriction pour les publics sensibles ou bactériologie = jaune ; physico-chimie sans restriction = jaune creux.
+    const WRANK = { restriction: 3, ciblee: 2, bact: 1, pc: 0 };
     const water = new Map();
-    for (const r of d.water?.data ?? []) {
-      const w = water.get(r.code_departement) ?? { dept: r.code_departement, communes: new Map(), samples: new Set(), last: '' }; water.set(r.code_departement, w);
-      w.samples.add(r.code_prelevement); if (r.date_prelevement > w.last) w.last = r.date_prelevement;
-      const c = w.communes.get(r.code_commune) ?? { nom: r.nom_commune, samples: new Map() }; w.communes.set(r.code_commune, c);
-      const sm = c.samples.get(r.code_prelevement) ?? { date: r.date_prelevement, distrib: r.nom_distributeur, conclusion: r.conclusion_conformite_prelevement, params: [] }; c.samples.set(r.code_prelevement, sm);
-      if (r.resultat_alphanumerique && !/^<|^0$/.test(r.resultat_alphanumerique)) sm.params.push(`${r.libelle_parametre.replace(/ \/100ml.*$/i, '')} ${r.resultat_alphanumerique}${NB}/100${NB}mL`);
+    for (const c of d.water?.communes ?? []) {
+      let v = 'pc';
+      for (const sm of c.samples) { const x = sm.verdict === 'restriction' ? 'restriction' : sm.verdict === 'restriction ciblée' ? 'ciblee' : sm.kinds.includes('bact') ? 'bact' : 'pc'; if (WRANK[x] > WRANK[v]) v = x; }
+      c.v = v;
+      const w = water.get(c.dept) ?? { dept: c.dept, communes: [], last: '' }; water.set(c.dept, w);
+      w.communes.push(c); for (const sm of c.samples) if (sm.date > w.last) w.last = sm.date;
     }
     S.water = water;
     // Eaux usées : niveau par station (même règle que l'indicateur national : ×1,5 en 2 semaines, au-dessus de l'an dernier).
@@ -246,7 +248,7 @@
         label: [r.nom, phase, ...senti].join('\n'), short: `${r.nom}${NB}· ${phase}` }); })));
     setData('mqh-ww', fc(S.stations.map((x, i) => pt(x.at, { i, level: x.level, ring: RANK[x.level] >= 1 ? L1[x.level] : '#0a0a0f', pop: x.m.population ?? 0,
       label: `${commune(x.m.commune)}${x.last ? ` · ${x.two ? signed(x.last.v / x.two - 1) : 'n.d.'}` : ''}` }))));
-    setData('mqh-water', fc([...S.water.values()].map((w) => { const a = S.depts.get(w.dept); return a?.at && a.inMap ? pt([a.at[0] + 0.32, a.at[1] - 0.22], { dept: w.dept, n: w.communes.size }) : null; }).filter(Boolean)));
+    setData('mqh-water', fc((d.water?.communes ?? []).map((c, i) => pt([c.lon, c.lat], { i, v: c.v, r: { restriction: 3, ciblee: 2, bact: 1, pc: 0 }[c.v] }))));
     setData('mqh-ehpad', fc((d.ehpad?.sites ?? []).map((e, i) => pt([e.lon, e.lat], { i, places: e.places ?? 0, name: nice(e.name).replace(/^EHPAD /i, 'EHPAD ') }))));
     setData('mqh-hosp', fc(S.hGroups.map((g, i) => { const s = g[0];
       const chuLead = g.find((x) => x.category === 'chu' && S.hLead?.get(x.finess));
@@ -295,10 +297,12 @@
         'text-variable-anchor': ['left', 'right', 'top', 'bottom'], 'text-radial-offset': 0.9, 'text-optional': true },
         paint: { 'text-color': SENTI_HEX, 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.4, 'text-opacity': 1 } });
       // Eau du robinet : goutte jaune (non-conformité bactériologique observée), chiffre = communes concernées.
-      await image('mqh-drop', `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><path d="M20 4 C20 4 8 18 8 25 a12 12 0 0 0 24 0 C32 18 20 4 20 4 Z" fill="${L1.jaune}" stroke="#0a0a0f" stroke-width="2.5"/></svg>`, 40);
-      m.addLayer({ id: 'mqh-water', type: 'symbol', source: 'mqh-water', layout: { 'icon-image': 'mqh-drop', 'icon-size': 0.62, 'icon-allow-overlap': true, 'icon-ignore-placement': true,
-        'text-field': ['to-string', ['get', 'n']], 'text-size': 9.5, 'text-font': ['Open Sans Semibold'], 'text-offset': [0, 0.25], 'text-allow-overlap': true },
-        paint: { 'icon-opacity': 1, 'text-color': '#1a1a1a', 'text-opacity': 1 } });
+      const drop = (id, fill, stroke, w) => image(id, `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><path d="M20 4 C20 4 8 18 8 25 a12 12 0 0 0 24 0 C32 18 20 4 20 4 Z" fill="${fill}" stroke="${stroke}" stroke-width="${w}"/></svg>`, 40);
+      await drop('mqh-drop-restriction', L1.orange, '#0a0a0f', 2.5); await drop('mqh-drop-ciblee', L1.jaune, '#0a0a0f', 2.5);
+      await drop('mqh-drop-bact', L1.jaune, '#0a0a0f', 2.5); await drop('mqh-drop-pc', 'none', L1.jaune, 3.5);
+      m.addLayer({ id: 'mqh-water', type: 'symbol', source: 'mqh-water', layout: { 'icon-image': ['concat', 'mqh-drop-', ['get', 'v']], 'symbol-sort-key': ['get', 'r'],
+        'icon-size': ['interpolate', ['linear'], ['zoom'], 4, ['match', ['get', 'v'], 'restriction', 0.5, 0.36], 9, ['match', ['get', 'v'], 'restriction', 0.8, 0.6]], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
+        paint: { 'icon-opacity': 1 } });
       // EHPAD (FINESS) : anneau clair sans remplissage, taille = places installées ; au zoom seulement (7 400 sites).
       m.addLayer({ id: 'mqh-ehpad', type: 'circle', source: 'mqh-ehpad', minzoom: 8, layout: { 'circle-sort-key': ['get', 'places'] },
         paint: { 'circle-radius': ['interpolate', ['linear'], ['get', 'places'], 20, 2.5, 100, 4, 300, 6.5], 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': EHPAD_HEX, 'circle-stroke-width': 1.6, 'circle-stroke-opacity': 0.95 } });
@@ -344,7 +348,7 @@
     'mqh-senti': [['circle-opacity', 'circle-stroke-opacity'], () => 0.9],
     'mqh-ww': [['circle-opacity', 'circle-stroke-opacity'], () => 0.6],
     'mqh-ww-label': ['text-opacity', () => 1],
-    'mqh-water': [['icon-opacity', 'text-opacity'], () => 1],
+    'mqh-water': ['icon-opacity', () => 1],
     'mqh-hosp': [['icon-opacity', 'text-opacity'], () => 1],
     'mqh-ehpad': [['circle-stroke-opacity'], () => 0.95],
     'mqh-ehpad-label': ['text-opacity', () => 1],
@@ -375,7 +379,8 @@
     F('mqh-reg-label', pill('health') ? null : ['any', ['get', 'alert'], ['get', 'senti']]);
     L('mqh-reg-label', 'text-field', ['get', 'label']);
     V('mqh-reg-tint', pill('health')); V('mqh-senti', isOn('health'));
-    F('mqh-water', pill('health') ? null : ['>=', ['get', 'n'], 10]);
+    // Sans pastille : seulement les restrictions de consommation (générales ou pour les publics sensibles) ; tout le reste avec la pastille.
+    F('mqh-water', pill('health') ? null : ['in', ['get', 'v'], ['literal', ['restriction', 'ciblee']]]);
     F('mqh-ww-label', pill('health') ? null : ['in', ['get', 'level'], ['literal', ['jaune', 'orange', 'rouge']]]);
     // Hôpitaux : avec la pastille, noms dès le zoom 6,5.
     L('mqh-hosp', 'text-field', ['step', ['zoom'], ['get', 'city'], pill('hospitals') ? 6.5 : 8, ['get', 'name']]);
@@ -494,7 +499,8 @@
     rows.push(['Hôpitaux', hospLine(a)]);
     if (vaccLine(a)) rows.push([`Vaccination des 65 ans et plus (${S.vaccYear})`, vaccLine(a)]);
     if (historyLine(a)) rows.push([`Antécédents ${S.arboYear}`, historyLine(a)]);
-    if (S.water.get(a.code)) rows.push(['Eau du robinet', `${S.water.get(a.code).communes.size}${NB}commune(s) non conforme(s) en bactériologie (au ${day(S.water.get(a.code).last)})`]);
+    if (S.water.get(a.code)) { const w = S.water.get(a.code); const r = w.communes.filter((x) => x.v === 'restriction').length;
+      rows.push(['Eau du robinet', `${w.communes.length}${NB}commune${w.communes.length > 1 ? 's' : ''} non conforme${w.communes.length > 1 ? 's' : ''}${r ? `, dont ${r} avec restriction de consommation` : ''} (au ${day(w.last)})`]); }
     rows.push(['Capacité', reaLine(a)]);
     if (ehpadLine(a)) rows.push(['Personnes âgées dépendantes', ehpadLine(a)]);
     if (a.apl?.pop) rows.push(['Population', `${num(a.apl.pop)} hab.${passPer(a) != null ? ` · ${num(passPer(a))} passages aux urgences pour 1${NB}000 hab. par an` : ''}`]);
@@ -550,15 +556,20 @@
         ['26 dernières semaines', spk.length ? `min ${num(Math.min(...spk.map((y) => y.v)))}, max ${num(Math.max(...spk.map((y) => y.v)))}` : 'n.d.']],
       hint: 'Ce qu’on ne sait pas : SARS-CoV-2 seulement (pas la grippe ni le VRS) ; précède les urgences de quelques jours, sans dire qui est malade', source: `Santé publique France, SUM’Eau, ${x.last ? wk(x.last.w) : 'n.d.'}` };
   };
-  const waterCard = (w) => {
-    const a = S.depts.get(w.dept);
-    const cs = [...w.communes.values()].sort((p, q) => q.samples.size - p.samples.size);
-    return { dot: L1.jaune, title: `Eau du robinet · ${a?.nom ?? w.dept} (${w.dept})`, state: `${cs.length}${NB}commune${cs.length > 1 ? 's' : ''} avec un prélèvement non conforme en bactériologie`, stateHex: L1.jaune,
-      rows: [...cs.slice(0, 5).map((c) => { const sm = [...c.samples.values()].sort((p, q) => q.date.localeCompare(p.date))[0];
-          return [commune(c.nom), `${day(sm.date)} · ${sm.params.slice(0, 2).join(', ') || 'germes témoins détectés'}`]; }),
-        ...(cs.length > 5 ? [['Et aussi', cs.slice(5).map((c) => commune(c.nom)).join(', ')]] : []),
-        ['Période', `prélèvements du ${day(S.data.waterFrom)} au ${day(w.last)}`]],
-      hint: 'Ce qu’on ne sait pas : restriction de consommation décidée ou non (arrêté, information des abonnés) ; contre-analyse · clic : fiche', source: 'Ministère de la Santé, contrôle sanitaire de l’eau (Hub’Eau), publication mensuelle' };
+  const W_WORD = { restriction: 'Restriction de consommation annoncée', ciblee: 'Consommation déconseillée aux publics sensibles', bact: 'Non conforme en bactériologie', pc: 'Limite physico-chimique dépassée, eau consommable ou non précisé' };
+  const V_WORD = { restriction: 'restriction', 'restriction ciblée': 'déconseillée aux publics sensibles', consommable: 'consommable selon l’ARS', 'non précisé': 'consommation non précisée' };
+  const waterSrc = () => `Ministère de la Santé, contrôle sanitaire (Hub’Eau), prélèvements du ${day(S.data.water?.from)} au ${day(S.data.water?.to)}`;
+  const waterCard = (c) => {
+    const a = S.depts.get(c.dept), w = S.water.get(c.dept);
+    const sm = c.samples[0];
+    return { dot: c.v === 'restriction' ? L1.orange : L1.jaune, title: `Eau du robinet · ${commune(c.nom)} (${c.dept})`, state: W_WORD[c.v], stateHex: c.v === 'restriction' ? L1.orange : L1.jaune,
+      rows: [['Dernier prélèvement non conforme', `${day(sm.date)} · ${sm.kinds.map((k) => (k === 'bact' ? 'bactériologie' : 'physico-chimie')).join(' et ')} · ${V_WORD[sm.verdict]}`],
+        ['Paramètres dépassés', sm.exceed.length ? sm.exceed.map((x) => `${x.p} ${x.v} (limite ${x.lim.replace('<=', '≤ ')})`).join(' ; ') : 'n.d.'],
+        ['Réseau', [sm.network, sm.distributor].filter(Boolean).join(' · ') || 'n.d.'],
+        ...(c.samples.length > 1 ? [['Sur la période', `${c.samples.length}${NB}prélèvements non conformes`]] : []),
+        ['Département', w ? `${w.communes.length}${NB}communes concernées, dont ${w.communes.filter((x) => x.v === 'restriction').length} avec restriction` : 'n.d.'],
+        ['Conclusion de l’ARS', sm.conclusion.length > 220 ? `${sm.conclusion.slice(0, 220)}…` : sm.conclusion || 'n.d.']],
+      hint: 'Ce qu’on ne sait pas : levée éventuelle depuis (publication mensuelle, décalée d’environ six semaines)', source: waterSrc() };
   };
   const deptAt = (c) => { for (const f of S.geo.deptShapes) if (inGeom(c, f.geometry)) return S.depts.get(f.properties.code); return null; };
   // Arbitre : une seule cible ; hôpital > département ; la région répond seulement avec sa pastille ; un calque estompé ne répond jamais.
@@ -574,7 +585,7 @@
     if (id === 'mqh-hosp') { const g = S.hGroups[p.i]; return g && { key: `h:${p.i}`, kind: 'hosp', id: p.i, make: () => hospCard(g), at: [g[0].lon, g[0].lat] }; }
     if (id === 'mqh-ehpad') { const e = S.data.ehpad?.sites?.[p.i]; return e && { key: `eh:${p.i}`, kind: 'raw', id: p.i, make: () => ehpadCard(e), at: [e.lon, e.lat] }; }
     if (id === 'mqh-ww') { const x = S.stations[p.i]; return x && { key: `ww:${p.i}`, kind: 'raw', id: p.i, make: () => stationCard(x), at: x.at }; }
-    if (id === 'mqh-water') { const w = S.water.get(p.dept); return w && { key: `wa:${p.dept}`, kind: 'dept', id: p.dept, make: () => waterCard(w), at: f.geometry.coordinates }; }
+    if (id === 'mqh-water') { const c = S.data.water?.communes?.[p.i]; return c && { key: `wa:${c.code}`, kind: 'raw', id: c.code, make: () => waterCard(c), at: [c.lon, c.lat] }; }
     if (id === 'mqh-reg-fill') { const r = S.regions.get(p.code); return r && { key: `r:${r.code}`, kind: 'region', id: r.code, make: () => regionCard(r), at: null }; }
     if (id === 'mqh-dept-fill') { const a = S.depts.get(p.code); const mode = pill('healthApl') && !pill('healthOscour') ? 'apl' : 'urg';
       return a && { key: `d:${a.code}:${mode}`, kind: 'dept', id: a.code, make: () => deptCard(a, mode), at: null }; }
@@ -618,7 +629,7 @@
     rows.push(['Eaux usées par station (SUM’Eau)', d.wwSt?.results?.length ? `${num(S.stations?.filter((x) => x.last).length ?? 0)} stations, dernière semaine ${wk(d.wwSt.results[0]?.semaine)}` : 'indisponible', d.wwSt?.results?.length ? 'ok' : 'ko']);
     rows.push(['Déclarations obligatoires (arboviroses, légionellose)', Array.isArray(d.arbo) ? `arboviroses jusqu’à ${S.arboLast || 'n.d.'}, légionellose ${S.legioYear || 'n.d.'}, consolidées une fois par an` : 'indisponible', Array.isArray(d.arbo) ? 'part' : 'ko']);
     rows.push(['Couverture vaccinale (65 ans et plus)', S.vaccYear ? `campagne ${S.vaccYear}, annuelle` : 'indisponible', S.vaccYear ? 'ok' : 'ko']);
-    rows.push(['Eau du robinet (Hub’Eau)', Array.isArray(d.water?.data) ? `prélèvements jusqu’au ${day(d.waterTo)}, mensuel` : 'indisponible', Array.isArray(d.water?.data) ? (ageDays(d.waterTo) > 40 ? 'part' : 'ok') : 'ko']);
+    rows.push(['Eau du robinet (Hub’Eau)', d.water?.to ? `prélèvements du ${day(d.water.from)} au ${day(d.water.to)}, mensuel, décalé d’environ six semaines` : 'indisponible', d.water?.to ? (ageDays(d.water.to) > 75 ? 'part' : 'ok') : 'ko']);
     rows.push(['DGS-Urgent (PEPS)', (d.dgs?.errors ?? []).length ? `injoignable (${d.dgs.errors[0].replace(/^[^:]*: /, '')})` : `${(d.dgs?.messages ?? []).length}${NB}message(s)`, (d.dgs?.errors ?? []).length ? 'ko' : 'ok']);
     return rows;
   };
@@ -731,7 +742,11 @@
     if (vaccLine(a)) impact.push(`Vaccination des 65 ans et plus (${S.vaccYear}) : ${vaccLine(a)}.`);
     if (historyLine(a)) impact.push(`Antécédents ${S.arboYear} (déclarations obligatoires) : ${historyLine(a)}.`);
     const wa = S.water.get(a.code);
-    if (wa) happen.push(`Eau du robinet : prélèvements non conformes en bactériologie dans ${[...wa.communes.values()].map((c) => commune(c.nom)).join(', ')} (jusqu’au ${day(wa.last)}, Hub’Eau).`);
+    if (wa) { const byV = (v) => wa.communes.filter((c) => c.v === v).map((c) => commune(c.nom));
+      if (byV('restriction').length) happen.push(`Eau du robinet, restriction de consommation annoncée : ${byV('restriction').join(', ')} (jusqu’au ${day(wa.last)}).`);
+      if (byV('ciblee').length) happen.push(`Eau du robinet déconseillée aux publics sensibles : ${byV('ciblee').join(', ')}.`);
+      if (byV('bact').length) happen.push(`Eau du robinet non conforme en bactériologie : ${byV('bact').join(', ')}.`);
+      if (byV('pc').length) impact.push(`Eau du robinet, limites physico-chimiques dépassées (consommable ou non précisé) : ${byV('pc').length}${NB}commune${byV('pc').length > 1 ? 's' : ''}.`); }
     const st = S.stations.filter((x) => x.at && deptAt(x.at)?.code === a.code);
     for (const x of st) happen.push(`Eaux usées, ${commune(x.m.commune)} : ${x.last ? `${num(x.last.v)} en ${wk(x.last.w)}${x.two ? `, ${signed(x.last.v / x.two - 1)} sur 2 semaines` : ''}${x.ly ? `, ${signed(x.last.v / x.ly - 1)} sur un an` : ''}` : 'n.d.'}.`);
     if (a.apl?.pop) impact.push(`Population : ${num(a.apl.pop)} habitants${passPer(a) != null ? ` ; ${num(passPer(a))} passages aux urgences pour 1${NB}000 habitants par an` : ''}.`);
@@ -862,7 +877,7 @@
       <div class="mqh-ramp">${[...APL_RAMP].reverse().map(([, c, w]) => it(swatch(c, 'sq'), w)).join('')}</div>
       <div class="mqh-row">${it(swatch(REG_LINE, 'dash'), 'Limite de région')}</div>
       <div class="mqh-row">${it(`<svg width="13" height="13" viewBox="0 0 40 40"><circle cx="20" cy="20" r="15" fill="${SENTI_HEX}" fill-opacity=".55" stroke="${L1.jaune}" stroke-width="5"/></svg>`, 'Eaux usées (SARS-CoV-2), taille = population raccordée, bord coloré si hausse')}</div>
-      <div class="mqh-row">${it(`<svg width="12" height="13" viewBox="0 0 40 40"><path d="M20 4 C20 4 8 18 8 25 a12 12 0 0 0 24 0 C32 18 20 4 20 4 Z" fill="${L1.jaune}"/></svg>`, 'Eau du robinet non conforme en bactériologie, chiffre = communes (sans pastille : 10 ou plus)')}</div>
+      <div class="mqh-row">Eau du robinet : ${it(`<svg width="12" height="13" viewBox="0 0 40 40"><path d="M20 4 C20 4 8 18 8 25 a12 12 0 0 0 24 0 C32 18 20 4 20 4 Z" fill="${L1.orange}" stroke="none" stroke-width="4"/></svg>`, 'restriction de consommation')}${it(`<svg width="12" height="13" viewBox="0 0 40 40"><path d="M20 4 C20 4 8 18 8 25 a12 12 0 0 0 24 0 C32 18 20 4 20 4 Z" fill="${L1.jaune}" stroke="none" stroke-width="4"/></svg>`, 'publics sensibles ou bactériologie (sans pastille : restrictions seulement)')}${it(`<svg width="12" height="13" viewBox="0 0 40 40"><path d="M20 4 C20 4 8 18 8 25 a12 12 0 0 0 24 0 C32 18 20 4 20 4 Z" fill="none" stroke="${L1.jaune}" stroke-width="4"/></svg>`, 'physico-chimie, consommable (avec la pastille)')}</div>
       <div class="mqh-row mqh-note">Avec la pastille Veille sanitaire : ${it(swatch(L1.vert, 'sq'), 'pas d’alerte épidémique (mesuré)')} ${it(swatch(SENTI_HEX, 'disc'), 'région parmi les plus touchées (Sentinelles), taille = écart au taux national')}</div>
       <div class="mqh-row mqh-note">Sans pastille active, toutes les couches sont affichées. Une pastille met sa couche en avant et estompe les autres (clic, cumulable ; survol pour un aperçu). Le syndrome et la profession choisis dans les panneaux s’appliquent à la carte.</div>
       <details${ko ? ' open' : ''}><summary>Sources · ${src.length - ko}${NB}à jour, ${ko}${NB}en défaut</summary>${src.map(([k, v, st]) => `<div class="mqh-row mqh-src"><i class="mqh-src-${st}"></i><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}</details>`;
@@ -953,10 +968,7 @@
       // Lot 1 (18/10/2026) : sources ouvertes lues directement (CORS ouvert) ; en production, elles passeront par /api/health.
       const wkId = syn?.week?.id, yy = Number(String(wkId).slice(0, 4)), nn = String(wkId).slice(-3);
       const weeksWhere = [0, 1, 2, 3].map((i) => `semaine="${yy - i}-${nn}"`).join(' or ');
-      const HE = 'https://hubeau.eaufrance.fr/api/v1/qualite_eau_potable/resultats_dis';
-      const lastWater = await getJson(`${HE}?size=1&sort=desc&fields=date_prelevement`);
-      const lastDay = (lastWater?.data?.[0]?.date_prelevement ?? new Date().toISOString()).slice(0, 10);
-      const waterFrom = new Date(Date.parse(lastDay) - 45 * 864e5).toISOString().slice(0, 10);
+
       const odAll = (ds, select, where) => getJson(`${OD}${ds}/exports/json?select=${encodeURIComponent(select)}${where ? `&where=${encodeURIComponent(where)}` : ''}`);
       const [arbo, vacc, legio] = await Promise.all([
         odAll('arboviroses-donnees-declaration-obligatoire', 'dep,mois,arbo,nbcas_imp,nbcas_autoch', `mois>="${new Date().getFullYear() - 1}-01"`),
@@ -966,9 +978,9 @@
         Promise.all(EXTRA_SYN.map((k) => odExport(k, `sursaud_cl_age_gene="Tous âges" and (${weeksWhere})`))),
         getJson(`${OD}sumeau_stations/records?limit=100`),
         getJson(`${OD}sum-eau-indicateurs/records?limit=60&order_by=${encodeURIComponent('semaine desc')}`),
-        getJson(`${HE}?conformite_limites_bact_prelevement=N&code_parametre=1449,6455&date_min_prelevement=${waterFrom}&size=5000&fields=code_prelevement,code_commune,nom_commune,code_departement,date_prelevement,libelle_parametre,resultat_alphanumerique,nom_distributeur,conclusion_conformite_prelevement`)]);
+        getJson('/data/eau-potable.json')]);
       const ehpad = await getJson('/data/ehpad.json');
-      S.data = { syn, alerts, senti, ww, drugs, recalls, dgs, apl, hosp, ehpad, extraSyn: Object.fromEntries(EXTRA_SYN.map((k, i) => [k, extra[i]])), wwMeta, wwSt, water, waterFrom, waterTo: lastDay, arbo, vacc, legio };
+      S.data = { syn, alerts, senti, ww, drugs, recalls, dgs, apl, hosp, ehpad, extraSyn: Object.fromEntries(EXTRA_SYN.map((k, i) => [k, extra[i]])), wwMeta, wwSt, water, arbo, vacc, legio };
       await draw();
     };
     await load();

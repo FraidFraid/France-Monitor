@@ -33,7 +33,8 @@
     "build:apl": "node scripts/build-apl.mjs",
     "build:hospitals": "node scripts/build-hospitals.mjs",
     "build:crime": "node scripts/build-crime.mjs",
-    "build:ehpad": "node scripts/build-ehpad.mjs"
+    "build:ehpad": "node scripts/build-ehpad.mjs",
+    "build:eau-potable": "node scripts/build-eau-potable.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
