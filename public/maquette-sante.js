@@ -215,7 +215,7 @@
         paint: { 'circle-radius': ['interpolate', ['linear'], ['get', 'sr'], 1, 6, 2, 12, 3, 16], 'circle-color': SENTI_HEX, 'circle-opacity': 0.9, 'circle-stroke-color': '#0a0a0f', 'circle-stroke-width': 1.5 } });
       m.addLayer({ id: 'mqh-reg-label', type: 'symbol', source: 'mqh-reg-pts', filter: ['get', 'alert'],
         layout: { 'text-field': ['get', 'short'], 'text-size': 11, 'text-font': ['Open Sans Semibold'], 'text-max-width': 30, 'text-line-height': 1.25,
-          'text-variable-anchor': ['top', 'bottom', 'left', 'right'], 'text-radial-offset': 1.3, 'text-allow-overlap': true },
+          'text-variable-anchor': ['top', 'bottom', 'left', 'right'], 'text-radial-offset': 1.3, 'text-allow-overlap': false, 'text-optional': true },
         paint: { 'text-color': ['get', 'color'], 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.5, 'text-opacity': 1 } });
       m.addLayer({ id: 'mqh-apl-label', type: 'symbol', source: 'mqh-dept-pts',
         layout: { 'text-field': ['get', 'alabel'], 'text-size': 10.5, 'text-font': ['Open Sans Semibold'], 'text-allow-overlap': false, 'text-optional': true },
@@ -250,7 +250,7 @@
   const pill = (k) => S.focus.has(k) || preview === k;
   // Opacité de chaque calque selon l'état (sans pastille / avec sa pastille), puis estompée à 7 % si une autre pastille est active.
   const OPAC = {
-    'mqh-apl-fill': ['fill-opacity', () => (pill('healthApl') ? 0.85 : 0.55)],
+    'mqh-apl-fill': ['fill-opacity', () => (pill('healthApl') ? 0.85 : 0.45)],
     'mqh-apl-line': ['line-opacity', () => 0.8],
     'mqh-apl-label': ['text-opacity', () => 1],
     'mqh-urg-fill': ['fill-opacity', () => (pill('healthOscour') ? 0.35 : 0)],
@@ -278,15 +278,16 @@
     S.was = true;
     for (const id of HIDE) V(id, false);
     for (const l of m.getStyle().layers) if (l.id.startsWith('mqh-')) V(l.id, true);
-    // Accès aux soins : sans pastille, seulement les départements sous les trois quarts de la moyenne nationale ; tous avec la pastille, chiffre au centre.
-    F('mqh-apl-fill', pill('healthApl') ? ['>=', ['get', 'aplR'], 0] : ['all', ['>=', ['get', 'aplR'], 0], ['<', ['get', 'aplR'], 0.75]]);
+    // Accès aux soins : tous les départements ; chiffre au centre avec la pastille.
+    F('mqh-apl-fill', ['>=', ['get', 'aplR'], 0]);
     V('mqh-apl-line', pill('healthApl')); V('mqh-apl-label', pill('healthApl'));
     // Urgences : chiffre au centre pour les rouges, pour tous les départements en anomalie avec la pastille.
-    F('mqh-urg-label', pill('healthOscour') ? ['!=', ['get', 'ulabel'], ''] : ['all', ['!=', ['get', 'ulabel'], ''], ['==', ['get', 'urg'], 'rouge']]);
+    F('mqh-urg-label', pill('healthOscour') ? ['!=', ['get', 'ulabel'], ''] : ['all', ['!=', ['get', 'ulabel'], ''], ['in', ['get', 'urg'], ['literal', ['orange', 'rouge']]]]);
     // Régions : avec la pastille, toutes nommées avec leur état ; sans, seulement celles en alerte.
-    F('mqh-reg-label', pill('health') ? null : ['get', 'alert']);
-    L('mqh-reg-label', 'text-field', pill('health') ? ['get', 'label'] : ['get', 'short']);
-    V('mqh-reg-tint', pill('health')); V('mqh-senti', pill('health'));
+    // Veille sanitaire sans pastille : régions en alerte et régions les plus touchées selon Sentinelles, nommées ; toutes avec la pastille, teinte de phase en plus.
+    F('mqh-reg-label', pill('health') ? null : ['any', ['get', 'alert'], ['get', 'senti']]);
+    L('mqh-reg-label', 'text-field', ['get', 'label']);
+    V('mqh-reg-tint', pill('health')); V('mqh-senti', isOn('health'));
     // Hôpitaux : avec la pastille, noms dès le zoom 6,5.
     L('mqh-hosp', 'text-field', ['step', ['zoom'], ['get', 'city'], pill('hospitals') ? 6.5 : 8, ['get', 'name']]);
     const k = pill('hospitals') ? 1.35 : 1;
@@ -481,6 +482,52 @@
     return `<svg class="mqh-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><polyline points="${xy}" fill="none" stroke="#8a93a6" stroke-width="1.5"/>`
       + `<circle cx="${w}" cy="${Math.round(h - (pts.at(-1).v / max) * (h - 6) - 3)}" r="3" fill="#e8e8ec"/></svg><div class="mqh-spark-cap">${esc(cap)}</div>`;
   };
+  // Semaine épidémiologique → rang dans la saison (début en S27, juillet) et année de début de saison.
+  const seasonOf = (id) => { const y = Number(id.slice(0, 4)), w = Number(id.slice(-2)); return w >= 27 ? { s: y, i: w - 27 } : { s: y - 1, i: w + 25 }; };
+  const SEASON_TICKS = [[0, 'juil.'], [13, 'oct.'], [26, 'janv.'], [39, 'avr.']];
+  const seasonChart = (k) => {
+    const pts = (S.data.syn?.syndromes ?? []).find((x) => x.key === k)?.france?.filter((p) => p.er != null) ?? [];
+    if (!pts.length) return '';
+    const last = pts.reduce((a, b) => (a.start > b.start ? a : b)); const cur = seasonOf(last.week);
+    const seasons = new Map();
+    for (const p of pts) { const o = seasonOf(p.week); if (o.s < cur.s - 3) continue; (seasons.get(o.s) ?? seasons.set(o.s, []).get(o.s)).push([o.i, p.er, p.week]); }
+    const w = 320, h = 120, pl = 30, pb = 16, max = Math.max(...[...seasons.values()].flat().map((x) => x[1]), 0.01) * 1.08;
+    const X = (i) => pl + (i / 51) * (w - pl - 4), Y = (v) => h - pb - (v / max) * (h - pb - 6);
+    const GREYS = ['#5b6170', '#7d8595', '#a3a9b6'];
+    const lines = [...seasons.entries()].sort((a, b) => a[0] - b[0]).map(([sy, xs], j, arr) => {
+      xs.sort((a, b) => a[0] - b[0]); const isCur = sy === cur.s;
+      const color = isCur ? '#ffffff' : GREYS[j] ?? '#7d8595';
+      return `<polyline points="${xs.map(([i, v]) => `${X(i).toFixed(1)},${Y(v).toFixed(1)}`).join(' ')}" fill="none" stroke="${color}" stroke-width="${isCur ? 2.2 : 1.2}" stroke-opacity="${isCur ? 1 : 0.9}"/>`; }).join('');
+    const ticks = SEASON_TICKS.map(([i, t]) => `<text x="${X(i)}" y="${h - 3}" fill="#6e6e80" font-size="9">${t}</text>`).join('')
+      + [0, max / 2].map((v) => `<text x="0" y="${Y(v) + 3}" fill="#6e6e80" font-size="9">${num(v, v < 1 ? 1 : 0)}${NB}%</text><line x1="${pl}" x2="${w}" y1="${Y(v)}" y2="${Y(v)}" stroke="#262a33"/>`).join('');
+    const now = `<line x1="${X(cur.i)}" x2="${X(cur.i)}" y1="4" y2="${h - pb}" stroke="#ffffff" stroke-dasharray="2 2" stroke-opacity="0.5"/>`;
+    // Ce qui suit habituellement : pic de chaque saison précédente.
+    const peaks = [...seasons.entries()].filter(([sy]) => sy !== cur.s).sort((a, b) => b[0] - a[0]).map(([sy, xs]) => { const m = xs.reduce((a, b) => (b[1] > a[1] ? b : a)); return `${sy}-${String(sy + 1).slice(2)} : ${pct(m[1])} en ${wk(m[2])}`; });
+    const sameWeek = [...seasons.entries()].filter(([sy]) => sy !== cur.s).sort((a, b) => b[0] - a[0]).map(([sy, xs]) => { const m = xs.find((x) => x[0] === cur.i); return m ? `${sy}-${String(sy + 1).slice(2)} ${pct(m[1])}` : null; }).filter(Boolean);
+    return `<div class="mqh-chart"><div class="mqh-chart-t">France, ${esc(k === 'ira' ? 'IRA' : SYN[k].toLowerCase())} aux urgences : saison ${cur.s}-${String(cur.s + 1).slice(2)} (blanc) et 3${NB}saisons précédentes (gris)</div>`
+      + `<svg viewBox="0 0 ${w} ${h}" class="mqh-chart-svg">${ticks}${lines}${now}<circle cx="${X(cur.i)}" cy="${Y(last.er)}" r="3" fill="#fff"/></svg>`
+      + `<div class="mqh-chart-c">${esc(`Cette semaine (${wk(last.week)}) : ${pct(last.er)} ; même semaine : ${sameWeek.join(', ') || 'n.d.'}.`)}<br>${esc(`Pics des saisons précédentes : ${peaks.join(' ; ') || 'n.d.'}.`)}</div></div>`;
+  };
+  // Classes d'âge (France, IRA seulement dans le flux) : part aux urgences, hospitalisations après passage, SOS Médecins, évolution sur 4 semaines.
+  const AGE_HEX = { '00-04 ans': '#f9a8d4', '05-14 ans': '#fde68a', '15-64 ans': '#93c5fd', '65 ans ou plus': '#c4b5fd' };
+  const agesChart = (k = 'ira') => {
+    const ages = (S.data.syn?.syndromes ?? []).find((x) => x.key === k)?.ages ?? {};
+    const keys = Object.keys(ages).filter((a) => ages[a]?.length);
+    if (!keys.length) return '';
+    const w = 320, h = 90, pl = 30, max = Math.max(...keys.flatMap((a) => ages[a].map((p) => p.er ?? 0)), 0.01) * 1.1;
+    const n = Math.max(...keys.map((a) => ages[a].length));
+    const X = (i) => pl + (i / Math.max(1, n - 1)) * (w - pl - 4), Y = (v) => h - 6 - (v / max) * (h - 12);
+    const svg = keys.map((a) => { const xs = [...ages[a]].sort((p, q) => p.start.localeCompare(q.start));
+      return `<polyline points="${xs.map((p, i) => `${X(i).toFixed(1)},${Y(p.er ?? 0).toFixed(1)}`).join(' ')}" fill="none" stroke="${AGE_HEX[a] ?? INK}" stroke-width="1.8"/>`; }).join('')
+      + [0, max / 2].map((v) => `<text x="0" y="${Y(v) + 3}" fill="#6e6e80" font-size="9">${num(v, 1)}${NB}%</text><line x1="${pl}" x2="${w}" y1="${Y(v)}" y2="${Y(v)}" stroke="#262a33"/>`).join('');
+    const rows = keys.map((a) => { const xs = [...ages[a]].sort((p, q) => p.start.localeCompare(q.start)); const l = xs.at(-1), b = xs.at(-5);
+      return `<tr><td><i class="mqh-age" style="background:${AGE_HEX[a] ?? INK}"></i>${esc(a.replace(/0(\d)/g, '$1').replace('-', ' à '))}</td><td>${esc(pct(l.er))}</td><td>${esc(pct(l.hosp))}</td><td>${esc(pct(l.sos))}</td><td>${esc(b?.er ? signed(l.er / b.er - 1) : 'n.d.')}</td></tr>`; }).join('');
+    const first = [...ages[keys[0]]].sort((p, q) => p.start.localeCompare(q.start));
+    return `<div class="mqh-chart"><div class="mqh-chart-t">France, ${esc(k === 'ira' ? 'IRA' : SYN[k].toLowerCase())} par classe d’âge, ${wk(first[0].week)} à ${wk(first.at(-1).week)} (part des passages aux urgences)</div>`
+      + `<svg viewBox="0 0 ${w} ${h}" class="mqh-chart-svg">${svg}</svg>`
+      + `<table class="mqh-ages"><tr><th></th><th>Urgences</th><th>Hospit.</th><th>SOS</th><th>4${NB}sem.</th></tr>${rows}</table>`
+      + `<div class="mqh-chart-c">Hospit. = part des passages suivis d’une hospitalisation pour ce syndrome ; SOS = part des actes SOS Médecins. Pas de série par âge pour les autres syndromes dans le flux.</div></div>`;
+  };
   const franceSeries = (k, n = 12) => (S.data.syn?.syndromes ?? []).find((s) => s.key === k)?.france?.filter((p) => p.er != null).sort((a, b) => a.start.localeCompare(b.start)).slice(-n).map((p) => ({ v: p.er, w: p.week })) ?? [];
   const deptNote = (a) => {
     const [state] = urgState(a);
@@ -508,7 +555,7 @@
     return { title: `${a.nom} (${a.code})`, sub: 'Santé · note de situation', level: RANK[a.urg] >= 1 ? a.urg : null, at: when(new Date().toISOString()),
       gauges: Object.keys(SYN).filter((k) => a.syn[k]).map((k) => synGauge(k, a.syn[k])),
       blocks: [['À retenir', bluf], ['Ce qui se passe', happen], ['Impact et capacités', impact], ['Évolution', evo], ['Ce qu’on ne sait pas', unknown]],
-      spark: fr, sparkCap: `France, ${SYN[k].toLowerCase()} aux urgences, part des passages, ${fr.length}${NB}dernières semaines`,
+      charts: seasonChart(k) + agesChart('ira'),
       sources: ['OSCOUR', 'Odissé', 'DREES'] };
   };
   const hospNote = (g) => {
@@ -520,6 +567,20 @@
         ['Ce qu’on ne sait pas', ['Attente, saturation, plan blanc et fermetures de lignes de garde : non publiés en données ouvertes.', 'Lits disponibles du jour : non publiés.']]],
       link: `https://finess.esante.gouv.fr/fininter/jsp/actionDetailEtablissement.do?noFiness=${s.finess}`, sources: ['DREES SAE', 'OSCOUR'] };
   };
+  const franceNote = () => {
+    const d = S.data, g = natGauges(), bad = g.filter((x) => RANK[x.level] >= 1);
+    const depts = [...S.depts.values()].filter((a) => a.driver);
+    const byLvl = (l) => depts.filter((a) => a.urg === l).length;
+    const ira = (d.senti?.indicators ?? []).find((x) => x.key === 'ira');
+    return { title: 'France', sub: 'Santé · urgences et médecine de ville', level: bad.length ? bad.reduce((w, x) => (RANK[x.level] > RANK[w] ? x.level : w), 'jaune') : null, at: when(new Date().toISOString()),
+      gauges: Object.keys(SYN).map((k) => natGauge(k)),
+      blocks: [['À retenir', [`${bad.length ? `Au-dessus des saisons précédentes en France : ${bad.map((x) => x.label.toLowerCase()).join(', ')}` : 'Urgences en France dans les normales des 3 saisons précédentes'} ; ${depts.length}${NB}départements en anomalie (${byLvl('rouge')} en crise, ${byLvl('orange')} en alerte, ${byLvl('jaune')} en vigilance).`,
+          ...(ira ? [`Médecine de ville (Sentinelles) : IRA ${num(ira.rate)} cas pour 100${NB}000, ${ira.trend}, activité ${ira.activity}.`] : [])]],
+        ['Ce qui se passe', [...renderWatchItems().map(([, t]) => `${t}.`)]],
+        ['Évolution', ['Courbes : saison en cours contre les trois précédentes, puis classes d’âge.']],
+        ['Ce qu’on ne sait pas', ['Séries par classe d’âge publiées seulement pour les IRA et le COVID-19 (65 ans ou plus).', 'Saturation des urgences et lits disponibles du jour : non publiés en données ouvertes.']]],
+      charts: MAIN.map(seasonChart).join('') + agesChart('ira'), sources: ['OSCOUR', 'Odissé', 'Sentinelles', 'Eaux usées', 'ANSM', 'RappelConso', 'DGS'] };
+  };
   const sourcesOf = (n) => freshness().filter(([k]) => n.sources.some((x) => k.startsWith(x)));
   const noteText = (n) => [`${n.title} · ${n.sub}`, `Situation au ${n.at}`, ...n.blocks.map(([h, xs]) => `${h} : ${xs.join(' ')}`),
     `Sources : ${sourcesOf(n).map(([k, v]) => `${k} ${v}`).join(' ; ')}.`].join('\n');
@@ -527,12 +588,13 @@
     let n = null;
     if (kind === 'dept') { const a = S.depts.get(key); if (a) n = deptNote(a); }
     if (kind === 'hosp') { const g = S.hGroups[key]; if (g) n = hospNote(g); }
+    if (kind === 'france') n = franceNote();
     if (!n) { if (!silent) closeFiche(); return; }
     S.fiche = { kind, key };
     const lvl = n.level ? `<span class="mqh-lvl" style="background:${L1[n.level]};color:${n.level === 'jaune' ? '#1a1a1a' : '#fff'}">${WORD[n.level]}</span>` : '';
     panel.innerHTML = `<header><div><h3>${esc(n.title)}</h3><div class="mqh-sub">${lvl}${esc(n.sub)}</div><div class="mqh-at">Situation au ${n.at}</div></div>`
       + `<button class="mqh-x" aria-label="Fermer">×</button></header>`
-      + n.blocks.map(([h, xs]) => sec(h, (h === 'Ce qui se passe' && n.gauges ? `<div class="mqh-gs">${n.gauges.map(gauge).join('')}</div><div class="mqh-g-cap">Barre = part des passages de la semaine ; trait blanc = maximum des 3${NB}saisons précédentes.</div>` : '') + li(xs.map(esc)) + (h === 'Évolution' && n.spark ? spark(n.spark, n.sparkCap) : ''))).join('')
+      + n.blocks.map(([h, xs]) => sec(h, (h === 'Ce qui se passe' && n.gauges ? `<div class="mqh-gs">${n.gauges.map(gauge).join('')}</div><div class="mqh-g-cap">Barre = part des passages de la semaine ; trait blanc = maximum des 3${NB}saisons précédentes.</div>` : '') + li(xs.map(esc)) + (h === 'Évolution' && n.charts ? n.charts : ''))).join('')
       + sec('Sources et confiance', `<table>${sourcesOf(n).map(([k, v, st]) => `<tr><td><i class="mqh-src-${st}"></i>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</table>`
         + (n.link ? `<p><a href="${esc(n.link)}" target="_blank" rel="noopener">Fiche FINESS de l’établissement</a></p>` : ''))
       + `<footer><button class="mqh-copy">Copier pour la note</button><span class="mqh-copied"></span></footer>`;
@@ -552,7 +614,16 @@
     const t = Date.parse(`${last.start}T00:00:00Z`) - 14 * 864e5; const a = pts.find((p) => Date.parse(`${p.start}T00:00:00Z`) === t)?.national54 ?? null; const b = S.data.ww?.lastYear?.national54 ?? null;
     const n = (a != null && last.national54 > a && last.national54 >= 1.5 * a ? 1 : 0) + (b != null && last.national54 > b ? 1 : 0);
     return { level: n === 2 ? 'orange' : n === 1 ? 'jaune' : 'vert', v: last.national54, a, b, week: last.week }; };
+  const natGauge = (k) => { const wkId = S.data.syn?.week?.id; const pts = (S.data.syn?.syndromes ?? []).find((x) => x.key === k)?.france ?? []; const cur = pts.find((p) => p.week === wkId)?.er ?? null;
+    const n = Number(String(wkId ?? '').slice(-2)), y = Number(String(wkId ?? '').slice(0, 4));
+    const refs = [1, 2, 3].map((i) => pts.find((p) => p.week === `${y - i}-S${pad(n)}`)?.er).filter((x) => Number.isFinite(x));
+    return synGauge(k, { er: cur, max: refs.length >= 2 ? Math.max(...refs) : null, level: seasonalLevel(cur, refs), ratio: ratio(cur, refs) }); };
+  const natGauges = () => MAIN.map(natGauge);
   const renderWatch = () => {
+    const d = S.data, items = renderWatchItems();
+    watchBody(d, items);
+  };
+  const renderWatchItems = () => {
     const d = S.data, items = [];
     // Outre-mer : hors du cadre de la carte, toujours listé ici.
     const dom = [...S.regions.values()].filter((r) => Number(r.code) < 11 && r.live.some((l) => l.phase !== 1));
@@ -564,17 +635,19 @@
     const ww = wwLevel(); if (ww) items.push([ww.level === 'vert' ? null : ww.level, `Eaux usées, SARS-CoV-2 : ${ww.level === 'vert' ? 'pas de hausse' : ww.level === 'orange' ? 'hausse forte et au-dessus de l’an dernier' : 'en hausse'} (${wk(ww.week)})`]);
     if (d.drugs?.counts) items.push([null, `Médicaments (ANSM) : ${num(d.drugs.counts.rupture)} ruptures, ${num(d.drugs.counts.tension)} tensions`]);
     if (d.recalls?.healthRisk != null) items.push([null, `Rappels de produits avec risque sanitaire : ${num(d.recalls.healthRisk)} depuis le ${day(d.recalls.since)}`]);
+    return items;
+  };
+  const watchBody = (d, items) => {
     const ko = freshness().filter((r) => r[2] === 'ko').map((r) => r[0]);
     const wkId = d.syn?.week?.id;
-    const natG = MAIN.map((k) => { const pts = (d.syn?.syndromes ?? []).find((x) => x.key === k)?.france ?? []; const cur = pts.find((p) => p.week === wkId)?.er ?? null;
-      const n = Number(String(wkId ?? '').slice(-2)), y = Number(String(wkId ?? '').slice(0, 4));
-      const refs = [1, 2, 3].map((i) => pts.find((p) => p.week === `${y - i}-S${pad(n)}`)?.er).filter((x) => Number.isFinite(x));
-      return synGauge(k, { er: cur, max: refs.length >= 2 ? Math.max(...refs) : null, level: seasonalLevel(cur, refs), ratio: ratio(cur, refs) }); });
+    const natG = natGauges();
     watch.innerHTML = `<div class="mqh-w-h">${icon('activity', items.some(([l]) => l) ? L1.jaune : MUTE)}<b>Baromètre national · urgences ${wk(wkId)}</b></div>`
       + `<div class="mqh-gs">${natG.map(gauge).join('')}</div>`
       + `<div class="mqh-w-h mqh-w-h2"><b>Veille nationale et outre-mer</b></div>`
       + items.map(([l, t]) => `<div class="mqh-w-r"><i style="background:${l ? L1[l] : '#3a3f4b'}"></i><span>${esc(t)}</span></div>`).join('')
-      + (ko.length ? `<div class="mqh-w-s">Indisponible : ${esc(ko.join(', '))}</div>` : '');
+      + (ko.length ? `<div class="mqh-w-s">Indisponible : ${esc(ko.join(', '))}</div>` : '')
+      + '<div class="mqh-w-s"><a href="#" class="mqh-w-more">Fiche nationale : saisons et classes d’âge</a></div>';
+    const more = watch.querySelector('.mqh-w-more'); if (more) more.onclick = (e) => { e.preventDefault(); openFiche('france', 'fr'); };
   };
 
   // ─── Légende « Lire la carte » ───
@@ -597,7 +670,7 @@
       <h5>Couche : une couleur par catégorie</h5>
       <div class="mqh-row">${it(hsw('chu'), 'CHU')}${it(hsw('ch'), 'centre hospitalier')}${it(hsw('private'), 'clinique privée')}${it(hsw('other'), 'autres')}</div>
       <div class="mqh-row mqh-note">Sites avec urgences ; taille = passages ${S.data.hosp?.vintage ?? ''} ; nom des villes de CHU, nom des sites au zoom.</div>
-      <div class="mqh-row mqh-note">Accès aux soins, ${PROF[S.prof].toLowerCase()} (DREES, annuel, jamais une alerte), par rapport à la moyenne nationale ; sans pastille, seulement sous 0,75${NB}fois :</div>
+      <div class="mqh-row mqh-note">Accès aux soins, ${PROF[S.prof].toLowerCase()} (DREES, annuel, jamais une alerte), par rapport à la moyenne nationale :</div>
       <div class="mqh-ramp">${[...APL_RAMP].reverse().map(([, c, w]) => it(swatch(c, 'sq'), w)).join('')}</div>
       <div class="mqh-row">${it(swatch(REG_LINE, 'dash'), 'Limite de région')}</div>
       <div class="mqh-row mqh-note">Avec la pastille Veille sanitaire : ${it(swatch(L1.vert, 'sq'), 'pas d’alerte épidémique (mesuré)')} ${it(swatch(SENTI_HEX, 'disc'), 'région parmi les plus touchées (Sentinelles), taille = écart au taux national')}</div>
@@ -643,6 +716,11 @@
   .mqh-g-h { display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px; color: #aab0bc; } .mqh-g-h b { font-weight: 600; white-space: nowrap; }
   .mqh-g-t { position: relative; height: 6px; border-radius: 3px; background: #262a33; margin-top: 2px; }
   .mqh-g-f { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; } .mqh-g-m { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: #ffffff; }
+  .mqh-chart { margin-top: 8px; } .mqh-chart-t { color: #aab0bc; font-size: 11px; margin-bottom: 3px; } .mqh-chart-svg { width: 100%; height: auto; display: block; }
+  .mqh-chart-c { color: #8a8f9c; font-size: 10.5px; margin-top: 3px; line-height: 1.4; }
+  .mqh-ages { width: 100%; font-size: 11px; margin-top: 4px; } .mqh-ages th { color: #6e6e80; font-weight: 500; text-align: right; } .mqh-ages td { text-align: right; white-space: nowrap; }
+  .mqh-ages td:first-child { text-align: left; } .mqh-age { display: inline-block; width: 10px; height: 3px; margin-right: 5px; vertical-align: middle; }
+  .mqh-w-more { color: #93c5fd; }
   .mqh-g-cap { color: #6e6e80; font-size: 10.5px; margin-bottom: 4px; } .mqh-w-h2 { margin-top: 8px; }
   .mqh-it { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; margin-right: 8px; }
   .mqh-ramp { display: flex; flex-direction: column; gap: 3px; margin: 3px 0 3px 4px; } .mqh-sw-sq { width: 14px; height: 10px; border-radius: 2px; background: var(--c); }
