@@ -39,8 +39,22 @@
     const max = Math.max(...u); if (v <= max) return 'vert'; if (max <= 0) return 'jaune'; return v >= 1.5 * max ? 'rouge' : v >= 1.15 * max ? 'orange' : 'jaune'; };
   // Grippe et COVID-19 sont comptées dans les IRA : seuls IRA, bronchiolite et gastro-entérite fixent la couleur du département (règle de la pastille de l'app).
   const MAIN = ['ira', 'bronchio', 'gastro'];
-  const SYN = { ira: 'IRA', bronchio: 'Bronchiolite', gastro: 'Gastro-entérite', asthme: 'Asthme', allergie: 'Allergie', grippe: 'Grippe', covid: 'COVID-19' };
-  const SYN_SHORT = { ira: 'IRA', bronchio: 'Bronchio', gastro: 'Gastro', asthme: 'Asthme', allergie: 'Allergie', grippe: 'Grippe', covid: 'COVID' };
+  const SYN = { ira: 'IRA', bronchio: 'Bronchiolite', gastro: 'Gastro-entérite', asthme: 'Asthme', allergie: 'Allergie', grippe: 'Grippe', covid: 'COVID-19',
+    pneumo: 'Pneumopathie', bronchite: 'Bronchite', orl: 'Pathologies ORL', trauma: 'Traumatismes' };
+  const SYN_SHORT = { ira: 'IRA', bronchio: 'Bronchio', gastro: 'Gastro', asthme: 'Asthme', allergie: 'Allergie', grippe: 'Grippe', covid: 'COVID', pneumo: 'Pneumo', bronchite: 'Bronchite', orl: 'ORL', trauma: 'Trauma' };
+  // Odissé (Santé publique France, API ouverte) : un jeu par syndrome, par département, semaine et classe d'âge, depuis 2022.
+  const OD = 'https://odisse.santepubliquefrance.fr/api/explore/v2.1/catalog/datasets/';
+  const OD_DS = { ira: ['infections-respiratoires-aigues-ira-passages-aux-urgences-et-actes-sos-medecins-departement', 'ira'],
+    bronchio: ['bronchiolite-passages-aux-urgences-et-actes-sos-medecins-departement', 'bronchio'], gastro: ['gastro-enterite-aigue-passages-aux-urgences-et-actes-sos-medecins-departement', 'gastro'],
+    grippe: ['grippe-passages-aux-urgences-et-actes-sos-medecins-departement', 'grippe'], covid: ['covid-19-passages-aux-urgences-et-actes-sos-medecins-departement', 'covid'],
+    asthme: ['asthme-passages-aux-urgences-et-actes-sos-medecins-dep', 'asthme'], allergie: ['allergie-passages-aux-urgences-et-actes-sos-medecins-dep', 'allergie'],
+    pneumo: ['pneumopathie-passages-aux-urgences-et-actes-sos-medecins-departement', 'pneumopathie'], bronchite: ['bronchite-passages-aux-urgences-et-actes-sos-medecins-departement', 'bronchite'],
+    orl: ['pathologies-orl-passages-aux-urgences-et-actes-sos-medecins-departement', 'orl'], trauma: ['traumatisme-passages-aux-urgences-et-actes-sos-medecins-departement', 'trauma'] };
+  const EXTRA_SYN = ['pneumo', 'bronchite', 'orl', 'trauma'];
+  const odExport = (k, where) => { const [ds, f] = OD_DS[k];
+    return getJson(`${OD}${ds}/exports/json?select=${encodeURIComponent(`dep,semaine,sursaud_cl_age_gene as age,taux_passages_${f}_sau as er,taux_hospit_${f}_sau as hosp,taux_actes_${f}_sos as sos`)}&where=${encodeURIComponent(where)}&order_by=semaine`)
+      // Taux Odissé publiés pour 100 000 passages (ou actes) : convertis en pourcentage.
+      .then((rows) => (Array.isArray(rows) ? rows.map((r) => ({ ...r, er: r.er == null ? null : r.er / 1000, hosp: r.hosp == null ? null : r.hosp / 1000, sos: r.sos == null ? null : r.sos / 1000 })) : rows)); };
   // Phases Odissé : 1 pas d'alerte, 2 pré-épidémie, 3 épidémie, 4 post-épidémie ; une ligne compte si sa semaine date de moins de 4 semaines.
   const PHASE_LEVEL = { 1: 'vert', 2: 'jaune', 3: 'orange', 4: 'jaune' };
   const PHASE_WORD = { 1: 'pas d’alerte', 2: 'pré-épidémie', 3: 'épidémie', 4: 'post-épidémie' };
@@ -89,7 +103,8 @@
     return w.charAt(0).toUpperCase() + w.slice(1);
   }).join('').replace(/\b([DL])[ ']+(?=[A-ZÉ])/g, (x, c) => `${c.toLowerCase()}’`).replace(/'/g, '’')
     .replace(/\b(Hopital|Hopitaux|Prive|Privee|Medical|Medico|Generale?|Universitaire|Regional|Intercommunal|Mutualiste|Sante|Pediatrique|Specialise|Etablissement|Medecine|Evangelique|Fondation|Hotel)\b/g, (w) => ACC[w] ?? w);
-  const commune = (c) => nice(String(c ?? '').replace(/\s+(\d+)(E|ER)\s+ARRONDISSEMENT$/i, ' $1e')).replace(/ (\d+)E$/, ' $1e');
+  const commune = (c) => nice(String(c ?? '').replace(/\s+(\d+)(E|ER)\s+ARRONDISSEMENT$/i, ' $1e')).replace(/ (\d+)E$/, ' $1e')
+    .replace(/^(.*) \((le|la|les)\)$/i, (x, n, art) => `${art.charAt(0).toUpperCase()}${art.slice(1).toLowerCase()} ${n}`).replace(/^(.*) \(l’\)$/i, 'L’$1');
   const cityRoot = (c) => nice(String(c ?? '').replace(/\s+\d+(E|ER)\s+ARRONDISSEMENT$/i, ''));
 
   // ─── Agrégation par département ───
@@ -108,6 +123,14 @@
         const refs = v?.refEr ?? [];
         a.syn[k] = { er: v?.er ?? null, hosp: v?.hosp ?? null, sos: v?.sos ?? null, refs, max: refs.length >= 2 ? Math.max(...refs.filter(Number.isFinite)) : null, level: seasonalLevel(v?.er ?? null, refs), ratio: ratio(v?.er ?? null, refs) };
       }
+    }
+    for (const [k, rows] of Object.entries(d.extraSyn ?? {})) {
+      if (!Array.isArray(rows)) continue;
+      const wkId = syn?.week?.id; const byDep = new Map();
+      for (const r of rows) { const o = byDep.get(r.dep) ?? {}; o[r.semaine] = r; byDep.set(r.dep, o); }
+      for (const [dep, o] of byDep) { const cur = o[wkId]; if (!cur) continue; const a = touch(dep, dep);
+        const refs = Object.entries(o).filter(([w]) => w !== wkId).map(([, r]) => r.er).filter((v) => Number.isFinite(v));
+        a.syn[k] = { er: cur.er, hosp: cur.hosp, sos: cur.sos, refs, max: refs.length >= 2 ? Math.max(...refs) : null, level: seasonalLevel(cur.er, refs), ratio: ratio(cur.er, refs) }; }
     }
     for (const x of apl?.departments ?? []) { const a = touch(x.code, x.name); a.apl = x; }
     for (const s of d.hosp?.sites ?? []) touch(s.dept, s.dept).hosp.push(s);
@@ -143,6 +166,28 @@
       r.senti.push({ ...t, label: SENTI[t.indicator] ?? t.indicator, nat, ratio: nat ? t.rate / nat : null });
     }
     S.regions = regs;
+    // Eau du robinet (Hub'Eau) : un prélèvement non conforme en bactériologie = une ligne E. coli ou entérocoques ; regroupé par commune puis par département.
+    const water = new Map();
+    for (const r of d.water?.data ?? []) {
+      const w = water.get(r.code_departement) ?? { dept: r.code_departement, communes: new Map(), samples: new Set(), last: '' }; water.set(r.code_departement, w);
+      w.samples.add(r.code_prelevement); if (r.date_prelevement > w.last) w.last = r.date_prelevement;
+      const c = w.communes.get(r.code_commune) ?? { nom: r.nom_commune, samples: new Map() }; w.communes.set(r.code_commune, c);
+      const sm = c.samples.get(r.code_prelevement) ?? { date: r.date_prelevement, distrib: r.nom_distributeur, conclusion: r.conclusion_conformite_prelevement, params: [] }; c.samples.set(r.code_prelevement, sm);
+      if (r.resultat_alphanumerique && !/^<|^0$/.test(r.resultat_alphanumerique)) sm.params.push(`${r.libelle_parametre.replace(/ \/100ml.*$/i, '')} ${r.resultat_alphanumerique}${NB}/100${NB}mL`);
+    }
+    S.water = water;
+    // Eaux usées : niveau par station (même règle que l'indicateur national : ×1,5 en 2 semaines, au-dessus de l'an dernier).
+    const slug = (x) => String(x).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+    const recs = [...(d.wwSt?.results ?? [])].sort((p, q) => p.semaine.localeCompare(q.semaine));
+    S.stations = (d.wwMeta?.results ?? []).map((m) => { const key = slug(m.nom);
+      const ser = recs.map((r) => ({ w: r.semaine, v: r[key] })).filter((x) => Number.isFinite(x.v));
+      const last = ser.at(-1); if (!last) return { m, key, ser, level: 'nd' };
+      const yy = Number(last.w.slice(0, 4)), nn = Number(last.w.slice(-2));
+      const two = ser.find((x) => x.w === (nn > 2 ? `${yy}-S${pad(nn - 2)}` : `${yy - 1}-S${pad(52 + nn - 2)}`))?.v ?? null;
+      const ly = ser.find((x) => x.w === `${yy - 1}-S${pad(nn)}`)?.v ?? null;
+      const n = (two != null && last.v > two && last.v >= 1.5 * two ? 1 : 0) + (ly != null && last.v > ly ? 1 : 0);
+      return { m, key, ser, last, two, ly, level: two == null && ly == null ? 'nd' : n === 2 ? 'orange' : n === 1 ? 'jaune' : 'vert', at: [m.centroide.lon, m.centroide.lat] };
+    }).filter((x) => x.at);
     // Hôpitaux : sites à moins de 300 m regroupés en un symbole.
     const sites = (d.hosp?.sites ?? []).filter((s) => s.lat != null && s.lon != null);
     const byPass = [...sites].sort((x, y) => (y.passages ?? 0) - (x.passages ?? 0));
@@ -184,6 +229,9 @@
       return pt(r.at, { code: r.code, level: r.level, color: r.level === 'hors' || r.level === 'vert' ? INK : L1[r.level], alert: worst.length > 0,
         senti: r.senti.length > 0, sr: Math.max(0, ...r.senti.map((x) => x.ratio ?? 1)),
         label: [r.nom, phase, ...senti].join('\n'), short: `${r.nom}${NB}· ${phase}` }); })));
+    setData('mqh-ww', fc(S.stations.map((x, i) => pt(x.at, { i, level: x.level, ring: RANK[x.level] >= 1 ? L1[x.level] : '#0a0a0f', pop: x.m.population ?? 0,
+      label: `${commune(x.m.commune)}${x.last ? ` · ${x.two ? signed(x.last.v / x.two - 1) : 'n.d.'}` : ''}` }))));
+    setData('mqh-water', fc([...S.water.values()].map((w) => { const a = S.depts.get(w.dept); return a?.at && a.inMap ? pt([a.at[0] + 0.32, a.at[1] - 0.22], { dept: w.dept, n: w.communes.size }) : null; }).filter(Boolean)));
     setData('mqh-hosp', fc(S.hGroups.map((g, i) => { const s = g[0];
       const chuLead = g.find((x) => x.category === 'chu' && S.hLead?.get(x.finess));
       return pt([s.lon, s.lat], { i, cat: hcat(s.category), n: g.length, sort: s.passages ?? 0,
@@ -223,6 +271,18 @@
       m.addLayer({ id: 'mqh-urg-label', type: 'symbol', source: 'mqh-dept-pts', filter: ['!=', ['get', 'ulabel'], ''],
         layout: { 'text-field': ['get', 'ulabel'], 'text-size': 11, 'text-font': ['Open Sans Semibold'], 'symbol-sort-key': ['match', ['get', 'urg'], 'rouge', 0, 'orange', 1, 2], 'text-optional': true },
         paint: { 'text-color': ['get', 'color'], 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.6, 'text-opacity': 1 } });
+      // Eaux usées : carré turquoise (famille Veille), taille = population raccordée, bord à la couleur d'état si hausse.
+      m.addLayer({ id: 'mqh-ww', type: 'circle', source: 'mqh-ww', layout: { 'circle-sort-key': ['get', 'pop'] },
+        paint: { 'circle-radius': ['interpolate', ['linear'], ['get', 'pop'], 50000, 3.5, 500000, 6, 2000000, 9], 'circle-color': SENTI_HEX, 'circle-opacity': 0.55,
+          'circle-stroke-color': ['get', 'ring'], 'circle-stroke-width': ['case', ['==', ['get', 'ring'], '#0a0a0f'], 1.2, 3], 'circle-stroke-opacity': 1 } });
+      m.addLayer({ id: 'mqh-ww-label', type: 'symbol', source: 'mqh-ww', layout: { 'text-field': ['get', 'label'], 'text-size': 10, 'text-font': ['Open Sans Semibold'],
+        'text-variable-anchor': ['left', 'right', 'top', 'bottom'], 'text-radial-offset': 0.9, 'text-optional': true },
+        paint: { 'text-color': SENTI_HEX, 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.4, 'text-opacity': 1 } });
+      // Eau du robinet : goutte jaune (non-conformité bactériologique observée), chiffre = communes concernées.
+      await image('mqh-drop', `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><path d="M20 4 C20 4 8 18 8 25 a12 12 0 0 0 24 0 C32 18 20 4 20 4 Z" fill="${L1.jaune}" stroke="#0a0a0f" stroke-width="2.5"/></svg>`, 40);
+      m.addLayer({ id: 'mqh-water', type: 'symbol', source: 'mqh-water', layout: { 'icon-image': 'mqh-drop', 'icon-size': 0.62, 'icon-allow-overlap': true, 'icon-ignore-placement': true,
+        'text-field': ['to-string', ['get', 'n']], 'text-size': 9.5, 'text-font': ['Open Sans Semibold'], 'text-offset': [0, 0.25], 'text-allow-overlap': true },
+        paint: { 'icon-opacity': 1, 'text-color': '#1a1a1a', 'text-opacity': 1 } });
       // Hôpitaux : forme = catégorie, taille = passages aux urgences 2025 ; les plus grands dessinés au-dessus.
       m.addLayer({ id: 'mqh-hosp', type: 'symbol', source: 'mqh-hosp',
         layout: { 'icon-image': ['concat', 'mqh-h-', ['get', 'cat']], 'icon-size': ['interpolate', ['linear'], ['zoom'], 4, ['*', 0.55, ['get', 'sz']], 7, ['*', 0.85, ['get', 'sz']], 10, ['*', 1.3, ['get', 'sz']]],
@@ -238,7 +298,7 @@
 
   // ─── Pastilles : mise en avant cumulable, le reste estompé ───
   const GROUPS = {
-    health: ['mqh-reg-line', 'mqh-reg-alert', 'mqh-reg-label', 'mqh-reg-fill', 'mqh-reg-tint', 'mqh-senti'],
+    health: ['mqh-reg-line', 'mqh-reg-alert', 'mqh-reg-label', 'mqh-reg-fill', 'mqh-reg-tint', 'mqh-senti', 'mqh-ww', 'mqh-ww-label', 'mqh-water'],
     healthOscour: ['mqh-urg-fill', 'mqh-urg-line', 'mqh-urg-label'],
     healthApl: ['mqh-apl-fill', 'mqh-apl-line', 'mqh-apl-label'],
     hospitals: ['mqh-hosp'],
@@ -260,6 +320,9 @@
     'mqh-reg-alert': ['line-opacity', () => 1],
     'mqh-reg-label': ['text-opacity', () => 1],
     'mqh-senti': [['circle-opacity', 'circle-stroke-opacity'], () => 0.9],
+    'mqh-ww': [['circle-opacity', 'circle-stroke-opacity'], () => 0.6],
+    'mqh-ww-label': ['text-opacity', () => 1],
+    'mqh-water': [['icon-opacity', 'text-opacity'], () => 1],
     'mqh-hosp': [['icon-opacity', 'text-opacity'], () => 1],
   };
   const calm = () => {
@@ -288,6 +351,8 @@
     F('mqh-reg-label', pill('health') ? null : ['any', ['get', 'alert'], ['get', 'senti']]);
     L('mqh-reg-label', 'text-field', ['get', 'label']);
     V('mqh-reg-tint', pill('health')); V('mqh-senti', isOn('health'));
+    F('mqh-water', pill('health') ? null : ['>=', ['get', 'n'], 10]);
+    F('mqh-ww-label', pill('health') ? null : ['in', ['get', 'level'], ['literal', ['jaune', 'orange', 'rouge']]]);
     // Hôpitaux : avec la pastille, noms dès le zoom 6,5.
     L('mqh-hosp', 'text-field', ['step', ['zoom'], ['get', 'city'], pill('hospitals') ? 6.5 : 8, ['get', 'name']]);
     const k = pill('hospitals') ? 1.35 : 1;
@@ -394,11 +459,12 @@
     rows.push(['Alerte de la région', regLine(a)]);
     rows.push(['Départements voisins', neighLine(a)]);
     rows.push(['Hôpitaux', hospLine(a)]);
+    if (S.water.get(a.code)) rows.push(['Eau du robinet', `${S.water.get(a.code).communes.size}${NB}commune(s) non conforme(s) en bactériologie (au ${day(S.water.get(a.code).last)})`]);
     rows.push(['Capacité', reaLine(a)]);
     if (a.apl?.pop) rows.push(['Population', `${num(a.apl.pop)} hab.${passPer(a) != null ? ` · ${num(passPer(a))} passages aux urgences pour 1${NB}000 hab. par an` : ''}`]);
     return { gauges, dot: mode === 'apl' ? aplHex(a.aplR) : (L1[a.urg] ?? MUTE), title: `${a.nom} (${a.code})`, state: mode === 'apl' ? `Accès aux soins : ${a.aplR == null ? 'n.d.' : `${num(a.aplR, 2)}${NB}fois la moyenne nationale`}` : state,
       stateHex: mode === 'apl' ? '#93c5fd' : stateHex, rows,
-      hint: `Ce qu’on ne sait pas : ${mode === 'apl' ? 'accès réel du jour (délais de rendez-vous) non publié' : 'pas d’historique par département dans le flux ; petites parts = signal fragile'} · clic : fiche`,
+      hint: `Ce qu’on ne sait pas : ${mode === 'apl' ? 'accès réel du jour (délais de rendez-vous) non publié' : 'petites parts = signal fragile ; saturation du jour non publiée'} · clic : fiche`,
       source: mode === 'apl' ? `${aplSrc()} · ${synSrc()}` : `${synSrc()} · ${aplSrc()}` };
   };
   const regionCard = (r) => ({ dot: r.level === 'hors' ? MUTE : L1[r.level], title: r.nom, state: r.live.length ? (r.level === 'vert' ? 'Pas d’alerte épidémique (mesuré)' : `${WORD[r.level]} · phase épidémique`) : 'Hors saison de surveillance', stateHex: r.level === 'hors' ? MUTE : L1[r.level],
@@ -423,18 +489,41 @@
       ],
       hint: 'Ce qu’on ne sait pas : attente et saturation du jour non publiées en données ouvertes · clic : fiche', source: hospSrc() };
   };
+  const stationCard = (x) => {
+    const rl = x.m.region ?? null;
+    const spk = x.ser.slice(-26);
+    return { dot: SENTI_HEX, title: `Eaux usées · ${x.m.nom.replace(/^STEU DE: /, '')}`, state: x.level === 'nd' ? 'Tendance non calculable' : x.level === 'vert' ? 'Pas de hausse (mesuré)' : `${WORD[x.level]} · SARS-CoV-2 en hausse`, stateHex: x.level === 'nd' ? MUTE : L1[x.level],
+      rows: [['Commune', `${commune(x.m.commune)}, ${num(x.m.population)}${NB}habitants raccordés`],
+        ['Dernière mesure', x.last ? `${num(x.last.v)} (${wk(x.last.w)}), indicateur de concentration virale` : 'n.d.'],
+        ['Sur 2 semaines', x.two ? `${num(x.two)} → ${num(x.last.v)} (${signed(x.last.v / x.two - 1)})` : 'n.d.'],
+        ['Même semaine l’an dernier', x.ly ? `${num(x.ly)} (${signed(x.last.v / x.ly - 1)})` : 'n.d.'],
+        ['26 dernières semaines', spk.length ? `min ${num(Math.min(...spk.map((y) => y.v)))}, max ${num(Math.max(...spk.map((y) => y.v)))}` : 'n.d.']],
+      hint: 'Ce qu’on ne sait pas : SARS-CoV-2 seulement (pas la grippe ni le VRS) ; précède les urgences de quelques jours, sans dire qui est malade', source: `Santé publique France, SUM’Eau, ${x.last ? wk(x.last.w) : 'n.d.'}` };
+  };
+  const waterCard = (w) => {
+    const a = S.depts.get(w.dept);
+    const cs = [...w.communes.values()].sort((p, q) => q.samples.size - p.samples.size);
+    return { dot: L1.jaune, title: `Eau du robinet · ${a?.nom ?? w.dept} (${w.dept})`, state: `${cs.length}${NB}commune${cs.length > 1 ? 's' : ''} avec un prélèvement non conforme en bactériologie`, stateHex: L1.jaune,
+      rows: [...cs.slice(0, 5).map((c) => { const sm = [...c.samples.values()].sort((p, q) => q.date.localeCompare(p.date))[0];
+          return [commune(c.nom), `${day(sm.date)} · ${sm.params.slice(0, 2).join(', ') || 'germes témoins détectés'}`]; }),
+        ...(cs.length > 5 ? [['Et aussi', cs.slice(5).map((c) => commune(c.nom)).join(', ')]] : []),
+        ['Période', `prélèvements du ${day(S.data.waterFrom)} au ${day(w.last)}`]],
+      hint: 'Ce qu’on ne sait pas : restriction de consommation décidée ou non (arrêté, information des abonnés) ; contre-analyse · clic : fiche', source: 'Ministère de la Santé, contrôle sanitaire de l’eau (Hub’Eau), publication mensuelle' };
+  };
   const deptAt = (c) => { for (const f of S.geo.deptShapes) if (inGeom(c, f.geometry)) return S.depts.get(f.properties.code); return null; };
   // Arbitre : une seule cible ; hôpital > département ; la région répond seulement avec sa pastille ; un calque estompé ne répond jamais.
   const pick = (point) => {
     const act = new Set(S.focus); if (preview) act.add(preview);
     const live = (id) => !act.size || !Object.values(GROUPS).some((ls) => ls.includes(id)) || Object.entries(GROUPS).some(([g, ls]) => act.has(g) && ls.includes(id));
-    const order = ['mqh-hosp', ...(pill('health') && !pill('healthOscour') && !pill('healthApl') ? ['mqh-reg-fill'] : []), 'mqh-dept-fill'];
+    const order = ['mqh-water', 'mqh-ww', 'mqh-hosp', ...(pill('health') && !pill('healthOscour') && !pill('healthApl') ? ['mqh-reg-fill'] : []), 'mqh-dept-fill'];
     const layers = order.filter((id) => S.m.getLayer(id) && (id === 'mqh-reg-fill' || live(id)));
     const hits = S.m.queryRenderedFeatures(point, { layers });
     if (!hits.length) return null;
     hits.sort((a, b) => order.indexOf(a.layer.id) - order.indexOf(b.layer.id));
     const f = hits[0], p = f.properties, id = f.layer.id;
     if (id === 'mqh-hosp') { const g = S.hGroups[p.i]; return g && { key: `h:${p.i}`, kind: 'hosp', id: p.i, card: hospCard(g), at: [g[0].lon, g[0].lat] }; }
+    if (id === 'mqh-ww') { const x = S.stations[p.i]; return x && { key: `ww:${p.i}`, kind: 'raw', id: p.i, card: stationCard(x), at: x.at }; }
+    if (id === 'mqh-water') { const w = S.water.get(p.dept); return w && { key: `wa:${p.dept}`, kind: 'dept', id: p.dept, card: waterCard(w), at: f.geometry.coordinates }; }
     if (id === 'mqh-reg-fill') { const r = S.regions.get(p.code); return r && { key: `r:${r.code}`, kind: 'region', id: r.code, card: regionCard(r), at: null }; }
     if (id === 'mqh-dept-fill') { const a = S.depts.get(p.code); const mode = pill('healthApl') && !pill('healthOscour') ? 'apl' : 'urg';
       return a && { key: `d:${a.code}:${mode}`, kind: 'dept', id: a.code, card: deptCard(a, mode), at: null }; }
@@ -466,6 +555,9 @@
     rows.push(['DREES SAE et FINESS (hôpitaux)', d.hosp?.vintage ? `activité ${d.hosp.vintage}, FINESS du ${day(d.hosp.finessDate)}, annuelle` : 'indisponible', d.hosp?.vintage ? 'ok' : 'ko']);
     rows.push(['ANSM (médicaments)', d.drugs?.latestUpdate ? `mis à jour le ${day(d.drugs.latestUpdate)}` : 'indisponible', d.drugs?.latestUpdate ? 'ok' : 'ko']);
     rows.push(['RappelConso', d.recalls?.since ? `depuis le ${day(d.recalls.since)}` : 'indisponible', d.recalls?.since ? 'ok' : 'ko']);
+    rows.push(['Odissé par département (11 syndromes, âges)', Object.values(d.extraSyn ?? {}).some(Array.isArray) ? `lu ${when(new Date().toISOString())}, semaine ${wk(d.syn?.week?.id)}` : 'indisponible', Object.values(d.extraSyn ?? {}).every(Array.isArray) ? 'ok' : 'part']);
+    rows.push(['Eaux usées par station (SUM’Eau)', d.wwSt?.results?.length ? `${num(S.stations?.filter((x) => x.last).length ?? 0)} stations, dernière semaine ${wk(d.wwSt.results[0]?.semaine)}` : 'indisponible', d.wwSt?.results?.length ? 'ok' : 'ko']);
+    rows.push(['Eau du robinet (Hub’Eau)', Array.isArray(d.water?.data) ? `prélèvements jusqu’au ${day(d.waterTo)}, mensuel` : 'indisponible', Array.isArray(d.water?.data) ? (ageDays(d.waterTo) > 40 ? 'part' : 'ok') : 'ko']);
     rows.push(['DGS-Urgent (PEPS)', (d.dgs?.errors ?? []).length ? `injoignable (${d.dgs.errors[0].replace(/^[^:]*: /, '')})` : `${(d.dgs?.messages ?? []).length}${NB}message(s)`, (d.dgs?.errors ?? []).length ? 'ko' : 'ok']);
     return rows;
   };
@@ -485,10 +577,10 @@
   // Semaine épidémiologique → rang dans la saison (début en S27, juillet) et année de début de saison.
   const seasonOf = (id) => { const y = Number(id.slice(0, 4)), w = Number(id.slice(-2)); return w >= 27 ? { s: y, i: w - 27 } : { s: y - 1, i: w + 25 }; };
   const SEASON_TICKS = [[0, 'juil.'], [13, 'oct.'], [26, 'janv.'], [39, 'avr.']];
-  const seasonChart = (k) => {
-    const pts = (S.data.syn?.syndromes ?? []).find((x) => x.key === k)?.france?.filter((p) => p.er != null) ?? [];
+  const seasonChart = (k, ptsIn, scope = 'France') => {
+    const pts = (ptsIn ?? (S.data.syn?.syndromes ?? []).find((x) => x.key === k)?.france ?? []).filter((p) => p.er != null);
     if (!pts.length) return '';
-    const last = pts.reduce((a, b) => (a.start > b.start ? a : b)); const cur = seasonOf(last.week);
+    const last = pts.reduce((a, b) => (a.week > b.week ? a : b)); const cur = seasonOf(last.week);
     const seasons = new Map();
     for (const p of pts) { const o = seasonOf(p.week); if (o.s < cur.s - 3) continue; (seasons.get(o.s) ?? seasons.set(o.s, []).get(o.s)).push([o.i, p.er, p.week]); }
     const w = 320, h = 120, pl = 30, pb = 16, max = Math.max(...[...seasons.values()].flat().map((x) => x[1]), 0.01) * 1.08;
@@ -504,31 +596,56 @@
     // Ce qui suit habituellement : pic de chaque saison précédente.
     const peaks = [...seasons.entries()].filter(([sy]) => sy !== cur.s).sort((a, b) => b[0] - a[0]).map(([sy, xs]) => { const m = xs.reduce((a, b) => (b[1] > a[1] ? b : a)); return `${sy}-${String(sy + 1).slice(2)} : ${pct(m[1])} en ${wk(m[2])}`; });
     const sameWeek = [...seasons.entries()].filter(([sy]) => sy !== cur.s).sort((a, b) => b[0] - a[0]).map(([sy, xs]) => { const m = xs.find((x) => x[0] === cur.i); return m ? `${sy}-${String(sy + 1).slice(2)} ${pct(m[1])}` : null; }).filter(Boolean);
-    return `<div class="mqh-chart"><div class="mqh-chart-t">France, ${esc(k === 'ira' ? 'IRA' : SYN[k].toLowerCase())} aux urgences : saison ${cur.s}-${String(cur.s + 1).slice(2)} (blanc) et 3${NB}saisons précédentes (gris)</div>`
+    return `<div class="mqh-chart"><div class="mqh-chart-t">${esc(scope)}, ${esc(k === 'ira' ? 'IRA' : SYN[k].toLowerCase())} aux urgences : saison ${cur.s}-${String(cur.s + 1).slice(2)} (blanc) et 3${NB}saisons précédentes (gris)</div>`
       + `<svg viewBox="0 0 ${w} ${h}" class="mqh-chart-svg">${ticks}${lines}${now}<circle cx="${X(cur.i)}" cy="${Y(last.er)}" r="3" fill="#fff"/></svg>`
       + `<div class="mqh-chart-c">${esc(`Cette semaine (${wk(last.week)}) : ${pct(last.er)} ; même semaine : ${sameWeek.join(', ') || 'n.d.'}.`)}<br>${esc(`Pics des saisons précédentes : ${peaks.join(' ; ') || 'n.d.'}.`)}</div></div>`;
   };
   // Classes d'âge (France, IRA seulement dans le flux) : part aux urgences, hospitalisations après passage, SOS Médecins, évolution sur 4 semaines.
-  const AGE_HEX = { '00-04 ans': '#f9a8d4', '05-14 ans': '#fde68a', '15-64 ans': '#93c5fd', '65 ans ou plus': '#c4b5fd' };
-  const agesChart = (k = 'ira') => {
-    const ages = (S.data.syn?.syndromes ?? []).find((x) => x.key === k)?.ages ?? {};
+  const AGE_HEX = { '0 an': '#f9a8d4', '00-04 ans': '#f9a8d4', '05-14 ans': '#fde68a', '15-64 ans': '#93c5fd', '65 ans ou plus': '#c4b5fd' };
+  const agesChart = (k = 'ira', agesIn, scope = 'France') => {
+    const ages = agesIn ?? (S.data.syn?.syndromes ?? []).find((x) => x.key === k)?.ages ?? {};
     const keys = Object.keys(ages).filter((a) => ages[a]?.length);
     if (!keys.length) return '';
     const w = 320, h = 90, pl = 30, max = Math.max(...keys.flatMap((a) => ages[a].map((p) => p.er ?? 0)), 0.01) * 1.1;
     const n = Math.max(...keys.map((a) => ages[a].length));
     const X = (i) => pl + (i / Math.max(1, n - 1)) * (w - pl - 4), Y = (v) => h - 6 - (v / max) * (h - 12);
-    const svg = keys.map((a) => { const xs = [...ages[a]].sort((p, q) => p.start.localeCompare(q.start));
+    const svg = keys.map((a) => { const xs = [...ages[a]].sort((p, q) => p.week.localeCompare(q.week));
       return `<polyline points="${xs.map((p, i) => `${X(i).toFixed(1)},${Y(p.er ?? 0).toFixed(1)}`).join(' ')}" fill="none" stroke="${AGE_HEX[a] ?? INK}" stroke-width="1.8"/>`; }).join('')
       + [0, max / 2].map((v) => `<text x="0" y="${Y(v) + 3}" fill="#6e6e80" font-size="9">${num(v, 1)}${NB}%</text><line x1="${pl}" x2="${w}" y1="${Y(v)}" y2="${Y(v)}" stroke="#262a33"/>`).join('');
-    const rows = keys.map((a) => { const xs = [...ages[a]].sort((p, q) => p.start.localeCompare(q.start)); const l = xs.at(-1), b = xs.at(-5);
+    const rows = keys.map((a) => { const xs = [...ages[a]].sort((p, q) => p.week.localeCompare(q.week)); const l = xs.at(-1), b = xs.at(-5);
       return `<tr><td><i class="mqh-age" style="background:${AGE_HEX[a] ?? INK}"></i>${esc(a.replace(/0(\d)/g, '$1').replace('-', ' à '))}</td><td>${esc(pct(l.er))}</td><td>${esc(pct(l.hosp))}</td><td>${esc(pct(l.sos))}</td><td>${esc(b?.er ? signed(l.er / b.er - 1) : 'n.d.')}</td></tr>`; }).join('');
-    const first = [...ages[keys[0]]].sort((p, q) => p.start.localeCompare(q.start));
-    return `<div class="mqh-chart"><div class="mqh-chart-t">France, ${esc(k === 'ira' ? 'IRA' : SYN[k].toLowerCase())} par classe d’âge, ${wk(first[0].week)} à ${wk(first.at(-1).week)} (part des passages aux urgences)</div>`
+    const first = [...ages[keys[0]]].sort((p, q) => p.week.localeCompare(q.week));
+    return `<div class="mqh-chart"><div class="mqh-chart-t">${esc(scope)}, ${esc(k === 'ira' ? 'IRA' : SYN[k].toLowerCase())} par classe d’âge, ${wk(first[0].week)} à ${wk(first.at(-1).week)} (part des passages aux urgences)</div>`
       + `<svg viewBox="0 0 ${w} ${h}" class="mqh-chart-svg">${svg}</svg>`
       + `<table class="mqh-ages"><tr><th></th><th>Urgences</th><th>Hospit.</th><th>SOS</th><th>4${NB}sem.</th></tr>${rows}</table>`
-      + `<div class="mqh-chart-c">Hospit. = part des passages suivis d’une hospitalisation pour ce syndrome ; SOS = part des actes SOS Médecins. Pas de série par âge pour les autres syndromes dans le flux.</div></div>`;
+      + `<div class="mqh-chart-c">Hospit. = part des passages suivis d’une hospitalisation pour ce syndrome ; SOS = part des actes SOS Médecins. </div></div>`;
   };
   const franceSeries = (k, n = 12) => (S.data.syn?.syndromes ?? []).find((s) => s.key === k)?.france?.filter((p) => p.er != null).sort((a, b) => a.start.localeCompare(b.start)).slice(-n).map((p) => ({ v: p.er, w: p.week })) ?? [];
+  // Historique du département (Odissé) : chargé à l'ouverture de la fiche, gardé en mémoire.
+  S.deptHist = new Map();
+  const loadDeptHist = (code, k) => {
+    const key = `${code}|${k}`; if (S.deptHist.has(key)) return;
+    S.deptHist.set(key, 'loading');
+    odExport(k, `dep="${code}"`).then((rows) => { S.deptHist.set(key, Array.isArray(rows) ? rows : 'error'); if (S.fiche?.kind === 'dept' && S.fiche.key === code) openFiche('dept', code, true); });
+  };
+  const histOf = (code, k) => { const h = S.deptHist.get(`${code}|${k}`); return Array.isArray(h) ? h : null; };
+  const deptCharts = (a, k) => {
+    const out = [];
+    for (const key of [...new Set([k, 'ira'])]) {
+      const h = histOf(a.code, key); loadDeptHist(a.code, key);
+      if (!h) { out.push(`<div class="mqh-chart-c">${S.deptHist.get(`${a.code}|${key}`) === 'error' ? `Historique du département indisponible (${esc(SYN[key])}).` : `Chargement de l’historique du département (${esc(SYN[key])})…`}</div>`); continue; }
+      const allAges = h.filter((r) => r.age === 'Tous âges' || (key === 'bronchio' && r.age === '0 an')).map((r) => ({ week: r.semaine, er: r.er, hosp: r.hosp, sos: r.sos }));
+      // Petits effectifs : moyenne mobile sur 3 semaines (la valeur de la semaine reste celle publiée dans la bulle).
+      const sm = allAges.sort((p, q) => p.week.localeCompare(q.week)).map((p, i, arr) => { const w3 = arr.slice(Math.max(0, i - 2), i + 1).map((x) => x.er).filter((v) => v != null); return { ...p, er: w3.length ? w3.reduce((t, v) => t + v, 0) / w3.length : null }; });
+      out.push(seasonChart(key, sm, `${a.nom} (moyenne sur 3${NB}semaines)`));
+      if (key !== 'bronchio') {
+        const ages = {}; const weeks = [...new Set(h.map((r) => r.semaine))].sort().slice(-14);
+        for (const r of h) if (weeks.includes(r.semaine) && ['00-04 ans', '05-14 ans', '15-64 ans', '65 ans ou plus'].includes(r.age)) (ages[r.age] ??= []).push({ week: r.semaine, er: r.er, hosp: r.hosp, sos: r.sos });
+        out.push(agesChart(key, ages, a.nom));
+      }
+    }
+    return out.join('');
+  };
   const deptNote = (a) => {
     const [state] = urgState(a);
     const k = a.driver ?? 'ira';
@@ -542,7 +659,7 @@
       ...(a.apl?.shareUnder25 != null ? [`${num(a.apl.shareUnder25)}${NB}% de la population sous 2,5${NB}consultations de généraliste par an.`] : [])];
     const evo = [fr.length >= 2 ? `France, ${SYN[k].toLowerCase()} : ${pct(fr.at(-2).v)} en ${wk(fr.at(-2).w)}, ${pct(fr.at(-1).v)} en ${wk(fr.at(-1).w)}.` : 'Tendance nationale : n.d.',
       ...(a.apl?.apl2023?.mg != null ? [`Généralistes : ${num(a.apl.apl2023.mg, 2)} en 2023, ${num(a.apl.apl.mg, 2)} en 2024 (${signed(a.apl.apl.mg / a.apl.apl2023.mg - 1)}).`] : [])];
-    const unknown = ['Pas d’historique par département dans le flux hebdomadaire : l’évolution locale n’est pas mesurable ici.',
+    const unknown = [
       'Une part faible (moins de 1 % des passages) donne un écart fragile : à confirmer la semaine suivante.',
       'Attente aux urgences, saturation et fermetures de lignes de garde : non publiées en données ouvertes.',
       ...(a.syn[k]?.sos == null ? ['SOS Médecins : pas d’association couverte dans le département.'] : [])];
@@ -550,13 +667,17 @@
     const bluf = [`${a.driver ? `${SYN[a.driver]} aux urgences ${signed(a.syn[a.driver].ratio - 1)} au-dessus du maximum des 3${NB}saisons (${WORD[a.urg].toLowerCase()}, ${synRank(a, a.driver)})` : 'Urgences dans les normales des saisons précédentes'}${bad.length ? ` ; ${bad.length}${NB}département${bad.length > 1 ? 's' : ''} voisin${bad.length > 1 ? 's' : ''} aussi en anomalie` : ''}.`,
       `Capacité : ${reaLine(a)} ; accès aux généralistes ${a.apl?.apl?.mg != null ? `${num(a.apl.apl.mg / S.data.apl.france.apl.mg, 2)}${NB}fois la moyenne` : 'n.d.'}.`];
     impact.push(`Départements voisins : ${neighLine(a)}.`);
+    const wa = S.water.get(a.code);
+    if (wa) happen.push(`Eau du robinet : prélèvements non conformes en bactériologie dans ${[...wa.communes.values()].map((c) => commune(c.nom)).join(', ')} (jusqu’au ${day(wa.last)}, Hub’Eau).`);
+    const st = S.stations.filter((x) => x.at && deptAt(x.at)?.code === a.code);
+    for (const x of st) happen.push(`Eaux usées, ${commune(x.m.commune)} : ${x.last ? `${num(x.last.v)} en ${wk(x.last.w)}${x.two ? `, ${signed(x.last.v / x.two - 1)} sur 2 semaines` : ''}${x.ly ? `, ${signed(x.last.v / x.ly - 1)} sur un an` : ''}` : 'n.d.'}.`);
     if (a.apl?.pop) impact.push(`Population : ${num(a.apl.pop)} habitants${passPer(a) != null ? ` ; ${num(passPer(a))} passages aux urgences pour 1${NB}000 habitants par an` : ''}.`);
     impact.splice(1, 0, `Capacité : ${reaLine(a)}.`);
     return { title: `${a.nom} (${a.code})`, sub: 'Santé · note de situation', level: RANK[a.urg] >= 1 ? a.urg : null, at: when(new Date().toISOString()),
       gauges: Object.keys(SYN).filter((k) => a.syn[k]).map((k) => synGauge(k, a.syn[k])),
       blocks: [['À retenir', bluf], ['Ce qui se passe', happen], ['Impact et capacités', impact], ['Évolution', evo], ['Ce qu’on ne sait pas', unknown]],
-      charts: seasonChart(k) + agesChart('ira'),
-      sources: ['OSCOUR', 'Odissé', 'DREES'] };
+      charts: deptCharts(a, k),
+      sources: ['OSCOUR', 'Odissé', 'DREES', 'Eau du robinet', 'Eaux usées'] };
   };
   const hospNote = (g) => {
     const s = g[0], a = S.depts.get(s.dept), c = hospCard(g);
@@ -673,6 +794,8 @@
       <div class="mqh-row mqh-note">Accès aux soins, ${PROF[S.prof].toLowerCase()} (DREES, annuel, jamais une alerte), par rapport à la moyenne nationale :</div>
       <div class="mqh-ramp">${[...APL_RAMP].reverse().map(([, c, w]) => it(swatch(c, 'sq'), w)).join('')}</div>
       <div class="mqh-row">${it(swatch(REG_LINE, 'dash'), 'Limite de région')}</div>
+      <div class="mqh-row">${it(`<svg width="13" height="13" viewBox="0 0 40 40"><circle cx="20" cy="20" r="15" fill="${SENTI_HEX}" fill-opacity=".55" stroke="${L1.jaune}" stroke-width="5"/></svg>`, 'Eaux usées (SARS-CoV-2), taille = population raccordée, bord coloré si hausse')}</div>
+      <div class="mqh-row">${it(`<svg width="12" height="13" viewBox="0 0 40 40"><path d="M20 4 C20 4 8 18 8 25 a12 12 0 0 0 24 0 C32 18 20 4 20 4 Z" fill="${L1.jaune}"/></svg>`, 'Eau du robinet non conforme en bactériologie, chiffre = communes (sans pastille : 10 ou plus)')}</div>
       <div class="mqh-row mqh-note">Avec la pastille Veille sanitaire : ${it(swatch(L1.vert, 'sq'), 'pas d’alerte épidémique (mesuré)')} ${it(swatch(SENTI_HEX, 'disc'), 'région parmi les plus touchées (Sentinelles), taille = écart au taux national')}</div>
       <div class="mqh-row mqh-note">Sans pastille active, toutes les couches sont affichées. Une pastille met sa couche en avant et estompe les autres (clic, cumulable ; survol pour un aperçu). Le syndrome et la profession choisis dans les panneaux s’appliquent à la carte.</div>
       <details${ko ? ' open' : ''}><summary>Sources · ${src.length - ko}${NB}à jour, ${ko}${NB}en défaut</summary>${src.map(([k, v, st]) => `<div class="mqh-row mqh-src"><i class="mqh-src-${st}"></i><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}</details>`;
@@ -759,7 +882,19 @@
     const load = async () => {
       const [syn, alerts, senti, ww, drugs, recalls, dgs, apl, hosp] = await Promise.all(['/api/health/syndromic', '/api/health/alert-levels', '/api/health/sentinelles-national',
         '/api/health/wastewater', '/api/health/drug-shortages', '/api/health/recalls', '/api/health/dgs-messages', '/data/apl-2024.json', '/data/hospitals-urgences.json'].map(getJson));
-      S.data = { syn, alerts, senti, ww, drugs, recalls, dgs, apl, hosp };
+      // Lot 1 (18/10/2026) : sources ouvertes lues directement (CORS ouvert) ; en production, elles passeront par /api/health.
+      const wkId = syn?.week?.id, yy = Number(String(wkId).slice(0, 4)), nn = String(wkId).slice(-3);
+      const weeksWhere = [0, 1, 2, 3].map((i) => `semaine="${yy - i}-${nn}"`).join(' or ');
+      const HE = 'https://hubeau.eaufrance.fr/api/v1/qualite_eau_potable/resultats_dis';
+      const lastWater = await getJson(`${HE}?size=1&sort=desc&fields=date_prelevement`);
+      const lastDay = (lastWater?.data?.[0]?.date_prelevement ?? new Date().toISOString()).slice(0, 10);
+      const waterFrom = new Date(Date.parse(lastDay) - 45 * 864e5).toISOString().slice(0, 10);
+      const [extra, wwMeta, wwSt, water] = await Promise.all([
+        Promise.all(EXTRA_SYN.map((k) => odExport(k, `sursaud_cl_age_gene="Tous âges" and (${weeksWhere})`))),
+        getJson(`${OD}sumeau_stations/records?limit=100`),
+        getJson(`${OD}sum-eau-indicateurs/records?limit=60&order_by=${encodeURIComponent('semaine desc')}`),
+        getJson(`${HE}?conformite_limites_bact_prelevement=N&code_parametre=1449,6455&date_min_prelevement=${waterFrom}&size=5000&fields=code_prelevement,code_commune,nom_commune,code_departement,date_prelevement,libelle_parametre,resultat_alphanumerique,nom_distributeur,conclusion_conformite_prelevement`)]);
+      S.data = { syn, alerts, senti, ww, drugs, recalls, dgs, apl, hosp, extraSyn: Object.fromEntries(EXTRA_SYN.map((k, i) => [k, extra[i]])), wwMeta, wwSt, water, waterFrom, waterTo: lastDay };
       await draw();
     };
     await load();
