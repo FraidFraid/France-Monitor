@@ -161,6 +161,7 @@ export async function groupPress(rows, now, resolve = geocodeQuery, localByRegio
       articles: articles.slice(0, MAX_ARTICLES).map((a) => ({
         url: a.link, domain: domainOf(a.link), seenAt: new Date(a.at).toISOString(), violent: a.violent, title: a.title, outlet: a.feed ?? null,
       })),
+      place: null,
       articleCount: articles.length,
     });
   }

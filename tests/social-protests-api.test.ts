@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __resetSwrCacheForTests } from '../api/_utils/swr-cache.js';
 import {
-  DEMOSPHERE_EDITIONS, icsTime, indexCommunes, isProtestTitle, locateCommune, locateNationally, parseIcs, protestsOfEdition,
+  DEMOSPHERE_EDITIONS, cleanPlace, icsTime, indexCommunes, isProtestTitle, locateCommune, locateNationally, parseIcs, protestsOfEdition,
 } from '../api/_lib/protests-demosphere.js';
 import {
   __resetGdeltForTests, GDELT_LAST_UPDATE, groupGdelt, latestExportStamp, parseExport, unzipFirstEntry, windowStamps,
@@ -114,6 +114,23 @@ describe('commune du lieu', () => {
   });
 });
 
+describe('lieu de rendez-vous', () => {
+  it('lignes jointes par « , », espaces normalisés, tronqué à 200 caractères', () => {
+    expect(cleanPlace('Toulouse 31200, \nPlace Micoulaud', 'Toulouse')).toBe('Toulouse 31200, Place Micoulaud');
+    expect(cleanPlace(parseIcs(fixture('demosphere-toulouse.ics'))[0].location, 'Toulouse')).toBe('Toulouse 31200, Place Micoulaud, Toulouse');
+    expect(cleanPlace('Gare,   \n  Parvis \n\nNord', null)).toBe('Gare, Parvis, Nord');
+    expect(cleanPlace('x'.repeat(300), null)).toHaveLength(200);
+  });
+  it('null si vide, « #Ville » seul ou nom de la commune seul', () => {
+    expect(cleanPlace('#Dunkerque', 'Dunkerque')).toBeNull();
+    expect(cleanPlace('#Dunkerque, \nPlace Jean Bart', 'Dunkerque')).toBeNull();
+    expect(cleanPlace('  \n ', null)).toBeNull();
+    expect(cleanPlace('Toulouse', 'Toulouse')).toBeNull();
+    expect(cleanPlace('Toulouse, ', 'Toulouse')).toBeNull();
+    expect(cleanPlace('', null)).toBeNull();
+  });
+});
+
 describe('manifestations d’une édition', () => {
   const toulouse = DEMOSPHERE_EDITIONS.find((e) => e.key === 'toulouse')!;
   const index = indexCommunes(COMMUNES[31]);
@@ -123,7 +140,7 @@ describe('manifestations d’une édition', () => {
       id: 'demosphere:https://toulouse.demosphere.net/rv/' + items[0].id.split('/').pop(),
       source: 'demosphere', status: 'annonce', title: 'MANIFESTATIONS LYCEENNES, TRAVAILLEUSES, GJ.',
       startsAt: '2026-10-17T12:00:00.000Z', allDay: false, city: 'Toulouse', dept: '31', lat: 43.6007, lon: 1.4328,
-      url: items[0].url, edition: 'Toulouse', violent: false, participants: null, precision: 'commune', articles: [], articleCount: 0,
+      url: items[0].url, place: 'Toulouse 31000, Metro Jean Jaurès', edition: 'Toulouse', violent: false, participants: null, precision: 'commune', articles: [], articleCount: 0,
     }]);
   });
   it('commencée depuis plus de 6 h ou à plus de 7 jours : écartée', () => {
@@ -164,7 +181,7 @@ describe('GDELT', () => {
   it('un relevé par lieu ; articles sans doublon ; heurts ; plus récent d’abord', () => {
     const items = groupGdelt(parseExport(TSV, NOW), NOW);
     const paris = items.find((i) => i.city === 'Paris')!;
-    expect(paris).toMatchObject({ source: 'gdelt', status: 'signale', violent: true, title: 'Manifestation ou rassemblement' });
+    expect(paris).toMatchObject({ source: 'gdelt', status: 'signale', violent: true, place: null, title: 'Manifestation ou rassemblement' });
     expect(paris.articles.map((a) => a.domain)).toEqual(['bbc.co.uk', 'moneycontrol.com', 'en.shafaqna.com', 'euronews.com', 'moneycontrol.com']);
     expect(paris.articles.filter((a) => a.violent).map((a) => a.domain)).toEqual(['bbc.co.uk', 'euronews.com']);
     expect(paris.url).toBe('https://www.bbc.co.uk/news/live/ckpdg1v41562t');

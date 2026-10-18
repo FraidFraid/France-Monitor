@@ -84,6 +84,18 @@ export function icsTime(value, isDate = false) {
 
 const unescapeIcs = (v) => String(v).replace(/\\n/gi, '\n').replace(/\\([,;\\])/g, '$1');
 
+/**
+ * Lieu de rendez-vous lisible d'un LOCATION : lignes jointes par « , », espaces normalisés, 200 caractères au plus ;
+ * null si vide, réduit à « #Ville » ou au seul nom de la commune trouvée.
+ */
+export function cleanPlace(location, communeName = null) {
+  const text = String(location ?? '').split('\n').map((l) => l.replace(/\s+/g, ' ').trim().replace(/[\s,]+$/, '')).filter(Boolean)
+    .join(', ').slice(0, 200).trim();
+  if (!text || /^#/.test(text)) return null;
+  if (communeName && normalizeName(text) === normalizeName(communeName)) return null;
+  return text;
+}
+
 /** Rendez-vous d'un fichier iCalendar : `{ uid, title, start, allDay, location, url }` (start en ms, null si illisible). */
 export function parseIcs(text) {
   const unfolded = String(text ?? '').replace(/\r\n?/g, '\n').replace(/\n[ \t]/g, '');
@@ -215,6 +227,7 @@ export function protestsOfEdition(edition, events, index, now, fallback = new Ma
       lat: commune?.lat ?? null,
       lon: commune?.lon ?? null,
       url: ev.url,
+      place: cleanPlace(ev.location, commune?.name),
       edition: edition.label,
       violent: false,
       participants: null,

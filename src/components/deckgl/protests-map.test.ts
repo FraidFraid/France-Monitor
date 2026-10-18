@@ -8,7 +8,7 @@ import {
 
 const ann = (over: Partial<ProtestItem> = {}): ProtestItem => ({
   id: 'd1', source: 'demosphere', status: 'annonce', title: 'Rassemblement', startsAt: '2026-10-17T13:00:00.000Z', allDay: false,
-  city: 'Toulouse', dept: '31', lat: 43.6, lon: 1.44, url: null, edition: null, violent: false, participants: null, precision: 'commune', articles: [], articleCount: 0, ...over,
+  city: 'Toulouse', dept: '31', lat: 43.6, lon: 1.44, url: null, place: null, edition: null, violent: false, participants: null, precision: 'commune', articles: [], articleCount: 0, ...over,
 });
 const sig = (over: Partial<ProtestItem> = {}): ProtestItem => ann({ id: 'g1', source: 'gdelt', status: 'signale', city: 'Paris', lat: 48.85, lon: 2.35, ...over });
 const response = (items: ProtestItem[]): ProtestsResponse => ({

@@ -21,7 +21,7 @@ const isArticle = (a: Record<string, unknown>): boolean => isStr(a.url) && isStr
 const isItem = (x: Record<string, unknown>): boolean => isStr(x.id) && isOneOf(x.source, SOURCES) && isOneOf(x.status, STATUSES)
   && isStr(x.title) && isStrOrNull(x.startsAt) && isBool(x.allDay) && isStrOrNull(x.city) && isStrOrNull(x.dept)
   && isNumOrNull(x.lat) && isNumOrNull(x.lon) && (x.lat === null) === (x.lon === null)
-  && isStrOrNull(x.url) && isStrOrNull(x.edition) && isBool(x.violent) && isNumOrNull(x.participants)
+  && isStrOrNull(x.url) && isStrOrNull(x.place) && isStrOrNull(x.edition) && isBool(x.violent) && isNumOrNull(x.participants)
   && (x.precision === null || isOneOf(x.precision, PRECISIONS)) && listOf(x.articles, isArticle) && isNum(x.articleCount);
 const isDemosphere = (d: unknown): boolean => isRecord(d) && isStrOrNull(d.readAt) && isNum(d.editions) && Array.isArray(d.failedEditions)
   && d.failedEditions.every(isStr) && isNum(d.scanned);
