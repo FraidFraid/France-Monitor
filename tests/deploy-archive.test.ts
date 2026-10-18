@@ -57,4 +57,16 @@ describe('archive de déploiement VM', () => {
     }
     expect(missing).toEqual([]);
   });
+
+  it('contient tout script lancé par une unité systemd (minuteurs de deploy/oracle/systemd)', () => {
+    const archived = new Set(archivedPaths());
+    const dir = path.join(ROOT, 'deploy/oracle/systemd');
+    const missing: string[] = [];
+    for (const unit of readdirSync(dir).filter((n) => n.endsWith('.service'))) {
+      for (const m of readFileSync(path.join(dir, unit), 'utf8').matchAll(/^ExecStart=\/usr\/bin\/node\s+(scripts\/\S+)/gm)) {
+        if (!archived.has(m[1])) missing.push(`${unit} → ${m[1]}`);
+      }
+    }
+    expect(missing).toEqual([]);
+  });
 });
