@@ -123,7 +123,7 @@ www.francemonitor.com {
 	# Données régénérées par minuteur (fm-eau-potable) : servies depuis /var/lib/francemonitor si le fichier
 	# existe, sinon la copie livrée avec la release (bloc suivant).
 	@freshData {
-		path /data/eau-potable.json
+		path /data/eau-potable.json /data/deces.json
 		file {
 			root /var/lib/francemonitor
 		}

@@ -10,7 +10,7 @@
   const esc = (v) => String(v ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const num = (n, d = 0) => (n == null || !Number.isFinite(Number(n)) ? 'n.d.' : Number(n).toLocaleString('fr-FR', { minimumFractionDigits: d, maximumFractionDigits: d }).replace(/\s/g, NB));
   const pct = (x) => (x == null ? 'n.d.' : `${num(x, x < 1 ? 2 : 1)}${NB}%`);
-  const signed = (r) => (r == null || !Number.isFinite(r) ? 'n.d.' : `${r >= 0 ? '+' : '−'}${num(Math.abs(r) * 100)}${NB}%`);
+  const signed = (r) => (r == null || !Number.isFinite(r) ? 'n.d.' : Math.round(Math.abs(r) * 100) === 0 ? `0${NB}%` : `${r >= 0 ? '+' : '−'}${num(Math.abs(r) * 100)}${NB}%`);
   const pad = (n) => String(n).padStart(2, '0');
   const day = (iso) => { if (!iso) return 'n.d.'; const d = new Date(iso); return Number.isNaN(d.getTime()) ? 'n.d.' : `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`; };
   const when = (iso) => {
@@ -64,6 +64,12 @@
   // ─── Couleurs : L1 réservé à l'anormal ; une couleur franche par couche ───
   // Accès aux soins (DREES, annuel) : rampe bleue, plus clair = accès plus faible ; jamais les couleurs d'alerte.
   const APL_RAMP = [[1.25, '#123a63', '1,25 fois la France ou plus'], [1, '#0b5f9e', '1 à 1,25 fois'], [0.75, '#0a84d0', '0,75 à 1 fois'], [0.5, '#38bdf8', '0,5 à 0,75 fois'], [0, '#a5e4ff', 'moins de la moitié']];
+  // Mortalité toutes causes (Insee, environ un mois de recul) : rampe indigo, plus clair = plus d'écart à l'habituel.
+  const DEC_RAMP = [[1.2, '#eef2ff', '+20 % ou plus'], [1.1, '#a5b4fc', '+10 à +20 %'], [1.03, '#6366f1', '+3 à +10 %'], [0.97, '#3730a3', 'proche de l’habituel'], [0, '#1e1b4b', 'en dessous']];
+  const decHex = (r) => (r == null ? '#2a2a33' : DEC_RAMP.find(([t]) => r >= t)[1]);
+  // Canicule (Santé publique France, bilan de l'été) : rampe rose, plus clair = plus de jours de canicule.
+  const HEAT_RAMP = [[20, '#fdf2f8', '20 jours ou plus'], [10, '#f9a8d4', '10 à 19 jours'], [5, '#db2777', '5 à 9 jours'], [1, '#831843', '1 à 4 jours'], [0, '#3b0a24', 'aucun']];
+  const heatHex = (n) => (n == null ? '#2a2a33' : HEAT_RAMP.find(([t]) => n >= t)[1]);
   const aplHex = (r) => (r == null ? '#2a2a33' : APL_RAMP.find(([t]) => r >= t)[1]);
   const PROF = { mg: 'Généralistes', inf: 'Infirmiers', kine: 'Kinésithérapeutes', sf: 'Sages-femmes', dent: 'Dentistes' };
   const PROF_UNIT = { mg: 'consultations par an et par habitant', inf: `ETP pour 100${NB}000 hab.`, kine: `ETP pour 100${NB}000 hab.`, sf: `ETP pour 100${NB}000 femmes`, dent: `ETP pour 100${NB}000 hab.` };
@@ -145,6 +151,19 @@
     for (const r of Array.isArray(d.vacc) ? d.vacc : []) if (r.an_mesure === vy && r.dep) touch(r.dep, r.dep).vacc = { grip: r.grip_65plus, covid: r.covid_65plus };
     const ly = (Array.isArray(d.legio) ? d.legio : []).reduce((m, r) => (r.annee > m ? r.annee : m), '');
     S.legioYear = ly;
+    const dec = d.deces;
+    if (dec?.lastCompleteMonth) {
+      const lm = dec.lastCompleteMonth, y = Number(lm.slice(0, 4)), mo = Number(lm.slice(5, 7));
+      const back = (k) => { const t = new Date(Date.UTC(y, mo - 1 - k, 1)); return t.toISOString().slice(0, 7); };
+      const win = [2, 1, 0].map(back);
+      S.decWin = win;
+      for (const [code, x] of Object.entries(dec.depts ?? {})) {
+        const cur = win.reduce((t, m) => t + (x.months[m] ?? NaN), 0);
+        const prev = [1, 2, 3].map((k) => win.map((m) => `${Number(m.slice(0, 4)) - k}${m.slice(4)}`)).filter((ms) => ms.every((m) => x.months[m] != null)).map((ms) => ms.reduce((t, m) => t + x.months[m], 0));
+        const base = prev.length ? prev.reduce((t, v) => t + v, 0) / prev.length : null;
+        touch(code, x.name).deaths = { cur, base, years: prev.length, ratio: base && Number.isFinite(cur) ? cur / base : null, months: x.months };
+      }
+    }
     // Canicule (Santé publique France) : jours de canicule par été et excès de décès pendant les vagues de chaleur.
     for (const r of Array.isArray(d.heatDays) ? d.heatDays : []) if (r.dep) { const a = touch(r.dep, r.dep); (a.heat ??= { days: {}, deaths: {} }).days[r.annee] = r.nb_j_can; }
     for (const r of Array.isArray(d.heatDeaths) ? d.heatDeaths : []) if (r.dep) { const a = touch(r.dep, r.dep); ((a.heat ??= { days: {}, deaths: {} }).deaths[r.annee] ??= {})[r.classe_age] = r; }
@@ -236,10 +255,13 @@
     build();
     const d = S.data;
     setData('mqh-depts', fc(S.geo.deptShapes.map((f) => { const a = S.depts.get(f.properties.code);
-      return { ...f, properties: { code: f.properties.code, urg: a?.urg ?? 'nd', ucolor: L1[a?.urg] ?? '#000000', aplR: a?.aplR ?? -1, acolor: aplHex(a?.aplR) } }; })));
+      return { ...f, properties: { code: f.properties.code, urg: a?.urg ?? 'nd', ucolor: L1[a?.urg] ?? '#000000', aplR: a?.aplR ?? -1, acolor: aplHex(a?.aplR),
+        dR: a?.deaths?.ratio ?? -1, dcolor: decHex(a?.deaths?.ratio), hD: a?.heat ? (a.heat.days[Object.keys(a.heat.days).sort().at(-1)] ?? -1) : -1, hcolor: heatHex(a?.heat ? a.heat.days[Object.keys(a.heat.days).sort().at(-1)] : null) } }; })));
     setData('mqh-dept-pts', fc([...S.depts.values()].filter((a) => a.inMap && a.at).map((a) => pt(a.at, { code: a.code, urg: a.urg, color: L1[a.urg] ?? MUTE,
       ulabel: a.driver ? `${SYN_SHORT[a.driver]} ${signed((a.syn[a.driver].ratio ?? 1) - 1)}` : '',
-      alabel: a.aplV != null ? num(a.aplV, PROF_DIG[S.prof]) : '' }))));
+      alabel: a.aplV != null ? num(a.aplV, PROF_DIG[S.prof]) : '',
+      dR: a.deaths?.ratio ?? -1, dlabel: a.deaths?.ratio != null ? signed(a.deaths.ratio - 1) : '',
+      hlabel: a.heat ? `${num(a.heat.days[Object.keys(a.heat.days).sort().at(-1)] ?? 0)}${NB}j` : '' }))));
     setData('mqh-regions', fc(S.geo.regions.map((f) => { const r = S.regions.get(f.properties.code);
       return { ...f, properties: { code: f.properties.code, level: r?.level ?? 'hors', color: L1[r?.level] ?? MUTE } }; })));
     setData('mqh-reg-pts', fc([...S.regions.values()].filter((r) => r.at).map((r) => {
@@ -251,7 +273,7 @@
         label: [r.nom, phase, ...senti].join('\n'), short: `${r.nom}${NB}· ${phase}` }); })));
     setData('mqh-ww', fc(S.stations.map((x, i) => pt(x.at, { i, level: x.level, ring: RANK[x.level] >= 1 ? L1[x.level] : '#0a0a0f', pop: x.m.population ?? 0,
       label: `${commune(x.m.commune)}${x.last ? ` · ${x.two ? signed(x.last.v / x.two - 1) : 'n.d.'}` : ''}` }))));
-    setData('mqh-water', fc((d.water?.communes ?? []).map((c, i) => pt([c.lon, c.lat], { i, v: c.v, r: { restriction: 3, ciblee: 2, bact: 1, pc: 0 }[c.v] }))));
+    setData('mqh-water', fc((d.water?.communes ?? []).map((c, i) => pt([c.lon, c.lat], { i, v: c.v, r: { restriction: 3, ciblee: 2, bact: 1, pc: 0 }[c.v], name: commune(c.nom) }))));
     setData('mqh-ehpad', fc((d.ehpad?.sites ?? []).map((e, i) => pt([e.lon, e.lat], { i, places: e.places ?? 0, name: nice(e.name).replace(/^EHPAD /i, 'EHPAD ') }))));
     setData('mqh-hosp', fc(S.hGroups.map((g, i) => { const s = g[0];
       const chuLead = g.find((x) => x.category === 'chu' && S.hLead?.get(x.finess));
@@ -265,6 +287,9 @@
       // Accès aux soins : aplat bleu, sous tous les autres canaux.
       m.addLayer({ id: 'mqh-apl-fill', type: 'fill', source: 'mqh-depts', paint: { 'fill-color': ['get', 'acolor'], 'fill-opacity': 0.4 } }, b);
       m.addLayer({ id: 'mqh-apl-line', type: 'line', source: 'mqh-depts', paint: { 'line-color': '#0b1020', 'line-width': 0.6, 'line-opacity': 0.8 } }, b);
+      // Mortalité et canicule : aplats réservés à leur pastille (sinon trois aplats se superposeraient à nouveau).
+      m.addLayer({ id: 'mqh-dec-fill', type: 'fill', source: 'mqh-depts', filter: ['>=', ['get', 'dR'], 0], paint: { 'fill-color': ['get', 'dcolor'], 'fill-opacity': 0.8 } }, b);
+      m.addLayer({ id: 'mqh-can-fill', type: 'fill', source: 'mqh-depts', filter: ['>=', ['get', 'hD'], 0], paint: { 'fill-color': ['get', 'hcolor'], 'fill-opacity': 0.8 } }, b);
       m.addLayer({ id: 'mqh-dept-fill', type: 'fill', source: 'mqh-depts', paint: { 'fill-color': '#ffffff', 'fill-opacity': 0 } }, b);
       // Urgences : département en anomalie = trait à sa couleur d'état ; teinte légère seulement avec la pastille.
       m.addLayer({ id: 'mqh-urg-fill', type: 'fill', source: 'mqh-depts', filter: ['in', ['get', 'urg'], ['literal', ['jaune', 'orange', 'rouge']]], paint: { 'fill-color': ['get', 'ucolor'], 'fill-opacity': 0.3 } }, b);
@@ -303,6 +328,9 @@
       const drop = (id, fill, stroke, w) => image(id, `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40"><path d="M20 4 C20 4 8 18 8 25 a12 12 0 0 0 24 0 C32 18 20 4 20 4 Z" fill="${fill}" stroke="${stroke}" stroke-width="${w}"/></svg>`, 40);
       await drop('mqh-drop-restriction', L1.orange, '#0a0a0f', 2.5); await drop('mqh-drop-ciblee', L1.jaune, '#0a0a0f', 2.5);
       await drop('mqh-drop-bact', L1.jaune, '#0a0a0f', 2.5); await drop('mqh-drop-pc', 'none', L1.jaune, 3.5);
+      m.addLayer({ id: 'mqh-water-label', type: 'symbol', source: 'mqh-water', filter: ['==', ['get', 'v'], 'restriction'],
+        layout: { 'text-field': ['get', 'name'], 'text-size': 10, 'text-font': ['Open Sans Semibold'], 'text-variable-anchor': ['left', 'right', 'top', 'bottom'], 'text-radial-offset': 0.8, 'text-optional': true },
+        paint: { 'text-color': L1.orange, 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.4, 'text-opacity': 1 } });
       m.addLayer({ id: 'mqh-water', type: 'symbol', source: 'mqh-water', layout: { 'icon-image': ['concat', 'mqh-drop-', ['get', 'v']], 'symbol-sort-key': ['get', 'r'],
         'icon-size': ['interpolate', ['linear'], ['zoom'], 4, ['match', ['get', 'v'], 'restriction', 0.5, 0.36], 9, ['match', ['get', 'v'], 'restriction', 0.8, 0.6]], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
         paint: { 'icon-opacity': 1 } });
@@ -312,6 +340,12 @@
       m.addLayer({ id: 'mqh-ehpad-label', type: 'symbol', source: 'mqh-ehpad', minzoom: 11, layout: { 'text-field': ['get', 'name'], 'text-size': 9.5, 'text-font': ['Open Sans Semibold'],
         'text-variable-anchor': ['top', 'bottom', 'right', 'left'], 'text-radial-offset': 0.8, 'text-optional': true, 'text-max-width': 12 },
         paint: { 'text-color': EHPAD_HEX, 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.3, 'text-opacity': 1 } });
+      m.addLayer({ id: 'mqh-dec-label', type: 'symbol', source: 'mqh-dept-pts', filter: ['!=', ['get', 'dlabel'], ''],
+        layout: { 'text-field': ['get', 'dlabel'], 'text-size': 10.5, 'text-font': ['Open Sans Semibold'], 'text-optional': true, 'text-offset': [0, 1.1] },
+        paint: { 'text-color': '#c7d2fe', 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.5, 'text-opacity': 1 } });
+      m.addLayer({ id: 'mqh-can-label', type: 'symbol', source: 'mqh-dept-pts', filter: ['!=', ['get', 'hlabel'], ''],
+        layout: { 'text-field': ['get', 'hlabel'], 'text-size': 10.5, 'text-font': ['Open Sans Semibold'], 'text-optional': true, 'text-offset': [0, -1.1] },
+        paint: { 'text-color': '#fbcfe8', 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.5, 'text-opacity': 1 } });
       // Hôpitaux : forme = catégorie, taille = passages aux urgences 2025 ; les plus grands dessinés au-dessus.
       m.addLayer({ id: 'mqh-hosp', type: 'symbol', source: 'mqh-hosp',
         layout: { 'icon-image': ['concat', 'mqh-h-', ['get', 'cat']], 'icon-size': ['interpolate', ['linear'], ['zoom'], 4, ['*', 0.55, ['get', 'sz']], 7, ['*', 0.85, ['get', 'sz']], 10, ['*', 1.3, ['get', 'sz']]],
@@ -327,7 +361,11 @@
 
   // ─── Pastilles : mise en avant cumulable, le reste estompé ───
   const GROUPS = {
-    health: ['mqh-reg-line', 'mqh-reg-alert', 'mqh-reg-label', 'mqh-reg-fill', 'mqh-reg-tint', 'mqh-senti', 'mqh-ww', 'mqh-ww-label', 'mqh-water'],
+    health: ['mqh-reg-line', 'mqh-reg-alert', 'mqh-reg-label', 'mqh-reg-fill', 'mqh-reg-tint', 'mqh-senti', 'mqh-ww', 'mqh-ww-label'],
+    // Pastilles ajoutées par la carte (pas de panneau dans l'application).
+    mqEau: ['mqh-water', 'mqh-water-label'],
+    mqCanicule: ['mqh-can-fill', 'mqh-can-label'],
+    mqDeces: ['mqh-dec-fill', 'mqh-dec-label'],
     healthOscour: ['mqh-urg-fill', 'mqh-urg-line', 'mqh-urg-label'],
     healthApl: ['mqh-apl-fill', 'mqh-apl-line', 'mqh-apl-label'],
     hospitals: ['mqh-hosp', 'mqh-ehpad', 'mqh-ehpad-label'],
@@ -352,6 +390,9 @@
     'mqh-ww': [['circle-opacity', 'circle-stroke-opacity'], () => 0.6],
     'mqh-ww-label': ['text-opacity', () => 1],
     'mqh-water': ['icon-opacity', () => 1],
+    'mqh-water-label': ['text-opacity', () => 1],
+    'mqh-dec-fill': ['fill-opacity', () => 0.8], 'mqh-dec-label': ['text-opacity', () => 1],
+    'mqh-can-fill': ['fill-opacity', () => 0.8], 'mqh-can-label': ['text-opacity', () => 1],
     'mqh-hosp': [['icon-opacity', 'text-opacity'], () => 1],
     'mqh-ehpad': [['circle-stroke-opacity'], () => 0.95],
     'mqh-ehpad-label': ['text-opacity', () => 1],
@@ -366,6 +407,7 @@
     document.body.classList.toggle('mqh-on', on);
     legend.style.display = on ? '' : 'none'; watch.style.display = on ? '' : 'none';
     if (!on) {
+      ensureChips();
       if (S.was) { for (const l of m.getStyle().layers) if (l.id.startsWith('mqh-')) V(l.id, false); pop.style.display = 'none'; popAt = null; closeFiche(); S.focus.clear(); preview = null; syncChips(); }
       S.was = false; return;
     }
@@ -382,8 +424,12 @@
     F('mqh-reg-label', pill('health') ? null : ['any', ['get', 'alert'], ['get', 'senti']]);
     L('mqh-reg-label', 'text-field', ['get', 'label']);
     V('mqh-reg-tint', pill('health')); V('mqh-senti', isOn('health'));
-    // Sans pastille : seulement les restrictions de consommation (générales ou pour les publics sensibles) ; tout le reste avec la pastille.
-    F('mqh-water', pill('health') ? null : ['in', ['get', 'v'], ['literal', ['restriction', 'ciblee']]]);
+    // Eau du robinet : sans pastille, seulement les restrictions de consommation ; tout, communes nommées, avec sa pastille.
+    F('mqh-water', pill('mqEau') ? null : ['in', ['get', 'v'], ['literal', ['restriction', 'ciblee']]]);
+    V('mqh-water-label', pill('mqEau'));
+    // Mortalité : aplat avec sa pastille ; sans, l'écart seulement là où il dépasse +10 %. Canicule : aplat avec sa pastille, chiffres l'été sinon.
+    V('mqh-dec-fill', pill('mqDeces')); F('mqh-dec-label', pill('mqDeces') ? ['!=', ['get', 'dlabel'], ''] : ['>=', ['get', 'dR'], 1.1]);
+    V('mqh-can-fill', pill('mqCanicule')); V('mqh-can-label', pill('mqCanicule') || [5, 6, 7, 8].includes(new Date().getMonth()));
     F('mqh-ww-label', pill('health') ? null : ['in', ['get', 'level'], ['literal', ['jaune', 'orange', 'rouge']]]);
     // Hôpitaux : avec la pastille, noms dès le zoom 6,5.
     L('mqh-hosp', 'text-field', ['step', ['zoom'], ['get', 'city'], pill('hospitals') ? 6.5 : 8, ['get', 'name']]);
@@ -398,13 +444,29 @@
     }
   };
   const applyFocus = () => { calm(); syncChips(); watch.classList.toggle('is-focus', pill('health')); watch.classList.toggle('is-dim', !allMode() && !pill('health')); };
-  const chipKey = (el) => el?.closest?.('.floating-panel-switcher__chip[data-panel-key]')?.dataset.panelKey;
-  const syncChips = () => document.querySelectorAll('.floating-panel-switcher__chip[data-panel-key]').forEach((c) => {
-    if (!(c.dataset.panelKey in GROUPS) || !isHealth()) return;
-    const pressed = S.focus.has(c.dataset.panelKey);
+  const EXTRA_CHIPS = [['mqEau', 'Eau du robinet', 'droplet'], ['mqCanicule', 'Canicule', 'thermometer'], ['mqDeces', 'Mortalité (Insee)', 'trending-up']];
+  const chipKey = (el) => { const c = el?.closest?.('.floating-panel-switcher__chip[data-panel-key], .floating-panel-switcher__chip[data-mqh-key]'); return c?.dataset.panelKey ?? c?.dataset.mqhKey; };
+  // Pastilles propres à la carte, ajoutées à la barre de l'onglet Santé (l'application la redessine : on les remet).
+  const ensureChips = () => {
+    const bar = document.querySelector('.floating-panel-switcher');
+    if (!bar) return;
+    if (!isHealth()) { bar.querySelectorAll('[data-mqh-key]').forEach((x) => x.remove()); return; }
+    if (bar.hidden || !bar.querySelector('[data-panel-key="hospitals"]')) return;
+    for (const [k, label, ic] of EXTRA_CHIPS) if (!bar.querySelector(`[data-mqh-key="${k}"]`)) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'floating-panel-switcher__chip mqh-xchip'; b.dataset.mqhKey = k; b.setAttribute('aria-pressed', 'false');
+      b.title = `${label} : mettre la couche en avant sur la carte`;
+      b.innerHTML = `<span class="floating-panel-switcher__icon" aria-hidden="true">${fmIcon(ic)}</span><span class="floating-panel-switcher__label">${esc(label)}</span>`;
+      bar.appendChild(b);
+    }
+  };
+  const syncChips = () => { ensureChips(); document.querySelectorAll('.floating-panel-switcher__chip[data-panel-key], .floating-panel-switcher__chip[data-mqh-key]').forEach((c) => {
+    const key = c.dataset.panelKey ?? c.dataset.mqhKey;
+    if (!(key in GROUPS) || !isHealth()) return;
+    const pressed = S.focus.has(key);
     if (c.classList.contains('is-active') !== pressed) c.classList.toggle('is-active', pressed);
     if (c.getAttribute('aria-pressed') !== String(pressed)) c.setAttribute('aria-pressed', String(pressed));
-  });
+  }); };
   const wireChips = () => {
     document.addEventListener('click', (e) => {
       if (!isHealth()) return;
@@ -485,7 +547,30 @@
     const r = a.syn[a.driver];
     return [`${WORD[a.urg]} · ${SYN[a.driver]} ${signed(r.ratio - 1)} au-dessus du maximum des 3${NB}saisons`, L1[a.urg]];
   };
+  const MONTH = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+  const monthName = (m) => `${MONTH[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
+  const decSrc = () => `Insee, état civil, décès par département de résidence, jusqu’au ${day(S.data.deces?.lastDay)} (données provisoires)`;
+  const decLine = (a) => { const x = a.deaths; if (!x || x.ratio == null) return null;
+    const all = [...S.depts.values()].filter((y) => y.deaths?.ratio != null).sort((p, q) => q.deaths.ratio - p.deaths.ratio); const i = all.findIndex((y) => y.code === a.code);
+    return `${num(x.cur)}${NB}décès de ${monthName(S.decWin[0])} à ${monthName(S.decWin[2])}, ${signed(x.ratio - 1)} par rapport à la moyenne des mêmes mois des ${x.years} années précédentes (${num(x.base)}) ; ${nth(i + 1)} plus fort écart sur ${all.length}`; };
+  const specialCard = (a, mode) => {
+    if (mode === 'deces') {
+      const x = a.deaths, ms = Object.keys(x?.months ?? {}).sort().slice(-6);
+      return { dot: decHex(x?.ratio), title: `${a.nom} (${a.code})`, state: x?.ratio != null ? `Mortalité toutes causes : ${signed(x.ratio - 1)} sur 3 mois` : 'Mortalité : n.d.', stateHex: '#c7d2fe',
+        rows: [['Trois derniers mois connus', decLine(a) ?? 'n.d.'], ['Par mois', ms.map((m) => `${MONTH[Number(m.slice(5, 7)) - 1]} ${num(x.months[m])}`).join(' · ') || 'n.d.'],
+          ['Hiver', (() => { const w = (y) => [`${y - 1}-12`, `${y}-01`, `${y}-02`].reduce((t, m) => t + (x?.months?.[m] ?? NaN), 0); const y = Number(S.decWin[2].slice(0, 4)); const c = w(y), p = w(y - 1);
+            return Number.isFinite(c) ? `décembre à février ${y}${Number.isFinite(p) ? ` : ${num(c)} contre ${num(p)} l’hiver précédent (${signed(c / p - 1)})` : ` : ${num(c)}`}` : 'n.d.'; })()],
+          ['Personnes âgées dépendantes', ehpadLine(a) ?? 'n.d.']],
+        hint: 'Ce qu’on ne sait pas : causes des décès (non publiées à ce rythme) ; les derniers mois sont provisoires et publiés avec un à deux mois de recul', source: decSrc() };
+    }
+    const h = a.heat; const ys = Object.keys(h?.days ?? {}).sort();
+    return { dot: heatHex(h?.days?.[ys.at(-1)]), title: `${a.nom} (${a.code})`, state: ys.length ? `Canicule : ${num(h.days[ys.at(-1)])}${NB}jours à l’été ${ys.at(-1)}` : 'Canicule : n.d.', stateHex: '#f9a8d4',
+      rows: [['Jours de canicule par été', ys.slice(-6).map((y) => `${y} : ${num(h.days[y])}`).join(' · ') || 'n.d.'], ['Bilan', heatLine(a) ?? 'n.d.'],
+        ['Personnes âgées dépendantes', ehpadLine(a) ?? 'n.d.'], ['Vaccination des 65 ans et plus', vaccLine(a) ?? 'n.d.']],
+      hint: 'Ce qu’on ne sait pas : vigilance canicule du jour (voir l’onglet Environnement de l’application, Météo-France) ; bilan de l’été publié au printemps suivant', source: 'Santé publique France, bilans canicule et santé (Odissé)' };
+  };
   const deptCard = (a, mode) => {
+    if (mode === 'deces' || mode === 'canicule') return specialCard(a, mode);
     const [state, stateHex] = urgState(a);
     const rows = [], gauges = [];
     const urgRows = () => {
@@ -598,7 +683,7 @@
     if (id === 'mqh-ww') { const x = S.stations[p.i]; return x && { key: `ww:${p.i}`, kind: 'raw', id: p.i, make: () => stationCard(x), at: x.at }; }
     if (id === 'mqh-water') { const c = S.data.water?.communes?.[p.i]; return c && { key: `wa:${c.code}`, kind: 'raw', id: c.code, make: () => waterCard(c), at: [c.lon, c.lat] }; }
     if (id === 'mqh-reg-fill') { const r = S.regions.get(p.code); return r && { key: `r:${r.code}`, kind: 'region', id: r.code, make: () => regionCard(r), at: null }; }
-    if (id === 'mqh-dept-fill') { const a = S.depts.get(p.code); const mode = pill('healthApl') && !pill('healthOscour') ? 'apl' : 'urg';
+    if (id === 'mqh-dept-fill') { const a = S.depts.get(p.code); const mode = pill('mqDeces') ? 'deces' : pill('mqCanicule') ? 'canicule' : pill('healthApl') && !pill('healthOscour') ? 'apl' : 'urg';
       return a && { key: `d:${a.code}:${mode}`, kind: 'dept', id: a.code, make: () => deptCard(a, mode), at: null }; }
     return null;
   };
@@ -633,6 +718,7 @@
     rows.push(['Eaux usées (SUM’Eau)', d.ww?.publishedAt ? `publié le ${day(d.ww.publishedAt)}, ${num(d.ww.stationsReporting)}/${num(d.ww.stationsTotal)} stations` : 'indisponible', d.ww?.publishedAt ? 'ok' : 'ko']);
     rows.push(['DREES APL (accès aux soins)', d.apl?.vintage ? `données ${d.apl.vintage}, publiées le ${day(d.apl.publishedAt)}, annuelle` : 'indisponible', d.apl?.vintage ? 'ok' : 'ko']);
     rows.push(['DREES SAE et FINESS (hôpitaux)', d.hosp?.vintage ? `activité ${d.hosp.vintage}, FINESS du ${day(d.hosp.finessDate)}, annuelle` : 'indisponible', d.hosp?.vintage ? 'ok' : 'ko']);
+    rows.push(['Insee (décès par département)', d.deces?.lastDay ? `jusqu’au ${day(d.deces.lastDay)}, mensuel, provisoire` : 'indisponible', d.deces?.lastDay ? (ageDays(d.deces.lastDay) > 100 ? 'part' : 'ok') : 'ko']);
     rows.push(['FINESS (EHPAD et places)', d.ehpad?.finessDate ? `extraction du ${day(d.ehpad.finessDate)}, semestrielle` : 'indisponible', d.ehpad?.finessDate ? 'ok' : 'ko']);
     rows.push(['ANSM (médicaments)', d.drugs?.latestUpdate ? `mis à jour le ${day(d.drugs.latestUpdate)}` : 'indisponible', d.drugs?.latestUpdate ? 'ok' : 'ko']);
     rows.push(['RappelConso', d.recalls?.since ? `depuis le ${day(d.recalls.since)}` : 'indisponible', d.recalls?.since ? 'ok' : 'ko']);
@@ -779,9 +865,9 @@
       blocks: [['À retenir', bluf, 'Situation'], ['Ce qui se passe', happen, 'Situation'],
         ['Hôpitaux et réanimation', hospB, 'Capacités'], ['Personnes âgées', oldB, 'Capacités'], ['Accès aux soins', aplB, 'Capacités'],
         ['Eau du robinet', waterB, 'Environnement'], ['Eaux usées (SARS-CoV-2)', wwB, 'Environnement'], ['Canicule', heatB, 'Environnement'], [`Antécédents ${S.arboYear} (arboviroses, légionellose)`, histB, 'Environnement'],
-        ['Évolution', evo, 'Évolution'], ['Ce qu’on ne sait pas', unknown, 'Sources']],
+        ['Évolution', evo, 'Évolution'], ['Mortalité toutes causes (Insee)', [decLine(a) ? `${decLine(a)}.` : 'n.d.', `Données jusqu’au ${day(S.data.deces?.lastDay)}, provisoires.`], 'Évolution'], ['Ce qu’on ne sait pas', unknown, 'Sources']],
       charts: deptCharts(a, k),
-      sources: ['OSCOUR', 'Odissé', 'DREES', 'Eau du robinet', 'Eaux usées', 'Déclarations', 'Couverture', 'FINESS', 'Canicule'] };
+      sources: ['OSCOUR', 'Odissé', 'DREES', 'Eau du robinet', 'Eaux usées', 'Déclarations', 'Couverture', 'FINESS', 'Canicule', 'Insee'] };
   };
   const hospNote = (g) => {
     const s = g[0], a = S.depts.get(s.dept), c = hospCard(g);
@@ -907,6 +993,10 @@
       <div class="mqh-row mqh-note">Accès aux soins, ${PROF[S.prof].toLowerCase()} (DREES, annuel, jamais une alerte), par rapport à la moyenne nationale :</div>
       <div class="mqh-ramp">${[...APL_RAMP].reverse().map(([, c, w]) => it(swatch(c, 'sq'), w)).join('')}</div>
       <div class="mqh-row">${it(swatch(REG_LINE, 'dash'), 'Limite de région')}</div>
+      <div class="mqh-row mqh-note">Pastille Canicule (bilan de l’été, jamais une alerte) :</div>
+      <div class="mqh-ramp">${[...HEAT_RAMP].reverse().map(([, c, w]) => it(swatch(c, 'sq'), w)).join('')}</div>
+      <div class="mqh-row mqh-note">Pastille Mortalité (Insee, 3 derniers mois connus contre les mêmes mois des années précédentes ; sans pastille, écart affiché à partir de +10 %) :</div>
+      <div class="mqh-ramp">${[...DEC_RAMP].reverse().map(([, c, w]) => it(swatch(c, 'sq'), w)).join('')}</div>
       <div class="mqh-row">${it(`<svg width="13" height="13" viewBox="0 0 40 40"><circle cx="20" cy="20" r="15" fill="${SENTI_HEX}" fill-opacity=".55" stroke="${L1.jaune}" stroke-width="5"/></svg>`, 'Eaux usées (SARS-CoV-2), taille = population raccordée, bord coloré si hausse')}</div>
       <div class="mqh-row">Eau du robinet : ${it(`<svg width="12" height="13" viewBox="0 0 40 40"><path d="M20 4 C20 4 8 18 8 25 a12 12 0 0 0 24 0 C32 18 20 4 20 4 Z" fill="${L1.orange}" stroke="none" stroke-width="4"/></svg>`, 'restriction de consommation')}${it(`<svg width="12" height="13" viewBox="0 0 40 40"><path d="M20 4 C20 4 8 18 8 25 a12 12 0 0 0 24 0 C32 18 20 4 20 4 Z" fill="${L1.jaune}" stroke="none" stroke-width="4"/></svg>`, 'publics sensibles ou bactériologie (sans pastille : restrictions seulement)')}${it(`<svg width="12" height="13" viewBox="0 0 40 40"><path d="M20 4 C20 4 8 18 8 25 a12 12 0 0 0 24 0 C32 18 20 4 20 4 Z" fill="none" stroke="${L1.jaune}" stroke-width="4"/></svg>`, 'physico-chimie, consommable (avec la pastille)')}</div>
       <div class="mqh-row mqh-note">Avec la pastille Veille sanitaire : ${it(swatch(L1.vert, 'sq'), 'pas d’alerte épidémique (mesuré)')} ${it(swatch(SENTI_HEX, 'disc'), 'région parmi les plus touchées (Sentinelles), taille = écart au taux national')}</div>
@@ -1016,8 +1106,8 @@
         getJson(`${OD}sumeau_stations/records?limit=100`),
         getJson(`${OD}sum-eau-indicateurs/records?limit=60&order_by=${encodeURIComponent('semaine desc')}`),
         getJson('/data/eau-potable.json')]);
-      const ehpad = await getJson('/data/ehpad.json');
-      S.data = { syn, alerts, senti, ww, drugs, recalls, dgs, apl, hosp, ehpad, extraSyn: Object.fromEntries(EXTRA_SYN.map((k, i) => [k, extra[i]])), wwMeta, wwSt, water, arbo, vacc, legio, heatDays, heatDeaths };
+      const [ehpad, deces] = await Promise.all([getJson('/data/ehpad.json'), getJson('/data/deces.json')]);
+      S.data = { syn, alerts, senti, ww, drugs, recalls, dgs, apl, hosp, ehpad, deces, extraSyn: Object.fromEntries(EXTRA_SYN.map((k, i) => [k, extra[i]])), wwMeta, wwSt, water, arbo, vacc, legio, heatDays, heatDeaths };
       await draw();
     };
     await load();
