@@ -4,7 +4,7 @@ import { deflateRawSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import {
   brandOf, communeCandidates, communeOf, euvdDay, hostKind, hourly, isFrenchHost, lastVsMedian, parseCnil, parseEuvd, parseFeodo, parseUrlhaus,
-  prefectureOf, publicWatch, radarBgp, radarSeries, slug, trackedCves, unzipFirst,
+  prefectureOf, publicWatch, radarBgp, radarSeries, slug, targetState, trackedCves, unzipFirst,
 } from '../api/_lib/cyber-watch.js';
 
 const NOW = Date.parse('2026-10-18T15:00:00Z');
@@ -127,11 +127,18 @@ describe('veille cyber élargie : réponse publique', () => {
       lookalikes: { readAt: 'x', domains: [], perDay: [], days: ['2026-10-17'] },
       services: { readAt: 'x', items: [{ id: 'a', name: 'A', url: 'u', ok: true, samples: [[29_000_000, 300]] }] },
     });
-    expect(Object.keys(body).sort()).toEqual(['abuse', 'cnil', 'ddosia', 'epss', 'errors', 'euvd', 'lookalikes', 'radar', 'readAt', 'services']);
+    expect(Object.keys(body).sort()).toEqual(['abuse', 'cnil', 'ddosia', 'epss', 'errors', 'euvd', 'lookalikes', 'radar', 'readAt', 'services', 'targets']);
     expect(body.ddosia).not.toHaveProperty('configsSeen');
     expect(body.lookalikes).not.toHaveProperty('days');
     expect(body.services.items[0]).not.toHaveProperty('samples');
     expect(body.services.items[0].hours).toHaveLength(24);
+  });
+  it('site visé : joignable, lent (plus de 3 fois sa médiane et plus de 3 s) ou injoignable', () => {
+    expect(targetState(true, 400, 350)).toBe('joignable');
+    expect(targetState(true, 4000, 350)).toBe('lent');
+    expect(targetState(true, 2500, 300)).toBe('joignable');
+    expect(targetState(true, 9000, null)).toBe('joignable');
+    expect(targetState(false, null, 300)).toBe('injoignable');
   });
   it('disponibilité horaire sur 24 h', () => {
     const h = hourly([[60 * 100, 300], [60 * 100 + 5, -1], [60 * 101, 200]]);

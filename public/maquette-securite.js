@@ -244,7 +244,7 @@
     // Cibles françaises des hacktivistes pro-russes (NoName057(16)) : lieu sûr seulement (préfecture d'après gouv.fr, commune au nom exact) ;
     // une cible publiée n'est pas une attaque réussie. Anneau jaune : site présent dans une liste de moins de 24 h.
     S.ddos = ddosPlaces();
-    setData('mqs-ddos', fc(S.ddos.map((g, i) => pt(g.at, { i, recent: g.recent, n: g.hosts.length,
+    setData('mqs-ddos', fc(S.ddos.map((g, i) => pt(g.at, { i, recent: g.recent, ring: g.level ? L1[g.level] : CAT.hacktivist, n: g.hosts.length,
       label: `${g.name}${g.hosts.length > 1 ? ` · ${g.hosts.length}${NB}sites` : ''}` }))));
     // Criminalité : indicateur du panneau ; villes seulement pour les indicateurs communaux (sinon violences physiques hors famille).
     crimeCompute();
@@ -373,13 +373,13 @@
         paint: { 'text-color': ['match', ['get', 'kind'], 'heurts', '#ff8a80', PROT.annonce], 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.4 } });
       m.addLayer({ id: 'mqs-ddos', type: 'circle', source: 'mqs-ddos',
         paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 7, 8, 10], 'circle-color': 'rgba(0,0,0,0)',
-          'circle-stroke-color': ['case', ['get', 'recent'], L1.jaune, CAT.hacktivist], 'circle-stroke-width': 2.5 } });
+          'circle-stroke-color': ['get', 'ring'], 'circle-stroke-width': 2.5 } });
       m.addLayer({ id: 'mqs-ddos-dot', type: 'circle', source: 'mqs-ddos',
         paint: { 'circle-radius': 2.6, 'circle-color': CAT.hacktivist, 'circle-stroke-color': '#0a0a0f', 'circle-stroke-width': 0.8 } });
       m.addLayer({ id: 'mqs-ddos-label', type: 'symbol', source: 'mqs-ddos',
         layout: { 'text-field': '', 'text-size': 10.5, 'text-font': ['Open Sans Semibold'], 'text-variable-anchor': ['right', 'left', 'top', 'bottom'],
           'text-radial-offset': 1.1, 'text-optional': true },
-        paint: { 'text-color': ['case', ['get', 'recent'], L1.jaune, CAT.hacktivist], 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.4 } });
+        paint: { 'text-color': ['get', 'ring'], 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.4 } });
       m.addLayer({ id: 'mqs-crime-city', type: 'circle', source: 'mqs-crime', filter: ['all', ['>=', ['get', 'sortKey'], 200], ['!', ['get', 'estimated']]], layout: { 'circle-sort-key': ['get', 'sortKey'] },
         paint: { 'circle-color': 'rgba(0,0,0,0)', 'circle-radius': ['+', 2, ['get', 'r']], 'circle-stroke-color': ['get', 'color'], 'circle-stroke-width': 2, 'circle-stroke-opacity': 0.95 } }, b);
       m.addLayer({ id: 'mqs-bases-closed', type: 'symbol', source: 'mqs-bases', filter: ['==', ['get', 'status'], 'ferme'],
@@ -518,6 +518,7 @@
       ['Exposé', [ex.bases.length ? plural(ex.bases.length, 'site') + ' de défense' : null, ex.land.length ? `${plural(ex.cables, 'câble')} atterrant` : null, ex.dcs.length ? plural(ex.dcs.length, 'centre') + ' de données' : null].filter(Boolean).join(' · ') || 'rien dans les inventaires'],
       air.length ? ['Aéronefs militaires au-dessus', air.map((x) => x.callsign || x.registration || x.hex).join(', ')] : null,
       ['Zone de défense', `${a.zone} (préfet de zone : ${ZONE_SEAT[a.zone] ?? 'n.d.'})`],
+      ...targetsIn(a.code).slice(0, 3).map((h) => ['Cyber : site visé (NoName057(16))', `${h.host} · ${isRecentTarget(h) ? targetText(h) : `liste du ${when(h.last)}`}`]),
     ].filter(Boolean);
     return { dot: a.level === 'vert' ? CAT.telecom : L1[a.level], title: `${a.nom} (${a.code})`, state: a.level === 'vert' ? 'Normal · sous le seuil de vigilance' : `${WORD[a.level]} · communications`, stateHex: a.level === 'vert' ? '#c7c7cc' : L1[a.level],
       rows, hint: 'Clic : fiche du département', source: `${telecomSource()} · IODA · ADS-B` };
@@ -623,6 +624,22 @@
   };
   // ─── Cibles des hacktivistes (veille cyber élargie, /api/sovereignty/cyber-watch) ───
   const KIND_WORD = { 'préfecture': 'site de la préfecture', administration: 'site d’administration', 'collectivité': 'site de la collectivité', port: 'site portuaire', site: 'site' };
+  const TARGET_WORD = { joignable: 'joignable', lent: 'lent', injoignable: 'injoignable' };
+  const targetOf = (host) => (S.data.watch?.targets?.items ?? []).find((t) => t.host === host) ?? null;
+  const isRecentTarget = (h) => Date.now() - Date.parse(h.last) < 864e5;
+  // Visé en 24 h et lent ou injoignable à la dernière sonde : orange ; visé et joignable : jaune ; plus ancien : sans niveau.
+  const targetLevel = (h) => (!isRecentTarget(h) ? null : ['lent', 'injoignable'].includes(targetOf(h.host)?.state) ? 'orange' : 'jaune');
+  const targetText = (h) => {
+    const t = targetOf(h.host);
+    if (!isRecentTarget(h)) return 'liste de plus de 24 h';
+    if (!t) return 'pas encore sondé';
+    const since = t.since ? ` depuis ${when(t.since)}` : '';
+    if (t.state === 'joignable') return `joignable${t.ms != null ? ` (${num(t.ms)}${NB}ms)` : ''}`;
+    if (t.state === 'lent') return `lent${since} (${t.ms != null ? `${fr2(t.ms / 1000)}${NB}s` : 'n.d.'}, habituellement ${t.medianMs != null ? `${num(t.medianMs)}${NB}ms` : 'n.d.'})`;
+    return `injoignable${since}`;
+  };
+  // Sites visés d'un département (lieu sûr seulement).
+  const targetsIn = (code) => (S.data.watch?.ddosia?.hosts ?? []).filter((h) => h.place?.dept === code);
   const ddosPlaces = () => {
     const groups = new Map();
     const now = Date.now();
@@ -633,9 +650,11 @@
       const at = pl.lon != null && pl.lat != null ? [pl.lon, pl.lat] : S.agg?.get(pl.dept)?.at ?? null;
       if (!at) continue;
       const key = `${pl.dept}:${pl.name}`;
-      const g = groups.get(key) ?? { key, name: pl.how === 'préfecture' ? pl.name : pl.name, dept: pl.dept, how: pl.how, at, hosts: [], recent: false };
+      const g = groups.get(key) ?? { key, name: pl.name, dept: pl.dept, how: pl.how, at, hosts: [], recent: false, level: null };
       g.hosts.push(h);
       if (now - Date.parse(h.last) < 864e5) g.recent = true;
+      const l = targetLevel(h);
+      if (l === 'orange' || (l === 'jaune' && !g.level)) g.level = l;
       groups.set(key, g);
     }
     return [...groups.values()];
@@ -643,12 +662,14 @@
   const ddosCard = (g) => {
     const w = S.data.watch?.ddosia;
     const hosts = [...g.hosts].sort((a, b) => String(b.last).localeCompare(String(a.last)));
-    const rows = [...hosts.slice(0, 5).map((h) => [h.host, `${KIND_WORD[h.kind] ?? 'site'} · ${h.configs > 1 ? `${h.configs}${NB}listes, dernière le ${when(h.last)}` : `liste du ${when(h.last)}`}`]),
+    const rows = [...hosts.slice(0, 5).flatMap((h) => [[h.host, `${KIND_WORD[h.kind] ?? 'site'} · ${h.configs > 1 ? `${h.configs}${NB}listes, dernière le ${when(h.last)}` : `liste du ${when(h.last)}`}`],
+      ['État du site (sonde 10 min)', targetText(h)]]),
       ['Lieu', g.how === 'préfecture' ? `${g.name} (${g.dept}) : point au centre du département` : `${g.name} (${g.dept}), déduit du nom de domaine`],
       ['Dernière liste du groupe', w?.lastConfig ? `${when(w.lastConfig.at)} · ${w.lastConfig.targets}${NB}sites, dont ${w.lastConfig.fr} en France` : 'n.d.'],
       ['Sites français sur 30 jours', `${(w?.hosts ?? []).length}`]];
-    return { dot: g.recent ? L1.jaune : CAT.hacktivist, title: g.name, state: g.recent ? 'Visé par NoName057(16) dans une liste de moins de 24 h' : 'Visé par NoName057(16) sur 30 jours',
-      stateHex: g.recent ? L1.jaune : CAT.hacktivist, rows,
+    const hex = g.level ? L1[g.level] : CAT.hacktivist;
+    return { dot: hex, title: g.name, state: g.level === 'orange' ? 'Visé par NoName057(16) en 24 h · site lent ou injoignable' : g.recent ? 'Visé par NoName057(16) en 24 h · site joignable' : 'Visé par NoName057(16) sur 30 jours',
+      stateHex: hex, rows,
       hint: 'Liste de cibles publiée par le groupe pro-russe : une cible n’est pas une attaque réussie (site ralenti ou indisponible quelques heures, sans vol de données)',
       source: `witha.name (listes DDoSia), lu ${when(w?.readAt)}` };
   };
@@ -889,6 +910,7 @@
       ex.land.length ? `Atterrages de câbles : ${ex.land.map((l) => `${l.commune} (${plural(l.n, 'câble')})`).join(', ')}.` : 'Aucun atterrage de câble sous-marin.',
       ex.dcs.length ? `Centres de données : ${ex.dcs.map((x) => x.name).slice(0, 6).join(', ')}${ex.dcs.length > 6 ? ` et ${ex.dcs.length - 6}${NB}autres` : ''}.` : 'Aucun centre de données inventorié.',
       air.length ? `Aéronefs militaires au-dessus du département : ${air.map((x) => [x.callsign, x.registration].filter(Boolean).join(' · ')).join(' ; ')}.` : 'Aucun aéronef militaire relevé au-dessus du département au dernier relevé.',
+      ...targetsIn(a.code).map((h) => `Cyber : ${h.host} (${KIND_WORD[h.kind] ?? 'site'}) dans les listes de cibles du groupe pro-russe NoName057(16), dernière le ${when(h.last)} ; site ${targetText(h)}. Une cible publiée n’est pas une attaque réussie ; contact : CSIRT régional, ou CERT-FR pour un service de l’État.`),
     ];
     const evo = `France entière : ${num(tel?.summary?.recent ?? 0)}${NB}sites récents ; ${num(tel?.summary?.newSincePrevious ?? 0)}${NB}nouveaux et ${num(tel?.summary?.resolvedSincePrevious ?? 0)}${NB}rétablis depuis le fichier précédent.`;
     const unknown = [
@@ -916,6 +938,33 @@
   const SECTOR = { Technology: 'technologie', Healthcare: 'santé', 'Professional Services': 'services aux entreprises', 'Agriculture and Food Production': 'agriculture et agroalimentaire',
     'Energy & Utilities': 'énergie et réseaux', 'Financial Services': 'finance', Manufacturing: 'industrie', 'Retail & E-Commerce': 'commerce', 'Public Sector': 'secteur public', Education: 'éducation',
     'Transportation/Logistics': 'transport et logistique', Construction: 'construction', Telecommunication: 'télécoms', Government: 'administration', 'Hospitality and Tourism': 'tourisme' };
+  // Niveau de la menace, mêmes règles que la pastille du panneau Vigilance cyber (cyberLevel) : rouge si deux alertes CERT-FR en cours
+  // publiées depuis moins de 7 jours, orange pour une, jaune pour une alerte plus ancienne en cours. L'indice national, lui, plafonne le cyber.
+  const parisDay = (ms) => new Date(ms).toLocaleDateString('sv-SE', { timeZone: 'Europe/Paris' });
+  const ageDays = (d) => Math.round((Date.parse(`${parisDay(Date.now())}T00:00:00Z`) - Date.parse(`${String(d).slice(0, 10)}T00:00:00Z`)) / 864e5);
+  const cyberThreat = () => {
+    const alerts = (S.data.cyber?.certfr?.alerts ?? []).filter((x) => x.status === 'en-cours');
+    const recent = alerts.filter((x) => ageDays(x.firstVersion) < 7);
+    if (!S.data.cyber?.certfr?.readAt) return { level: null, word: 'non évalué' };
+    if (recent.length >= 2) return { level: 'rouge', word: `rouge (${recent.length}${NB}alertes CERT-FR en cours publiées depuis moins de 7${NB}jours)` };
+    if (recent.length === 1) return { level: 'orange', word: `orange (alerte CERT-FR en cours publiée le ${day(recent[0].firstVersion)})` };
+    if (alerts.length) return { level: 'jaune', word: `jaune (${plural(alerts.length, 'alerte')} CERT-FR en cours)` };
+    const avis = (S.data.cyber?.certfr?.avis ?? []).find((a) => ageDays(a.lastVersion ?? a.firstVersion) < 7 && (a.kevCves ?? []).length);
+    if (avis) return { level: 'jaune', word: `jaune (${avis.ref} : avis citant une vulnérabilité exploitée du catalogue KEV)` };
+    const ratio = S.data.cyber?.ransomware?.ratio;
+    if (ratio != null && ratio > 1.5) return { level: 'jaune', word: `jaune (revendications à ${fr2(ratio)}${NB}fois la moyenne, non confirmées)` };
+    return { level: 'vert', word: 'vert (aucune alerte CERT-FR en cours)' };
+  };
+  // Sites visés en 24 h, par nature (lieu quand il est sûr) ; état des sites lents ou injoignables seulement.
+  const hackedSummary = (hacked) => {
+    const KIND_PL = { 'préfecture': 'préfectures', administration: 'administrations', 'collectivité': 'collectivités', port: 'ports', site: 'autres sites' };
+    const parts = Object.keys(KIND_PL).map((k) => { const hs = hacked.filter((h) => h.kind === k); if (!hs.length) return null;
+      const names = [...new Set(hs.map((h) => (h.place && k !== 'site' ? h.place.name.replace(/^Préfecture /, '') : h.host)))];
+      return `${hs.length}${NB}${hs.length > 1 ? KIND_PL[k] : KIND_PL[k].replace(/s$/, '').replace('autre site', 'autre site')} (${names.join(', ')})`; }).filter(Boolean);
+    const bad = hacked.filter((h) => targetLevel(h) === 'orange');
+    return `${plural(hacked.length, 'site')} français dans les listes de cibles du groupe pro-russe NoName057(16) en 24${NB}h : ${parts.join(' ; ')}. `
+      + (bad.length ? `Lents ou injoignables à la dernière sonde : ${bad.map((h) => `${h.host} (${targetText(h)})`).join(', ')}.` : 'Tous joignables à la dernière sonde (toutes les 10 min).');
+  };
   const cyberNote = () => {
     const c = S.data.cyber ?? {}, cert = c.certfr ?? {}, kev = c.kev ?? {}, rw = c.ransomware ?? {};
     const open = (cert.alerts ?? []).filter((x) => x.status === 'en-cours');
@@ -929,9 +978,13 @@
     const land = [...(S.landings ?? [])].sort((a, b) => b.n - a.n);
     const zonesKo = Object.values(S.data.cloud?.providers ?? {}).flatMap((p) => p.zones ?? []).filter((z) => z.status && z.status !== 'vert');
     const pct = (r) => `${r >= 1 ? '+' : ''}${Math.round((r - 1) * 100)}${NB}%`;
-    return { sources: ['CERT-FR', 'CISA', 'Ransomware', 'Pages'], title: 'Vigilance cyber', sub: 'France entière · national, jamais critique (plafond : vigilance)', level: open.length ? 'jaune' : null, at: when(new Date().toISOString()),
+    const threat = cyberThreat();
+    const hacked = (S.data.watch?.ddosia?.hosts ?? []).filter(isRecentTarget);
+    return { sources: ['CERT-FR', 'CISA', 'Ransomware', 'Pages'], title: 'Vigilance cyber',
+      sub: `France entière · niveau de la menace : ${threat.word} · dans l’indice national : situation « élevée » au plus, jamais critique`, level: threat.level, at: when(new Date().toISOString()),
       blocks: [
         ['Ce qui se passe', [
+          hacked.length ? hackedSummary(hacked) : 'Aucun site français dans les listes de cibles de NoName057(16) en 24' + NB + 'h.',
           open.length ? `${open.length}${NB}alertes CERT-FR en cours, dont ${open.filter((x) => x.exploited).length}${NB}exploitées :` : 'Aucune alerte CERT-FR en cours.',
           ...open.map((x) => `${x.title} (${x.ref}, depuis le ${day(x.firstVersion)}${x.lastVersion !== x.firstVersion ? `, mise à jour le ${day(x.lastVersion)}` : ''})${x.exploitedQuote ? ` : « ${x.exploitedQuote} »` : ''}`),
           closed.length ? `Clôturées récemment : ${closed.map((x) => `${x.title} (${x.closedAt ? `le ${day(x.closedAt)}` : 'date n.d.'})`).join(' ; ')}.` : null,
@@ -1031,10 +1084,11 @@
     if (!w) return '';
     const now = Date.now();
     const recent = (w.ddosia?.hosts ?? []).filter((h) => now - Date.parse(h.last) < 864e5);
+    const degraded = recent.filter((h) => targetLevel(h) === 'orange');
     const ratio = w.radar ? Math.max(w.radar.l7Ratio ?? 0, w.radar.l3Ratio ?? 0) : null;
     const down = (w.services?.items ?? []).filter((x) => !x.ok);
     const line = (hex, text) => `<div class="mqs-cy-w"><i style="background:${hex}"></i>${esc(text)}</div>`;
-    return line(recent.length ? L1.jaune : CAT.hacktivist, recent.length ? `Hacktivistes : ${plural(recent.length, 'site')} français visé${recent.length > 1 ? 's' : ''} en 24${NB}h (NoName057(16))` : 'Hacktivistes : aucun site français visé en 24 h')
+    return line(degraded.length ? L1.orange : recent.length ? L1.jaune : CAT.hacktivist, recent.length ? `Hacktivistes : ${plural(recent.length, 'site')} français visé${recent.length > 1 ? 's' : ''} en 24${NB}h (NoName057(16))${degraded.length ? `, ${degraded.length} lent${degraded.length > 1 ? 's' : ''} ou injoignable${degraded.length > 1 ? 's' : ''}` : ', tous joignables'}` : 'Hacktivistes : aucun site français visé en 24 h')
       + (ratio !== null ? line(ratio >= 4 ? L1.orange : ratio >= 2 ? L1.jaune : '#f472b6', `DDoS vers la France : ${fr2(ratio)}${NB}× la médiane (Cloudflare)`) : '')
       + (w.services ? line(down.length ? L1.rouge : L1.vert, down.length ? `Injoignable : ${down.map((x) => x.name).join(', ')}` : `${w.services.items.length} services publics en ligne`) : '');
   };
@@ -1042,10 +1096,11 @@
     const c = S.data.cyber?.certfr;
     const open = (c?.alerts ?? []).filter((x) => x.status === 'en-cours');
     const exploited = open.filter((x) => x.exploited).length;
-    cyber.innerHTML = `<div class="mqs-cy-h">${icon('shield', open.length ? L1.jaune : MUTE)}<b>Cyber</b><span>${open.length ? `${open.length}${NB}alertes CERT-FR en cours, dont ${exploited}${NB}exploitées` : 'aucune alerte CERT-FR en cours'}</span></div>`
+    const threat = cyberThreat();
+    cyber.innerHTML = `<div class="mqs-cy-h">${icon('shield', threat.level && threat.level !== 'vert' ? L1[threat.level] : MUTE)}<b>Cyber</b><span>${open.length ? `${open.length}${NB}alertes CERT-FR en cours, dont ${exploited}${NB}exploitées` : 'aucune alerte CERT-FR en cours'}</span></div>`
       + (open.length ? `<div class="mqs-cy-l">${open.slice(0, 3).map((x) => `<a href="${esc(x.url)}" target="_blank" rel="noopener" title="${esc(x.title)}">${esc(x.title)}</a>`).join('')}</div>` : '')
       + watchLines()
-      + `<div class="mqs-cy-s">National · pastille : infrastructure exposée et cibles d’hacktivistes sur la carte · <a href="#" class="mqs-cy-more">fiche détaillée</a></div>`;
+      + `<div class="mqs-cy-s">Niveau de la menace : ${esc(threat.word)} · l’indice national plafonne le cyber (jamais critique) · <a href="#" class="mqs-cy-more">fiche détaillée</a></div>`;
     const more = cyber.querySelector('.mqs-cy-more'); if (more) more.onclick = (e) => { e.preventDefault(); openFiche('cyber', 'fr'); };
   };
 

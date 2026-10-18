@@ -3013,6 +3013,11 @@ export interface CyberWatchService {
   id: string; name: string; url: string; ok: boolean; status: number | null; ms: number | null; error: string | null; downSince: string | null;
   uptime24: number | null; medianMs: number | null; hours: (number | null)[];
 }
+/** Site français visé par NoName057(16) dans une liste de moins de 24 h, sondé toutes les 10 min par le serveur. */
+export interface CyberWatchTarget {
+  host: string; ok: boolean; status: number | null; ms: number | null; error: string | null; medianMs: number | null;
+  state: 'joignable' | 'lent' | 'injoignable'; since: string | null;
+}
 export interface CyberWatchResponse {
   readAt: string | null;
   radar: CyberWatchRadar | null;
@@ -3023,6 +3028,7 @@ export interface CyberWatchResponse {
   epss: CyberWatchEpss | null;
   euvd: CyberWatchEuvd | null;
   services: { readAt: string; items: CyberWatchService[] } | null;
+  targets: { readAt: string; items: CyberWatchTarget[] } | null;
   errors: string[];
 }
 

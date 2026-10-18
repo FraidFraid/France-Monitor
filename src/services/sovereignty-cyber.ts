@@ -132,9 +132,15 @@ const service = record({
   hours: list(num),
 });
 
+const TARGET_STATES: ReadonlySet<string> = new Set(['joignable', 'lent', 'injoignable']);
+const target = record({
+  host: str, ok: bool, status: num, ms: num, error: strOrNull, medianMs: num, state: value((v) => isOneOf(v, TARGET_STATES)), since: dateOrNull,
+});
+
 const CYBER_WATCH_SHAPE = shapeOf<CyberWatchResponse>(record({
   readAt: dateOrNull, radar, abuse, ddosia, lookalikes, cnil, epss, euvd,
-  services: nullable(record({ readAt: date, items: list(service, 'id') })), errors: strings,
+  services: nullable(record({ readAt: date, items: list(service, 'id') })),
+  targets: nullable(record({ readAt: date, items: list(target, 'host') })), errors: strings,
 }));
 
 /** Écarts à la forme de /api/sovereignty/cyber-watch, nommés un par un ; liste vide : conforme. */

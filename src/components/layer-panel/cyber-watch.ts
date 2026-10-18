@@ -6,7 +6,7 @@
 // aucune n'entre dans la pastille ni dans l'indice (informations d'appui). Une cible publiée n'est jamais présentée comme une attaque
 // réussie ; un domaine imitateur n'est jamais un lien cliquable (écrit « [.] »).
 import type {
-  CyberResponse, CyberWatchCount, CyberWatchResponse, CyberWatchService, DdosiaHost, RadarAs,
+  CyberResponse, CyberWatchCount, CyberWatchResponse, CyberWatchService, CyberWatchTarget, DdosiaHost, RadarAs,
 } from '../../types/index.ts';
 import type { VigilanceLevel } from '../../services/vigilance.ts';
 import { escapeHtml } from '../france-intel-events.ts';
@@ -95,7 +95,7 @@ function radarChart(points: { day: string; value: number }[], color: string, lab
 }
 
 function ddosSection(w: CyberWatchResponse, now: number, open: OpenFn): FicheSection {
-  const base = { id: 'ddos', title: 'Attaques DDoS visant la France', collapsible: true, open: open('ddos', true) };
+  const base = { id: 'ddos', title: 'Attaques DDoS visant la France', collapsible: true, open: open('ddos', false) };
   const r = w.radar;
   if (r === null) return { ...base, summary: 'n.d.', html: sourceDown('Cloudflare Radar') };
   const level = ddosLevel(Math.max(r.l7Ratio ?? 0, r.l3Ratio ?? 0) || null);
@@ -127,10 +127,34 @@ function ddosSection(w: CyberWatchResponse, now: number, open: OpenFn): FicheSec
 
 const KIND_ORDER: readonly string[] = ['préfecture', 'administration', 'collectivité', 'port', 'site'];
 
-/** Cible relevée dans une liste de moins de 24 h : jaune (une cible publiée n'est pas une attaque réussie). */
-export function hacktivistLevel(h: DdosiaHost, now: number): VigilanceLevel | null {
+/** Site relevé dans une liste de moins de 24 h. */
+export function isRecentTarget(h: DdosiaHost, now: number): boolean {
   const last = dataMs(h.last);
-  return last !== null && now - last < DAY_MS ? 'jaune' : null;
+  return last !== null && now - last < DAY_MS;
+}
+
+/** Dernière sonde d'un site visé (toutes les 10 min, sites des listes de moins de 24 h). */
+export function targetOf(w: CyberWatchResponse | null, host: string): CyberWatchTarget | null {
+  return w?.targets?.items.find((t) => t.host === host) ?? null;
+}
+
+/**
+ * Rapprochement (18/10/2026) : site visé dans une liste de moins de 24 h et lent ou injoignable à la dernière sonde : orange ; visé et
+ * joignable (ou pas encore sondé) : jaune ; au-delà de 24 h : sans niveau. Jamais rouge : une sonde seule ne prouve pas une attaque.
+ */
+export function hacktivistLevel(h: DdosiaHost, now: number, w: CyberWatchResponse | null = null): VigilanceLevel | null {
+  if (!isRecentTarget(h, now)) return null;
+  const t = targetOf(w, h.host);
+  return t !== null && t.state !== 'joignable' ? 'orange' : 'jaune';
+}
+
+/** État du site à la dernière sonde, en mots (« joignable · 340 ms », « injoignable depuis 10:20 »). */
+export function targetText(t: CyberWatchTarget | null, now: number): string {
+  if (t === null) return 'pas encore sondé';
+  if (t.state === 'joignable') return `joignable${t.ms !== null ? ` · ${formatCount(t.ms)}${NBSP}ms` : ''}`;
+  const since = t.since ? ` depuis ${atText(t.since, now).replace(/^à /, '')}` : '';
+  if (t.state === 'lent') return `lent${since} · ${t.ms !== null ? `${frNumber(t.ms / 1000, 1)}${NBSP}s` : 'n.d.'} (habituellement ${t.medianMs !== null ? `${formatCount(t.medianMs)}${NBSP}ms` : 'n.d.'})`;
+  return `injoignable${since}${t.error ? ` (${t.error})` : t.status !== null ? ` (HTTP ${t.status})` : ''}`;
 }
 
 function placeText(h: DdosiaHost): string {
@@ -138,11 +162,12 @@ function placeText(h: DdosiaHost): string {
   return h.place.how === 'préfecture' ? `${h.place.name} (${h.place.dept})` : `${h.place.name} (${h.place.dept}), lieu déduit du nom de domaine`;
 }
 
-function hostRow(h: DdosiaHost, now: number): string {
+function hostRow(h: DdosiaHost, w: CyberWatchResponse, now: number): string {
   const seen = h.configs > 1 ? `${h.configs} listes, du ${shortDate(h.first, now)} au ${shortDate(h.last, now)}` : `liste du ${shortDate(h.last, now)}`;
+  const state = isRecentTarget(h, now) ? `site ${targetText(targetOf(w, h.host), now)} · ` : '';
   return listRow({
-    text: h.host, value: h.kind, level: hacktivistLevel(h, now), color: HACKTIVIST_COLOR,
-    note: `${placeText(h)} · ${seen}`,
+    text: h.host, value: h.kind, level: hacktivistLevel(h, now, w), color: HACKTIVIST_COLOR,
+    note: `${state}${placeText(h)} · ${seen}`,
   });
 }
 
@@ -150,8 +175,10 @@ function hacktivistSection(w: CyberWatchResponse, now: number, open: OpenFn): Fi
   const base = { id: 'hacktivistes', title: 'Cibles des hacktivistes pro-russes (NoName057(16))', collapsible: true, open: open('hacktivistes', true) };
   const d = w.ddosia;
   if (d === null) return { ...base, summary: 'n.d.', html: sourceDown('witha.name') };
-  const recent = d.hosts.filter((h) => hacktivistLevel(h, now) !== null);
-  const hosts = [...d.hosts].sort((a, b) => (hacktivistLevel(b, now) ? 1 : 0) - (hacktivistLevel(a, now) ? 1 : 0)
+  const recent = d.hosts.filter((h) => isRecentTarget(h, now));
+  const degraded = recent.filter((h) => hacktivistLevel(h, now, w) === 'orange');
+  const rank = (h: DdosiaHost): number => { const l = hacktivistLevel(h, now, w); return l === 'orange' ? 2 : l === 'jaune' ? 1 : 0; };
+  const hosts = [...d.hosts].sort((a, b) => rank(b) - rank(a)
     || KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || b.last.localeCompare(a.last));
   const days: DayStack[] = d.days.flatMap((x) => {
     const at = dataMs(`${x.day}T12:00:00Z`);
@@ -169,15 +196,16 @@ function hacktivistSection(w: CyberWatchResponse, now: number, open: OpenFn): Fi
   const more = hosts.slice(15);
   return {
     ...base,
-    summary: summaryText(recent.length > 0 ? `${plural(recent.length, 'site français', 'sites français')} visés en 24 h · ${d.hosts.length} sur 30 jours`
+    summary: summaryText(recent.length > 0 ? `${plural(recent.length, 'site français', 'sites français')} visés en 24 h${degraded.length > 0 ? `, ${degraded.length} dégradés` : ''} · ${d.hosts.length} sur 30 jours`
       : `${plural(d.hosts.length, 'site français', 'sites français')} sur 30 jours`),
     html: latest
-      + (shown.length > 0 ? shown.map((h) => hostRow(h, now)).join('') : emptyLine('Aucun site français dans les listes depuis 30 jours.'))
-      + (more.length > 0 ? `<details class="lp-more"><summary>${summaryText(`${more.length} sites de plus`)}</summary>${more.map((h) => hostRow(h, now)).join('')}</details>` : '')
+      + (shown.length > 0 ? shown.map((h) => hostRow(h, w, now)).join('') : emptyLine('Aucun site français dans les listes depuis 30 jours.'))
+      + (more.length > 0 ? `<details class="lp-more"><summary>${summaryText(`${more.length} sites de plus`)}</summary>${more.map((h) => hostRow(h, w, now)).join('')}</details>` : '')
       + (chart ? `<div class="lp-legend"><span class="lp-key"><i style="background:${HACKTIVIST_COLOR}"></i>sites français par jour</span></div>${chart}` : '')
       + note('Listes de cibles que le groupe distribue à ses volontaires (logiciel DDoSia), relevées et publiées par le chercheur witha.name. '
         + 'Une cible publiée n’est pas une attaque réussie : ces attaques visent surtout à rendre un site lent ou indisponible quelques heures, '
-        + 'sans vol de données. Jaune : site présent dans une liste de moins de 24 heures.')
+        + 'sans vol de données. Jaune : site présent dans une liste de moins de 24 heures et joignable ; orange : visé et lent ou injoignable à la '
+        + 'dernière sonde (toutes les 10 minutes depuis le serveur de France Monitor, à Paris), à confirmer auprès du responsable du site.')
       + note('Lieu : préfecture d’après le domaine en gouv.fr, sinon commune de 5 000 habitants et plus dont le nom est exactement celui du domaine ; '
         + 'sinon aucun lieu.')
       + `<p class="fmk-note">${sourceLinkHtml('witha.name (listes DDoSia)', WITHA_URL)} · ${sourceLinkHtml('opération Eastwood d’Europol contre le groupe', EUROPOL_URL)}`
@@ -285,7 +313,7 @@ function lookalikeSection(w: CyberWatchResponse, now: number, open: OpenFn): Fic
   const lastDay = l.perDay.at(-1);
   return {
     ...base,
-    summary: summaryText(`${plural(l.domains.length, 'domaine')} sur 30 jours`),
+    summary: summaryText(`${plural(l.domains.length, 'domaine')} sur 30 jours · couverture partielle`),
     html: (lastDay ? kvRow(`Enregistrés le ${shortDate(lastDay.day, now)}`, valueHtml(`${lastDay.matched} sur ${formatCount(lastDay.total)} domaines lus`)) : '')
       + (brands.length > 0
         ? brands.map((b) => barRow({ label: b.label, pct: (b.count / max) * 100, value: formatCount(b.count), color: LOOKALIKE_COLOR })).join('')
@@ -320,7 +348,7 @@ function serviceRow(s: CyberWatchService, now: number): string {
 }
 
 function servicesSection(w: CyberWatchResponse, now: number, open: OpenFn): FicheSection {
-  const base = { id: 'services', title: 'Disponibilité des services publics en ligne', collapsible: true, open: open('services', true) };
+  const base = { id: 'services', title: 'Disponibilité des services publics en ligne', collapsible: true, open: open('services', (w.services?.items ?? []).some((i) => !i.ok)) };
   const s = w.services;
   if (s === null) return { ...base, summary: 'n.d.', html: sourceDown('sondes de France Monitor') };
   const down = s.items.filter((i) => !i.ok);
@@ -408,13 +436,30 @@ export { EPSS_URL };
 
 // ─── Assemblage et méthode ───
 
-/** Sections de la veille élargie, dans l'ordre du panneau ; `null` (jamais lue) : aucune section (les sources apparaissent en méthode). */
-export function cyberWatchSections(w: CyberWatchResponse | null, cyber: CyberResponse | null, now: number, open: OpenFn): { early: FicheSection[]; late: FicheSection[] } {
-  if (w === null) return { early: [], late: [] };
+/** Réseau français victime d'un détournement BGP en cours ou récent (7 jours) : seul cas où la section Routage est montrée. */
+export function frenchHijacks(w: CyberWatchResponse | null): number {
+  return (w?.radar?.hijacks ?? []).filter((h) => h.victims.some((v) => v.cc === 'FR')).length;
+}
+
+/**
+ * Sections de la veille élargie en deux niveaux de lecture (18/10/2026) : `decision` (cibles des hacktivistes, services publics, DDoS),
+ * lues par un cabinet ou une préfecture ; `technical` (routage, serveurs malveillants, domaines imitateurs, ENISA, CNIL), repliées sous
+ * « Détails techniques (CSIRT) ». Routage : seulement quand un réseau français est victime d'un détournement. `null` : aucune section.
+ */
+export function cyberWatchSections(w: CyberWatchResponse | null, cyber: CyberResponse | null, now: number, open: OpenFn): { decision: FicheSection[]; technical: FicheSection[] } {
+  if (w === null) return { decision: [], technical: [] };
   return {
-    early: [servicesSection(w, now, open), hacktivistSection(w, now, open), ddosSection(w, now, open)],
-    late: [bgpSection(w, now, open), abuseSection(w, now, open), lookalikeSection(w, now, open), euvdSection(w, cyber, now, open), cnilSection(w, now, open)],
+    decision: [hacktivistSection(w, now, open), servicesSection(w, now, open), ddosSection(w, now, open)],
+    technical: [...(frenchHijacks(w) > 0 ? [bgpSection(w, now, open)] : []), abuseSection(w, now, open), lookalikeSection(w, now, open),
+      euvdSection(w, cyber, now, open), cnilSection(w, now, open)],
   };
+}
+
+/** Phrase de la ligne Routage quand aucun réseau français n'est victime (section masquée). */
+export function bgpQuietText(w: CyberWatchResponse | null): string | null {
+  const r = w?.radar;
+  if (!r) return null;
+  return frenchHijacks(w) > 0 ? null : `Routage Internet : aucun réseau français victime d’un détournement détecté sur 7 jours (${r.hijackCount} détournements et ${r.leakCount} fuites impliquant la France, tous sans victime française ; Cloudflare Radar).`;
 }
 
 /** Lignes de la section Méthode et sources pour les sources de la veille élargie. */

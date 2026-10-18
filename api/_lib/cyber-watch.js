@@ -29,13 +29,13 @@ const NBSP = ' ';
 
 /** Cadence de chaque partie. */
 export const CADENCE_MS = {
-  radar: HOUR, abuse: 6 * HOUR, ddosia: HOUR, lookalikes: 6 * HOUR, cnil: DAY, epss: 12 * HOUR, euvd: 6 * HOUR, services: 5 * MIN,
+  radar: HOUR, abuse: 6 * HOUR, ddosia: HOUR, lookalikes: 6 * HOUR, cnil: DAY, epss: 12 * HOUR, euvd: 6 * HOUR, services: 5 * MIN, targets: 10 * MIN,
 };
 /** Nouvel essai d'une partie en échec : 10 min (5 min pour les sondes). */
 const RETRY_MS = 10 * MIN;
 const PREFIX = {
   radar: 'Cloudflare Radar', abuse: 'abuse.ch', ddosia: 'DDoSia (witha.name)', lookalikes: 'Domaines imitateurs (whoisds)', cnil: 'CNIL',
-  epss: 'EPSS (FIRST)', euvd: 'EUVD (ENISA)', services: 'Services publics',
+  epss: 'EPSS (FIRST)', euvd: 'EUVD (ENISA)', services: 'Services publics', targets: 'Sites visés',
 };
 export const PARTS = Object.keys(CADENCE_MS);
 
@@ -556,11 +556,48 @@ async function readServices(now, prev) {
   return { readAt: new Date(now).toISOString(), items };
 }
 
+// ─── Sites français visés par NoName057(16) : joignables ? ───
+
+/** Sites relevés dans une liste de moins de 24 h : sondés toutes les 10 min (une requête chacun, au plus 30). */
+const TARGET_WINDOW_MS = DAY;
+const TARGET_SAMPLES = 36;
+const TARGET_MAX = 30;
+/** Lent : plus de 3 fois sa réponse médiane des 6 dernières heures et plus de 3 s. */
+const SLOW_FACTOR = 3;
+const SLOW_MIN_MS = 3000;
+
+/** État d'un site visé d'après sa dernière sonde et sa médiane : joignable, lent ou injoignable. */
+export function targetState(ok, ms, medianMs) {
+  if (!ok) return 'injoignable';
+  if (ms !== null && ms > SLOW_MIN_MS && medianMs !== null && ms > SLOW_FACTOR * medianMs) return 'lent';
+  return 'joignable';
+}
+
+async function readTargets(now, prev, all) {
+  const hosts = (all?.ddosia?.hosts ?? []).filter((h) => now - Date.parse(h.last) < TARGET_WINDOW_MS).slice(0, TARGET_MAX).map((h) => h.host);
+  // HTTPS d'abord ; connexion refusée (site sans HTTPS, comme www.mn.fr le 18/10) : repli en HTTP, jamais une fausse panne.
+  const probes = await mapLimit(hosts, 6, async (host) => {
+    const r = await probe({ url: `https://${host}/` });
+    return r.ok || r.error !== 'connexion impossible' ? r : probe({ url: `http://${host}/` });
+  });
+  const items = hosts.map((host, i) => {
+    const old = (prev?.items ?? []).find((x) => x.host === host);
+    const r = probes[i].ok ? probes[i].value : { ok: false, status: null, ms: null, error: 'sonde en échec' };
+    const samples = [...(old?.samples ?? []), [Math.round(now / MIN), r.ok ? r.ms : -1]].slice(-TARGET_SAMPLES);
+    const up = samples.slice(0, -1).filter((x) => x[1] >= 0).map((x) => x[1]).sort((a, b) => a - b);
+    const medianMs = up.length >= 3 ? up[Math.floor(up.length / 2)] : null;
+    const state = targetState(r.ok, r.ms, medianMs);
+    const since = state === 'joignable' ? null : (old && old.state !== 'joignable' ? old.since : new Date(now).toISOString());
+    return { host, ok: r.ok, status: r.status, ms: r.ms, error: r.error ?? null, medianMs, state, since, samples };
+  });
+  return { readAt: new Date(now).toISOString(), items };
+}
+
 // ─── Collecte ───────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 const READERS = {
   radar: (now) => readRadar(now), abuse: (now) => readAbuse(now), ddosia: readDdosia, lookalikes: readLookalikes, cnil: (now) => readCnil(now),
-  epss: (now) => readEpss(now), euvd: (now) => readEuvd(now), services: readServices,
+  epss: (now) => readEpss(now), euvd: (now) => readEuvd(now), services: readServices, targets: readTargets,
 };
 
 /** Réservé aux tests : lecteurs remplacés. */
@@ -586,15 +623,18 @@ async function collect(now) {
   const next = { ...emptyWatch(), ...(prev ?? {}), tried: { ...(prev?.tried ?? {}) }, failures: { ...(prev?.failures ?? {}) } };
   const work = PARTS.filter((p) => due(p, prev, now));
   if (!work.length) return next;
-  await Promise.all(work.map(async (part) => {
+  const run = async (part) => {
     next.tried[part] = new Date(now).toISOString();
     try {
-      next[part] = await READERS[part](now, prev?.[part] ?? null);
+      next[part] = await READERS[part](now, prev?.[part] ?? null, next);
       delete next.failures[part];
     } catch (err) {
       next.failures[part] = sourceError(PREFIX[part], err);
     }
-  }));
+  };
+  // Sondes des sites visés après la lecture des listes de cibles : elles portent sur les sites de la liste du moment.
+  await Promise.all(work.filter((p) => p !== 'targets').map(run));
+  if (work.includes('targets')) await run('targets');
   const dates = PARTS.map((p) => next[p]?.readAt).filter((d) => typeof d === 'string').sort();
   next.readAt = dates.at(-1) ?? null;
   next.errors = Object.values(next.failures);
@@ -609,6 +649,7 @@ export function publicWatch(body) {
   for (const p of PARTS) out[p] = b[p] ?? null;
   if (out.ddosia) out.ddosia = { readAt: out.ddosia.readAt, lastConfig: out.ddosia.lastConfig, hosts: out.ddosia.hosts, days: out.ddosia.days };
   if (out.lookalikes) out.lookalikes = { readAt: out.lookalikes.readAt, domains: out.lookalikes.domains, perDay: out.lookalikes.perDay };
+  if (out.targets) out.targets = { readAt: out.targets.readAt, items: out.targets.items.map(({ samples, ...t }) => t) };
   if (out.services) {
     out.services = {
       readAt: out.services.readAt,

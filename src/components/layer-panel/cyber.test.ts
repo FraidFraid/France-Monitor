@@ -70,7 +70,8 @@ describe('vue Vigilance cyber (spec 2026-10-04 souveraineté § 2.3, amendement 
   });
   it('sections et ouverture du contrat (rapports de l’ANSSI ajoutés, S12) ; méthode en ton de référence', () => {
     expect(view().sections.map((s) => [s.id, s.open ?? false])).toEqual([
-      ['certfr', true], ['kev', true], ['revendications', true], ['rapports', false], ['fuites', false], ['cybermalveillance', false], ['methode', false],
+      ['enbref', false], ['certfr', true], ['revendications', true], ['technique', false], ['kev', false], ['rapports', false], ['fuites', false],
+      ['cybermalveillance', false], ['methode', false],
     ]);
     expect(view().sections.at(-1)?.tone).toBe('reference');
     expect(view().sections.find((s) => s.id === 'kev')?.title).toBe('Vulnérabilités exploitées (catalogue KEV de la CISA)');
