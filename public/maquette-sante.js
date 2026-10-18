@@ -133,6 +133,17 @@
         a.syn[k] = { er: cur.er, hosp: cur.hosp, sos: cur.sos, refs, max: refs.length >= 2 ? Math.max(...refs) : null, level: seasonalLevel(cur.er, refs), ratio: ratio(cur.er, refs) }; }
     }
     for (const x of apl?.departments ?? []) { const a = touch(x.code, x.name); a.apl = x; }
+    // Lot 2 : contexte de vulnérabilité et antécédents (déclarations obligatoires, couverture vaccinale), jamais une alerte.
+    const arboLast = (d.arbo ?? []).reduce((m, r) => (r.mois > m ? r.mois : m), '');
+    S.arboYear = arboLast.slice(0, 4); S.arboLast = arboLast;
+    for (const r of Array.isArray(d.arbo) ? d.arbo : []) { if (!r.mois.startsWith(S.arboYear)) continue; const a = touch(r.dep, r.dep);
+      a.arbo ??= {}; const o = a.arbo[r.arbo] ?? { autoch: 0, imp: 0, months: new Set() }; o.autoch += r.nbcas_autoch ?? 0; o.imp += r.nbcas_imp ?? 0; if (r.nbcas_autoch) o.months.add(r.mois); a.arbo[r.arbo] = o; }
+    const vy = (Array.isArray(d.vacc) ? d.vacc : []).filter((r) => r.grip_65plus != null).reduce((m, r) => (r.an_mesure > m ? r.an_mesure : m), '');
+    S.vaccYear = vy;
+    for (const r of Array.isArray(d.vacc) ? d.vacc : []) if (r.an_mesure === vy && r.dep) touch(r.dep, r.dep).vacc = { grip: r.grip_65plus, covid: r.covid_65plus };
+    const ly = (Array.isArray(d.legio) ? d.legio : []).reduce((m, r) => (r.annee > m ? r.annee : m), '');
+    S.legioYear = ly;
+    for (const r of Array.isArray(d.legio) ? d.legio : []) if (r.annee === ly && r.dep) touch(r.dep, r.dep).legio = { n: r.legio, taux: r.taux };
     for (const s of d.hosp?.sites ?? []) touch(s.dept, s.dept).hosp.push(s);
     for (const a of out.values()) {
       // Niveau des urgences : le pire des trois syndromes principaux, ou le syndrome choisi dans le panneau.
@@ -431,6 +442,14 @@
     const bad = ns.filter((x) => x.driver).sort((x, y) => RANK[y.urg] - RANK[x.urg]);
     return bad.length ? `${bad.map((x) => `${x.nom} (${SYN_SHORT[x.driver]}, ${WORD[x.urg].toLowerCase()})`).join(', ')}${ns.length > bad.length ? ` ; ${ns.length - bad.length} autre${ns.length - bad.length > 1 ? 's' : ''} normal${ns.length - bad.length > 1 ? 'aux' : ''}` : ''}`
       : `${ns.length} voisins, tous dans les normales`; };
+  const median = (xs) => { const v = xs.filter(Number.isFinite).sort((p, q) => p - q); return v.length ? v[Math.floor(v.length / 2)] : null; };
+  const vaccLine = (a) => { const g = a.vacc?.grip; if (g == null) return null;
+    const all = [...S.depts.values()].filter((x) => x.vacc?.grip != null).sort((x, y) => x.vacc.grip - y.vacc.grip); const i = all.findIndex((x) => x.code === a.code);
+    return `grippe ${num(g, 1)}${NB}% (médiane des départements ${num(median(all.map((x) => x.vacc.grip)), 1)}${NB}%, ${nth(i + 1)} plus faible sur ${all.length})${a.vacc.covid != null ? ` ; COVID-19 ${num(a.vacc.covid, 1)}${NB}%` : ''}`; };
+  const historyLine = (a) => { const parts = [];
+    for (const [k, o] of Object.entries(a.arbo ?? {})) if (o.autoch || o.imp) parts.push(`${k.toLowerCase()} : ${o.autoch ? `${num(o.autoch)}${NB}cas autochtone${o.autoch > 1 ? 's' : ''} (${[...o.months].sort().map((m) => m.slice(5)).join(', ').replace(/(\d\d)/g, (x) => ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'][Number(x) - 1])}), ` : ''}${num(o.imp)}${NB}importé${o.imp > 1 ? 's' : ''}`);
+    if (a.legio?.n != null) parts.push(`légionellose : ${num(a.legio.n)}${NB}cas (${num(a.legio.taux, 1)} pour 100${NB}000)`);
+    return parts.length ? parts.join(' ; ') : null; };
   const urgState = (a) => {
     if (a.urg === 'nd') return ['Urgences : données insuffisantes cette semaine', MUTE];
     if (!a.driver) return [`Urgences : dans les normales des 3${NB}saisons précédentes (${wk(S.data.syn?.week?.id)})`, L1.vert];
@@ -459,13 +478,15 @@
     rows.push(['Alerte de la région', regLine(a)]);
     rows.push(['Départements voisins', neighLine(a)]);
     rows.push(['Hôpitaux', hospLine(a)]);
+    if (vaccLine(a)) rows.push([`Vaccination des 65 ans et plus (${S.vaccYear})`, vaccLine(a)]);
+    if (historyLine(a)) rows.push([`Antécédents ${S.arboYear}`, historyLine(a)]);
     if (S.water.get(a.code)) rows.push(['Eau du robinet', `${S.water.get(a.code).communes.size}${NB}commune(s) non conforme(s) en bactériologie (au ${day(S.water.get(a.code).last)})`]);
     rows.push(['Capacité', reaLine(a)]);
     if (a.apl?.pop) rows.push(['Population', `${num(a.apl.pop)} hab.${passPer(a) != null ? ` · ${num(passPer(a))} passages aux urgences pour 1${NB}000 hab. par an` : ''}`]);
     return { gauges, dot: mode === 'apl' ? aplHex(a.aplR) : (L1[a.urg] ?? MUTE), title: `${a.nom} (${a.code})`, state: mode === 'apl' ? `Accès aux soins : ${a.aplR == null ? 'n.d.' : `${num(a.aplR, 2)}${NB}fois la moyenne nationale`}` : state,
       stateHex: mode === 'apl' ? '#93c5fd' : stateHex, rows,
       hint: `Ce qu’on ne sait pas : ${mode === 'apl' ? 'accès réel du jour (délais de rendez-vous) non publié' : 'petites parts = signal fragile ; saturation du jour non publiée'} · clic : fiche`,
-      source: mode === 'apl' ? `${aplSrc()} · ${synSrc()}` : `${synSrc()} · ${aplSrc()}` };
+      source: `${mode === 'apl' ? `${aplSrc()} · ${synSrc()}` : `${synSrc()} · ${aplSrc()}`}${vaccLine(a) || historyLine(a) ? ' · Santé publique France (couverture vaccinale, déclarations obligatoires)' : ''}${S.water.get(a.code) ? ' · Hub’Eau' : ''}` };
   };
   const regionCard = (r) => ({ dot: r.level === 'hors' ? MUTE : L1[r.level], title: r.nom, state: r.live.length ? (r.level === 'vert' ? 'Pas d’alerte épidémique (mesuré)' : `${WORD[r.level]} · phase épidémique`) : 'Hors saison de surveillance', stateHex: r.level === 'hors' ? MUTE : L1[r.level],
     rows: [...r.lines.map((l) => [PATHO[l.pathology] ?? l.pathology, `${PHASE_WORD[l.phase]}${l.phase === 1 ? '' : ` depuis ${wk(l.week)}`} (semaine ${wk(l.week)}${inSeason(l) ? '' : ', hors saison'})`]),
@@ -557,6 +578,8 @@
     rows.push(['RappelConso', d.recalls?.since ? `depuis le ${day(d.recalls.since)}` : 'indisponible', d.recalls?.since ? 'ok' : 'ko']);
     rows.push(['Odissé par département (11 syndromes, âges)', Object.values(d.extraSyn ?? {}).some(Array.isArray) ? `lu ${when(new Date().toISOString())}, semaine ${wk(d.syn?.week?.id)}` : 'indisponible', Object.values(d.extraSyn ?? {}).every(Array.isArray) ? 'ok' : 'part']);
     rows.push(['Eaux usées par station (SUM’Eau)', d.wwSt?.results?.length ? `${num(S.stations?.filter((x) => x.last).length ?? 0)} stations, dernière semaine ${wk(d.wwSt.results[0]?.semaine)}` : 'indisponible', d.wwSt?.results?.length ? 'ok' : 'ko']);
+    rows.push(['Déclarations obligatoires (arboviroses, légionellose)', Array.isArray(d.arbo) ? `arboviroses jusqu’à ${S.arboLast || 'n.d.'}, légionellose ${S.legioYear || 'n.d.'}, consolidées une fois par an` : 'indisponible', Array.isArray(d.arbo) ? 'part' : 'ko']);
+    rows.push(['Couverture vaccinale (65 ans et plus)', S.vaccYear ? `campagne ${S.vaccYear}, annuelle` : 'indisponible', S.vaccYear ? 'ok' : 'ko']);
     rows.push(['Eau du robinet (Hub’Eau)', Array.isArray(d.water?.data) ? `prélèvements jusqu’au ${day(d.waterTo)}, mensuel` : 'indisponible', Array.isArray(d.water?.data) ? (ageDays(d.waterTo) > 40 ? 'part' : 'ok') : 'ko']);
     rows.push(['DGS-Urgent (PEPS)', (d.dgs?.errors ?? []).length ? `injoignable (${d.dgs.errors[0].replace(/^[^:]*: /, '')})` : `${(d.dgs?.messages ?? []).length}${NB}message(s)`, (d.dgs?.errors ?? []).length ? 'ko' : 'ok']);
     return rows;
@@ -667,6 +690,8 @@
     const bluf = [`${a.driver ? `${SYN[a.driver]} aux urgences ${signed(a.syn[a.driver].ratio - 1)} au-dessus du maximum des 3${NB}saisons (${WORD[a.urg].toLowerCase()}, ${synRank(a, a.driver)})` : 'Urgences dans les normales des saisons précédentes'}${bad.length ? ` ; ${bad.length}${NB}département${bad.length > 1 ? 's' : ''} voisin${bad.length > 1 ? 's' : ''} aussi en anomalie` : ''}.`,
       `Capacité : ${reaLine(a)} ; accès aux généralistes ${a.apl?.apl?.mg != null ? `${num(a.apl.apl.mg / S.data.apl.france.apl.mg, 2)}${NB}fois la moyenne` : 'n.d.'}.`];
     impact.push(`Départements voisins : ${neighLine(a)}.`);
+    if (vaccLine(a)) impact.push(`Vaccination des 65 ans et plus (${S.vaccYear}) : ${vaccLine(a)}.`);
+    if (historyLine(a)) impact.push(`Antécédents ${S.arboYear} (déclarations obligatoires) : ${historyLine(a)}.`);
     const wa = S.water.get(a.code);
     if (wa) happen.push(`Eau du robinet : prélèvements non conformes en bactériologie dans ${[...wa.communes.values()].map((c) => commune(c.nom)).join(', ')} (jusqu’au ${day(wa.last)}, Hub’Eau).`);
     const st = S.stations.filter((x) => x.at && deptAt(x.at)?.code === a.code);
@@ -677,7 +702,7 @@
       gauges: Object.keys(SYN).filter((k) => a.syn[k]).map((k) => synGauge(k, a.syn[k])),
       blocks: [['À retenir', bluf], ['Ce qui se passe', happen], ['Impact et capacités', impact], ['Évolution', evo], ['Ce qu’on ne sait pas', unknown]],
       charts: deptCharts(a, k),
-      sources: ['OSCOUR', 'Odissé', 'DREES', 'Eau du robinet', 'Eaux usées'] };
+      sources: ['OSCOUR', 'Odissé', 'DREES', 'Eau du robinet', 'Eaux usées', 'Déclarations', 'Couverture'] };
   };
   const hospNote = (g) => {
     const s = g[0], a = S.depts.get(s.dept), c = hospCard(g);
@@ -754,6 +779,8 @@
     const ira = (d.senti?.indicators ?? []).find((x) => x.key === 'ira');
     if (ira) items.push([null, `Sentinelles, IRA : ${num(ira.rate)} cas pour 100${NB}000 (${wk(d.senti.week.id)}), ${ira.trend}, activité ${ira.activity}`]);
     const ww = wwLevel(); if (ww) items.push([ww.level === 'vert' ? null : ww.level, `Eaux usées, SARS-CoV-2 : ${ww.level === 'vert' ? 'pas de hausse' : ww.level === 'orange' ? 'hausse forte et au-dessus de l’an dernier' : 'en hausse'} (${wk(ww.week)})`]);
+    const arb = [...S.depts.values()].filter((a) => Object.values(a.arbo ?? {}).some((o) => o.autoch));
+    if (arb.length) items.push([null, `Arboviroses ${S.arboYear} : ${num(arb.reduce((t, a) => t + Object.values(a.arbo).reduce((u, o) => u + o.autoch, 0), 0))}${NB}cas autochtones dans ${arb.length}${NB}départements (${arb.sort((x, y) => Object.values(y.arbo).reduce((u, o) => u + o.autoch, 0) - Object.values(x.arbo).reduce((u, o) => u + o.autoch, 0)).slice(0, 3).map((a) => a.nom).join(', ')}…), données jusqu’à ${S.arboLast.slice(5)}/${S.arboYear}`]);
     if (d.drugs?.counts) items.push([null, `Médicaments (ANSM) : ${num(d.drugs.counts.rupture)} ruptures, ${num(d.drugs.counts.tension)} tensions`]);
     if (d.recalls?.healthRisk != null) items.push([null, `Rappels de produits avec risque sanitaire : ${num(d.recalls.healthRisk)} depuis le ${day(d.recalls.since)}`]);
     return items;
@@ -889,12 +916,17 @@
       const lastWater = await getJson(`${HE}?size=1&sort=desc&fields=date_prelevement`);
       const lastDay = (lastWater?.data?.[0]?.date_prelevement ?? new Date().toISOString()).slice(0, 10);
       const waterFrom = new Date(Date.parse(lastDay) - 45 * 864e5).toISOString().slice(0, 10);
+      const odAll = (ds, select, where) => getJson(`${OD}${ds}/exports/json?select=${encodeURIComponent(select)}${where ? `&where=${encodeURIComponent(where)}` : ''}`);
+      const [arbo, vacc, legio] = await Promise.all([
+        odAll('arboviroses-donnees-declaration-obligatoire', 'dep,mois,arbo,nbcas_imp,nbcas_autoch', `mois>="${new Date().getFullYear() - 1}-01"`),
+        odAll('couvertures-vaccinales-des-adolescent-et-adultes-departement', 'dep,libgeo,an_mesure,grip_65plus,covid_65plus', `an_mesure>="${new Date().getFullYear() - 2}"`),
+        odAll('legionellose-donnees-declaration-obligatoire', 'dep,annee,legio,taux', `annee>="${new Date().getFullYear() - 2}"`)]);
       const [extra, wwMeta, wwSt, water] = await Promise.all([
         Promise.all(EXTRA_SYN.map((k) => odExport(k, `sursaud_cl_age_gene="Tous âges" and (${weeksWhere})`))),
         getJson(`${OD}sumeau_stations/records?limit=100`),
         getJson(`${OD}sum-eau-indicateurs/records?limit=60&order_by=${encodeURIComponent('semaine desc')}`),
         getJson(`${HE}?conformite_limites_bact_prelevement=N&code_parametre=1449,6455&date_min_prelevement=${waterFrom}&size=5000&fields=code_prelevement,code_commune,nom_commune,code_departement,date_prelevement,libelle_parametre,resultat_alphanumerique,nom_distributeur,conclusion_conformite_prelevement`)]);
-      S.data = { syn, alerts, senti, ww, drugs, recalls, dgs, apl, hosp, extraSyn: Object.fromEntries(EXTRA_SYN.map((k, i) => [k, extra[i]])), wwMeta, wwSt, water, waterFrom, waterTo: lastDay };
+      S.data = { syn, alerts, senti, ww, drugs, recalls, dgs, apl, hosp, extraSyn: Object.fromEntries(EXTRA_SYN.map((k, i) => [k, extra[i]])), wwMeta, wwSt, water, waterFrom, waterTo: lastDay, arbo, vacc, legio };
       await draw();
     };
     await load();
