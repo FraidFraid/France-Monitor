@@ -328,8 +328,16 @@
   const placePop = () => { if (!popAt) return; const p = S.m.project(popAt); const c = S.m.getCanvas(), W = c.clientWidth, H = c.clientHeight, w = pop.offsetWidth, h = pop.offsetHeight;
     const x = p.x + 14 + w > W - 8 ? p.x - 14 - w : p.x + 14, y = Math.min(Math.max(8, p.y + 14), Math.max(8, H - h - 8));
     pop.style.transform = `translate(${Math.round(Math.max(8, x))}px, ${Math.round(y)}px)`; };
+  // Baromètre : barre = part de la semaine, trait blanc = maximum des saisons précédentes à la même semaine ; couleur = niveau (vert seulement si mesuré).
+  const gauge = (g) => { const top = Math.max(g.v ?? 0, g.max ?? 0) * 1.15 || 1; const c = g.level === 'nd' || g.v == null ? MUTE : L1[g.level];
+    return `<div class="mqh-g"><div class="mqh-g-h"><span>${esc(g.label)}</span><b style="color:${g.level === 'vert' || g.level === 'nd' ? INK : c}">${esc(g.right)}</b></div>`
+      + `<div class="mqh-g-t"><i class="mqh-g-f" style="width:${Math.min(100, ((g.v ?? 0) / top) * 100).toFixed(1)}%;background:${c}"></i>`
+      + (g.max != null ? `<i class="mqh-g-m" style="left:${Math.min(100, (g.max / top) * 100).toFixed(1)}%"></i>` : '') + '</div></div>'; };
+  const synGauge = (k, r) => ({ label: SYN[k], v: r.er, max: r.max, level: r.level,
+    right: r.er == null ? 'n.d.' : `${pct(r.er)}${r.max != null ? ` · max ${pct(r.max)}` : ''}${r.ratio && r.level !== 'vert' ? ` · ${signed(r.ratio - 1)}` : ''}` });
   const card = (c) => `<div class="et-card"><div class="et-head"><i class="et-dot" style="background:${c.dot}"></i><strong>${esc(c.title)}</strong></div>`
     + (c.state ? `<div class="et-state" style="color:${c.stateHex}">${esc(c.state)}</div>` : '')
+    + (c.gauges?.length ? `<div class="mqh-gs">${c.gauges.map(gauge).join('')}</div>` : '')
     + c.rows.map(([k, v]) => `<div class="et-row"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')
     + (c.hint ? `<div class="et-hint">${esc(c.hint)}</div>` : '')
     + `<div class="et-src">Source : ${esc(c.source)}</div></div>`;
@@ -346,6 +354,17 @@
   const aplLine = (a, p = S.prof) => { const v = a.apl?.apl?.[p], nat = S.data.apl?.france?.apl?.[p]; return v == null ? 'n.d.' : `${num(v, PROF_DIG[p])} (France ${num(nat, PROF_DIG[p])}, ${num(v / nat, 2)}${NB}×)`; };
   const hospLine = (a) => { if (!a.hosp.length) return 'aucun site d’urgences';
     return `${a.hosp.length}${NB}site${a.hosp.length > 1 ? 's' : ''}, ${num(a.hosp.reduce((t, s) => t + (s.passages ?? 0), 0))}${NB}passages en ${S.data.hosp?.vintage ?? 'n.d.'}, ${num(a.hosp.reduce((t, s) => t + (s.bedsIcu ?? 0), 0))}${NB}lits de réanimation`; };
+  const reaPer = (a) => { const pop = a.apl?.pop; if (!pop || !a.hosp.length) return null; return (a.hosp.reduce((t, s) => t + (s.bedsIcu ?? 0), 0) / pop) * 1e5; };
+  const reaFrance = () => { let b = 0, p = 0; for (const a of S.depts.values()) if (a.apl?.pop) { p += a.apl.pop; b += a.hosp.reduce((t, s) => t + (s.bedsIcu ?? 0), 0); } return p ? (b / p) * 1e5 : null; };
+  const reaLine = (a) => { const v = reaPer(a); if (v == null) return 'n.d.';
+    const all = [...S.depts.values()].map((x) => [x.code, reaPer(x)]).filter(([, x]) => x != null).sort((x, y) => x[1] - y[1]); const i = all.findIndex(([c]) => c === a.code);
+    return `${num(v, 1)} lits de réanimation pour 100${NB}000 hab. (France ${num(reaFrance(), 1)}, ${nth(i + 1)} plus faible sur ${all.length})`; };
+  const passPer = (a) => { const pop = a.apl?.pop; return pop ? a.hosp.reduce((t, s) => t + (s.passages ?? 0), 0) / pop * 1000 : null; };
+  const neighbours = (a) => [...(S.neigh?.get(a.code) ?? [])].map((c) => S.depts.get(c)).filter(Boolean);
+  const neighLine = (a) => { const ns = neighbours(a); if (!ns.length) return 'n.d.';
+    const bad = ns.filter((x) => x.driver).sort((x, y) => RANK[y.urg] - RANK[x.urg]);
+    return bad.length ? `${bad.map((x) => `${x.nom} (${SYN_SHORT[x.driver]}, ${WORD[x.urg].toLowerCase()})`).join(', ')}${ns.length > bad.length ? ` ; ${ns.length - bad.length} autre${ns.length - bad.length > 1 ? 's' : ''} normal${ns.length - bad.length > 1 ? 'aux' : ''}` : ''}`
+      : `${ns.length} voisins, tous dans les normales`; };
   const urgState = (a) => {
     if (a.urg === 'nd') return ['Urgences : données insuffisantes cette semaine', MUTE];
     if (!a.driver) return [`Urgences : dans les normales des 3${NB}saisons précédentes (${wk(S.data.syn?.week?.id)})`, L1.vert];
@@ -354,10 +373,10 @@
   };
   const deptCard = (a, mode) => {
     const [state, stateHex] = urgState(a);
-    const rows = [];
+    const rows = [], gauges = [];
     const urgRows = () => {
       const keys = S.syndrome ? [S.syndrome] : MAIN;
-      for (const k of keys) { const r = a.syn[k]; if (r) rows.push([`${SYN[k]}${r.level !== 'vert' && r.level !== 'nd' ? ` · ${WORD[r.level].toLowerCase()}` : ''}`, synRow(k, r)]); }
+      for (const k of keys) { const r = a.syn[k]; if (r) gauges.push(synGauge(k, r)); }
       if (a.driver) { rows.push(['Rang', `${synRank(a, a.driver)} pour ${SYN[a.driver].toLowerCase()}`]); if (a.syn[a.driver].sos != null) rows.push(['SOS Médecins', pct(a.syn[a.driver].sos)]); }
       if (a.others.length) rows.push(['Autres signaux', a.others.map((o) => `${SYN[o.key]} ${pct(o.er)} (max ${pct(o.max)})`).join(', ')]);
     };
@@ -372,8 +391,11 @@
     if (mode === 'apl') { aplRows(); rows.push(['Urgences', state]); }
     else { urgRows(); rows.push([`${PROF[S.prof]} (APL)`, aplLine(a)]); }
     rows.push(['Alerte de la région', regLine(a)]);
+    rows.push(['Départements voisins', neighLine(a)]);
     rows.push(['Hôpitaux', hospLine(a)]);
-    return { dot: mode === 'apl' ? aplHex(a.aplR) : (L1[a.urg] ?? MUTE), title: `${a.nom} (${a.code})`, state: mode === 'apl' ? `Accès aux soins : ${a.aplR == null ? 'n.d.' : `${num(a.aplR, 2)}${NB}fois la moyenne nationale`}` : state,
+    rows.push(['Capacité', reaLine(a)]);
+    if (a.apl?.pop) rows.push(['Population', `${num(a.apl.pop)} hab.${passPer(a) != null ? ` · ${num(passPer(a))} passages aux urgences pour 1${NB}000 hab. par an` : ''}`]);
+    return { gauges, dot: mode === 'apl' ? aplHex(a.aplR) : (L1[a.urg] ?? MUTE), title: `${a.nom} (${a.code})`, state: mode === 'apl' ? `Accès aux soins : ${a.aplR == null ? 'n.d.' : `${num(a.aplR, 2)}${NB}fois la moyenne nationale`}` : state,
       stateHex: mode === 'apl' ? '#93c5fd' : stateHex, rows,
       hint: `Ce qu’on ne sait pas : ${mode === 'apl' ? 'accès réel du jour (délais de rendez-vous) non publié' : 'pas d’historique par département dans le flux ; petites parts = signal fragile'} · clic : fiche`,
       source: mode === 'apl' ? `${aplSrc()} · ${synSrc()}` : `${synSrc()} · ${aplSrc()}` };
@@ -464,7 +486,7 @@
     const [state] = urgState(a);
     const k = a.driver ?? 'ira';
     const fr = franceSeries(k);
-    const happen = [state + '.'];
+    const happen = a.driver ? [] : [state + '.'];
     for (const key of Object.keys(SYN)) { const r = a.syn[key]; if (r && RANK[r.level] >= 1) happen.push(`${SYN[key]} : ${synRow(key, r)}, ${WORD[r.level].toLowerCase()}.`); }
     happen.push(`Alerte de la région : ${regLine(a)}.`);
     const weak = Object.keys(PROF).filter((p) => a.apl?.apl?.[p] != null && a.apl.apl[p] / S.data.apl.france.apl[p] < 0.75);
@@ -477,8 +499,15 @@
       'Une part faible (moins de 1 % des passages) donne un écart fragile : à confirmer la semaine suivante.',
       'Attente aux urgences, saturation et fermetures de lignes de garde : non publiées en données ouvertes.',
       ...(a.syn[k]?.sos == null ? ['SOS Médecins : pas d’association couverte dans le département.'] : [])];
+    const bad = neighbours(a).filter((x) => x.driver);
+    const bluf = [`${a.driver ? `${SYN[a.driver]} aux urgences ${signed(a.syn[a.driver].ratio - 1)} au-dessus du maximum des 3${NB}saisons (${WORD[a.urg].toLowerCase()}, ${synRank(a, a.driver)})` : 'Urgences dans les normales des saisons précédentes'}${bad.length ? ` ; ${bad.length}${NB}département${bad.length > 1 ? 's' : ''} voisin${bad.length > 1 ? 's' : ''} aussi en anomalie` : ''}.`,
+      `Capacité : ${reaLine(a)} ; accès aux généralistes ${a.apl?.apl?.mg != null ? `${num(a.apl.apl.mg / S.data.apl.france.apl.mg, 2)}${NB}fois la moyenne` : 'n.d.'}.`];
+    impact.push(`Départements voisins : ${neighLine(a)}.`);
+    if (a.apl?.pop) impact.push(`Population : ${num(a.apl.pop)} habitants${passPer(a) != null ? ` ; ${num(passPer(a))} passages aux urgences pour 1${NB}000 habitants par an` : ''}.`);
+    impact.splice(1, 0, `Capacité : ${reaLine(a)}.`);
     return { title: `${a.nom} (${a.code})`, sub: 'Santé · note de situation', level: RANK[a.urg] >= 1 ? a.urg : null, at: when(new Date().toISOString()),
-      blocks: [['Ce qui se passe', happen], ['Impact et capacités', impact], ['Évolution', evo], ['Ce qu’on ne sait pas', unknown]],
+      gauges: Object.keys(SYN).filter((k) => a.syn[k]).map((k) => synGauge(k, a.syn[k])),
+      blocks: [['À retenir', bluf], ['Ce qui se passe', happen], ['Impact et capacités', impact], ['Évolution', evo], ['Ce qu’on ne sait pas', unknown]],
       spark: fr, sparkCap: `France, ${SYN[k].toLowerCase()} aux urgences, part des passages, ${fr.length}${NB}dernières semaines`,
       sources: ['OSCOUR', 'Odissé', 'DREES'] };
   };
@@ -503,7 +532,7 @@
     const lvl = n.level ? `<span class="mqh-lvl" style="background:${L1[n.level]};color:${n.level === 'jaune' ? '#1a1a1a' : '#fff'}">${WORD[n.level]}</span>` : '';
     panel.innerHTML = `<header><div><h3>${esc(n.title)}</h3><div class="mqh-sub">${lvl}${esc(n.sub)}</div><div class="mqh-at">Situation au ${n.at}</div></div>`
       + `<button class="mqh-x" aria-label="Fermer">×</button></header>`
-      + n.blocks.map(([h, xs]) => sec(h, li(xs.map(esc)) + (h === 'Évolution' && n.spark ? spark(n.spark, n.sparkCap) : ''))).join('')
+      + n.blocks.map(([h, xs]) => sec(h, (h === 'Ce qui se passe' && n.gauges ? `<div class="mqh-gs">${n.gauges.map(gauge).join('')}</div><div class="mqh-g-cap">Barre = part des passages de la semaine ; trait blanc = maximum des 3${NB}saisons précédentes.</div>` : '') + li(xs.map(esc)) + (h === 'Évolution' && n.spark ? spark(n.spark, n.sparkCap) : ''))).join('')
       + sec('Sources et confiance', `<table>${sourcesOf(n).map(([k, v, st]) => `<tr><td><i class="mqh-src-${st}"></i>${esc(k)}</td><td>${esc(v)}</td></tr>`).join('')}</table>`
         + (n.link ? `<p><a href="${esc(n.link)}" target="_blank" rel="noopener">Fiche FINESS de l’établissement</a></p>` : ''))
       + `<footer><button class="mqh-copy">Copier pour la note</button><span class="mqh-copied"></span></footer>`;
@@ -536,7 +565,14 @@
     if (d.drugs?.counts) items.push([null, `Médicaments (ANSM) : ${num(d.drugs.counts.rupture)} ruptures, ${num(d.drugs.counts.tension)} tensions`]);
     if (d.recalls?.healthRisk != null) items.push([null, `Rappels de produits avec risque sanitaire : ${num(d.recalls.healthRisk)} depuis le ${day(d.recalls.since)}`]);
     const ko = freshness().filter((r) => r[2] === 'ko').map((r) => r[0]);
-    watch.innerHTML = `<div class="mqh-w-h">${icon('activity', items.some(([l]) => l) ? L1.jaune : MUTE)}<b>Veille nationale et outre-mer</b></div>`
+    const wkId = d.syn?.week?.id;
+    const natG = MAIN.map((k) => { const pts = (d.syn?.syndromes ?? []).find((x) => x.key === k)?.france ?? []; const cur = pts.find((p) => p.week === wkId)?.er ?? null;
+      const n = Number(String(wkId ?? '').slice(-2)), y = Number(String(wkId ?? '').slice(0, 4));
+      const refs = [1, 2, 3].map((i) => pts.find((p) => p.week === `${y - i}-S${pad(n)}`)?.er).filter((x) => Number.isFinite(x));
+      return synGauge(k, { er: cur, max: refs.length >= 2 ? Math.max(...refs) : null, level: seasonalLevel(cur, refs), ratio: ratio(cur, refs) }); });
+    watch.innerHTML = `<div class="mqh-w-h">${icon('activity', items.some(([l]) => l) ? L1.jaune : MUTE)}<b>Baromètre national · urgences ${wk(wkId)}</b></div>`
+      + `<div class="mqh-gs">${natG.map(gauge).join('')}</div>`
+      + `<div class="mqh-w-h mqh-w-h2"><b>Veille nationale et outre-mer</b></div>`
       + items.map(([l, t]) => `<div class="mqh-w-r"><i style="background:${l ? L1[l] : '#3a3f4b'}"></i><span>${esc(t)}</span></div>`).join('')
       + (ko.length ? `<div class="mqh-w-s">Indisponible : ${esc(ko.join(', '))}</div>` : '');
   };
@@ -603,6 +639,11 @@
   .mqh-ic { display: inline-flex; width: 18px; height: 18px; border-radius: 50%; background: #161a22; border: 1.5px solid #8a93a6; align-items: center; justify-content: center; }
   .mqh-ic svg { width: 11px; height: 11px; }
   .mqh-note { color: #9898a8; font-size: 11px; }
+  .mqh-gs { display: flex; flex-direction: column; gap: 5px; margin: 6px 0 4px; }
+  .mqh-g-h { display: flex; justify-content: space-between; gap: 8px; font-size: 11.5px; color: #aab0bc; } .mqh-g-h b { font-weight: 600; white-space: nowrap; }
+  .mqh-g-t { position: relative; height: 6px; border-radius: 3px; background: #262a33; margin-top: 2px; }
+  .mqh-g-f { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; } .mqh-g-m { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: #ffffff; }
+  .mqh-g-cap { color: #6e6e80; font-size: 10.5px; margin-bottom: 4px; } .mqh-w-h2 { margin-top: 8px; }
   .mqh-it { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; margin-right: 8px; }
   .mqh-ramp { display: flex; flex-direction: column; gap: 3px; margin: 3px 0 3px 4px; } .mqh-sw-sq { width: 14px; height: 10px; border-radius: 2px; background: var(--c); }
   .mqh-src { align-items: flex-start; flex-wrap: nowrap; } .mqh-src i { margin-top: 4px; } .mqh-src span { color: #9898a8; flex: 0 0 auto; } .mqh-src b { font-weight: 500; margin-left: auto; text-align: right; flex: 1; }
@@ -625,6 +666,14 @@
     for (let i = 0; i < 120 && !S.m.getLayer('hospitals-sites'); i += 1) await wait(250);
     const [geo, deptShapes, regions] = await Promise.all([getJson('/maquette-securite-geo.json'), getJson('/data/departements.geojson'), getJson('/data/regions.geojson')]);
     S.geo = { depts: geo.depts ?? [], deptShapes: deptShapes.features ?? [], regions: regions.features ?? [] };
+    // Départements voisins : contours qui partagent au moins deux sommets.
+    const owners = new Map();
+    for (const f of S.geo.deptShapes) { const g = f.geometry; for (const poly of (g.type === 'Polygon' ? [g.coordinates] : g.coordinates)) for (const [x, y] of poly[0]) {
+      const k = `${x.toFixed(3)},${y.toFixed(3)}`; const o = owners.get(k) ?? new Set(); o.add(f.properties.code); owners.set(k, o); } }
+    const shared = new Map();
+    for (const o of owners.values()) if (o.size > 1) for (const a of o) for (const b of o) if (a !== b) { const k = `${a}|${b}`; shared.set(k, (shared.get(k) ?? 0) + 1); }
+    S.neigh = new Map();
+    for (const [k, n] of shared) if (n >= 2) { const [a, b] = k.split('|'); (S.neigh.get(a) ?? S.neigh.set(a, new Set()).get(a)).add(b); }
     const style = document.createElement('style'); style.textContent = css; document.head.appendChild(style);
     const host = S.m.getContainer();
     host.append(pop, panel, legend, watch);
