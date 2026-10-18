@@ -281,7 +281,8 @@ describe('Vigilance cyber', () => {
     const f = stubFetch({ [CYBER_URL]: CYBER_FIXTURE() });
     const first = await fetchCyber(null, NOW);
     await fetchCyber(first, NOW + CYBER_TTL_MS - 1);
-    expect(f).toHaveBeenCalledTimes(1);
+    // Une lecture de la vigilance cyber et une de la veille élargie (18/10/2026), puis aucune sous le cache.
+    expect(f.mock.calls.filter(([url]) => String(url) === CYBER_URL)).toHaveLength(1);
     stubFetch({}, { [CYBER_URL]: { status: 500, html: true } });
     const failed = await fetchCyber(first, NOW + CYBER_TTL_MS);
     expect(failed.cyber.error).toBe('HTTP 500');

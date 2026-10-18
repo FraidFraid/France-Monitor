@@ -7,8 +7,9 @@
 // La pastille est celle de `cyberLevel` (A1), jamais recalculée ici. Aucun lieu n'est publié : rien sur la carte (V5). Chaque source
 // porte sa date (S1).
 import type {
-  CertFrItem, CertFrReport, CyberResponse, CybermalveillanceEntry, KevItem, RansomShare, RansomwareSummary,
+  CertFrItem, CertFrReport, CyberResponse, CyberWatchResponse, CybermalveillanceEntry, KevItem, RansomShare, RansomwareSummary,
 } from '../../types/index.ts';
+import { EPSS_NOTE, cyberWatchMethodRows, cyberWatchSections, epssText } from './cyber-watch.ts';
 import { parisDayOf } from '../../services/environment-levels.ts';
 import {
   CERTFR_RECENT_DAYS, CLAIMS_RATIO_JAUNE, certfrAgeDays, certfrDate, claimsRatio, cyberLevel, isCertFrAlertOpen, isCertFrPublishedRecently,
@@ -35,7 +36,8 @@ const emptyLine = (text: string): string => plainEmptyLine(glueSovUnits(text));
 const summaryText = (text: string): string => escapeHtml(glueSovUnits(text));
 
 export type OpenFn = (sectionId: string, byDefault: boolean) => boolean;
-export interface CyberViewInput { cyber: CyberResponse | null; cyberError: string | null; now: number; open: OpenFn }
+/** `watch` : veille cyber élargie (18/10/2026), absente ou null tant qu'elle n'a pas été lue. */
+export interface CyberViewInput { cyber: CyberResponse | null; cyberError: string | null; now: number; open: OpenFn; watch?: CyberWatchResponse | null }
 
 export const CYBER_TITLE = 'Vigilance cyber';
 
@@ -275,10 +277,10 @@ function certfrSection(c: CyberResponse, now: number, open: OpenFn): FicheSectio
 
 // ─── Vulnérabilités exploitées (catalogue KEV de la CISA) ───
 
-function kevRow(k: KevItem): string {
+function kevRow(k: KevItem, watch: CyberWatchResponse | null = null): string {
   const cited = k.certfrRefs.length > 0;
   const parts = [k.cve, cited ? `citée par le CERT-FR (${k.certfrRefs.map(shortRef).join(', ')})` : 'catalogue mondial, non citée par le CERT-FR',
-    k.ransomware ? 'campagne de rançongiciel connue' : null];
+    k.ransomware ? 'campagne de rançongiciel connue' : null, epssText(watch, k.cve)];
   return listRow({ text: kevName(k), value: dayMonth(k.dateAdded), color: cited ? KEV_CITED_COLOR : KEV_COLOR, note: parts.filter((p): p is string => p !== null).join(' · ') });
 }
 
@@ -306,7 +308,7 @@ function kevChart(c: CyberResponse, now: number): string {
     + `<span class="lp-key"><i style="background:${KEV_COLOR}"></i>autres</span></div>${chart}${constructionNote(days.length)}`;
 }
 
-function kevSection(c: CyberResponse, now: number, open: OpenFn): FicheSection {
+function kevSection(c: CyberResponse, now: number, open: OpenFn, watch: CyberWatchResponse | null = null): FicheSection {
   const base = { id: 'kev', title: 'Vulnérabilités exploitées (catalogue KEV de la CISA)', collapsible: true, open: open('kev', true) };
   if (c.kev.readAt === null) return { ...base, summary: 'n.d.', html: sourceDown(KEV_NAME) };
   const cited = c.kev.recent.filter((k) => k.certfrRefs.length > 0);
@@ -319,10 +321,11 @@ function kevSection(c: CyberResponse, now: number, open: OpenFn): FicheSection {
     ...base,
     summary: summaryText(`${kevWithin(c, now, 7).length} sur 7 jours · ${c.kev.recent.length} sur 30 jours${lateMark(late)}`),
     html: (c.kev.recent.length > 0
-      ? [...cited, ...others.slice(0, KEV_UNCITED_SHOWN)].map(kevRow).join('')
+      ? [...cited, ...others.slice(0, KEV_UNCITED_SHOWN)].map((k) => kevRow(k, watch)).join('')
       : emptyLine('Aucune vulnérabilité ajoutée au catalogue KEV depuis 30 jours.'))
-      + (rest.length > 0 ? `<details class="lp-more"><summary>${summaryText(`${rest.length} vulnérabilités de plus`)}</summary>${rest.map(kevRow).join('')}</details>` : '')
+      + (rest.length > 0 ? `<details class="lp-more"><summary>${summaryText(`${rest.length} vulnérabilités de plus`)}</summary>${rest.map((k) => kevRow(k, watch)).join('')}</details>` : '')
       + kevChart(c, now)
+      + (watch?.epss ? note(EPSS_NOTE) : '')
       + note(`Catalogue KEV de la CISA (domaine public), ${catalog}. « Citée par le CERT-FR » : CVE présente dans une alerte ou un avis du CERT-FR ; `
         + '« catalogue mondial » : vulnérabilité exploitée dans le monde, pas un événement en France.'),
   };
@@ -515,10 +518,11 @@ function methodSection(input: CyberViewInput): FicheSection {
       + 'n’est pas confirmée) ; vert sinon ; n.d. si le CERT-FR est en panne ou en retard, ou si le statut d’une alerte récente n’a pas été lu.')
     + note('Retard : CERT-FR lu il y a plus de 6 heures, catalogue KEV il y a plus de 26 heures, fichier de ransomware.live publié il y a plus de '
       + '24 heures, liste de Have I Been Pwned lue il y a plus de 26 heures, flux de Cybermalveillance.gouv.fr lus il y a plus de 6 heures.')
-    + note('Carte : aucune de ces sources ne publie de lieu ; la couche ne dessine rien (légende : « pas de lieu publié : voir le panneau »).')
+    + note('Carte : aucune de ces sources ne publie de lieu ; seules les cibles françaises des hacktivistes dont le lieu se déduit du domaine sont placées.')
     + note('Retirés : exposition Shodan et Censys, FrenchBreaches, fuites de plus de 30 jours, titres et domaines des fuites, CVE mondiales hors catalogue KEV.')
-    + readErrors(c !== null ? c.errors.map(glueSovUnits) : []);
-  return { id: 'methode', title: 'Méthode et sources', collapsible: true, open: open('methode', false), tone: 'reference', html, summary: summaryText('5 sources') };
+    + readErrors(c !== null ? c.errors.map(glueSovUnits) : [])
+    + cyberWatchMethodRows(input.watch ?? null, now);
+  return { id: 'methode', title: 'Méthode et sources', collapsible: true, open: open('methode', false), tone: 'reference', html, summary: summaryText('13 sources') };
 }
 
 // ─── Assemblage ───
@@ -544,9 +548,11 @@ export function buildCyberView(input: CyberViewInput): LayerView {
       bodyHtml: sourceErrorCallout(null, now),
     };
   }
+  const watch = input.watch ?? null;
+  const extra = cyberWatchSections(watch, c, now, open);
   const sections = [
-    certfrSection(c, now, open), kevSection(c, now, open), claimsSection(c, now, open), reportsSection(c, now, open), leaksSection(c, now, open),
-    cybermalveillanceSection(c, now, open), methodSection(input),
+    certfrSection(c, now, open), kevSection(c, now, open, watch), ...extra.early, claimsSection(c, now, open), ...extra.late, reportsSection(c, now, open),
+    leaksSection(c, now, open), cybermalveillanceSection(c, now, open), methodSection(input),
   ];
   return { head: headOf(c, now), sections, bodyHtml: cyberError !== null ? sourceErrorCallout(dataMs(c.readAt), now) : undefined };
 }

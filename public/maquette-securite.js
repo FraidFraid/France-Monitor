@@ -69,7 +69,7 @@
   // Sites de défense : une couleur par armée en plus de la forme (bleu ciel = air, bleu marine = mer, sable = terre, blanc = interarmées, ardoise = autres).
   const BASE_HEX = { air: '#7cc4ff', navy: '#2f6bff', army: '#c8a165', joint: '#f1f5f9', other: '#94a3b8' };
   const LIGHT_FILL = new Set(['#7cc4ff', '#c8a165', '#f1f5f9']);
-  const CAT = { defense: '#4a9eff', defenseOther: '#b388ff', cables: '#22d3ee', telecom: '#e879f9', internet: '#2dd4bf', cloud: '#818cf8', dc: '#f472b6' };
+  const CAT = { defense: '#4a9eff', defenseOther: '#b388ff', cables: '#22d3ee', telecom: '#e879f9', internet: '#2dd4bf', cloud: '#818cf8', dc: '#f472b6', hacktivist: '#bef264' };
   // Manifestations : rose = catégorie (annoncée en anneau, rapportée en plein), rouge L1 = heurts (anormal).
   const PROT = { annonce: '#f9a8d4', signale: '#ec4899' };
   // Criminalité : statistique annuelle, jamais les couleurs d'alerte ; rampe violette, plus clair = plus élevé que la moyenne nationale.
@@ -128,6 +128,7 @@
     // Sans pastille : toutes les couches, criminalité comprise (aplat des départements + villes à 2 fois la moyenne) ; le contour reste réservé à la pastille.
     V('mqs-crime-city', isOn('crime') && !pill('crime')); V('mqs-crime-c', pill('crime')); V('mqs-crime-c-label', pill('crime')); V('mqs-crime-d-fill', isOn('crime')); V('mqs-crime-d-line', pill('crime'));
     P('mqs-crime-d-fill', 'fill-opacity', pill('crime') ? ['get', 'op'] : 0.12);
+    T_('mqs-ddos-label', pill('cyber') ? ['get', 'label'] : ['case', ['get', 'recent'], ['get', 'label'], '']);
     T_('mqs-prot-label', pill('protests') ? ['get', 'label'] : ['case', ['>=', ['get', 'n'], 20], ['get', 'label'], '']);
     P('isnr-fill', 'fill-opacity', S.focus.has('stability') || preview === 'stability' ? 0.65 : 0.2);
     // Détail porté au premier plan par une pastille : sites télécoms et référentiel cloud dès la vue France.
@@ -240,6 +241,11 @@
     S.prot = (S.data.protests?.items ?? []).filter((x) => x.lat != null && x.lon != null);
     setData('mqs-prot', fc(S.prot.map((x, i) => pt([x.lon, x.lat], { i, kind: x.status === 'annonce' ? 'annonce' : x.violent ? 'heurts' : 'signale', n: x.articleCount ?? (x.articles ?? []).length,
       label: `${x.city ?? x.edition ?? ''}${x.participants ? ` · ${num(x.participants)}${NB}pers.` : ''}` }))));
+    // Cibles françaises des hacktivistes pro-russes (NoName057(16)) : lieu sûr seulement (préfecture d'après gouv.fr, commune au nom exact) ;
+    // une cible publiée n'est pas une attaque réussie. Anneau jaune : site présent dans une liste de moins de 24 h.
+    S.ddos = ddosPlaces();
+    setData('mqs-ddos', fc(S.ddos.map((g, i) => pt(g.at, { i, recent: g.recent, n: g.hosts.length,
+      label: `${g.name}${g.hosts.length > 1 ? ` · ${g.hosts.length}${NB}sites` : ''}` }))));
     // Criminalité : indicateur du panneau ; villes seulement pour les indicateurs communaux (sinon violences physiques hors famille).
     crimeCompute();
     setData('mqs-crime', fc((S.crime?.cities ?? []).map((c, i) => pt([c.city.lon, c.city.lat], { i, ratio: c.ratio ?? 0, sortKey: Math.round((c.ratio ?? 0) * 100), estimated: c.est,
@@ -365,6 +371,15 @@
       m.addLayer({ id: 'mqs-prot-label', type: 'symbol', source: 'mqs-prot', layout: { 'symbol-sort-key': ['-', 0, ['get', 'n']],
         'text-field': '', 'text-size': 10.5, 'text-font': ['Open Sans Semibold'], 'text-variable-anchor': ['top', 'bottom', 'right', 'left'], 'text-radial-offset': 1.2, 'text-optional': true },
         paint: { 'text-color': ['match', ['get', 'kind'], 'heurts', '#ff8a80', PROT.annonce], 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.4 } });
+      m.addLayer({ id: 'mqs-ddos', type: 'circle', source: 'mqs-ddos',
+        paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 4, 7, 8, 10], 'circle-color': 'rgba(0,0,0,0)',
+          'circle-stroke-color': ['case', ['get', 'recent'], L1.jaune, CAT.hacktivist], 'circle-stroke-width': 2.5 } });
+      m.addLayer({ id: 'mqs-ddos-dot', type: 'circle', source: 'mqs-ddos',
+        paint: { 'circle-radius': 2.6, 'circle-color': CAT.hacktivist, 'circle-stroke-color': '#0a0a0f', 'circle-stroke-width': 0.8 } });
+      m.addLayer({ id: 'mqs-ddos-label', type: 'symbol', source: 'mqs-ddos',
+        layout: { 'text-field': '', 'text-size': 10.5, 'text-font': ['Open Sans Semibold'], 'text-variable-anchor': ['right', 'left', 'top', 'bottom'],
+          'text-radial-offset': 1.1, 'text-optional': true },
+        paint: { 'text-color': ['case', ['get', 'recent'], L1.jaune, CAT.hacktivist], 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.4 } });
       m.addLayer({ id: 'mqs-crime-city', type: 'circle', source: 'mqs-crime', filter: ['all', ['>=', ['get', 'sortKey'], 200], ['!', ['get', 'estimated']]], layout: { 'circle-sort-key': ['get', 'sortKey'] },
         paint: { 'circle-color': 'rgba(0,0,0,0)', 'circle-radius': ['+', 2, ['get', 'r']], 'circle-stroke-color': ['get', 'color'], 'circle-stroke-width': 2, 'circle-stroke-opacity': 0.95 } }, b);
       m.addLayer({ id: 'mqs-bases-closed', type: 'symbol', source: 'mqs-bases', filter: ['==', ['get', 'status'], 'ferme'],
@@ -413,7 +428,7 @@
     military: ['mqs-bases-sym', 'mqs-bases-closed', 'mqs-air-sym', 'sov-emergencies', 'sov-navy-reference', 'sov-navy-observed', 'sov-gnss-fill', 'sov-gnss-line'],
     subseaCables: ['mqs-world-line', 'mqs-world-planned', 'mqs-suite-line', 'mqs-suite-end', 'mqs-world-lp', 'submarine-cables-line', 'mqs-landings', 'mqs-landings-label', 'mqs-cable-label', 'mqs-cz-fill', 'mqs-cz-line', 'mqs-anch-line'],
     // Cyber : aucun incident localisé publiquement ; la pastille montre l'infrastructure numérique exposée (centres de données, zones cloud, atterrages).
-    cyber: ['mqs-dc-ref', 'mqs-cloud-sym', 'mqs-landings', 'mqs-landings-label', 'submarine-cables-line'],
+    cyber: ['mqs-ddos', 'mqs-ddos-dot', 'mqs-ddos-label', 'mqs-dc-ref', 'mqs-cloud-sym', 'mqs-landings', 'mqs-landings-label', 'submarine-cables-line'],
     stability: [],
     protests: ['mqs-prot', 'mqs-prot-label'],
     crime: ['mqs-crime-city', 'mqs-crime-c', 'mqs-crime-c-label', 'mqs-crime-d-fill', 'mqs-crime-d-line'],
@@ -606,6 +621,37 @@
     return { dot: crimeHex(x.ratio), title: `${x.d.name} (${x.d.code})`, state: x.ratio == null ? 'Non publié' : `${fr2(x.ratio)}${NB}× la moyenne nationale`, stateHex: '#c7c7cc', rows,
       hint: 'Indicateur choisi dans le panneau Criminalité · statistique annuelle', source: crimeSrc() };
   };
+  // ─── Cibles des hacktivistes (veille cyber élargie, /api/sovereignty/cyber-watch) ───
+  const KIND_WORD = { 'préfecture': 'site de la préfecture', administration: 'site d’administration', 'collectivité': 'site de la collectivité', port: 'site portuaire', site: 'site' };
+  const ddosPlaces = () => {
+    const groups = new Map();
+    const now = Date.now();
+    for (const h of S.data.watch?.ddosia?.hosts ?? []) {
+      const pl = h.place;
+      if (!pl) continue;
+      // Préfecture : point au centre du département (la préfecture n'est pas géocodée) ; commune : son centre.
+      const at = pl.lon != null && pl.lat != null ? [pl.lon, pl.lat] : S.agg?.get(pl.dept)?.at ?? null;
+      if (!at) continue;
+      const key = `${pl.dept}:${pl.name}`;
+      const g = groups.get(key) ?? { key, name: pl.how === 'préfecture' ? pl.name : pl.name, dept: pl.dept, how: pl.how, at, hosts: [], recent: false };
+      g.hosts.push(h);
+      if (now - Date.parse(h.last) < 864e5) g.recent = true;
+      groups.set(key, g);
+    }
+    return [...groups.values()];
+  };
+  const ddosCard = (g) => {
+    const w = S.data.watch?.ddosia;
+    const hosts = [...g.hosts].sort((a, b) => String(b.last).localeCompare(String(a.last)));
+    const rows = [...hosts.slice(0, 5).map((h) => [h.host, `${KIND_WORD[h.kind] ?? 'site'} · ${h.configs > 1 ? `${h.configs}${NB}listes, dernière le ${when(h.last)}` : `liste du ${when(h.last)}`}`]),
+      ['Lieu', g.how === 'préfecture' ? `${g.name} (${g.dept}) : point au centre du département` : `${g.name} (${g.dept}), déduit du nom de domaine`],
+      ['Dernière liste du groupe', w?.lastConfig ? `${when(w.lastConfig.at)} · ${w.lastConfig.targets}${NB}sites, dont ${w.lastConfig.fr} en France` : 'n.d.'],
+      ['Sites français sur 30 jours', `${(w?.hosts ?? []).length}`]];
+    return { dot: g.recent ? L1.jaune : CAT.hacktivist, title: g.name, state: g.recent ? 'Visé par NoName057(16) dans une liste de moins de 24 h' : 'Visé par NoName057(16) sur 30 jours',
+      stateHex: g.recent ? L1.jaune : CAT.hacktivist, rows,
+      hint: 'Liste de cibles publiée par le groupe pro-russe : une cible n’est pas une attaque réussie (site ralenti ou indisponible quelques heures, sans vol de données)',
+      source: `witha.name (listes DDoSia), lu ${when(w?.readAt)}` };
+  };
   // ─── Manifestations : bulle complète ───
   const PROT_WORD = { annonce: 'Annoncée (agenda militant), pas constatée', signale: 'Rapportée par la presse, sans heurts', heurts: 'Heurts ou tensions rapportés par la presse' };
   const protCard = (x) => {
@@ -728,7 +774,7 @@
   const deptAt = (c) => { if (!c) return null; for (const f of S.geo.deptShapes) if (inGeom(c, f.geometry)) return S.agg.get(f.properties.code); return null; };
 
   // Arbitre : une seule cible, la plus signifiante sous le pointeur.
-  const PRIORITY = ['mqs-air-sym', 'sov-emergencies', 'mqs-prot', 'mqs-cloud-sym', 'mqs-inet-disc', 'mqs-sites-recent', 'mqs-agg-disc', 'mqs-low-disc', 'mqs-crime-c', 'mqs-crime-city', 'mqs-bases-sym', 'mqs-bases-closed', 'sov-navy-reference', 'sov-navy-observed', 'mqs-landings', 'mqs-world-lp', 'mqs-dc-ref', 'mqs-suite-end', 'mqs-world-hit', 'mqs-suite-hit', 'submarine-cables-hitarea', 'mqs-anch-line', 'mqs-cz-fill', 'mqs-sites-long', 'mqs-crime-d-fill', 'mqs-dept-fill'];
+  const PRIORITY = ['mqs-air-sym', 'sov-emergencies', 'mqs-ddos', 'mqs-prot', 'mqs-cloud-sym', 'mqs-inet-disc', 'mqs-sites-recent', 'mqs-agg-disc', 'mqs-low-disc', 'mqs-crime-c', 'mqs-crime-city', 'mqs-bases-sym', 'mqs-bases-closed', 'sov-navy-reference', 'sov-navy-observed', 'mqs-landings', 'mqs-world-lp', 'mqs-dc-ref', 'mqs-suite-end', 'mqs-world-hit', 'mqs-suite-hit', 'submarine-cables-hitarea', 'mqs-anch-line', 'mqs-cz-fill', 'mqs-sites-long', 'mqs-crime-d-fill', 'mqs-dept-fill'];
   const pick = (point) => {
     // Une pastille active : seuls ses calques (et les départements) répondent au survol ; un calque estompé ne donne jamais de bulle.
     const on = new Set(S.focus); if (preview) on.add(preview);
@@ -761,6 +807,7 @@
         card: { dot: p.outOfService ? '#6e7585' : CAT.cables, title: o.title || 'câble sous-marin', state: o.sub, stateHex: '#c7c7cc',
           rows: [...o.rows, ['Veille des navires', S.data.cablesWatch?.evaluated ? 'active' : 'coupée']], hint: o.notes.join(' '), source: 'Shom · OpenStreetMap' } };
     }
+    if (id === 'mqs-ddos') { const g = S.ddos?.[p.i]; return g && { key: `dd:${g.key}`, kind: 'raw', id: g.key, at: g.at, card: ddosCard(g) }; }
     if (id === 'mqs-prot') { const x = S.prot?.[p.i]; return x && { key: `pr:${x.id}`, kind: 'raw', id: x.id, at: [x.lon, x.lat], card: protCard(x) }; }
     if (id === 'mqs-crime-c' || id === 'mqs-crime-city') { const c = S.crime?.cities[p.i]; return c && { key: `cr:${c.city.code}`, kind: 'raw', id: c.city.code, at: [c.city.lon, c.city.lat], card: crimeCityCard(c) }; }
     if (id === 'mqs-crime-d-fill') { const d = S.crime?.depts.get(p.code); return d && { key: `crd:${p.code}`, kind: 'raw', id: p.code, at: null, card: crimeDeptCard(d) }; }
@@ -978,13 +1025,27 @@
   // ─── Encart cyber : jamais critique, jamais sur la carte ───
   const cyber = document.createElement('div');
   cyber.className = 'mqs-cyber';
+  // Veille élargie dans l'encart : cibles d'hacktivistes en 24 h, DDoS du dernier jour, services publics injoignables.
+  const watchLines = () => {
+    const w = S.data.watch;
+    if (!w) return '';
+    const now = Date.now();
+    const recent = (w.ddosia?.hosts ?? []).filter((h) => now - Date.parse(h.last) < 864e5);
+    const ratio = w.radar ? Math.max(w.radar.l7Ratio ?? 0, w.radar.l3Ratio ?? 0) : null;
+    const down = (w.services?.items ?? []).filter((x) => !x.ok);
+    const line = (hex, text) => `<div class="mqs-cy-w"><i style="background:${hex}"></i>${esc(text)}</div>`;
+    return line(recent.length ? L1.jaune : CAT.hacktivist, recent.length ? `Hacktivistes : ${plural(recent.length, 'site')} français visé${recent.length > 1 ? 's' : ''} en 24${NB}h (NoName057(16))` : 'Hacktivistes : aucun site français visé en 24 h')
+      + (ratio !== null ? line(ratio >= 4 ? L1.orange : ratio >= 2 ? L1.jaune : '#f472b6', `DDoS vers la France : ${fr2(ratio)}${NB}× la médiane (Cloudflare)`) : '')
+      + (w.services ? line(down.length ? L1.rouge : L1.vert, down.length ? `Injoignable : ${down.map((x) => x.name).join(', ')}` : `${w.services.items.length} services publics en ligne`) : '');
+  };
   const renderCyber = () => {
     const c = S.data.cyber?.certfr;
     const open = (c?.alerts ?? []).filter((x) => x.status === 'en-cours');
     const exploited = open.filter((x) => x.exploited).length;
     cyber.innerHTML = `<div class="mqs-cy-h">${icon('shield', open.length ? L1.jaune : MUTE)}<b>Cyber</b><span>${open.length ? `${open.length}${NB}alertes CERT-FR en cours, dont ${exploited}${NB}exploitées` : 'aucune alerte CERT-FR en cours'}</span></div>`
       + (open.length ? `<div class="mqs-cy-l">${open.slice(0, 3).map((x) => `<a href="${esc(x.url)}" target="_blank" rel="noopener" title="${esc(x.title)}">${esc(x.title)}</a>`).join('')}</div>` : '')
-      + `<div class="mqs-cy-s">National · pastille : infrastructure exposée sur la carte · <a href="#" class="mqs-cy-more">fiche détaillée</a></div>`;
+      + watchLines()
+      + `<div class="mqs-cy-s">National · pastille : infrastructure exposée et cibles d’hacktivistes sur la carte · <a href="#" class="mqs-cy-more">fiche détaillée</a></div>`;
     const more = cyber.querySelector('.mqs-cy-more'); if (more) more.onclick = (e) => { e.preventDefault(); openFiche('cyber', 'fr'); };
   };
 
@@ -1029,6 +1090,8 @@
   .mqs-cy-s { color: #6e6e80; font-size: 10.5px; margin-top: 4px; }
   .mqs-sw-ring { width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--c); background: #05060a; }
   .mqs-note { color: #9898a8; font-size: 11px; }
+  .mqs-cy-w { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 11px; color: #c7cbd4; }
+  .mqs-cy-w i { width: 7px; height: 7px; border-radius: 50%; flex: none; }
   .mqs-cyber.is-focus { border-color: #ffcc00; box-shadow: 0 0 0 2px rgba(255,204,0,.35); } .mqs-cyber.is-dim { display: none; }
   .mqs-chip { display: inline-flex; align-items: center; gap: 5px; background: #1c2029; color: #d9dde5; border: 1px solid #2a2e37; border-radius: 999px; padding: 2px 10px 2px 3px; cursor: pointer; font-size: 11.5px; }
   .mqs-chip[aria-pressed="true"] { background: #e8e8ec; color: #111; } .mqs-chip[aria-pressed="true"] .mqs-ic { border-color: #111; }
@@ -1062,9 +1125,9 @@
     document.addEventListener('change', (e) => { if (e.target?.matches?.('select[data-crime-indicator]')) setTimeout(draw, 50); });
     audit();
     const load = async () => {
-      const [telecom, internet, military, cablesWatch, gnss, cyberData, cloud, protests] = await Promise.all(['/api/outages/telecom', '/api/outages/internet', '/api/sovereignty/military',
-        '/api/sovereignty/cables-watch', '/api/sovereignty/gnss', '/api/sovereignty/cyber', '/api/outages/cloud', '/api/social/protests'].map(getJson));
-      S.data = { telecom, internet, military, cablesWatch, gnss, cyber: cyberData, cloud, protests };
+      const [telecom, internet, military, cablesWatch, gnss, cyberData, cloud, protests, watch] = await Promise.all(['/api/outages/telecom', '/api/outages/internet', '/api/sovereignty/military',
+        '/api/sovereignty/cables-watch', '/api/sovereignty/gnss', '/api/sovereignty/cyber', '/api/outages/cloud', '/api/social/protests', '/api/sovereignty/cyber-watch'].map(getJson));
+      S.data = { telecom, internet, military, cablesWatch, gnss, cyber: cyberData, cloud, protests, watch };
       await draw();
     };
     await load();

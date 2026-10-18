@@ -2963,6 +2963,69 @@ export interface CyberResponse {
   errors: string[];                 // préfixées par la source : « CERT-FR, avis : HTTP 503 », « CISA KEV : délai dépassé (15000 ms) »
 }
 
+// ─── Veille cyber élargie : GET /api/sovereignty/cyber-watch (18/10/2026) ───
+export interface CyberWatchCount { label: string; count: number }
+export interface RadarAs { asn: number | null; name: string | null; cc: string | null }
+export interface CyberWatchRadar {
+  readAt: string; dataUntil: string;
+  l7: { day: string; value: number }[];   // attaques DDoS applicatives visant la France, par jour, normalisées (1 = maximum de la période)
+  l3: { day: string; value: number }[];   // attaques DDoS réseau, idem
+  l7Ratio: number | null; l3Ratio: number | null;   // dernier jour rapporté à la médiane des jours précédents
+  industries: { label: string; pct: number }[];      // secteurs visés en France sur 7 jours (part en %)
+  targetRank: number | null; targetShare: number | null;   // rang et part de la France parmi les pays visés (couche 7, 7 jours)
+  hijacks: { id: string; start: string; end: string; hijacker: RadarAs; victims: RadarAs[]; prefixes: number; confidence: number | null; ongoing: boolean }[];
+  hijackCount: number;
+  leaks: { id: string; start: string; leaker: RadarAs; countries: string[]; prefixes: number | null; finished: boolean }[];
+  leakCount: number;
+}
+export interface CyberWatchAbuse {
+  readAt: string;
+  urlhaus: {
+    last30: number; online: number; threats: CyberWatchCount[]; asns: { asn: number; count: number; name: string | null }[];
+    weeks: { weeksAgo: number; count: number }[]; latest: { added: string; host: string; threat: string; asn: number | null }[];
+  };
+  feodo: {
+    total: number; fr: number; frOnline: number;
+    servers: { ip: string; port: number | null; malware: string | null; asName: string | null; status: string | null; lastOnline: string | null }[];
+  };
+}
+export interface DdosiaPlace { dept: string; name: string; how: string; lon: number | null; lat: number | null }
+export interface DdosiaHost { host: string; first: string; last: string; configs: number; kind: string; place: DdosiaPlace | null }
+export interface CyberWatchDdosia {
+  readAt: string;
+  lastConfig: { id: string; at: string; targets: number; fr: number; tlds: CyberWatchCount[] } | null;
+  hosts: DdosiaHost[];             // sites français relevés sur 30 jours, le plus récent d'abord
+  days: { day: string; configs: number; targets: number; fr: number; frHosts: string[] }[];
+}
+export interface CyberWatchLookalikes {
+  readAt: string; domains: { domain: string; brand: string; day: string }[]; perDay: { day: string; total: number; matched: number }[];
+}
+export interface CyberWatchCnil {
+  readAt: string; fileDate: string; file: string | null; note: string; quarters: { q: string; count: number }[]; last4: number;
+  hackingPct: number | null; externalPct: number | null; sectors: CyberWatchCount[]; origins: CyberWatchCount[];
+}
+export interface CyberWatchEpss { readAt: string; date: string | null; scores: { cve: string; epss: number | null; percentile: number | null }[] }
+export interface CyberWatchEuvd {
+  readAt: string; total30: number; last7: number;
+  items: { id: string; cve: string | null; vendor: string | null; product: string | null; score: number | null; exploitedSince: string | null; published: string | null }[];
+}
+export interface CyberWatchService {
+  id: string; name: string; url: string; ok: boolean; status: number | null; ms: number | null; error: string | null; downSince: string | null;
+  uptime24: number | null; medianMs: number | null; hours: (number | null)[];
+}
+export interface CyberWatchResponse {
+  readAt: string | null;
+  radar: CyberWatchRadar | null;
+  abuse: CyberWatchAbuse | null;
+  ddosia: CyberWatchDdosia | null;
+  lookalikes: CyberWatchLookalikes | null;
+  cnil: CyberWatchCnil | null;
+  epss: CyberWatchEpss | null;
+  euvd: CyberWatchEuvd | null;
+  services: { readAt: string; items: CyberWatchService[] } | null;
+  errors: string[];
+}
+
 // ═══ Souveraineté, phase B (spec § 3 ; contrats § 1.2 ; amendement 7 : O15 à O17, S6 à S8) ═══
 
 // ─── GNSS et météo spatiale : GET /api/sovereignty/gnss ───

@@ -6,6 +6,7 @@ import { SOVEREIGNTY_COLLECTORS } from '../server/prod/sovereignty-collectors.mj
 import { ensureMilitaryFresh } from '../api/_lib/military-collect.js';
 import { ensureCablesWatchFresh } from '../api/_lib/cable-watch.js';
 import { ensureCyberFresh } from '../api/_lib/cyber-collect.js';
+import { ensureCyberWatchFresh } from '../api/_lib/cyber-watch.js';
 import { loadSpaceWeather } from '../api/_lib/noaa-swpc.js';
 import { ensureGnssFresh } from '../api/_lib/gnss-collect.js';
 import { ensureRipeFresh } from '../api/_lib/ripestat.js';
@@ -14,9 +15,9 @@ import { ensureVigipirateFresh } from '../api/_lib/vigipirate-page.js';
 
 describe('collecteurs Souveraineté (phases A et B)', () => {
   it('vols militaires, veille des câbles, vigilance cyber et relecture de la page Vigipirate, mêmes fonctions que les routes', () => {
-    expect(SOVEREIGNTY_COLLECTORS.map((c) => c.name)).toEqual(['military', 'cables-watch', 'cyber', 'noaa', 'gnss', 'ripestat', 'gels', 'vigipirate']);
+    expect(SOVEREIGNTY_COLLECTORS.map((c) => c.name)).toEqual(['military', 'cables-watch', 'cyber', 'cyber-watch', 'noaa', 'gnss', 'ripestat', 'gels', 'vigipirate']);
     expect(SOVEREIGNTY_COLLECTORS.map((c) => c.run)).toEqual([
-      ensureMilitaryFresh, ensureCablesWatchFresh, ensureCyberFresh, loadSpaceWeather, ensureGnssFresh, ensureRipeFresh, ensureGelsFresh, ensureVigipirateFresh,
+      ensureMilitaryFresh, ensureCablesWatchFresh, ensureCyberFresh, ensureCyberWatchFresh, loadSpaceWeather, ensureGnssFresh, ensureRipeFresh, ensureGelsFresh, ensureVigipirateFresh,
     ]);
   });
   it('le serveur de production les lance avec ceux des Trafics et de l’Environnement', () => {

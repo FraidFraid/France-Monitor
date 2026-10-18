@@ -292,7 +292,7 @@ describe('vue Vigilance cyber (spec 2026-10-04 souveraineté § 2.3, amendement 
     expect(t).toContain('Les avis de sécurité sont des documents faisant état de vulnérabilités et des moyens de s’en prémunir.');
     expect(t).toContain('revendications de la semaine dépassent 1,5 fois la moyenne (jaune au plus');
     expect(t).not.toMatch(/3 fois la moyenne/);
-    expect(t).toContain('pas de lieu publié : voir le panneau');
+    expect(t).toContain('aucune de ces sources ne publie de lieu');
     expect(t).toContain('Retirés : exposition Shodan et Censys, FrenchBreaches, fuites de plus de 30\u00a0jours, titres et domaines des fuites, CVE mondiales hors catalogue KEV.');
     expect(h).toContain('href="https://www.ransomware.live/t&amp;c"');
   });
