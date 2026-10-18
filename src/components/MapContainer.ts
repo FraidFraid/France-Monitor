@@ -22,6 +22,7 @@ import type {
 } from '../types/index.ts';
 import type { AirQualityResponse, AsnrResponse, DisastersResponse, ProtestsResponse, DroughtResponse, EmsResponse, EarthquakesResponse, FiresResponse, FloodsResponse, SeaLevelsResponse, VigilanceEcheance, VigilanceResponse } from '../types/index.ts';
 import type { CrimeDataset, CrimeIndicatorKey } from '../types/index.ts';
+import type { WebcamsDataset } from '../types/index.ts';
 import type { UrgencesSyndrome } from './layer-panel/health-format.ts';
 
 /** Detect if the device is mobile (no WebGL or small screen) */
@@ -67,6 +68,8 @@ export class MapContainer {
   private onCrimeCityClick: ((cityCode: string) => void) | null = null;
   private crimeData: CrimeDataset | null = null;
   private crimeIndicator: CrimeIndicatorKey | null = null;
+  private onWebcamClick: ((id: string) => void) | null = null;
+  private webcamsData: WebcamsDataset | null = null;
   private onSovereigntyFeatureClick: ((layerId: string, props: Record<string, unknown>) => void) | null = null;
 
   constructor(container: HTMLElement) {
@@ -102,6 +105,8 @@ export class MapContainer {
     if (this.onCrimeCityClick) this.deckMap.setOnCrimeCityClick(this.onCrimeCityClick);
     if (this.crimeIndicator) this.deckMap.setCrimeIndicator(this.crimeIndicator);
     if (this.crimeData) this.deckMap.updateCrimeLayer(this.crimeData);
+    if (this.onWebcamClick) this.deckMap.setOnWebcamClick(this.onWebcamClick);
+    if (this.webcamsData) this.deckMap.updateWebcamsLayer(this.webcamsData);
     if (this.onRawMapClick) this.deckMap.setOnRawMapClick(this.onRawMapClick);
     if (this.onSatelliteView) this.deckMap.setOnSatelliteView(this.onSatelliteView);
     if (this.onEnergyKeyChange) this.deckMap.setOnEnergyKeyChange(this.onEnergyKeyChange);
@@ -579,6 +584,17 @@ export class MapContainer {
   setOnCrimeCityClick(handler: (cityCode: string) => void): void {
     this.onCrimeCityClick = handler;
     this.deckMap?.setOnCrimeCityClick(handler);
+  }
+
+  /** Webcams : recensement statique (gardé ici pour une carte créée après la lecture). */
+  updateWebcamsLayer(data: WebcamsDataset | null): void {
+    this.webcamsData = data;
+    this.deckMap?.updateWebcamsLayer(data);
+  }
+
+  setOnWebcamClick(handler: (id: string) => void): void {
+    this.onWebcamClick = handler;
+    this.deckMap?.setOnWebcamClick(handler);
   }
 
   updateDisastersLayer(d: DisastersResponse | null, now: number): void {

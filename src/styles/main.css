@@ -5730,6 +5730,7 @@ button.header-quality-link {
   .disasters-panel-modal,
   .protests-panel-modal,
   .crime-panel-modal,
+  .webcams-panel-modal,
   .gas-panel-modal,
   .nuclear-panel-modal,
   .oil-panel-modal,
@@ -5783,6 +5784,7 @@ button.header-quality-link {
   .disasters-panel-modal::before,
   .protests-panel-modal::before,
   .crime-panel-modal::before,
+  .webcams-panel-modal::before,
   .gas-panel-modal::before,
   .nuclear-panel-modal::before,
   .oil-panel-modal::before,
@@ -7769,6 +7771,7 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
   #app.ui-v2 .disasters-panel-modal,
   #app.ui-v2 .protests-panel-modal,
   #app.ui-v2 .crime-panel-modal,
+  #app.ui-v2 .webcams-panel-modal,
   #app.ui-v2 .gas-panel-modal,
   #app.ui-v2 .nuclear-panel-modal,
   #app.ui-v2 .oil-panel-modal,
@@ -8382,3 +8385,13 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 #app .crime-panel-modal .fmk .fmk-sec--ref .fmk-kv { grid-template-columns: 8rem minmax(0, 1fr); }
 #app .crime-panel-modal .fmk .fmk-sec--ref .fmk-kv-v { overflow-wrap: anywhere; }
 .lp .lp-toolbar .lp-select { max-width: 100%; }
+
+/* Webcams : fiche de la webcam choisie, vignette d'une image directe sous licence ouverte (jamais d'iframe). */
+#app .webcams-panel-modal .fmk .fmk-sec--ref .fmk-kv { grid-template-columns: 8rem minmax(0, 1fr); }
+#app .webcams-panel-modal .fmk .fmk-kv-v { overflow-wrap: anywhere; }
+.webcams-panel-modal .wc-name { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; font-weight: 600; color: var(--text-primary); }
+.webcams-panel-modal .wc-actions { margin: 8px 0; }
+.webcams-panel-modal .wc-open { font-weight: 600; }
+.webcams-panel-modal .wc-thumb { margin: 8px 0 0; }
+.webcams-panel-modal .wc-thumb img { display: block; width: 100%; max-height: 220px; object-fit: contain; border-radius: 6px; background: var(--bg-secondary, #111); }
+.webcams-panel-modal .wc-thumb figcaption { margin-top: 4px; color: var(--text-secondary); font-size: 11px; }

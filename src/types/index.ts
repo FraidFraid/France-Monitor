@@ -129,6 +129,8 @@ export interface MapLayers {
   protests: boolean;
   /** Criminalité : délinquance enregistrée SSMSI, départements et villes de 20 000 habitants et plus (spec 2026-10-17 criminalité). */
   crime: boolean;
+  /** Webcams publiques recensées (OSM, data.gouv.fr), état des liens vérifié au recensement (scripts/build-webcams.mjs). */
+  webcams: boolean;
   stability: boolean;
   cyber: boolean;
   gasNetwork: boolean;
@@ -3303,4 +3305,49 @@ export interface CrimeDataset {
   france: Partial<Record<CrimeIndicatorKey, Array<{ year: number; count: number; rate: number | null }>>>;
   departments: CrimeDepartment[];
   cities: CrimeCity[];
+}
+
+// ─── Webcams (recensement scripts/build-webcams.mjs → public/data/webcams.json) ───
+// Contrat partagé avec flux_osint (docs/webcams_format.md) : ne pas renommer ni retirer un champ.
+
+/** État du lien au moment du recensement. */
+export type WebcamStatus = 'ok' | 'down' | 'unknown';
+
+export interface WebcamSource {
+  id: string;
+  name: string;
+  license: string | null;
+  url: string;
+  count: number;
+}
+
+export interface Webcam {
+  /** Stable : source + identifiant de la source (« osm:node/123456 »). */
+  id: string;
+  /** Jamais vide (repli « Webcam · <commune> »). */
+  name: string;
+  /** Position de la caméra (WGS84). */
+  lat: number;
+  lon: number;
+  commune: string | null;
+  dept: string | null;
+  /** Identifiant d'une entrée de `sources`. */
+  source: string;
+  pageUrl: string | null;
+  imageUrl: string | null;
+  streamUrl: string | null;
+  license: string | null;
+  attribution: string | null;
+  status: WebcamStatus;
+  httpStatus: number | null;
+  contentType: string | null;
+  checkedAt: string | null;
+  /** Image directe vivante ET licence de réutilisation. */
+  countable: boolean;
+}
+
+export interface WebcamsDataset {
+  generatedAt: string;
+  sources: WebcamSource[];
+  webcams: Webcam[];
 }

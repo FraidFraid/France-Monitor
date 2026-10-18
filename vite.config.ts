@@ -202,6 +202,7 @@ export default defineConfig(({ mode }) => {
             'data/ehpad.json',
             'data/eau-potable.json',
             'data/deces.json',
+            'data/webcams.json', // recensement des webcams, lu à l'ouverture de la couche
           ],
           // Abaissé de 3 Mo à 1 Mo : les gros GeoJSON/JSON ci-dessus sont
           // exclus explicitement du precache : ce plafond n'a plus besoin de

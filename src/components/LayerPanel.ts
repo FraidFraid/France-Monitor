@@ -59,6 +59,7 @@ const LAYER_DEFS: LayerDef[] = [
   { key: 'outagesCloud',    label: 'CLOUD ET HÉBERGEMENT', icon: fmIcon('cloud'), sublayerOf: 'outages' },
   { key: 'protests', label: 'MANIFESTATIONS', icon: `<span style="color:#ec4899;">${fmIcon('megaphone')}</span>` },
   { key: 'crime', label: 'CRIMINALITÉ', icon: `<span style="color:#6366f1;">${fmIcon('siren')}</span>` },
+  { key: 'webcams', label: 'WEBCAMS', icon: `<span style="color:#22c55e;">${fmIcon('camera')}</span>` },
 ];
 
 /** Entrées affichées : « Événements en cours » n'existe que dans la v2 (la v1 ne change pas). */
@@ -680,6 +681,9 @@ export class LayerPanel {
       ]),
       this.helpSection(fmIcon('siren'), 'Criminalité', [
         this.helpItem(fmIcon('siren'), 'Criminalité', 'Délinquance enregistrée par la police et la gendarmerie (SSMSI, ministère de l’Intérieur), par département et par ville de 20\u00a0000 habitants et plus ; homicides au département seulement. Données annuelles : plaintes et constatations, pas la délinquance réelle. Aucun effet sur l’indice de stabilité.'),
+      ]),
+      this.helpSection(fmIcon('camera'), 'Webcams', [
+        this.helpItem(fmIcon('camera'), 'Webcams', 'Webcams publiques recensées par OpenStreetMap (ODbL) et les jeux ouverts de data.gouv.fr (Orléans Métropole, Loire-Atlantique, Anglet, Métropole de Lyon). Vert : lien actif au recensement ; gris : lien mort ou non vérifiable. Le lien ouvre le site d’origine ; vignette seulement pour une image sous licence ouverte. Aucun effet sur l’indice de stabilité.'),
       ]),
     ].join('');
   }

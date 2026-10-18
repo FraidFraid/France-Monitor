@@ -121,6 +121,10 @@ import { PROTESTS_LEGEND, protestsLegend } from './components/layer-panel/manife
 import type { CriminalitePanel } from './components/CriminalitePanel.ts';
 import { fetchCrimeDataset } from './services/crime.ts';
 import { CRIME_LEGEND, crimeLegend } from './components/layer-panel/criminalite-legend.ts';
+import type { WebcamsPanel } from './components/WebcamsPanel.ts';
+import { fetchWebcamsDataset } from './services/webcams.ts';
+import { WEBCAMS_LEGEND, webcamsLegend } from './components/layer-panel/webcams-legend.ts';
+import type { WebcamsDataset } from './types/index.ts';
 import type { CrimeDataset } from './types/index.ts';
 import { departementCentroid } from './config/departements.ts';
 import { radarStatus, type RadarProfileState } from './services/environment-radar.ts';
@@ -568,6 +572,7 @@ const DEFAULT_LAYERS: MapLayers = {
   outagesCloud: false,
   protests: false,
   crime: false,
+  webcams: false,
   stability: false,
   cyber: false,
   gasNetwork: false,
@@ -635,6 +640,7 @@ const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
   { id: 'outagesCloud', label: 'Cloud et hébergement', icon: 'cloud', layerKeys: ['outagesCloud'] },
   { id: 'protests', label: 'Manifestations', icon: 'megaphone', layerKeys: ['protests'] },
   { id: 'crime', label: 'Criminalité', icon: 'siren', layerKeys: ['crime'] },
+  { id: 'webcams', label: 'Webcams', icon: 'camera', layerKeys: ['webcams'] },
 ];
 
 /** Lignes Souveraineté de la phase B : chacune n'est écrite que par son lecteur (tâche B28), jamais par un service de la phase A. */
@@ -1123,6 +1129,13 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     label: 'CRIMINALITÉ',
     legend: CRIME_LEGEND,
   },
+  // ─── Webcams : couche autonome rangée dans le thème Environnement, recensement statique lu une fois, aucune relève ───
+  {
+    id: 'webcams',
+    role: 'standalone',
+    label: 'WEBCAMS',
+    legend: WEBCAMS_LEGEND,
+  },
 
 ];
 
@@ -1162,6 +1175,10 @@ export class App {
   private crimePanelPromise: Promise<void> | null = null;
   private currentCrime: CrimeDataset | null = null;
   private crimeError: string | null = null;
+  private webcamsPanel: WebcamsPanel | null = null;
+  private webcamsPanelPromise: Promise<void> | null = null;
+  private currentWebcams: WebcamsDataset | null = null;
+  private webcamsError: string | null = null;
   private protestsPoll: PausableTimer | null = null;
   private weatherRadarPanel: WeatherRadarPanel | null = null;
   private maritimePanel: MaritimePanel | null = null;
@@ -2976,6 +2993,7 @@ export class App {
       'outagesCloud',
       'protests',
       'crime',
+      'webcams',
     ];
 
     const activeKeys = restoreOrder.filter((key) => this.activeLayers[key]);
@@ -3233,6 +3251,15 @@ export class App {
         this.openCrimePanel();
       } else {
         this.crimePanel?.hide({ silent: true });
+      }
+    }
+
+    // Panneau Webcams : recensement statique lu une fois à l'ouverture, aucune relève ; masquage silencieux à l'extinction.
+    if (key === 'webcams') {
+      if (enabled) {
+        this.openWebcamsPanel();
+      } else {
+        this.webcamsPanel?.hide({ silent: true });
       }
     }
 
@@ -4497,6 +4524,66 @@ export class App {
     });
   }
 
+  // ─── Webcams : recensement statique public/data/webcams.json (scripts/build-webcams.mjs) ───
+
+  /** Panneau Webcams, créé à la demande. */
+  private ensureWebcamsPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.webcamsPanelPromise ??= import('./components/WebcamsPanel.ts').then(({ WebcamsPanel }) => {
+      const panel = new WebcamsPanel(container);
+      panel.setOnClose(() => this.closeWebcamsLayer());
+      panel.mount();
+      this.webcamsPanel = panel;
+      if (this.activeLayers.webcams) panel.show(this.currentWebcams, this.webcamsError);
+    });
+    return this.webcamsPanelPromise;
+  }
+
+  /** Croix du panneau : éteint la couche comme une case décochée. */
+  private closeWebcamsLayer(): void {
+    if (this.activeLayers.webcams) {
+      this.onLayerToggle('webcams', false);
+      this.layerPanel?.updateLayers(this.activeLayers);
+    }
+  }
+
+  /** Ouverture (case, restauration) : panneau sur le fichier déjà lu, carte reposée, fichier lu une fois sinon. */
+  private openWebcamsPanel(): void {
+    this.webcamsPanel?.show(this.currentWebcams, this.webcamsError);
+    if (this.currentWebcams) this.mapContainer?.updateWebcamsLayer(this.currentWebcams);
+    this.refreshWebcamsLegend();
+    if (this.currentWebcams === null) this.loadWebcams().catch((err) => console.error('[App] Lecture Webcams en échec', err));
+  }
+
+  /** Point cliqué sur la carte : panneau ouvert sur la fiche de la webcam. */
+  private onWebcamMapClick(id: string): void {
+    void this.ensureWebcamsPanel().then(() => {
+      if (!this.isFloatingPanelVisible('webcams')) this.showFloatingPanel('webcams');
+      this.webcamsPanel?.select(id);
+    });
+  }
+
+  /** Lecture unique à la fois (mémorisée par le service) : panneau, carte et légende mis à jour ; un échec est dit, relu à la réouverture. */
+  private loadWebcams(): Promise<void> {
+    return dedupe('webcams', async () => {
+      try {
+        this.currentWebcams = await fetchWebcamsDataset();
+        this.webcamsError = null;
+      } catch (err) {
+        this.webcamsError = err instanceof Error ? err.message : 'Webcams : lecture impossible';
+      }
+      this.mapContainer?.updateWebcamsLayer(this.currentWebcams);
+      this.webcamsPanel?.update(this.currentWebcams, this.webcamsError);
+      this.refreshWebcamsLegend();
+    });
+  }
+
+  private refreshWebcamsLegend(): void {
+    if (!this.mapLegend) return;
+    this.mapLegend.setCategories([{ ...webcamsLegend(this.currentWebcams), visible: this.activeLayers.webcams }]);
+  }
+
   private refreshCrimeLegend(): void {
     if (!this.mapLegend) return;
     this.mapLegend.setCategories([{ ...crimeLegend(this.currentCrime, this.crimePanel?.getIndicator() ?? 'homicides'), visible: this.activeLayers.crime }]);
@@ -5028,6 +5115,7 @@ export class App {
       case 'disasters': return [this.ensureDisastersPanel()];
       case 'protests': return [this.ensureProtestsPanel()];
       case 'crime': return [this.ensureCrimePanel()];
+      case 'webcams': return [this.ensureWebcamsPanel()];
       case 'trafficRoad': return [this.ensureTrafficPanel()];
       case 'trafficAir': return [this.ensureAirTrafficPanel()];
       case 'trafficRail': return [this.ensureTransportPanel()];
@@ -5100,6 +5188,7 @@ export class App {
       case 'outagesCloud': return this.outagesCloudPanel;
       case 'protests': return this.protestsPanel;
       case 'crime': return this.crimePanel;
+      case 'webcams': return this.webcamsPanel;
       default: return null;
     }
   }
@@ -5650,6 +5739,8 @@ export class App {
     this.mapContainer.setOnProtestClick((key) => this.onProtestMapClick(key));
     // Clic sur un rond de ville Criminalité : panneau ouvert sur la ligne de cette ville.
     this.mapContainer.setOnCrimeCityClick((code) => this.onCrimeMapClick(code));
+    // Clic sur une webcam : panneau ouvert sur sa fiche.
+    this.mapContainer.setOnWebcamClick((id) => this.onWebcamMapClick(id));
     // Clic sur un objet Souveraineté (contrats § 4.4 point 19) : fiche d'un bâtiment, ou panneau de sa couche.
     this.mapContainer.setOnSovereigntyFeatureClick((layerId, props) => this.onSovereigntyMapClick(layerId, props));
     // Sync URL when map view changes

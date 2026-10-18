@@ -15,6 +15,8 @@ import type { MapViewState, AirOverviewResponse, MaritimeSnapshot, RailOverviewR
 import { emsZoneFeatures } from './deckgl/environment-map-ems.ts';
 import { PROTEST_LAYERS, PROTEST_LAYER_IDS, protestFeatures } from './deckgl/protests-map.ts';
 import { CRIME_CITY_LAYERS, CRIME_LAYERS, CRIME_LAYER_IDS, crimeCityFeatures, crimeDeptFeatures } from './deckgl/crime-map.ts';
+import { WEBCAM_LAYERS, WEBCAM_LAYER_IDS, webcamFeatures, webcamSourceSpec } from './deckgl/webcams-map.ts';
+import type { WebcamsDataset } from '../types/index.ts';
 import { DEFAULT_CRIME_INDICATOR } from '../services/crime.ts';
 import { ASNR_RING_LAYER, asnrRingFeatures } from './deckgl/nuclear-map-asnr.ts';
 import type { CrimeDataset, CrimeIndicatorKey } from '../types/index.ts';
@@ -190,6 +192,9 @@ import {
   SRC_PROTESTS,
   LYR_PROTESTS,
   SRC_CRIME_DEPTS,
+  SRC_WEBCAMS,
+  LYR_WEBCAMS,
+  LYR_WEBCAM_CLUSTER,
   SRC_CRIME_CITIES,
   LYR_CRIME_FILL,
   LYR_CRIME_CITY,
@@ -490,6 +495,11 @@ export class DeckGLMap {
   private crimeHoverPopup: maplibregl.Popup | null = null;
   private crimeHoverShown = false;
   private onCrimeCityClick: ((cityCode: string) => void) | null = null;
+  /** Webcams : recensement statique, points regroupés aux petites échelles, infobulle au survol, clic relayé à App.ts (fiche). */
+  private webcamsData: WebcamsDataset | null = null;
+  private webcamHoverPopup: maplibregl.Popup | null = null;
+  private webcamHoverShown = false;
+  private onWebcamClick: ((id: string) => void) | null = null;
   private emsData: EmsResponse | null = null;
   private asnrData: AsnrResponse | null = null;
   private _forestDangerFill = false;
@@ -832,6 +842,7 @@ export class DeckGLMap {
     this.map.addSource(SRC_PROTESTS, envSourceSpec());
     this.map.addSource(SRC_CRIME_DEPTS, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_CRIME_CITIES, envSourceSpec());
+    this.map.addSource(SRC_WEBCAMS, webcamSourceSpec());
 
     // NASA GIBS — dernière image VIIRS publiée (fumée / cicatrices)
     this.map.addSource(SRC_MODIS, {
@@ -2305,6 +2316,8 @@ export class DeckGLMap {
     for (const layer of PROTEST_LAYERS) this.map.addLayer(layer);
     // Criminalité : ronds des villes au-dessus des surfaces, masqués jusqu'à setLayerVisibility.
     for (const layer of CRIME_CITY_LAYERS) this.map.addLayer(layer);
+    // Webcams (deckgl/webcams-map.ts) : groupes et points, masqués jusqu'à setLayerVisibility.
+    for (const layer of WEBCAM_LAYERS) this.map.addLayer(layer);
 
     // Séismes et marégraphes (phase B) au-dessus de toutes les surfaces : ajoutés ici, sous la première couche de points qui suit la dernière surface.
     placeEnvBPoints(this.map);
@@ -2604,6 +2617,7 @@ export class DeckGLMap {
     this.initOutagesInteractions();
     this.initProtestsInteractions();
     this.initCrimeInteractions();
+    this.initWebcamsInteractions();
 
 
     // Énergie (spec 2026-10-16 § 6) : un seul survol, une seule bulle, fiche détaillée épinglée au clic.
@@ -3220,6 +3234,9 @@ export class DeckGLMap {
       }
       out.push(cand);
     }
+    // Une webcam (point ou groupe) visée passe devant les surfaces de l'énergie (départements en tension, régions) : son clic ouvre sa fiche seule.
+    const webcamLayers = [LYR_WEBCAMS, LYR_WEBCAM_CLUSTER].filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+    if (webcamLayers.length > 0 && map.queryRenderedFeatures(point, { layers: webcamLayers }).length > 0) return out.filter((c) => c.coordinates !== undefined);
     return out;
   }
 
@@ -4534,6 +4551,7 @@ export class DeckGLMap {
       ...ENERGY_FOCUS_ALL,
       ...PROTEST_LAYER_IDS,
       ...CRIME_LAYER_IDS,
+      ...WEBCAM_LAYER_IDS,
     ];
 
     let activeLayers: string[] = [];
@@ -4561,6 +4579,8 @@ export class DeckGLMap {
       activeLayers = [...PROTEST_LAYER_IDS];
     } else if (categoryId === 'crime') {
       activeLayers = [...CRIME_LAYER_IDS];
+    } else if (categoryId === 'webcams') {
+      activeLayers = [...WEBCAM_LAYER_IDS];
     } else if (categoryId === 'trafficRoad') {
       activeLayers = [LYR_TRAFFIC, ...TRAFFIC_LAYER_KEYS.trafficRoad];
     } else if (categoryId === 'trafficAir') {
@@ -6268,7 +6288,7 @@ export class DeckGLMap {
       // Surfaces départementales exclues (comme la vigilance et la météo des forêts) : elles couvrent la carte et bloqueraient le profil radar ; séismes et marégraphes restent.
       // Même règle pour le remplissage des départements en anomalie Internet (le contour reste cliquable).
       ...ENV_HOVER_LAYERS.filter((id) => id !== LYR_WEATHER_FILL && id !== LYR_FOREST_DANGER_FILL && id !== LYR_DROUGHT_FILL && id !== LYR_AIR_FILL), LYR_WEATHER_ICONS,
-      LYR_POINTS, LYR_CLUSTER_CIRCLE, LYR_MILITARY_BASES_CIRCLE, LYR_HOSPITALS, LYR_PROTESTS, LYR_CRIME_CITY,
+      LYR_POINTS, LYR_CLUSTER_CIRCLE, LYR_MILITARY_BASES_CIRCLE, LYR_HOSPITALS, LYR_PROTESTS, LYR_CRIME_CITY, LYR_WEBCAMS, LYR_WEBCAM_CLUSTER,
       ...Object.values(TRAFFIC_LAYER_KEYS).flat(), ...OUT_HOVER_LAYERS.filter((id) => id !== LYR_OUT_INTERNET_FILL), ...SOV_HOVER_LAYERS,
     ].filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
     return ids.length > 0 && map.queryRenderedFeatures(point, { layers: ids }).length > 0;
@@ -7473,6 +7493,60 @@ export class DeckGLMap {
     });
   }
 
+  /** Webcams : recensement statique (null : vide la carte). */
+  updateWebcamsLayer(data: WebcamsDataset | null): void {
+    this.webcamsData = data;
+    (this.map?.getSource(SRC_WEBCAMS) as maplibregl.GeoJSONSource | undefined)?.setData(webcamFeatures(data));
+    this.hideWebcamsHover();
+  }
+
+  /** Clic sur une webcam : App.ts ouvre le panneau sur sa fiche. */
+  setOnWebcamClick(handler: (id: string) => void): void {
+    this.onWebcamClick = handler;
+  }
+
+  private hideWebcamsHover(): void {
+    if (!this.webcamHoverShown) return;
+    this.webcamHoverShown = false;
+    this.webcamHoverPopup?.remove();
+  }
+
+  /** Couche Webcams : infobulle préparée et échappée au survol d'un point ; clic sur un point relayé, clic sur un groupe = zoom. */
+  private initWebcamsInteractions(): void {
+    const map = this.map;
+    if (!map) return;
+    const shown = (): boolean => map.getLayer(LYR_WEBCAMS) !== undefined && map.getLayoutProperty(LYR_WEBCAMS, 'visibility') !== 'none';
+    map.on('mousemove', (e) => {
+      const hit = shown() ? map.queryRenderedFeatures(e.point, { layers: [LYR_WEBCAMS] })[0] : undefined;
+      const html = hit ? String(hit.properties?.['body'] ?? '') : '';
+      if (!html) {
+        this.hideWebcamsHover();
+        return;
+      }
+      this.webcamHoverShown = true;
+      const popup = this.webcamHoverPopup
+        ?? new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 10, maxWidth: '300px', className: 'dark-popup hm-hover' });
+      this.webcamHoverPopup = popup;
+      popup.setLngLat(e.lngLat).setHTML(`<div class="hm-tip">${html}</div>`).addTo(map);
+    });
+    map.on('mouseout', () => this.hideWebcamsHover());
+    map.on('click', (e) => {
+      if (!shown()) return;
+      const point = map.queryRenderedFeatures(e.point, { layers: [LYR_WEBCAMS] })[0];
+      const id = point ? String(point.properties?.['id'] ?? '') : '';
+      if (id) {
+        this.onWebcamClick?.(id);
+        return;
+      }
+      const cluster = map.queryRenderedFeatures(e.point, { layers: [LYR_WEBCAM_CLUSTER] })[0];
+      const clusterId = Number(cluster?.properties?.['cluster_id']);
+      const source = map.getSource(SRC_WEBCAMS) as maplibregl.GeoJSONSource | undefined;
+      if (!cluster || !Number.isFinite(clusterId) || !source || cluster.geometry.type !== 'Point') return;
+      const [lng, lat] = cluster.geometry.coordinates;
+      void source.getClusterExpansionZoom(clusterId).then((zoom) => map.easeTo({ center: [lng ?? 0, lat ?? 0], zoom: zoom + 0.5 })).catch(() => undefined);
+    });
+  }
+
   /** Criminalité : fichier annuel (null : vide la carte). Repeint à l'affichage si la couche est masquée. */
   updateCrimeLayer(data: CrimeDataset | null): void {
     this.crimeData = data;
@@ -8035,7 +8109,10 @@ export class DeckGLMap {
     for (const id of ENV_LAYER_KEYS.disasters) this.setVis(id, vis(envLayerOn(layers, 'disasters')));
     for (const id of PROTEST_LAYER_IDS) this.setVis(id, vis(layers.protests ?? false));
     for (const id of CRIME_LAYER_IDS) this.setVis(id, vis(layers.crime ?? false));
+    for (const id of WEBCAM_LAYER_IDS) this.setVis(id, vis(layers.webcams ?? false));
     this.hideCrimeHover();
+    this.hideWebcamsHover();
+    if (layers.webcams) (this.map?.getSource(SRC_WEBCAMS) as maplibregl.GeoJSONSource | undefined)?.setData(webcamFeatures(this.webcamsData));
     this.hideProtestsHover();
     // Couche réaffichée ou carte prête après la lecture : points reposés depuis la dernière réponse.
     if (layers.protests) (this.map?.getSource(SRC_PROTESTS) as maplibregl.GeoJSONSource | undefined)?.setData(protestFeatures(this.protestsData));
