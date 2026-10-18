@@ -199,7 +199,7 @@
   // ─── Sources et calques de la maquette ───
   const fc = (features) => ({ type: 'FeatureCollection', features });
   const pt = (c, properties) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: c }, properties });
-  const setData = (id, data) => { const s = S.m.getSource(id); if (s) s.setData(data); else S.m.addSource(id, { type: 'geojson', data }); };
+  const setData = (id, data) => { const s = S.m.getSource(id); if (s) s.setData(data); else S.m.addSource(id, { type: 'geojson', data, ...(id === 'mqs-depts' ? { promoteId: 'code' } : {}) }); };
   const before = () => (S.m.getLayer('sov-emergencies') ? 'sov-emergencies' : undefined);
 
   const draw = async () => {
@@ -319,7 +319,7 @@
         layout: { 'icon-image': ['case', ['get', 'proj'], ic.dcProj, ic.dc], 'icon-size': ['interpolate', ['linear'], ['zoom'], 4, 0.55, 7, 0.7, 11, 0.85], 'icon-allow-overlap': true, 'icon-ignore-placement': true,
           'text-field': '', 'text-size': 9.5, 'text-font': ['Open Sans Semibold'], 'text-variable-anchor': ['top', 'bottom', 'right', 'left'], 'text-radial-offset': 1, 'text-optional': true },
         paint: { 'icon-opacity': 1, 'text-color': CAT.dc, 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.3 } }, b);
-      m.addLayer({ id: 'mqs-dept-hover', type: 'line', source: 'mqs-depts', filter: ['==', ['get', 'code'], ''], paint: { 'line-color': '#ffffff', 'line-width': 1.5, 'line-opacity': 0.8 } }, b);
+      m.addLayer({ id: 'mqs-dept-hover', type: 'line', source: 'mqs-depts', paint: { 'line-color': '#ffffff', 'line-width': 1.5, 'line-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.8, 0] } }, b);
       m.addLayer({ id: 'mqs-inet-past', type: 'line', source: 'mqs-depts', filter: ['all', ['==', ['get', 'inetPast'], true], ['==', ['get', 'inet'], false]],
         paint: { 'line-color': CAT.internet, 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1.4, 8, 2.2], 'line-opacity': 0.9, 'line-dasharray': [2, 1.5] } }, b);
       m.addLayer({ id: 'mqs-cable-label', type: 'symbol', source: 'submarine-cables-src',
@@ -773,10 +773,15 @@
   let hoveredDept = null;
   const setDeptHover = (code) => {
     if (code === hoveredDept) return;
-    S.m.setFilter('mqs-dept-hover', ['==', ['get', 'code'], code ?? '']);
+    // État du département (instantané) plutôt qu'un filtre, qui ferait retraiter toute la source à chaque changement.
+    if (hoveredDept) S.m.setFeatureState({ source: 'mqs-depts', id: hoveredDept }, { hover: false });
+    if (code) S.m.setFeatureState({ source: 'mqs-depts', id: code }, { hover: true });
     hoveredDept = code;
   };
-  const onMove = (e) => {
+  // Un seul calcul par image, quel que soit le nombre d'événements de souris.
+  let moveRaf = 0, moveEv = null;
+  const onMove = (e) => { moveEv = e; if (!moveRaf) moveRaf = requestAnimationFrame(() => { moveRaf = 0; doMove(moveEv); }); };
+  const doMove = (e) => {
     if (!isSec()) return;
     const hit = pick(e.point);
     const canvas = S.m.getCanvas();

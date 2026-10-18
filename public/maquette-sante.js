@@ -220,7 +220,7 @@
   // ─── Sources et calques ───
   const fc = (features) => ({ type: 'FeatureCollection', features });
   const pt = (c, properties) => ({ type: 'Feature', geometry: { type: 'Point', coordinates: c }, properties });
-  const setData = (id, data) => { const s = S.m.getSource(id); if (s) s.setData(data); else S.m.addSource(id, { type: 'geojson', data }); };
+  const setData = (id, data) => { const s = S.m.getSource(id); if (s) s.setData(data); else S.m.addSource(id, { type: 'geojson', data, ...(id === 'mqh-depts' ? { promoteId: 'code' } : {}) }); };
   const HIDE = ['health-alert-fill', 'health-alert-line', 'health-urg-fill', 'health-urg-line', 'health-apl-fill', 'health-apl-line', 'hospitals-sites'];
 
   const draw = async () => {
@@ -268,7 +268,7 @@
       // Phase Odissé mesurée : vert léger « pas d'alerte » (mesuré, en saison), couleur d'état sinon ; rien hors saison. Avec la pastille seulement.
       m.addLayer({ id: 'mqh-reg-tint', type: 'fill', source: 'mqh-regions', filter: ['!=', ['get', 'level'], 'hors'],
         paint: { 'fill-color': ['get', 'color'], 'fill-opacity': ['match', ['get', 'level'], 'vert', 0.2, 0.35] } }, b);
-      m.addLayer({ id: 'mqh-dept-hover', type: 'line', source: 'mqh-depts', filter: ['==', ['get', 'code'], ''], paint: { 'line-color': '#ffffff', 'line-width': 1.6, 'line-opacity': 0.9 } });
+      m.addLayer({ id: 'mqh-dept-hover', type: 'line', source: 'mqh-depts', paint: { 'line-color': '#ffffff', 'line-width': 1.6, 'line-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], 0.9, 0] } });
       // Sentinelles : disque turquoise, taille = écart au taux national (régions les plus touchées du bulletin).
       m.addLayer({ id: 'mqh-senti', type: 'circle', source: 'mqh-reg-pts', filter: ['get', 'senti'],
         paint: { 'circle-radius': ['interpolate', ['linear'], ['get', 'sr'], 1, 6, 2, 12, 3, 16], 'circle-color': SENTI_HEX, 'circle-opacity': 0.9, 'circle-stroke-color': '#0a0a0f', 'circle-stroke-width': 1.5 } });
@@ -542,17 +542,24 @@
     if (!hits.length) return null;
     hits.sort((a, b) => order.indexOf(a.layer.id) - order.indexOf(b.layer.id));
     const f = hits[0], p = f.properties, id = f.layer.id;
-    if (id === 'mqh-hosp') { const g = S.hGroups[p.i]; return g && { key: `h:${p.i}`, kind: 'hosp', id: p.i, card: hospCard(g), at: [g[0].lon, g[0].lat] }; }
-    if (id === 'mqh-ww') { const x = S.stations[p.i]; return x && { key: `ww:${p.i}`, kind: 'raw', id: p.i, card: stationCard(x), at: x.at }; }
-    if (id === 'mqh-water') { const w = S.water.get(p.dept); return w && { key: `wa:${p.dept}`, kind: 'dept', id: p.dept, card: waterCard(w), at: f.geometry.coordinates }; }
-    if (id === 'mqh-reg-fill') { const r = S.regions.get(p.code); return r && { key: `r:${r.code}`, kind: 'region', id: r.code, card: regionCard(r), at: null }; }
+    if (id === 'mqh-hosp') { const g = S.hGroups[p.i]; return g && { key: `h:${p.i}`, kind: 'hosp', id: p.i, make: () => hospCard(g), at: [g[0].lon, g[0].lat] }; }
+    if (id === 'mqh-ww') { const x = S.stations[p.i]; return x && { key: `ww:${p.i}`, kind: 'raw', id: p.i, make: () => stationCard(x), at: x.at }; }
+    if (id === 'mqh-water') { const w = S.water.get(p.dept); return w && { key: `wa:${p.dept}`, kind: 'dept', id: p.dept, make: () => waterCard(w), at: f.geometry.coordinates }; }
+    if (id === 'mqh-reg-fill') { const r = S.regions.get(p.code); return r && { key: `r:${r.code}`, kind: 'region', id: r.code, make: () => regionCard(r), at: null }; }
     if (id === 'mqh-dept-fill') { const a = S.depts.get(p.code); const mode = pill('healthApl') && !pill('healthOscour') ? 'apl' : 'urg';
-      return a && { key: `d:${a.code}:${mode}`, kind: 'dept', id: a.code, card: deptCard(a, mode), at: null }; }
+      return a && { key: `d:${a.code}:${mode}`, kind: 'dept', id: a.code, make: () => deptCard(a, mode), at: null }; }
     return null;
   };
   let hovered = null;
-  const setHover = (code) => { if (code === hovered) return; S.m.setFilter('mqh-dept-hover', ['==', ['get', 'code'], code ?? '']); hovered = code; };
-  const onMove = (e) => {
+  // Survol : état du département (instantané), jamais un changement de filtre qui ferait retraiter toute la source.
+  const setHover = (code) => { if (code === hovered) return;
+    if (hovered) S.m.setFeatureState({ source: 'mqh-depts', id: hovered }, { hover: false });
+    if (code) S.m.setFeatureState({ source: 'mqh-depts', id: code }, { hover: true });
+    hovered = code; };
+  // Un seul calcul par image, quel que soit le nombre d'événements de souris.
+  let moveRaf = 0, moveEv = null;
+  const onMove = (e) => { moveEv = e; if (!moveRaf) moveRaf = requestAnimationFrame(() => { moveRaf = 0; doMove(moveEv); }); };
+  const doMove = (e) => {
     if (!isHealth()) return;
     const hit = pick(e.point);
     const canvas = S.m.getCanvas();
@@ -560,7 +567,7 @@
     canvas.style.cursor = 'pointer';
     setHover(hit.kind === 'dept' ? hit.id : null);
     popAt = hit.at ?? [e.lngLat.lng, e.lngLat.lat];
-    if (S.hoverKey !== hit.key) { pop.innerHTML = card(hit.card); S.hoverKey = hit.key; }
+    if (S.hoverKey !== hit.key) { pop.innerHTML = card(hit.make()); S.hoverKey = hit.key; }
     pop.style.display = 'block'; placePop();
   };
 
@@ -945,7 +952,8 @@
       const hit = pick([e.clientX - r.left, e.clientY - r.top]);
       if (!hit) { closeFiche(); return; }
       pop.style.display = 'none'; popAt = null; S.hoverKey = null;
-      if (hit.card?.url) { window.open(hit.card.url, '_blank', 'noopener'); return; }
+      const c = hit.make();
+      if (c?.url) { window.open(c.url, '_blank', 'noopener'); return; }
       openFiche(hit.kind, hit.id);
     }, true);
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && isHealth()) { closeFiche(); pop.style.display = 'none'; } });
