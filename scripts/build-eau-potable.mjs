@@ -2,9 +2,12 @@
 // scripts/build-eau-potable.mjs : prélèvements d'eau du robinet non conformes (contrôle sanitaire, Hub'Eau) des 60 derniers
 // jours publiés, regroupés par commune avec sa position → public/data/eau-potable.json.
 // Hub'Eau limite chaque requête à 20 000 lignes : une requête par département et par type (bactériologie, physico-chimie).
-// Publication mensuelle : à relancer une fois par mois (npm run build:eau-potable).
+// Publication mensuelle : en production, le minuteur fm-eau-potable (hebdomadaire) écrit dans /var/lib/francemonitor/data,
+// servi par Caddy avant la copie du dépôt (npm run build:eau-potable met à jour cette copie).
+//   node scripts/build-eau-potable.mjs [--out <fichier.json>]
 // Aucune donnée personnelle : résultats d'analyses publics par réseau et par commune.
-import { writeFile } from 'node:fs/promises';
+import { mkdir, rename, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HUBEAU = 'https://hubeau.eaufrance.fr/api/v1/qualite_eau_potable/resultats_dis';
@@ -96,8 +99,12 @@ async function main() {
   const dataset = { from, to: last, communes: out, totals: { communes: out.length, unplaced, samples: out.reduce((n, c) => n + c.samples.length, 0),
     restriction: out.filter((c) => c.samples.some((s) => s.verdict === 'restriction')).length,
     targeted: out.filter((c) => c.samples.some((s) => s.verdict === 'restriction ciblée')).length } };
-  const file = fileURLToPath(new URL('../public/data/eau-potable.json', import.meta.url));
-  await writeFile(file, `${JSON.stringify(dataset)}\n`);
+  const outArg = process.argv.indexOf('--out') > 0 ? process.argv[process.argv.indexOf('--out') + 1] : null;
+  const file = outArg ?? fileURLToPath(new URL('../public/data/eau-potable.json', import.meta.url));
+  // Écriture atomique : Caddy ne sert jamais un fichier à moitié écrit.
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(`${file}.tmp`, `${JSON.stringify(dataset)}\n`);
+  await rename(`${file}.tmp`, file);
   const t = dataset.totals;
   console.log(`[build-eau-potable] écrit ${file} : ${t.communes} communes, ${t.samples} prélèvements non conformes, ${t.restriction} communes avec une restriction annoncée, ${t.unplaced} non placées`);
 }

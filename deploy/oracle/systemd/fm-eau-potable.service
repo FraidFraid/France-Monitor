@@ -1,0 +1,28 @@
+[Unit]
+Description=France Monitor - eau du robinet non conforme (Hub'Eau), fichier de la carte Sante
+Documentation=https://github.com/FraidFraid/France-Monitor/blob/main/docs/deployment-oracle.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=fm
+Group=fm
+WorkingDirectory=/srv/francemonitor/current
+# Environ 3 minutes : 2 x 101 requetes Hub'Eau (une par departement et par type) et la liste des communes (geo.api.gouv.fr).
+# Ecrit hors de la release : le fichier survit aux deploiements ; Caddy le sert avant la copie du depot.
+ExecStart=/usr/bin/node scripts/build-eau-potable.mjs --out /var/lib/francemonitor/data/eau-potable.json
+TimeoutStartSec=20min
+# Pas de Restart= : en cas d'echec (Hub'Eau indisponible), l'ancien fichier reste servi jusqu'a l'echeance suivante.
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/francemonitor/data
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true

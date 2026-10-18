@@ -145,6 +145,9 @@
     for (const r of Array.isArray(d.vacc) ? d.vacc : []) if (r.an_mesure === vy && r.dep) touch(r.dep, r.dep).vacc = { grip: r.grip_65plus, covid: r.covid_65plus };
     const ly = (Array.isArray(d.legio) ? d.legio : []).reduce((m, r) => (r.annee > m ? r.annee : m), '');
     S.legioYear = ly;
+    // Canicule (Santé publique France) : jours de canicule par été et excès de décès pendant les vagues de chaleur.
+    for (const r of Array.isArray(d.heatDays) ? d.heatDays : []) if (r.dep) { const a = touch(r.dep, r.dep); (a.heat ??= { days: {}, deaths: {} }).days[r.annee] = r.nb_j_can; }
+    for (const r of Array.isArray(d.heatDeaths) ? d.heatDeaths : []) if (r.dep) { const a = touch(r.dep, r.dep); ((a.heat ??= { days: {}, deaths: {} }).deaths[r.annee] ??= {})[r.classe_age] = r; }
     for (const r of Array.isArray(d.legio) ? d.legio : []) if (r.annee === ly && r.dep) touch(r.dep, r.dep).legio = { n: r.legio, taux: r.taux };
     for (const s of d.hosp?.sites ?? []) touch(s.dept, s.dept).hosp.push(s);
     for (const e of d.ehpad?.sites ?? []) { const a = touch(e.dept, e.dept); (a.ehpad ??= []).push(e); }
@@ -469,6 +472,13 @@
     for (const [k, o] of Object.entries(a.arbo ?? {})) if (o.autoch || o.imp) parts.push(`${k.toLowerCase()} : ${o.autoch ? `${num(o.autoch)}${NB}cas autochtone${o.autoch > 1 ? 's' : ''} (${[...o.months].sort().map((m) => m.slice(5)).join(', ').replace(/(\d\d)/g, (x) => ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'][Number(x) - 1])}), ` : ''}${num(o.imp)}${NB}importé${o.imp > 1 ? 's' : ''}`);
     if (a.legio?.n != null) parts.push(`légionellose : ${num(a.legio.n)}${NB}cas (${num(a.legio.taux, 1)} pour 100${NB}000)`);
     return parts.length ? parts.join(' ; ') : null; };
+  const rel = (x) => (x == null ? 'n.d.' : `${x >= 0 ? '+' : '−'}${num(Math.abs(x), 1)}${NB}%`);
+  const heatLine = (a) => { const h = a.heat; if (!h) return null; const ys = Object.keys(h.days).sort(); if (!ys.length) return null;
+    const last = ys.at(-1), prev = ys.slice(-6, -1).map((y) => h.days[y]).filter(Number.isFinite);
+    const mean = prev.length ? prev.reduce((t, v) => t + v, 0) / prev.length : null;
+    const dd = h.deaths[last] ?? {}; const all = dd['Tous Ages'], old = dd['Plus de 75 ans'];
+    return `${num(h.days[last])}${NB}jour${h.days[last] > 1 ? 's' : ''} de canicule à l’été ${last}${mean != null ? ` (moyenne des ${prev.length} étés précédents : ${num(mean, 1)})` : ''}`
+      + (all ? ` ; excès de décès pendant les vagues de chaleur : ${num(all.exces)} (${rel(all.exces_relatif)})${old ? `, dont ${num(old.exces)} chez les plus de 75 ans (${rel(old.exces_relatif)})` : ''}` : ''); };
   const urgState = (a) => {
     if (a.urg === 'nd') return ['Urgences : données insuffisantes cette semaine', MUTE];
     if (!a.driver) return [`Urgences : dans les normales des 3${NB}saisons précédentes (${wk(S.data.syn?.week?.id)})`, L1.vert];
@@ -499,6 +509,7 @@
     rows.push(['Hôpitaux', hospLine(a)]);
     if (vaccLine(a)) rows.push([`Vaccination des 65 ans et plus (${S.vaccYear})`, vaccLine(a)]);
     if (historyLine(a)) rows.push([`Antécédents ${S.arboYear}`, historyLine(a)]);
+    if (heatLine(a) && [5, 6, 7, 8].includes(new Date().getMonth())) rows.push(['Canicule', heatLine(a)]);
     if (S.water.get(a.code)) { const w = S.water.get(a.code); const r = w.communes.filter((x) => x.v === 'restriction').length;
       rows.push(['Eau du robinet', `${w.communes.length}${NB}commune${w.communes.length > 1 ? 's' : ''} non conforme${w.communes.length > 1 ? 's' : ''}${r ? `, dont ${r} avec restriction de consommation` : ''} (au ${day(w.last)})`]); }
     rows.push(['Capacité', reaLine(a)]);
@@ -628,6 +639,7 @@
     rows.push(['Odissé par département (11 syndromes, âges)', Object.values(d.extraSyn ?? {}).some(Array.isArray) ? `lu ${when(new Date().toISOString())}, semaine ${wk(d.syn?.week?.id)}` : 'indisponible', Object.values(d.extraSyn ?? {}).every(Array.isArray) ? 'ok' : 'part']);
     rows.push(['Eaux usées par station (SUM’Eau)', d.wwSt?.results?.length ? `${num(S.stations?.filter((x) => x.last).length ?? 0)} stations, dernière semaine ${wk(d.wwSt.results[0]?.semaine)}` : 'indisponible', d.wwSt?.results?.length ? 'ok' : 'ko']);
     rows.push(['Déclarations obligatoires (arboviroses, légionellose)', Array.isArray(d.arbo) ? `arboviroses jusqu’à ${S.arboLast || 'n.d.'}, légionellose ${S.legioYear || 'n.d.'}, consolidées une fois par an` : 'indisponible', Array.isArray(d.arbo) ? 'part' : 'ko']);
+    rows.push(['Canicule (jours, excès de décès)', Array.isArray(d.heatDays) && d.heatDays.length ? `étés jusqu’à ${d.heatDays.reduce((m, r) => (r.annee > m ? r.annee : m), '')}, bilan annuel` : 'indisponible', Array.isArray(d.heatDays) && d.heatDays.length ? 'ok' : 'ko']);
     rows.push(['Couverture vaccinale (65 ans et plus)', S.vaccYear ? `campagne ${S.vaccYear}, annuelle` : 'indisponible', S.vaccYear ? 'ok' : 'ko']);
     rows.push(['Eau du robinet (Hub’Eau)', d.water?.to ? `prélèvements du ${day(d.water.from)} au ${day(d.water.to)}, mensuel, décalé d’environ six semaines` : 'indisponible', d.water?.to ? (ageDays(d.water.to) > 75 ? 'part' : 'ok') : 'ko']);
     rows.push(['DGS-Urgent (PEPS)', (d.dgs?.errors ?? []).length ? `injoignable (${d.dgs.errors[0].replace(/^[^:]*: /, '')})` : `${(d.dgs?.messages ?? []).length}${NB}message(s)`, (d.dgs?.errors ?? []).length ? 'ko' : 'ok']);
@@ -741,6 +753,7 @@
     impact.push(`Départements voisins : ${neighLine(a)}.`);
     if (vaccLine(a)) impact.push(`Vaccination des 65 ans et plus (${S.vaccYear}) : ${vaccLine(a)}.`);
     if (historyLine(a)) impact.push(`Antécédents ${S.arboYear} (déclarations obligatoires) : ${historyLine(a)}.`);
+    if (heatLine(a)) impact.push(`Canicule : ${heatLine(a)}. Avec ${ehpadLine(a) ?? 'n.d.'} : population à protéger en été.`);
     const wa = S.water.get(a.code);
     if (wa) { const byV = (v) => wa.communes.filter((c) => c.v === v).map((c) => commune(c.nom));
       if (byV('restriction').length) happen.push(`Eau du robinet, restriction de consommation annoncée : ${byV('restriction').join(', ')} (jusqu’au ${day(wa.last)}).`);
@@ -756,7 +769,7 @@
       gauges: Object.keys(SYN).filter((k) => a.syn[k]).map((k) => synGauge(k, a.syn[k])),
       blocks: [['À retenir', bluf], ['Ce qui se passe', happen], ['Impact et capacités', impact], ['Évolution', evo], ['Ce qu’on ne sait pas', unknown]],
       charts: deptCharts(a, k),
-      sources: ['OSCOUR', 'Odissé', 'DREES', 'Eau du robinet', 'Eaux usées', 'Déclarations', 'Couverture', 'FINESS'] };
+      sources: ['OSCOUR', 'Odissé', 'DREES', 'Eau du robinet', 'Eaux usées', 'Déclarations', 'Couverture', 'FINESS', 'Canicule'] };
   };
   const hospNote = (g) => {
     const s = g[0], a = S.depts.get(s.dept), c = hospCard(g);
@@ -970,6 +983,9 @@
       const weeksWhere = [0, 1, 2, 3].map((i) => `semaine="${yy - i}-${nn}"`).join(' or ');
 
       const odAll = (ds, select, where) => getJson(`${OD}${ds}/exports/json?select=${encodeURIComponent(select)}${where ? `&where=${encodeURIComponent(where)}` : ''}`);
+      const [heatDays, heatDeaths] = await Promise.all([
+        odAll('canicules-nombres-de-jours-de-canicule-departement', 'dep,annee,nb_j_can', `annee>="${new Date().getFullYear() - 7}"`),
+        odAll('canicules-exces-de-deces-pendant-les-vagues-de-chaleur-departement', 'dep,annee,classe_age,exces,exces_relatif', `annee>="${new Date().getFullYear() - 3}"`)]);
       const [arbo, vacc, legio] = await Promise.all([
         odAll('arboviroses-donnees-declaration-obligatoire', 'dep,mois,arbo,nbcas_imp,nbcas_autoch', `mois>="${new Date().getFullYear() - 1}-01"`),
         odAll('couvertures-vaccinales-des-adolescent-et-adultes-departement', 'dep,libgeo,an_mesure,grip_65plus,covid_65plus', `an_mesure>="${new Date().getFullYear() - 2}"`),
@@ -980,7 +996,7 @@
         getJson(`${OD}sum-eau-indicateurs/records?limit=60&order_by=${encodeURIComponent('semaine desc')}`),
         getJson('/data/eau-potable.json')]);
       const ehpad = await getJson('/data/ehpad.json');
-      S.data = { syn, alerts, senti, ww, drugs, recalls, dgs, apl, hosp, ehpad, extraSyn: Object.fromEntries(EXTRA_SYN.map((k, i) => [k, extra[i]])), wwMeta, wwSt, water, arbo, vacc, legio };
+      S.data = { syn, alerts, senti, ww, drugs, recalls, dgs, apl, hosp, ehpad, extraSyn: Object.fromEntries(EXTRA_SYN.map((k, i) => [k, extra[i]])), wwMeta, wwSt, water, arbo, vacc, legio, heatDays, heatDeaths };
       await draw();
     };
     await load();
@@ -1005,6 +1021,7 @@
     }, true);
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && isHealth()) { closeFiche(); pop.style.display = 'none'; } });
     window.__mqh = S;
+    S.openFiche = openFiche; // contrôle (Playwright) : ouvrir une fiche sans viser la carte
     console.log('[maquette-sante] prête', { anomalies: [...S.depts.values()].filter((a) => a.driver).length });
   };
   start();

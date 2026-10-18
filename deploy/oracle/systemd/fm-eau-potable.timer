@@ -1,0 +1,11 @@
+[Unit]
+Description=France Monitor - eau du robinet non conforme, chaque lundi (Hub'Eau publie une fois par mois, a date variable)
+Documentation=https://github.com/FraidFraid/France-Monitor/blob/main/docs/deployment-oracle.md
+
+[Timer]
+OnCalendar=Mon *-*-* 04:30:00 UTC
+Persistent=true
+RandomizedDelaySec=15min
+
+[Install]
+WantedBy=timers.target

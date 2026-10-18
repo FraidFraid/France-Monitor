@@ -120,6 +120,19 @@ www.francemonitor.com {
 		respond 404
 	}
 
+	# Données régénérées par minuteur (fm-eau-potable) : servies depuis /var/lib/francemonitor si le fichier
+	# existe, sinon la copie livrée avec la release (bloc suivant).
+	@freshData {
+		path /data/eau-potable.json
+		file {
+			root /var/lib/francemonitor
+		}
+	}
+	handle @freshData {
+		root * /var/lib/francemonitor
+		file_server
+	}
+
 	# Repli SPA (vercel.json → rewrites, dernière règle "/(.*)")  + fichiers statiques.
 	handle {
 		root * /srv/francemonitor/current/dist

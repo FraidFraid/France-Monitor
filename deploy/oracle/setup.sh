@@ -134,6 +134,9 @@ install -d -m 755 -o "$FM_USER" -g "$FM_GROUP" "$RELEASES_DIR"
 install -d -m 751 -o root      -g "$FM_GROUP"  "$CONFIG_DIR"
 install -d -m 750 -o root      -g caddy        "$TLS_DIR"
 install -d -m 750 -o "$FM_USER" -g "$FM_GROUP" "$RADAR_STORAGE_DIR"
+# Fichiers de données régénérés par minuteur (eau du robinet) : lus par Caddy, d'où 755.
+install -d -m 755 -o "$FM_USER" -g "$FM_GROUP" /var/lib/francemonitor
+install -d -m 755 -o "$FM_USER" -g "$FM_GROUP" /var/lib/francemonitor/data
 install -d -m 755 -o "$FM_USER" -g "$FM_GROUP" /opt/francemonitor
 # Caddy écrit ses journaux d'accès ici sous l'utilisateur caddy.
 install -d -m 750 -o caddy     -g caddy        /var/log/caddy
@@ -244,6 +247,8 @@ install -m 644 -o root -g root "$ORACLE_DIR"/systemd/fm-fuel-series.service  /et
 install -m 644 -o root -g root "$ORACLE_DIR"/systemd/fm-fuel-series.timer    /etc/systemd/system/fm-fuel-series.timer
 install -m 644 -o root -g root "$ORACLE_DIR"/systemd/fm-backup-db.service    /etc/systemd/system/fm-backup-db.service
 install -m 644 -o root -g root "$ORACLE_DIR"/systemd/fm-backup-db.timer      /etc/systemd/system/fm-backup-db.timer
+install -m 644 -o root -g root "$ORACLE_DIR"/systemd/fm-eau-potable.service /etc/systemd/system/fm-eau-potable.service
+install -m 644 -o root -g root "$ORACLE_DIR"/systemd/fm-eau-potable.timer   /etc/systemd/system/fm-eau-potable.timer
 
 systemctl daemon-reload
 
@@ -251,7 +256,7 @@ systemctl daemon-reload
 # déployée (/srv/francemonitor/current n'existe pas), fm-api/fm-relay/fm-radar
 # n'ont rien à exécuter. Le premier `fm-deploy` les démarre.
 systemctl enable fm-api.service fm-relay.service fm-radar.service
-systemctl enable fm-ingest-news.timer fm-fuel-series.timer fm-backup-db.timer
+systemctl enable fm-ingest-news.timer fm-fuel-series.timer fm-backup-db.timer fm-eau-potable.timer
 systemctl enable caddy
 
 # ─────────────────────────────────────────────────────────────────
