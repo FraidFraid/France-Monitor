@@ -32,7 +32,8 @@
     "ingest:drom-energy": "node scripts/ingest-drom-energy.mjs",
     "build:apl": "node scripts/build-apl.mjs",
     "build:hospitals": "node scripts/build-hospitals.mjs",
-    "build:crime": "node scripts/build-crime.mjs"
+    "build:crime": "node scripts/build-crime.mjs",
+    "build:ehpad": "node scripts/build-ehpad.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",

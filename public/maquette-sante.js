@@ -73,6 +73,8 @@
   const HOSP_WORD = { chu: 'CHU ou CHR', ch: 'Centre hospitalier', private: 'Clinique privée', gcs: 'Groupement de coopération (GCS)', army: 'Hôpital des armées', other: 'Autre établissement' };
   const hcat = (c) => (c === 'chu' || c === 'ch' || c === 'private' ? c : 'other');
   const REG_LINE = '#c9cdd6';
+  // EHPAD : anneau blanc cassé (établissement médico-social, pas un hôpital), jamais une alerte.
+  const EHPAD_HEX = '#e7e5e4';
   // Sentinelles (médecins généralistes) : turquoise, une couleur de couche, jamais une alerte.
   const SENTI_HEX = '#2dd4bf';
 
@@ -93,7 +95,7 @@
   const hospImages = async () => { for (const [k, body] of Object.entries(HSHAPE)) await image(`mqh-h-${k}`, `<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">${body}</svg>`, 40); };
 
   // ─── Noms lisibles (le fichier FINESS est en capitales) ───
-  const KEEP = new Set(['CHU', 'CHR', 'CH', 'CHI', 'CHIC', 'CHRU', 'CHG', 'GHU', 'GH', 'GHT', 'APHP', 'AP-HP', 'APHM', 'AP-HM', 'HCL', 'HIA', 'SUN', 'HEGP', 'GCS', 'HPGM', 'IGR', 'ICM', 'MCO', 'PSL', 'SSR', 'HP', 'CMC', 'CHT', 'HU', 'NUP', 'GHEM', 'UPS', 'CUP', 'HM', 'II', 'III', 'IV']);
+  const KEEP = new Set(['CHU', 'CHR', 'CH', 'CHI', 'CHIC', 'CHRU', 'CHG', 'GHU', 'GH', 'GHT', 'APHP', 'AP-HP', 'APHM', 'AP-HM', 'HCL', 'HIA', 'SUN', 'HEGP', 'GCS', 'HPGM', 'IGR', 'ICM', 'MCO', 'PSL', 'SSR', 'HP', 'CMC', 'CHT', 'HU', 'HNO', 'EHPAD', 'USLD', 'NUP', 'GHEM', 'UPS', 'CUP', 'HM', 'II', 'III', 'IV']);
   const ACC = { Hopital: 'Hôpital', Hopitaux: 'Hôpitaux', Prive: 'Privé', Privee: 'Privée', Medical: 'Médical', Medico: 'Médico', General: 'Général', Generale: 'Générale', Regional: 'Régional',
     Sante: 'Santé', Pediatrique: 'Pédiatrique', Specialise: 'Spécialisé', Etablissement: 'Établissement', Medecine: 'Médecine', Evangelique: 'Évangélique', Hotel: 'Hôtel' };
   const SMALL = new Set(['de', 'du', 'des', 'la', 'le', 'les', 'et', 'sur', 'en', 'au', 'aux', 'a', 'à']);
@@ -145,6 +147,7 @@
     S.legioYear = ly;
     for (const r of Array.isArray(d.legio) ? d.legio : []) if (r.annee === ly && r.dep) touch(r.dep, r.dep).legio = { n: r.legio, taux: r.taux };
     for (const s of d.hosp?.sites ?? []) touch(s.dept, s.dept).hosp.push(s);
+    for (const e of d.ehpad?.sites ?? []) { const a = touch(e.dept, e.dept); (a.ehpad ??= []).push(e); }
     for (const a of out.values()) {
       // Niveau des urgences : le pire des trois syndromes principaux, ou le syndrome choisi dans le panneau.
       const keys = S.syndrome ? [S.syndrome] : MAIN;
@@ -226,6 +229,7 @@
   const draw = async () => {
     const m = S.m;
     build();
+    const d = S.data;
     setData('mqh-depts', fc(S.geo.deptShapes.map((f) => { const a = S.depts.get(f.properties.code);
       return { ...f, properties: { code: f.properties.code, urg: a?.urg ?? 'nd', ucolor: L1[a?.urg] ?? '#000000', aplR: a?.aplR ?? -1, acolor: aplHex(a?.aplR) } }; })));
     setData('mqh-dept-pts', fc([...S.depts.values()].filter((a) => a.inMap && a.at).map((a) => pt(a.at, { code: a.code, urg: a.urg, color: L1[a.urg] ?? MUTE,
@@ -243,6 +247,7 @@
     setData('mqh-ww', fc(S.stations.map((x, i) => pt(x.at, { i, level: x.level, ring: RANK[x.level] >= 1 ? L1[x.level] : '#0a0a0f', pop: x.m.population ?? 0,
       label: `${commune(x.m.commune)}${x.last ? ` · ${x.two ? signed(x.last.v / x.two - 1) : 'n.d.'}` : ''}` }))));
     setData('mqh-water', fc([...S.water.values()].map((w) => { const a = S.depts.get(w.dept); return a?.at && a.inMap ? pt([a.at[0] + 0.32, a.at[1] - 0.22], { dept: w.dept, n: w.communes.size }) : null; }).filter(Boolean)));
+    setData('mqh-ehpad', fc((d.ehpad?.sites ?? []).map((e, i) => pt([e.lon, e.lat], { i, places: e.places ?? 0, name: nice(e.name).replace(/^EHPAD /i, 'EHPAD ') }))));
     setData('mqh-hosp', fc(S.hGroups.map((g, i) => { const s = g[0];
       const chuLead = g.find((x) => x.category === 'chu' && S.hLead?.get(x.finess));
       return pt([s.lon, s.lat], { i, cat: hcat(s.category), n: g.length, sort: s.passages ?? 0,
@@ -294,6 +299,12 @@
       m.addLayer({ id: 'mqh-water', type: 'symbol', source: 'mqh-water', layout: { 'icon-image': 'mqh-drop', 'icon-size': 0.62, 'icon-allow-overlap': true, 'icon-ignore-placement': true,
         'text-field': ['to-string', ['get', 'n']], 'text-size': 9.5, 'text-font': ['Open Sans Semibold'], 'text-offset': [0, 0.25], 'text-allow-overlap': true },
         paint: { 'icon-opacity': 1, 'text-color': '#1a1a1a', 'text-opacity': 1 } });
+      // EHPAD (FINESS) : anneau clair sans remplissage, taille = places installées ; au zoom seulement (7 400 sites).
+      m.addLayer({ id: 'mqh-ehpad', type: 'circle', source: 'mqh-ehpad', minzoom: 8, layout: { 'circle-sort-key': ['get', 'places'] },
+        paint: { 'circle-radius': ['interpolate', ['linear'], ['get', 'places'], 20, 2.5, 100, 4, 300, 6.5], 'circle-color': 'rgba(0,0,0,0)', 'circle-stroke-color': EHPAD_HEX, 'circle-stroke-width': 1.6, 'circle-stroke-opacity': 0.95 } });
+      m.addLayer({ id: 'mqh-ehpad-label', type: 'symbol', source: 'mqh-ehpad', minzoom: 11, layout: { 'text-field': ['get', 'name'], 'text-size': 9.5, 'text-font': ['Open Sans Semibold'],
+        'text-variable-anchor': ['top', 'bottom', 'right', 'left'], 'text-radial-offset': 0.8, 'text-optional': true, 'text-max-width': 12 },
+        paint: { 'text-color': EHPAD_HEX, 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.3, 'text-opacity': 1 } });
       // Hôpitaux : forme = catégorie, taille = passages aux urgences 2025 ; les plus grands dessinés au-dessus.
       m.addLayer({ id: 'mqh-hosp', type: 'symbol', source: 'mqh-hosp',
         layout: { 'icon-image': ['concat', 'mqh-h-', ['get', 'cat']], 'icon-size': ['interpolate', ['linear'], ['zoom'], 4, ['*', 0.55, ['get', 'sz']], 7, ['*', 0.85, ['get', 'sz']], 10, ['*', 1.3, ['get', 'sz']]],
@@ -312,7 +323,7 @@
     health: ['mqh-reg-line', 'mqh-reg-alert', 'mqh-reg-label', 'mqh-reg-fill', 'mqh-reg-tint', 'mqh-senti', 'mqh-ww', 'mqh-ww-label', 'mqh-water'],
     healthOscour: ['mqh-urg-fill', 'mqh-urg-line', 'mqh-urg-label'],
     healthApl: ['mqh-apl-fill', 'mqh-apl-line', 'mqh-apl-label'],
-    hospitals: ['mqh-hosp'],
+    hospitals: ['mqh-hosp', 'mqh-ehpad', 'mqh-ehpad-label'],
   };
   const isHealth = () => document.querySelector('button.tb-theme[data-theme="health"]')?.getAttribute('aria-pressed') === 'true';
   let preview = null;
@@ -335,6 +346,8 @@
     'mqh-ww-label': ['text-opacity', () => 1],
     'mqh-water': [['icon-opacity', 'text-opacity'], () => 1],
     'mqh-hosp': [['icon-opacity', 'text-opacity'], () => 1],
+    'mqh-ehpad': [['circle-stroke-opacity'], () => 0.95],
+    'mqh-ehpad-label': ['text-opacity', () => 1],
   };
   const calm = () => {
     const m = S.m;
@@ -367,6 +380,7 @@
     // Hôpitaux : avec la pastille, noms dès le zoom 6,5.
     L('mqh-hosp', 'text-field', ['step', ['zoom'], ['get', 'city'], pill('hospitals') ? 6.5 : 8, ['get', 'name']]);
     const k = pill('hospitals') ? 1.35 : 1;
+    try { if (m.getLayer('mqh-ehpad') && m.getLayer('mqh-ehpad').minzoom !== (pill('hospitals') ? 6.5 : 8)) m.setLayerZoomRange('mqh-ehpad', pill('hospitals') ? 6.5 : 8, 24); } catch (e) { /* calque absent */ }
     L('mqh-hosp', 'icon-size', ['interpolate', ['linear'], ['zoom'], 4, ['*', 0.55 * k, ['get', 'sz']], 7, ['*', 0.85 * k, ['get', 'sz']], 10, ['*', 1.3 * k, ['get', 'sz']]]);
     const act = new Set(S.focus); if (preview) act.add(preview);
     for (const [id, [props, f]] of Object.entries(OPAC)) {
@@ -482,6 +496,7 @@
     if (historyLine(a)) rows.push([`Antécédents ${S.arboYear}`, historyLine(a)]);
     if (S.water.get(a.code)) rows.push(['Eau du robinet', `${S.water.get(a.code).communes.size}${NB}commune(s) non conforme(s) en bactériologie (au ${day(S.water.get(a.code).last)})`]);
     rows.push(['Capacité', reaLine(a)]);
+    if (ehpadLine(a)) rows.push(['Personnes âgées dépendantes', ehpadLine(a)]);
     if (a.apl?.pop) rows.push(['Population', `${num(a.apl.pop)} hab.${passPer(a) != null ? ` · ${num(passPer(a))} passages aux urgences pour 1${NB}000 hab. par an` : ''}`]);
     return { gauges, dot: mode === 'apl' ? aplHex(a.aplR) : (L1[a.urg] ?? MUTE), title: `${a.nom} (${a.code})`, state: mode === 'apl' ? `Accès aux soins : ${a.aplR == null ? 'n.d.' : `${num(a.aplR, 2)}${NB}fois la moyenne nationale`}` : state,
       stateHex: mode === 'apl' ? '#93c5fd' : stateHex, rows,
@@ -510,6 +525,20 @@
       ],
       hint: 'Ce qu’on ne sait pas : attente et saturation du jour non publiées en données ouvertes · clic : fiche', source: hospSrc() };
   };
+  const ehpadLine = (a) => { const xs = a.ehpad ?? []; if (!xs.length) return null; const pl = xs.reduce((t, e) => t + (e.places ?? 0), 0);
+    const per = a.apl?.pop ? (pl / a.apl.pop) * 1000 : null;
+    const all = [...S.depts.values()].filter((x) => x.apl?.pop && x.ehpad?.length).map((x) => [x.code, x.ehpad.reduce((t, e) => t + (e.places ?? 0), 0) / x.apl.pop * 1000]).sort((p, q) => p[1] - q[1]);
+    const i = all.findIndex(([c]) => c === a.code);
+    return `${num(xs.length)}${NB}EHPAD, ${num(pl)}${NB}places${per != null ? ` (${num(per, 1)} pour 1${NB}000 hab., ${nth(i + 1)} plus faible sur ${all.length})` : ''}`; };
+  const ehpadCard = (e) => {
+    const near = (S.data.hosp?.sites ?? []).map((h) => ({ h, d: km([e.lon, e.lat], [h.lon, h.lat]) })).sort((p, q) => p.d - q.d)[0];
+    const a = S.depts.get(e.dept);
+    return { dot: EHPAD_HEX, title: nice(e.name), state: `EHPAD · ${commune(e.commune)} (${e.dept})`, stateHex: INK,
+      rows: [['Places installées', e.places == null ? 'n.d.' : `${num(e.places)} dont ${num(e.permanent ?? 0)} en hébergement permanent${e.dayCare ? `, ${num(e.dayCare)} en accueil de jour` : ''}`],
+        ['Urgences les plus proches', near ? `${nice(near.h.name)}, ${num(near.d, near.d < 10 ? 1 : 0)}${NB}km à vol d’oiseau` : 'n.d.'],
+        ['Département', a ? `${ehpadLine(a)} ; ${urgState(a)[0].charAt(0).toLowerCase()}${urgState(a)[0].slice(1)}` : 'n.d.']],
+      hint: 'Ce qu’on ne sait pas : occupation, foyers épidémiques et canicule dans l’établissement (non publiés)', source: `FINESS du ${day(S.data.ehpad?.finessDate)}, équipements sociaux et médico-sociaux` };
+  };
   const stationCard = (x) => {
     const rl = x.m.region ?? null;
     const spk = x.ser.slice(-26);
@@ -536,13 +565,14 @@
   const pick = (point) => {
     const act = new Set(S.focus); if (preview) act.add(preview);
     const live = (id) => !act.size || !Object.values(GROUPS).some((ls) => ls.includes(id)) || Object.entries(GROUPS).some(([g, ls]) => act.has(g) && ls.includes(id));
-    const order = ['mqh-water', 'mqh-ww', 'mqh-hosp', ...(pill('health') && !pill('healthOscour') && !pill('healthApl') ? ['mqh-reg-fill'] : []), 'mqh-dept-fill'];
+    const order = ['mqh-water', 'mqh-ww', 'mqh-hosp', 'mqh-ehpad', ...(pill('health') && !pill('healthOscour') && !pill('healthApl') ? ['mqh-reg-fill'] : []), 'mqh-dept-fill'];
     const layers = order.filter((id) => S.m.getLayer(id) && (id === 'mqh-reg-fill' || live(id)));
     const hits = S.m.queryRenderedFeatures(point, { layers });
     if (!hits.length) return null;
     hits.sort((a, b) => order.indexOf(a.layer.id) - order.indexOf(b.layer.id));
     const f = hits[0], p = f.properties, id = f.layer.id;
     if (id === 'mqh-hosp') { const g = S.hGroups[p.i]; return g && { key: `h:${p.i}`, kind: 'hosp', id: p.i, make: () => hospCard(g), at: [g[0].lon, g[0].lat] }; }
+    if (id === 'mqh-ehpad') { const e = S.data.ehpad?.sites?.[p.i]; return e && { key: `eh:${p.i}`, kind: 'raw', id: p.i, make: () => ehpadCard(e), at: [e.lon, e.lat] }; }
     if (id === 'mqh-ww') { const x = S.stations[p.i]; return x && { key: `ww:${p.i}`, kind: 'raw', id: p.i, make: () => stationCard(x), at: x.at }; }
     if (id === 'mqh-water') { const w = S.water.get(p.dept); return w && { key: `wa:${p.dept}`, kind: 'dept', id: p.dept, make: () => waterCard(w), at: f.geometry.coordinates }; }
     if (id === 'mqh-reg-fill') { const r = S.regions.get(p.code); return r && { key: `r:${r.code}`, kind: 'region', id: r.code, make: () => regionCard(r), at: null }; }
@@ -581,6 +611,7 @@
     rows.push(['Eaux usées (SUM’Eau)', d.ww?.publishedAt ? `publié le ${day(d.ww.publishedAt)}, ${num(d.ww.stationsReporting)}/${num(d.ww.stationsTotal)} stations` : 'indisponible', d.ww?.publishedAt ? 'ok' : 'ko']);
     rows.push(['DREES APL (accès aux soins)', d.apl?.vintage ? `données ${d.apl.vintage}, publiées le ${day(d.apl.publishedAt)}, annuelle` : 'indisponible', d.apl?.vintage ? 'ok' : 'ko']);
     rows.push(['DREES SAE et FINESS (hôpitaux)', d.hosp?.vintage ? `activité ${d.hosp.vintage}, FINESS du ${day(d.hosp.finessDate)}, annuelle` : 'indisponible', d.hosp?.vintage ? 'ok' : 'ko']);
+    rows.push(['FINESS (EHPAD et places)', d.ehpad?.finessDate ? `extraction du ${day(d.ehpad.finessDate)}, semestrielle` : 'indisponible', d.ehpad?.finessDate ? 'ok' : 'ko']);
     rows.push(['ANSM (médicaments)', d.drugs?.latestUpdate ? `mis à jour le ${day(d.drugs.latestUpdate)}` : 'indisponible', d.drugs?.latestUpdate ? 'ok' : 'ko']);
     rows.push(['RappelConso', d.recalls?.since ? `depuis le ${day(d.recalls.since)}` : 'indisponible', d.recalls?.since ? 'ok' : 'ko']);
     rows.push(['Odissé par département (11 syndromes, âges)', Object.values(d.extraSyn ?? {}).some(Array.isArray) ? `lu ${when(new Date().toISOString())}, semaine ${wk(d.syn?.week?.id)}` : 'indisponible', Object.values(d.extraSyn ?? {}).every(Array.isArray) ? 'ok' : 'part']);
@@ -705,11 +736,12 @@
     for (const x of st) happen.push(`Eaux usées, ${commune(x.m.commune)} : ${x.last ? `${num(x.last.v)} en ${wk(x.last.w)}${x.two ? `, ${signed(x.last.v / x.two - 1)} sur 2 semaines` : ''}${x.ly ? `, ${signed(x.last.v / x.ly - 1)} sur un an` : ''}` : 'n.d.'}.`);
     if (a.apl?.pop) impact.push(`Population : ${num(a.apl.pop)} habitants${passPer(a) != null ? ` ; ${num(passPer(a))} passages aux urgences pour 1${NB}000 habitants par an` : ''}.`);
     impact.splice(1, 0, `Capacité : ${reaLine(a)}.`);
+    if (ehpadLine(a)) impact.push(`Personnes âgées dépendantes : ${ehpadLine(a)}.`);
     return { title: `${a.nom} (${a.code})`, sub: 'Santé · note de situation', level: RANK[a.urg] >= 1 ? a.urg : null, at: when(new Date().toISOString()),
       gauges: Object.keys(SYN).filter((k) => a.syn[k]).map((k) => synGauge(k, a.syn[k])),
       blocks: [['À retenir', bluf], ['Ce qui se passe', happen], ['Impact et capacités', impact], ['Évolution', evo], ['Ce qu’on ne sait pas', unknown]],
       charts: deptCharts(a, k),
-      sources: ['OSCOUR', 'Odissé', 'DREES', 'Eau du robinet', 'Eaux usées', 'Déclarations', 'Couverture'] };
+      sources: ['OSCOUR', 'Odissé', 'DREES', 'Eau du robinet', 'Eaux usées', 'Déclarations', 'Couverture', 'FINESS'] };
   };
   const hospNote = (g) => {
     const s = g[0], a = S.depts.get(s.dept), c = hospCard(g);
@@ -824,6 +856,7 @@
       <div class="mqh-row">${it(swatch(L1.orange, 'dash'), 'Région en pré-épidémie ou épidémie (Odissé)')}</div>
       <h5>Couche : une couleur par catégorie</h5>
       <div class="mqh-row">${it(hsw('chu'), 'CHU')}${it(hsw('ch'), 'centre hospitalier')}${it(hsw('private'), 'clinique privée')}${it(hsw('other'), 'autres')}</div>
+      <div class="mqh-row">${it(swatch(EHPAD_HEX, 'ring'), 'EHPAD, taille = places (au zoom, plus tôt avec la pastille Hôpitaux)')}</div>
       <div class="mqh-row mqh-note">Sites avec urgences ; taille = passages ${S.data.hosp?.vintage ?? ''} ; nom des villes de CHU, nom des sites au zoom.</div>
       <div class="mqh-row mqh-note">Accès aux soins, ${PROF[S.prof].toLowerCase()} (DREES, annuel, jamais une alerte), par rapport à la moyenne nationale :</div>
       <div class="mqh-ramp">${[...APL_RAMP].reverse().map(([, c, w]) => it(swatch(c, 'sq'), w)).join('')}</div>
@@ -865,6 +898,7 @@
   .mqh-leg-toggle em { font-style: normal; color: #ffcc00; font-size: 10.5px; margin-left: 2px; }
   .mqh-legend h5 { margin: 10px 0 4px; font-size: 11px; color: #9aa1ae; font-weight: 600; } .mqh-row { display: flex; align-items: center; gap: 6px; margin: 3px 0; flex-wrap: wrap; }
   .mqh-sw { display: inline-block; flex: 0 0 auto; } .mqh-sw-disc { width: 12px; height: 12px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 1.5px #05060a; }
+  .mqh-sw-ring { width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--c); background: transparent; }
   .mqh-sw-line { width: 22px; height: 0; border-top: 3px solid var(--c); } .mqh-sw-dash { width: 22px; height: 0; border-top: 3px dashed var(--c); }
   .mqh-ic { display: inline-flex; width: 18px; height: 18px; border-radius: 50%; background: #161a22; border: 1.5px solid #8a93a6; align-items: center; justify-content: center; }
   .mqh-ic svg { width: 11px; height: 11px; }
@@ -933,7 +967,8 @@
         getJson(`${OD}sumeau_stations/records?limit=100`),
         getJson(`${OD}sum-eau-indicateurs/records?limit=60&order_by=${encodeURIComponent('semaine desc')}`),
         getJson(`${HE}?conformite_limites_bact_prelevement=N&code_parametre=1449,6455&date_min_prelevement=${waterFrom}&size=5000&fields=code_prelevement,code_commune,nom_commune,code_departement,date_prelevement,libelle_parametre,resultat_alphanumerique,nom_distributeur,conclusion_conformite_prelevement`)]);
-      S.data = { syn, alerts, senti, ww, drugs, recalls, dgs, apl, hosp, extraSyn: Object.fromEntries(EXTRA_SYN.map((k, i) => [k, extra[i]])), wwMeta, wwSt, water, waterFrom, waterTo: lastDay, arbo, vacc, legio };
+      const ehpad = await getJson('/data/ehpad.json');
+      S.data = { syn, alerts, senti, ww, drugs, recalls, dgs, apl, hosp, ehpad, extraSyn: Object.fromEntries(EXTRA_SYN.map((k, i) => [k, extra[i]])), wwMeta, wwSt, water, waterFrom, waterTo: lastDay, arbo, vacc, legio };
       await draw();
     };
     await load();
