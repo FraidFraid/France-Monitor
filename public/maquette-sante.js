@@ -59,6 +59,8 @@
   const HOSP_WORD = { chu: 'CHU ou CHR', ch: 'Centre hospitalier', private: 'Clinique privée', gcs: 'Groupement de coopération (GCS)', army: 'Hôpital des armées', other: 'Autre établissement' };
   const hcat = (c) => (c === 'chu' || c === 'ch' || c === 'private' ? c : 'other');
   const REG_LINE = '#c9cdd6';
+  // Sentinelles (médecins généralistes) : turquoise, une couleur de couche, jamais une alerte.
+  const SENTI_HEX = '#2dd4bf';
 
   // ─── Pictos des hôpitaux ───
   const image = (id, svg, size) => new Promise((res) => {
@@ -131,6 +133,15 @@
       const pts = [...out.values()].filter((a) => a.reg === r.code && a.at).map((a) => a.at);
       if (pts.length) r.at = [pts.reduce((s, p) => s + p[0], 0) / pts.length, pts.reduce((s, p) => s + p[1], 0) / pts.length];
     }
+    // Sentinelles : régions les plus touchées par indicateur (bulletin hebdomadaire), comparées au taux national.
+    const norm = (x) => String(x ?? '').replace(/[’']/g, "'").toLowerCase();
+    const SENTI = { ira: 'IRA', diarrhee: 'Diarrhée aiguë', varicelle: 'Varicelle', grippe: 'Grippe', covid: 'COVID-19', bronchiolite: 'Bronchiolite' };
+    for (const r of regs.values()) r.senti = [];
+    for (const t of d.senti?.topRegions ?? []) {
+      const r = [...regs.values()].find((x) => norm(x.nom) === norm(t.region)); if (!r) continue;
+      const nat = (d.senti.indicators ?? []).find((i) => i.key === t.indicator)?.rate ?? null;
+      r.senti.push({ ...t, label: SENTI[t.indicator] ?? t.indicator, nat, ratio: nat ? t.rate / nat : null });
+    }
     S.regions = regs;
     // Hôpitaux : sites à moins de 300 m regroupés en un symbole.
     const sites = (d.hosp?.sites ?? []).filter((s) => s.lat != null && s.lon != null);
@@ -168,8 +179,11 @@
       return { ...f, properties: { code: f.properties.code, level: r?.level ?? 'hors', color: L1[r?.level] ?? MUTE } }; })));
     setData('mqh-reg-pts', fc([...S.regions.values()].filter((r) => r.at).map((r) => {
       const worst = r.live.filter((l) => l.phase !== 1).map((l) => `${PATHO[l.pathology] ?? l.pathology} : ${PHASE_WORD[l.phase]}`);
+      const phase = worst.length ? worst.join(', ') : r.level === 'hors' ? 'hors saison' : `pas d’alerte (${wk(r.live[0]?.week)})`;
+      const senti = r.senti.map((x) => `${x.label} ${num(x.rate)}${x.ratio ? ` · ${num(x.ratio, 1)}${NB}× France` : ''}`);
       return pt(r.at, { code: r.code, level: r.level, color: r.level === 'hors' || r.level === 'vert' ? INK : L1[r.level], alert: worst.length > 0,
-        label: `${r.nom}${NB}· ${worst.length ? worst.join(', ') : r.level === 'hors' ? 'hors saison' : 'pas d’alerte'}` }); })));
+        senti: r.senti.length > 0, sr: Math.max(0, ...r.senti.map((x) => x.ratio ?? 1)),
+        label: [r.nom, phase, ...senti].join('\n'), short: `${r.nom}${NB}· ${phase}` }); })));
     setData('mqh-hosp', fc(S.hGroups.map((g, i) => { const s = g[0];
       const chuLead = g.find((x) => x.category === 'chu' && S.hLead?.get(x.finess));
       return pt([s.lon, s.lat], { i, cat: hcat(s.category), n: g.length, sort: s.passages ?? 0,
@@ -192,9 +206,16 @@
       m.addLayer({ id: 'mqh-reg-alert', type: 'line', source: 'mqh-regions', filter: ['in', ['get', 'level'], ['literal', ['jaune', 'orange', 'rouge']]],
         paint: { 'line-color': ['get', 'color'], 'line-width': 3.5, 'line-dasharray': [2, 1.5], 'line-opacity': 1 } }, b);
       m.addLayer({ id: 'mqh-reg-fill', type: 'fill', source: 'mqh-regions', paint: { 'fill-color': '#ffffff', 'fill-opacity': 0 } }, b);
+      // Phase Odissé mesurée : vert léger « pas d'alerte » (mesuré, en saison), couleur d'état sinon ; rien hors saison. Avec la pastille seulement.
+      m.addLayer({ id: 'mqh-reg-tint', type: 'fill', source: 'mqh-regions', filter: ['!=', ['get', 'level'], 'hors'],
+        paint: { 'fill-color': ['get', 'color'], 'fill-opacity': ['match', ['get', 'level'], 'vert', 0.2, 0.35] } }, b);
       m.addLayer({ id: 'mqh-dept-hover', type: 'line', source: 'mqh-depts', filter: ['==', ['get', 'code'], ''], paint: { 'line-color': '#ffffff', 'line-width': 1.6, 'line-opacity': 0.9 } });
+      // Sentinelles : disque turquoise, taille = écart au taux national (régions les plus touchées du bulletin).
+      m.addLayer({ id: 'mqh-senti', type: 'circle', source: 'mqh-reg-pts', filter: ['get', 'senti'],
+        paint: { 'circle-radius': ['interpolate', ['linear'], ['get', 'sr'], 1, 6, 2, 12, 3, 16], 'circle-color': SENTI_HEX, 'circle-opacity': 0.9, 'circle-stroke-color': '#0a0a0f', 'circle-stroke-width': 1.5 } });
       m.addLayer({ id: 'mqh-reg-label', type: 'symbol', source: 'mqh-reg-pts', filter: ['get', 'alert'],
-        layout: { 'text-field': ['get', 'label'], 'text-size': 11, 'text-font': ['Open Sans Semibold'], 'text-max-width': 12, 'text-allow-overlap': false, 'text-optional': true },
+        layout: { 'text-field': ['get', 'short'], 'text-size': 11, 'text-font': ['Open Sans Semibold'], 'text-max-width': 30, 'text-line-height': 1.25,
+          'text-variable-anchor': ['top', 'bottom', 'left', 'right'], 'text-radial-offset': 1.3, 'text-allow-overlap': true },
         paint: { 'text-color': ['get', 'color'], 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.5, 'text-opacity': 1 } });
       m.addLayer({ id: 'mqh-apl-label', type: 'symbol', source: 'mqh-dept-pts',
         layout: { 'text-field': ['get', 'alabel'], 'text-size': 10.5, 'text-font': ['Open Sans Semibold'], 'text-allow-overlap': false, 'text-optional': true },
@@ -217,7 +238,7 @@
 
   // ─── Pastilles : mise en avant cumulable, le reste estompé ───
   const GROUPS = {
-    health: ['mqh-reg-line', 'mqh-reg-alert', 'mqh-reg-label', 'mqh-reg-fill'],
+    health: ['mqh-reg-line', 'mqh-reg-alert', 'mqh-reg-label', 'mqh-reg-fill', 'mqh-reg-tint', 'mqh-senti'],
     healthOscour: ['mqh-urg-fill', 'mqh-urg-line', 'mqh-urg-label'],
     healthApl: ['mqh-apl-fill', 'mqh-apl-line', 'mqh-apl-label'],
     hospitals: ['mqh-hosp'],
@@ -238,6 +259,7 @@
     'mqh-reg-line': ['line-opacity', () => (pill('health') ? 0.9 : 0.4)],
     'mqh-reg-alert': ['line-opacity', () => 1],
     'mqh-reg-label': ['text-opacity', () => 1],
+    'mqh-senti': [['circle-opacity', 'circle-stroke-opacity'], () => 0.9],
     'mqh-hosp': [['icon-opacity', 'text-opacity'], () => 1],
   };
   const calm = () => {
@@ -263,6 +285,8 @@
     F('mqh-urg-label', pill('healthOscour') ? ['!=', ['get', 'ulabel'], ''] : ['all', ['!=', ['get', 'ulabel'], ''], ['==', ['get', 'urg'], 'rouge']]);
     // Régions : avec la pastille, toutes nommées avec leur état ; sans, seulement celles en alerte.
     F('mqh-reg-label', pill('health') ? null : ['get', 'alert']);
+    L('mqh-reg-label', 'text-field', pill('health') ? ['get', 'label'] : ['get', 'short']);
+    V('mqh-reg-tint', pill('health')); V('mqh-senti', pill('health'));
     // Hôpitaux : avec la pastille, noms dès le zoom 6,5.
     L('mqh-hosp', 'text-field', ['step', ['zoom'], ['get', 'city'], pill('hospitals') ? 6.5 : 8, ['get', 'name']]);
     const k = pill('hospitals') ? 1.35 : 1;
@@ -355,9 +379,10 @@
       source: mode === 'apl' ? `${aplSrc()} · ${synSrc()}` : `${synSrc()} · ${aplSrc()}` };
   };
   const regionCard = (r) => ({ dot: r.level === 'hors' ? MUTE : L1[r.level], title: r.nom, state: r.live.length ? (r.level === 'vert' ? 'Pas d’alerte épidémique (mesuré)' : `${WORD[r.level]} · phase épidémique`) : 'Hors saison de surveillance', stateHex: r.level === 'hors' ? MUTE : L1[r.level],
-    rows: [...r.lines.map((l) => [PATHO[l.pathology] ?? l.pathology, `${PHASE_WORD[l.phase]} depuis ${wk(l.week)}${inSeason(l) ? '' : ' (hors saison)'}`]),
+    rows: [...r.lines.map((l) => [PATHO[l.pathology] ?? l.pathology, `${PHASE_WORD[l.phase]}${l.phase === 1 ? '' : ` depuis ${wk(l.week)}`} (semaine ${wk(l.week)}${inSeason(l) ? '' : ', hors saison'})`]),
+      ...r.senti.map((x) => [`Sentinelles, ${x.indicator === 'ira' ? 'IRA' : x.label.toLowerCase()}`, `${num(x.rate)} cas pour 100${NB}000 (IC ${num(x.ciLow)} à ${num(x.ciHigh)}), France ${num(x.nat)}, ${x.ratio ? `${num(x.ratio, 1)}${NB}×` : 'n.d.'}`]),
       ['Départements en anomalie aux urgences', (() => { const xs = [...S.depts.values()].filter((a) => a.reg === r.code && a.driver); return xs.length ? xs.map((a) => `${a.nom} (${SYN_SHORT[a.driver]})`).join(', ') : 'aucun'; })()]],
-    hint: 'Clic : bulletin Odissé (Santé publique France)', url: 'https://odisse.santepubliquefrance.fr', source: `Santé publique France, Odissé, semaine ${wk(S.data.alerts?.latestWeek?.id)}` });
+    hint: 'Clic : bulletin Odissé (Santé publique France)', url: 'https://odisse.santepubliquefrance.fr', source: `Santé publique France, Odissé, semaine ${wk(S.data.alerts?.latestWeek?.id)}${r.senti.length ? ` · Sentinelles, ${wk(S.data.senti?.week?.id)}${S.data.senti?.provisional ? ' provisoire' : ''}` : ''}` });
   const hospCard = (g) => {
     const s = g[0], a = S.depts.get(s.dept), c = hcat(s.category), med = S.hMed[c];
     const near = (S.data.hosp?.sites ?? []).filter((x) => !g.includes(x) && x.lat != null).map((x) => ({ x, d: km([s.lon, s.lat], [x.lon, x.lat]) })).filter((o) => o.d <= 30).sort((p, q) => p.d - q.d);
@@ -539,6 +564,7 @@
       <div class="mqh-row mqh-note">Accès aux soins, ${PROF[S.prof].toLowerCase()} (DREES, annuel, jamais une alerte), par rapport à la moyenne nationale ; sans pastille, seulement sous 0,75${NB}fois :</div>
       <div class="mqh-ramp">${[...APL_RAMP].reverse().map(([, c, w]) => it(swatch(c, 'sq'), w)).join('')}</div>
       <div class="mqh-row">${it(swatch(REG_LINE, 'dash'), 'Limite de région')}</div>
+      <div class="mqh-row mqh-note">Avec la pastille Veille sanitaire : ${it(swatch(L1.vert, 'sq'), 'pas d’alerte épidémique (mesuré)')} ${it(swatch(SENTI_HEX, 'disc'), 'région parmi les plus touchées (Sentinelles), taille = écart au taux national')}</div>
       <div class="mqh-row mqh-note">Sans pastille active, toutes les couches sont affichées. Une pastille met sa couche en avant et estompe les autres (clic, cumulable ; survol pour un aperçu). Le syndrome et la profession choisis dans les panneaux s’appliquent à la carte.</div>
       <details${ko ? ' open' : ''}><summary>Sources · ${src.length - ko}${NB}à jour, ${ko}${NB}en défaut</summary>${src.map(([k, v, st]) => `<div class="mqh-row mqh-src"><i class="mqh-src-${st}"></i><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}</details>`;
     legend.querySelectorAll('.mqh-leg-toggle').forEach((b) => { b.onclick = () => { legend.dataset.open = String(!open); renderLegend(); }; });
