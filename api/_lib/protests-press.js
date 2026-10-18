@@ -5,7 +5,7 @@
 // lieu stocké de l'article (repli sur la région du journal : un article du Progrès sur Paris serait placé à Lyon).
 import { extractLocations, geocodeQuery } from './server-geocoder.js';
 import { getDb, hasDatabaseUrl } from './db.js';
-import { cachedSource } from './source-http.js';
+import { cachedSource, fetchStrictJson } from './source-http.js';
 import { deptCommunes, indexCommunes, normalizeName } from './protests-demosphere.js';
 
 export const PRESS_WINDOW_MS = 24 * 3_600_000;
@@ -48,20 +48,66 @@ export function isViolentHeadline(title) {
 // cite qu'un lieu et ne parle ni d'un total national (« 32 800 manifestants dans les régions, vives tensions à Paris ») ni d'une
 // prévision (« 40 000 personnes prévues à Paris »).
 const COUNT = /(\d{1,3}(?:[\s  ]\d{3})*|\d+)\s+(?:manifestants|personnes|gilets jaunes|participants|lyceens|grevistes)\b/g;
-const NATIONAL = /\bregions?\b|\bfrance\b|\bministere\b|\bnational|\bpartout\b|\bpays\b|\bailleurs\b|\bprevue?s?\b|\battendue?s?\b|\benvisage/;
+// Marqueurs d'un total national, évalués PAR chiffre (sa proposition, ou la courte proposition qui la précède : « En France, 800 000
+// manifestants ») : « 800 000 manifestants en France, 12 000 à Lyon » garde 12 000 pour Lyon et écarte 800 000.
+const NATIONAL_COUNT = /\bfrance\b|\bpartout\b|\bpays\b|\bnational|\bsur tout le territoire\b|\btoute la nation\b|\bhexagone\b|\bensemble du territoire\b|\bun peu partout\b/;
+// Marqueurs qui disqualifient tout le titre (total régional, prévision).
+const NATIONAL = /\bregions?\b|\bministere\b|\bailleurs\b|\bprevue?s?\b|\battendue?s?\b|\benvisage/;
 const WORD_COUNT = { une: 0, dizaine: 10, quinzaine: 15, vingtaine: 20, trentaine: 30, quarantaine: 40, cinquantaine: 50, soixantaine: 60, centaine: 100, millier: 1000 };
+/** Un chiffre n'est jamais plus de 15 % des habitants de la commune : au-delà, c'est un total repris d'ailleurs. */
+export const MAX_SHARE_OF_POPULATION = 0.15;
+const CLAUSE_BREAK = /[,;:.()!?]/;
+
+/** Vrai si le chiffre situé entre `index` et `end` porte un marqueur national dans sa proposition ou la courte proposition précédente. */
+function isNationalCount(t, index, end) {
+  let from = index;
+  while (from > 0 && !CLAUSE_BREAK.test(t[from - 1])) from -= 1;
+  let to = end;
+  while (to < t.length && !CLAUSE_BREAK.test(t[to])) to += 1;
+  const own = t.slice(from, to).replace(/[-']/g, ' ');
+  if (NATIONAL_COUNT.test(own)) return true;
+  if (from === 0) return false;
+  let pFrom = from - 1;
+  while (pFrom > 0 && !CLAUSE_BREAK.test(t[pFrom - 1])) pFrom -= 1;
+  const prev = t.slice(pFrom, from - 1).replace(/[-']/g, ' ').trim();
+  return prev.split(/\s+/).length <= 4 && NATIONAL_COUNT.test(prev);
+}
+
+/** Tous les chiffres locaux d'un titre (hors totaux nationaux), sans choix du plus grand. */
+export function participantCandidates(title, placeCount) {
+  const t = fold(title);
+  if (placeCount !== 1 || NATIONAL.test(t)) return [];
+  const out = [];
+  for (const m of t.matchAll(COUNT)) {
+    const n = Number(m[1].replace(/[\s  ]/g, ''));
+    if (!Number.isFinite(n) || n <= 0 || isNationalCount(t, m.index, m.index + m[0].length)) continue;
+    out.push(n);
+  }
+  if (out.length > 0) return out;
+  const w = /(?<!plusieurs )\b(dizaine|quinzaine|vingtaine|trentaine|quarantaine|cinquantaine|soixantaine|centaine|millier)s? de (?:manifestants|personnes|gilets jaunes|lyceens)/.exec(t);
+  return w && !isNationalCount(t, w.index, w.index + w[0].length) ? [WORD_COUNT[w[1]]] : [];
+}
 
 export function participantsOf(title, placeCount) {
-  const t = fold(title);
-  if (placeCount !== 1 || NATIONAL.test(t)) return null;
-  let best = null;
-  for (const m of t.matchAll(COUNT)) {
-    const n = Number(m[1].replace(/[\s  ]/g, ''));
-    if (Number.isFinite(n) && n > 0 && (best === null || n > best)) best = n;
-  }
-  if (best !== null) return best;
-  const w = /(?<!plusieurs )\b(dizaine|quinzaine|vingtaine|trentaine|quarantaine|cinquantaine|soixantaine|centaine|millier)s? de (?:manifestants|personnes|gilets jaunes|lyceens)/.exec(t);
-  return w ? WORD_COUNT[w[1]] : null;
+  const all = participantCandidates(title, placeCount);
+  return all.length > 0 ? Math.max(...all) : null;
+}
+
+/**
+ * Population d'une commune (geo.api.gouv.fr, par coordonnées, sept jours de cache partagé) ; null si illisible : la plausibilité est
+ * alors simplement non vérifiée, la source ne tombe jamais pour cela. Aucune liste de population dans le dépôt (CITIES = coordonnées).
+ */
+export async function communePopulation(place) {
+  if (!place || place.dept) return null;
+  try {
+    const key = `${place.lat.toFixed(3)},${place.lon.toFixed(3)}`;
+    return await cachedSource(`protests:population:${key}`, { ttlSec: 7 * 86_400 }, async () => {
+      const list = await fetchStrictJson(`https://geo.api.gouv.fr/communes?lat=${place.lat}&lon=${place.lon}&fields=nom,population&format=json`, { timeoutMs: 8000 });
+      const pop = Array.isArray(list) ? Number(list[0]?.population) : NaN;
+      if (!Number.isFinite(pop) || pop <= 0) throw new Error('population absente');
+      return pop;
+    });
+  } catch { return null; }
 }
 
 const domainOf = (url) => {
@@ -117,7 +163,7 @@ export async function headlinePlaces(title, resolve = geocodeQuery, local = null
  * Un relevé par lieu sur les 24 h : `rows` = `{ title, link, feed, region, at }` (at en ms). Titres sans manifestation ou sans lieu
  * écartés ; même dépêche reprise par plusieurs journaux comptée une fois ; heurts si un article du lieu en parle.
  */
-export async function groupPress(rows, now, resolve = geocodeQuery, localByRegion = new Map()) {
+export async function groupPress(rows, now, resolve = geocodeQuery, localByRegion = new Map(), population = null) {
   const byPlace = new Map();
   let matched = 0;
   let unplaced = 0;
@@ -127,19 +173,26 @@ export async function groupPress(rows, now, resolve = geocodeQuery, localByRegio
     const places = await headlinePlaces(row.title, resolve, localByRegion.get(row.region) ?? null);
     if (places.length === 0) { unplaced += 1; continue; }
     const violent = isViolentHeadline(row.title);
-    const participants = participantsOf(row.title, places.length);
+    const candidates = participantCandidates(row.title, places.length);
     for (const place of places) {
       const key = `${place.lat.toFixed(3)},${place.lon.toFixed(3)}`;
-      const group = byPlace.get(key) ?? { place, articles: new Map(), participants: null };
+      const group = byPlace.get(key) ?? { place, articles: new Map(), candidates: new Set() };
       const tk = titleKey(row.title);
       const prev = group.articles.get(tk);
       if (!prev || row.at > prev.at) group.articles.set(tk, { ...row, violent });
-      if (participants !== null && (group.participants === null || participants > group.participants)) group.participants = participants;
+      for (const n of candidates) group.candidates.add(n);
       byPlace.set(key, group);
     }
   }
+  // Un même chiffre (≥ 100) sur plusieurs lieux du relevé est un total repris partout, pas un chiffre local.
+  const placesByValue = new Map();
+  for (const [key, group] of byPlace) for (const n of group.candidates) placesByValue.set(n, (placesByValue.get(n) ?? new Set()).add(key));
   const items = [];
   for (const [key, group] of byPlace) {
+    const pop = population && group.candidates.size > 0 ? await Promise.resolve(population(group.place)).catch(() => null) : null;
+    const plausible = [...group.candidates].filter((n) => !(n >= 100 && placesByValue.get(n).size > 1)
+      && !(Number.isFinite(pop) && pop > 0 && n > pop * MAX_SHARE_OF_POPULATION));
+    group.participants = plausible.length > 0 ? Math.max(...plausible) : null;
     const articles = [...group.articles.values()].sort((a, b) => b.at - a.at);
     const violent = articles.some((a) => a.violent);
     items.push({
@@ -196,7 +249,7 @@ export async function loadPress(now) {
     );
     const parsed = rows.map((r) => ({ title: r.title, link: r.link, feed: r.feed, region: r.region, at: new Date(r.at).getTime() }))
       .filter((r) => Number.isFinite(r.at) && r.at <= now + 3_600_000);
-    const { items, matched, unplaced } = await groupPress(parsed, now, geocodeQuery, await overseasIndexes(parsed));
+    const { items, matched, unplaced } = await groupPress(parsed, now, geocodeQuery, await overseasIndexes(parsed), communePopulation);
     return { items, matched, unplaced, scanned: rows.length };
   });
 }
