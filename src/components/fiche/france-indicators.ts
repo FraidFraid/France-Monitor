@@ -14,6 +14,7 @@ import {
   timelineIntensity,
   type DomainLevel,
   type DomainTile,
+  type DomainTilePart,
   type EnergyKey,
 } from '../france-intel-blocks.ts';
 import { escapeHtml } from '../france-intel-events.ts';
@@ -83,13 +84,19 @@ export function domainsSection(snapshot: Pick<FranceCountrySnapshot, 'signals' |
   // Sans niveau (source indisponible, S3) : point gris, « n.d. », hors du compte par niveau.
   const dot = (level: DomainLevel | null): string => levelDot(level === null ? null : DOMAIN_LEVEL[level]);
   const num = (v: number | null): string => `<b class="fmk-num">${v === null ? 'n.d.' : formatNumber(v, lang)}</b>`;
-  const value = (tile: DomainTile): string => (tile.parts
-    ? `<span class="fmk-domain-parts">${tile.parts.map((p) => `<span class="fmk-domain-part">${dot(p.level)}`
-      + `${escapeHtml(p.label)}\u00a0${num(p.value)}</span>`).join('')}</span>`
-    : tile.valueText !== undefined ? `<b class="fmk-num">${escapeHtml(tile.valueText)}</b>` : num(tile.value));
+  // Tuile à plusieurs parts (Météo) : une ligne par part, point, nom et ce qu'elle compte à gauche, chiffre aligné à droite.
+  // Ce que compte chaque part : le texte de la tuile en contient un par part, séparés par « · », dans le même ordre.
+  const partsHtml = (parts: readonly DomainTilePart[], meta: string): string => {
+    const notes = meta.split(' · ');
+    const noteOf = (i: number): string => (notes.length === parts.length ? ` <small>${escapeHtml(notes[i] ?? '')}</small>` : '');
+    return `<span class="fmk-domain-parts">${parts.map((p, i) => `<span class="fmk-domain-part">`
+      + `<span class="fmk-domain-part-name">${dot(p.level)}${escapeHtml(p.label)}${noteOf(i)}</span>${num(p.value)}</span>`).join('')}</span>`
+      + (notes.length === parts.length ? '' : `<small>${escapeHtml(meta)}</small>`);
+  };
+  const value = (tile: DomainTile): string => (tile.valueText !== undefined ? `<b class="fmk-num">${escapeHtml(tile.valueText)}</b>` : num(tile.value));
   const grid = tiles.map((tile) => `<div class="fmk-domain">`
     + `<span class="fmk-domain-name">${dot(tile.level)}${escapeHtml(tile.label)}</span>`
-    + `${value(tile)}<small>${escapeHtml(tile.meta)}</small></div>`).join('');
+    + (tile.parts ? partsHtml(tile.parts, tile.meta) : `${value(tile)}<small>${escapeHtml(tile.meta)}</small>`) + '</div>').join('');
   const chips = domainChips(snapshot, lang)
     .map((c) => `<span class="fmk-tag fmk-tag--${c.tone}">${escapeHtml(c.text)}</span>`).join('');
   return {

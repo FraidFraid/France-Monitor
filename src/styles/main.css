@@ -7647,10 +7647,12 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 :is(#app.ui-v2, .lp) .fmk .fmk-domains { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 18px; }
 :is(#app.ui-v2, .lp) .fmk .fmk-domain { display: grid; grid-template-columns: minmax(0, 1fr) auto; padding: 5px 0; border-bottom: 1px solid var(--fmk-rule); }
 :is(#app.ui-v2, .lp) .fmk .fmk-domain small { grid-column: 1 / -1; font-size: 11.5px; color: var(--fmk-faint); }
-/* Tuile à plusieurs chiffres (Météo : vigilance, crues, feux) : chiffres sur leur ligne, sous le nom, qui garde toute sa largeur
-   (sinon le nom tombait dans une colonne d'une lettre et s'écrivait à la verticale). */
-:is(#app.ui-v2, .lp) .fmk .fmk-domain-parts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 2px 12px; margin-top: 2px; }
-:is(#app.ui-v2, .lp) .fmk .fmk-domain-part { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+/* Tuile à plusieurs chiffres (Météo : vigilance, crues, feux) : petit tableau sous le nom, une ligne par source (point, nom, ce
+   qu'elle compte), chiffre aligné à droite comme les autres tuiles. */
+:is(#app.ui-v2, .lp) .fmk .fmk-domain-parts { grid-column: 1 / -1; display: grid; gap: 3px; margin-top: 4px; }
+:is(#app.ui-v2, .lp) .fmk .fmk-domain-part { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; column-gap: 8px; padding-left: 12px; }
+:is(#app.ui-v2, .lp) .fmk .fmk-domain-part-name { min-width: 0; }
+:is(#app.ui-v2, .lp) .fmk .fmk-domain-part-name small { display: block; padding-left: 12px; font-size: 11.5px; line-height: 1.3; color: var(--fmk-faint); }
 :is(#app.ui-v2, .lp) .fmk .fmk-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
 :is(#app.ui-v2, .lp) .fmk .fmk-tag { padding: 1px 7px; border-radius: 5px; font-size: 11.5px; background: var(--bg-surface); color: #c8c8d4; }
 :is(#app.ui-v2, .lp) .fmk .fmk-tag--warn { color: var(--sev-orange); }

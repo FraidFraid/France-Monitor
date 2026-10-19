@@ -77,11 +77,12 @@ describe('Domaines', () => {
 
   it('tuile « Météo » : trois chiffres distincts, chacun avec son point de niveau, jamais additionnés', () => {
     const s = domainsSection({ signals: signals({ meteoAlerts: 2, floodAlerts: 0, fireFoyersConfirmed: 3, fireDetections: 119 }), meteo: [] }, 'fr');
+    // Une ligne par part : point, nom, ce qu'elle compte, chiffre à droite (le nom de la tuile garde sa ligne).
+    const part = (lvl: string, label: string, note: string, v: string): string => '<span class="fmk-domain-part"><span class="fmk-domain-part-name">'
+      + `<span class="fmk-dot${lvl ? ` fmk-dot--${lvl}` : ''}" aria-hidden="true"></span>${label} <small>${note}</small></span><b class="fmk-num">${v}</b></span>`;
     expect(s.html).toContain('<span class="fmk-domain-parts">'
-      + '<span class="fmk-domain-part"><span class="fmk-dot fmk-dot--orange" aria-hidden="true"></span>Vigilance\u00a0<b class="fmk-num">2</b></span>'
-      + '<span class="fmk-domain-part"><span class="fmk-dot fmk-dot--vert" aria-hidden="true"></span>Crues\u00a0<b class="fmk-num">0</b></span>'
-      + '<span class="fmk-domain-part"><span class="fmk-dot fmk-dot--jaune" aria-hidden="true"></span>Feux\u00a0<b class="fmk-num">3</b></span>'
-      + '</span><small>dépts orange ou rouges · tronçons orange ou rouges · foyers confirmés</small>');
+      + part('orange', 'Vigilance', 'dépts orange ou rouges', '2') + part('vert', 'Crues', 'tronçons orange ou rouges', '0')
+      + part('jaune', 'Feux', 'foyers confirmés', '3') + '</span></div>');
     expect(s.html).not.toContain('>5<');
     expect(s.html).not.toContain('119');
   });
@@ -89,10 +90,10 @@ describe('Domaines', () => {
   it('tuile « Météo » (S3) : sources indisponibles en « n.d. » avec un point gris, tuile sans niveau ni compte', () => {
     const s = domainsSection({ signals: signals({ vigilanceUnavailable: true, floodsUnavailable: true, firesUnavailable: true }), meteo: [] }, 'fr');
     for (const label of ['Vigilance', 'Crues', 'Feux']) {
-      expect(s.html).toContain(`<span class="fmk-domain-part"><span class="fmk-dot" aria-hidden="true"></span>${label}\u00a0<b class="fmk-num">n.d.</b></span>`);
+      expect(s.html).toMatch(new RegExp(`<span class="fmk-dot" aria-hidden="true"></span>${label} <small>[^<]+</small></span><b class="fmk-num">n\\.d\\.</b>`));
     }
     expect(s.html).toContain('<span class="fmk-domain-name"><span class="fmk-dot" aria-hidden="true"></span>Météo</span>');
-    expect(s.html).not.toMatch(/(Vigilance|Crues|Feux)[ \u00a0]<b class="fmk-num">0<\/b>/);
+    expect(s.html).not.toMatch(/(Vigilance|Crues|Feux) <small>[^<]+<\/small><\/span><b class="fmk-num">0<\/b>/);
     // Six tuiles comptées (toutes vertes ici) : « Météo » sans niveau et « Finance » sans donnée (spec 2026-10-12 pilier finance) n'entrent pas dans le résumé.
     expect(s.summary).toContain('<span class="fmk-num">6</span>');
   });
