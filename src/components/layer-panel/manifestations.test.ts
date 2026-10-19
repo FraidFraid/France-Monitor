@@ -11,11 +11,11 @@ const DASH = String.fromCharCode(0x2014);
 const NOW = Date.parse('2026-10-17T09:00:00Z');
 const ann = (over: Partial<ProtestItem> = {}): ProtestItem => ({
   id: 'd1', source: 'demosphere', status: 'annonce', title: 'Rassemblement pour la paix', startsAt: '2026-10-17T13:00:00.000Z', allDay: false,
-  city: 'Toulouse', dept: '31', lat: 43.6, lon: 1.44, url: 'https://demosphere.net/rv/1', edition: 'Toulouse', violent: false, participants: null, precision: 'commune', articles: [], articleCount: 0, ...over,
+  city: 'Toulouse', dept: '31', lat: 43.6, lon: 1.44, url: 'https://demosphere.net/rv/1', place: null, edition: 'Toulouse', violent: false, participants: null, precision: 'commune', articles: [], articleCount: 0, ...over,
 });
 const sig = (over: Partial<ProtestItem> = {}): ProtestItem => ({
   id: 'g1', source: 'gdelt', status: 'signale', title: 'Manifestation', startsAt: '2026-10-17T08:30:00.000Z', allDay: false, city: 'Paris', dept: null,
-  lat: 48.85, lon: 2.35, url: null, edition: null, violent: false, participants: null, precision: 'commune', articleCount: 1,
+  lat: 48.85, lon: 2.35, url: null, place: null, edition: null, violent: false, participants: null, precision: 'commune', articleCount: 1,
   articles: [{ url: 'https://exemple.fr/a', domain: 'exemple.fr', seenAt: '2026-10-17T08:30:00.000Z', violent: false, title: null, outlet: null }], ...over,
 });
 const body = (items: ProtestItem[], over: Partial<ProtestsResponse> = {}): ProtestsResponse => ({

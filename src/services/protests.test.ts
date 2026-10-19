@@ -5,7 +5,7 @@ import { PROTESTS_URL, isProtestsLate, isProtestsResponse } from './protests.ts'
 
 const item = (over: Partial<ProtestItem> = {}): ProtestItem => ({
   id: 'demosphere:1', source: 'demosphere', status: 'annonce', title: 'Manifestation pour les retraites', startsAt: '2026-10-17T13:00:00.000Z',
-  allDay: false, city: 'Toulouse', dept: '31', lat: 43.6, lon: 1.44, url: 'https://demosphere.net/rv/1', edition: 'Toulouse', violent: false, participants: null, precision: 'commune', articles: [], articleCount: 0, ...over,
+  allDay: false, city: 'Toulouse', dept: '31', lat: 43.6, lon: 1.44, url: 'https://demosphere.net/rv/1', place: null, edition: 'Toulouse', violent: false, participants: null, precision: 'commune', articles: [], articleCount: 0, ...over,
 });
 const gdelt = (over: Partial<ProtestItem> = {}): ProtestItem => item({
   id: 'gdelt:paris', source: 'gdelt', status: 'signale', title: 'Manifestation', city: 'Paris', dept: null, lat: null, lon: null, edition: null, violent: true,
@@ -37,6 +37,9 @@ describe('isProtestsResponse', () => {
     expect(isProtestsResponse(body([item({ lat: 43.6, lon: null })]))).toBe(false);
     expect(isProtestsResponse(body([item({ articles: [{ url: 1 } as never] })]))).toBe(false);
     expect(isProtestsResponse(body([item({ title: undefined as never })]))).toBe(false);
+    expect(isProtestsResponse(body([item({ place: 12 as never })]))).toBe(false);
+    expect(isProtestsResponse(body([item({ place: undefined as never })]))).toBe(false);
+    expect(isProtestsResponse(body([item({ place: 'Place Micoulaud' }), gdelt()]))).toBe(true);
   });
 });
 

@@ -3247,6 +3247,7 @@ export interface ProtestItem {
   dept: string | null;                 // code département (« 31 », « 2A »), Démosphère seulement
   lat: number | null; lon: number | null;
   url: string | null;                  // fiche Démosphère ; presse et GDELT : article le plus récent
+  place: string | null;                // lieu de rendez-vous en texte libre tel qu'annoncé par Démosphère ; presse et GDELT : null
   edition: string | null;              // édition Démosphère (« Toulouse ») ; sinon null
   violent: boolean;                    // presse et GDELT : au moins un article de heurts ; Démosphère : toujours false
   participants: number | null;         // presse : plus grand chiffre cité pour ce seul lieu (« 800 personnes ») ; sinon null

@@ -107,7 +107,7 @@ describe('regroupement par lieu', () => {
     expect(matched).toBe(4);
     expect(unplaced).toBe(1);
     const paris = items.find((i) => i.city === 'Paris');
-    expect(paris).toMatchObject({ source: 'presse', status: 'signale', violent: true, articleCount: 1, title: 'Heurts ou tensions', precision: 'commune' });
+    expect(paris).toMatchObject({ source: 'presse', status: 'signale', violent: true, articleCount: 1, title: 'Heurts ou tensions', precision: 'commune', place: null });
     expect(paris?.articles[0]).toMatchObject({ outlet: 'Le Dauphiné', url: 'https://ledauphine.com/a' });
     expect(items.find((i) => i.city === 'Gap')).toMatchObject({ violent: false, participants: 800, title: 'Manifestation ou rassemblement' });
   });

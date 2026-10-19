@@ -142,6 +142,7 @@ export function groupGdelt(events, now) {
       participants: null,
       precision: first.lat !== null ? 'commune' : null,
       articles: articles.slice(0, MAX_ARTICLES).map((a) => ({ ...a, seenAt: new Date(a.seenAt).toISOString(), title: null, outlet: null })),
+      place: null,
       articleCount: articles.length,
     });
   }
