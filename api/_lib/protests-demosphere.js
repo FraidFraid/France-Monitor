@@ -53,14 +53,20 @@ export function normalizeName(text) {
 // Titre de manifestation : un mot d'action. Un mot d'une autre activité placé AVANT lui l'écarte (« Formation sécurité en manif »,
 // « Répète d'avant manif ») ; placé après, non (« Manifestation… suivie d'une assemblée »). « Marché » n'est pas « marche ».
 const ACTION = /\bmanif|\bmanifestons\b|\brassembl|\bcortege|\bgreve|\bblocage|\bbloquons\b|\bpiquet de greve|\bmobilisation|\bsit in\b|\bdie in\b|\bchaine humaine|\boccupation\b|\bmarche (?:pour|contre|blanche|des|de la|du)\b/;
+// Appel en tête de titre, sans mot d'action : « Ni congrès ni meeting pour le RN à Orléans », « Pas de congrès… », « Contre le flicage… »,
+// « Free Palestine », « Stop… », éventuellement précédé d'« Appel national ». Gardé seulement si aucun mot d'une autre activité n'y figure
+// (« Contre la guerre : conférence » reste écarté).
+const CALL = /^(?:appel (?:national |unitaire )?(?:a |au |aux )?)?(?:ni [a-z]+ ni\b|pas de\b|pas d |non (?:a|au|aux)\b|contre (?:le|la|les|l)\b|stop\b|halte\b|free\b|liberez\b|liberte pour\b)/;
+// Rassemblement silencieux ou statique nommé autrement.
+const STATIC = /\bcercle de silence\b|\bveillee (?:pour|contre|de soutien)\b/;
 const OTHER_ACTIVITY = /\bformation|\brepete|\brepetition|\bpermanence|\batelier|\bprojection|\breunion|\bconference|\bdebat|\bcafe\b|\bconcert|\brepas\b|\bcantine|\bfilm\b|\bspectacle|\bsoiree|\blecture|\brencontre/;
 
 /** Vrai si le titre annonce une manifestation (et pas une formation, une permanence ou un marché). */
 export function isProtestTitle(title) {
   // « Marché » (accentué) est lu « foire » avant de retirer les accents : il ne devient jamais « marche ».
   const text = normalizeName(String(title ?? '').replace(/march[éÉ]/gi, 'foire'));
-  const action = ACTION.exec(text);
-  if (!action) return false;
+  const action = ACTION.exec(text) ?? STATIC.exec(text);
+  if (!action) return CALL.test(text) && !OTHER_ACTIVITY.test(text);
   const other = OTHER_ACTIVITY.exec(text);
   return !(other && other.index < action.index);
 }
@@ -239,6 +245,31 @@ export function protestsOfEdition(edition, events, index, now, fallback = new Ma
   return out;
 }
 
+// Mots trop courants pour dire que deux annonces parlent du même rendez-vous.
+const COMMON_WORDS = new Set(['rassemblement', 'manifestation', 'contre', 'pour', 'avec', 'appel', 'national', 'nationale', 'devant', 'place', 'octobre',
+  'novembre', 'decembre', 'janvier', 'fevrier', 'mars', 'avril', 'juin', 'juillet', 'aout', 'septembre', 'samedi', 'dimanche', 'meeting']);
+const significantWords = (title) => new Set(normalizeName(title).split(' ').filter((w) => w.length >= 5 && !COMMON_WORDS.has(w)));
+
+/**
+ * Même rendez-vous relayé par plusieurs éditions (l'appel national pour Orléans l'est par dix) : même commune, départs à moins de 2 h
+ * d'écart et au moins un mot significatif en commun. Le premier est gardé, avec le lieu le plus détaillé ; les éditions qui le relaient
+ * sont jointes par « · ».
+ */
+export function mergeRelays(items) {
+  const kept = [];
+  for (const item of items) {
+    const words = significantWords(item.title);
+    const twin = item.city === null ? undefined : kept.find((k) => k.city === item.city && k.dept === item.dept
+      && Math.abs(Date.parse(k.startsAt) - Date.parse(item.startsAt)) <= 2 * 3_600_000
+      && [...significantWords(k.title)].some((w) => words.has(w)));
+    if (!twin) { kept.push({ ...item }); continue; }
+    if (item.edition && !String(twin.edition ?? '').split(' · ').includes(item.edition)) twin.edition = twin.edition ? `${twin.edition} · ${item.edition}` : item.edition;
+    // Lieu le plus précis des relais (« Orléans, Place Sainte-Croix, 45000 Orléans » plutôt que « Orléans, Orléans »).
+    if (item.place && item.place.length > String(twin.place ?? '').length) twin.place = item.place;
+  }
+  return kept;
+}
+
 /**
  * Toutes les éditions : `{ items, editions, failedEditions, scanned, errors }`. Une édition en panne est nommée et n'empêche pas les
  * autres ; un même rendez-vous publié par deux éditions (même fiche) n'est gardé qu'une fois. Lève si aucune édition n'a répondu.
@@ -273,5 +304,5 @@ export async function loadDemosphere(now) {
     for (const item of r.value.items) if (!items.has(item.id)) items.set(item.id, item);
   });
   if (failedEditions.length === DEMOSPHERE_EDITIONS.length) throw new Error(errors[0] ?? 'aucune édition lisible');
-  return { items: [...items.values()], editions: DEMOSPHERE_EDITIONS.length - failedEditions.length, failedEditions, scanned, errors };
+  return { items: mergeRelays([...items.values()]), editions: DEMOSPHERE_EDITIONS.length - failedEditions.length, failedEditions, scanned, errors };
 }

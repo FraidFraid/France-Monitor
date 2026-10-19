@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __resetSwrCacheForTests } from '../api/_utils/swr-cache.js';
 import {
-  DEMOSPHERE_EDITIONS, cleanPlace, icsTime, indexCommunes, isProtestTitle, locateCommune, locateNationally, parseIcs, protestsOfEdition,
+  DEMOSPHERE_EDITIONS, cleanPlace, icsTime, indexCommunes, isProtestTitle, locateCommune, locateNationally, mergeRelays, parseIcs, protestsOfEdition,
 } from '../api/_lib/protests-demosphere.js';
 import {
   __resetGdeltForTests, GDELT_LAST_UPDATE, groupGdelt, latestExportStamp, parseExport, unzipFirstEntry, windowStamps,
@@ -63,8 +63,44 @@ describe('titre de manifestation', () => {
     ['MARCHÉ DE NOËL', false],
     ['Permanence syndicale CGT des bureaux d’étude', false],
     ["Café Bricol' à St-Orens de Gameville", false],
+    // Appels sans mot d'action, relevés sur les agendas du 19/10/2026.
+    ['Ni congrès ni meeting pour le RN à Orléans les 24 et 25 octobre !', true],
+    ['Appel national Ni congrès ni meeting pour le RN à Orléans les 24 et 25 octobre !', true],
+    ['Pas de congrès pour le RN à Orléans les 24 et 25 octobre !', true],
+    ['Contre le flicage des bénéficiaires d’aides sociales !', true],
+    ['Free Palestine', true],
+    ['Cercle de silence pour Gaza et le peuple palestinien', true],
+    ['Contre la guerre : conférence', false],
+    ['Pas de quartier pour les fachos : concert', false],
+    ['Rencontre avec Clément Pairot', false],
+    ['Ciné-débat COLLAPSE – FACE À GAZA', false],
+    ["discussion Urgence Palestine - campagne contre l'armement d'Israël", false],
+    ['Soutien à la cave Gensan', false],
   ])('%s : %s', (title, expected) => {
     expect(isProtestTitle(title)).toBe(expected);
+  });
+});
+
+describe('rendez-vous relayé par plusieurs éditions', () => {
+  const item = (edition: string, title: string, startsAt: string, city: string | null, place: string | null) =>
+    ({ id: `demosphere:${edition}`, title, startsAt, city, dept: city ? '45' : null, edition, place }) as unknown as ProtestItem;
+  it('même commune, moins de 2 h, un mot en commun : gardé une fois, lieu le plus précis, éditions jointes', () => {
+    const out = mergeRelays([
+      item('Rennes', 'Pas de congrès pour le RN à Orléans', '2026-10-24T08:00:00.000Z', 'Orléans', 'Orléans, Orléans'),
+      item('Pyrénées', 'Ni congrès ni meeting pour le RN à Orléans', '2026-10-24T08:30:00.000Z', 'Orléans', 'Orléans, Place Sainte-Croix, 45000 Orléans'),
+      item('Gard', 'Ni congrès ni meeting pour le RN à Orléans', '2026-10-24T08:30:00.000Z', 'Orléans', 'Orléans, Orléans'),
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ edition: 'Rennes · Pyrénées · Gard', place: 'Orléans, Place Sainte-Croix, 45000 Orléans' });
+  });
+  it('autre jour, autre sujet ou lieu inconnu : séparés', () => {
+    expect(mergeRelays([
+      item('Rennes', 'Pas de congrès pour le RN à Orléans', '2026-10-24T08:00:00.000Z', 'Orléans', null),
+      item('Rennes', 'Pas de congrès pour le RN à Orléans', '2026-10-25T09:00:00.000Z', 'Orléans', null),
+      item('Berry', 'Free Palestine', '2026-10-24T08:30:00.000Z', 'Orléans', null),
+      item('Lot', 'Pas de congrès pour le RN', '2026-10-24T08:00:00.000Z', null, null),
+      item('Gard', 'Pas de congrès pour le RN', '2026-10-24T08:00:00.000Z', null, null),
+    ])).toHaveLength(5);
   });
 });
 
@@ -135,7 +171,10 @@ describe('manifestations d’une édition', () => {
   const toulouse = DEMOSPHERE_EDITIONS.find((e) => e.key === 'toulouse')!;
   const index = indexCommunes(COMMUNES[31]);
   it('seuls les titres de manifestation, dans la fenêtre, localisés', () => {
-    const items = protestsOfEdition(toulouse, parseIcs(fixture('demosphere-toulouse.ics')), index, NOW);
+    const all = protestsOfEdition(toulouse, parseIcs(fixture('demosphere-toulouse.ics')), index, NOW);
+    // Appel national sans mot d'action, lieu hors du département de l'édition : gardé, sans position (pas de secours national ici).
+    expect(all.find((i) => i.title.startsWith('Ni congrès'))).toMatchObject({ startsAt: '2026-10-24T08:30:00.000Z', city: null, precision: null });
+    const items = all.filter((i) => !i.title.startsWith('Ni congrès'));
     expect(items).toEqual([{
       id: 'demosphere:https://toulouse.demosphere.net/rv/' + items[0].id.split('/').pop(),
       source: 'demosphere', status: 'annonce', title: 'MANIFESTATIONS LYCEENNES, TRAVAILLEUSES, GJ.',
@@ -145,7 +184,7 @@ describe('manifestations d’une édition', () => {
   });
   it('commencée depuis plus de 6 h ou à plus de 7 jours : écartée', () => {
     const events = parseIcs(fixture('demosphere-toulouse.ics'));
-    expect(protestsOfEdition(toulouse, events, index, NOW + 6 * 3_600_000 + 3_600_001)).toHaveLength(0);
+    expect(protestsOfEdition(toulouse, events, index, NOW + 6 * 3_600_000 + 3_600_001).map((i) => i.startsAt)).toEqual(['2026-10-24T08:30:00.000Z']);
     expect(protestsOfEdition(toulouse, events, index, NOW - 8 * 86_400_000)).toHaveLength(0);
   });
   it('éditions françaises seulement, départements renseignés', () => {
@@ -236,10 +275,11 @@ describe('route', () => {
     expect(body.items.find((i) => i.source === 'gdelt' && i.city === 'Paris')).toMatchObject({ violent: true });
     expect(body.items.find((i) => i.source === 'presse')).toMatchObject({ city: 'Marseille', participants: 800 });
     const announced = body.items.filter((i) => i.status === 'annonce');
-    expect(announced.every((i) => i.lat !== null)).toBe(true);
+    // Orléans (appel national relayé par Toulouse) : commune absente du référentiel simulé, gardée sans position.
+    expect(announced.every((i) => (i.lat !== null) === (i.precision === 'commune'))).toBe(true);
     expect(announced.some((i) => i.title.startsWith('Répète'))).toBe(false);
     // Rennes (6 h, heure de Paris) a commencé depuis plus de 6 h à 13 h : écartée.
-    expect(new Set(announced.map((i) => i.city))).toEqual(new Set(['Le Mans', 'Toulouse', 'Nîmes', 'Strasbourg', 'Dunkerque']));
+    expect(new Set(announced.map((i) => i.city))).toEqual(new Set(['Le Mans', 'Toulouse', 'Nîmes', 'Strasbourg', 'Dunkerque', null]));
   });
 
   it('un lieu GDELT déjà relevé par la presse française n’est pas répété', async () => {
