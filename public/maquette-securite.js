@@ -431,6 +431,8 @@
     cyber: ['mqs-ddos', 'mqs-ddos-dot', 'mqs-ddos-label', 'mqs-dc-ref', 'mqs-cloud-sym', 'mqs-landings', 'mqs-landings-label', 'submarine-cables-line'],
     stability: [],
     protests: ['mqs-prot', 'mqs-prot-label'],
+    // Flux piétons : calques de l'application (rues chargées, isochrones, point de rassemblement), estompés comme les autres.
+    pedestrianFlows: ['flux-pietons-lines', 'flux-pietons-iso', 'flux-pietons-point'],
     crime: ['mqs-crime-city', 'mqs-crime-c', 'mqs-crime-c-label', 'mqs-crime-d-fill', 'mqs-crime-d-line'],
     outagesTelecom: ['mqs-dept-level', 'mqs-dept-level-line', 'mqs-agg-disc', 'mqs-agg-count', 'mqs-low-disc', 'mqs-low-count', 'mqs-sites-recent', 'mqs-sites-long'],
     outagesInternet: ['mqs-inet', 'mqs-inet-past-fill', 'mqs-inet-disc', 'mqs-inet-label'],
