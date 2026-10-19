@@ -4674,7 +4674,9 @@ export class DeckGLMap {
 
     // Contours colorés des Trafics (anneau des signalements AIS, aéroports, mouillages, urgences, arrêts du trajet d'un train) :
     // atténués avec leur couche, en plus du remplissage.
-    for (const layerId of [...TRAFFIC_STROKE_DIM_LAYERS, ...ENERGY_FOCUS_ALL]) {
+    // Toutes les couches de points de la légende aussi : un cercle sans remplissage (stations Vigicrues, en hausse ou en baisse)
+    // restait vif sinon.
+    for (const layerId of new Set([...TRAFFIC_STROKE_DIM_LAYERS, ...ENERGY_FOCUS_ALL, ...allLegendLayers])) {
       if (!this.map.getLayer(layerId) || this.map.getLayer(layerId)?.type !== 'circle') continue;
       const key = `${layerId}::stroke`;
       if (!this.originalOpacities.has(key)) {
