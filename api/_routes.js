@@ -72,6 +72,7 @@ export const ROUTES = {
   '/api/social/protests': () => import('./_handlers/social/protests.js'),
   '/api/sovereignty/cables-watch': () => import('./_handlers/sovereignty/cables-watch.js'),
   '/api/sovereignty/connectivity': () => import('./_handlers/sovereignty/connectivity.js'),
+  '/api/sovereignty/cyber-watch': () => import('./_handlers/sovereignty/cyber-watch.js'),
   '/api/sovereignty/cyber': () => import('./_handlers/sovereignty/cyber.js'),
   '/api/sovereignty/gnss': () => import('./_handlers/sovereignty/gnss.js'),
   '/api/sovereignty/military': () => import('./_handlers/sovereignty/military.js'),

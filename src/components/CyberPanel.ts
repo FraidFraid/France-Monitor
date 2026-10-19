@@ -58,6 +58,6 @@ export class CyberPanel {
     if (!this.shell) return;
     const slot = this.state?.cyber ?? null;
     const open = sectionOpenOf(loadSectionState(this.storage), PANEL_ID);
-    this.shell.render(buildCyberView({ cyber: slot?.data ?? null, cyberError: slot?.error ?? null, now: Date.now(), open }));
+    this.shell.render(buildCyberView({ cyber: slot?.data ?? null, cyberError: slot?.error ?? null, now: Date.now(), open, watch: this.state?.watch?.data ?? null }));
   }
 }

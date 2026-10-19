@@ -70,7 +70,8 @@ describe('vue Vigilance cyber (spec 2026-10-04 souveraineté § 2.3, amendement 
   });
   it('sections et ouverture du contrat (rapports de l’ANSSI ajoutés, S12) ; méthode en ton de référence', () => {
     expect(view().sections.map((s) => [s.id, s.open ?? false])).toEqual([
-      ['certfr', true], ['kev', true], ['revendications', true], ['rapports', false], ['fuites', false], ['cybermalveillance', false], ['methode', false],
+      ['enbref', false], ['certfr', true], ['revendications', true], ['technique', false], ['kev', false], ['rapports', false], ['fuites', false],
+      ['cybermalveillance', false], ['methode', false],
     ]);
     expect(view().sections.at(-1)?.tone).toBe('reference');
     expect(view().sections.find((s) => s.id === 'kev')?.title).toBe('Vulnérabilités exploitées (catalogue KEV de la CISA)');
@@ -292,7 +293,7 @@ describe('vue Vigilance cyber (spec 2026-10-04 souveraineté § 2.3, amendement 
     expect(t).toContain('Les avis de sécurité sont des documents faisant état de vulnérabilités et des moyens de s’en prémunir.');
     expect(t).toContain('revendications de la semaine dépassent 1,5 fois la moyenne (jaune au plus');
     expect(t).not.toMatch(/3 fois la moyenne/);
-    expect(t).toContain('pas de lieu publié : voir le panneau');
+    expect(t).toContain('aucune de ces sources ne publie de lieu');
     expect(t).toContain('Retirés : exposition Shodan et Censys, FrenchBreaches, fuites de plus de 30\u00a0jours, titres et domaines des fuites, CVE mondiales hors catalogue KEV.');
     expect(h).toContain('href="https://www.ransomware.live/t&amp;c"');
   });

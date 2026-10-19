@@ -7,11 +7,14 @@
 // La pastille est celle de `cyberLevel` (A1), jamais recalculée ici. Aucun lieu n'est publié : rien sur la carte (V5). Chaque source
 // porte sa date (S1).
 import type {
-  CertFrItem, CertFrReport, CyberResponse, CybermalveillanceEntry, KevItem, RansomShare, RansomwareSummary,
+  CertFrItem, CertFrReport, CyberResponse, CyberWatchResponse, CybermalveillanceEntry, KevItem, RansomShare, RansomwareSummary,
 } from '../../types/index.ts';
+import {
+  EPSS_NOTE, bgpQuietText, cyberWatchMethodRows, cyberWatchSections, ddosLevel, epssText, hacktivistLevel, isRecentTarget, serviceLevel,
+} from './cyber-watch.ts';
 import { parisDayOf } from '../../services/environment-levels.ts';
 import {
-  CERTFR_RECENT_DAYS, CLAIMS_RATIO_JAUNE, certfrAgeDays, certfrDate, claimsRatio, cyberLevel, isCertFrAlertOpen, isCertFrPublishedRecently,
+  CERTFR_RECENT_DAYS, CLAIMS_RATIO_JAUNE, certfrAgeDays, certfrDate, certfrPublishedAgeDays, claimsRatio, cyberLevel, isCertFrAlertOpen, isCertFrPublishedRecently,
   isSovereigntyDataLate,
 } from '../../services/sovereignty-levels.ts';
 import type { VigilanceLevel } from '../../services/vigilance.ts';
@@ -35,7 +38,8 @@ const emptyLine = (text: string): string => plainEmptyLine(glueSovUnits(text));
 const summaryText = (text: string): string => escapeHtml(glueSovUnits(text));
 
 export type OpenFn = (sectionId: string, byDefault: boolean) => boolean;
-export interface CyberViewInput { cyber: CyberResponse | null; cyberError: string | null; now: number; open: OpenFn }
+/** `watch` : veille cyber élargie (18/10/2026), absente ou null tant qu'elle n'a pas été lue. */
+export interface CyberViewInput { cyber: CyberResponse | null; cyberError: string | null; now: number; open: OpenFn; watch?: CyberWatchResponse | null }
 
 export const CYBER_TITLE = 'Vigilance cyber';
 
@@ -275,10 +279,10 @@ function certfrSection(c: CyberResponse, now: number, open: OpenFn): FicheSectio
 
 // ─── Vulnérabilités exploitées (catalogue KEV de la CISA) ───
 
-function kevRow(k: KevItem): string {
+function kevRow(k: KevItem, watch: CyberWatchResponse | null = null): string {
   const cited = k.certfrRefs.length > 0;
   const parts = [k.cve, cited ? `citée par le CERT-FR (${k.certfrRefs.map(shortRef).join(', ')})` : 'catalogue mondial, non citée par le CERT-FR',
-    k.ransomware ? 'campagne de rançongiciel connue' : null];
+    k.ransomware ? 'campagne de rançongiciel connue' : null, epssText(watch, k.cve)];
   return listRow({ text: kevName(k), value: dayMonth(k.dateAdded), color: cited ? KEV_CITED_COLOR : KEV_COLOR, note: parts.filter((p): p is string => p !== null).join(' · ') });
 }
 
@@ -306,8 +310,8 @@ function kevChart(c: CyberResponse, now: number): string {
     + `<span class="lp-key"><i style="background:${KEV_COLOR}"></i>autres</span></div>${chart}${constructionNote(days.length)}`;
 }
 
-function kevSection(c: CyberResponse, now: number, open: OpenFn): FicheSection {
-  const base = { id: 'kev', title: 'Vulnérabilités exploitées (catalogue KEV de la CISA)', collapsible: true, open: open('kev', true) };
+function kevSection(c: CyberResponse, now: number, open: OpenFn, watch: CyberWatchResponse | null = null): FicheSection {
+  const base = { id: 'kev', title: 'Vulnérabilités exploitées (catalogue KEV de la CISA)', collapsible: true, open: open('kev', false) };
   if (c.kev.readAt === null) return { ...base, summary: 'n.d.', html: sourceDown(KEV_NAME) };
   const cited = c.kev.recent.filter((k) => k.certfrRefs.length > 0);
   const others = c.kev.recent.filter((k) => k.certfrRefs.length === 0);
@@ -319,10 +323,11 @@ function kevSection(c: CyberResponse, now: number, open: OpenFn): FicheSection {
     ...base,
     summary: summaryText(`${kevWithin(c, now, 7).length} sur 7 jours · ${c.kev.recent.length} sur 30 jours${lateMark(late)}`),
     html: (c.kev.recent.length > 0
-      ? [...cited, ...others.slice(0, KEV_UNCITED_SHOWN)].map(kevRow).join('')
+      ? [...cited, ...others.slice(0, KEV_UNCITED_SHOWN)].map((k) => kevRow(k, watch)).join('')
       : emptyLine('Aucune vulnérabilité ajoutée au catalogue KEV depuis 30 jours.'))
-      + (rest.length > 0 ? `<details class="lp-more"><summary>${summaryText(`${rest.length} vulnérabilités de plus`)}</summary>${rest.map(kevRow).join('')}</details>` : '')
+      + (rest.length > 0 ? `<details class="lp-more"><summary>${summaryText(`${rest.length} vulnérabilités de plus`)}</summary>${rest.map((k) => kevRow(k, watch)).join('')}</details>` : '')
       + kevChart(c, now)
+      + (watch?.epss ? note(EPSS_NOTE) : '')
       + note(`Catalogue KEV de la CISA (domaine public), ${catalog}. « Citée par le CERT-FR » : CVE présente dans une alerte ou un avis du CERT-FR ; `
         + '« catalogue mondial » : vulnérabilité exploitée dans le monde, pas un événement en France.'),
   };
@@ -487,6 +492,110 @@ function cybermalveillanceSection(c: CyberResponse, now: number, open: OpenFn): 
   };
 }
 
+// ─── En bref (18/10/2026) : lecture d'un cabinet ou d'une préfecture ───
+
+const LEVEL_WORD: Readonly<Record<VigilanceLevel | 'nd', string>> = { vert: 'vert', jaune: 'jaune', orange: 'orange', rouge: 'rouge', nd: 'non évalué' };
+const KIND_PLURAL: Readonly<Record<string, [string, string]>> = {
+  'préfecture': ['préfecture', 'préfectures'], administration: ['administration', 'administrations'], 'collectivité': ['collectivité', 'collectivités'],
+  port: ['port', 'ports'], site: ['autre site', 'autres sites'],
+};
+
+/** Ligne de la synthèse : texte insécable entre nombre et unité (R1). */
+const briefRow = (r: Parameters<typeof listRow>[0]): string => listRow({ ...r, text: glueSovUnits(r.text) });
+
+/** Phrase « ce qui change en 24 h » : nouvelles alertes, cibles, services, DDoS, revendications ; puce de niveau propre à chacune. */
+function changeRows(c: CyberResponse, w: CyberWatchResponse | null, now: number): string[] {
+  const rows: string[] = [];
+  const fresh = c.certfr.alerts.filter((a) => isCertFrAlertOpen(a) && certfrPublishedAgeDays(a, now) <= 1);
+  const updated = c.certfr.alerts.filter((a) => isCertFrAlertOpen(a) && certfrPublishedAgeDays(a, now) > 1 && a.lastVersion !== null && parisAge(a.lastVersion, now) <= 1);
+  rows.push(briefRow({
+    text: fresh.length > 0 ? `${plural(fresh.length, 'nouvelle alerte CERT-FR', 'nouvelles alertes CERT-FR')} : ${fresh.map(certfrProductText).join(', ')}`
+      : updated.length > 0 ? `Aucune nouvelle alerte CERT-FR ; ${plural(updated.length, 'alerte mise à jour', 'alertes mises à jour')} : ${updated.map(certfrProductText).join(', ')}`
+        : 'Aucune nouvelle alerte CERT-FR depuis hier',
+    level: fresh.length > 0 ? 'orange' : null,
+  }));
+  const d = w?.ddosia ?? null;
+  if (d !== null) {
+    const recent = d.hosts.filter((h) => isRecentTarget(h, now));
+    const degraded = recent.filter((h) => hacktivistLevel(h, now, w) === 'orange');
+    rows.push(briefRow({
+      text: recent.length > 0
+        ? `${plural(recent.length, 'site français visé', 'sites français visés')} par les hacktivistes pro-russes NoName057(16)${degraded.length > 0 ? `, dont ${degraded.length} lent${degraded.length > 1 ? 's' : ''} ou injoignable${degraded.length > 1 ? 's' : ''} : ${degraded.map((h) => h.host).join(', ')}` : ', tous joignables'}`
+        : 'Aucun site français dans les listes des hacktivistes pro-russes',
+      level: degraded.length > 0 ? 'orange' : recent.length > 0 ? 'jaune' : null,
+    }));
+  }
+  const s = w?.services ?? null;
+  if (s !== null) {
+    const down = s.items.filter((i) => !i.ok);
+    rows.push(briefRow({
+      text: down.length > 0 ? `Injoignable : ${down.map((i) => i.name).join(', ')}` : `Services publics en ligne joignables (${s.items.length} sondés : FranceConnect, impots.gouv, ameli…)`,
+      level: down.length > 0 ? serviceLevel(down[0], now) : null,
+    }));
+  }
+  const r = w?.radar ?? null;
+  if (r !== null) {
+    const ratio = Math.max(r.l7Ratio ?? 0, r.l3Ratio ?? 0);
+    const level = ddosLevel(ratio || null);
+    rows.push(briefRow({ text: level !== null ? `DDoS vers la France en hausse : ${frNumber(ratio, 1)} fois la normale (Cloudflare)` : 'DDoS vers la France : niveau habituel (Cloudflare)', level }));
+  }
+  const ratio = claimsRatio(c.ransomware);
+  if (c.ransomware !== null) {
+    rows.push(briefRow({
+      text: `Rançongiciels : ${plural(c.ransomware.weekCount, 'revendication', 'revendications')} en France cette semaine${ratio !== null ? `, ${frNumber(ratio, 1)} fois la moyenne` : ''} (non confirmées)`,
+      level: ratio !== null && ratio > CLAIMS_RATIO_JAUNE ? 'jaune' : null,
+    }));
+  }
+  return rows;
+}
+
+function parisAge(day: string, now: number): number {
+  return Math.round((Date.parse(`${parisDayOf(now)}T00:00:00Z`) - Date.parse(`${day.slice(0, 10)}T00:00:00Z`)) / DAY_MS);
+}
+
+/** Qui est touché en France : sites visés dans les listes de moins de 24 h, par nature, avec leur lieu ; secteurs des revendications. */
+function touchedRows(c: CyberResponse, w: CyberWatchResponse | null, now: number): string[] {
+  const rows: string[] = [];
+  const recent = (w?.ddosia?.hosts ?? []).filter((h) => isRecentTarget(h, now));
+  for (const kind of ['préfecture', 'administration', 'collectivité', 'port', 'site']) {
+    const hs = recent.filter((h) => h.kind === kind);
+    if (hs.length === 0) continue;
+    const [one, many] = KIND_PLURAL[kind] ?? [kind, kind];
+    const names = hs.map((h) => (h.place !== null && kind !== 'site' ? h.place.name.replace(/^Préfecture /, '') : h.host));
+    rows.push(briefRow({ text: `${hs.length > 1 ? many : one} visé${hs.length > 1 ? 's' : ''} : ${[...new Set(names)].join(', ')}`, value: String(hs.length), color: 'var(--cat-hacktiviste)' }));
+  }
+  const sectors = c.ransomware?.sectors30 ?? [];
+  if (sectors.length > 0) {
+    rows.push(briefRow({ text: `Secteurs des revendications de rançongiciels (30 jours) : ${sectors.slice(0, 3).map((x) => `${sectorWord(x.label)} ${x.count}`).join(', ')}`, color: CLAIMS_COLOR }));
+  }
+  return rows.length > 0 ? rows : [emptyLine('Aucune organisation française nommée par une source ouverte en 24 heures.')];
+}
+
+/** Synthèse en tête du panneau : niveau, ce qui change en 24 h, qui est touché, qui contacter. Tout en est repris des sections. */
+function briefSection(c: CyberResponse, w: CyberWatchResponse | null, now: number): FicheSection {
+  const verdict = cyberLevel(c, now);
+  const html = listRow({ text: `Niveau de la menace cyber : ${LEVEL_WORD[verdict.level]}`, level: verdict.level === 'nd' ? 'gris' : verdict.level, note: glueSovUnits(verdict.reason) })
+    + note('Dans l’indice national de stabilité, le cyber compte au plus comme situation « élevée », jamais critique : des alertes restent ouvertes '
+      + 'des semaines et figeraient l’indice. Le niveau ci-dessus est celui de la menace, pas celui de la France.')
+    + `<p class="fmk-note"><b>${escapeHtml('Ce qui change en 24 heures')}</b></p>` + changeRows(c, w, now).join('')
+    + `<p class="fmk-note"><b>${escapeHtml('Qui est visé en France')}</b></p>` + touchedRows(c, w, now).join('')
+    + `<p class="fmk-note"><b>${escapeHtml('Qui contacter')}</b></p>`
+    + `<p class="fmk-note">${escapeHtml('Administration, OIV, OSE : ')}${sourceLinkHtml('CERT-FR (ANSSI)', CERTFR_CONTACT_URL)}${escapeHtml(' · collectivité, entreprise : ')}`
+    + `${sourceLinkHtml('CSIRT régional', CSIRT_URL)}${escapeHtml(' · particulier, TPE : ')}${sourceLinkHtml('17Cyber', CYBER17_URL)}${escapeHtml(' · hameçonnage, contenu illicite : ')}`
+    + `${sourceLinkHtml('Pharos', 'https://www.internet-signalement.gouv.fr/')}</p>`;
+  return { id: 'enbref', title: 'En bref', html };
+}
+
+/** Séparateur des deux niveaux de lecture : au-dessous, les détails pour les équipes cyber. */
+function technicalDivider(w: CyberWatchResponse | null): FicheSection {
+  const quiet = bgpQuietText(w);
+  return {
+    id: 'technique', title: 'Détails techniques (CSIRT)', tone: 'reference',
+    html: note('Pour les équipes cyber (CSIRT, RSSI, CERT ministériels) : vulnérabilités exploitées et probabilité d’exploitation, serveurs malveillants, '
+      + 'domaines imitateurs, base européenne, violations notifiées, rapports de l’ANSSI. Sections repliées.') + (quiet ? note(quiet) : ''),
+  };
+}
+
 // ─── Méthode et sources ───
 
 function methodSection(input: CyberViewInput): FicheSection {
@@ -515,10 +624,11 @@ function methodSection(input: CyberViewInput): FicheSection {
       + 'n’est pas confirmée) ; vert sinon ; n.d. si le CERT-FR est en panne ou en retard, ou si le statut d’une alerte récente n’a pas été lu.')
     + note('Retard : CERT-FR lu il y a plus de 6 heures, catalogue KEV il y a plus de 26 heures, fichier de ransomware.live publié il y a plus de '
       + '24 heures, liste de Have I Been Pwned lue il y a plus de 26 heures, flux de Cybermalveillance.gouv.fr lus il y a plus de 6 heures.')
-    + note('Carte : aucune de ces sources ne publie de lieu ; la couche ne dessine rien (légende : « pas de lieu publié : voir le panneau »).')
+    + note('Carte : aucune de ces sources ne publie de lieu ; seules les cibles françaises des hacktivistes dont le lieu se déduit du domaine sont placées.')
     + note('Retirés : exposition Shodan et Censys, FrenchBreaches, fuites de plus de 30 jours, titres et domaines des fuites, CVE mondiales hors catalogue KEV.')
-    + readErrors(c !== null ? c.errors.map(glueSovUnits) : []);
-  return { id: 'methode', title: 'Méthode et sources', collapsible: true, open: open('methode', false), tone: 'reference', html, summary: summaryText('5 sources') };
+    + readErrors(c !== null ? c.errors.map(glueSovUnits) : [])
+    + cyberWatchMethodRows(input.watch ?? null, now);
+  return { id: 'methode', title: 'Méthode et sources', collapsible: true, open: open('methode', false), tone: 'reference', html, summary: summaryText('13 sources') };
 }
 
 // ─── Assemblage ───
@@ -544,8 +654,12 @@ export function buildCyberView(input: CyberViewInput): LayerView {
       bodyHtml: sourceErrorCallout(null, now),
     };
   }
+  const watch = input.watch ?? null;
+  const extra = cyberWatchSections(watch, c, now, open);
+  // Deux niveaux de lecture (18/10/2026) : synthèse et sections de décision ouvertes en haut, détails techniques repliés au-dessous.
   const sections = [
-    certfrSection(c, now, open), kevSection(c, now, open), claimsSection(c, now, open), reportsSection(c, now, open), leaksSection(c, now, open),
+    briefSection(c, watch, now), certfrSection(c, now, open), ...extra.decision, claimsSection(c, now, open),
+    technicalDivider(watch), kevSection(c, now, open, watch), ...extra.technical, reportsSection(c, now, open), leaksSection(c, now, open),
     cybermalveillanceSection(c, now, open), methodSection(input),
   ];
   return { head: headOf(c, now), sections, bodyHtml: cyberError !== null ? sourceErrorCallout(dataMs(c.readAt), now) : undefined };

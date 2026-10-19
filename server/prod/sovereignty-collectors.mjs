@@ -4,6 +4,7 @@
 // Phase B : gnss, noaa, ripestat, gels (tâche B24).
 import { ensureCablesWatchFresh } from '../../api/_lib/cable-watch.js';
 import { ensureCyberFresh } from '../../api/_lib/cyber-collect.js';
+import { ensureCyberWatchFresh } from '../../api/_lib/cyber-watch.js';
 import { ensureMilitaryFresh } from '../../api/_lib/military-collect.js';
 import { loadSpaceWeather } from '../../api/_lib/noaa-swpc.js';
 import { ensureGnssFresh } from '../../api/_lib/gnss-collect.js';
@@ -19,6 +20,8 @@ export const SOVEREIGNTY_COLLECTORS = [
   { name: 'military', run: ensureMilitaryFresh },
   { name: 'cables-watch', run: ensureCablesWatchFresh },
   { name: 'cyber', run: ensureCyberFresh },
+  // Veille cyber élargie (18/10/2026) : huit parties à leur cadence (sondes des services publics toutes les 5 min).
+  { name: 'cyber-watch', run: ensureCyberWatchFresh },
   // Phase B (tâche B24) : NOAA avant la grille (Kp de la fenêtre frais au calcul), grille GNSS 10 min, RIPEstat 1 h, registre des gels 1 h.
   { name: 'noaa', run: loadSpaceWeather },
   { name: 'gnss', run: ensureGnssFresh },
