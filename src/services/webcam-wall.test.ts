@@ -8,6 +8,7 @@ import {
 } from './webcam-wall.ts';
 import { renderWebcamWall } from '../components/layer-panel/webcam-wall.ts';
 import { activeShare, buildWebcamsView, webcamFicheHtml } from '../components/layer-panel/webcams.ts';
+import { embedPlayerUrl, webcamCounts, webcamEmbedUrl } from './webcams.ts';
 
 const base = (): WallState => ({ ...DEFAULT_WALL, ids: [] });
 const view = (state: WallState, columns = 2): string => renderWebcamWall({ data: DS, state, columns, refreshedMs: 1_700_000_000_000, refreshedLabel: null });
@@ -111,5 +112,37 @@ describe('panneau Webcams', () => {
     expect(webcamFicheHtml(CAM, DS, [CAM.id])).toContain('Retirer du mur');
     expect(webcamFicheHtml(CAM, DS, [])).toContain('Ajouter au mur');
     expect(webcamFicheHtml(CAM, DS)).not.toContain('data-wall-toggle');
+  });
+});
+
+describe('vidéos en direct (YouTube)', () => {
+  const VID = {
+    ...CAM, id: 'youtube:z6BNMoj9Pyo', name: 'Cannes · Boulevard du Midi', source: 'osm', imageUrl: null, countable: false,
+    pageUrl: 'https://www.youtube.com/watch?v=z6BNMoj9Pyo', streamUrl: 'https://www.youtube-nocookie.com/embed/z6BNMoj9Pyo',
+    license: 'Lecteur YouTube intégré', attribution: '© Mairie (YouTube)', contentType: 'text/html',
+  };
+  const ds = { ...DS, webcams: [...DS.webcams, VID] };
+  it('lecteur youtube-nocookie seulement, muet et lancé seul ; aucune autre iframe', () => {
+    expect(webcamEmbedUrl(VID)).toBe(VID.streamUrl);
+    expect(webcamEmbedUrl({ ...VID, status: 'down' })).toBeNull();
+    expect(webcamEmbedUrl({ ...VID, streamUrl: 'https://evil.example/embed/z6BNMoj9Pyo' })).toBeNull();
+    expect(webcamEmbedUrl({ ...VID, streamUrl: 'https://www.youtube-nocookie.com/embed/x"><script>' })).toBeNull();
+    expect(embedPlayerUrl(VID.streamUrl)).toBe(`${VID.streamUrl}?autoplay=1&mute=1&playsinline=1&rel=0`);
+    expect(webcamCounts(ds.webcams).video).toBe(1);
+  });
+  it('tuile vidéo : iframe du lecteur avec référent d’origine (exigé par YouTube), candidats groupés', () => {
+    const s = { ...base(), ids: [VID.id] };
+    expect(wallTiles(ds, s)[0]).toMatchObject({ embedUrl: VID.streamUrl, imageUrl: null });
+    const html = renderWebcamWall({ data: ds, state: s, columns: 1, refreshedMs: 0, refreshedLabel: null });
+    expect(html).toContain(`<iframe src="${VID.streamUrl}?autoplay=1&amp;mute=1&amp;playsinline=1&amp;rel=0"`);
+    expect(html).toContain('referrerpolicy="strict-origin-when-cross-origin"');
+    expect(html).toContain('allowfullscreen');
+    expect(html).toContain('Agrandir');
+    const pick = renderWebcamWall({ data: ds, state: base(), columns: 1, refreshedMs: 0, refreshedLabel: null });
+    expect(pick).toContain('<optgroup label="Vidéos en direct (1)">');
+    expect(pick).toContain('<optgroup label="Images rafraîchies chaque minute (1)">');
+    expect(wallCandidates(ds, base()).map((w) => w.id).sort()).toEqual([CAM.id, VID.id].sort());
+    // Webcam OSM sans image ni vidéo : jamais d'iframe.
+    expect(renderWebcamWall({ data: ds, state: { ...base(), ids: ['osm:node/1'] }, columns: 1, refreshedMs: 0, refreshedLabel: null })).not.toContain('<iframe');
   });
 });

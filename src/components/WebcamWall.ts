@@ -10,6 +10,7 @@ import {
 import { webcamThumbnailUrl } from '../services/webcams.ts';
 import { safeStorage } from './layer-panel/frame.ts';
 import { renderWebcamWall } from './layer-panel/webcam-wall.ts';
+import { morphInto } from './layer-panel/morph.ts';
 
 const timeLabel = (ms: number): string => new Intl.DateTimeFormat('fr-FR', {
   timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit',
@@ -51,6 +52,7 @@ export class WebcamWall {
 
   open(): void {
     this.commit({ ...this.state, open: true, minimized: false });
+    this.fitHeight();
   }
 
   add(id: string): void { this.commit(addToWall(this.state, id)); }
@@ -83,7 +85,11 @@ export class WebcamWall {
     const onClick = (e: Event): void => this.onClick(e);
     const onChange = (e: Event): void => {
       const sel = (e.target as HTMLElement).closest<HTMLSelectElement>('select[data-wall-action="add"]');
-      if (sel?.value) this.add(sel.value);
+      if (!sel?.value) return;
+      const id = sel.value;
+      sel.value = '';
+      this.add(id);
+      this.fitHeight();
     };
     // load / error ne remontent pas : écoute en phase de capture.
     const onImg = (e: Event): void => {
@@ -218,14 +224,41 @@ export class WebcamWall {
         const v = Number(btn.dataset['value']);
         const layout = (WALL_LAYOUTS as readonly number[]).includes(v) ? v as WallLayout : 0;
         this.commit({ ...this.state, layout });
+        this.fitHeight();
         break;
       }
       case 'left': this.commit(moveOnWall(this.state, id, -1)); break;
       case 'right': this.commit(moveOnWall(this.state, id, 1)); break;
-      case 'remove': this.commit(removeFromWall(this.state, id)); break;
-      case 'focus': this.commit({ ...this.state, focusId: this.state.focusId === id ? null : id }); break;
+      case 'remove': this.commit(removeFromWall(this.state, id)); this.fitHeight(); break;
+      case 'focus': this.commit({ ...this.state, focusId: this.state.focusId === id ? null : id }); this.fitHeight(); break;
       default: break;
     }
+  }
+
+  /** Hauteur ajustée au contenu après un ajout, un retrait ou un changement de disposition (pas de vide sous les images),
+   *  bornée à l'écran ; un redimensionnement à la main reste maître jusqu'au changement suivant. */
+  private fitHeight(): void {
+    if (!this.root || this.state.minimized) return;
+    // Après la mise en page des images (rapport 4/3 fixe : la hauteur est connue sans attendre leur chargement).
+    requestAnimationFrame(() => {
+      if (!this.root || this.state.minimized) return;
+      const body = this.root.querySelector<HTMLElement>('.wcw-body');
+      const content = body?.firstElementChild;
+      if (!body || !(content instanceof HTMLElement)) return;
+      // La zone de défilement s'étire avec la fenêtre : on mesure son contenu (mosaïque ou message), marges comprises.
+      const style = getComputedStyle(content);
+      const contentH = content.offsetHeight + parseFloat(style.marginTop) + parseFloat(style.marginBottom);
+      const bodyStyle = getComputedStyle(body);
+      const chrome = this.root.offsetHeight - body.clientHeight;
+      const wanted = chrome + contentH + parseFloat(bodyStyle.paddingTop) + parseFloat(bodyStyle.paddingBottom) + 2;
+      const b = this.root.getBoundingClientRect();
+      const rect = clampRect({ x: b.left, y: b.top, w: b.width, h: wanted }, window.innerWidth, window.innerHeight);
+      // Trop haute pour la place sous son bord haut : remontée plutôt que coupée.
+      if (rect.y + rect.h > window.innerHeight - 8) rect.y = Math.max(0, window.innerHeight - 8 - rect.h);
+      this.state = { ...this.state, rect };
+      saveWallState(this.storage, this.state);
+      this.placeRoot();
+    });
   }
 
   private computeColumns(): number {
@@ -237,10 +270,11 @@ export class WebcamWall {
   private render(): void {
     if (!this.root) return;
     this.columns = this.computeColumns();
-    this.root.innerHTML = renderWebcamWall({
+    // Mise à jour nœud à nœud : une vidéo déjà lancée n'est pas rechargée quand la fenêtre change de taille ou de disposition.
+    morphInto(this.root, renderWebcamWall({
       data: this.data, state: this.state, columns: this.columns, refreshedMs: this.refreshedMs,
       refreshedLabel: this.loaded ? `Images de ${timeLabel(this.refreshedMs)}` : null,
-    });
+    }));
     this.placeRoot();
   }
 

@@ -4,7 +4,11 @@
 // distinctes au même point gardées), vivacité (mort → down, refus → unknown, page qui rend une image), règle countable, source en
 // échec qui ne bloque pas les autres, et contrat de sortie.
 import { describe, expect, it } from 'vitest';
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
+  YOUTUBE_LICENSE, fetchYoutube, isYoutubeEntry, youtubeCheckFromOembed, youtubeEmbedUrl,
   applyCheck, buildWebcams, checkLink, cleanUrl, dedupeWebcams, interleaveByHost, isCountable, parseOverpass, serializeDataset,
 } from '../scripts/build-webcams.mjs';
 import { isWebcamsDataset } from '../src/services/webcams.ts';
@@ -74,7 +78,7 @@ async function run() {
   const { fetchImpl, calls } = fakeFetch();
   const result = await buildWebcams({
     fetchImpl, overpassUrls: ['https://overpass-a.test/api/interpreter', 'https://overpass-b.test/api/interpreter'],
-    sleep: async () => undefined, log: () => undefined, now: () => new Date('2026-10-18T17:00:00.000Z'),
+    sleep: async () => undefined, log: () => undefined, now: () => new Date('2026-10-18T17:00:00.000Z'), youtubeListUrl: null,
   });
   return { ...result, calls };
 }
@@ -148,5 +152,50 @@ describe('fonctions du recensement', () => {
   it('hôtes entrelacés pour la vérification', () => {
     const w = (id: string, host: string) => ({ id, imageUrl: null, pageUrl: `https://${host}/${id}` });
     expect(interleaveByHost([w('1', 'a'), w('2', 'a'), w('3', 'b'), w('4', 'a'), w('5', 'b')]).map((x: { id: string }) => x.id)).toEqual(['1', '3', '2', '5', '4']);
+  });
+});
+
+describe('directs YouTube (liste choisie)', () => {
+  const entry = (videoId: string, name: string) => ({ videoId, name, commune: 'Cannes', dept: '06', lat: 43.55, lon: 7.01, position: 'commune' });
+  async function list(streams: unknown[]): Promise<URL> {
+    const dir = await mkdtemp(join(tmpdir(), 'fm-yt-'));
+    const file = join(dir, 'list.json');
+    await writeFile(file, JSON.stringify({ streams }));
+    return new URL(`file://${file}`);
+  }
+  const ctxOf = (url: URL, fetchImpl: Handler, youtubeKey: string | null = null) => ({
+    youtubeListUrl: url, youtubeKey, now: () => new Date('2026-10-19T08:00:00.000Z'), log: () => undefined,
+    fetchImpl: async (u: string | URL | Request, init?: RequestInit) => fetchImpl(String(u), init),
+  });
+
+  it('entrées valides seulement, état selon l’oEmbed', () => {
+    expect(isYoutubeEntry(entry('z6BNMoj9Pyo', 'Cannes'))).toBe(true);
+    expect(isYoutubeEntry(entry('trop-court', 'x'))).toBe(false);
+    expect(isYoutubeEntry({ ...entry('z6BNMoj9Pyo', 'x'), lat: Number.NaN })).toBe(false);
+    expect([200, 401, 403, 404, 500].map(youtubeCheckFromOembed)).toEqual(['ok', 'down', 'down', 'down', 'unknown']);
+    expect(youtubeEmbedUrl('z6BNMoj9Pyo')).toBe('https://www.youtube-nocookie.com/embed/z6BNMoj9Pyo');
+  });
+
+  it('webcam au contrat : lecteur youtube-nocookie, jamais countable, intégration refusée = down', async () => {
+    const url = await list([entry('z6BNMoj9Pyo', 'Cannes · Boulevard du Midi'), entry('YkKGantlWH0', 'Refusée'), { bad: true }]);
+    const out = await fetchYoutube(ctxOf(url, (u) => u.includes('YkKGantlWH0') ? head(401, 'text/html') : json({ author_name: 'Mairie' })));
+    const ok = out.find((w: { id: string }) => w.id === 'youtube:z6BNMoj9Pyo');
+    expect(out).toHaveLength(2);
+    expect(ok).toMatchObject({
+      source: 'youtube', status: 'ok', httpStatus: 200, imageUrl: null, countable: false, license: YOUTUBE_LICENSE,
+      streamUrl: 'https://www.youtube-nocookie.com/embed/z6BNMoj9Pyo', pageUrl: 'https://www.youtube.com/watch?v=z6BNMoj9Pyo',
+      attribution: '© Mairie (YouTube)', commune: 'Cannes', dept: '06',
+    });
+    expect(out.find((w: { id: string }) => w.id === 'youtube:YkKGantlWH0')).toMatchObject({ status: 'down', httpStatus: 401 });
+  });
+
+  it('avec clé : un direct terminé passe en down', async () => {
+    const url = await list([entry('z6BNMoj9Pyo', 'En direct'), entry('xsUGUMAFc-I', 'Terminé')]);
+    const out = await fetchYoutube(ctxOf(url, (u) => u.includes('googleapis.com')
+      ? json({ items: [{ id: 'z6BNMoj9Pyo', snippet: { liveBroadcastContent: 'live' } }, { id: 'xsUGUMAFc-I', snippet: { liveBroadcastContent: 'none' } }] })
+      : json({ author_name: 'X' }), 'cle'));
+    expect(Object.fromEntries(out.map((w: { id: string; status: string }) => [w.id, w.status]))).toEqual({
+      'youtube:z6BNMoj9Pyo': 'ok', 'youtube:xsUGUMAFc-I': 'down',
+    });
   });
 });

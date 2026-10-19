@@ -12,11 +12,14 @@
 //      Recherche refaite le 18/10/2026 (webcam, webcams, camera trafic, caméras routières, caméra, images trafic, cameras web) : les autres
 //      jeux « caméra » sont de la vidéoprotection ou du comptage, sans image publique : écartés.
 //   c. Windy Webcams API v3, seulement si WINDY_WEBCAMS_KEY est définie (palier gratuit) ; ignorée sinon.
+//   d. Directs YouTube de webcams françaises, liste choisie à la main (scripts/webcams-youtube.json), lus dans le lecteur officiel
+//      youtube-nocookie (intégration permise par le diffuseur, vérifiée par l'oEmbed de YouTube ; jamais de page YouTube aspirée).
+//      Avec YOUTUBE_API_KEY (YouTube Data API v3, palier gratuit, 1 unité par lot de 50), un direct arrêté est marqué « down ».
 // Vivacité : une requête limitée par webcam (GET avec Range, corps abandonné, 8 s, 8 en parallèle, hôtes entrelacés) sur imageUrl sinon
 // pageUrl. AUCUNE image n'est enregistrée. Aucun site n'est aspiré : seuls les liens présents dans ces sources ouvertes sont suivis.
 // Commune et département : geo.api.gouv.fr (commune contenant le point) ; un point qu'elle ne place dans aucune commune française
 // (pays voisin, collectivité d'outre-mer hors DROM) est écarté pour OSM et Windy.
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 // En-tête en ASCII seulement : un caractère accentué fait rejeter la requête par certains serveurs (API Adresse : 404).
@@ -312,6 +315,73 @@ function banGeocoder(ctx) {
   };
 }
 
+// ─── d. Directs YouTube (liste choisie) ────────────────────────────────────────────────────────────────────────────────────────
+
+export const YOUTUBE_LIST_URL = new URL('./webcams-youtube.json', import.meta.url);
+const YT_ID = /^[A-Za-z0-9_-]{11}$/;
+const YT_OEMBED = (id) => `https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${id}`)}&format=json`;
+/** Lecteur sans cookie publicitaire avant lecture ; muet et lancé seul (règle des navigateurs pour la lecture automatique). */
+export const youtubeEmbedUrl = (id) => `https://www.youtube-nocookie.com/embed/${id}`;
+export const YOUTUBE_LICENSE = 'Lecteur YouTube intégré (intégration autorisée par le diffuseur)';
+
+/** Entrée de la liste valide : identifiant de vidéo, nom, commune, département, position finie. */
+export function isYoutubeEntry(e) {
+  return e !== null && typeof e === 'object' && YT_ID.test(e.videoId ?? '') && typeof e.name === 'string' && e.name.trim() !== ''
+    && typeof e.commune === 'string' && typeof e.dept === 'string' && Number.isFinite(e.lat) && Number.isFinite(e.lon);
+}
+
+/** oEmbed : 200 = vidéo publique et intégrable ; 401/403 = intégration refusée ; 404 = vidéo retirée ; autre échec = inconnu. */
+export function youtubeCheckFromOembed(httpStatus) {
+  if (httpStatus === 200) return 'ok';
+  if (httpStatus === 401 || httpStatus === 403 || httpStatus === 404) return 'down';
+  return 'unknown';
+}
+
+/** Lit la liste, vérifie chaque vidéo (oEmbed, puis direct en cours si clé) ; la webcam arrive déjà vérifiée. */
+export async function fetchYoutube(ctx) {
+  const doc = JSON.parse(await readFile(ctx.youtubeListUrl, 'utf8'));
+  const entries = (Array.isArray(doc?.streams) ? doc.streams : []).filter(isYoutubeEntry);
+  const checkedAt = ctx.now().toISOString();
+  const out = [];
+  await pool(entries, 4, async (e) => {
+    let httpStatus = null;
+    let author = null;
+    try {
+      const res = await ctx.fetchImpl(YT_OEMBED(e.videoId), { headers: { 'User-Agent': USER_AGENT } });
+      httpStatus = res.status;
+      if (res.ok) author = (await res.json())?.author_name ?? null;
+      else await res.body?.cancel?.();
+    } catch { /* réseau : état inconnu */ }
+    out.push({
+      ...draft({
+        id: `youtube:${e.videoId}`, name: e.name, lat: e.lat, lon: e.lon, commune: e.commune, dept: e.dept, source: 'youtube',
+        pageUrl: `https://www.youtube.com/watch?v=${e.videoId}`, imageUrl: null, streamUrl: youtubeEmbedUrl(e.videoId),
+        license: YOUTUBE_LICENSE, attribution: author ? `© ${author} (YouTube)` : 'YouTube',
+      }),
+      status: youtubeCheckFromOembed(httpStatus), httpStatus, contentType: 'text/html', checkedAt, _preChecked: true,
+    });
+  });
+  if (ctx.youtubeKey) await markEndedStreams(out, ctx);
+  return out;
+}
+
+/** Avec clé : vidéos par lots de 50 ; une vidéo qui n'est plus « live » (direct terminé ou rediffusion) passe en « down ». */
+async function markEndedStreams(list, ctx) {
+  const ids = list.map((w) => w.id.slice('youtube:'.length));
+  for (let i = 0; i < ids.length; i += 50) {
+    const batch = ids.slice(i, i + 50);
+    const url = `https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${batch.join(',')}&key=${encodeURIComponent(ctx.youtubeKey)}`;
+    const json = await fetchJsonOnce(url, {}, ctx.fetchImpl, 30_000);
+    const live = new Set((json?.items ?? []).filter((it) => it?.snippet?.liveBroadcastContent === 'live').map((it) => it.id));
+    for (const w of list) {
+      const id = w.id.slice('youtube:'.length);
+      if (batch.includes(id) && w.status === 'ok' && !live.has(id)) w.status = 'down';
+    }
+  }
+  const ended = list.filter((w) => w.status === 'down').map((w) => w.name);
+  if (ended.length > 0) ctx.log(`youtube : directs arrêtés ou introuvables (identifiant à remplacer dans webcams-youtube.json) : ${ended.join(', ')}`);
+}
+
 // ─── c. Windy (facultatif) ────────────────────────────────────────────────────────────────────────────────────────────────────
 
 /** Windy Webcams API v3 : pages de 50 (le palier gratuit plafonne l'offset à 1 000). Les URL d'image expirent : page seulement. */
@@ -349,7 +419,8 @@ export function linkKey(url) {
 
 /** Doublons : même lien principal (image directe, sinon page) à moins de 2 km, ou même source à moins de 30 m. Le seuil de 2 km garde
  *  distinctes les caméras éloignées qui renvoient vers la même page générique (accueil d'un site d'info routière). Exception aux 30 m :
- *  deux images directes distinctes au même point sont deux caméras (ex. les deux vues d'un même bac). Le premier gardé l'emporte
+ *  deux images directes (ou deux flux vidéo) distincts au même point sont deux caméras (ex. les deux vues d'un même bac, deux directs
+ *  placés au centre de la même commune). Le premier gardé l'emporte
  *  (sources ouvertes lues avant OSM) ; il complète son image, sa page ou son nom avec ceux du doublon. */
 export const SAME_LINK_RADIUS_M = 2000;
 export function dedupeWebcams(list) {
@@ -359,7 +430,8 @@ export function dedupeWebcams(list) {
     const key = linkKey(w.imageUrl ?? w.pageUrl);
     const dup = (key ? (byLink.get(key) ?? []).find((k) => distanceM(k, w) < SAME_LINK_RADIUS_M) : undefined)
       ?? kept.find((k) => k.source === w.source && distanceM(k, w) < DEDUPE_RADIUS_M
-        && !(k.imageUrl && w.imageUrl && linkKey(k.imageUrl) !== linkKey(w.imageUrl)));
+        && !(k.imageUrl && w.imageUrl && linkKey(k.imageUrl) !== linkKey(w.imageUrl))
+        && !(k.streamUrl && w.streamUrl && k.streamUrl !== w.streamUrl));
     if (dup) {
       if (!dup.imageUrl && w.imageUrl) dup.imageUrl = w.imageUrl;
       if (!dup.pageUrl && w.pageUrl) dup.pageUrl = w.pageUrl;
@@ -463,6 +535,7 @@ export const SOURCE_META = Object.freeze({
   anglet: { name: 'Commune d’Anglet (data.gouv.fr)', url: `https://www.data.gouv.fr/datasets/${DATASETS.anglet}/` },
   'grand-lyon': { name: 'Métropole de Lyon, caméras Web Criter (data.gouv.fr)', url: `https://www.data.gouv.fr/datasets/${DATASETS.lyon}/` },
   windy: { name: 'Windy Webcams', license: 'Conditions Windy', url: 'https://www.windy.com/webcams' },
+  youtube: { name: 'Directs YouTube (liste choisie)', license: YOUTUBE_LICENSE, url: 'https://www.youtube.com' },
 });
 
 /**
@@ -474,6 +547,9 @@ export async function buildWebcams(opts = {}) {
     fetchImpl: opts.fetchImpl ?? fetch, now: opts.now ?? (() => new Date()), log: opts.log ?? ((m) => console.error(m)),
     sleep: opts.sleep ?? sleepReal, overpassUrls: opts.overpassUrls ?? OVERPASS_URLS, backoffMs: opts.backoffMs ?? 2000,
     windyKey: opts.windyKey ?? null, checkConcurrency: opts.checkConcurrency ?? CHECK_CONCURRENCY,
+    youtubeKey: opts.youtubeKey ?? null,
+    // null : source YouTube ignorée (tests du reste du recensement).
+    youtubeListUrl: opts.youtubeListUrl === undefined ? YOUTUBE_LIST_URL : opts.youtubeListUrl,
   };
   const errors = [];
   const licenses = {};
@@ -515,6 +591,8 @@ export async function buildWebcams(opts = {}) {
   await run('osm', () => fetchOsm(ctx));
   if (ctx.windyKey) await run('windy', () => fetchWindy(ctx.windyKey, ctx));
   else ctx.log('windy : WINDY_WEBCAMS_KEY absente, source ignorée');
+  if (ctx.youtubeListUrl) await run('youtube', () => fetchYoutube(ctx));
+  if (ctx.youtubeListUrl && !ctx.youtubeKey) ctx.log('youtube : YOUTUBE_API_KEY absente, direct en cours non vérifié (seule l’intégration l’est)');
 
   const unique = dedupeWebcams(collected);
   ctx.log(`${collected.length} lues, ${unique.length} après dédoublonnage ; communes et vérification des liens…`);
@@ -540,14 +618,16 @@ export async function buildWebcams(opts = {}) {
   // Vivacité : imageUrl sinon pageUrl ; sans lien : inconnu.
   const checked = new Map();
   await pool(interleaveByHost(inFrance), ctx.checkConcurrency, async (w) => {
+    if (w._preChecked) { checked.set(w.id, w); return; }
     const url = w.imageUrl ?? w.pageUrl;
     const result = url ? await checkLink(url, ctx.fetchImpl) : { status: 'unknown', httpStatus: null, contentType: null };
     checked.set(w.id, applyCheck(w, result, ctx.now().toISOString()));
   });
 
   const webcams = inFrance.map((w) => {
-    const { _needsFrance, ...rest } = checked.get(w.id) ?? w;
+    const { _needsFrance, _preChecked, ...rest } = checked.get(w.id) ?? w;
     void _needsFrance;
+    void _preChecked;
     if (!rest.name) rest.name = rest.commune ? `Webcam · ${rest.commune}` : 'Webcam';
     return rest;
   }).sort((a, b) => a.source.localeCompare(b.source) || a.id.localeCompare(b.id));
@@ -568,7 +648,9 @@ export function serializeDataset(ds) {
 }
 
 async function main() {
-  const { dataset, errors } = await buildWebcams({ windyKey: process.env.WINDY_WEBCAMS_KEY || null });
+  const { dataset, errors } = await buildWebcams({
+    windyKey: process.env.WINDY_WEBCAMS_KEY || null, youtubeKey: process.env.YOUTUBE_API_KEY || null,
+  });
   if (dataset.webcams.length === 0) throw new Error(`aucune webcam recensée (${errors.join(' ; ')}) : fichier non écrit`);
   const out = fileURLToPath(new URL('../public/data/webcams.json', import.meta.url));
   const text = serializeDataset(dataset);

@@ -1,0 +1,294 @@
+{
+ "note": "Directs YouTube de webcams en France, choisis à la main (recherche du 19/10/2026). Chaque entrée : identifiant de la vidéo en direct, nom lisible, commune (nom exact geo.api.gouv.fr) et position. position = 'lieu' si le point est celui du site filmé, 'commune' si c'est le centre de la commune. Un direct YouTube change d'identifiant quand il redémarre : remplacer videoId quand le recensement le dit arrêté. Lu par scripts/build-webcams.mjs (source youtube).",
+ "checkedAt": "2026-10-19",
+ "streams": [
+  {
+   "videoId": "-xzg3wujOVM",
+   "name": "Paris · Sacré-Cœur de Montmartre",
+   "commune": "Paris",
+   "dept": "75",
+   "lat": 48.8867,
+   "lon": 2.3431,
+   "position": "lieu"
+  },
+  {
+   "videoId": "z6BNMoj9Pyo",
+   "name": "Cannes · Boulevard du Midi",
+   "commune": "Cannes",
+   "dept": "06",
+   "lat": 43.5454,
+   "lon": 7.0152,
+   "position": "commune"
+  },
+  {
+   "videoId": "kpzKmQUMh4E",
+   "name": "Oléron · Phare de Chassiron",
+   "commune": "Saint-Denis-d'Oléron",
+   "dept": "17",
+   "lat": 46.0465,
+   "lon": -1.4113,
+   "position": "lieu"
+  },
+  {
+   "videoId": "quI9pHnsy1o",
+   "name": "Oléron · Plage de La Perroche",
+   "commune": "Saint-Pierre-d'Oléron",
+   "dept": "17",
+   "lat": 45.9354,
+   "lon": -1.3008,
+   "position": "commune"
+  },
+  {
+   "videoId": "9yfjmxlKJTk",
+   "name": "Saint-Trojan-les-Bains · Centre nautique",
+   "commune": "Saint-Trojan-les-Bains",
+   "dept": "17",
+   "lat": 45.832,
+   "lon": -1.2226,
+   "position": "commune"
+  },
+  {
+   "videoId": "CeWhfDliulQ",
+   "name": "Mornac-sur-Seudre",
+   "commune": "Mornac-sur-Seudre",
+   "dept": "17",
+   "lat": 45.7086,
+   "lon": -1.017,
+   "position": "commune"
+  },
+  {
+   "videoId": "Reuz0dRsBk0",
+   "name": "Toulouse · Vue sur la Garonne",
+   "commune": "Toulouse",
+   "dept": "31",
+   "lat": 43.6007,
+   "lon": 1.4328,
+   "position": "commune"
+  },
+  {
+   "videoId": "wHWL7lDnChY",
+   "name": "Le Havre · Port et MuMa",
+   "commune": "Le Havre",
+   "dept": "76",
+   "lat": 49.4958,
+   "lon": 0.1312,
+   "position": "commune"
+  },
+  {
+   "videoId": "30hMtF2swvE",
+   "name": "Fécamp",
+   "commune": "Fécamp",
+   "dept": "76",
+   "lat": 49.7479,
+   "lon": 0.4012,
+   "position": "commune"
+  },
+  {
+   "videoId": "fdmJ1JSTRAQ",
+   "name": "Eu · Jardin à la française",
+   "commune": "Eu",
+   "dept": "76",
+   "lat": 50.042,
+   "lon": 1.4303,
+   "position": "commune"
+  },
+  {
+   "videoId": "PRDWF7PjBIU",
+   "name": "Dieppe · Panoramique de l’aérodrome",
+   "commune": "Saint-Aubin-sur-Scie",
+   "dept": "76",
+   "lat": 49.8825,
+   "lon": 1.0853,
+   "position": "lieu"
+  },
+  {
+   "videoId": "igv2OEZVtzo",
+   "name": "Trouville-sur-Mer · Le port",
+   "commune": "Trouville-sur-Mer",
+   "dept": "14",
+   "lat": 49.3726,
+   "lon": 0.1034,
+   "position": "commune"
+  },
+  {
+   "videoId": "OL7xrDcVZno",
+   "name": "Langrune-sur-Mer",
+   "commune": "Langrune-sur-Mer",
+   "dept": "14",
+   "lat": 49.3136,
+   "lon": -0.3805,
+   "position": "commune"
+  },
+  {
+   "videoId": "LZP48Tt9zeA",
+   "name": "Luc-sur-Mer",
+   "commune": "Luc-sur-Mer",
+   "dept": "14",
+   "lat": 49.3075,
+   "lon": -0.3562,
+   "position": "commune"
+  },
+  {
+   "videoId": "WF92r1Iotf4",
+   "name": "Saint-Cast-le-Guildo · La plage",
+   "commune": "Saint-Cast-le-Guildo",
+   "dept": "22",
+   "lat": 48.6077,
+   "lon": -2.2499,
+   "position": "commune"
+  },
+  {
+   "videoId": "bzc8jiyO-ws",
+   "name": "Saint-Cast-le-Guildo · Le port",
+   "commune": "Saint-Cast-le-Guildo",
+   "dept": "22",
+   "lat": 48.6077,
+   "lon": -2.2499,
+   "position": "commune"
+  },
+  {
+   "videoId": "IOHwDdWF8eY",
+   "name": "Perros-Guirec · Plage de Trestraou",
+   "commune": "Perros-Guirec",
+   "dept": "22",
+   "lat": 48.8376,
+   "lon": -3.476,
+   "position": "commune"
+  },
+  {
+   "videoId": "pvq6V9UbOgI",
+   "name": "Saint-Quay-Portrieux · Le port",
+   "commune": "Saint-Quay-Portrieux",
+   "dept": "22",
+   "lat": 48.6552,
+   "lon": -2.8403,
+   "position": "commune"
+  },
+  {
+   "videoId": "gJoTOmi4i4o",
+   "name": "Binic",
+   "commune": "Binic-Étables-sur-Mer",
+   "dept": "22",
+   "lat": 48.6167,
+   "lon": -2.8372,
+   "position": "commune"
+  },
+  {
+   "videoId": "MMAvHrvjsH4",
+   "name": "Le Conquet · Phare de Kermorvan",
+   "commune": "Le Conquet",
+   "dept": "29",
+   "lat": 48.3715,
+   "lon": -4.8817,
+   "position": "commune"
+  },
+  {
+   "videoId": "StsPFQng1Bk",
+   "name": "Pointe du Raz",
+   "commune": "Plogoff",
+   "dept": "29",
+   "lat": 48.0397,
+   "lon": -4.7406,
+   "position": "lieu"
+  },
+  {
+   "videoId": "mW-zJN0TwAM",
+   "name": "Pénestin",
+   "commune": "Pénestin",
+   "dept": "56",
+   "lat": 47.468,
+   "lon": -2.4619,
+   "position": "commune"
+  },
+  {
+   "videoId": "LIJeUFbdhcg",
+   "name": "Porto-Vecchio · Paese Serenu",
+   "commune": "Porto-Vecchio",
+   "dept": "2A",
+   "lat": 41.5849,
+   "lon": 9.2732,
+   "position": "commune"
+  },
+  {
+   "videoId": "hoN9su9T-G4",
+   "name": "Saint-Véran · Centre du village",
+   "commune": "Saint-Véran",
+   "dept": "05",
+   "lat": 44.6843,
+   "lon": 6.8924,
+   "position": "commune"
+  },
+  {
+   "videoId": "e8u1GUObSJo",
+   "name": "Saint-Véran · La Chalp",
+   "commune": "Saint-Véran",
+   "dept": "05",
+   "lat": 44.6843,
+   "lon": 6.8924,
+   "position": "commune"
+  },
+  {
+   "videoId": "f8VW9AaP8rk",
+   "name": "Arvieux",
+   "commune": "Arvieux",
+   "dept": "05",
+   "lat": 44.7623,
+   "lon": 6.7181,
+   "position": "commune"
+  },
+  {
+   "videoId": "EjEmf1TLXVk",
+   "name": "Gourette · Front de neige",
+   "commune": "Eaux-Bonnes",
+   "dept": "64",
+   "lat": 42.9606,
+   "lon": -0.3335,
+   "position": "lieu"
+  },
+  {
+   "videoId": "0zyvh41bsxo",
+   "name": "Gourette · Panoramique",
+   "commune": "Eaux-Bonnes",
+   "dept": "64",
+   "lat": 42.9606,
+   "lon": -0.3335,
+   "position": "lieu"
+  },
+  {
+   "videoId": "oB7cQhDW2xs",
+   "name": "Arc-sous-Cicon",
+   "commune": "Arc-sous-Cicon",
+   "dept": "25",
+   "lat": 47.0524,
+   "lon": 6.4038,
+   "position": "commune"
+  },
+  {
+   "videoId": "kKmYogBj_FU",
+   "name": "Les Fourgs · Haute Joux",
+   "commune": "Les Fourgs",
+   "dept": "25",
+   "lat": 46.84,
+   "lon": 6.4163,
+   "position": "commune"
+  },
+  {
+   "videoId": "Zv2IO-E-2hc",
+   "name": "Albi · La Mascarabière",
+   "commune": "Albi",
+   "dept": "81",
+   "lat": 43.929,
+   "lon": 2.1323,
+   "position": "commune"
+  },
+  {
+   "videoId": "CC0gjFqH_u4",
+   "name": "Les Anses-d’Arlet",
+   "commune": "Les Anses-d'Arlet",
+   "dept": "972",
+   "lat": 14.4996,
+   "lon": -61.0736,
+   "position": "commune"
+  }
+ ]
+}

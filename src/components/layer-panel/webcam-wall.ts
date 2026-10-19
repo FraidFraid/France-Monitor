@@ -1,11 +1,12 @@
 // src/components/layer-panel/webcam-wall.ts : rendu pur du mur de webcams (fenêtre flottante, plusieurs images côte à côte).
-// Image affichée seulement pour une image directe sous licence ouverte (countable) ; les autres webcams gardent une tuile avec le
-// lien « Ouvrir la webcam ». Jamais d'iframe. Textes du fichier échappés ; aucun accès réseau ni DOM.
+// Image affichée seulement pour une image directe sous licence ouverte (countable) ; vidéo seulement pour un direct YouTube choisi,
+// dans le lecteur officiel youtube-nocookie (seule iframe permise) ; les autres webcams gardent une tuile avec le lien « Ouvrir la
+// webcam ». Textes du fichier échappés ; aucun accès réseau ni DOM.
 import type { WebcamsDataset } from '../../types/index.ts';
 import {
   WALL_LAYOUTS, WALL_MAX_TILES, type WallLayout, type WallState, type WallTile, refreshedImageUrl, wallCandidates, wallTiles,
 } from '../../services/webcam-wall.ts';
-import { webcamOpenUrl, webcamPlace } from '../../services/webcams.ts';
+import { embedPlayerUrl, webcamEmbedUrl, webcamOpenUrl, webcamPlace } from '../../services/webcams.ts';
 import { escapeHtml, safeHref } from '../france-intel-events.ts';
 import { fmIcon, type IconName } from '../shared/icons.ts';
 import { NBSP } from './format.ts';
@@ -41,10 +42,15 @@ function addSelect(input: WallViewInput): string {
   const full = input.state.ids.length >= WALL_MAX_TILES;
   const candidates = wallCandidates(input.data, input.state);
   if (full) return `<span class="wcw-hint">Mur plein (${WALL_MAX_TILES}${NBSP}webcams) : retirer une image pour en ajouter une.</span>`;
-  if (candidates.length === 0) return '<span class="wcw-hint">Toutes les images sous licence ouverte sont déjà sur le mur.</span>';
-  const options = candidates.map((w) => `<option value="${escapeHtml(w.id)}">${escapeHtml(`${webcamPlace(w)} · ${w.name}`)}</option>`).join('');
+  if (candidates.length === 0) return '<span class="wcw-hint">Toutes les vidéos et images affichables sont déjà sur le mur.</span>';
+  const option = (w: (typeof candidates)[number]): string => `<option value="${escapeHtml(w.id)}">${escapeHtml(`${webcamPlace(w)} · ${w.name}`)}</option>`;
+  const videos = candidates.filter((w) => webcamEmbedUrl(w) !== null);
+  const images = candidates.filter((w) => webcamEmbedUrl(w) === null);
+  const group = (label: string, list: typeof candidates): string => list.length === 0 ? ''
+    : `<optgroup label="${escapeHtml(`${label} (${list.length})`)}">${list.map(option).join('')}</optgroup>`;
   return `<label class="wcw-add"><span>Ajouter</span><select data-wall-action="add" aria-label="Ajouter une webcam au mur">`
-    + `<option value="">Choisir une image (${candidates.length})</option>${options}</select></label>`;
+    + `<option value="">Choisir une webcam (${candidates.length})</option>`
+    + group('Vidéos en direct', videos) + group('Images rafraîchies chaque minute', images) + `</select></label>`;
 }
 
 function tileHtml(t: WallTile, index: number, count: number, input: WallViewInput): string {
@@ -52,24 +58,28 @@ function tileHtml(t: WallTile, index: number, count: number, input: WallViewInpu
   const focused = input.state.focusId === t.id;
   const name = w ? w.name : 'Webcam retirée du recensement';
   const src = t.imageUrl ? safeHref(refreshedImageUrl(t.imageUrl, input.refreshedMs)) : null;
+  const player = t.embedUrl ? safeHref(embedPlayerUrl(t.embedUrl)) : null;
   const open = w ? safeHref(webcamOpenUrl(w) ?? '') : null;
   const openLink = open ? `<a class="wcw-open" href="${open}" target="_blank" rel="noopener noreferrer">Ouvrir la webcam</a>` : '';
-  const media = src
+  const media = player
+    ? `<iframe src="${player}" title="${escapeHtml(`Vidéo en direct : ${name}`)}" loading="lazy" referrerpolicy="strict-origin-when-cross-origin"`
+      + ' allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>'
+    : src
     ? `<img src="${src}" alt="${escapeHtml(`Image de la webcam ${name}`)}" referrerpolicy="no-referrer" decoding="async" draggable="false">`
       + '<span class="wcw-broken">Image indisponible pour le moment</span>'
     : `<div class="wcw-noimg"><span>${w ? 'Pas d’image affichable ici (licence inconnue ou page web).' : 'Cette webcam n’est plus dans le recensement.'}</span>${openLink}</div>`;
   const id = escapeHtml(t.id);
   const tools = (index > 0 ? iconButton('left', 'chevron-left', 'Déplacer avant', ` data-id="${id}"`) : '')
     + (index < count - 1 ? iconButton('right', 'chevron-right', 'Déplacer après', ` data-id="${id}"`) : '')
-    + (src ? iconButton('focus', focused ? 'minimize-2' : 'maximize-2', focused ? 'Revenir à la mosaïque' : 'Agrandir', ` data-id="${id}"`) : '')
+    + (src || player ? iconButton('focus', focused ? 'minimize-2' : 'maximize-2', focused ? 'Revenir à la mosaïque' : 'Agrandir', ` data-id="${id}"`) : '')
     + iconButton('remove', 'x', 'Retirer du mur', ` data-id="${id}"`);
   const credit = w ? [w.attribution, w.license].filter((x): x is string => !!x).join(' · ') : '';
-  return `<figure class="wcw-tile${src ? '' : ' is-link'}" data-id="${id}">`
+  return `<figure class="wcw-tile${player ? ' is-video' : src ? '' : ' is-link'}" data-id="${id}">`
     + `<div class="wcw-media">${media}</div>`
     + `<figcaption><span class="wcw-name">${escapeHtml(name)}</span>`
     + (w ? `<span class="wcw-place">${escapeHtml(webcamPlace(w))}</span>` : '')
     + (credit ? `<span class="wcw-credit">${escapeHtml(credit)}</span>` : '')
-    + (src && openLink ? openLink : '')
+    + ((src || player) && openLink ? openLink : '')
     + `</figcaption><div class="wcw-tools">${tools}</div></figure>`;
 }
 
@@ -94,5 +104,5 @@ export function renderWebcamWall(input: WallViewInput): string {
     : `<div class="wcw-grid${state.focusId ? ' is-focus' : ''}" style="--wcw-cols:${state.focusId ? 1 : input.columns}">`
       + tiles.map((t) => tileHtml(t, all.indexOf(t), all.length, input)).join('') + '</div>';
   return head + bar + `<div class="wcw-body">${body}</div>`
-    + '<p class="wcw-foot">Images chargées chez leur diffuseur, rafraîchies chaque minute, jamais enregistrées. Seules les images sous licence ouverte s’affichent ; les autres webcams ouvrent leur site.</p>';
+    + '<p class="wcw-foot">Vidéos : directs YouTube dans le lecteur officiel, muets au départ. Images : chargées chez leur diffuseur, rafraîchies chaque minute, jamais enregistrées. Les autres webcams ouvrent leur site.</p>';
 }

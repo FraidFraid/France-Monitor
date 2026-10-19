@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { CAM, DS } from '../../services/webcams.fixture.ts';
 import { WEBCAM_STATUS_HEX } from '../../services/webcams.ts';
-import { WEBCAM_LAYERS, webcamFeatures, webcamTipBody } from '../deckgl/webcams-map.ts';
+import { WEBCAM_LAYERS, WEBCAM_VIDEO_STROKE, webcamFeatures, webcamTipBody } from '../deckgl/webcams-map.ts';
 import { buildWebcamsView, thumbnailHtml, webcamFicheHtml } from './webcams.ts';
 import { WEBCAMS_LEGEND, webcamsLegend } from './webcams-legend.ts';
 
@@ -69,7 +69,7 @@ describe('carte et légende', () => {
   });
   it('couches masquées au départ ; légende aux couleurs des états, datée', () => {
     for (const l of WEBCAM_LAYERS) expect((l.layout as Record<string, unknown> | undefined)?.['visibility']).toBe('none');
-    expect(WEBCAMS_LEGEND.items.map((i) => i.color)).toEqual([WEBCAM_STATUS_HEX.ok, WEBCAM_STATUS_HEX.down, WEBCAM_STATUS_HEX.unknown]);
+    expect(WEBCAMS_LEGEND.items.map((i) => i.color)).toEqual([WEBCAM_STATUS_HEX.ok, WEBCAM_STATUS_HEX.down, WEBCAM_STATUS_HEX.unknown, WEBCAM_VIDEO_STROKE]);
     expect(webcamsLegend(DS).notes?.[0]).toContain('Liens actifs : 1 sur 2\u00a0webcams');
     expect(webcamsLegend(null).notes?.[0]).toContain('indisponible');
   });

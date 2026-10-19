@@ -92,6 +92,24 @@ export function webcamOpenUrl(w: Pick<Webcam, 'pageUrl' | 'imageUrl' | 'streamUr
   return w.pageUrl ?? w.imageUrl ?? w.streamUrl;
 }
 
+/** Lecteur YouTube sans cookie publicitaire avant lecture (directs choisis, scripts/webcams-youtube.json). */
+const YOUTUBE_EMBED = /^https:\/\/www\.youtube-nocookie\.com\/embed\/[A-Za-z0-9_-]{11}$/;
+
+/** Webcam diffusée en vidéo (direct YouTube), quel que soit l'état de son lien. */
+export function isVideoWebcam(w: Pick<Webcam, 'streamUrl'>): boolean {
+  return w.streamUrl !== null && YOUTUBE_EMBED.test(w.streamUrl);
+}
+
+/** Lecteur vidéo affichable : direct YouTube intégrable au recensement ; null sinon (jamais d'autre iframe). */
+export function webcamEmbedUrl(w: Pick<Webcam, 'streamUrl' | 'status'>): string | null {
+  return w.status === 'ok' && isVideoWebcam(w) ? w.streamUrl : null;
+}
+
+/** Adresse du lecteur : muet et lancé seul (les navigateurs refusent la lecture automatique avec le son), sans suggestions. */
+export function embedPlayerUrl(embed: string): string {
+  return `${embed}?autoplay=1&mute=1&playsinline=1&rel=0`;
+}
+
 /** Vignette autorisée seulement pour une image directe réutilisable et vivante (countable). */
 export function webcamThumbnailUrl(w: Pick<Webcam, 'countable' | 'imageUrl'>): string | null {
   return w.countable && w.imageUrl !== null ? w.imageUrl : null;
@@ -105,13 +123,14 @@ export function findWebcam(ds: WebcamsDataset | null, id: string): Webcam | null
   return ds?.webcams.find((w) => w.id === id) ?? null;
 }
 
-export interface WebcamCounts { total: number; ok: number; down: number; unknown: number; countable: number }
+export interface WebcamCounts { total: number; ok: number; down: number; unknown: number; countable: number; video: number }
 
 export function webcamCounts(list: readonly Webcam[]): WebcamCounts {
-  const c: WebcamCounts = { total: list.length, ok: 0, down: 0, unknown: 0, countable: 0 };
+  const c: WebcamCounts = { total: list.length, ok: 0, down: 0, unknown: 0, countable: 0, video: 0 };
   for (const w of list) {
     c[w.status] += 1;
     if (w.countable) c.countable += 1;
+    if (webcamEmbedUrl(w) !== null) c.video += 1;
   }
   return c;
 }

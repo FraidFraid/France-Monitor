@@ -2,7 +2,7 @@
 // disposition (colonnes), position et taille, ouvert ou replié. Gardé dans localStorage, relu avec une garde stricte : un état
 // abîmé repart des valeurs par défaut. Aucun accès réseau ; les images restent chez leur diffuseur et ne sont jamais enregistrées.
 import type { Webcam, WebcamsDataset } from '../types/index.ts';
-import { webcamThumbnailUrl } from './webcams.ts';
+import { webcamEmbedUrl, webcamThumbnailUrl } from './webcams.ts';
 
 export const WALL_STORAGE_KEY = 'fm.webcams.wall';
 /** Au-delà, le mur devient illisible et charge trop d'images à chaque rafraîchissement. */
@@ -130,22 +130,24 @@ export interface WallTile {
   id: string;
   /** null : webcam disparue du recensement (gardée pour que l'utilisateur la retire lui-même). */
   webcam: Webcam | null;
-  /** Image affichable (licence ouverte, image directe vivante) ; null = lien seulement. */
+  /** Image affichable (licence ouverte, image directe vivante) ; null = pas d'image. */
   imageUrl: string | null;
+  /** Lecteur vidéo (direct YouTube intégrable) ; null = pas de vidéo. Sans image ni vidéo : lien seulement. */
+  embedUrl: string | null;
 }
 
 export function wallTiles(ds: WebcamsDataset | null, s: WallState): WallTile[] {
   return s.ids.map((id) => {
     const webcam = ds?.webcams.find((w) => w.id === id) ?? null;
-    return { id, webcam, imageUrl: webcam ? webcamThumbnailUrl(webcam) : null };
+    return { id, webcam, imageUrl: webcam ? webcamThumbnailUrl(webcam) : null, embedUrl: webcam ? webcamEmbedUrl(webcam) : null };
   });
 }
 
-/** Webcams proposées dans « Ajouter » : images affichables seulement, absentes du mur, triées par commune puis nom. */
+/** Webcams proposées dans « Ajouter » : vidéos en direct et images affichables, absentes du mur, triées par commune puis nom. */
 export function wallCandidates(ds: WebcamsDataset | null, s: WallState): Webcam[] {
   if (!ds) return [];
   return ds.webcams
-    .filter((w) => webcamThumbnailUrl(w) !== null && !s.ids.includes(w.id))
+    .filter((w) => (webcamThumbnailUrl(w) !== null || webcamEmbedUrl(w) !== null) && !s.ids.includes(w.id))
     .sort((a, b) => (a.commune ?? '').localeCompare(b.commune ?? '', 'fr') || a.name.localeCompare(b.name, 'fr'));
 }
 

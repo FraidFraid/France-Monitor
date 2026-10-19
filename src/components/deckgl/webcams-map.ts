@@ -3,7 +3,10 @@
 // actif), infobulle .hm-tip échappée, source et couches MapLibre.
 import type { GeoJSONSourceSpecification, LayerSpecification } from 'maplibre-gl';
 import type { Webcam, WebcamsDataset } from '../../types/index.ts';
-import { WEBCAM_STATUS_HEX, WEBCAM_STATUS_WORD, frDateTime, sourceOf, webcamPlace } from '../../services/webcams.ts';
+import { WEBCAM_STATUS_HEX, WEBCAM_STATUS_WORD, frDateTime, isVideoWebcam, sourceOf, webcamPlace } from '../../services/webcams.ts';
+
+/** Contour des directs vidéo : rouge franc, lisible sur le vert comme sur le gris. */
+export const WEBCAM_VIDEO_STROKE = '#ff3b30';
 import { LYR_WEBCAMS, LYR_WEBCAM_CLUSTER, LYR_WEBCAM_CLUSTER_COUNT, SRC_WEBCAMS } from './constants.ts';
 import { escapeHtml } from './format-utils.ts';
 
@@ -17,7 +20,7 @@ export function webcamTipBody(w: Webcam, ds: WebcamsDataset): string {
   const source = sourceOf(ds, w.source)?.name ?? w.source;
   const state = `${WEBCAM_STATUS_WORD[w.status]}${w.httpStatus !== null ? ` (HTTP\u00a0${w.httpStatus})` : ''}`;
   return `<b><i class="hm-dot" style="background:${WEBCAM_STATUS_HEX[w.status]}"></i>${escapeHtml(w.name)}</b>`
-    + `<div class="hm-sub">${escapeHtml(webcamPlace(w))}</div>`
+    + `<div class="hm-sub">${escapeHtml(webcamPlace(w))}${isVideoWebcam(w) ? ' · vidéo en direct' : ''}</div>`
     + row('Source', source) + row('État', state) + row('Vérifiée le', frDateTime(w.checkedAt) ?? 'n.d.')
     + '<div class="hm-note">Clic : fiche et lien vers la webcam.</div>';
 }
@@ -28,7 +31,11 @@ export function webcamFeatures(ds: WebcamsDataset | null): GeoJSON.FeatureCollec
     type: 'FeatureCollection',
     features: ds.webcams.map((w): GeoJSON.Feature<GeoJSON.Point> => ({
       type: 'Feature', geometry: { type: 'Point', coordinates: [w.lon, w.lat] },
-      properties: { id: w.id, status: w.status, color: WEBCAM_STATUS_HEX[w.status], sortKey: STATUS_RANK[w.status], body: webcamTipBody(w, ds) },
+      properties: {
+        id: w.id, status: w.status, color: WEBCAM_STATUS_HEX[w.status], video: isVideoWebcam(w),
+        // Vidéos au-dessus des images de même état.
+        sortKey: STATUS_RANK[w.status] * 2 + (isVideoWebcam(w) ? 1 : 0), body: webcamTipBody(w, ds),
+      },
     })),
   };
 }
@@ -60,7 +67,9 @@ export const WEBCAM_LAYERS: readonly LayerSpecification[] = [
     layout: { 'circle-sort-key': ['get', 'sortKey'], visibility: 'none' },
     paint: {
       'circle-color': ['get', 'color'], 'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 4.5, 10, 6.5],
-      'circle-opacity': 0.95, 'circle-stroke-width': 1.5, 'circle-stroke-color': '#ffffff',
+      'circle-opacity': 0.95,
+      'circle-stroke-width': ['case', ['get', 'video'], 2.5, 1.5],
+      'circle-stroke-color': ['case', ['get', 'video'], WEBCAM_VIDEO_STROKE, '#ffffff'],
     },
   },
 ];

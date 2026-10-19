@@ -54,7 +54,7 @@ describe('états et couleurs', () => {
     }
   });
   it('comptes par état et « countable »', () => {
-    expect(webcamCounts(DS.webcams)).toEqual({ total: 2, ok: 1, down: 1, unknown: 0, countable: 1 });
+    expect(webcamCounts(DS.webcams)).toEqual({ total: 2, ok: 1, down: 1, unknown: 0, countable: 1, video: 0 });
   });
   it('lien à ouvrir : page, sinon image, sinon flux', () => {
     expect(webcamOpenUrl({ pageUrl: 'https://a', imageUrl: 'https://b', streamUrl: null })).toBe('https://a');

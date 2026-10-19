@@ -4,7 +4,8 @@
 // Aucun effet sur l'indice de stabilité. Textes du fichier échappés.
 import type { Webcam, WebcamsDataset } from '../../types/index.ts';
 import {
-  WEBCAM_STATUS_HEX, WEBCAM_STATUS_WORD, frDateTime, sourceOf, webcamCounts, webcamOpenUrl, webcamPlace, webcamThumbnailUrl,
+  WEBCAM_STATUS_HEX, WEBCAM_STATUS_WORD, frDateTime, isVideoWebcam, sourceOf, webcamCounts, webcamEmbedUrl, webcamOpenUrl, webcamPlace,
+  webcamThumbnailUrl,
 } from '../../services/webcams.ts';
 import { escapeHtml, safeHref } from '../france-intel-events.ts';
 import { kvRow } from '../fiche/kit.ts';
@@ -51,6 +52,7 @@ export function webcamFicheHtml(w: Webcam, ds: WebcamsDataset, wallIds?: readonl
   const source = sourceOf(ds, w.source);
   const state = `${WEBCAM_STATUS_WORD[w.status]}${w.httpStatus !== null ? ` (HTTP${NBSP}${w.httpStatus})` : ''}`;
   return `<p class="wc-name"><span class="lp-swatch" style="background:${WEBCAM_STATUS_HEX[w.status]}" aria-hidden="true"></span>${escapeHtml(w.name)}</p>`
+    + (isVideoWebcam(w) ? kvRow('Type', 'Vidéo en direct (YouTube)') : '')
     + kvRow('Commune', escapeHtml(webcamPlace(w)))
     + kvRow('Source', source ? sourceLinkHtml(source.name, source.url) : escapeHtml(w.source))
     + kvRow('État', escapeHtml(state))
@@ -60,7 +62,8 @@ export function webcamFicheHtml(w: Webcam, ds: WebcamsDataset, wallIds?: readonl
     + `<p class="wc-actions">${openLinkHtml('Ouvrir la webcam', webcamOpenUrl(w))}${wallIds ? wallToggleHtml(w, wallIds.includes(w.id)) : ''}</p>`
     + thumbnailHtml(w)
     + (w.status !== 'ok' ? note('Le lien ne répondait pas au recensement : la webcam peut être arrêtée ou déplacée.') : '')
-    + (webcamThumbnailUrl(w) === null ? note('Pas de vignette : seule une image directe sous licence ouverte est affichée ici ; le lien ouvre le site d’origine.') : '');
+    + (webcamEmbedUrl(w) !== null ? note('Vidéo lisible sur le mur de webcams (« Ajouter au mur »). Position : site filmé ou, à défaut, centre de la commune.') : '')
+    + (webcamThumbnailUrl(w) === null && !isVideoWebcam(w) ? note('Pas de vignette : seule une image directe sous licence ouverte est affichée ici ; le lien ouvre le site d’origine.') : '');
 }
 
 function ficheSection(ds: WebcamsDataset, selectedId: string | null, open: OpenFn, wallIds?: readonly string[]): FicheSection {
@@ -78,7 +81,8 @@ function statusSection(ds: WebcamsDataset, open: OpenFn): FicheSection {
   })).join('');
   return {
     id: 'etats', title: 'État des liens', collapsible: true, open: open('etats', true), summary: escapeHtml(`${frNumber(c.ok, 0)}${NBSP}actifs`),
-    html: rows + listRow({ text: 'Image directe sous licence ouverte', value: count(c.countable, 'webcam') })
+    html: rows + listRow({ text: 'Vidéo en direct (YouTube)', value: count(c.video, 'webcam') })
+      + listRow({ text: 'Image directe sous licence ouverte', value: count(c.countable, 'webcam') })
       + note('Vert : le lien répondait au recensement. Gris : lien mort, ou serveur qui refuse la vérification (non vérifiable).'),
   };
 }
@@ -98,6 +102,7 @@ function methodSection(ds: WebcamsDataset, open: OpenFn): FicheSection {
   const html = kvRow('Sources', links || 'n.d.')
     + kvRow('Recensement', escapeHtml(frDateTime(ds.generatedAt) ?? 'n.d.'))
     + note('Recensement des webcams publiques citées par OpenStreetMap (contributeurs OpenStreetMap, ODbL) et par les jeux ouverts de data.gouv.fr (Orléans Métropole, Loire-Atlantique, Anglet, Métropole de Lyon).')
+    + note('Vidéos : directs YouTube de webcams françaises choisis à la main, lus dans le lecteur officiel (youtube-nocookie) ; l’intégration est vérifiée au recensement par l’oEmbed de YouTube. Un direct qui redémarre change d’adresse : il passe alors en lien mort jusqu’à la mise à jour de la liste.')
     + note('Chaque lien est vérifié une fois au recensement par une requête limitée ; aucune image n’est enregistrée. Un site peut refuser la vérification sans être hors service.')
     + note('Les images restent la propriété de leur diffuseur : la vignette n’est affichée que pour une image directe sous licence ouverte, sinon le lien ouvre le site d’origine.')
     + note('Fichier statique, régénéré à la main (npm run build:webcams).')
@@ -111,10 +116,10 @@ export function activeShare(ok: number, total: number): string {
 }
 
 /** Accès au mur de webcams : images sous licence ouverte côte à côte, rafraîchies chaque minute. */
-export function wallBarHtml(onWall: number, displayable: number): string {
+export function wallBarHtml(onWall: number, displayable: number, videos = 0): string {
   const label = onWall > 0 ? `Mur de webcams (${frNumber(onWall, 0)})` : 'Mur de webcams';
   return `<div class="wc-wall-bar"><button type="button" class="wc-wall-open" data-wall-open>${escapeHtml(label)}</button>`
-    + `<span>${escapeHtml(`${frNumber(displayable, 0)} images sous licence ouverte affichables, rafraîchies chaque minute`)}</span></div>`;
+    + `<span>${escapeHtml(`${frNumber(videos, 0)} vidéos en direct et ${frNumber(displayable, 0)} images sous licence ouverte`)}</span></div>`;
 }
 
 export function buildWebcamsView(input: WebcamsViewInput): LayerView {
@@ -130,7 +135,7 @@ export function buildWebcamsView(input: WebcamsViewInput): LayerView {
   }
   const c = webcamCounts(data.webcams);
   const when = frDateTime(data.generatedAt);
-  const wall = wallIds ? wallBarHtml(wallIds.length, c.countable) : '';
+  const wall = wallIds ? wallBarHtml(wallIds.length, c.countable, c.video) : '';
   const stale = error !== null ? '<p class="fmk-callout lp-callout">Relecture impossible : données précédentes conservées.</p>' : '';
   return {
     head: {
