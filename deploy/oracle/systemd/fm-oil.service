@@ -1,0 +1,28 @@
+[Unit]
+Description=France Monitor - tableau de bord petrole calcule sur la VM (scripts/oil-snapshot.ts), lu par /api/energy/oil-dashboard
+Documentation=https://github.com/FraidFraid/France-Monitor/blob/main/docs/deployment-oracle.md
+After=network-online.target fm-api.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=fm
+Group=fm
+WorkingDirectory=/srv/francemonitor/current
+# Quelques secondes : pages SDES, communiques Energies et Mobilites, Eurostat, JODI (memes domaines que /api/oil-proxy).
+# Ecrit hors de la release : le fichier survit aux deploiements ; lu par fm-api (api/_handlers/energy/oil-dashboard.js).
+ExecStart=/usr/bin/node dist-node/oil-snapshot.mjs --out /var/lib/francemonitor/data/oil-dashboard.json
+TimeoutStartSec=10min
+# Pas de Restart= : en cas d'echec (site d'une prefecture injoignable), l'ancien releve reste servi.
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/francemonitor/data
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true

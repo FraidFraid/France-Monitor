@@ -1,0 +1,11 @@
+[Unit]
+Description=France Monitor - tableau de bord petrole toutes les 3 heures (a :35, apres les series de prix carburants)
+Documentation=https://github.com/FraidFraid/France-Monitor/blob/main/docs/deployment-oracle.md
+
+[Timer]
+OnCalendar=*-*-* 0/3:35:00
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

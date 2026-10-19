@@ -37,7 +37,8 @@
     "build:arretes": "node scripts/build-arretes.mjs",
     "build:eau-potable": "node scripts/build-eau-potable.mjs",
     "build:deces": "node scripts/build-deces.mjs",
-    "build:webcams": "node scripts/build-webcams.mjs"
+    "build:webcams": "node scripts/build-webcams.mjs",
+    "build:oil-snapshot": "esbuild scripts/oil-snapshot.ts --bundle --platform=node --format=esm --target=node24 --outfile=dist-node/oil-snapshot.mjs --define:import.meta.env.DEV=false --define:import.meta.env.VITE_ENABLE_OIL_LAYER=\"true\" --banner:js=\"import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);\" --log-level=warning"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
