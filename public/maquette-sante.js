@@ -443,7 +443,7 @@
       for (const p of [].concat(props)) P(id, p, Math.round(f() * (dim ? 0.07 : 1) * 1000) / 1000);
     }
   };
-  const applyFocus = () => { calm(); syncChips(); watch.classList.toggle('is-focus', pill('health')); watch.classList.toggle('is-dim', !allMode() && !pill('health')); };
+  const applyFocus = () => { calm(); syncChips(); renderFocusKey(); watch.classList.toggle('is-focus', pill('health')); watch.classList.toggle('is-dim', !allMode() && !pill('health')); };
   const EXTRA_CHIPS = [['mqEau', 'Eau du robinet', 'droplet'], ['mqCanicule', 'Canicule', 'thermometer'], ['mqDeces', 'Mortalité (Insee)', 'trending-up']];
   const chipKey = (el) => { const c = el?.closest?.('.floating-panel-switcher__chip[data-panel-key], .floating-panel-switcher__chip[data-mqh-key]'); return c?.dataset.panelKey ?? c?.dataset.mqhKey; };
   // Pastilles propres à la carte, ajoutées à la barre de l'onglet Santé (l'application la redessine : on les remet).
@@ -989,6 +989,40 @@
   const icon = (name, color) => `<span class="mqh-ic">${fmIcon(name, { size: 14 }).replace('<svg', `<svg style="color:${color ?? INK}"`)}</span>`;
   const it = (sw, label) => `<span class="mqh-it">${sw}${esc(label)}</span>`;
   const hsw = (k) => `<svg width="14" height="14" viewBox="0 0 40 40" style="flex:0 0 14px">${HSHAPE[k]}</svg>`;
+  // ─── Légende courte des pastilles allumées ou survolée, sous la barre (comme les pastilles Énergie) ───
+  const drop = (fill, stroke) => `<svg width="12" height="13" viewBox="0 0 40 40" style="flex:0 0 12px"><path d="M20 4 C20 4 8 18 8 25 a12 12 0 0 0 24 0 C32 18 20 4 20 4 Z" fill="${fill}" stroke="${stroke}" stroke-width="4"/></svg>`;
+  const ramp = (r) => [...r].reverse().map(([, c, w]) => [swatch(c, 'disc'), `${w.charAt(0).toUpperCase()}${w.slice(1)}`]);
+  const FOCUS_KEY = {
+    health: () => ['Veille sanitaire', [[swatch(L1.orange, 'dash'), 'Région en pré-épidémie ou épidémie (Odissé)'],
+      [swatch(SENTI_HEX, 'disc'), 'Région parmi les plus touchées (Sentinelles)'], [swatch(L1.jaune, 'ring'), 'Eaux usées, bord coloré si hausse'],
+      [swatch(L1.vert, 'disc'), 'Pas d’alerte épidémique (mesuré)']]],
+    mqEau: () => ['Eau du robinet', [[drop(L1.orange, 'none'), 'Restriction de consommation'], [drop(L1.jaune, 'none'), 'Publics sensibles ou bactériologie'],
+      [drop('none', L1.jaune), 'Physico-chimie, consommable']]],
+    mqCanicule: () => ['Canicule (bilan de l’été)', ramp(HEAT_RAMP).reverse()],
+    mqDeces: () => ['Mortalité (Insee)', ramp(DEC_RAMP).reverse()],
+    healthOscour: () => [`Urgences${S.syndrome ? ` : ${SYN[S.syndrome].toLowerCase()}` : ''}`, [[swatch(L1.jaune, 'line'), 'Vigilance'],
+      [swatch(L1.orange, 'line'), 'Alerte'], [swatch(L1.rouge, 'line'), 'Crise'], [swatch('#8a93a6', 'ring'), 'Contour : semaine au-dessus des 3 saisons précédentes']]],
+    healthApl: () => [`Accès aux soins : ${PROF[S.prof].toLowerCase()}`, ramp(APL_RAMP).reverse()],
+    hospitals: () => ['Hôpitaux', [[hsw('chu'), 'CHU'], [hsw('ch'), 'Centre hospitalier'], [hsw('private'), 'Clinique privée'], [hsw('other'), 'Autre établissement'],
+      [swatch(EHPAD_HEX, 'ring'), 'EHPAD, taille = places']]],
+  };
+  const focusKey = document.createElement('div');
+  focusKey.id = 'mqh-focus-key';
+  document.body.appendChild(focusKey);
+  const renderFocusKey = () => {
+    const keys = [...S.focus]; if (preview && !keys.includes(preview)) keys.push(preview);
+    const bar = document.querySelector('.floating-panel-switcher');
+    const html = isHealth() && bar && !bar.hidden ? keys.filter((k) => FOCUS_KEY[k]).map((k) => {
+      const [title, rows] = FOCUS_KEY[k]();
+      return `<div class="ef-key"><div class="ef-title">${esc(title)}</div>${rows.map(([sw, t]) => `<div class="ef-row">${sw}<span>${esc(t)}</span></div>`).join('')}</div>`;
+    }).join('') : '';
+    focusKey.innerHTML = html;
+    focusKey.style.display = html ? 'flex' : 'none';
+    if (!html) return;
+    const r = bar.getBoundingClientRect();
+    focusKey.style.left = `${Math.round(r.left)}px`; focusKey.style.top = `${Math.round(r.bottom + 6)}px`;
+  };
+
   const renderLegend = () => {
     const open = legend.dataset.open === 'true';
     const src = freshness(), ko = src.filter((r) => r[2] !== 'ok').length;
@@ -1046,6 +1080,7 @@
   .mqh-leg-toggle { background: #1c2029; color: #e8e8ec; border: 1px solid #2a2e37; border-radius: 6px; padding: 3px 10px; cursor: pointer; font-size: 11.5px; }
   .mqh-leg-toggle em { font-style: normal; color: #ffcc00; font-size: 10.5px; margin-left: 2px; }
   .mqh-legend h5 { margin: 10px 0 4px; font-size: 11px; color: #9aa1ae; font-weight: 600; } .mqh-row { display: flex; align-items: center; gap: 6px; margin: 3px 0; flex-wrap: wrap; }
+  #mqh-focus-key { position: fixed; z-index: 3000; pointer-events: none; display: none; flex-direction: column; gap: 6px; }
   .mqh-sw { display: inline-block; flex: 0 0 auto; } .mqh-sw-disc { width: 12px; height: 12px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 1.5px #05060a; }
   .mqh-sw-ring { width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--c); background: transparent; }
   .mqh-sw-line { width: 22px; height: 0; border-top: 3px solid var(--c); } .mqh-sw-dash { width: 22px; height: 0; border-top: 3px dashed var(--c); }

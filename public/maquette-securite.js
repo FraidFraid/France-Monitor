@@ -460,6 +460,7 @@
     cyber.classList.toggle('is-focus', on.has('cyber'));
     cyber.classList.toggle('is-dim', on.size > 0 && !on.has('cyber'));
     syncChips();
+    renderFocusKey();
   };
   // Les pastilles de l'app gardent leur rôle (ouvrir le panneau) ; la maquette y ajoute la mise en avant sur la carte.
   const chipKey = (el) => el?.closest?.('.floating-panel-switcher__chip[data-panel-key]')?.dataset.panelKey;
@@ -1100,6 +1101,49 @@
     legend.querySelectorAll('.mqs-leg-toggle').forEach((b) => { b.onclick = () => { legend.dataset.open = String(!open); renderLegend(); }; });
   };
 
+  // ─── Légende courte des pastilles allumées ou survolée, sous la barre (comme les pastilles Énergie) ───
+  const FOCUS_KEY = {
+    military: () => ['Défense', [...['air', 'navy', 'army', 'joint'].map((t) => [shapeSw(t, true), `Site ${BASE_WORD[t] ?? 'autre'}`]),
+      [shapeSw('air', false), 'Pointillé : site sans source publique'],
+      [`<span class="mqs-chev" style="color:${CAT.defense}">➤</span>`, 'Aéronef militaire français, orienté selon le cap'],
+      [`<span class="mqs-chev" style="color:${CAT.defenseOther}">➤</span>`, 'Aéronef militaire d’un autre pays']]],
+    subseaCables: () => ['Câbles sous-marins', [[swatch(CAT.cables, 'line'), 'Câble en service'], [swatch(CAT.cables, 'dash'), 'Câble prévu'],
+      [swatch('#6e7585', 'line'), 'Hors service'], [swatch(CAT.cables, 'disc'), 'Atterrage, taille = nombre de câbles'],
+      [swatch('#ffffff', 'dash'), 'Mouillage qui recoupe une zone de protection']]],
+    cyber: () => ['Vigilance cyber', [[swatch(CAT.hacktivist, 'disc'), 'Site visé par NoName057(16), anneau = état du site'],
+      [icon('server', '#fff', CAT.dc), 'Centre de données'], [icon('cloud', '#fff', CAT.cloud), 'Site cloud'], [swatch(CAT.cables, 'disc'), 'Atterrage de câbles']]],
+    stability: () => ['Pression par département', [[swatch(L1.jaune, 'disc'), 'Vigilance'], [swatch(L1.orange, 'disc'), 'Alerte'], [swatch(L1.rouge, 'disc'), 'Crise'],
+      [swatch('#8a93a6', 'none'), 'Aplat du département = score global']]],
+    outagesTelecom: () => ['Télécoms mobiles', [[swatch(CAT.telecom, 'disc'), `Site coupé depuis moins de 24${NB}h, lettre = opérateur`],
+      [swatch('#a855f7', 'disc'), 'Panne plus ancienne'], [swatch('#c7c7cc', 'disc'), 'Maintenance'],
+      [swatch(L1.orange, 'disc'), 'Département : disque et contour à son état']]],
+    outagesInternet: () => ['Internet', [[swatch(L1.orange, 'disc'), 'Coupure en cours (IODA)'], [swatch(CAT.internet, 'ring'), `Coupure terminée sur 7${NB}jours`]]],
+    outagesCloud: () => ['Cloud et hébergement', [[icon('cloud', '#fff', CAT.cloud), 'Site cloud, couleur d’état si incident'],
+      [icon('server', '#fff', CAT.dc), 'Centre de données en service'], [icon('server', CAT.dc, DARK), 'Centre de données en projet']]],
+    protests: () => ['Manifestations', [[swatch(PROT.annonce, 'ring'), 'Annoncée, non confirmée'], [swatch(PROT.signale, 'disc'), 'Rapportée sans heurts'],
+      [swatch(L1.rouge, 'disc'), 'Heurts ou tensions'], [swatch('#8a93a6', 'none'), `Taille = articles sur 24${NB}h`]]],
+    crime: () => ['Criminalité (annuelle)', CRIME_RAMP.slice(0, 4).map(([, c, w]) => [swatch(c, 'disc'), `${w.charAt(0).toUpperCase()}${w.slice(1)}${/moyenne/.test(w) ? '' : ' la moyenne'}`])],
+    pedestrianFlows: () => ['Flux piétons (estimations)', [[swatch('#22d3ee', 'line'), 'Rue chargée, épaisseur = personnes passées'],
+      [swatch(L1.jaune, 'line'), 'Saturation possible'], [swatch(L1.orange, 'line'), 'Saturation probable'], [swatch(L1.rouge, 'line'), 'Saturation très probable'],
+      [swatch('#e5e7eb', 'dash'), 'Isochrones 5, 10 et 20 min à pied'], [swatch('#ffffff', 'disc'), 'Point de rassemblement']]],
+  };
+  const focusKey = document.createElement('div');
+  focusKey.id = 'mqs-focus-key';
+  document.body.appendChild(focusKey);
+  const renderFocusKey = () => {
+    const keys = [...S.focus]; if (preview && !keys.includes(preview)) keys.push(preview);
+    const bar = document.querySelector('.floating-panel-switcher');
+    const html = isSec() && bar && !bar.hidden ? keys.filter((k) => FOCUS_KEY[k]).map((k) => {
+      const [title, rows] = FOCUS_KEY[k]();
+      return `<div class="ef-key"><div class="ef-title">${esc(title)}</div>${rows.map(([sw, t]) => `<div class="ef-row">${sw}<span>${esc(t)}</span></div>`).join('')}</div>`;
+    }).join('') : '';
+    focusKey.innerHTML = html;
+    focusKey.style.display = html ? 'flex' : 'none';
+    if (!html) return;
+    const r = bar.getBoundingClientRect();
+    focusKey.style.left = `${Math.round(r.left)}px`; focusKey.style.top = `${Math.round(r.bottom + 6)}px`;
+  };
+
   // ─── Encart cyber : jamais critique, jamais sur la carte ───
   const cyber = document.createElement('div');
   cyber.className = 'mqs-cyber';
@@ -1155,6 +1199,8 @@
   .mqs-leg-toggle em { font-style: normal; color: #ffcc00; font-size: 10.5px; margin-left: 2px; }
   .mqs-legend h5 { margin: 10px 0 4px; font-size: 11px; color: #9aa1ae; font-weight: 600; } .mqs-row { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
   .mqs-leg-toggle { background: #1c2029; color: #e8e8ec; border: 1px solid #2a2e37; border-radius: 6px; padding: 3px 10px; cursor: pointer; font-size: 11.5px; }
+  #mqs-focus-key { position: fixed; z-index: 3000; pointer-events: none; display: none; flex-direction: column; gap: 6px; }
+  #mqs-focus-key .ef-row { gap: 8px; } #mqs-focus-key .mqs-ic { width: 16px; height: 16px; }
   .mqs-sw { display: inline-block; flex: 0 0 auto; } .mqs-sw-disc { width: 12px; height: 12px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 1.5px #05060a; }
   .mqs-sw-none { width: 12px; height: 12px; border-radius: 50%; border: 1px dashed #4a4f5c; }
   .mqs-sw-line { width: 22px; height: 0; border-top: 2px solid var(--c); } .mqs-sw-dash { width: 22px; height: 0; border-top: 2px dashed var(--c); }
