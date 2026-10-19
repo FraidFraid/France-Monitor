@@ -6,7 +6,8 @@ import { getOrRefresh } from '../../_utils/swr-cache.js';
 const LIVE_CACHE_KEY = 'swr:energy:eolien:live';
 const LIVE_TTL_SEC = 5 * 60;
 const LIVE_STALE_SEC = 30 * 60;
-const PARKS_CACHE_KEY = 'swr:energy:eolien:parks';
+// v2 (19/10/2026) : l'ancienne clé gardait une liste vide (fichiers de secours cherchés hors de la release).
+const PARKS_CACHE_KEY = 'swr:energy:eolien:parks:v2';
 const PARKS_TTL_SEC = 24 * 60 * 60;
 const PARKS_STALE_SEC = 7 * 24 * 60 * 60;
 
@@ -17,10 +18,6 @@ const OFFICIAL_ONSHORE_WFS_URL =
   'https://mapsrefrec.brgm.fr/wxs/georisques/georisques_services' +
   '?service=WFS&version=2.0.0&request=GetFeature&typeNames=ms:eolienne_wfs' +
   '&outputFormat=application/json;%20subtype=geojson;%20charset=utf-8&srsName=EPSG:4326';
-
-function emptyGeoJSON() {
-  return { type: 'FeatureCollection', features: [] };
-}
 
 function isUsableOnshorePayload(payload) {
   return payload?.type === 'FeatureCollection' && Array.isArray(payload.features) && payload.features.length > 1000;
@@ -43,6 +40,14 @@ async function fetchLive(alertThresholdGw) {
   };
 }
 
+// Fichiers de secours : public/data en développement ; en production, la release n'a que le build (dist/data).
+function readDataFile(name) {
+  for (const dir of ['public/data', 'dist/data']) {
+    try { return JSON.parse(readFileSync(resolve(process.cwd(), dir, name), 'utf8')); } catch { /* dossier suivant */ }
+  }
+  throw new Error(`${name} introuvable`);
+}
+
 async function fetchParks() {
   try {
     const response = await fetch(OFFICIAL_ONSHORE_WFS_URL, { signal: AbortSignal.timeout(20_000) });
@@ -52,8 +57,7 @@ async function fetchParks() {
       throw new Error(`Payload onshore WFS insuffisant (${Array.isArray(onshore?.features) ? onshore.features.length : 0} features)`);
     }
 
-    const offshoreFallbackPath = resolve(process.cwd(), 'public/data/eolien-fallback-parks.geojson');
-    const offshoreFallback = JSON.parse(readFileSync(offshoreFallbackPath, 'utf8'));
+    const offshoreFallback = readDataFile('eolien-fallback-parks.geojson');
     const offshoreFeatures = Array.isArray(offshoreFallback?.features)
       ? offshoreFallback.features.filter((feature) => feature?.properties?.kind === 'offshore')
       : [];
@@ -64,10 +68,10 @@ async function fetchParks() {
     };
   } catch {
     try {
-      const fallbackPath = resolve(process.cwd(), 'public/data/eolien-france.geojson');
-      return JSON.parse(readFileSync(fallbackPath, 'utf8'));
-    } catch {
-      return emptyGeoJSON();
+      return readDataFile('eolien-france.geojson');
+    } catch (err) {
+      // Jamais de liste vide en cache : l'erreur laisse le cache tel quel et la page se rabat sur le fichier statique.
+      throw err;
     }
   }
 }
