@@ -13,6 +13,10 @@ export class WebcamsPanel {
   private data: WebcamsDataset | null = null;
   private error: string | null = null;
   private selectedId: string | null = null;
+  private wallIds: readonly string[] | undefined;
+  private onWallOpen?: () => void;
+  private onWallToggle?: (id: string) => void;
+  private clickCleanup: (() => void) | null = null;
   private readonly storage = safeStorage();
   private readonly container: HTMLElement;
 
@@ -24,6 +28,28 @@ export class WebcamsPanel {
     this.shell = createLayerPanelShell({
       container: this.container, className: 'webcams-panel-modal', panelId: PANEL_ID, storage: this.storage, onClose: () => this.hide(),
     });
+    // Boutons du mur de webcams (le cadre commun ne gère que la fermeture et les onglets).
+    const root = this.shell.root;
+    const onClick = (e: Event): void => {
+      const t = e.target as HTMLElement;
+      if (t.closest('[data-wall-open]')) { this.onWallOpen?.(); return; }
+      const id = t.closest<HTMLElement>('[data-wall-toggle]')?.dataset['wallToggle'];
+      if (id) this.onWallToggle?.(id);
+    };
+    root.addEventListener('click', onClick);
+    this.clickCleanup = () => root.removeEventListener('click', onClick);
+  }
+
+  /** Mur de webcams : ouverture et épinglage depuis la fiche. */
+  setWallHandlers(onOpen: () => void, onToggle: (id: string) => void): void {
+    this.onWallOpen = onOpen;
+    this.onWallToggle = onToggle;
+  }
+
+  /** Webcams du mur : boutons « Ajouter au mur » / « Retirer du mur » et compte du mur à jour. */
+  setWallIds(ids: readonly string[]): void {
+    this.wallIds = ids;
+    if (this.isVisible()) this.render();
   }
 
   setOnClose(handler: () => void): void { this.onClose = handler; }
@@ -56,6 +82,8 @@ export class WebcamsPanel {
   }
 
   destroy(): void {
+    this.clickCleanup?.();
+    this.clickCleanup = null;
     this.shell?.destroy();
     this.shell = null;
   }
@@ -63,6 +91,6 @@ export class WebcamsPanel {
   private render(): void {
     if (!this.shell) return;
     const open = sectionOpenOf(loadSectionState(this.storage), PANEL_ID);
-    this.shell.render(buildWebcamsView({ data: this.data, error: this.error, selectedId: this.selectedId, open }));
+    this.shell.render(buildWebcamsView({ data: this.data, error: this.error, selectedId: this.selectedId, open, wallIds: this.wallIds }));
   }
 }

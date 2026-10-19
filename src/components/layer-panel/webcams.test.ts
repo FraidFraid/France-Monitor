@@ -40,8 +40,8 @@ describe('vue du panneau', () => {
     expect(buildWebcamsView({ data: null, error: null, selectedId: null, open }).head.status).toEqual(['chargement…']);
     expect(buildWebcamsView({ data: null, error: 'x', selectedId: null, open }).head.figure?.value).toBe('n.d.');
     const v = buildWebcamsView({ data: DS, error: null, selectedId: CAM.id, open });
-    expect(v.head.figure?.value).toBe('1');
-    expect(v.head.figure?.caption).toBe('liens actifs sur 2\u00a0webcams');
+    expect(v.head.figure?.value).toBe('50\u00a0%');
+    expect(v.head.figure?.caption).toBe('liens actifs · 1 sur 2\u00a0webcams');
     expect(allHtml(v)).toContain('referrerpolicy="no-referrer"');
     const none = buildWebcamsView({ data: DS, error: null, selectedId: null, open });
     expect(allHtml(none)).toContain('Cliquer une webcam sur la carte');

@@ -19,6 +19,8 @@ type OpenFn = (sectionId: string, byDefault: boolean) => boolean;
 
 export interface WebcamsViewInput {
   data: WebcamsDataset | null; error: string | null; selectedId: string | null; open: OpenFn;
+  /** Webcams épinglées sur le mur (ordre du mur) ; absent = mur non proposé. */
+  wallIds?: readonly string[];
 }
 
 const count = (n: number, one: string, many = `${one}s`): string => `${frNumber(n, 0)}${NBSP}${n > 1 ? many : one}`;
@@ -38,8 +40,14 @@ export function thumbnailHtml(w: Webcam): string {
     + `<figcaption>${escapeHtml(w.attribution ?? 'Attribution n.d.')}${w.license ? ` · ${escapeHtml(w.license)}` : ''}</figcaption></figure>`;
 }
 
+/** Bouton « Ajouter au mur » / « Retirer du mur » de la fiche. */
+export function wallToggleHtml(w: Webcam, onWall: boolean): string {
+  return `<button type="button" class="wc-wall-btn${onWall ? ' is-on' : ''}" data-wall-toggle="${escapeHtml(w.id)}" aria-pressed="${onWall}">`
+    + `${onWall ? 'Retirer du mur' : 'Ajouter au mur'}</button>`;
+}
+
 /** Fiche de la webcam choisie sur la carte. */
-export function webcamFicheHtml(w: Webcam, ds: WebcamsDataset): string {
+export function webcamFicheHtml(w: Webcam, ds: WebcamsDataset, wallIds?: readonly string[]): string {
   const source = sourceOf(ds, w.source);
   const state = `${WEBCAM_STATUS_WORD[w.status]}${w.httpStatus !== null ? ` (HTTP${NBSP}${w.httpStatus})` : ''}`;
   return `<p class="wc-name"><span class="lp-swatch" style="background:${WEBCAM_STATUS_HEX[w.status]}" aria-hidden="true"></span>${escapeHtml(w.name)}</p>`
@@ -49,17 +57,17 @@ export function webcamFicheHtml(w: Webcam, ds: WebcamsDataset): string {
     + kvRow('Vérifiée le', escapeHtml(frDateTime(w.checkedAt) ?? 'n.d.'))
     + kvRow('Licence', escapeHtml(w.license ?? 'inconnue'))
     + kvRow('Attribution', escapeHtml(w.attribution ?? 'n.d.'))
-    + `<p class="wc-actions">${openLinkHtml('Ouvrir la webcam', webcamOpenUrl(w))}</p>`
+    + `<p class="wc-actions">${openLinkHtml('Ouvrir la webcam', webcamOpenUrl(w))}${wallIds ? wallToggleHtml(w, wallIds.includes(w.id)) : ''}</p>`
     + thumbnailHtml(w)
     + (w.status !== 'ok' ? note('Le lien ne répondait pas au recensement : la webcam peut être arrêtée ou déplacée.') : '')
     + (webcamThumbnailUrl(w) === null ? note('Pas de vignette : seule une image directe sous licence ouverte est affichée ici ; le lien ouvre le site d’origine.') : '');
 }
 
-function ficheSection(ds: WebcamsDataset, selectedId: string | null, open: OpenFn): FicheSection {
+function ficheSection(ds: WebcamsDataset, selectedId: string | null, open: OpenFn, wallIds?: readonly string[]): FicheSection {
   const w = selectedId ? ds.webcams.find((x) => x.id === selectedId) ?? null : null;
   return {
     id: 'fiche', title: 'Webcam choisie', collapsible: true, open: open('fiche', true), summary: w ? escapeHtml(w.name) : undefined,
-    html: w ? webcamFicheHtml(w, ds) : emptyLine('Cliquer une webcam sur la carte pour afficher sa fiche.'),
+    html: w ? webcamFicheHtml(w, ds, wallIds) : emptyLine('Cliquer une webcam sur la carte pour afficher sa fiche.'),
   };
 }
 
@@ -97,8 +105,20 @@ function methodSection(ds: WebcamsDataset, open: OpenFn): FicheSection {
   return { id: 'methode', title: 'Méthode et sources', collapsible: true, open: open('methode', false), tone: 'reference', summary: 'OSM · data.gouv.fr', html };
 }
 
+/** Part des liens actifs, « 88 % » (un nombre seul comme 404 se lisait comme un code d'erreur). */
+export function activeShare(ok: number, total: number): string {
+  return total > 0 ? `${frNumber(Math.round((ok / total) * 100), 0)}${NBSP}%` : 'n.d.';
+}
+
+/** Accès au mur de webcams : images sous licence ouverte côte à côte, rafraîchies chaque minute. */
+export function wallBarHtml(onWall: number, displayable: number): string {
+  const label = onWall > 0 ? `Mur de webcams (${frNumber(onWall, 0)})` : 'Mur de webcams';
+  return `<div class="wc-wall-bar"><button type="button" class="wc-wall-open" data-wall-open>${escapeHtml(label)}</button>`
+    + `<span>${escapeHtml(`${frNumber(displayable, 0)} images sous licence ouverte affichables, rafraîchies chaque minute`)}</span></div>`;
+}
+
 export function buildWebcamsView(input: WebcamsViewInput): LayerView {
-  const { data, error, selectedId, open } = input;
+  const { data, error, selectedId, open, wallIds } = input;
   if (data === null && error === null) {
     return { head: { theme: WEBCAMS_THEME, title: WEBCAMS_TITLE, status: ['chargement…'] }, sections: [], bodyHtml: loadingBody() };
   }
@@ -110,13 +130,15 @@ export function buildWebcamsView(input: WebcamsViewInput): LayerView {
   }
   const c = webcamCounts(data.webcams);
   const when = frDateTime(data.generatedAt);
+  const wall = wallIds ? wallBarHtml(wallIds.length, c.countable) : '';
+  const stale = error !== null ? '<p class="fmk-callout lp-callout">Relecture impossible : données précédentes conservées.</p>' : '';
   return {
     head: {
       theme: WEBCAMS_THEME, title: WEBCAMS_TITLE, level: null,
-      figure: { value: frNumber(c.ok, 0), caption: `liens actifs sur ${frNumber(c.total, 0)}${NBSP}webcams`, level: null },
+      figure: { value: activeShare(c.ok, c.total), caption: `liens actifs · ${frNumber(c.ok, 0)} sur ${frNumber(c.total, 0)}${NBSP}webcams`, level: null },
       status: [when ? `recensement du ${when}` : 'recensement n.d.'],
     },
-    sections: [ficheSection(data, selectedId, open), statusSection(data, open), sourcesSection(data, open), methodSection(data, open)],
-    bodyHtml: error !== null ? '<p class="fmk-callout lp-callout">Relecture impossible : données précédentes conservées.</p>' : undefined,
+    sections: [ficheSection(data, selectedId, open, wallIds), statusSection(data, open), sourcesSection(data, open), methodSection(data, open)],
+    bodyHtml: stale + wall || undefined,
   };
 }

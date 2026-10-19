@@ -8398,3 +8398,67 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 .webcams-panel-modal .wc-thumb { margin: 8px 0 0; }
 .webcams-panel-modal .wc-thumb img { display: block; width: 100%; max-height: 220px; object-fit: contain; border-radius: 6px; background: var(--bg-secondary, #111); }
 .webcams-panel-modal .wc-thumb figcaption { margin-top: 4px; color: var(--text-secondary); font-size: 11px; }
+
+/* Mur de webcams : fenêtre flottante (src/components/WebcamWall.ts), au-dessus des panneaux de couches (15), sous l'en-tête (20). */
+.wc-wall-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 10px; color: var(--text-secondary); font-size: 11px; }
+.wc-wall-open, .wc-wall-btn {
+  padding: 5px 10px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-secondary);
+  color: var(--text-primary); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.wc-wall-open:hover, .wc-wall-btn:hover { border-color: var(--text-accent); }
+.wc-wall-btn { margin-left: 10px; }
+.wc-wall-btn.is-on { color: var(--text-accent); }
+.wcw {
+  position: fixed; z-index: 16; display: flex; flex-direction: column; min-width: 280px; min-height: 0;
+  background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  color: var(--text-primary); font-size: 12px; overflow: hidden; resize: both;
+}
+.wcw.is-min { resize: none; }
+.wcw.is-dragging { opacity: 0.92; user-select: none; }
+.wcw-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; flex: none;
+  background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); cursor: move; touch-action: none; user-select: none;
+}
+.wcw-title { display: flex; align-items: center; gap: 6px; font-weight: 600; white-space: nowrap; }
+.wcw-count, .wcw-time { color: var(--text-secondary); font-weight: 400; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wcw-tools-head, .wcw-tools { display: flex; align-items: center; gap: 2px; }
+.wcw-time { margin-right: 6px; font-size: 11px; }
+.wcw-btn {
+  display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0;
+  border: 0; border-radius: 4px; background: transparent; color: var(--text-secondary); cursor: pointer;
+}
+.wcw-btn:hover, .wcw-btn:focus-visible { background: rgba(255, 255, 255, 0.08); color: var(--text-primary); }
+.wcw-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 8px; flex: none; }
+.wcw-add { display: flex; align-items: center; gap: 6px; min-width: 0; flex: 1 1 200px; }
+.wcw-add select {
+  min-width: 0; flex: 1; padding: 3px 6px; border: 1px solid var(--border-color); border-radius: 4px;
+  background: var(--bg-secondary); color: var(--text-primary); font: inherit;
+}
+.wcw-hint { color: var(--text-secondary); font-size: 11px; }
+.wcw-segs { display: inline-flex; border: 1px solid var(--border-color); border-radius: 4px; overflow: hidden; flex: none; }
+.wcw-seg { padding: 2px 8px; border: 0; background: transparent; color: var(--text-secondary); font: inherit; cursor: pointer; }
+.wcw-seg + .wcw-seg { border-left: 1px solid var(--border-color); }
+.wcw-seg.is-on { background: var(--text-accent); color: #fff; }
+.wcw-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 8px 6px; }
+.wcw-grid { display: grid; grid-template-columns: repeat(var(--wcw-cols, 2), minmax(0, 1fr)); gap: 6px; }
+.wcw-tile { position: relative; margin: 0; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; background: #000; }
+.wcw-media { position: relative; aspect-ratio: 4 / 3; display: flex; align-items: center; justify-content: center; }
+.wcw-grid.is-focus .wcw-media { aspect-ratio: auto; min-height: 200px; }
+.wcw-media img { display: block; width: 100%; height: 100%; object-fit: contain; }
+.wcw-broken { display: none; position: absolute; inset: 0; align-items: center; justify-content: center; padding: 8px; color: var(--text-secondary); text-align: center; }
+.wcw-tile.is-broken img { visibility: hidden; }
+.wcw-tile.is-broken .wcw-broken { display: flex; }
+.wcw-noimg { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px; color: var(--text-secondary); text-align: center; }
+.wcw-tile figcaption { display: flex; flex-direction: column; gap: 1px; padding: 4px 6px; background: var(--bg-secondary); line-height: 1.3; }
+.wcw-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wcw-place, .wcw-credit { color: var(--text-secondary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wcw-open { color: var(--text-accent); font-size: 11px; font-weight: 600; }
+.wcw-tile .wcw-tools {
+  position: absolute; top: 4px; right: 4px; padding: 1px; border-radius: 4px; background: rgba(0, 0, 0, 0.6);
+  opacity: 0; transition: opacity 0.15s;
+}
+.wcw-tile:hover .wcw-tools, .wcw-tile:focus-within .wcw-tools { opacity: 1; }
+.wcw-tile .wcw-btn { color: #fff; }
+.wcw-empty { margin: 16px 4px; color: var(--text-secondary); text-align: center; }
+.wcw-foot { flex: none; margin: 0; padding: 4px 8px 6px; color: var(--text-secondary); font-size: 10px; line-height: 1.35; }
+@media (hover: none) { .wcw-tile .wcw-tools { opacity: 1; } }

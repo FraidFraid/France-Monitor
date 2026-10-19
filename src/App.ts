@@ -122,6 +122,7 @@ import type { CriminalitePanel } from './components/CriminalitePanel.ts';
 import { fetchCrimeDataset } from './services/crime.ts';
 import { CRIME_LEGEND, crimeLegend } from './components/layer-panel/criminalite-legend.ts';
 import type { WebcamsPanel } from './components/WebcamsPanel.ts';
+import type { WebcamWall } from './components/WebcamWall.ts';
 import { fetchWebcamsDataset } from './services/webcams.ts';
 import { WEBCAMS_LEGEND, webcamsLegend } from './components/layer-panel/webcams-legend.ts';
 import type { WebcamsDataset } from './types/index.ts';
@@ -1177,6 +1178,7 @@ export class App {
   private crimeError: string | null = null;
   private webcamsPanel: WebcamsPanel | null = null;
   private webcamsPanelPromise: Promise<void> | null = null;
+  private webcamWall: WebcamWall | null = null;
   private currentWebcams: WebcamsDataset | null = null;
   private webcamsError: string | null = null;
   private protestsPoll: PausableTimer | null = null;
@@ -3267,6 +3269,7 @@ export class App {
         this.openWebcamsPanel();
       } else {
         this.webcamsPanel?.hide({ silent: true });
+        this.webcamWall?.hide();
       }
     }
 
@@ -4537,13 +4540,24 @@ export class App {
   private ensureWebcamsPanel(): Promise<void> {
     const container = this.floatContainerEl;
     if (!container) return Promise.resolve();
-    this.webcamsPanelPromise ??= import('./components/WebcamsPanel.ts').then(({ WebcamsPanel }) => {
-      const panel = new WebcamsPanel(container);
-      panel.setOnClose(() => this.closeWebcamsLayer());
-      panel.mount();
-      this.webcamsPanel = panel;
-      if (this.activeLayers.webcams) panel.show(this.currentWebcams, this.webcamsError);
-    });
+    this.webcamsPanelPromise ??= Promise.all([import('./components/WebcamsPanel.ts'), import('./components/WebcamWall.ts')])
+      .then(([{ WebcamsPanel }, { WebcamWall }]) => {
+        const panel = new WebcamsPanel(container);
+        panel.setOnClose(() => this.closeWebcamsLayer());
+        panel.mount();
+        this.webcamsPanel = panel;
+        // Mur de webcams : fenêtre flottante, ouverte depuis le panneau, épinglage depuis la fiche d'une webcam.
+        const wall = new WebcamWall(container);
+        wall.setData(this.currentWebcams);
+        wall.setOnChange((st) => panel.setWallIds(st.ids));
+        panel.setWallHandlers(() => wall.open(), (id) => wall.toggle(id));
+        panel.setWallIds(wall.getState().ids);
+        this.webcamWall = wall;
+        if (this.activeLayers.webcams) {
+          panel.show(this.currentWebcams, this.webcamsError);
+          wall.restore();
+        }
+      });
     return this.webcamsPanelPromise;
   }
 
@@ -4558,6 +4572,7 @@ export class App {
   /** Ouverture (case, restauration) : panneau sur le fichier déjà lu, carte reposée, fichier lu une fois sinon. */
   private openWebcamsPanel(): void {
     this.webcamsPanel?.show(this.currentWebcams, this.webcamsError);
+    this.webcamWall?.restore();
     if (this.currentWebcams) this.mapContainer?.updateWebcamsLayer(this.currentWebcams);
     this.refreshWebcamsLegend();
     if (this.currentWebcams === null) this.loadWebcams().catch((err) => console.error('[App] Lecture Webcams en échec', err));
@@ -4582,6 +4597,7 @@ export class App {
       }
       this.mapContainer?.updateWebcamsLayer(this.currentWebcams);
       this.webcamsPanel?.update(this.currentWebcams, this.webcamsError);
+      this.webcamWall?.setData(this.currentWebcams);
       this.refreshWebcamsLegend();
     });
   }
