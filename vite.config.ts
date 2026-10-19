@@ -203,6 +203,7 @@ export default defineConfig(({ mode }) => {
             'data/eau-potable.json',
             'data/deces.json',
             'data/webcams.json', // recensement des webcams, lu à l'ouverture de la couche
+            'data/flux-pietons/**', // prévisions flux_osint, relues toutes les 15 min (jamais servies du cache)
           ],
           // Abaissé de 3 Mo à 1 Mo : les gros GeoJSON/JSON ci-dessus sont
           // exclus explicitement du precache : ce plafond n'a plus besoin de

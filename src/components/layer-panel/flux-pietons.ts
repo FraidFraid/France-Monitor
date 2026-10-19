@@ -1,0 +1,154 @@
+// src/components/layer-panel/flux-pietons.ts : vue pure du panneau Flux piétons (prévisions publiées par flux_osint). Onglets de
+// phase (arrivée, dispersion), choix de l'événement, affluence estimée, rues les plus chargées, lecture de la carte, méthode et
+// limites. Avertissement ESTIMATIONS MODÉLISÉES en tête, toujours. Aucune donnée individuelle ; aucun effet sur l'indice.
+import type { FluxEvent, FluxIndex, FluxPhase } from '../../types/index.ts';
+import { BAND_WORD, FLUX_WARNING, bandHex, saturationBand, type FluxBand } from '../../services/flux-pietons.ts';
+import { frDateTime } from '../../services/webcams.ts';
+import { escapeHtml } from '../france-intel-events.ts';
+import { kvRow } from '../fiche/kit.ts';
+import type { FicheSection } from '../fiche/parts.ts';
+import { emptyLine, listRow, loadingBody, type LayerView } from './frame.ts';
+import { NBSP, frNumber } from './format.ts';
+import { note } from './traffic-format.ts';
+
+export const FLUX_THEME = 'Sécurité et défense';
+export const FLUX_TITLE = 'Flux piétons';
+export const FLUX_PHASES: readonly { id: FluxPhase; label: string }[] = [
+  { id: 'arrivee', label: 'Arrivée' },
+  { id: 'depart', label: 'Dispersion' },
+];
+type OpenFn = (sectionId: string, byDefault: boolean) => boolean;
+
+export interface FluxViewInput {
+  index: FluxIndex | null;
+  error: string | null;
+  selectedId: string | null;
+  phase: FluxPhase;
+  /** Lecture du GeoJSON de l'événement choisi. */
+  geo: 'idle' | 'loading' | 'ready' | 'error';
+  open: OpenFn;
+  nowMs: number;
+}
+
+const people = (n: number): string => `${frNumber(Math.round(n), 0)}${NBSP}personne${Math.round(n) > 1 ? 's' : ''}`;
+
+/** Date de l'événement : « 17/10/2026 à 12:52 » (heure de Paris), « date n.d. » sinon. */
+function when(e: FluxEvent): string {
+  return (e.debut ? frDateTime(e.debut) : null) ?? 'date n.d.';
+}
+
+/** Mot sur la place de l'événement dans le temps : à venir, en cours (3 h), passé. */
+export function eventTiming(e: FluxEvent, nowMs: number): 'à venir' | 'en cours' | 'passé' | 'date inconnue' {
+  const t = e.debut ? Date.parse(e.debut) : Number.NaN;
+  if (!Number.isFinite(t)) return 'date inconnue';
+  if (t > nowMs) return 'à venir';
+  return nowMs - t < 3 * 3_600_000 ? 'en cours' : 'passé';
+}
+
+function eventsSection(index: FluxIndex, selected: FluxEvent, nowMs: number, open: OpenFn): FicheSection {
+  const rows = index.evenements.map((e) => listRow({
+    text: `${e.ville} · ${when(e)}`,
+    value: eventTiming(e, nowMs),
+    note: `${e.lieuSuppose ? 'Lieu supposé : ' : ''}${e.lieu}`,
+    color: e.id === selected.id ? 'var(--text-accent)' : null,
+    data: { 'flux-event': e.id }, link: true,
+  })).join('');
+  return {
+    id: 'evenements', title: 'Événements', collapsible: true, open: open('evenements', index.evenements.length > 1),
+    summary: escapeHtml(`${frNumber(index.evenements.length, 0)} prévision${index.evenements.length > 1 ? 's' : ''}`),
+    html: rows + note('Clic : la carte passe à cet événement. Seuls les rassemblements réels (couche Manifestations, saisie manuelle) sont calculés.'),
+  };
+}
+
+function selectedSection(e: FluxEvent, geo: FluxViewInput['geo'], open: OpenFn): FicheSection {
+  const a = e.affluence;
+  const html = kvRow('Lieu', escapeHtml(e.lieuSuppose ? `${e.lieu} (lieu habituel supposé : la source n'en donne pas)` : e.lieu))
+    + kvRow('Date', escapeHtml(when(e)))
+    + kvRow('Affluence estimée', escapeHtml(`${people(a.p50)} (médiane)`))
+    + kvRow('Fourchette', escapeHtml(`${frNumber(a.p10, 0)} à ${frNumber(a.p90, 0)} (8 chances sur 10)`))
+    + kvRow('Base', escapeHtml(a.base))
+    + kvRow('Météo', escapeHtml(e.meteo ?? 'n.d.'))
+    + kvRow('Cortège', escapeHtml(e.cortege ? 'parcours simulé' : 'rassemblement sans parcours connu'))
+    + kvRow('Recalage', escapeHtml(e.recale ? 'recalé sur des comptages' : 'aucun comptage'))
+    + kvRow('Calculé le', escapeHtml(frDateTime(e.calculeLe) ?? 'n.d.'))
+    + (geo === 'loading' ? note('Carte en cours de lecture…') : '')
+    + (geo === 'error' ? '<p class="fmk-callout lp-callout">Carte de cet événement illisible pour le moment.</p>' : '');
+  return { id: 'evenement', title: 'Événement choisi', collapsible: true, open: open('evenement', true), summary: escapeHtml(e.ville), html };
+}
+
+function streetsSection(e: FluxEvent, phase: FluxPhase, open: OpenFn): FicheSection {
+  const top = e.resume.topRues;
+  const rows = top.map((r) => {
+    const band = saturationBand(r.pSaturation);
+    return listRow({
+      text: r.rue, value: people(r.chargeP90), color: bandHex(band),
+      note: `densité ${r.densiteP90.toFixed(2).replace('.', ',')}${NBSP}pers/m² · saturation ${Math.round(r.pSaturation * 100)}${NBSP}%`,
+    });
+  }).join('');
+  return {
+    id: 'rues', title: 'Rues les plus chargées', collapsible: true, open: open('rues', true),
+    summary: escapeHtml(`${frNumber(e.resume.satures, 0)} saturée${e.resume.satures > 1 ? 's' : ''} probable${e.resume.satures > 1 ? 's' : ''}`),
+    html: (top.length === 0 ? emptyLine('Aucune rue chargée.') : rows)
+      + note(`Valeurs hautes (9 tirages sur 10 en dessous), à l’arrivée.${phase === 'depart' ? ' La carte montre la dispersion : survoler une rue pour ses valeurs.' : ''}`)
+      + (e.resume.goulots > 0 ? note(`${frNumber(e.resume.goulots, 0)} goulot${e.resume.goulots > 1 ? 's' : ''} probable${e.resume.goulots > 1 ? 's' : ''} sur le parcours du cortège.`) : ''),
+  };
+}
+
+function readingSection(open: OpenFn): FicheSection {
+  const bands: FluxBand[] = ['fluide', 'jaune', 'orange', 'rouge'];
+  const html = bands.map((b) => listRow({ text: BAND_WORD[b], color: bandHex(b) })).join('')
+    + note('Épaisseur : nombre de personnes passées dans la rue pendant la phase. Couleur : part des 500\u00a0tirages où le débit dépasse la capacité de la rue (diagramme de Weidmann, environ 73\u00a0personnes par minute et par mètre de largeur).')
+    + note('Tirets : 5, 10 et 20\u00a0minutes de marche depuis le point de rassemblement (point blanc).');
+  return { id: 'lecture', title: 'Lire la carte', collapsible: true, open: open('lecture', false), html };
+}
+
+function methodSection(index: FluxIndex, open: OpenFn): FicheSection {
+  const html = (index.methode ? note(index.methode) : '')
+    + note('Calcul : flux_osint (programme séparé), données ouvertes seulement : réseau piéton OpenStreetMap, carroyage INSEE, équipements BPE, arrêts de transport, météo Open-Meteo.')
+    + note('Aucune donnée individuelle, aucun suivi de personne, aucun réseau social ; aucun organisateur ni participant identifié.')
+    + note('Limites : l’affluence vient d’un modèle appris sur les chiffres de presse, bruités : la fourchette reste large. Le lieu est supposé (place habituelle) quand la source ne le donne pas.')
+    + note('Recalcul toutes les 15\u00a0minutes. Cette couche n’a aucun effet sur l’indice de stabilité, les situations ni la synthèse.')
+    + kvRow('Publication', escapeHtml(frDateTime(index.generatedAt) ?? 'n.d.'));
+  return { id: 'methode', title: 'Méthode et limites', collapsible: true, open: open('methode', false), tone: 'reference', html };
+}
+
+const WARNING_HTML = (text: string): string => `<p class="fmk-callout lp-callout flux-warning">${escapeHtml(text)}</p>`;
+
+export function selectedFluxEvent(index: FluxIndex | null, selectedId: string | null): FluxEvent | null {
+  if (!index || index.evenements.length === 0) return null;
+  return index.evenements.find((e) => e.id === selectedId) ?? index.evenements[0] ?? null;
+}
+
+export function buildFluxView(input: FluxViewInput): LayerView {
+  const { index, error, phase, open } = input;
+  const tabs = FLUX_PHASES.map((p) => ({ id: p.id, label: p.label }));
+  if (index === null && error === null) {
+    return { head: { theme: FLUX_THEME, title: FLUX_TITLE, status: ['chargement…'] }, sections: [], bodyHtml: loadingBody() };
+  }
+  if (index === null) {
+    return {
+      head: { theme: FLUX_THEME, title: FLUX_TITLE, level: null, figure: { value: 'n.d.', caption: 'prévisions', level: null }, status: ['publication illisible'] },
+      sections: [], bodyHtml: WARNING_HTML(FLUX_WARNING) + '<p class="fmk-callout lp-callout">Prévisions illisibles pour le moment. Nouvel essai dans 15\u00a0minutes.</p>',
+    };
+  }
+  const e = selectedFluxEvent(index, input.selectedId);
+  if (!e) {
+    return {
+      head: { theme: FLUX_THEME, title: FLUX_TITLE, level: null, figure: { value: '0', caption: 'prévision publiée', level: null }, status: ['ESTIMATIONS MODÉLISÉES'] },
+      sections: [methodSection(index, open)],
+      bodyHtml: WARNING_HTML(index.avertissement)
+        + emptyLine('Aucune prévision publiée. Une prévision apparaît quand un rassemblement réel est annoncé dans une ville suivie par flux_osint.'),
+    };
+  }
+  return {
+    head: {
+      theme: FLUX_THEME, title: FLUX_TITLE, level: null,
+      figure: { value: `≈${NBSP}${frNumber(e.affluence.p50, 0)}`, caption: `personnes estimées · ${e.ville}, ${when(e)}`, level: null },
+      status: ['ESTIMATIONS MODÉLISÉES', eventTiming(e, input.nowMs)],
+    },
+    tabs, activeTab: phase,
+    sections: [selectedSection(e, input.geo, open), streetsSection(e, phase, open), eventsSection(index, e, input.nowMs, open), readingSection(open), methodSection(index, open)],
+    bodyHtml: WARNING_HTML(index.avertissement)
+      + (error !== null ? '<p class="fmk-callout lp-callout">Relecture impossible : dernières prévisions conservées.</p>' : ''),
+  };
+}

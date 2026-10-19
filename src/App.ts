@@ -123,6 +123,10 @@ import { fetchCrimeDataset } from './services/crime.ts';
 import { CRIME_LEGEND, crimeLegend } from './components/layer-panel/criminalite-legend.ts';
 import type { WebcamsPanel } from './components/WebcamsPanel.ts';
 import type { WebcamWall } from './components/WebcamWall.ts';
+import type { FluxPietonsPanel } from './components/FluxPietonsPanel.ts';
+import { FLUX_POLL_MS, defaultFluxEvent, fetchFluxEvent, fetchFluxIndex, type FluxFeature } from './services/flux-pietons.ts';
+import { FLUX_LEGEND, fluxLegend } from './components/layer-panel/flux-pietons-legend.ts';
+import type { FluxIndex, FluxPhase } from './types/index.ts';
 import { fetchWebcamsDataset } from './services/webcams.ts';
 import { WEBCAMS_LEGEND, webcamsLegend } from './components/layer-panel/webcams-legend.ts';
 import type { WebcamsDataset } from './types/index.ts';
@@ -574,6 +578,7 @@ const DEFAULT_LAYERS: MapLayers = {
   protests: false,
   crime: false,
   webcams: false,
+  pedestrianFlows: false,
   stability: false,
   cyber: false,
   gasNetwork: false,
@@ -642,6 +647,7 @@ const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
   { id: 'protests', label: 'Manifestations', icon: 'megaphone', layerKeys: ['protests'] },
   { id: 'crime', label: 'Criminalité', icon: 'siren', layerKeys: ['crime'] },
   { id: 'webcams', label: 'Webcams', icon: 'camera', layerKeys: ['webcams'] },
+  { id: 'pedestrianFlows', label: 'Flux piétons', icon: 'activity', layerKeys: ['pedestrianFlows'] },
 ];
 
 /** Lignes Souveraineté de la phase B : chacune n'est écrite que par son lecteur (tâche B28), jamais par un service de la phase A. */
@@ -1137,6 +1143,13 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     label: 'WEBCAMS',
     legend: WEBCAMS_LEGEND,
   },
+  // ─── Flux piétons : prévisions publiées par flux_osint (data/flux-pietons/), relève de 15 min couche allumée ───
+  {
+    id: 'pedestrianFlows',
+    role: 'standalone',
+    label: 'FLUX PIÉTONS',
+    legend: FLUX_LEGEND,
+  },
 
 ];
 
@@ -1179,6 +1192,15 @@ export class App {
   private webcamsPanel: WebcamsPanel | null = null;
   private webcamsPanelPromise: Promise<void> | null = null;
   private webcamWall: WebcamWall | null = null;
+  private fluxPanel: FluxPietonsPanel | null = null;
+  private fluxPanelPromise: Promise<void> | null = null;
+  private fluxIndex: FluxIndex | null = null;
+  private fluxError: string | null = null;
+  private fluxSelectedId: string | null = null;
+  private fluxPhase: FluxPhase = 'arrivee';
+  private fluxFeatures: FluxFeature[] | null = null;
+  private fluxGeo: 'idle' | 'loading' | 'ready' | 'error' = 'idle';
+  private fluxPoll: PausableTimer | null = null;
   private currentWebcams: WebcamsDataset | null = null;
   private webcamsError: string | null = null;
   private protestsPoll: PausableTimer | null = null;
@@ -1490,6 +1512,8 @@ export class App {
     this.outagesPolls = {};
     this.removePausableInterval(this.protestsPoll);
     this.protestsPoll = null;
+    this.removePausableInterval(this.fluxPoll);
+    this.fluxPoll = null;
     this.removePausableInterval(this._intervalClock); this._intervalClock = null;
     if (this._intervalNetworkBarometer !== null) {
       clearInterval(this._intervalNetworkBarometer);
@@ -3003,6 +3027,7 @@ export class App {
       'protests',
       'crime',
       'webcams',
+      'pedestrianFlows',
     ];
 
     const activeKeys = restoreOrder.filter((key) => this.activeLayers[key]);
@@ -3271,6 +3296,16 @@ export class App {
         this.webcamsPanel?.hide({ silent: true });
         this.webcamWall?.hide();
       }
+    }
+
+    // Panneau Flux piétons : index relu toutes les 15 min couche allumée ; masquage silencieux et relève arrêtée à l'extinction.
+    if (key === 'pedestrianFlows') {
+      if (enabled) {
+        this.openFluxPanel();
+      } else {
+        this.fluxPanel?.hide({ silent: true });
+      }
+      this.syncFluxPolling();
     }
 
     // All remaining panels use an if/else chain — at most one branch fires per toggle.
@@ -4534,6 +4569,122 @@ export class App {
     });
   }
 
+  // ─── Flux piétons : prévisions publiées par flux_osint dans data/flux-pietons/ (ESTIMATIONS MODÉLISÉES) ───
+
+  /** Panneau Flux piétons, créé à la demande. */
+  private ensureFluxPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.fluxPanelPromise ??= import('./components/FluxPietonsPanel.ts').then(({ FluxPietonsPanel }) => {
+      const panel = new FluxPietonsPanel(container);
+      panel.setHandlers({
+        onClose: () => this.closeFluxLayer(),
+        onSelect: (id) => this.selectFluxEvent(id, true),
+        onPhase: (phase) => {
+          this.fluxPhase = phase;
+          this.mapContainer?.updateFluxLayer(this.fluxFeatures, phase);
+          this.pushFluxState();
+        },
+      });
+      panel.mount();
+      this.fluxPanel = panel;
+      if (this.activeLayers.pedestrianFlows) panel.show();
+      this.pushFluxState();
+    });
+    return this.fluxPanelPromise;
+  }
+
+  /** Croix du panneau : éteint la couche comme une case décochée. */
+  private closeFluxLayer(): void {
+    if (this.activeLayers.pedestrianFlows) {
+      this.onLayerToggle('pedestrianFlows', false);
+      this.layerPanel?.updateLayers(this.activeLayers);
+    }
+  }
+
+  /** Ouverture (case, restauration) : panneau sur l'état connu, carte reposée, index relu. */
+  private openFluxPanel(): void {
+    this.fluxPanel?.show();
+    this.pushFluxState();
+    this.mapContainer?.updateFluxLayer(this.fluxFeatures, this.fluxPhase);
+    this.refreshFluxLegend();
+    this.loadFlux().catch((err) => console.error('[App] Lecture Flux piétons en échec', err));
+  }
+
+  private pushFluxState(): void {
+    this.fluxPanel?.update({ index: this.fluxIndex, error: this.fluxError, selectedId: this.fluxSelectedId, phase: this.fluxPhase, geo: this.fluxGeo });
+  }
+
+  /** Relève de 15 min (rythme du batch flux_osint), couche allumée seulement. */
+  private syncFluxPolling(): void {
+    if (!this.activeLayers.pedestrianFlows) {
+      if (this.fluxPoll) {
+        this.removePausableInterval(this.fluxPoll);
+        this.fluxPoll = null;
+      }
+      return;
+    }
+    if (this.fluxPoll) return;
+    this.fluxPoll = this.registerPausableInterval(() => {
+      if (!this.activeLayers.pedestrianFlows) {
+        this.syncFluxPolling();
+        return;
+      }
+      this.loadFlux().catch((err) => console.error('[App] Relève Flux piétons en échec', err));
+    }, FLUX_POLL_MS);
+  }
+
+  /** Index relu (une lecture à la fois) ; l'événement choisi est gardé s'il est toujours publié, sinon le prochain à venir. */
+  private loadFlux(): Promise<void> {
+    return dedupe('pedestrianFlows', async () => {
+      try {
+        this.fluxIndex = await fetchFluxIndex();
+        this.fluxError = null;
+      } catch (err) {
+        this.fluxError = err instanceof Error ? err.message : 'Flux piétons : lecture impossible';
+      }
+      const list = this.fluxIndex?.evenements ?? [];
+      const keep = list.find((e) => e.id === this.fluxSelectedId) ?? defaultFluxEvent(list, Date.now());
+      this.refreshFluxLegend();
+      if (keep) await this.selectFluxEvent(keep.id, false);
+      else {
+        this.fluxSelectedId = null;
+        this.fluxFeatures = null;
+        this.fluxGeo = 'idle';
+        this.mapContainer?.updateFluxLayer(null, this.fluxPhase);
+        this.pushFluxState();
+      }
+    });
+  }
+
+  /** Événement choisi : sa carte lue (mémorisée par date de calcul), posée ; recentrage seulement sur un choix de l'utilisateur. */
+  private async selectFluxEvent(id: string, fly: boolean): Promise<void> {
+    const ev = this.fluxIndex?.evenements.find((e) => e.id === id);
+    if (!ev) return;
+    this.fluxSelectedId = id;
+    this.fluxGeo = 'loading';
+    this.pushFluxState();
+    if (fly) this.mapContainer?.flyTo(ev.point[0], ev.point[1], 14.5);
+    try {
+      const features = await fetchFluxEvent(ev);
+      if (this.fluxSelectedId !== id) return;
+      this.fluxFeatures = features;
+      this.fluxGeo = 'ready';
+    } catch {
+      if (this.fluxSelectedId !== id) return;
+      // Jamais la carte d'un autre événement sous le nom de celui-ci.
+      this.fluxFeatures = null;
+      this.fluxGeo = 'error';
+    }
+    this.mapContainer?.updateFluxLayer(this.fluxFeatures, this.fluxPhase);
+    this.pushFluxState();
+  }
+
+  private refreshFluxLegend(): void {
+    if (!this.mapLegend) return;
+    this.mapLegend.setCategories([{ ...fluxLegend(this.fluxIndex), visible: this.activeLayers.pedestrianFlows }]);
+  }
+
   // ─── Webcams : recensement statique public/data/webcams.json (scripts/build-webcams.mjs) ───
 
   /** Panneau Webcams, créé à la demande. */
@@ -5139,6 +5290,7 @@ export class App {
       case 'protests': return [this.ensureProtestsPanel()];
       case 'crime': return [this.ensureCrimePanel()];
       case 'webcams': return [this.ensureWebcamsPanel()];
+      case 'pedestrianFlows': return [this.ensureFluxPanel()];
       case 'trafficRoad': return [this.ensureTrafficPanel()];
       case 'trafficAir': return [this.ensureAirTrafficPanel()];
       case 'trafficRail': return [this.ensureTransportPanel()];
@@ -5212,6 +5364,7 @@ export class App {
       case 'protests': return this.protestsPanel;
       case 'crime': return this.crimePanel;
       case 'webcams': return this.webcamsPanel;
+      case 'pedestrianFlows': return this.fluxPanel;
       default: return null;
     }
   }

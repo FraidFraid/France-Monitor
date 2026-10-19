@@ -5734,6 +5734,7 @@ button.header-quality-link {
   .protests-panel-modal,
   .crime-panel-modal,
   .webcams-panel-modal,
+  .flux-panel-modal,
   .gas-panel-modal,
   .nuclear-panel-modal,
   .oil-panel-modal,
@@ -5788,6 +5789,7 @@ button.header-quality-link {
   .protests-panel-modal::before,
   .crime-panel-modal::before,
   .webcams-panel-modal::before,
+  .flux-panel-modal::before,
   .gas-panel-modal::before,
   .nuclear-panel-modal::before,
   .oil-panel-modal::before,
@@ -7775,6 +7777,7 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
   #app.ui-v2 .protests-panel-modal,
   #app.ui-v2 .crime-panel-modal,
   #app.ui-v2 .webcams-panel-modal,
+  #app.ui-v2 .flux-panel-modal,
   #app.ui-v2 .gas-panel-modal,
   #app.ui-v2 .nuclear-panel-modal,
   #app.ui-v2 .oil-panel-modal,
@@ -8471,3 +8474,6 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 @media (hover: none) { .wcw-tile .wcw-tools { opacity: 1; } }
 .wcw-media:fullscreen { width: 100vw; height: 100vh; aspect-ratio: auto; background: #000; }
 .wcw-media:fullscreen .wcw-broken { font-size: 16px; }
+
+/* Flux piétons : avertissement ESTIMATIONS MODÉLISÉES toujours en tête du panneau. */
+#app .flux-panel-modal .flux-warning { font-weight: 600; letter-spacing: 0.02em; }

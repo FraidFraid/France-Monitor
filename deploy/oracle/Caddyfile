@@ -133,6 +133,16 @@ www.francemonitor.com {
 		file_server
 	}
 
+	# Prévisions de flux piétons (flux_osint, minuteur fm-flux-pietons, pas encore installé) : toujours lues dans
+	# /var/lib/francemonitor/data/flux-pietons, jamais dans la release ; fichier absent = vraie 404 (le client y lit « aucune
+	# prévision publiée »), jamais index.html par le repli SPA. Jamais mises en cache : recalcul toutes les 15 min.
+	@fluxPietons path /data/flux-pietons/*
+	handle @fluxPietons {
+		header Cache-Control "no-store"
+		root * /var/lib/francemonitor
+		file_server
+	}
+
 	# Repli SPA (vercel.json → rewrites, dernière règle "/(.*)")  + fichiers statiques.
 	handle {
 		root * /srv/francemonitor/current/dist

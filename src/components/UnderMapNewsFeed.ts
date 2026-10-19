@@ -116,6 +116,7 @@ const DEFAULT_LAYERS: MapLayers = {
   protests: false,
   crime: false,
   webcams: false,
+  pedestrianFlows: false,
   stability: false,
   cyber: false,
   gasNetwork: false,

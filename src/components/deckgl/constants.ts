@@ -820,3 +820,8 @@ export const SRC_TIDE_GAUGES = 'tide-gauges-src';
 export const LYR_TIDE_GAUGES = 'tide-gauges';
 
 /** Pictos d'alerte de l'énergie (rouge et orange, toutes filières), spec 2026-10-15. */
+// Flux piétons (prévisions flux_osint) : isochrones, rues chargées, point de rassemblement.
+export const SRC_FLUX = 'flux-pietons-src';
+export const LYR_FLUX_ISO = 'flux-pietons-iso';
+export const LYR_FLUX_LINES = 'flux-pietons-lines';
+export const LYR_FLUX_POINT = 'flux-pietons-point';

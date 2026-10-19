@@ -72,6 +72,7 @@ export const ALL_PRESETABLE_LAYER_KEYS: ReadonlyArray<keyof MapLayers> = [
   'protests',
   'crime',
   'webcams',
+  'pedestrianFlows',
 ];
 
 /**
@@ -80,7 +81,7 @@ export const ALL_PRESETABLE_LAYER_KEYS: ReadonlyArray<keyof MapLayers> = [
  */
 export const THEME_LAYERS: Readonly<Record<Exclude<LayerPresetId, 'general'>, ReadonlyArray<keyof MapLayers>>> = {
   energy: ['powerGrid', 'nuclearFleet', 'gasNetwork', 'oilNetwork', 'outagesElec', 'hydroBackbone', 'windMonitor', 'dromEnergy', 'metroLoad'],
-  security: ['military', 'cyber', 'outagesTelecom', 'outagesInternet', 'outagesCloud', 'subseaCables', 'protests', 'crime', 'news', 'stability'],
+  security: ['military', 'cyber', 'outagesTelecom', 'outagesInternet', 'outagesCloud', 'subseaCables', 'protests', 'pedestrianFlows', 'crime', 'news', 'stability'],
   health: ['health', 'healthOscour', 'hospitals', 'healthApl'],
   environment: ['environmental', 'floods', 'weatherRadar', 'fires', 'airQuality', 'drought', 'earthquakes', 'disasters', 'webcams'],
   transport: ['trafficRoad', 'trafficRail', 'trafficMaritime', 'trafficAir'],
@@ -114,7 +115,7 @@ export const LAYER_PRESETS: ReadonlyArray<LayerPreset> = [
     id: 'security',
     label: 'Sécurité & défense',
     icon: 'shield',
-    description: 'Tout le thème sécurité & défense : défense, cyber, pannes télécoms, Internet et cloud, connectivité et indice de stabilité.',
+    description: 'Tout le thème sécurité & défense : défense, cyber, pannes télécoms, Internet et cloud, manifestations, flux piétons estimés, criminalité, connectivité et indice de stabilité.',
     layers: THEME_LAYERS.security.filter((key) => key !== 'news'),
     events: false,
   },

@@ -131,6 +131,8 @@ export interface MapLayers {
   crime: boolean;
   /** Webcams publiques recensées (OSM, data.gouv.fr), état des liens vérifié au recensement (scripts/build-webcams.mjs). */
   webcams: boolean;
+  /** Flux piétons : prévisions modélisées autour des rassemblements annoncés, publiées par flux_osint (data/flux-pietons/). */
+  pedestrianFlows: boolean;
   stability: boolean;
   cyber: boolean;
   gasNetwork: boolean;
@@ -3421,3 +3423,38 @@ export interface WebcamsDataset {
   sources: WebcamSource[];
   webcams: Webcam[];
 }
+
+// ─── Flux piétons (publication flux_osint → data/flux-pietons/, contrat flux_osint/docs/francemonitor_flux_format.md) ───
+// ESTIMATIONS MODÉLISÉES, jamais des mesures : données agrégées, aucune donnée individuelle.
+
+export interface FluxTopRue { rue: string; chargeP90: number; densiteP90: number; pSaturation: number }
+
+export interface FluxEvent {
+  id: string;
+  evenement: string;
+  ville: string;
+  /** null : ville calculée hors de la configuration de flux_osint. */
+  codeInsee: string | null;
+  debut: string | null;
+  lieu: string;
+  lieuSuppose: boolean;
+  /** [lon, lat] du point de rassemblement. */
+  point: [number, number];
+  affluence: { p10: number; p50: number; p90: number; base: string };
+  meteo: string | null;
+  recale: boolean;
+  cortege: boolean;
+  calculeLe: string;
+  fichier: string;
+  resume: { troncons: number; satures: number; goulots: number; topRues: FluxTopRue[] };
+}
+
+export interface FluxIndex {
+  version: 1;
+  generatedAt: string;
+  avertissement: string;
+  methode: string;
+  evenements: FluxEvent[];
+}
+
+export type FluxPhase = 'arrivee' | 'depart';

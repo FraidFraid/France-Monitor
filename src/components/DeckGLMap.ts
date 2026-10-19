@@ -16,6 +16,9 @@ import { emsZoneFeatures } from './deckgl/environment-map-ems.ts';
 import { PROTEST_LAYERS, PROTEST_LAYER_IDS, protestFeatures } from './deckgl/protests-map.ts';
 import { CRIME_CITY_LAYERS, CRIME_LAYERS, CRIME_LAYER_IDS, crimeCityFeatures, crimeDeptFeatures } from './deckgl/crime-map.ts';
 import { WEBCAM_LAYERS, WEBCAM_LAYER_IDS, webcamFeatures, webcamSourceSpec } from './deckgl/webcams-map.ts';
+import { FLUX_LAYERS, FLUX_LAYER_IDS, fluxFeatures, fluxSourceSpec } from './deckgl/flux-pietons-map.ts';
+import type { FluxFeature } from '../services/flux-pietons.ts';
+import type { FluxPhase } from '../types/index.ts';
 import type { WebcamsDataset } from '../types/index.ts';
 import { DEFAULT_CRIME_INDICATOR } from '../services/crime.ts';
 import { ASNR_RING_LAYER, asnrRingFeatures } from './deckgl/nuclear-map-asnr.ts';
@@ -195,6 +198,8 @@ import {
   SRC_WEBCAMS,
   LYR_WEBCAMS,
   LYR_WEBCAM_CLUSTER,
+  SRC_FLUX,
+  LYR_FLUX_LINES,
   SRC_CRIME_CITIES,
   LYR_CRIME_FILL,
   LYR_CRIME_CITY,
@@ -500,6 +505,11 @@ export class DeckGLMap {
   private webcamHoverPopup: maplibregl.Popup | null = null;
   private webcamHoverShown = false;
   private onWebcamClick: ((id: string) => void) | null = null;
+  /** Flux piétons : objets de l'événement choisi et phase (arrivée ou dispersion) ; infobulle au survol d'une rue. */
+  private fluxData: readonly FluxFeature[] | null = null;
+  private fluxPhase: FluxPhase = 'arrivee';
+  private fluxHoverPopup: maplibregl.Popup | null = null;
+  private fluxHoverShown = false;
   private emsData: EmsResponse | null = null;
   private asnrData: AsnrResponse | null = null;
   private _forestDangerFill = false;
@@ -843,6 +853,7 @@ export class DeckGLMap {
     this.map.addSource(SRC_CRIME_DEPTS, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_CRIME_CITIES, envSourceSpec());
     this.map.addSource(SRC_WEBCAMS, webcamSourceSpec());
+    this.map.addSource(SRC_FLUX, fluxSourceSpec());
 
     // NASA GIBS — dernière image VIIRS publiée (fumée / cicatrices)
     this.map.addSource(SRC_MODIS, {
@@ -2318,6 +2329,8 @@ export class DeckGLMap {
     for (const layer of CRIME_CITY_LAYERS) this.map.addLayer(layer);
     // Webcams (deckgl/webcams-map.ts) : groupes et points, masqués jusqu'à setLayerVisibility.
     for (const layer of WEBCAM_LAYERS) this.map.addLayer(layer);
+    // Flux piétons (deckgl/flux-pietons-map.ts) : isochrones, rues, rassemblement, masqués jusqu'à setLayerVisibility.
+    for (const layer of FLUX_LAYERS) this.map.addLayer(layer);
 
     // Séismes et marégraphes (phase B) au-dessus de toutes les surfaces : ajoutés ici, sous la première couche de points qui suit la dernière surface.
     placeEnvBPoints(this.map);
@@ -2618,6 +2631,7 @@ export class DeckGLMap {
     this.initProtestsInteractions();
     this.initCrimeInteractions();
     this.initWebcamsInteractions();
+    this.initFluxInteractions();
 
 
     // Énergie (spec 2026-10-16 § 6) : un seul survol, une seule bulle, fiche détaillée épinglée au clic.
@@ -3234,9 +3248,13 @@ export class DeckGLMap {
       }
       out.push(cand);
     }
-    // Une webcam (point ou groupe) visée passe devant les surfaces de l'énergie (départements en tension, régions) : son clic ouvre sa fiche seule.
+    // Une webcam (point ou groupe) ou une rue des flux piétons visée passe devant les surfaces de l'énergie (départements en
+    // tension, régions) : son infobulle ou sa fiche s'affiche seule.
     const webcamLayers = [LYR_WEBCAMS, LYR_WEBCAM_CLUSTER].filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
     if (webcamLayers.length > 0 && map.queryRenderedFeatures(point, { layers: webcamLayers }).length > 0) return out.filter((c) => c.coordinates !== undefined);
+    const fluxBox: [maplibregl.PointLike, maplibregl.PointLike] = [[point.x - 4, point.y - 4], [point.x + 4, point.y + 4]];
+    if (map.getLayer(LYR_FLUX_LINES) && map.getLayoutProperty(LYR_FLUX_LINES, 'visibility') !== 'none'
+      && map.queryRenderedFeatures(fluxBox, { layers: [LYR_FLUX_LINES] }).length > 0) return out.filter((c) => c.coordinates !== undefined);
     return out;
   }
 
@@ -4552,6 +4570,7 @@ export class DeckGLMap {
       ...PROTEST_LAYER_IDS,
       ...CRIME_LAYER_IDS,
       ...WEBCAM_LAYER_IDS,
+      ...FLUX_LAYER_IDS,
     ];
 
     let activeLayers: string[] = [];
@@ -4581,6 +4600,8 @@ export class DeckGLMap {
       activeLayers = [...CRIME_LAYER_IDS];
     } else if (categoryId === 'webcams') {
       activeLayers = [...WEBCAM_LAYER_IDS];
+    } else if (categoryId === 'pedestrianFlows') {
+      activeLayers = [...FLUX_LAYER_IDS];
     } else if (categoryId === 'trafficRoad') {
       activeLayers = [LYR_TRAFFIC, ...TRAFFIC_LAYER_KEYS.trafficRoad];
     } else if (categoryId === 'trafficAir') {
@@ -6288,7 +6309,7 @@ export class DeckGLMap {
       // Surfaces départementales exclues (comme la vigilance et la météo des forêts) : elles couvrent la carte et bloqueraient le profil radar ; séismes et marégraphes restent.
       // Même règle pour le remplissage des départements en anomalie Internet (le contour reste cliquable).
       ...ENV_HOVER_LAYERS.filter((id) => id !== LYR_WEATHER_FILL && id !== LYR_FOREST_DANGER_FILL && id !== LYR_DROUGHT_FILL && id !== LYR_AIR_FILL), LYR_WEATHER_ICONS,
-      LYR_POINTS, LYR_CLUSTER_CIRCLE, LYR_MILITARY_BASES_CIRCLE, LYR_HOSPITALS, LYR_PROTESTS, LYR_CRIME_CITY, LYR_WEBCAMS, LYR_WEBCAM_CLUSTER,
+      LYR_POINTS, LYR_CLUSTER_CIRCLE, LYR_MILITARY_BASES_CIRCLE, LYR_HOSPITALS, LYR_PROTESTS, LYR_CRIME_CITY, LYR_WEBCAMS, LYR_WEBCAM_CLUSTER, LYR_FLUX_LINES,
       ...Object.values(TRAFFIC_LAYER_KEYS).flat(), ...OUT_HOVER_LAYERS.filter((id) => id !== LYR_OUT_INTERNET_FILL), ...SOV_HOVER_LAYERS,
     ].filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
     return ids.length > 0 && map.queryRenderedFeatures(point, { layers: ids }).length > 0;
@@ -7493,6 +7514,46 @@ export class DeckGLMap {
     });
   }
 
+  /** Flux piétons : objets de l'événement choisi (null : vide la carte) et phase affichée. */
+  updateFluxLayer(data: readonly FluxFeature[] | null, phase: FluxPhase): void {
+    this.fluxData = data;
+    this.fluxPhase = phase;
+    (this.map?.getSource(SRC_FLUX) as maplibregl.GeoJSONSource | undefined)?.setData(fluxFeatures(data, phase));
+    this.hideFluxHover();
+  }
+
+  private hideFluxHover(): void {
+    if (!this.fluxHoverShown) return;
+    this.fluxHoverShown = false;
+    this.fluxHoverPopup?.remove();
+  }
+
+  /** Couche Flux piétons : infobulle préparée et échappée au survol d'une rue. */
+  private initFluxInteractions(): void {
+    const map = this.map;
+    if (!map) return;
+    const shown = (): boolean => map.getLayer(LYR_FLUX_LINES) !== undefined && map.getLayoutProperty(LYR_FLUX_LINES, 'visibility') !== 'none';
+    map.on('mousemove', (e) => {
+      // Rues fines : tolérance de 4 px autour du curseur ; la plus chargée l'emporte (tri par sortKey décroissant).
+      const box: [maplibregl.PointLike, maplibregl.PointLike] = [[e.point.x - 4, e.point.y - 4], [e.point.x + 4, e.point.y + 4]];
+      const hit = shown()
+        ? map.queryRenderedFeatures(box, { layers: [LYR_FLUX_LINES] })
+          .sort((a, b) => Number(b.properties?.['sortKey'] ?? 0) - Number(a.properties?.['sortKey'] ?? 0))[0]
+        : undefined;
+      const html = hit ? String(hit.properties?.['body'] ?? '') : '';
+      if (!html) {
+        this.hideFluxHover();
+        return;
+      }
+      this.fluxHoverShown = true;
+      const popup = this.fluxHoverPopup
+        ?? new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 10, maxWidth: '300px', className: 'dark-popup hm-hover' });
+      this.fluxHoverPopup = popup;
+      popup.setLngLat(e.lngLat).setHTML(`<div class="hm-tip">${html}</div>`).addTo(map);
+    });
+    map.on('mouseout', () => this.hideFluxHover());
+  }
+
   /** Webcams : recensement statique (null : vide la carte). */
   updateWebcamsLayer(data: WebcamsDataset | null): void {
     this.webcamsData = data;
@@ -8110,6 +8171,9 @@ export class DeckGLMap {
     for (const id of PROTEST_LAYER_IDS) this.setVis(id, vis(layers.protests ?? false));
     for (const id of CRIME_LAYER_IDS) this.setVis(id, vis(layers.crime ?? false));
     for (const id of WEBCAM_LAYER_IDS) this.setVis(id, vis(layers.webcams ?? false));
+    for (const id of FLUX_LAYER_IDS) this.setVis(id, vis(layers.pedestrianFlows ?? false));
+    this.hideFluxHover();
+    if (layers.pedestrianFlows) (this.map?.getSource(SRC_FLUX) as maplibregl.GeoJSONSource | undefined)?.setData(fluxFeatures(this.fluxData, this.fluxPhase));
     this.hideCrimeHover();
     this.hideWebcamsHover();
     if (layers.webcams) (this.map?.getSource(SRC_WEBCAMS) as maplibregl.GeoJSONSource | undefined)?.setData(webcamFeatures(this.webcamsData));

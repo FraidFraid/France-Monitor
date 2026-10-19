@@ -65,3 +65,6 @@ FRANCE MONITOR orientation pour ministeres/
 
 # Secrets de production récupérés par `vercel env pull` (migration VM) — ne JAMAIS commiter.
 .env.vercel*
+
+# Prévisions flux_osint (écrites par son batch toutes les 15 min ; en production dans /var/lib/francemonitor/data/flux-pietons)
+public/data/flux-pietons/
