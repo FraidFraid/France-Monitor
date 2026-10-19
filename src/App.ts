@@ -5648,11 +5648,14 @@ export class App {
     this.energyFocusActive = energyPressed;
     this.energyFocusPreview = null;
     this.syncEnergyFocus();
-    // Vue générale : la pastille dont le panneau est ouvert reste mise en avant, comme une pastille Énergie allumée.
-    const open = this.currentFloatingPanelId;
-    this.generalFocusActive = open && !isEnergyLayerKey(open) && this.isFloatingPanelVisible(open) ? open : null;
+    // Vue générale : la pastille dont le panneau est ouvert reste mise en avant, comme une pastille Énergie allumée. Lu à l'image
+    // suivante : à l'ouverture ou à la fermeture d'un panneau, sa visibilité n'est à jour qu'après ce rafraîchissement.
     this.generalFocusPreview = null;
-    this.syncGeneralFocus();
+    requestAnimationFrame(() => {
+      const open = this.currentFloatingPanelId;
+      this.generalFocusActive = open && !isEnergyLayerKey(open) && this.isFloatingPanelVisible(open) ? open : null;
+      this.syncGeneralFocus();
+    });
   }
 
   /**
@@ -5675,7 +5678,7 @@ export class App {
     const key = inGeneral ? this.generalFocusPreview ?? this.generalFocusActive : null;
     if (key !== this.generalFocusShown) {
       this.generalFocusShown = key;
-      this.mapContainer?.setLegendHover(key);
+      this.mapContainer?.setGeneralFocus(key);
     }
     let panel = document.getElementById('general-focus-key');
     const switcher = this.floatingPanelSwitcherEl;

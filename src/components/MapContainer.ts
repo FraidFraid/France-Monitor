@@ -416,6 +416,11 @@ export class MapContainer {
     this.deckMap?.setLegendHover(categoryId);
   }
 
+  /** Vue générale : pastille mise en avant (survolée ou panneau ouvert), retenue par la carte ; null : aucune. */
+  setGeneralFocus(key: string | null): void {
+    this.deckMap?.setGeneralFocus(key);
+  }
+
   // ─── Events ───
   setOnItemClick(handler: (item: NewsItem, point?: { x: number; y: number }) => void): void {
     this.onItemClick = handler;

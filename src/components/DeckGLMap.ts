@@ -4552,10 +4552,21 @@ export class DeckGLMap {
     this.setLegendHover(null);
   }
 
+  /**
+   * Vue générale (19/10/2026) : pastille mise en avant, retenue ici comme les pastilles Énergie, pour qu'un retour à zéro (fin d'un
+   * survol de légende, mise en avant Énergie vidée) la rétablisse au lieu de l'effacer.
+   */
+  setGeneralFocus(key: string | null): void {
+    this.generalFocusKey = key;
+    this.setLegendHover(null);
+  }
+  private generalFocusKey: string | null = null;
+
   setLegendHover(categoryId: string | null): void {
     if (!this.map) return;
-    // Sans survol en cours, la mise en avant des pastilles allumées s'applique.
+    // Sans survol en cours, la mise en avant des pastilles allumées s'applique (Énergie, sinon la pastille de la Vue générale).
     if (categoryId === null && this.energyFocusKeys.length > 0) categoryId = ENERGY_FOCUS_CATEGORY;
+    if (categoryId === null && this.generalFocusKey !== null) categoryId = this.generalFocusKey;
     const previousCategory = this.legendHoverCategory;
     this.legendHoverCategory = categoryId;
     const allLegendLayers = [
