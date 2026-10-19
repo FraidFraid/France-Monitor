@@ -1973,7 +1973,9 @@ export class App {
     // éteint" (ex. localStorage écrit par une session précédente qui a tout
     // désactivé) est traité comme un premier chargement — sinon la carte est
     // vide (audit UI 2026-09 §5.1/§5.3 point 1).
-    const hasPersistedChildActive = hasPersistedLayers(persistedLayers);
+    // v2 : l'application s'ouvre toujours sur la Vue générale ; les couches gardées d'un autre onglet (Sécurité, Énergie…) n'y
+    // reviennent pas (19/10/2026) : départ sur la Vue générale, que sa surveillance complète (orange ou rouge).
+    const hasPersistedChildActive = !this.uiV2 && hasPersistedLayers(persistedLayers);
     if (hasPersistedChildActive) {
       this.activeLayers = this.normalizeLayerState({ ...DEFAULT_LAYERS, ...persistedLayers });
       // v1 : les panneaux des couches persistées se rouvrent (comportement historique) ; v2

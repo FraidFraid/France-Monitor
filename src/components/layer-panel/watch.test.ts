@@ -6,13 +6,13 @@ const NOW = Date.parse('2026-10-12T08:00:00Z');
 const levels = (entries: Array<[keyof MapLayers, WatchLevel]>): Map<keyof MapLayers, WatchLevel> => new Map(entries);
 
 describe('Vue générale dynamique (12/10/2026)', () => {
-  it('socle toujours (vert par défaut), autres couches seulement en jaune ou plus ou n.d. ; rouge d’abord', () => {
+  it('socle toujours (vert par défaut), autres couches seulement en orange ou en rouge (19/10/2026 : ni jaune ni n.d.) ; rouge d’abord', () => {
     const out = generalWatch(levels([
       ['environmental', 'jaune'], ['floods', 'vert'], ['fires', 'orange'], ['earthquakes', 'vert'], ['cyber', 'nd'],
       ['military', 'rouge'], ['powerGrid', 'jaune'],
     ]));
     expect(out.map((e) => [e.key, e.level])).toEqual([
-      ['military', 'rouge'], ['fires', 'orange'], ['environmental', 'jaune'], ['powerGrid', 'jaune'], ['cyber', 'nd'], ['floods', 'vert'],
+      ['military', 'rouge'], ['fires', 'orange'], ['environmental', 'jaune'], ['floods', 'vert'],
     ]);
     expect(generalWatch(new Map()).map((e) => e.key)).toEqual([...GENERAL_SOCLE]);
   });
@@ -48,10 +48,10 @@ describe('Vue générale dynamique (12/10/2026)', () => {
 });
 
 describe('puces de la Vue générale (13/10/2026)', () => {
-  it('une couche du socle au vert garde sa couche mais perd sa puce ; jaune ou n.d. : puce gardée ; hors suivi : puce gardée', () => {
-    const entries = generalWatch(new Map<keyof MapLayers, WatchLevel>([['environmental', 'vert'], ['floods', 'jaune'], ['fires', 'nd']]));
+  it('une couche du socle sous l’orange garde sa couche mais perd sa puce (19/10/2026) ; orange : puce gardée ; hors suivi : puce gardée', () => {
+    const entries = generalWatch(new Map<keyof MapLayers, WatchLevel>([['environmental', 'vert'], ['floods', 'jaune'], ['fires', 'orange']]));
     expect(generalChipHidden('environmental', entries)).toBe(true);
-    expect(generalChipHidden('floods', entries)).toBe(false);
+    expect(generalChipHidden('floods', entries)).toBe(true);
     expect(generalChipHidden('fires', entries)).toBe(false);
     expect(generalChipHidden('trafficRoad' as keyof MapLayers, entries)).toBe(false);
   });

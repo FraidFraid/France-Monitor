@@ -1,6 +1,6 @@
 // src/components/layer-panel/watch.ts : surveillance de la Vue générale dynamique (12/10/2026). Pur, sans DOM.
 // La Vue générale montre un socle (vigilance météo, crues) et, pour les couches suivies en continu, seulement celles qui sont en
-// jaune ou plus en ce moment ; une source lue mais indisponible garde sa puce en « n.d. » (une source muette n'est pas un calme).
+// orange ou en rouge en ce moment (décision du 19/10/2026 : le jaune et les sources « n.d. » n'y figurent plus, leur onglet les montre).
 // Le niveau de chaque couche est celui de la pastille de son panneau (fonctions *HeadLevel partagées), jamais un calcul parallèle.
 import type {
   AirQualityResponse, CloudOutagesResponse, CyberResponse, DroughtResponse, EarthquakesResponse, EcowattResponse, FiresResponse,
@@ -103,9 +103,12 @@ export function watchLevels(input: GeneralWatchInput): Map<keyof MapLayers, Watc
   return out;
 }
 
+/** Niveaux qui font entrer une couche suivie dans la Vue générale (19/10/2026 : orange et rouge seulement). */
+const GENERAL_LEVELS: ReadonlySet<WatchLevel> = new Set<WatchLevel>(['orange', 'rouge']);
+
 /**
- * Puces de la Vue générale : le socle toujours, les autres couches suivies en jaune ou plus, ou en « n.d. » (source indisponible) ;
- * rouge d'abord, puis orange, jaune, n.d., vert ; à niveau égal, l'ordre de WATCHED_LAYERS.
+ * Puces de la Vue générale : le socle toujours, les autres couches suivies en orange ou en rouge ; rouge d'abord, puis orange, puis
+ * le socle à son niveau ; à niveau égal, l'ordre de WATCHED_LAYERS.
  */
 export function generalWatch(levels: ReadonlyMap<keyof MapLayers, WatchLevel>): WatchEntry[] {
   const out: WatchEntry[] = [];
@@ -115,7 +118,7 @@ export function generalWatch(levels: ReadonlyMap<keyof MapLayers, WatchLevel>): 
       out.push({ key, level: level ?? 'vert' });
     } else if (CRISIS_ONLY.has(key)) {
       if (level === 'rouge') out.push({ key, level });
-    } else if (level !== undefined && level !== 'vert') {
+    } else if (level !== undefined && GENERAL_LEVELS.has(level)) {
       out.push({ key, level });
     }
   }
@@ -123,11 +126,11 @@ export function generalWatch(levels: ReadonlyMap<keyof MapLayers, WatchLevel>): 
 }
 
 /**
- * Puce masquée dans la Vue générale (13/10/2026) : couche suivie au vert (le socle, seul à y figurer au vert) ; sa couche reste
- * allumée sur la carte. Jaune et plus, ou « n.d. » (source illisible, jamais prise pour un calme) : puce gardée. Pure.
+ * Puce masquée dans la Vue générale : couche suivie sous l'orange (le socle, seul à y figurer sous l'orange, 19/10/2026) ; sa couche
+ * reste allumée sur la carte. Orange et rouge : puce gardée. Pure.
  */
 export function generalChipHidden(key: keyof MapLayers, entries: readonly WatchEntry[]): boolean {
-  return entries.some((e) => e.key === key && e.level === 'vert');
+  return entries.some((e) => e.key === key && !GENERAL_LEVELS.has(e.level));
 }
 
 export interface WatchTransition {
