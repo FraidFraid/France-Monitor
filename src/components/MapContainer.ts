@@ -25,7 +25,7 @@ import type { CrimeDataset, CrimeIndicatorKey } from '../types/index.ts';
 import type { WebcamsDataset } from '../types/index.ts';
 import type { FluxPhase } from '../types/index.ts';
 import type { FluxFeature } from '../services/flux-pietons.ts';
-import type { FluxInstant } from './deckgl/flux-pietons-map.ts';
+import type { FluxInstant, FluxOtherEvent } from './deckgl/flux-pietons-map.ts';
 import type { UrgencesSyndrome } from './layer-panel/health-format.ts';
 
 /** Detect if the device is mobile (no WebGL or small screen) */
@@ -73,7 +73,8 @@ export class MapContainer {
   private crimeIndicator: CrimeIndicatorKey | null = null;
   private onWebcamClick: ((id: string) => void) | null = null;
   private webcamsData: WebcamsDataset | null = null;
-  private fluxData: { data: readonly FluxFeature[] | null; phase: FluxPhase; instant: FluxInstant | null } | null = null;
+  private fluxData: { data: readonly FluxFeature[] | null; phase: FluxPhase; instant: FluxInstant | null; others: readonly FluxOtherEvent[] } | null = null;
+  private onFluxEventClick: ((id: string) => void) | null = null;
   private onSovereigntyFeatureClick: ((layerId: string, props: Record<string, unknown>) => void) | null = null;
 
   constructor(container: HTMLElement) {
@@ -111,7 +112,8 @@ export class MapContainer {
     if (this.crimeData) this.deckMap.updateCrimeLayer(this.crimeData);
     if (this.onWebcamClick) this.deckMap.setOnWebcamClick(this.onWebcamClick);
     if (this.webcamsData) this.deckMap.updateWebcamsLayer(this.webcamsData);
-    if (this.fluxData) this.deckMap.updateFluxLayer(this.fluxData.data, this.fluxData.phase, this.fluxData.instant);
+    if (this.fluxData) this.deckMap.updateFluxLayer(this.fluxData.data, this.fluxData.phase, this.fluxData.instant, this.fluxData.others);
+    if (this.onFluxEventClick) this.deckMap.setOnFluxEventClick(this.onFluxEventClick);
     if (this.onRawMapClick) this.deckMap.setOnRawMapClick(this.onRawMapClick);
     if (this.onSatelliteView) this.deckMap.setOnSatelliteView(this.onSatelliteView);
     if (this.onEnergyKeyChange) this.deckMap.setOnEnergyKeyChange(this.onEnergyKeyChange);
@@ -592,9 +594,15 @@ export class MapContainer {
   }
 
   /** Flux piétons : objets de l'événement choisi, phase et instant du rejeu (gardés ici pour une carte créée après la lecture). */
-  updateFluxLayer(data: readonly FluxFeature[] | null, phase: FluxPhase, instant: FluxInstant | null = null): void {
-    this.fluxData = { data, phase, instant };
-    this.deckMap?.updateFluxLayer(data, phase, instant);
+  updateFluxLayer(data: readonly FluxFeature[] | null, phase: FluxPhase, instant: FluxInstant | null = null, others: readonly FluxOtherEvent[] = []): void {
+    this.fluxData = { data, phase, instant, others };
+    this.deckMap?.updateFluxLayer(data, phase, instant, others);
+  }
+
+  /** Clic sur un autre rassemblement prévu (gardé ici pour une carte créée après). */
+  setOnFluxEventClick(handler: (id: string) => void): void {
+    this.onFluxEventClick = handler;
+    this.deckMap?.setOnFluxEventClick(handler);
   }
 
   /** Webcams : recensement statique (gardé ici pour une carte créée après la lecture). */

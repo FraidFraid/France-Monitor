@@ -4585,13 +4585,13 @@ export class App {
         onPhase: (phase) => {
           this.fluxPhase = phase;
           this.fluxInstant = null;
-          this.mapContainer?.updateFluxLayer(this.fluxFeatures, phase);
+          this.pushFluxMap();
           this.pushFluxState();
         },
         // Curseur du rejeu : seule la carte change (le panneau met sa ligne à jour lui-même, sans nouveau rendu).
         onTime: (atMin) => {
           this.fluxInstant = atMin;
-          this.mapContainer?.updateFluxLayer(this.fluxFeatures, this.fluxPhase, this.fluxInstantOf(atMin));
+          this.pushFluxMap();
         },
       });
       panel.mount();
@@ -4612,9 +4612,10 @@ export class App {
 
   /** Ouverture (case, restauration) : panneau sur l'état connu, carte reposée, index relu. */
   private openFluxPanel(): void {
+    this.mapContainer?.setOnFluxEventClick((id) => { this.selectFluxEvent(id, true).catch(() => undefined); });
     this.fluxPanel?.show();
     this.pushFluxState();
-    this.mapContainer?.updateFluxLayer(this.fluxFeatures, this.fluxPhase, this.fluxInstantOf(this.fluxInstant));
+    this.pushFluxMap();
     this.refreshFluxLegend();
     this.loadFlux().catch((err) => console.error('[App] Lecture Flux piétons en échec', err));
   }
@@ -4625,6 +4626,24 @@ export class App {
       maxDistance: this.fluxMaxDistance(), instant: this.fluxInstant,
     });
   }
+
+  /**
+   * Carte Flux piétons : rues de l'événement choisi (phase ou instant du rejeu) et autres rassemblements prévus, en anneau ;
+   * la légende suit le mode (totaux de la phase ou instant du rejeu).
+   */
+  private pushFluxMap(): void {
+    const others = (this.fluxIndex?.evenements ?? []).filter((e) => e.id !== this.fluxSelectedId).map((e) => ({
+      id: e.id, point: e.point,
+      label: `${e.ville} · ${e.debut ? new Date(e.debut).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'date n.d.'}`,
+    }));
+    this.mapContainer?.updateFluxLayer(this.fluxFeatures, this.fluxPhase, this.fluxInstantOf(this.fluxInstant), others);
+    const instantMode = this.fluxInstant !== null;
+    if (instantMode !== this.fluxLegendInstant) {
+      this.fluxLegendInstant = instantMode;
+      this.refreshFluxLegend();
+    }
+  }
+  private fluxLegendInstant = false;
 
   /** Distance au point de la rue la plus lointaine (m) ; null si la carte lue ne porte pas les distances (publication ancienne). */
   private fluxMaxDistance(): number | null {
@@ -4678,7 +4697,7 @@ export class App {
         this.fluxSelectedId = null;
         this.fluxFeatures = null;
         this.fluxGeo = 'idle';
-        this.mapContainer?.updateFluxLayer(null, this.fluxPhase);
+        this.pushFluxMap();
         this.pushFluxState();
       }
     });
@@ -4704,13 +4723,13 @@ export class App {
       this.fluxFeatures = null;
       this.fluxGeo = 'error';
     }
-    this.mapContainer?.updateFluxLayer(this.fluxFeatures, this.fluxPhase, this.fluxInstantOf(this.fluxInstant));
+    this.pushFluxMap();
     this.pushFluxState();
   }
 
   private refreshFluxLegend(): void {
     if (!this.mapLegend) return;
-    this.mapLegend.setCategories([{ ...fluxLegend(this.fluxIndex), visible: this.activeLayers.pedestrianFlows }]);
+    this.mapLegend.setCategories([{ ...fluxLegend(this.fluxIndex, this.fluxInstant !== null), visible: this.activeLayers.pedestrianFlows }]);
   }
 
   // ─── Webcams : recensement statique public/data/webcams.json (scripts/build-webcams.mjs) ───

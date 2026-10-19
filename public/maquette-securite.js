@@ -432,7 +432,7 @@
     stability: [],
     protests: ['mqs-prot', 'mqs-prot-label'],
     // Flux piétons : calques de l'application (rues chargées, isochrones, point de rassemblement), estompés comme les autres.
-    pedestrianFlows: ['flux-pietons-lines', 'flux-pietons-iso', 'flux-pietons-point'],
+    pedestrianFlows: ['flux-pietons-lines', 'flux-pietons-iso', 'flux-pietons-point', 'flux-pietons-others', 'flux-pietons-others-label'],
     crime: ['mqs-crime-city', 'mqs-crime-c', 'mqs-crime-c-label', 'mqs-crime-d-fill', 'mqs-crime-d-line'],
     outagesTelecom: ['mqs-dept-level', 'mqs-dept-level-line', 'mqs-agg-disc', 'mqs-agg-count', 'mqs-low-disc', 'mqs-low-count', 'mqs-sites-recent', 'mqs-sites-long'],
     outagesInternet: ['mqs-inet', 'mqs-inet-past-fill', 'mqs-inet-disc', 'mqs-inet-label'],
@@ -485,7 +485,8 @@
     const data = src?.getData ? await src.getData().catch(() => null) : null;
     const pts = [];
     const walk = (c) => { if (typeof c?.[0] === 'number') pts.push(c); else c?.forEach?.(walk); };
-    for (const f of data?.features ?? []) if (f.properties?.kind !== 'isochrone') walk(f.geometry?.coordinates);
+    // Rues et point du rassemblement choisi seulement (les autres rassemblements prévus sont partout en France).
+    for (const f of data?.features ?? []) if (f.properties?.kind === 'troncon' || f.properties?.kind === 'rassemblement') walk(f.geometry?.coordinates);
     if (!pts.length) { if (tries > 0 && S.focus.has('pedestrianFlows')) setTimeout(() => zoomFlux(tries - 1), 500); return; }
     const lons = pts.map((c) => c[0]), lats = pts.map((c) => c[1]);
     S.m.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]], { padding: 60, maxZoom: 15, duration: 1200 });
@@ -1098,6 +1099,8 @@
       <div class="mqs-row">${icon('cloud', '#fff', CAT.cloud)}Site cloud (pages d’état, zones regroupées ; couleur d’état si incident) ${icon('server', '#fff', CAT.dc)}centre de données en service ${icon('server', CAT.dc, DARK)}en projet (avec la pastille)</div>
       <div class="mqs-row">${swatch(PROT.annonce, 'ring')}Manifestation annoncée ${swatch(PROT.signale, 'disc')}rapportée sans heurts ${swatch(L1.rouge, 'disc')}heurts ou tensions ; taille = articles sur 24${NB}h</div>
       <div class="mqs-row mqs-note">Criminalité (SSMSI, annuelle, jamais une alerte) : ${CRIME_RAMP.slice(0, 4).map(([, c, w]) => `${swatch(c, 'disc')}${w}`).join(' ')} la moyenne nationale. Sans pastille, villes à 2 fois ou plus en anneau ; avec la pastille, toutes les villes de 20${NB}000 habitants et plus et les départements, pour l’indicateur du panneau.</div>
+      <div class="mqs-row">${swatch('#22d3ee', 'line')}Flux piétons (estimations modélisées) : rue chargée, ${swatch(L1.jaune, 'line')}${swatch(L1.orange, 'line')}${swatch(L1.rouge, 'line')}saturation possible, probable, très probable</div>
+      <div class="mqs-row mqs-note">Totaux de la phase : couleur = part des tirages où la rue sature, épaisseur = personnes passées. Rejeu (curseur du panneau) : couleur = débit rapporté à la capacité de la rue (jaune dès la moitié, rouge au-delà), épaisseur = débit. ${swatch('#e5e7eb', 'dash')}5, 10 et 20${NB}min à pied ; ${swatch('#ffffff', 'disc')}rassemblement choisi ; ${swatch('#ffffff', 'ring')}autre rassemblement prévu (clic).</div>
       <div class="mqs-row">${swatch('#e8e8ec', 'dash')}Zone de défense et de sécurité</div>
       <div class="mqs-row mqs-note">Sans pastille active, toutes les couches sont affichées. Une pastille met sa couche en avant et estompe les autres (clic, cumulable ; survol pour un aperçu).</div>
       <details${ko ? ' open' : ''}><summary>Sources · ${src.length - ko}${NB}à jour, ${ko}${NB}en défaut</summary>${src.map(([k, v, st]) => `<div class="mqs-row mqs-src"><i class="mqs-src-${st}"></i><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}</details>`;
@@ -1126,9 +1129,13 @@
     protests: () => ['Manifestations', [[swatch(PROT.annonce, 'ring'), 'Annoncée, non confirmée'], [swatch(PROT.signale, 'disc'), 'Rapportée sans heurts'],
       [swatch(L1.rouge, 'disc'), 'Heurts ou tensions'], [swatch('#8a93a6', 'none'), `Taille = articles sur 24${NB}h`]]],
     crime: () => ['Criminalité (annuelle)', CRIME_RAMP.slice(0, 4).map(([, c, w]) => [swatch(c, 'disc'), `${w.charAt(0).toUpperCase()}${w.slice(1)}${/moyenne/.test(w) ? '' : ' la moyenne'}`])],
-    pedestrianFlows: () => ['Flux piétons (estimations)', [[swatch('#22d3ee', 'line'), 'Rue chargée, épaisseur = personnes passées'],
-      [swatch(L1.jaune, 'line'), 'Saturation possible'], [swatch(L1.orange, 'line'), 'Saturation probable'], [swatch(L1.rouge, 'line'), 'Saturation très probable'],
-      [swatch('#e5e7eb', 'dash'), 'Isochrones 5, 10 et 20 min à pied'], [swatch('#ffffff', 'disc'), 'Point de rassemblement']]],
+    // Mêmes mots que la légende de la couche (flux-pietons-legend.ts) : totaux de la phase, ou instant du rejeu (curseur du panneau).
+    pedestrianFlows: () => ['Flux piétons (estimations)', [[swatch('#22d3ee', 'line'), 'Rue fluide ; épaisseur = personnes passées, ou débit au rejeu'],
+      [swatch(L1.jaune, 'line'), 'Saturation possible ; au rejeu, débit dès la moitié de la capacité'],
+      [swatch(L1.orange, 'line'), 'Saturation probable ; au rejeu, débit proche de la capacité'],
+      [swatch(L1.rouge, 'line'), 'Saturation très probable ; au rejeu, rue saturée'],
+      [swatch('#e5e7eb', 'dash'), 'Isochrones 5, 10 et 20 min à pied'], [swatch('#ffffff', 'disc'), 'Rassemblement choisi'],
+      [swatch('#ffffff', 'ring'), 'Autre rassemblement prévu (clic)']]],
   };
   const focusKey = document.createElement('div');
   focusKey.id = 'mqs-focus-key';

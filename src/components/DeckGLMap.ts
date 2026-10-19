@@ -16,7 +16,7 @@ import { emsZoneFeatures } from './deckgl/environment-map-ems.ts';
 import { PROTEST_LAYERS, PROTEST_LAYER_IDS, protestFeatures } from './deckgl/protests-map.ts';
 import { CRIME_CITY_LAYERS, CRIME_LAYERS, CRIME_LAYER_IDS, crimeCityFeatures, crimeDeptFeatures } from './deckgl/crime-map.ts';
 import { WEBCAM_LAYERS, WEBCAM_LAYER_IDS, webcamFeatures, webcamSourceSpec } from './deckgl/webcams-map.ts';
-import { FLUX_LAYERS, FLUX_LAYER_IDS, fluxFeatures, fluxSourceSpec, type FluxInstant } from './deckgl/flux-pietons-map.ts';
+import { FLUX_LAYERS, FLUX_LAYER_IDS, fluxFeatures, fluxSourceSpec, type FluxInstant, type FluxOtherEvent } from './deckgl/flux-pietons-map.ts';
 import type { FluxFeature } from '../services/flux-pietons.ts';
 import type { FluxPhase } from '../types/index.ts';
 import type { WebcamsDataset } from '../types/index.ts';
@@ -200,6 +200,7 @@ import {
   LYR_WEBCAM_CLUSTER,
   SRC_FLUX,
   LYR_FLUX_LINES,
+  LYR_FLUX_OTHERS,
   SRC_CRIME_CITIES,
   LYR_CRIME_FILL,
   LYR_CRIME_CITY,
@@ -509,6 +510,8 @@ export class DeckGLMap {
   private fluxData: readonly FluxFeature[] | null = null;
   private fluxPhase: FluxPhase = 'arrivee';
   private fluxInstant: FluxInstant | null = null;
+  private fluxOthers: readonly FluxOtherEvent[] = [];
+  private onFluxEventClick: ((id: string) => void) | null = null;
   private fluxHoverPopup: maplibregl.Popup | null = null;
   private fluxHoverShown = false;
   private emsData: EmsResponse | null = null;
@@ -7510,11 +7513,12 @@ export class DeckGLMap {
   }
 
   /** Flux piétons : objets de l'événement choisi (null : vide la carte) et phase affichée. */
-  updateFluxLayer(data: readonly FluxFeature[] | null, phase: FluxPhase, instant: FluxInstant | null = null): void {
+  updateFluxLayer(data: readonly FluxFeature[] | null, phase: FluxPhase, instant: FluxInstant | null = null, others: readonly FluxOtherEvent[] = []): void {
     this.fluxData = data;
     this.fluxPhase = phase;
     this.fluxInstant = instant;
-    (this.map?.getSource(SRC_FLUX) as maplibregl.GeoJSONSource | undefined)?.setData(fluxFeatures(data, phase, instant));
+    this.fluxOthers = others;
+    (this.map?.getSource(SRC_FLUX) as maplibregl.GeoJSONSource | undefined)?.setData(fluxFeatures(data, phase, instant, others));
     this.hideFluxHover();
   }
 
@@ -7524,10 +7528,22 @@ export class DeckGLMap {
     this.fluxHoverPopup?.remove();
   }
 
+  /** Clic sur un autre rassemblement prévu : App.ts fait passer la carte et le panneau à lui. */
+  setOnFluxEventClick(handler: (id: string) => void): void {
+    this.onFluxEventClick = handler;
+  }
+
   /** Couche Flux piétons : infobulle préparée et échappée au survol d'une rue. */
   private initFluxInteractions(): void {
     const map = this.map;
     if (!map) return;
+    // Autres rassemblements prévus : main au survol, clic = la carte et le panneau passent à lui.
+    map.on('mouseenter', LYR_FLUX_OTHERS, () => { map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', LYR_FLUX_OTHERS, () => { map.getCanvas().style.cursor = ''; });
+    map.on('click', LYR_FLUX_OTHERS, (e) => {
+      const id = e.features?.[0]?.properties?.['id'];
+      if (typeof id === 'string' && id) this.onFluxEventClick?.(id);
+    });
     const shown = (): boolean => map.getLayer(LYR_FLUX_LINES) !== undefined && map.getLayoutProperty(LYR_FLUX_LINES, 'visibility') !== 'none';
     map.on('click', (e) => {
       // Rues fines : tolérance de 4 px autour du curseur ; la plus chargée l'emporte (tri par sortKey décroissant).
@@ -8165,7 +8181,7 @@ export class DeckGLMap {
     for (const id of WEBCAM_LAYER_IDS) this.setVis(id, vis(layers.webcams ?? false));
     for (const id of FLUX_LAYER_IDS) this.setVis(id, vis(layers.pedestrianFlows ?? false));
     this.hideFluxHover();
-    if (layers.pedestrianFlows) (this.map?.getSource(SRC_FLUX) as maplibregl.GeoJSONSource | undefined)?.setData(fluxFeatures(this.fluxData, this.fluxPhase, this.fluxInstant));
+    if (layers.pedestrianFlows) (this.map?.getSource(SRC_FLUX) as maplibregl.GeoJSONSource | undefined)?.setData(fluxFeatures(this.fluxData, this.fluxPhase, this.fluxInstant, this.fluxOthers));
     this.hideCrimeHover();
     this.hideWebcamsHover();
     if (layers.webcams) (this.map?.getSource(SRC_WEBCAMS) as maplibregl.GeoJSONSource | undefined)?.setData(webcamFeatures(this.webcamsData));

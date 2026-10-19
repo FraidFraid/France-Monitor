@@ -6,7 +6,7 @@ import type { GeoJSONSourceSpecification, LayerSpecification } from 'maplibre-gl
 import type { FluxPhase, FluxTiming } from '../../types/index.ts';
 import { BAND_WORD, bandHex, phaseValues, saturationBand, type FluxBand, type FluxFeature, type FluxSegmentProps } from '../../services/flux-pietons.ts';
 import { relativeLabel, segmentFlowAt } from '../../services/flux-timeline.ts';
-import { LYR_FLUX_ISO, LYR_FLUX_LINES, LYR_FLUX_POINT, SRC_FLUX } from './constants.ts';
+import { LYR_FLUX_ISO, LYR_FLUX_LINES, LYR_FLUX_OTHERS, LYR_FLUX_OTHERS_LABEL, LYR_FLUX_POINT, SRC_FLUX } from './constants.ts';
 import { escapeHtml } from './format-utils.ts';
 
 const NBSP = ' ';
@@ -24,6 +24,9 @@ function segmentProps(p: Record<string, unknown>): FluxSegmentProps {
     distance: typeof p['distance'] === 'number' && Number.isFinite(p['distance']) ? p['distance'] : null,
   };
 }
+
+/** Autre rassemblement prévu, non choisi : point, identifiant (clic) et étiquette « ville · date ». */
+export interface FluxOtherEvent { id: string; point: [number, number]; label: string }
 
 /** Instant du rejeu : minutes après le début annoncé et paramètres de temps de l'événement. */
 export interface FluxInstant { atMin: number; timing: FluxTiming }
@@ -73,10 +76,14 @@ export function fluxTipBody(p: FluxSegmentProps, phase: FluxPhase): string {
  * Objets de la carte pour la phase choisie : rues sans passage dans cette phase (moins d'une personne) retirées. Avec un instant du
  * rejeu : débit de chaque rue à cet instant (rues vides retirées) ; épaisseur = personnes passant en 10 minutes à ce débit.
  */
-export function fluxFeatures(list: readonly FluxFeature[] | null, phase: FluxPhase, instant: FluxInstant | null = null): GeoJSON.FeatureCollection {
-  if (!list) return { type: 'FeatureCollection', features: [] };
-  const features: GeoJSON.Feature[] = [];
-  for (const f of list) {
+export function fluxFeatures(
+  list: readonly FluxFeature[] | null, phase: FluxPhase, instant: FluxInstant | null = null, others: readonly FluxOtherEvent[] = [],
+): GeoJSON.FeatureCollection {
+  // Autres rassemblements prévus : toujours visibles, même sans événement choisi.
+  const features: GeoJSON.Feature[] = others.map((o) => ({
+    type: 'Feature', geometry: { type: 'Point', coordinates: o.point }, properties: { kind: 'autre', id: o.id, label: o.label },
+  }));
+  for (const f of list ?? []) {
     const kind = f.properties['kind'];
     if (kind !== 'troncon') {
       features.push({ type: 'Feature', geometry: f.geometry, properties: { ...f.properties } });
@@ -126,9 +133,18 @@ export const FLUX_LAYERS: readonly LayerSpecification[] = [
     },
   },
   {
+    id: LYR_FLUX_OTHERS, type: 'circle', source: SRC_FLUX, filter: ['==', ['get', 'kind'], 'autre'], layout: { visibility: 'none' },
+    paint: { 'circle-color': '#0a0a0f', 'circle-radius': 6, 'circle-stroke-width': 2.5, 'circle-stroke-color': '#ffffff' },
+  },
+  {
+    id: LYR_FLUX_OTHERS_LABEL, type: 'symbol', source: SRC_FLUX, filter: ['==', ['get', 'kind'], 'autre'],
+    layout: { visibility: 'none', 'text-field': ['get', 'label'], 'text-size': 11, 'text-offset': [0, 1.2], 'text-anchor': 'top', 'text-font': ['Open Sans Semibold'], 'text-optional': true },
+    paint: { 'text-color': '#e8e8ec', 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.5 },
+  },
+  {
     id: LYR_FLUX_POINT, type: 'circle', source: SRC_FLUX, filter: ['==', ['get', 'kind'], 'rassemblement'], layout: { visibility: 'none' },
     paint: { 'circle-color': '#ffffff', 'circle-radius': 6, 'circle-stroke-width': 3, 'circle-stroke-color': '#0a0a0f' },
   },
 ];
 
-export const FLUX_LAYER_IDS: readonly string[] = [LYR_FLUX_ISO, LYR_FLUX_LINES, LYR_FLUX_POINT];
+export const FLUX_LAYER_IDS: readonly string[] = [LYR_FLUX_ISO, LYR_FLUX_LINES, LYR_FLUX_OTHERS, LYR_FLUX_OTHERS_LABEL, LYR_FLUX_POINT];

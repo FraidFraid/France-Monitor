@@ -80,6 +80,8 @@ export class FluxPietonsPanel {
     if (label && e) label.textContent = replayLabel(e, atMin);
     const range = root?.querySelector<HTMLInputElement>('[data-flux-time]');
     if (range && Number(range.value) !== atMin) range.value = String(atMin);
+    // Onglets de phase désurlignés : la carte montre l'instant, plus les totaux.
+    root?.querySelectorAll<HTMLElement>('.lp-tab').forEach((t) => { t.classList.remove('is-on'); t.setAttribute('aria-selected', 'false'); });
   }
 
   private togglePlay(): void {

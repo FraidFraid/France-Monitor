@@ -195,7 +195,8 @@ export function buildFluxView(input: FluxViewInput): LayerView {
       figure: { value: `≈${NBSP}${frNumber(e.affluence.p50, 0)}`, caption: `personnes estimées · ${e.ville}, ${when(e)}`, level: null },
       status: ['ESTIMATIONS MODÉLISÉES', eventTiming(e, input.nowMs)],
     },
-    tabs, activeTab: phase,
+    // Pendant le rejeu, aucun onglet surligné : la carte montre un instant, pas les totaux d'une phase (clic = retour aux totaux).
+    tabs, activeTab: input.instant != null ? '' : phase,
     sections: [selectedSection(e, input.geo, open),
       ...(input.replay && e.temps ? [replaySection(e, input.replay, input.instant ?? null, open)] : []),
       streetsSection(e, phase, open), eventsSection(index, e, input.nowMs, open), readingSection(open), methodSection(index, open)],

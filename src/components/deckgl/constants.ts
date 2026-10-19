@@ -825,3 +825,6 @@ export const SRC_FLUX = 'flux-pietons-src';
 export const LYR_FLUX_ISO = 'flux-pietons-iso';
 export const LYR_FLUX_LINES = 'flux-pietons-lines';
 export const LYR_FLUX_POINT = 'flux-pietons-point';
+/** Autres rassemblements prévus (non choisis) : anneau blanc et étiquette « ville · date », clic = la carte passe à lui. */
+export const LYR_FLUX_OTHERS = 'flux-pietons-others';
+export const LYR_FLUX_OTHERS_LABEL = 'flux-pietons-others-label';

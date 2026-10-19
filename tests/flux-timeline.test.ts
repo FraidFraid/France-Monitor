@@ -89,3 +89,15 @@ describe('lecture et carte', () => {
     expect(instantBand(1.2)).toBe('rouge');
   });
 });
+
+describe('légende selon le mode', () => {
+  it('totaux : probabilité de saturation ; rejeu : débit rapporté à la capacité, mêmes seuils que la carte', async () => {
+    const { fluxLegend } = await import('../src/components/layer-panel/flux-pietons-legend.ts');
+    const phase = fluxLegend(null);
+    const replay = fluxLegend(null, true);
+    expect(phase.items.map((i) => i.label)[3]).toBe('saturation très probable (50 % et plus)');
+    expect(replay.items.map((i) => i.label)).toEqual(['débit sous la moitié de la capacité', 'débit de la moitié aux trois quarts', 'débit proche de la capacité', 'débit au-delà : rue saturée']);
+    expect(replay.notes?.join(' ')).toContain('Rejeu');
+    expect(phase.notes?.join(' ')).toContain('anneau blanc');
+  });
+});
