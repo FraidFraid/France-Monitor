@@ -56,16 +56,30 @@ function eventsSection(index: FluxIndex, selected: FluxEvent, nowMs: number, ope
   return {
     id: 'evenements', title: 'Événements', collapsible: true, open: open('evenements', index.evenements.length > 1),
     summary: escapeHtml(`${frNumber(index.evenements.length, 0)} prévision${index.evenements.length > 1 ? 's' : ''}`),
-    html: rows + note('Clic : la carte passe à cet événement. Seuls les rassemblements réels (couche Manifestations, saisie manuelle) sont calculés.'),
+    html: rows + note('Clic : la carte passe à cet événement. Seuls les rassemblements réels (couche Manifestations, saisie manuelle) sont calculés, avant qu’ils aient lieu.'),
   };
+}
+
+/** Fourchette affichée en tête : probable (1 chance sur 2) si publiée, sinon la large (8 sur 10). */
+export function fluxRange(a: FluxEvent['affluence']): { low: number; high: number; words: string } {
+  return a.p25 !== null && a.p75 !== null
+    ? { low: a.p25, high: a.p75, words: '1 chance sur 2' }
+    : { low: a.p10, high: a.p90, words: '8 chances sur 10' };
 }
 
 function selectedSection(e: FluxEvent, geo: FluxViewInput['geo'], open: OpenFn): FicheSection {
   const a = e.affluence;
-  const html = kvRow('Lieu', escapeHtml(e.lieuSuppose ? `${e.lieu} (lieu habituel supposé : la source n'en donne pas)` : e.lieu))
+  const r = fluxRange(a);
+  const lieu = e.lieuSuppose
+    ? `${e.lieu} (${e.lieu.startsWith('Centre de') ? 'lieu non précisé par l’annonce' : 'lieu habituel supposé : la source n’en donne pas'})`
+    : e.lieu;
+  const html = kvRow('Lieu', escapeHtml(lieu))
     + kvRow('Date', escapeHtml(when(e)))
     + kvRow('Affluence estimée', escapeHtml(`${people(a.p50)} (médiane)`))
-    + kvRow('Fourchette', escapeHtml(`${frNumber(a.p10, 0)} à ${frNumber(a.p90, 0)} (8 chances sur 10)`))
+    + kvRow('Fourchette probable', escapeHtml(`${frNumber(r.low, 0)} à ${frNumber(r.high, 0)} (${r.words})`))
+    + (r.words === '1 chance sur 2' ? kvRow('Fourchette large', escapeHtml(`${frNumber(a.p10, 0)} à ${frNumber(a.p90, 0)} (8 chances sur 10)`)) : '')
+    + (a.plafond !== null ? kvRow('Plafond du lieu', escapeHtml(`${people(a.plafond)} debout à moins de 300${NBSP}m${
+      a.partPlafonnee !== null && a.partPlafonnee > 0 ? ` · atteint dans ${Math.round(a.partPlafonnee * 100)}${NBSP}% des tirages` : ''}`)) : '')
     + kvRow('Base', escapeHtml(a.base))
     + kvRow('Météo', escapeHtml(e.meteo ?? 'n.d.'))
     + kvRow('Cortège', escapeHtml(e.cortege ? 'parcours simulé' : 'rassemblement sans parcours connu'))
@@ -106,7 +120,8 @@ function methodSection(index: FluxIndex, open: OpenFn): FicheSection {
   const html = (index.methode ? note(index.methode) : '')
     + note('Calcul : flux_osint (programme séparé), données ouvertes seulement : réseau piéton OpenStreetMap, carroyage INSEE, équipements BPE, arrêts de transport, météo Open-Meteo.')
     + note('Aucune donnée individuelle, aucun suivi de personne, aucun réseau social ; aucun organisateur ni participant identifié.')
-    + note('Limites : l’affluence vient d’un modèle appris sur les chiffres de presse, bruités : la fourchette reste large. Le lieu est supposé (place habituelle) quand la source ne le donne pas.')
+    + note('Limites : l’affluence vient d’un modèle appris sur les chiffres de presse, bruités. La fourchette probable (1 chance sur 2) est affichée en tête, la large (8 sur 10) en détail ; toutes deux sont vérifiées sur les chiffres passés. Plafond : le lieu et les rues à moins de 300\u00a0m ne contiennent pas plus de monde debout (1,5\u00a0personne par m²). Le lieu est supposé (place habituelle, ou centre de la commune) quand l’annonce ne le donne pas.')
+    + note('Rassemblements calculés : ceux annoncés dans les 7 prochains jours en métropole (Démosphère, saisie manuelle), et ceux de la ville suivie ; un rassemblement passé depuis plus de 24\u00a0h n’est plus affiché.')
     + note('Recalcul toutes les 15\u00a0minutes. Cette couche n’a aucun effet sur l’indice de stabilité, les situations ni la synthèse.')
     + kvRow('Publication', escapeHtml(frDateTime(index.generatedAt) ?? 'n.d.'));
   return { id: 'methode', title: 'Méthode et limites', collapsible: true, open: open('methode', false), tone: 'reference', html };
@@ -137,7 +152,7 @@ export function buildFluxView(input: FluxViewInput): LayerView {
       head: { theme: FLUX_THEME, title: FLUX_TITLE, level: null, figure: { value: '0', caption: 'prévision publiée', level: null }, status: ['ESTIMATIONS MODÉLISÉES'] },
       sections: [methodSection(index, open)],
       bodyHtml: WARNING_HTML(index.avertissement)
-        + emptyLine('Aucune prévision publiée. Une prévision apparaît quand un rassemblement réel est annoncé dans une ville suivie par flux_osint.'),
+        + emptyLine('Aucun rassemblement annoncé à venir. Une prévision apparaît dès qu’un rassemblement est annoncé dans les 7 prochains jours.'),
     };
   }
   return {

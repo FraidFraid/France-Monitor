@@ -3440,7 +3440,13 @@ export interface FluxEvent {
   lieuSuppose: boolean;
   /** [lon, lat] du point de rassemblement. */
   point: [number, number];
-  affluence: { p10: number; p50: number; p90: number; base: string };
+  /** p25-p75 : fourchette probable (1 chance sur 2), p10-p90 : fourchette large (8 sur 10) ; `plafond` : personnes que le lieu et
+   * les rues à moins de 300 m contiennent debout, `partPlafonnee` : part des tirages ramenés à ce plafond. null : publication
+   * antérieure à ces champs. */
+  affluence: {
+    p10: number; p25: number | null; p50: number; p75: number | null; p90: number; base: string;
+    plafond: number | null; partPlafonnee: number | null;
+  };
   meteo: string | null;
   recale: boolean;
   cortege: boolean;

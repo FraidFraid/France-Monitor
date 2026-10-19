@@ -17,7 +17,8 @@ import { ALL_PRESETABLE_LAYER_KEYS, THEME_LAYERS } from '../src/config/layer-pre
 const EV: FluxEvent = {
   id: 'presse_43_650_0_583_2026_10_17', evenement: 'presse:43.650,0.583:2026-10-17', ville: 'Auch', codeInsee: '32013',
   debut: '2026-10-17T10:52:00.000Z', lieu: 'Place de la Libération, 32000 Auch', lieuSuppose: true, point: [0.5857, 43.6459],
-  affluence: { p10: 5, p50: 243, p90: 2330, base: 'modèle d’affluence' }, meteo: 'beau', recale: false, cortege: false,
+  affluence: { p10: 5, p25: 60, p50: 243, p75: 640, p90: 2330, base: 'modèle d’affluence', plafond: 5400, partPlafonnee: 0.03 },
+  meteo: 'beau', recale: false, cortege: false,
   calculeLe: '2026-10-18T17:01:26+00:00', fichier: 'presse_43_650_0_583_2026_10_17.geojson',
   resume: { troncons: 412, satures: 3, goulots: 0, topRues: [{ rue: 'Rue <Dessoles>', chargeP90: 812, densiteP90: 0.42, pSaturation: 0.3 }] },
 };
@@ -33,6 +34,12 @@ describe('service', () => {
     expect(parseFluxIndex('x')).toBeNull();
     expect(parseFluxIndex({ ...INDEX, avertissement: '' })?.avertissement).toBe(FLUX_WARNING);
     expect(parseFluxIndex({ ...INDEX, evenements: [{ ...EV, codeInsee: null }] })?.evenements).toHaveLength(1);
+  });
+  it('ancienne publication sans fourchette probable ni plafond : champs à null ; valeur non numérique refusée', () => {
+    const { p25: _a, p75: _b, plafond: _c, partPlafonnee: _d, ...ancienne } = EV.affluence;
+    const lu = parseFluxIndex({ ...INDEX, evenements: [{ ...EV, affluence: ancienne }] })?.evenements[0];
+    expect(lu?.affluence).toEqual({ p10: 5, p25: null, p50: 243, p75: null, p90: 2330, base: 'modèle d’affluence', plafond: null, partPlafonnee: null });
+    expect(parseFluxIndex({ ...INDEX, evenements: [{ ...EV, affluence: { ...EV.affluence, p25: '60' } }] })?.evenements).toHaveLength(0);
   });
   it('404 = rien de publié ; page HTML du repli = erreur ; jamais de cache', async () => {
     const calls: RequestInit[] = [];
@@ -104,14 +111,24 @@ describe('panneau et légende', () => {
     expect(v.bodyHtml).toContain('ESTIMATIONS MODÉLISÉES');
     expect(v.head.figure?.value).toBe('≈ 243');
     expect(html(v)).toContain('lieu habituel supposé');
+    expect(html(v)).toContain('Fourchette probable');
+    expect(html(v)).toContain('60 à 640 (1 chance sur 2)');
     expect(html(v)).toContain('5 à 2');
+    expect(html(v)).toContain('8 chances sur 10');
+    expect(html(v)).toContain('Plafond du lieu');
+    expect(html(v)).toContain('atteint dans 3');
     expect(html(v)).toContain('Rue &lt;Dessoles&gt;');
     expect(html(v)).toContain('data-flux-event="presse_43_650_0_583_2026_10_17"');
     expect(v.tabs?.map((t) => t.id)).toEqual(['arrivee', 'depart']);
   });
   it('rien de publié, illisible, chargement', () => {
     const empty = view({ index: { ...INDEX, evenements: [] } });
-    expect(html(empty)).toContain('Aucune prévision publiée');
+    expect(html(empty)).toContain('Aucun rassemblement annoncé à venir');
+    const ancien = view({ index: { ...INDEX, evenements: [{ ...EV, affluence: { ...EV.affluence, p25: null, p75: null, plafond: null } }] } });
+    expect(html(ancien)).toContain('5 à 2');
+    expect(html(ancien)).not.toContain('Plafond du lieu');
+    const centre = view({ index: { ...INDEX, evenements: [{ ...EV, lieu: 'Centre de Narbonne' }] } });
+    expect(html(centre)).toContain('lieu non précisé par l’annonce');
     expect(empty.bodyHtml).toContain('ESTIMATIONS MODÉLISÉES');
     expect(view({ index: null, error: 'x' }).head.figure?.value).toBe('n.d.');
     expect(view({ index: null }).head.status).toEqual(['chargement…']);

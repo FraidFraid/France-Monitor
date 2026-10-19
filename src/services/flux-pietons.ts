@@ -22,6 +22,9 @@ function isTopRue(v: unknown): v is FluxTopRue {
   return isRecord(v) && isStr(v['rue']) && isNum(v['chargeP90']) && isNum(v['densiteP90']) && isNum(v['pSaturation']);
 }
 
+const isNumOrAbsent = (v: unknown): boolean => v === undefined || v === null || isNum(v);
+const numOrNull = (v: unknown): number | null => (isNum(v) ? v : null);
+
 export function isFluxEvent(v: unknown): v is FluxEvent {
   if (!isRecord(v)) return false;
   const pt = v['point'];
@@ -31,6 +34,7 @@ export function isFluxEvent(v: unknown): v is FluxEvent {
     && (v['debut'] === null || isStr(v['debut'])) && isStr(v['lieu']) && isBool(v['lieuSuppose'])
     && Array.isArray(pt) && pt.length === 2 && isNum(pt[0]) && isNum(pt[1]) && Math.abs(pt[0]) <= 180 && Math.abs(pt[1]) <= 90
     && isRecord(aff) && isNum(aff['p10']) && isNum(aff['p50']) && isNum(aff['p90']) && isStr(aff['base'])
+    && isNumOrAbsent(aff['p25']) && isNumOrAbsent(aff['p75']) && isNumOrAbsent(aff['plafond']) && isNumOrAbsent(aff['partPlafonnee'])
     && (v['meteo'] === null || isStr(v['meteo'])) && isBool(v['recale']) && isBool(v['cortege']) && isStr(v['calculeLe'])
     && isStr(v['fichier']) && SAFE_FILE.test(v['fichier'])
     && isRecord(res) && isNum(res['troncons']) && isNum(res['satures']) && isNum(res['goulots'])
@@ -45,7 +49,19 @@ export function parseFluxIndex(v: unknown): FluxIndex | null {
     generatedAt: v['generatedAt'],
     avertissement: isStr(v['avertissement']) && v['avertissement'] ? v['avertissement'] : FLUX_WARNING,
     methode: isStr(v['methode']) ? v['methode'] : '',
-    evenements: v['evenements'].filter(isFluxEvent),
+    evenements: v['evenements'].filter(isFluxEvent).map(withAffluenceFields),
+  };
+}
+
+/** Champs d'affluence ajoutés au contrat (fourchette probable, plafond) : absents d'une ancienne publication = null. */
+function withAffluenceFields(e: FluxEvent): FluxEvent {
+  const a = e.affluence as Partial<FluxEvent['affluence']> & Pick<FluxEvent['affluence'], 'p10' | 'p50' | 'p90' | 'base'>;
+  return {
+    ...e,
+    affluence: {
+      p10: a.p10, p25: numOrNull(a.p25), p50: a.p50, p75: numOrNull(a.p75), p90: a.p90, base: a.base,
+      plafond: numOrNull(a.plafond), partPlafonnee: numOrNull(a.partPlafonnee),
+    },
   };
 }
 
