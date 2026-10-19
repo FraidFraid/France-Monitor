@@ -497,11 +497,12 @@
   const placePop = () => { if (!popAt) return; const p = S.m.project(popAt); const c = S.m.getCanvas(), W = c.clientWidth, H = c.clientHeight, w = pop.offsetWidth, h = pop.offsetHeight;
     const x = p.x + 14 + w > W - 8 ? p.x - 14 - w : p.x + 14, y = Math.min(Math.max(8, p.y + 14), Math.max(8, H - h - 8));
     pop.style.transform = `translate(${Math.round(Math.max(8, x))}px, ${Math.round(y)}px)`; };
-  const card = (c) => `<div class="et-card"><div class="et-head"><i class="et-dot" style="background:${c.dot}"></i><strong>${esc(c.title)}</strong></div>`
+  const card = (c, next = null) => `<div class="et-card"><div class="et-head"><i class="et-dot" style="background:${c.dot}"></i><strong>${esc(c.title)}</strong></div>`
     + (c.state ? `<div class="et-state" style="color:${c.stateHex}">${esc(c.state)}</div>` : '')
     + c.rows.map(([k, v]) => `<div class="et-row"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')
     + (c.hint ? `<div class="et-hint">${esc(c.hint)}</div>` : '')
-    + `<div class="et-src">Source : ${esc(c.source)}</div></div>`;
+    + `<div class="et-src">Source : ${esc(c.source)}</div>`
+    + (next ? `<div class="et-hint">${esc(next)}</div>` : '') + '</div>';
 
   const telecomSource = () => `ARCEP, fichier du ${when(S.data.telecom?.file?.publishedAt)}`;
   // Ce qui est exposé dans un département : sites de défense, atterrages de câbles, centres de données (inventaires, pas des alertes).
@@ -865,12 +866,10 @@
     if (!isSec()) return;
     const hit = pick(e.point);
     const canvas = S.m.getCanvas();
-    if (!hit) { pop.style.display = 'none'; popAt = null; S.hoverKey = null; setDeptHover(null); canvas.style.cursor = ''; return; }
+    // Survol : contour du département et curseur seulement ; la bulle s'ouvre au clic.
+    if (!hit) { setDeptHover(null); canvas.style.cursor = ''; return; }
     canvas.style.cursor = 'pointer';
     setDeptHover(hit.kind === 'dept' ? hit.id : null);
-    popAt = hit.at ?? [e.lngLat.lng, e.lngLat.lat];
-    if (S.hoverKey !== hit.key) { pop.innerHTML = card(hit.card); S.hoverKey = hit.key; }
-    pop.style.display = 'block'; placePop();
   };
 
   // ─── Fiche au format note de situation ───
@@ -1204,14 +1203,25 @@
     setInterval(() => { if (isSec() !== Boolean(S.wasSec)) applyFocus(); }, 700);
     S.m.on('move', placePop);
     S.m.on('mousemove', onMove);
-    S.m.getCanvas().addEventListener('mouseleave', () => { pop.style.display = 'none'; popAt = null; S.hoverKey = null; setDeptHover(null); });
-    // Clic : la fiche de la maquette remplace les fenêtres et déplacements de l'app (capturé avant MapLibre).
+    S.m.getCanvas().addEventListener('mouseleave', () => setDeptHover(null));
+    // Clic : premier clic = bulle de l'objet ; second clic sur le même objet = sa fiche ou sa source
+    // (la fiche de la maquette remplace les fenêtres et déplacements de l'app, capturé avant MapLibre).
     host.addEventListener('click', (e) => {
       if (e.target !== S.m.getCanvas() || !isSec()) return;
       e.stopPropagation();
       const r = S.m.getCanvas().getBoundingClientRect();
       const hit = pick([e.clientX - r.left, e.clientY - r.top]);
-      if (!hit) { closeFiche(); return; }
+      if (!hit) { closeFiche(); pop.style.display = 'none'; popAt = null; S.hoverKey = null; return; }
+      const linked = hit.kind === 'base' && S.audit.get(hit.id)?.source;
+      const next = linked || hit.card?.url ? 'Cliquer à nouveau pour ouvrir la source'
+        : ['dept', 'air', 'base', 'site'].includes(hit.kind) ? 'Cliquer à nouveau pour ouvrir la fiche' : null;
+      if (S.hoverKey !== hit.key || pop.style.display === 'none' || !next) {
+        const at = S.m.unproject([e.clientX - r.left, e.clientY - r.top]);
+        popAt = hit.at ?? [at.lng, at.lat];
+        pop.innerHTML = card(hit.card, next); S.hoverKey = hit.key;
+        pop.style.display = 'block'; placePop();
+        return;
+      }
       pop.style.display = 'none'; popAt = null; S.hoverKey = null;
       if (hit.kind === 'base' && S.audit.get(hit.id)?.source) { window.open(S.audit.get(hit.id).source, '_blank', 'noopener'); return; }
       if (hit.card?.url) { window.open(hit.card.url, '_blank', 'noopener'); return; }

@@ -602,8 +602,6 @@ export class DeckGLMap {
   private healthDeptsDirty = false;
   private regionsGeojsonPromise: Promise<GeoJSON.FeatureCollection | null> | null = null;
   private hospitalPopup: maplibregl.Popup | null = null;
-  /** N° FINESS du site dont la fiche est ouverte : pas d'infobulle de survol par-dessus. */
-  private hospitalPopupFiness: string | null = null;
   // Infobulle de survol santé affichée, curseur main posé par les couches santé (et par elles seules).
   private healthHoverShown = false;
   private healthPointer = false;
@@ -5815,10 +5813,8 @@ export class DeckGLMap {
     popup.on('close', () => {
       if (this.hospitalPopup !== popup) return;
       this.hospitalPopup = null;
-      this.hospitalPopupFiness = null;
     });
     this.hospitalPopup = popup;
-    this.hospitalPopupFiness = site.finess;
     popup
       .setLngLat([site.lon, site.lat])
       .setHTML(hospitalPopupHtml(site, this.hospitalsVintage))
@@ -5849,11 +5845,14 @@ export class DeckGLMap {
     if (!map) return;
     map.on('mousemove', (e) => {
       const visible = HEALTH_HOVER_LAYERS.filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+      this.setHealthPointer(topHealthHit(visible.length > 0 ? map.queryRenderedFeatures(e.point, { layers: visible }) : [])?.layer.id === LYR_HOSPITALS);
+    });
+    // Bulle au clic ; un clic sur un hôpital ouvre sa fiche à la place.
+    map.on('click', (e) => {
+      const visible = HEALTH_HOVER_LAYERS.filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
       const hit = topHealthHit(visible.length > 0 ? map.queryRenderedFeatures(e.point, { layers: visible }) : []);
       const onSite = hit?.layer.id === LYR_HOSPITALS;
-      this.setHealthPointer(onSite);
-      const ficheOpen = onSite && String(hit?.properties?.['finess'] ?? '') === this.hospitalPopupFiness;
-      const html = hit && !ficheOpen ? healthTooltipHtml(hit.layer.id, hit.properties ?? {}, this.healthMapData()) : null;
+      const html = hit && !onSite ? healthTooltipHtml(hit.layer.id, hit.properties ?? {}, this.healthMapData()) : null;
       if (!html) {
         this.hideHealthHover();
         return;
@@ -5864,10 +5863,7 @@ export class DeckGLMap {
       this.healthHoverPopup = popup;
       popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
     });
-    map.on('mouseout', () => {
-      this.setHealthPointer(false);
-      this.hideHealthHover();
-    });
+    map.on('mouseout', () => this.setHealthPointer(false));
     map.on('click', LYR_HOSPITALS, (e) => {
       const site = this.hospitalSites.get(String(e.features?.[0]?.properties?.['finess'] ?? ''));
       if (site) this.openHospitalPopup(site);
@@ -6053,6 +6049,10 @@ export class DeckGLMap {
       const visible = TRAFFIC_HOVER_LAYERS.filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
       const hit = topTrafficHit(visible.length > 0 ? map.queryRenderedFeatures(e.point, { layers: visible }) : []);
       this.setTrafficPointer(hit !== undefined && TRAFFIC_JAM_LAYERS.includes(hit.layer.id));
+    });
+    map.on('click', (e) => {
+      const visible = TRAFFIC_HOVER_LAYERS.filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+      const hit = topTrafficHit(visible.length > 0 ? map.queryRenderedFeatures(e.point, { layers: visible }) : []);
       const html = hit ? trafficTooltipHtml(hit.layer.id, hit.properties ?? {}) : null;
       if (!html) {
         this.hideTrafficHover();
@@ -6064,10 +6064,7 @@ export class DeckGLMap {
       this.trafficHoverPopup = popup;
       popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
     });
-    map.on('mouseout', () => {
-      this.setTrafficPointer(false);
-      this.hideTrafficHover();
-    });
+    map.on('mouseout', () => this.setTrafficPointer(false));
     for (const id of TRAFFIC_JAM_LAYERS) {
       map.on('click', id, (e) => {
         const props = e.features?.[0]?.properties ?? {};
@@ -6384,7 +6381,7 @@ export class DeckGLMap {
   private initEnvironmentInteractions(): void {
     const map = this.map;
     if (!map) return;
-    map.on('mousemove', (e) => {
+    map.on('click', (e) => {
       const visible = ENV_HOVER_LAYERS.filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
       const hit = topEnvHit(visible.length > 0 ? map.queryRenderedFeatures(e.point, { layers: visible }) : []);
       const html = hit ? envTooltipHtml(hit.layer.id, hit.properties ?? {}) : null;
@@ -6399,7 +6396,6 @@ export class DeckGLMap {
       this.envHoverPopup = popup;
       popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
     });
-    map.on('mouseout', () => this.hideEnvironmentHover());
     map.on('click', (e) => {
       if (!this.onRadarPointPick || !(this.currentLayers?.weatherRadar ?? false)) return;
       if (this.clickHitsInteractiveFeature(e.point)) return;
@@ -7401,7 +7397,7 @@ export class DeckGLMap {
     const map = this.map;
     if (!map) return;
     const visibleLayers = (): string[] => SOV_HOVER_LAYERS.filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
-    map.on('mousemove', (e) => {
+    map.on('click', (e) => {
       const layers = visibleLayers();
       const hit = topSovHit(layers.length > 0 ? map.queryRenderedFeatures(e.point, { layers }) : []);
       const html = hit ? sovTooltipHtml(hit.layer.id, hit.properties ?? {}) : null;
@@ -7415,7 +7411,6 @@ export class DeckGLMap {
       this.sovHoverPopup = popup;
       popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
     });
-    map.on('mouseout', () => this.hideSovereigntyHover());
     map.on('click', (e) => {
       if (!this.onSovereigntyFeatureClick) return;
       const layers = visibleLayers();
@@ -7492,7 +7487,7 @@ export class DeckGLMap {
     const map = this.map;
     if (!map) return;
     const shown = (): boolean => map.getLayer(LYR_PROTESTS) !== undefined && map.getLayoutProperty(LYR_PROTESTS, 'visibility') !== 'none';
-    map.on('mousemove', (e) => {
+    map.on('click', (e) => {
       const hit = shown() ? map.queryRenderedFeatures(e.point, { layers: [LYR_PROTESTS] })[0] : undefined;
       const html = hit ? String(hit.properties?.['body'] ?? '') : '';
       if (!html) {
@@ -7505,7 +7500,6 @@ export class DeckGLMap {
       this.protestHoverPopup = popup;
       popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
     });
-    map.on('mouseout', () => this.hideProtestsHover());
     map.on('click', (e) => {
       if (!this.onProtestClick || !shown()) return;
       const hit = map.queryRenderedFeatures(e.point, { layers: [LYR_PROTESTS] })[0];
@@ -7533,7 +7527,7 @@ export class DeckGLMap {
     const map = this.map;
     if (!map) return;
     const shown = (): boolean => map.getLayer(LYR_FLUX_LINES) !== undefined && map.getLayoutProperty(LYR_FLUX_LINES, 'visibility') !== 'none';
-    map.on('mousemove', (e) => {
+    map.on('click', (e) => {
       // Rues fines : tolérance de 4 px autour du curseur ; la plus chargée l'emporte (tri par sortKey décroissant).
       const box: [maplibregl.PointLike, maplibregl.PointLike] = [[e.point.x - 4, e.point.y - 4], [e.point.x + 4, e.point.y + 4]];
       const hit = shown()
@@ -7551,7 +7545,6 @@ export class DeckGLMap {
       this.fluxHoverPopup = popup;
       popup.setLngLat(e.lngLat).setHTML(`<div class="hm-tip">${html}</div>`).addTo(map);
     });
-    map.on('mouseout', () => this.hideFluxHover());
   }
 
   /** Webcams : recensement statique (null : vide la carte). */
@@ -7577,7 +7570,7 @@ export class DeckGLMap {
     const map = this.map;
     if (!map) return;
     const shown = (): boolean => map.getLayer(LYR_WEBCAMS) !== undefined && map.getLayoutProperty(LYR_WEBCAMS, 'visibility') !== 'none';
-    map.on('mousemove', (e) => {
+    map.on('click', (e) => {
       const hit = shown() ? map.queryRenderedFeatures(e.point, { layers: [LYR_WEBCAMS] })[0] : undefined;
       const html = hit ? String(hit.properties?.['body'] ?? '') : '';
       if (!html) {
@@ -7590,7 +7583,6 @@ export class DeckGLMap {
       this.webcamHoverPopup = popup;
       popup.setLngLat(e.lngLat).setHTML(`<div class="hm-tip">${html}</div>`).addTo(map);
     });
-    map.on('mouseout', () => this.hideWebcamsHover());
     map.on('click', (e) => {
       if (!shown()) return;
       const point = map.queryRenderedFeatures(e.point, { layers: [LYR_WEBCAMS] })[0];
@@ -7651,7 +7643,7 @@ export class DeckGLMap {
     const map = this.map;
     if (!map) return;
     const shown = (): boolean => map.getLayer(LYR_CRIME_CITY) !== undefined && map.getLayoutProperty(LYR_CRIME_CITY, 'visibility') !== 'none';
-    map.on('mousemove', (e) => {
+    map.on('click', (e) => {
       let html = '';
       if (shown()) {
         const city = map.queryRenderedFeatures(e.point, { layers: [LYR_CRIME_CITY] })[0];
@@ -7668,7 +7660,6 @@ export class DeckGLMap {
       this.crimeHoverPopup = popup;
       popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
     });
-    map.on('mouseout', () => this.hideCrimeHover());
     map.on('click', (e) => {
       if (!this.onCrimeCityClick || !shown()) return;
       const hit = map.queryRenderedFeatures(e.point, { layers: [LYR_CRIME_CITY] })[0];
@@ -7687,7 +7678,7 @@ export class DeckGLMap {
   private initOutagesInteractions(): void {
     const map = this.map;
     if (!map) return;
-    map.on('mousemove', (e) => {
+    map.on('click', (e) => {
       const layers = OUT_HOVER_LAYERS.filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
       const hit = topOutHit(layers.length > 0 ? map.queryRenderedFeatures(e.point, { layers }) : []);
       const html = hit ? outTooltipHtml(hit.layer.id, hit.properties ?? {}) : null;
@@ -7701,7 +7692,6 @@ export class DeckGLMap {
       this.outHoverPopup = popup;
       popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
     });
-    map.on('mouseout', () => this.hideOutagesHover());
   }
 
   // ─── Military Layers ───
