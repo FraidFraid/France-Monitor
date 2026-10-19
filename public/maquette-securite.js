@@ -478,6 +478,17 @@
     if (last) { if (!P.isVisible(last)) P.show(last); } else if (wasOn && P.isVisible(k)) P.hide(k);
     return true;
   };
+  // Flux piétons allumé : la carte cadre le rassemblement affiché (point et rues chargées), dès que l'app a chargé ses données.
+  const zoomFlux = async (tries = 10) => {
+    const src = S.m.getSource('flux-pietons-src');
+    const data = src?.getData ? await src.getData().catch(() => null) : null;
+    const pts = [];
+    const walk = (c) => { if (typeof c?.[0] === 'number') pts.push(c); else c?.forEach?.(walk); };
+    for (const f of data?.features ?? []) if (f.properties?.kind !== 'isochrone') walk(f.geometry?.coordinates);
+    if (!pts.length) { if (tries > 0 && S.focus.has('pedestrianFlows')) setTimeout(() => zoomFlux(tries - 1), 500); return; }
+    const lons = pts.map((c) => c[0]), lats = pts.map((c) => c[1]);
+    S.m.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]], { padding: 60, maxZoom: 15, duration: 1200 });
+  };
   const wireChips = () => {
     document.addEventListener('click', (e) => {
       if (!isSec()) return;
@@ -485,6 +496,7 @@
       const wasOn = S.focus.has(k);
       wasOn ? S.focus.delete(k) : S.focus.add(k);
       preview = null; applyFocus();
+      if (k === 'pedestrianFlows' && !wasOn) zoomFlux();
       if (followPanel(k, wasOn)) e.stopPropagation();
     }, true);
     document.addEventListener('mouseover', (e) => { const k = chipKey(e.target); const next = k in GROUPS ? k : null; if (next !== preview) { preview = next; applyFocus(); } });
