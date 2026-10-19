@@ -5,6 +5,7 @@
 import { loadDemosphere } from './protests-demosphere.js';
 import { loadGdelt } from './protests-gdelt.js';
 import { loadPress } from './protests-press.js';
+import { loadPressAnnouncements } from './protests-press-annonces.js';
 import { sourceError } from './source-http.js';
 
 /** Réponse vide, avec les pannes nommées. */
@@ -31,7 +32,7 @@ export function sortProtests(items) {
 const cityKey = (city) => String(city ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
 export async function loadProtests(now) {
-  const [demo, gdelt, press] = await Promise.allSettled([loadDemosphere(now), loadGdelt(now), loadPress(now)]);
+  const [demo, gdelt, press, announced] = await Promise.allSettled([loadDemosphere(now), loadGdelt(now), loadPress(now), loadPressAnnouncements(now)]);
   const body = emptyProtests();
   const readAt = new Date(now).toISOString();
   if (demo.status === 'fulfilled') {
@@ -49,6 +50,9 @@ export async function loadProtests(now) {
   } else {
     body.errors.push(sourceError('Presse française', press.reason));
   }
+  // Rassemblements annoncés par la presse (hors des relevés : ils ne masquent pas GDELT).
+  if (announced.status === 'fulfilled') body.items.push(...announced.value.items);
+  else body.errors.push(sourceError('Presse française (annonces)', announced.reason));
   if (gdelt.status === 'fulfilled') {
     body.items.push(...gdelt.value.items.filter((x) => x.lat === null || !pressCities.has(cityKey(x.city))));
     body.gdelt = { readAt, files: gdelt.value.files, missingFiles: gdelt.value.missingFiles };
@@ -56,6 +60,6 @@ export async function loadProtests(now) {
     body.errors.push(sourceError('GDELT', gdelt.reason));
   }
   body.items = sortProtests(body.items);
-  body.readAt = [demo, gdelt, press].some((r) => r.status === 'fulfilled') ? readAt : null;
+  body.readAt = [demo, gdelt, press, announced].some((r) => r.status === 'fulfilled') ? readAt : null;
   return body;
 }

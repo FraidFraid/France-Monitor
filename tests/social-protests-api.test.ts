@@ -12,6 +12,7 @@ import {
 } from '../api/_lib/protests-gdelt.js';
 import { sortProtests } from '../api/_lib/protests.js';
 import { loadPress } from '../api/_lib/protests-press.js';
+import { loadPressAnnouncements } from '../api/_lib/protests-press-annonces.js';
 import type { ProtestItem, ProtestsResponse } from '../src/types/index.ts';
 import handler, { CACHE_CONTROL } from '../api/_handlers/social/protests.js';
 import { callHandler, respond, stubFetch } from './helpers/traffic-fixtures.ts';
@@ -26,6 +27,11 @@ const pressItem = (city: string, lat: number, lon: number): ProtestItem => ({
   articles: [{ url: 'https://exemple.fr/a', domain: 'exemple.fr', seenAt: '2026-10-17T10:30:00.000Z', violent: true, title: `Tensions à ${city}`, outlet: 'Exemple' }],
   articleCount: 3,
 });
+// Annonces de la presse : même base, testées seules dans tests/social-protests-annonces.test.ts ; aucune par défaut.
+vi.mock('../api/_lib/protests-press-annonces.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/_lib/protests-press-annonces.js')>()), loadPressAnnouncements: vi.fn(),
+}));
+beforeEach(() => { vi.mocked(loadPressAnnouncements).mockResolvedValue({ items: [], matched: 0, unplaced: 0, scanned: 0 }); });
 const pressOk = (items: ProtestItem[]) => vi.mocked(loadPress).mockResolvedValue({ items, matched: 5, unplaced: 2, scanned: 40 });
 
 const fixture = (name: string): string => readFileSync(new URL(`./fixtures/social/${name}`, import.meta.url), 'utf8');
@@ -298,14 +304,16 @@ describe('route', () => {
     expect(body.items.every((i) => i.source === 'demosphere')).toBe(true);
   });
 
-  it('les trois sources en panne : 502 avec les pannes nommées', async () => {
+  it('toutes les sources en panne : 502 avec les pannes nommées', async () => {
     stubFetch((url) => route(url, { gdeltDown: true, demosphereDown: true }));
     vi.mocked(loadPress).mockRejectedValue(new Error('base des articles non configurée'));
+    vi.mocked(loadPressAnnouncements).mockRejectedValue(new Error('base des articles non configurée'));
     const { status, body } = await callHandler<ProtestsResponse>(handler);
     expect(status).toBe(502);
     expect(body.readAt).toBeNull();
-    expect(body.errors).toHaveLength(3);
+    expect(body.errors).toHaveLength(4);
     expect(body.errors[1]).toMatch(/^Presse française : /);
-    expect(body.errors[2]).toBe('GDELT : HTTP 503');
+    expect(body.errors[2]).toMatch(/^Presse française \(annonces\) : /);
+    expect(body.errors[3]).toBe('GDELT : HTTP 503');
   });
 });
