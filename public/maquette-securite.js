@@ -711,10 +711,13 @@
       x.status !== 'annonce' ? ['Articles sur 24' + NB + 'h', `${num(x.articleCount ?? arts.length)}, dont ${arts.filter((a) => a.violent).length} sur ${arts.length} lus parlant de heurts`] : null,
       ...arts.slice(0, 5).map((a) => [`${a.outlet ?? a.domain}${a.seenAt ? ` · ${clock(a.seenAt)}` : ''}${a.violent ? ' · heurts' : ''}`, a.title ?? a.url]),
       x.status === 'annonce' ? ['Rendez-vous', x.title] : null,
+      x.arrete?.hours ? ['Heures de l’arrêté', x.arrete.hours.join(' à ')] : null,
+      x.arrete?.excerpt ? ['Motif (arrêté)', x.arrete.excerpt] : null,
       ['Lieu', x.precision === 'departement' ? `${x.city ?? x.dept} : département seulement, point au chef-lieu` : `${x.city ?? 'n.d.'}${x.dept ? ` (${x.dept})` : ''}`]].filter(Boolean);
     return { dot: kind === 'heurts' ? L1.rouge : PROT[kind] ?? PROT.signale, title: x.city ?? x.edition ?? 'Manifestation', state: PROT_WORD[kind], stateHex: kind === 'heurts' ? L1.rouge : '#c7c7cc', rows, url: x.url,
       hint: `${x.status === 'annonce' ? 'Un rendez-vous annoncé n’est pas une manifestation constatée' : 'Classement d’après les titres de presse, à confirmer'} · clic : ouvrir ${x.status === 'annonce' ? 'l’annonce' : 'l’article'}`,
-      source: x.source === 'demosphere' ? `Démosphère, édition ${x.edition ?? 'n.d.'}` : x.source === 'gdelt' ? 'GDELT (presse internationale)' : `presse française ingérée, relevé ${when(S.data.protests?.readAt)}` };
+      source: x.source === 'demosphere' ? `Démosphère, édition ${x.edition ?? 'n.d.'}` : x.source === 'gdelt' ? 'GDELT (presse internationale)'
+        : x.source === 'prefecture' ? `${x.edition ?? 'Préfecture'}, recueil des actes administratifs` : `presse française ingérée, relevé ${when(S.data.protests?.readAt)}` };
   };
   const cableWatch = () => (S.data.cablesWatch?.evaluated ? 'veille active' : `veille des navires coupée (${(S.data.cablesWatch?.errors ?? [])[0] ?? 'source injoignable'})`);
   // Cloud et centres de données : bulles complètes (état publié, incidents, maintenances, voisinage, sources).

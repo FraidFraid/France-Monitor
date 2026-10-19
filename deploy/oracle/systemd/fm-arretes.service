@@ -1,0 +1,28 @@
+[Unit]
+Description=France Monitor - arretes prefectoraux lies aux rassemblements (recueils des actes administratifs), couche Manifestations
+Documentation=https://github.com/FraidFraid/France-Monitor/blob/main/docs/deployment-oracle.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=fm
+Group=fm
+WorkingDirectory=/srv/francemonitor/current
+# Quelques minutes au plus : pages des recueils des prefectures suivies, 12 PDF neufs au plus par prefecture.
+# Ecrit hors de la release : le fichier survit aux deploiements ; lu par fm-api (api/_lib/protests-prefectures.js).
+ExecStart=/usr/bin/node scripts/build-arretes.mjs --out /var/lib/francemonitor/data/arretes-prefectoraux.json
+TimeoutStartSec=15min
+# Pas de Restart= : en cas d'echec (site d'une prefecture injoignable), l'ancien releve reste servi.
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/francemonitor/data
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true

@@ -123,8 +123,10 @@ function announcedRow(x: ProtestItem, canFocus: boolean): string {
   const clock = x.allDay ? null : parisClock(x.startsAt);
   const when = clock ?? 'journée';
   const key = protestPlaceKey(x);
-  const link = x.url ? ` · ${sourceLinkHtml(x.source === 'presse' ? 'Article' : 'Fiche Démosphère', x.url)}` : '';
-  const from = x.source === 'presse' ? ` · presse${x.articles[0]?.outlet ? ` (${escapeHtml(x.articles[0].outlet)})` : ''}` : x.edition ? ` · édition ${escapeHtml(x.edition)}` : '';
+  const link = x.url ? ` · ${sourceLinkHtml(x.source === 'presse' ? 'Article' : x.source === 'prefecture' ? 'Recueil officiel' : 'Fiche Démosphère', x.url)}` : '';
+  const from = x.source === 'presse' ? ` · presse${x.articles[0]?.outlet ? ` (${escapeHtml(x.articles[0].outlet)})` : ''}`
+    : x.source === 'prefecture' ? ` · ${escapeHtml(x.edition ?? 'préfecture')}${x.arrete?.hours ? `, ${escapeHtml(x.arrete.hours.join(' à '))}` : ''}`
+      : x.edition ? ` · édition ${escapeHtml(x.edition)}` : '';
   return listRow({
     text: x.title, value: when, color: '#ec4899',
     noteHtml: `annoncé, non confirmé${from}${link}`,

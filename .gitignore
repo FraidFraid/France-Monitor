@@ -68,3 +68,6 @@ FRANCE MONITOR orientation pour ministeres/
 
 # Prévisions flux_osint (écrites par son batch toutes les 15 min ; en production dans /var/lib/francemonitor/data/flux-pietons)
 public/data/flux-pietons/
+
+# Arrêtés préfectoraux : relevé horaire (minuteur fm-arretes en production), jamais versionné
+public/data/arretes-prefectoraux.json

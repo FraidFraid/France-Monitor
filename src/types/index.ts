@@ -3292,7 +3292,7 @@ export interface CloudOutagesResponse {
 
 // ═══ Manifestations : annonces Démosphère, presse française ingérée et signal presse GDELT (spec 2026-10-17 manifestations) ═══
 
-export type ProtestSource = 'demosphere' | 'presse' | 'gdelt';
+export type ProtestSource = 'demosphere' | 'presse' | 'gdelt' | 'prefecture';
 /** annonce : rendez-vous publié à l'avance (Démosphère), jamais confirmé ; signale : relevé dans la presse (française ou GDELT). */
 export type ProtestStatus = 'annonce' | 'signale';
 
@@ -3325,6 +3325,17 @@ export interface ProtestItem {
   precision: 'commune' | 'departement' | null; // null : sans lieu
   articles: ProtestArticle[];          // presse et GDELT (au plus 8, plus récent d'abord) ; Démosphère : []
   articleCount: number;                // nombre total d'articles du lieu (dépêches reprises comptées une fois)
+  /** Arrêté préfectoral (source « prefecture ») : nature, identifiant, heures autorisées, phrase qui décrit le rassemblement. */
+  arrete?: ProtestArrete;
+}
+
+/** Arrêté préfectoral lié à un rassemblement, relevé dans un recueil des actes administratifs (scripts/build-arretes.mjs). */
+export interface ProtestArrete {
+  kind: 'drone' | 'interdiction' | 'mesures';
+  act: string;                         // identifiant de l'acte (« 45-2026-10-14-00001 »)
+  hours: [string, string] | null;      // plage autorisée, heure de Paris (« 07:00 », « 18:00 »)
+  excerpt: string | null;              // phrase de l'arrêté qui décrit le rassemblement, 220 caractères au plus
+  publishedOn: string | null;          // jour de publication du recueil (« AAAA-MM-JJ »)
 }
 
 export interface ProtestsResponse {

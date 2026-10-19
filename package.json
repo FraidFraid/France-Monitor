@@ -34,6 +34,7 @@
     "build:hospitals": "node scripts/build-hospitals.mjs",
     "build:crime": "node scripts/build-crime.mjs",
     "build:ehpad": "node scripts/build-ehpad.mjs",
+    "build:arretes": "node scripts/build-arretes.mjs",
     "build:eau-potable": "node scripts/build-eau-potable.mjs",
     "build:deces": "node scripts/build-deces.mjs",
     "build:webcams": "node scripts/build-webcams.mjs"
@@ -75,6 +76,7 @@
     "read-excel-file": "^9.3.12",
     "supercluster": "^8.0.1",
     "undici": "7.24.7",
+    "unpdf": "1.8.1",
     "ws": "^8.19.0"
   }
 }

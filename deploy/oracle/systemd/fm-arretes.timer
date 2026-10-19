@@ -1,0 +1,11 @@
+[Unit]
+Description=France Monitor - arretes prefectoraux, toutes les heures (publies la veille ou l'avant-veille d'un rassemblement)
+Documentation=https://github.com/FraidFraid/France-Monitor/blob/main/docs/deployment-oracle.md
+
+[Timer]
+OnCalendar=*-*-* *:20:00
+Persistent=true
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=timers.target

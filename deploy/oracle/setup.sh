@@ -249,6 +249,8 @@ install -m 644 -o root -g root "$ORACLE_DIR"/systemd/fm-backup-db.service    /et
 install -m 644 -o root -g root "$ORACLE_DIR"/systemd/fm-backup-db.timer      /etc/systemd/system/fm-backup-db.timer
 install -m 644 -o root -g root "$ORACLE_DIR"/systemd/fm-eau-potable.service /etc/systemd/system/fm-eau-potable.service
 install -m 644 -o root -g root "$ORACLE_DIR"/systemd/fm-eau-potable.timer   /etc/systemd/system/fm-eau-potable.timer
+install -m 644 -o root -g root "$ORACLE_DIR"/systemd/fm-arretes.service     /etc/systemd/system/fm-arretes.service
+install -m 644 -o root -g root "$ORACLE_DIR"/systemd/fm-arretes.timer       /etc/systemd/system/fm-arretes.timer
 
 systemctl daemon-reload
 
@@ -256,7 +258,7 @@ systemctl daemon-reload
 # déployée (/srv/francemonitor/current n'existe pas), fm-api/fm-relay/fm-radar
 # n'ont rien à exécuter. Le premier `fm-deploy` les démarre.
 systemctl enable fm-api.service fm-relay.service fm-radar.service
-systemctl enable fm-ingest-news.timer fm-fuel-series.timer fm-backup-db.timer fm-eau-potable.timer
+systemctl enable fm-ingest-news.timer fm-fuel-series.timer fm-backup-db.timer fm-eau-potable.timer fm-arretes.timer
 systemctl enable caddy
 
 # ─────────────────────────────────────────────────────────────────
