@@ -22,6 +22,10 @@ describe('isProtestsResponse', () => {
     expect(isProtestsResponse(body())).toBe(true);
     expect(isProtestsResponse(body([]))).toBe(true);
   });
+  it('accepte les rendez-vous tirés des arrêtés préfectoraux (sinon toute la couche passait à n.d.)', () => {
+    expect(isProtestsResponse(body([item({ id: 'prefecture:33-2026-10-18-00001:2026-10-19:bordeaux', source: 'prefecture',
+      arrete: { kind: 'drone', act: '33-2026-10-18-00001', hours: ['06:30', '20:00'], excerpt: null, publishedOn: '2026-10-18' } })]))).toBe(true);
+  });
   it('rejette les charges mal formées', () => {
     expect(isProtestsResponse(null)).toBe(false);
     expect(isProtestsResponse({})).toBe(false);

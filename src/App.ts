@@ -124,7 +124,7 @@ import { CRIME_LEGEND, crimeLegend } from './components/layer-panel/criminalite-
 import type { WebcamsPanel } from './components/WebcamsPanel.ts';
 import type { WebcamWall } from './components/WebcamWall.ts';
 import type { FluxPietonsPanel } from './components/FluxPietonsPanel.ts';
-import { FLUX_POLL_MS, fetchFluxEvent, fluxMoment, fetchFluxIndex, type FluxFeature } from './services/flux-pietons.ts';
+import { FLUX_POLL_MS, fetchFluxEvent, fluxForecastsByProtest, fluxMoment, fetchFluxIndex, type FluxFeature } from './services/flux-pietons.ts';
 import { FLUX_LEGEND, fluxLegend } from './components/layer-panel/flux-pietons-legend.ts';
 import type { FluxIndex, FluxPhase } from './types/index.ts';
 import { fetchWebcamsDataset } from './services/webcams.ts';
@@ -2512,7 +2512,7 @@ export class App {
     (window as unknown as { __fmFlux?: object }).__fmFlux = {
       event: (id: string): FluxIndex['evenements'][number] | null => this.fluxIndex?.evenements.find((e) => e.id === id) ?? null,
       selectedId: (): string | null => this.fluxSelectedId,
-      select: (id: string): void => { this.selectFluxEvent(id, true).catch(() => undefined); },
+      select: (id: string): void => this.openFluxFromProtest(id),
     };
     // Énergie (spec 2026-10-16 § 7) : les pastilles allumées (vertes) ne laissent vives que leurs couches, et leurs légendes
     // courtes se cumulent ; l'état reste tant que les pastilles ne changent pas. Survoler une autre pastille l'ajoute le temps
@@ -4449,9 +4449,11 @@ export class App {
     this.protestsPanelPromise ??= import('./components/ProtestsPanel.ts').then(({ ProtestsPanel }) => {
       const panel = new ProtestsPanel(container);
       panel.setOnClose(() => this.closeProtestsLayer());
+      panel.setOnFluxEvent((id) => this.openFluxFromProtest(id));
       if (this.mapContainer?.canFocusMap()) panel.setOnFocusPlace((lat, lon) => this.mapContainer?.flyTo(lon, lat, 9));
       panel.mount();
       this.protestsPanel = panel;
+      this.syncProtestForecasts();
       if (this.activeLayers.protests) panel.show(this.currentProtests);
     });
     return this.protestsPanelPromise;
@@ -4511,8 +4513,35 @@ export class App {
       this.currentProtests = mergeProtests(this.currentProtests, await fetchProtests(this.currentProtests));
       this.mapContainer?.updateProtestsLayer(this.currentProtests.data);
       this.protestsPanel?.update(this.currentProtests);
+      this.syncProtestForecasts();
       this.refreshProtestsLegend();
     });
+  }
+
+  /** Manifestations et Flux piétons fusionnés : chaque annonce prévue porte sa foule estimée (lien vers les rues et le rejeu). */
+  private syncProtestForecasts(): void {
+    // Couche Flux piétons éteinte : l'index (fichier statique léger) est lu une fois pour les annonces.
+    if (!this.fluxIndex && !this.fluxIndexAsked && this.protestsPanel) {
+      this.fluxIndexAsked = true;
+      fetchFluxIndex().then((index) => { this.fluxIndex ??= index; this.syncProtestForecasts(); }).catch(() => undefined);
+    }
+    const ids = (this.currentProtests?.data?.items ?? []).map((x) => x.id);
+    this.protestsPanel?.setForecasts(fluxForecastsByProtest(this.fluxIndex?.evenements ?? [], ids));
+  }
+
+  private fluxIndexAsked = false;
+
+  /** « Foule estimée » d'une annonce : couche Flux piétons allumée au besoin, son panneau ouvert sur ce rassemblement, carte cadrée. */
+  private openFluxFromProtest(id: string): void {
+    if (!this.activeLayers.pedestrianFlows) {
+      this.onLayerToggle('pedestrianFlows', true);
+      this.layerPanel?.updateLayers(this.activeLayers);
+    }
+    void this.ensureFluxPanel().then(async () => {
+      if (!this.isFloatingPanelVisible('pedestrianFlows')) this.showFloatingPanel('pedestrianFlows');
+      if (!this.fluxIndex?.evenements.some((e) => e.id === id)) await this.loadFlux();
+      return this.selectFluxEvent(id, true);
+    }).catch(() => undefined);
   }
 
   private refreshProtestsLegend(): void {
@@ -4707,6 +4736,7 @@ export class App {
       const list = this.fluxIndex?.evenements ?? [];
       const keep = list.find((e) => e.id === this.fluxSelectedId) ?? null;
       this.refreshFluxLegend();
+      this.syncProtestForecasts();
       if (keep) await this.selectFluxEvent(keep.id, false);
       else {
         this.fluxSelectedId = null;

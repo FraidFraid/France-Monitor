@@ -178,3 +178,17 @@ describe('légende', () => {
     expect(protestsLegend(null, NOW).notes?.[0]).toContain('indisponibles');
   });
 });
+
+describe('fusion avec Flux piétons', () => {
+  it('annonce prévue : foule estimée et lien vers la prévision ; identifiants de flux_osint rattachés', async () => {
+    const { fluxForecastsByProtest } = await import('../../services/flux-pietons.ts');
+    const ev = { id: 'f1', evenement: 'd1', affluence: { p50: 805.4 } } as unknown as import('../../types/index.ts').FluxEvent;
+    const presse = { ...ev, id: 'f2', evenement: 'presse-annonce:45.764,4.836:20261024:2026-10-24' };
+    const map = fluxForecastsByProtest([ev, presse], ['d1', 'presse-annonce:45.764,4.836:20261024', 'presse-annonce:45.764,4.836:2026102', 'd2']);
+    expect([...map.entries()].map(([k, v]) => [k, v.id])).toEqual([['d1', 'f1'], ['presse-annonce:45.764,4.836:20261024', 'f2']]);
+    const html = renderLayerView('protests', buildManifestationsView({ data: full(), error: null, canFocus: true, now: NOW, open: (_id, byDefault) => byDefault, forecasts: map }));
+    expect(html).toContain('data-flux-event="f1"');
+    expect(visibleText(html)).toContain('Foule estimée ≈ 805 personnes');
+    expect(text(full())).not.toContain('Foule estimée');
+  });
+});

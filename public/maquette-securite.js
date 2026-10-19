@@ -129,7 +129,21 @@
     V('mqs-crime-city', isOn('crime') && !pill('crime')); V('mqs-crime-c', pill('crime')); V('mqs-crime-c-label', pill('crime')); V('mqs-crime-d-fill', isOn('crime')); V('mqs-crime-d-line', pill('crime'));
     P('mqs-crime-d-fill', 'fill-opacity', pill('crime') ? ['get', 'op'] : 0.12);
     T_('mqs-ddos-label', pill('cyber') ? ['get', 'label'] : ['case', ['get', 'recent'], ['get', 'label'], '']);
-    T_('mqs-prot-label', pill('protests') ? ['get', 'label'] : ['case', ['>=', ['get', 'n'], 20], ['get', 'label'], '']);
+    T_('mqs-prot-label', pill('protests') || pill('pedestrianFlows') ? ['get', 'label'] : ['case', ['any', ['>=', ['get', 'n'], 20], ['==', ['get', 'fc'], 1]], ['get', 'label'], '']);
+    // Pastille Flux piétons seule : les manifestations prévues seulement. Les points Flux piétons déjà portés par une annonce
+    // ne sont pas redessinés (un seul point par rassemblement) ; restent ceux dont l'annonce n'est plus dans la couche.
+    const fluxOnly = pill('pedestrianFlows') && !pill('protests');
+    const protFilter = fluxOnly ? ['==', ['get', 'fc'], 1] : null;
+    const othersFilter = ['all', ['==', ['get', 'kind'], 'autre'], ['!', ['in', ['get', 'id'], ['literal', S.fluxMatched ?? []]]]];
+    // Filtres posés seulement quand ils changent (calm tourne à chaque « idle » : un setFilter à chaque fois bouclerait).
+    const key = JSON.stringify([protFilter, S.fluxMatched, Boolean(m.getLayer('mqs-prot')), Boolean(m.getLayer('flux-pietons-others'))]);
+    if (S.fluxFilterKey !== key) {
+      S.fluxFilterKey = key;
+      try {
+        for (const id of ['mqs-prot', 'mqs-prot-label']) if (m.getLayer(id)) m.setFilter(id, protFilter);
+        for (const id of ['flux-pietons-others', 'flux-pietons-others-label']) if (m.getLayer(id)) m.setFilter(id, othersFilter);
+      } catch (e) { /* calque absent */ }
+    }
     P('isnr-fill', 'fill-opacity', S.focus.has('stability') || preview === 'stability' ? 0.65 : 0.2);
     // Détail porté au premier plan par une pastille : sites télécoms et référentiel cloud dès la vue France.
     const zr = (id, min) => { try { if (m.getLayer(id) && m.getLayer(id).minzoom !== min) m.setLayerZoomRange(id, min, 24); } catch (e) { /* calque absent */ } };
@@ -239,8 +253,14 @@
     S.landings = landingsByPlace();
     // Manifestations : annoncée (agenda), rapportée sans heurts, heurts ; taille = articles de presse sur 24 h.
     S.prot = (S.data.protests?.items ?? []).filter((x) => x.lat != null && x.lon != null);
-    setData('mqs-prot', fc(S.prot.map((x, i) => pt([x.lon, x.lat], { i, kind: x.status === 'annonce' ? 'annonce' : x.violent ? 'heurts' : 'signale', n: x.articleCount ?? (x.articles ?? []).length,
-      label: `${x.city ?? x.edition ?? ''}${x.participants ? ` · ${num(x.participants)}${NB}pers.` : ''}` }))));
+    // Fusion avec Flux piétons : l'annonce dont flux_osint a tiré une prévision porte un anneau blanc et sa foule estimée.
+    const fluxEvents = S.data.flux?.evenements ?? [];
+    const fluxOf = (x) => fluxEvents.find((e) => e.evenement === x.id || e.evenement.startsWith(`${x.id}:`)) ?? null;
+    S.protFlux = new Map(S.prot.map((x) => [x.id, fluxOf(x)]).filter(([, e]) => e));
+    S.fluxMatched = [...new Set([...S.protFlux.values()].map((e) => e.id))];
+    setData('mqs-prot', fc(S.prot.map((x, i) => { const ev = S.protFlux.get(x.id);
+      return pt([x.lon, x.lat], { i, kind: x.status === 'annonce' ? 'annonce' : x.violent ? 'heurts' : 'signale', n: x.articleCount ?? (x.articles ?? []).length, fc: ev ? 1 : 0,
+        label: `${x.city ?? x.edition ?? ''}${x.participants ? ` · ${num(x.participants)}${NB}pers.` : ''}${ev ? ` · ≈${NB}${num(Math.round(ev.affluence.p50))} estimées` : ''}` }); })));
     // Cibles françaises des hacktivistes pro-russes (NoName057(16)) : lieu sûr seulement (préfecture d'après gouv.fr, commune au nom exact) ;
     // une cible publiée n'est pas une attaque réussie. Anneau jaune : site présent dans une liste de moins de 24 h.
     S.ddos = ddosPlaces();
@@ -368,6 +388,9 @@
         paint: { 'circle-radius': ['interpolate', ['linear'], ['get', 'n'], 0, 5, 10, 7.5, 40, 11, 120, 16],
           'circle-color': ['match', ['get', 'kind'], 'heurts', L1.rouge, 'signale', PROT.signale, DARK],
           'circle-stroke-color': ['match', ['get', 'kind'], 'annonce', PROT.annonce, '#ffffff'], 'circle-stroke-width': ['match', ['get', 'kind'], 'annonce', 2, 1.5] } });
+      m.addLayer({ id: 'mqs-prot-flux', type: 'circle', source: 'mqs-prot', filter: ['==', ['get', 'fc'], 1],
+        paint: { 'circle-radius': ['+', 4, ['interpolate', ['linear'], ['get', 'n'], 0, 5, 10, 7.5, 40, 11, 120, 16]], 'circle-color': 'rgba(0,0,0,0)',
+          'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2 } });
       m.addLayer({ id: 'mqs-prot-label', type: 'symbol', source: 'mqs-prot', layout: { 'symbol-sort-key': ['-', 0, ['get', 'n']],
         'text-field': '', 'text-size': 10.5, 'text-font': ['Open Sans Semibold'], 'text-variable-anchor': ['top', 'bottom', 'right', 'left'], 'text-radial-offset': 1.2, 'text-optional': true },
         paint: { 'text-color': ['match', ['get', 'kind'], 'heurts', '#ff8a80', PROT.annonce], 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.4 } });
@@ -430,9 +453,10 @@
     // Cyber : aucun incident localisé publiquement ; la pastille montre l'infrastructure numérique exposée (centres de données, zones cloud, atterrages).
     cyber: ['mqs-ddos', 'mqs-ddos-dot', 'mqs-ddos-label', 'mqs-dc-ref', 'mqs-cloud-sym', 'mqs-landings', 'mqs-landings-label', 'submarine-cables-line'],
     stability: [],
-    protests: ['mqs-prot', 'mqs-prot-label'],
+    // Manifestations et Flux piétons fusionnés : la pastille Manifestations montre aussi les rues du rassemblement choisi.
+    protests: ['mqs-prot', 'mqs-prot-flux', 'mqs-prot-label', 'flux-pietons-lines', 'flux-pietons-iso', 'flux-pietons-point', 'flux-pietons-others', 'flux-pietons-others-label'],
     // Flux piétons : calques de l'application (rues chargées, isochrones, point de rassemblement), estompés comme les autres.
-    pedestrianFlows: ['flux-pietons-lines', 'flux-pietons-iso', 'flux-pietons-point', 'flux-pietons-others', 'flux-pietons-others-label'],
+    pedestrianFlows: ['mqs-prot', 'mqs-prot-flux', 'mqs-prot-label', 'flux-pietons-lines', 'flux-pietons-iso', 'flux-pietons-point', 'flux-pietons-others', 'flux-pietons-others-label'],
     crime: ['mqs-crime-city', 'mqs-crime-c', 'mqs-crime-c-label', 'mqs-crime-d-fill', 'mqs-crime-d-line'],
     outagesTelecom: ['mqs-dept-level', 'mqs-dept-level-line', 'mqs-agg-disc', 'mqs-agg-count', 'mqs-low-disc', 'mqs-low-count', 'mqs-sites-recent', 'mqs-sites-long'],
     outagesInternet: ['mqs-inet', 'mqs-inet-past-fill', 'mqs-inet-disc', 'mqs-inet-label'],
@@ -499,7 +523,7 @@
   // Bulle toujours entière dans la carte : basculée à gauche ou au-dessus du point si elle déborde.
   const placePop = () => { if (!popAt) return; const p = S.m.project(popAt); const c = S.m.getCanvas(), W = c.clientWidth, H = c.clientHeight, w = pop.offsetWidth, h = pop.offsetHeight;
     const x = p.x + 14 + w > W - 8 ? p.x - 14 - w : p.x + 14, y = Math.min(Math.max(8, p.y + 14), Math.max(8, H - h - 8));
-    pop.style.transform = `translate(${Math.round(Math.max(8, x))}px, ${Math.round(y)}px)`; };
+    pop.style.transform = `translate(${Math.round(Math.max(8, Math.min(x, W - w - 8)))}px, ${Math.round(y)}px)`; };
   const card = (c, next = null) => `<div class="et-card"><div class="et-head"><i class="et-dot" style="background:${c.dot}"></i><strong>${esc(c.title)}</strong></div>`
     + (c.state ? `<div class="et-state" style="color:${c.stateHex}">${esc(c.state)}</div>` : '')
     + c.rows.map(([k, v]) => `<div class="et-row"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')
@@ -716,7 +740,7 @@
     const src = (S.prot ?? []).find((x) => x.id && ev.evenement.startsWith(x.id));
     const top = r?.topRues?.[0];
     const rows = [['Début annoncé', ev.debut ? when(ev.debut) : 'n.d.'],
-      ['Lieu', `${ev.lieu}${ev.lieuSuppose ? ' (lieu habituel supposé)' : ''}`],
+      ['Point de rassemblement', `${ev.lieu}${ev.lieuSuppose ? ' (lieu habituel supposé)' : ''}`],
       ['Affluence estimée', `≈${NB}${num(a.p50)} personnes`],
       a.p25 != null && a.p75 != null ? ['Fourchette probable', `${num(a.p25)} à ${num(a.p75)} (1 chance sur 2)`] : null,
       ['Fourchette large', `${num(a.p10)} à ${num(a.p90)} (8 chances sur 10)`],
@@ -725,11 +749,20 @@
       top ? ['Rue la plus chargée', `${top.rue} (${num(top.chargeP90)} passages, haut)`] : null,
       ev.cortege ? ['Cortège', `oui${r?.goulots ? `, ${num(r.goulots)} goulot${r.goulots > 1 ? 's' : ''}` : ''}`] : null,
       t ? ['Rythme supposé', `arrivées sur ${t.arriveeMin}${NB}min, sur place ${t.dureeMin}${NB}min, dispersion sur ${t.departMin}${NB}min`] : null,
-      ev.meteo ? ['Météo prévue', ev.meteo] : null,
+      ev.meteo ? ['Météo prévue', ev.meteo.replace(/_/g, ' ')] : null,
       src ? ['Annonce', `${src.title ?? 'rendez-vous'}${src.source === 'presse' ? ' (presse)' : src.source === 'prefecture' ? ' (préfecture)' : src.source === 'demosphere' ? ' (Démosphère)' : ''}`] : null].filter(Boolean);
     return { dot: hex, title: ev.ville, state: `${word} · estimation modélisée`, stateHex: hex, rows, url: null,
       hint: selected ? 'Rassemblement affiché : rues, phases et rejeu dans le panneau' : 'Clic : afficher ses rues et le rejeu',
       source: `flux_osint, calcul du ${when(ev.calculeLe)} · ${a.base}` };
+  };
+  // Fusion : bulle de l'annonce complétée par la prévision ; lignes déjà dites par l'annonce (date, lieu, annonce) non répétées.
+  const protFluxCard = (x, ev) => {
+    const base = protCard(x), f = fluxCard(ev, window.__fmFlux?.selectedId() === ev.id);
+    const skip = new Set(['Début annoncé', 'Annonce']);
+    return { ...base, rows: [...base.rows, ['Foule estimée (modèle)', f.rows.find(([k]) => k === 'Affluence estimée')?.[1] ?? 'n.d.'],
+      ...f.rows.filter(([k]) => !skip.has(k) && k !== 'Affluence estimée')],
+      hint: 'Rues, phases et rejeu dans le panneau Flux piétons',
+      source: `${base.source} · ${f.source}` };
   };
   const cableWatch = () => (S.data.cablesWatch?.evaluated ? 'veille active' : `veille des navires coupée (${(S.data.cablesWatch?.errors ?? [])[0] ?? 'source injoignable'})`);
   // Cloud et centres de données : bulles complètes (état publié, incidents, maintenances, voisinage, sources).
@@ -838,7 +871,7 @@
   const deptAt = (c) => { if (!c) return null; for (const f of S.geo.deptShapes) if (inGeom(c, f.geometry)) return S.agg.get(f.properties.code); return null; };
 
   // Arbitre : une seule cible, la plus signifiante sous le pointeur.
-  const PRIORITY = ['mqs-air-sym', 'sov-emergencies', 'mqs-ddos', 'flux-pietons-point', 'flux-pietons-others', 'mqs-prot', 'flux-pietons-lines', 'mqs-cloud-sym', 'mqs-inet-disc', 'mqs-sites-recent', 'mqs-agg-disc', 'mqs-low-disc', 'mqs-crime-c', 'mqs-crime-city', 'mqs-bases-sym', 'mqs-bases-closed', 'sov-navy-reference', 'sov-navy-observed', 'mqs-landings', 'mqs-world-lp', 'mqs-dc-ref', 'mqs-suite-end', 'mqs-world-hit', 'mqs-suite-hit', 'submarine-cables-hitarea', 'mqs-anch-line', 'mqs-cz-fill', 'mqs-sites-long', 'mqs-crime-d-fill', 'mqs-dept-fill'];
+  const PRIORITY = ['mqs-air-sym', 'sov-emergencies', 'mqs-ddos', 'flux-pietons-point', 'flux-pietons-others', 'mqs-prot', 'mqs-prot-flux', 'flux-pietons-lines', 'mqs-cloud-sym', 'mqs-inet-disc', 'mqs-sites-recent', 'mqs-agg-disc', 'mqs-low-disc', 'mqs-crime-c', 'mqs-crime-city', 'mqs-bases-sym', 'mqs-bases-closed', 'sov-navy-reference', 'sov-navy-observed', 'mqs-landings', 'mqs-world-lp', 'mqs-dc-ref', 'mqs-suite-end', 'mqs-world-hit', 'mqs-suite-hit', 'submarine-cables-hitarea', 'mqs-anch-line', 'mqs-cz-fill', 'mqs-sites-long', 'mqs-crime-d-fill', 'mqs-dept-fill'];
   const pick = (point) => {
     // Une pastille active : seuls ses calques (et les départements) répondent au survol ; un calque estompé ne donne jamais de bulle.
     const on = new Set(S.focus); if (preview) on.add(preview);
@@ -883,7 +916,14 @@
       return { key: `fluxr:${o.title}:${o.sub}`, kind: 'raw', id: o.title, at: null,
         card: { dot: p.color ?? '#22d3ee', title: o.title || 'rue', state: o.sub, stateHex: '#c7c7cc', rows: o.rows, hint: o.notes.join(' '), source: 'flux_osint (estimation modélisée) · OpenStreetMap' } };
     }
-    if (id === 'mqs-prot') { const x = S.prot?.[p.i]; return x && { key: `pr:${x.id}`, kind: 'raw', id: x.id, at: [x.lon, x.lat], card: protCard(x) }; }
+    if (id === 'mqs-prot' || id === 'mqs-prot-flux') {
+      const x = S.prot?.[p.i]; if (!x) return null;
+      const ev = S.protFlux?.get(x.id);
+      // Annonce prévue : une seule bulle (l'annonce, puis la foule estimée) ; le clic choisit aussi le rassemblement (rues, rejeu).
+      // Bulle au point de rassemblement : la carte s'y cadre au clic.
+      return ev ? { key: `pr:${x.id}`, kind: 'flux', id: ev.id, at: ev.point, card: protFluxCard(x, ev) }
+        : { key: `pr:${x.id}`, kind: 'raw', id: x.id, at: [x.lon, x.lat], card: protCard(x) };
+    }
     if (id === 'mqs-crime-c' || id === 'mqs-crime-city') { const c = S.crime?.cities[p.i]; return c && { key: `cr:${c.city.code}`, kind: 'raw', id: c.city.code, at: [c.city.lon, c.city.lat], card: crimeCityCard(c) }; }
     if (id === 'mqs-crime-d-fill') { const d = S.crime?.depts.get(p.code); return d && { key: `crd:${p.code}`, kind: 'raw', id: p.code, at: null, card: crimeDeptCard(d) }; }
     if (id === 'sov-emergencies' || id.startsWith('sov-navy')) return { key: `${id}:${p.id}`, kind: 'raw', id: p.id, at: f.geometry.coordinates,
@@ -1122,7 +1162,7 @@
       <div class="mqs-row">${swatch(PROT.annonce, 'ring')}Manifestation annoncée ${swatch(PROT.signale, 'disc')}rapportée sans heurts ${swatch(L1.rouge, 'disc')}heurts ou tensions ; taille = articles sur 24${NB}h</div>
       <div class="mqs-row mqs-note">Criminalité (SSMSI, annuelle, jamais une alerte) : ${CRIME_RAMP.slice(0, 4).map(([, c, w]) => `${swatch(c, 'disc')}${w}`).join(' ')} la moyenne nationale. Sans pastille, villes à 2 fois ou plus en anneau ; avec la pastille, toutes les villes de 20${NB}000 habitants et plus et les départements, pour l’indicateur du panneau.</div>
       <div class="mqs-row">${swatch('#22d3ee', 'line')}Flux piétons (estimations modélisées) : rue chargée, ${swatch(L1.jaune, 'line')}${swatch(L1.orange, 'line')}${swatch(L1.rouge, 'line')}saturation possible, probable, très probable</div>
-      <div class="mqs-row mqs-note">Totaux de la phase : couleur = part des tirages où la rue sature, épaisseur = personnes passées. Rejeu (curseur du panneau) : couleur = débit rapporté à la capacité de la rue (jaune dès la moitié, rouge au-delà), épaisseur = débit. ${swatch('#e5e7eb', 'dash')}5, 10 et 20${NB}min à pied ; ${swatch('#ffffff', 'disc')}rassemblement en cours ; ${swatch('#ffffff', 'ring')}à venir ; ${swatch('#6b7280', 'ring')}passé (clic : ses rues et le rejeu ; le choisi est entouré de ses rues).</div>
+      <div class="mqs-row mqs-note">Totaux de la phase : couleur = part des tirages où la rue sature, épaisseur = personnes passées. Rejeu (curseur du panneau) : couleur = débit rapporté à la capacité de la rue (jaune dès la moitié, rouge au-delà), épaisseur = débit. ${swatch('#e5e7eb', 'dash')}5, 10 et 20${NB}min à pied ; ${swatch('#ffffff', 'ring')}anneau blanc autour d’une manifestation : foule estimée par le modèle (clic : ses rues et le rejeu) ; prévision dont l’annonce a quitté la couche : ${swatch('#ffffff', 'disc')}en cours, ${swatch('#ffffff', 'ring')}à venir, ${swatch('#6b7280', 'ring')}passé.</div>
       <div class="mqs-row">${swatch('#e8e8ec', 'dash')}Zone de défense et de sécurité</div>
       <div class="mqs-row mqs-note">Sans pastille active, toutes les couches sont affichées. Une pastille met sa couche en avant et estompe les autres (clic, cumulable ; survol pour un aperçu).</div>
       <details${ko ? ' open' : ''}><summary>Sources · ${src.length - ko}${NB}à jour, ${ko}${NB}en défaut</summary>${src.map(([k, v, st]) => `<div class="mqs-row mqs-src"><i class="mqs-src-${st}"></i><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}</details>`;
@@ -1149,15 +1189,16 @@
     outagesCloud: () => ['Cloud et hébergement', [[icon('cloud', '#fff', CAT.cloud), 'Site cloud, couleur d’état si incident'],
       [icon('server', '#fff', CAT.dc), 'Centre de données en service'], [icon('server', CAT.dc, DARK), 'Centre de données en projet']]],
     protests: () => ['Manifestations', [[swatch(PROT.annonce, 'ring'), 'Annoncée, non confirmée'], [swatch(PROT.signale, 'disc'), 'Rapportée sans heurts'],
-      [swatch(L1.rouge, 'disc'), 'Heurts ou tensions'], [swatch('#8a93a6', 'none'), `Taille = articles sur 24${NB}h`]]],
+      [swatch(L1.rouge, 'disc'), 'Heurts ou tensions'], [swatch('#ffffff', 'ring'), 'Anneau blanc autour : foule estimée (clic : rues et rejeu)'],
+      [swatch('#8a93a6', 'none'), `Taille = articles sur 24${NB}h`]]],
     crime: () => ['Criminalité (annuelle)', CRIME_RAMP.slice(0, 4).map(([, c, w]) => [swatch(c, 'disc'), `${w.charAt(0).toUpperCase()}${w.slice(1)}${/moyenne/.test(w) ? '' : ' la moyenne'}`])],
     // Mêmes mots que la légende de la couche (flux-pietons-legend.ts) : totaux de la phase, ou instant du rejeu (curseur du panneau).
     pedestrianFlows: () => ['Flux piétons (estimations)', [[swatch('#22d3ee', 'line'), 'Rue fluide ; épaisseur = personnes passées, ou débit au rejeu'],
       [swatch(L1.jaune, 'line'), 'Saturation possible ; au rejeu, débit dès la moitié de la capacité'],
       [swatch(L1.orange, 'line'), 'Saturation probable ; au rejeu, débit proche de la capacité'],
       [swatch(L1.rouge, 'line'), 'Saturation très probable ; au rejeu, rue saturée'],
-      [swatch('#e5e7eb', 'dash'), `Isochrones 5, 10 et 20${NB}min à pied`], [swatch('#ffffff', 'disc'), 'Rassemblement en cours'],
-      [swatch('#ffffff', 'ring'), 'Rassemblement à venir'], [swatch('#6b7280', 'ring'), 'Rassemblement passé'], [swatch('#8a93a6', 'none'), 'Clic sur un point : ses rues et le rejeu']]],
+      [swatch('#e5e7eb', 'dash'), `Isochrones 5, 10 et 20${NB}min à pied`], [swatch('#ffffff', 'ring'), 'Manifestation prévue : anneau blanc, foule estimée dans l’étiquette'],
+      [swatch('#6b7280', 'ring'), 'Prévision sans annonce en cours (gris = passé)'], [swatch('#8a93a6', 'none'), 'Clic sur un point : ses rues et le rejeu']]],
   };
   const focusKey = document.createElement('div');
   focusKey.id = 'mqs-focus-key';
@@ -1283,9 +1324,9 @@
     document.addEventListener('change', (e) => { if (e.target?.matches?.('select[data-crime-indicator]')) setTimeout(draw, 50); });
     audit();
     const load = async () => {
-      const [telecom, internet, military, cablesWatch, gnss, cyberData, cloud, protests, watch] = await Promise.all(['/api/outages/telecom', '/api/outages/internet', '/api/sovereignty/military',
-        '/api/sovereignty/cables-watch', '/api/sovereignty/gnss', '/api/sovereignty/cyber', '/api/outages/cloud', '/api/social/protests', '/api/sovereignty/cyber-watch'].map(getJson));
-      S.data = { telecom, internet, military, cablesWatch, gnss, cyber: cyberData, cloud, protests, watch };
+      const [telecom, internet, military, cablesWatch, gnss, cyberData, cloud, protests, watch, flux] = await Promise.all(['/api/outages/telecom', '/api/outages/internet', '/api/sovereignty/military',
+        '/api/sovereignty/cables-watch', '/api/sovereignty/gnss', '/api/sovereignty/cyber', '/api/outages/cloud', '/api/social/protests', '/api/sovereignty/cyber-watch', '/data/flux-pietons/index.json'].map(getJson));
+      S.data = { telecom, internet, military, cablesWatch, gnss, cyber: cyberData, cloud, protests, watch, flux };
       await draw();
     };
     await load();
@@ -1304,7 +1345,7 @@
       const r = S.m.getCanvas().getBoundingClientRect();
       const hit = pick([e.clientX - r.left, e.clientY - r.top]);
       if (!hit) { closeFiche(); pop.style.display = 'none'; popAt = null; S.hoverKey = null; return; }
-      if (hit.kind === 'flux' && window.__fmFlux?.selectedId() !== hit.id) window.__fmFlux.select(hit.id);
+      if (hit.kind === 'flux' && window.__fmFlux && window.__fmFlux.selectedId() !== hit.id) window.__fmFlux.select(hit.id);
       const linked = hit.kind === 'base' && S.audit.get(hit.id)?.source;
       const next = linked || hit.card?.url ? 'Cliquer à nouveau pour ouvrir la source'
         : ['dept', 'air', 'base', 'site'].includes(hit.kind) ? 'Cliquer à nouveau pour ouvrir la fiche' : null;

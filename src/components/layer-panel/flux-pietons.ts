@@ -86,7 +86,7 @@ function selectedSection(e: FluxEvent, geo: FluxViewInput['geo'], open: OpenFn):
     + (a.plafond !== null ? kvRow('Plafond du lieu', escapeHtml(`${people(a.plafond)} debout à moins de 300${NBSP}m${
       a.partPlafonnee !== null && a.partPlafonnee > 0 ? ` · atteint dans ${Math.round(a.partPlafonnee * 100)}${NBSP}% des tirages` : ''}`)) : '')
     + kvRow('Base', escapeHtml(a.base))
-    + kvRow('Météo', escapeHtml(e.meteo ?? 'n.d.'))
+    + kvRow('Météo', escapeHtml(e.meteo?.replace(/_/g, ' ') ?? 'n.d.'))
     + kvRow('Cortège', escapeHtml(e.cortege ? 'parcours simulé' : 'rassemblement sans parcours connu'))
     + kvRow('Recalage', escapeHtml(e.recale ? 'recalé sur des comptages' : 'aucun comptage'))
     + kvRow('Calculé le', escapeHtml(frDateTime(e.calculeLe) ?? 'n.d.'))

@@ -1,7 +1,7 @@
 // src/components/layer-panel/manifestations.ts : vue pure du panneau Manifestations (spec 2026-10-17 manifestations) ; aucun accès réseau
 // ni DOM. Natures jamais mêlées : ce que la presse a rapporté (presse française ingérée, ville par ville, et presse mondiale GDELT, 24 h)
 // et l'agenda militant (Démosphère), qui n'annonce que des rendez-vous, jamais des manifestations constatées. Aucun effet sur l'indice de stabilité. Textes tiers échappés.
-import type { ProtestItem, ProtestsResponse } from '../../types/index.ts';
+import type { FluxEvent, ProtestItem, ProtestsResponse } from '../../types/index.ts';
 import { isProtestsLate } from '../../services/protests.ts';
 import { parisDayOf } from '../../services/environment-levels.ts';
 import type { VigilanceLevel } from '../../services/vigilance.ts';
@@ -19,6 +19,8 @@ type OpenFn = (sectionId: string, byDefault: boolean) => boolean;
 
 export interface ManifestationsViewInput {
   data: ProtestsResponse | null; error: string | null; canFocus: boolean; now: number; open: OpenFn;
+  /** Prévisions Flux piétons par identifiant de rendez-vous (fluxForecastsByProtest) : affluence estimée, clic = rues et rejeu. */
+  forecasts?: ReadonlyMap<string, FluxEvent>;
 }
 
 const PARIS = 'Europe/Paris';
@@ -119,6 +121,17 @@ function signaledRow(x: ProtestItem, canFocus: boolean): string {
   });
 }
 
+// Prévisions du rendu en cours (posées en tête de buildManifestationsView, lues par les lignes d'annonce).
+let FORECASTS: ReadonlyMap<string, FluxEvent> = new Map();
+
+/** « Foule estimée ≈ 800 personnes · rues et rejeu » : ouvre la prévision Flux piétons du rendez-vous. */
+function forecastLine(x: ProtestItem): string {
+  const ev = FORECASTS.get(x.id);
+  if (!ev) return '';
+  const n = Math.round(ev.affluence.p50).toLocaleString('fr-FR').replace(/\s/g, NBSP);
+  return `<br><span class="lp-link" role="button" tabindex="0" data-flux-event="${escapeHtml(ev.id)}">Foule estimée ≈${NBSP}${n}${NBSP}personnes · rues et rejeu</span>`;
+}
+
 function announcedRow(x: ProtestItem, canFocus: boolean): string {
   const clock = x.allDay ? null : parisClock(x.startsAt);
   const when = clock ?? 'journée';
@@ -129,7 +142,7 @@ function announcedRow(x: ProtestItem, canFocus: boolean): string {
       : x.edition ? ` · édition ${escapeHtml(x.edition)}` : '';
   return listRow({
     text: x.title, value: when, color: '#ec4899',
-    noteHtml: `annoncé, non confirmé${from}${link}`,
+    noteHtml: `annoncé, non confirmé${from}${link}${forecastLine(x)}`,
     data: key !== null ? { protest: key } : undefined, link: canFocus && key !== null,
   });
 }
@@ -228,6 +241,7 @@ function methodSection(d: ProtestsResponse, now: number, open: OpenFn): FicheSec
 
 export function buildManifestationsView(input: ManifestationsViewInput): LayerView {
   const { data, error, canFocus, now, open } = input;
+  FORECASTS = input.forecasts ?? new Map();
   if (data === null && error === null) {
     return { head: { theme: MANIFESTATIONS_THEME, title: MANIFESTATIONS_TITLE, status: ['chargement…'] }, sections: [], bodyHtml: loadingBody() };
   }

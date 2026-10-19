@@ -169,6 +169,19 @@ export function phaseValues(p: Pick<FluxSegmentProps, 'chargeP90' | 'pSaturation
 }
 
 /** Événement le plus utile à montrer : le prochain à venir, sinon le plus récent. */
+/**
+ * Prévisions Flux piétons rattachées aux rendez-vous de la couche Manifestations : flux_osint garde l'identifiant de l'annonce
+ * (« demosphere:… » tel quel, « presse-annonce:… » suivi de « :AAAA-MM-JJ »). Clé = identifiant du rendez-vous.
+ */
+export function fluxForecastsByProtest(events: readonly FluxEvent[], protestIds: readonly string[]): Map<string, FluxEvent> {
+  const out = new Map<string, FluxEvent>();
+  for (const id of protestIds) {
+    const ev = events.find((e) => e.evenement === id || e.evenement.startsWith(`${id}:`));
+    if (ev) out.set(id, ev);
+  }
+  return out;
+}
+
 /** Moment d'un rassemblement : en cours pendant les 3 h qui suivent le début annoncé ; sans date, dit à venir. */
 export function fluxMoment(debut: string | null, nowMs: number): 'avenir' | 'encours' | 'passe' {
   const t = debut ? Date.parse(debut) : Number.NaN;

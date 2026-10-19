@@ -12,7 +12,7 @@ export const PROTESTS_POLL_MS = 10 * 60_000;
 
 export type ProtestsState = SourceSlot<ProtestsResponse>;
 
-const SOURCES: ReadonlySet<string> = new Set(['demosphere', 'presse', 'gdelt']);
+const SOURCES: ReadonlySet<string> = new Set(['demosphere', 'presse', 'gdelt', 'prefecture']);
 const STATUSES: ReadonlySet<string> = new Set(['annonce', 'signale']);
 
 const PRECISIONS: ReadonlySet<string> = new Set(['commune', 'departement']);
