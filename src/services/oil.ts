@@ -31,6 +31,8 @@ type SourceFetchStatus = 'ok' | 'stale' | 'error';
 interface OilCache {
   data: OilDashboard;
   fetchedAt: number;
+  /** Lu avec les fichiers JODI (panneau Pétrole) ; sans eux, la vue d'ensemble seulement. */
+  withJodi: boolean;
 }
 
 interface AnnualOilStats {
@@ -1239,8 +1241,17 @@ function buildFreshnessInfo(
   };
 }
 
-export async function fetchOilDashboard(): Promise<OilDashboard> {
-  if (cache && Date.now() - cache.fetchedAt < CACHE_TTL) {
+// Derniers fichiers JODI lus (ZIP mondial du gaz 1,6 Mo, CSV pétrole) : gardés pour les relectures sans eux.
+let jodiMemo: { oil: JodiOilSnapshot | null; gas: JodiGasSnapshot | null } | null = null;
+const skipped = async <T>(v: T | null): Promise<{ data: T | null; status: SourceFetchStatus }> => ({ data: v, status: 'ok' });
+
+/**
+ * Tableau de bord pétrole. `jodi` : lire aussi les fichiers JODI (comparaison internationale du panneau Pétrole) ; la Vue générale,
+ * qui ne suit que la tension, s'en passe (1,6 Mo de moins au démarrage) et reprend les derniers lus s'il y en a.
+ */
+export async function fetchOilDashboard(opts: { jodi?: boolean } = {}): Promise<OilDashboard> {
+  const withJodi = opts.jodi ?? true;
+  if (cache && Date.now() - cache.fetchedAt < CACHE_TTL && (cache.withJodi || !withJodi)) {
     return cache.data;
   }
 
@@ -1263,8 +1274,8 @@ export async function fetchOilDashboard(): Promise<OilDashboard> {
     settleSource(fetchMonthlyDeliveriesFromUfip),
     settleSource(fetchMonthlyOilConsumptionRows),
     settleSource(fetchLocalOilConsumption),
-    settleSource(fetchJodiOilSnapshot),
-    settleSource(fetchJodiGasSnapshot),
+    withJodi ? settleSource(fetchJodiOilSnapshot) : skipped(jodiMemo?.oil ?? null),
+    withJodi ? settleSource(fetchJodiGasSnapshot) : skipped(jodiMemo?.gas ?? null),
     settleSource(fetchFuelPriceHistory),
     settleSource(fetchEmergencyStocks),
   ]);
@@ -1330,9 +1341,11 @@ export async function fetchOilDashboard(): Promise<OilDashboard> {
     },
   };
 
+  if (withJodi) jodiMemo = { oil: jodiOilResult.data, gas: jodiGasResult.data };
   cache = {
     data: dashboard,
     fetchedAt: Date.now(),
+    withJodi: withJodi || jodiMemo !== null,
   };
 
   const detail = `stocks ${dashboard.stocks.nationalStocksDays?.toFixed(0) ?? 'n.d.'}j · vigilance ${dashboard.meta.status}`;

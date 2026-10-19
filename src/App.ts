@@ -1316,6 +1316,7 @@ export class App {
   private currentDromEnergyError: string | null = null;
   private oilPanel: OilPanel | null = null;
   private currentOilData: OilDashboard | null = null;
+  private oilReadWithJodi = false;
   private currentFuelTensionData: FuelTensionDashboard | null = null;
   private currentNuclearState: NuclearState | null = null;
   /** Événements de sûreté ASNR (spec 2026-10-13) ; null avant la première lecture. */
@@ -3442,7 +3443,8 @@ export class App {
       }
     } else if (key === 'oilNetwork') {
       if (this.activeLayers.oilNetwork) {
-        if (!this.currentOilData) void this.loadOil(); // lazy-load on first enable
+        // Première ouverture, ou données lues sans les fichiers JODI (Vue générale) : relecture complète.
+        if (!this.currentOilData || !this.oilReadWithJodi) void this.loadOil();
         this.oilPanel?.show(this.currentOilData, this.currentFuelTensionData);
       } else {
         this.oilPanel?.hide();
@@ -7190,7 +7192,8 @@ export class App {
 
     try {
       const [oilData, fuelTensionResult] = await Promise.allSettled([
-        fetchOilDashboard(),
+        // Fichiers JODI seulement pour le panneau Pétrole (couche allumée) ; la Vue générale ne suit que la tension.
+        fetchOilDashboard({ jodi: this.activeLayers.oilNetwork === true }),
         fetchFuelTensionDashboard(),
       ]);
 
@@ -7205,6 +7208,7 @@ export class App {
 
       this.currentFuelTensionData = resolvedFuelTension;
       this.currentOilData = resolvedOilData;
+      this.oilReadWithJodi ||= this.activeLayers.oilNetwork === true;
 
       // Update map visualization (refineries, depots, pipelines, origin-linked flows)
       const oilFlows = this.buildOilFlowsFromDashboard(resolvedOilData);

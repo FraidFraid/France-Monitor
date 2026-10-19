@@ -208,10 +208,15 @@ export async function loadSovereigntySlot<T extends { errors: string[] }>(
 }
 
 /** Tests seulement : vide le cache et les lectures en cours. */
+// Caches propres à un service (fichier des câbles) vidés avec les autres.
+const resetHooks = new Set<() => void>();
+export function onSovereigntySourceCacheReset(hook: () => void): void { resetHooks.add(hook); }
+
 export function resetSovereigntySourceCache(): void {
   cache.clear();
   inFlight.clear();
   pendingSince.clear();
+  for (const hook of resetHooks) hook();
 }
 
 // ─── Panneau des sources (S1, S2) ───

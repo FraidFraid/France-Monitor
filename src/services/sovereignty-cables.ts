@@ -9,7 +9,7 @@ import { isMultiPath } from './environment-source.ts';
 import { readHealthJsonShared } from './health-surveillance.ts';
 import {
   describeProblems, exactly, isBool, isCount, isCountOrNull, isDate, isDateOrNull, isNum, isNumOrNull, isOneOf, isStr, isStrOrNull,
-  isStringList, list, loadSovereigntySlot, mergeSlot, nullable, record, refine, shapeOf, sovereigntySlotStatus, value, type SourceSlot,
+  isStringList, list, loadSovereigntySlot, mergeSlot, nullable, onSovereigntySourceCacheReset, record, refine, shapeOf, sovereigntySlotStatus, value, type SourceSlot,
   type SovereigntyStatus,
 } from './sovereignty-source.ts';
 
@@ -85,10 +85,17 @@ export function isSubseaCablesFile(v: unknown): v is SubseaCablesFile {
   return FILE_SHAPE.is(v);
 }
 
+// Fichier statique (757 Ko) : téléchargé une fois par page, même si l'avant-chargement du démarrage et la couche le demandent
+// l'un après l'autre (il était lu deux fois sur la Vue générale).
+let fileRead: SubseaCablesFile | null = null;
+onSovereigntySourceCacheReset(() => { fileRead = null; });
+
 async function readCablesFile(): Promise<{ file: SubseaCablesFile | null; fileError: string | null }> {
+  if (fileRead) return { file: fileRead, fileError: null };
   try {
     const json = await readHealthJsonShared(CABLES_FILE_URL);
     if (!FILE_SHAPE.is(json)) throw new Error(`fichier des câbles mal formé : ${describeProblems(FILE_SHAPE.problems(json))}`);
+    fileRead = json;
     return { file: json, fileError: null };
   } catch (err) {
     return { file: null, fileError: err instanceof Error ? err.message : 'erreur inconnue' };
