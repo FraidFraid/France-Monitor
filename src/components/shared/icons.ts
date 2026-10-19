@@ -44,7 +44,7 @@ export type IconName =
   | 'volume-x' | 'bot' | 'dna' | 'circle-help' | 'rotate-ccw' | 'user'
   | 'palmtree' | 'pill' | 'link' | 'lightbulb' | 'leaf' | 'check'
   | 'hand-fist' | 'cloud' | 'factory' | 'activity'
-  | 'chevron-left' | 'minus' | 'maximize-2' | 'minimize-2';
+  | 'chevron-left' | 'minus' | 'maximize-2' | 'minimize-2' | 'maximize';
 
 export interface FmIconOptions {
   /** Taille en px (largeur = hauteur). Défaut : 14. */
@@ -139,6 +139,7 @@ const ICON_PATHS: Record<IconName, string> = {
   'check': '<path d="M20 6 9 17l-5-5" />',
   'chevron-left': '<path d="m15 18-6-6 6-6" />',
   'minus': '<path d="M5 12h14" />',
+  'maximize': '<path d="M8 3H5a2 2 0 0 0-2 2v3" /> <path d="M21 8V5a2 2 0 0 0-2-2h-3" /> <path d="M3 16v3a2 2 0 0 0 2 2h3" /> <path d="M16 21h3a2 2 0 0 0 2-2v-3" />',
   'maximize-2': '<path d="M15 3h6v6" /> <path d="m21 3-7 7" /> <path d="m3 21 7-7" /> <path d="M9 21H3v-6" />',
   'minimize-2': '<path d="m14 10 7-7" /> <path d="M20 10h-6V4" /> <path d="m3 21 7-7" /> <path d="M4 14h6v6" />',
   'hand-fist': '<path d="M12.035 17.012a3 3 0 0 0-3-3l-.311-.002a.72.72 0 0 1-.505-1.229l1.195-1.195A2 2 0 0 1 10.828 11H12a2 2 0 0 0 0-4H9.243a3 3 0 0 0-2.122.879l-2.707 2.707A4.83 4.83 0 0 0 3 14a8 8 0 0 0 8 8h2a8 8 0 0 0 8-8V7a2 2 0 1 0-4 0v2a2 2 0 1 0 4 0" /> <path d="M13.888 9.662A2 2 0 0 0 17 8V5A2 2 0 1 0 13 5" /> <path d="M9 5A2 2 0 1 0 5 5V10" /> <path d="M9 7V4A2 2 0 1 1 13 4V7.268" />',

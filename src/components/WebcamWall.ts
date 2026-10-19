@@ -220,6 +220,12 @@ export class WebcamWall {
         this.commit({ ...this.state, minimized: !this.state.minimized });
         break;
       case 'refresh': this.refreshNow(); break;
+      case 'fullscreen': {
+        // Plein écran de la case (image ou lecteur vidéo) ; Échap pour revenir.
+        const media = btn.closest('.wcw-tile')?.querySelector<HTMLElement>('.wcw-media');
+        media?.requestFullscreen?.().catch(() => undefined);
+        break;
+      }
       case 'layout': {
         const v = Number(btn.dataset['value']);
         const layout = (WALL_LAYOUTS as readonly number[]).includes(v) ? v as WallLayout : 0;

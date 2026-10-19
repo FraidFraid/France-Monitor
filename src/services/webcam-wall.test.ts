@@ -138,6 +138,7 @@ describe('vidéos en direct (YouTube)', () => {
     expect(html).toContain('referrerpolicy="strict-origin-when-cross-origin"');
     expect(html).toContain('allowfullscreen');
     expect(html).toContain('Agrandir');
+    expect(html).toContain('data-wall-action="fullscreen"');
     const pick = renderWebcamWall({ data: ds, state: base(), columns: 1, refreshedMs: 0, refreshedLabel: null });
     expect(pick).toContain('<optgroup label="Vidéos en direct (1)">');
     expect(pick).toContain('<optgroup label="Images rafraîchies chaque minute (1)">');

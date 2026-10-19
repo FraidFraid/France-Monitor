@@ -71,6 +71,7 @@ function tileHtml(t: WallTile, index: number, count: number, input: WallViewInpu
   const id = escapeHtml(t.id);
   const tools = (index > 0 ? iconButton('left', 'chevron-left', 'Déplacer avant', ` data-id="${id}"`) : '')
     + (index < count - 1 ? iconButton('right', 'chevron-right', 'Déplacer après', ` data-id="${id}"`) : '')
+    + (src || player ? iconButton('fullscreen', 'maximize', 'Plein écran', ` data-id="${id}"`) : '')
     + (src || player ? iconButton('focus', focused ? 'minimize-2' : 'maximize-2', focused ? 'Revenir à la mosaïque' : 'Agrandir', ` data-id="${id}"`) : '')
     + iconButton('remove', 'x', 'Retirer du mur', ` data-id="${id}"`);
   const credit = w ? [w.attribution, w.license].filter((x): x is string => !!x).join(' · ') : '';
