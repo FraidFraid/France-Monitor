@@ -6,6 +6,7 @@
 import { MapContainer } from './components/MapContainer.ts';
 import { MapPopup } from './components/MapPopup.ts';
 import { energyChipsPressed, energyFocusKeysHtml, isEnergyLayerKey, toggleEnergyChip } from './components/deckgl/energy-focus.ts';
+import { escapeHtml } from './components/deckgl/format-utils.ts';
 import type { EnergyLayerKey } from './components/deckgl/energy-map.ts';
 import { buildArticlePreviewHtml, buildEventPreviewHtml, MapPreviewCard } from './components/MapPreviewCard.ts';
 import { buildEventsKeyHtml } from './components/map-key/events-key.ts';
@@ -2526,8 +2527,9 @@ export class App {
       const chip = ev.target instanceof Element ? ev.target.closest<HTMLElement>('.floating-panel-switcher__chip[data-panel-key]') : null;
       const key = chip?.dataset['panelKey'] ?? null;
       this.setEnergyFocusPreview(key && isEnergyLayerKey(key) ? key : null);
+      this.setGeneralFocusPreview(key && !isEnergyLayerKey(key) ? key as keyof MapLayers : null);
     });
-    floatingPanelSwitcher.addEventListener('pointerleave', () => this.setEnergyFocusPreview(null));
+    floatingPanelSwitcher.addEventListener('pointerleave', () => { this.setEnergyFocusPreview(null); this.setGeneralFocusPreview(null); });
     // La largeur de la carte change la place disponible (repli en icônes) et donc le décalage des panneaux.
     this.addGlobalListener(window, 'resize', () => this.layoutFloatingPanelSwitcher());
     // v2 : la zone carte change de taille sans que la fenêtre bouge (tiroir ouvert ou fermé, onglet Carte du mobile).
@@ -5646,6 +5648,53 @@ export class App {
     this.energyFocusActive = energyPressed;
     this.energyFocusPreview = null;
     this.syncEnergyFocus();
+    // Vue générale : la pastille dont le panneau est ouvert reste mise en avant, comme une pastille Énergie allumée.
+    const open = this.currentFloatingPanelId;
+    this.generalFocusActive = open && !isEnergyLayerKey(open) && this.isFloatingPanelVisible(open) ? open : null;
+    this.generalFocusPreview = null;
+    this.syncGeneralFocus();
+  }
+
+  /**
+   * Vue générale (19/10/2026), même règle que les pastilles Énergie : la pastille survolée, ou celle dont le panneau est ouvert,
+   * laisse sa couche vive (les autres se tamisent) et montre sa légende courte sous la barre. Sécurité et Santé ont la leur
+   * (public/maquette-*.js), Énergie aussi (syncEnergyFocus).
+   */
+  private generalFocusActive: keyof MapLayers | null = null;
+  private generalFocusPreview: keyof MapLayers | null = null;
+  private generalFocusShown: keyof MapLayers | null = null;
+
+  private setGeneralFocusPreview(key: keyof MapLayers | null): void {
+    if (key === this.generalFocusPreview) return;
+    this.generalFocusPreview = key;
+    this.syncGeneralFocus();
+  }
+
+  private syncGeneralFocus(): void {
+    const inGeneral = this.uiV2 && this.v2Theme === 'general';
+    const key = inGeneral ? this.generalFocusPreview ?? this.generalFocusActive : null;
+    if (key !== this.generalFocusShown) {
+      this.generalFocusShown = key;
+      this.mapContainer?.setLegendHover(key);
+    }
+    let panel = document.getElementById('general-focus-key');
+    const switcher = this.floatingPanelSwitcherEl;
+    const legend = key ? this.mapLegend?.getCategory(key) : undefined;
+    const items = (legend?.items ?? []).filter((i) => !i.isHeader && i.visible !== false && (i.color || i.borderColor)).slice(0, 6);
+    if (!key || !legend || items.length === 0 || !switcher || switcher.hidden) {
+      panel?.remove();
+      return;
+    }
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'general-focus-key';
+      document.body.appendChild(panel);
+    }
+    const rows = items.map((i) => `<div class="ef-row"><i class="ef-dot" style="background:${escapeHtml(i.color ?? 'transparent')};${i.borderColor ? `box-shadow:0 0 0 2px ${escapeHtml(i.borderColor)}` : ''}"></i><span>${escapeHtml(i.label)}</span></div>`).join('');
+    panel.innerHTML = `<div class="ef-key"><div class="ef-title">${escapeHtml(legend.title)}</div>${rows}</div>`;
+    const r = switcher.getBoundingClientRect();
+    panel.style.left = `${Math.round(r.left)}px`;
+    panel.style.top = `${Math.round(r.bottom + 6)}px`;
   }
 
   /** Pastilles Énergie allumées (vertes) et pastille survolée en aperçu. */

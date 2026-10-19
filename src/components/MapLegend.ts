@@ -382,6 +382,11 @@ export class MapLegend {
      * Ajoute ou remplace plusieurs catégories (par identifiant, visibilité donnée sinon gardée) puis reconstruit la légende une seule
      * fois : légendes datées rafraîchies ensemble à chaque bascule de couche ou lecture.
      */
+    /** Légende d'une couche (mini-légende des pastilles de la Vue générale) ; undefined si elle n'en a pas encore posé. */
+    getCategory(id: string): LegendCategory | undefined {
+        return this.categories.find((c) => c.id === id);
+    }
+
     setCategories(categories: readonly LegendCategory[]): void {
         for (const category of categories) this.upsertCategory(category);
         this.update();
