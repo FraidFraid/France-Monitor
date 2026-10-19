@@ -101,7 +101,7 @@
     if (!sec) {
       if (S.wasSec) {
         for (const l of m.getStyle().layers) if (l.id.startsWith('mqs-')) V(l.id, false);
-        pop.style.display = 'none'; popAt = null; closeFiche(); S.focus.clear(); preview = null;
+        pop.style.display = 'none'; popAt = null; closeFiche(); S.focus.clear(); preview = null; globeFor(false);
         for (const [k, v] of baseOpacity) { const [id, prop] = k.split('|'); try { if (m.getLayer(id)) m.setPaintProperty(id, prop, v); } catch (e) { /* propriété absente */ } }
       }
       S.wasSec = false; return;
@@ -501,6 +501,25 @@
     if (last) { if (!P.isVisible(last)) P.show(last); } else if (wasOn && P.isVisible(k)) P.hide(k);
     return true;
   };
+  // Connectivité : les câbles ne tiennent pas sur une carte plate au zoom 3 ; pastille allumée = globe, recul pour les voir en
+  // entier ; éteinte (ou hors de l'onglet) = carte plate et zoom minimal de l'app (3) rendus.
+  const globeFor = (on) => {
+    const m = S.m;
+    if (Boolean(S.globe) === on) return;
+    S.globe = on;
+    try {
+      if (on) {
+        S.flatView = { center: m.getCenter(), zoom: m.getZoom() };
+        m.setMinZoom(1); m.setProjection({ type: 'globe' });
+        m.easeTo({ center: [-12, 22], zoom: 1.7, duration: 1200 });
+      } else {
+        m.setProjection({ type: 'mercator' });
+        const back = S.flatView; S.flatView = null;
+        if (back) m.jumpTo({ center: back.center, zoom: Math.max(3, back.zoom) }); else if (m.getZoom() < 3) m.setZoom(3);
+        m.setMinZoom(3);
+      }
+    } catch (e) { /* projection absente (ancienne MapLibre) */ }
+  };
   const wireChips = () => {
     document.addEventListener('click', (e) => {
       if (!isSec()) return;
@@ -508,6 +527,7 @@
       const wasOn = S.focus.has(k);
       wasOn ? S.focus.delete(k) : S.focus.add(k);
       preview = null; applyFocus();
+      if (k === 'subseaCables') globeFor(!wasOn);
       if (followPanel(k, wasOn)) e.stopPropagation();
     }, true);
     document.addEventListener('mouseover', (e) => { const k = chipKey(e.target); const next = k in GROUPS ? k : null; if (next !== preview) { preview = next; applyFocus(); } });
