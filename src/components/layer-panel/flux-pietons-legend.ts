@@ -9,7 +9,7 @@ import type { LegendCategory } from '../MapLegend.ts';
 
 export const FLUX_LEGEND: LegendCategory = {
   id: 'pedestrianFlows',
-  title: 'Flux piétons',
+  title: 'Foule estimée (Manifestations)',
   items: [
     { id: 'flux-fluide', label: BAND_WORD.fluide, color: bandHex('fluide'), shape: 'square' },
     { id: 'flux-jaune', label: BAND_WORD.jaune, color: bandHex('jaune'), shape: 'square' },

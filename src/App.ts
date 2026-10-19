@@ -647,7 +647,7 @@ const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
   { id: 'protests', label: 'Manifestations', icon: 'megaphone', layerKeys: ['protests'] },
   { id: 'crime', label: 'Criminalité', icon: 'siren', layerKeys: ['crime'] },
   { id: 'webcams', label: 'Webcams', icon: 'camera', layerKeys: ['webcams'] },
-  { id: 'pedestrianFlows', label: 'Flux piétons', icon: 'activity', layerKeys: ['pedestrianFlows'] },
+  { id: 'pedestrianFlows', label: 'Foule estimée', icon: 'activity', layerKeys: ['pedestrianFlows'] },
 ];
 
 /** Lignes Souveraineté de la phase B : chacune n'est écrite que par son lecteur (tâche B28), jamais par un service de la phase A. */
@@ -3279,6 +3279,8 @@ export class App {
     // Panneau Manifestations (spec 2026-10-17) : à l'ouverture, source lue, carte repeinte et relève réglée ; à l'extinction, masquage
     // silencieux et relève arrêtée (rien n'est relevé couche éteinte : aucun effet sur le score).
     if (key === 'protests') {
+      // Foule estimée (Flux piétons) fusionnée dans Manifestations : sa couche suit, sans case ni puce à elle.
+      if (this.activeLayers.pedestrianFlows !== enabled) this.onLayerToggle('pedestrianFlows', enabled);
       if (enabled) {
         this.openProtestsPanel();
       } else {
@@ -4643,11 +4645,16 @@ export class App {
   }
 
   /** Croix du panneau : éteint la couche comme une case décochée. */
+  /** Croix du panneau Foule estimée : la couche suit Manifestations ; fermer quitte le rassemblement choisi (rues retirées). */
   private closeFluxLayer(): void {
-    if (this.activeLayers.pedestrianFlows) {
-      this.onLayerToggle('pedestrianFlows', false);
-      this.layerPanel?.updateLayers(this.activeLayers);
-    }
+    this.fluxPanel?.hide({ silent: true });
+    this.fluxSelectedId = null;
+    this.fluxFeatures = null;
+    this.fluxInstant = null;
+    this.fluxGeo = 'idle';
+    this.pushFluxMap();
+    this.pushFluxState();
+    this.refreshFloatingPanelSwitcher();
   }
 
   /** Ouverture (case, restauration) : panneau sur l'état connu, carte reposée, index relu. */
@@ -5539,7 +5546,8 @@ export class App {
 
     // Vue générale : pas de puce pour une couche du socle au vert (13/10/2026), sa couche reste allumée.
     const hideGreen = this.uiV2 && this.v2Theme === 'general' && this.watchModule !== null;
-    const eligible = FLOATING_PANEL_DEFS.filter((def) => this.floatingPanelIsEligible(def.id)
+    // Foule estimée : pas de puce, son panneau s'ouvre depuis une manifestation (fusion avec Manifestations, 19/10/2026).
+    const eligible = FLOATING_PANEL_DEFS.filter((def) => def.id !== 'pedestrianFlows' && this.floatingPanelIsEligible(def.id)
       && !(hideGreen && this.watchModule?.generalChipHidden(def.id, this.watchEntries)));
 
     // v2 : puce « Actualités géolocalisées » en tête (12/10/2026), dans la vue qui affiche les actualités (Vue générale), même

@@ -130,10 +130,8 @@
     P('mqs-crime-d-fill', 'fill-opacity', pill('crime') ? ['get', 'op'] : 0.12);
     T_('mqs-ddos-label', pill('cyber') ? ['get', 'label'] : ['case', ['get', 'recent'], ['get', 'label'], '']);
     T_('mqs-prot-label', pill('protests') || pill('pedestrianFlows') ? ['get', 'label'] : ['case', ['any', ['>=', ['get', 'n'], 20], ['==', ['get', 'fc'], 1]], ['get', 'label'], '']);
-    // Pastille Flux piétons seule : les manifestations prévues seulement. Les points Flux piétons déjà portés par une annonce
-    // ne sont pas redessinés (un seul point par rassemblement) ; restent ceux dont l'annonce n'est plus dans la couche.
-    const fluxOnly = pill('pedestrianFlows') && !pill('protests');
-    const protFilter = fluxOnly ? ['==', ['get', 'fc'], 1] : null;
+    // Les points Foule estimée déjà portés par une annonce ne sont pas redessinés (un seul point par rassemblement) ; restent ceux dont l'annonce n'est plus dans la couche.
+    const protFilter = null;
     const othersFilter = ['all', ['==', ['get', 'kind'], 'autre'], ['!', ['in', ['get', 'id'], ['literal', S.fluxMatched ?? []]]]];
     // Filtres posés seulement quand ils changent (calm tourne à chaque « idle » : un setFilter à chaque fois bouclerait).
     const key = JSON.stringify([protFilter, S.fluxMatched, Boolean(m.getLayer('mqs-prot')), Boolean(m.getLayer('flux-pietons-others'))]);
@@ -1190,7 +1188,10 @@
       [icon('server', '#fff', CAT.dc), 'Centre de données en service'], [icon('server', CAT.dc, DARK), 'Centre de données en projet']]],
     protests: () => ['Manifestations', [[swatch(PROT.annonce, 'ring'), 'Annoncée, non confirmée'], [swatch(PROT.signale, 'disc'), 'Rapportée sans heurts'],
       [swatch(L1.rouge, 'disc'), 'Heurts ou tensions'], [swatch('#ffffff', 'ring'), 'Anneau blanc autour : foule estimée (clic : rues et rejeu)'],
-      [swatch('#8a93a6', 'none'), `Taille = articles sur 24${NB}h`]]],
+      [swatch('#8a93a6', 'none'), `Taille = articles sur 24${NB}h`],
+      // Rues du rassemblement choisi (foule estimée, mêmes mots que flux-pietons-legend.ts).
+      [swatch('#22d3ee', 'line'), 'Rue fluide (estimation)'], [swatch(L1.jaune, 'line'), 'Saturation possible'],
+      [swatch(L1.orange, 'line'), 'Saturation probable'], [swatch(L1.rouge, 'line'), 'Saturation très probable']]],
     crime: () => ['Criminalité (annuelle)', CRIME_RAMP.slice(0, 4).map(([, c, w]) => [swatch(c, 'disc'), `${w.charAt(0).toUpperCase()}${w.slice(1)}${/moyenne/.test(w) ? '' : ' la moyenne'}`])],
     // Mêmes mots que la légende de la couche (flux-pietons-legend.ts) : totaux de la phase, ou instant du rejeu (curseur du panneau).
     pedestrianFlows: () => ['Flux piétons (estimations)', [[swatch('#22d3ee', 'line'), 'Rue fluide ; épaisseur = personnes passées, ou débit au rejeu'],

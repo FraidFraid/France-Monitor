@@ -12,8 +12,8 @@ import { emptyLine, listRow, loadingBody, type LayerView } from './frame.ts';
 import { NBSP, frNumber } from './format.ts';
 import { note } from './traffic-format.ts';
 
-export const FLUX_THEME = 'Sécurité et défense';
-export const FLUX_TITLE = 'Flux piétons';
+export const FLUX_THEME = 'Manifestations';
+export const FLUX_TITLE = 'Foule estimée';
 export const FLUX_PHASES: readonly { id: FluxPhase; label: string }[] = [
   { id: 'arrivee', label: 'Arrivée' },
   { id: 'depart', label: 'Dispersion' },
