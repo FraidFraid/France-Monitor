@@ -101,3 +101,16 @@ describe('légende selon le mode', () => {
     expect(phase.notes?.join(' ')).toContain('anneau blanc');
   });
 });
+
+describe('moment des rassemblements', () => {
+  it('en cours 3 h après le début, passé ensuite, à venir avant ou sans date ; porté par les points', async () => {
+    const { fluxMoment } = await import('../src/services/flux-pietons.ts');
+    const now = Date.parse('2026-10-19T15:00:00Z');
+    expect(fluxMoment('2026-10-19T17:00:00Z', now)).toBe('avenir');
+    expect(fluxMoment('2026-10-19T13:00:00Z', now)).toBe('encours');
+    expect(fluxMoment('2026-10-19T10:00:00Z', now)).toBe('passe');
+    expect(fluxMoment(null, now)).toBe('avenir');
+    const fc = fluxFeatures(null, 'arrivee', null, [{ id: 'a', point: [1, 2], label: 'Lyon · passé', moment: 'passe' }]);
+    expect(fc.features[0]?.properties).toMatchObject({ kind: 'autre', id: 'a', moment: 'passe' });
+  });
+});

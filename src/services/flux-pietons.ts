@@ -169,6 +169,13 @@ export function phaseValues(p: Pick<FluxSegmentProps, 'chargeP90' | 'pSaturation
 }
 
 /** Événement le plus utile à montrer : le prochain à venir, sinon le plus récent. */
+/** Moment d'un rassemblement : en cours pendant les 3 h qui suivent le début annoncé ; sans date, dit à venir. */
+export function fluxMoment(debut: string | null, nowMs: number): 'avenir' | 'encours' | 'passe' {
+  const t = debut ? Date.parse(debut) : Number.NaN;
+  if (!Number.isFinite(t) || t > nowMs) return 'avenir';
+  return nowMs - t < 3 * 3_600_000 ? 'encours' : 'passe';
+}
+
 export function defaultFluxEvent(list: readonly FluxEvent[], nowMs: number): FluxEvent | null {
   const timed = list.map((e) => ({ e, t: e.debut ? Date.parse(e.debut) : Number.NaN }));
   const upcoming = timed.filter((x) => Number.isFinite(x.t) && x.t >= nowMs - 3 * 3_600_000).sort((a, b) => a.t - b.t)[0];

@@ -1,7 +1,7 @@
 // src/components/layer-panel/flux-pietons-legend.ts : légende de la couche Flux piétons. Deux lectures, jamais mêlées : totaux de la
 // phase (couleur = probabilité de saturation, cyan fluide, L1 au-delà de 10 % ; épaisseur = personnes passées) ou instant du rejeu
-// (couleur = débit rapporté à la capacité de la rue, L1 dès la moitié ; épaisseur = débit). Tirets = temps de marche ; point blanc
-// plein = rassemblement choisi, anneau blanc = autre rassemblement prévu. Teintes du service, source unique.
+// (couleur = débit rapporté à la capacité de la rue, L1 dès la moitié ; épaisseur = débit). Tirets = temps de marche ; moment des
+// rassemblements par la valeur (FLUX_MOMENT_STYLE) : disque blanc en cours, anneau blanc à venir, anneau gris passé.
 import type { FluxIndex } from '../../types/index.ts';
 import { BAND_WORD, FLUX_WARNING, bandHex } from '../../services/flux-pietons.ts';
 import { frDateTime } from '../../services/webcams.ts';
@@ -21,7 +21,7 @@ export const FLUX_LEGEND: LegendCategory = {
   notes: [
     FLUX_WARNING,
     'Couleur : part des 500\u00a0tirages où la rue sature pendant la phase. Épaisseur : personnes passées pendant la phase.',
-    'Tirets : 5, 10 et 20\u00a0min de marche. Point blanc plein : rassemblement choisi ; anneau blanc : autre rassemblement prévu (clic pour l’afficher).',
+    'Tirets : 5, 10 et 20\u00a0min de marche. Rassemblements : disque blanc plein = en cours, anneau blanc = à venir, anneau gris = passé ; clic sur un point pour afficher ses rues et le rejeu (le choisi est entouré de ses rues).',
   ],
 };
 
@@ -35,7 +35,7 @@ const INSTANT_ITEMS: LegendCategory['items'] = [
 const INSTANT_NOTES = [
   FLUX_WARNING,
   'Rejeu : la carte montre l’instant choisi sur le curseur du panneau. Couleur : débit de la rue rapporté à sa capacité (environ 73\u00a0personnes par minute et par mètre). Épaisseur : débit à cet instant.',
-  'Tirets : 5, 10 et 20\u00a0min de marche. Point blanc plein : rassemblement choisi ; anneau blanc : autre rassemblement prévu (clic pour l’afficher).',
+  'Tirets : 5, 10 et 20\u00a0min de marche. Rassemblements : disque blanc plein = en cours, anneau blanc = à venir, anneau gris = passé ; clic sur un point pour afficher ses rues et le rejeu (le choisi est entouré de ses rues).',
 ];
 
 /** Légende selon le mode : totaux de la phase (par défaut) ou instant du rejeu. */

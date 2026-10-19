@@ -25,8 +25,21 @@ function segmentProps(p: Record<string, unknown>): FluxSegmentProps {
   };
 }
 
-/** Autre rassemblement prévu, non choisi : point, identifiant (clic) et étiquette « ville · date ». */
-export interface FluxOtherEvent { id: string; point: [number, number]; label: string }
+/** Moment d'un rassemblement : à venir, en cours (3 h après le début annoncé), passé. */
+export type FluxMoment = 'avenir' | 'encours' | 'passe';
+
+/**
+ * Moment lu par la valeur (clair = actuel), jamais par une teinte : les teintes de la carte disent déjà la saturation (cyan, L1)
+ * et les autres couches. En cours : disque blanc plein ; à venir : anneau blanc ; passé : anneau gris, fin.
+ */
+export const FLUX_MOMENT_STYLE: Readonly<Record<FluxMoment, { fill: string; stroke: string; text: string; word: string }>> = {
+  encours: { fill: '#ffffff', stroke: '#ffffff', text: '#ffffff', word: 'en cours' },
+  avenir: { fill: '#0a0a0f', stroke: '#ffffff', text: '#e8e8ec', word: 'à venir' },
+  passe: { fill: '#0a0a0f', stroke: '#6b7280', text: '#8a8f98', word: 'passé' },
+};
+
+/** Autre rassemblement prévu, non choisi : point, identifiant (clic), étiquette « ville · date » et moment. */
+export interface FluxOtherEvent { id: string; point: [number, number]; label: string; moment: FluxMoment }
 
 /** Instant du rejeu : minutes après le début annoncé et paramètres de temps de l'événement. */
 export interface FluxInstant { atMin: number; timing: FluxTiming }
@@ -81,7 +94,7 @@ export function fluxFeatures(
 ): GeoJSON.FeatureCollection {
   // Autres rassemblements prévus : toujours visibles, même sans événement choisi.
   const features: GeoJSON.Feature[] = others.map((o) => ({
-    type: 'Feature', geometry: { type: 'Point', coordinates: o.point }, properties: { kind: 'autre', id: o.id, label: o.label },
+    type: 'Feature', geometry: { type: 'Point', coordinates: o.point }, properties: { kind: 'autre', id: o.id, label: o.label, moment: o.moment },
   }));
   for (const f of list ?? []) {
     const kind = f.properties['kind'];
@@ -134,12 +147,18 @@ export const FLUX_LAYERS: readonly LayerSpecification[] = [
   },
   {
     id: LYR_FLUX_OTHERS, type: 'circle', source: SRC_FLUX, filter: ['==', ['get', 'kind'], 'autre'], layout: { visibility: 'none' },
-    paint: { 'circle-color': '#0a0a0f', 'circle-radius': 6, 'circle-stroke-width': 2.5, 'circle-stroke-color': '#ffffff' },
+    // Mêmes valeurs que FLUX_MOMENT_STYLE (expressions MapLibre littérales).
+    paint: {
+      'circle-color': ['match', ['get', 'moment'], 'encours', '#ffffff', 'passe', '#0a0a0f', '#0a0a0f'],
+      'circle-stroke-color': ['match', ['get', 'moment'], 'encours', '#ffffff', 'passe', '#6b7280', '#ffffff'],
+      'circle-radius': ['match', ['get', 'moment'], 'encours', 7, 'passe', 4.5, 6],
+      'circle-stroke-width': ['match', ['get', 'moment'], 'passe', 1.5, 2.5],
+    },
   },
   {
     id: LYR_FLUX_OTHERS_LABEL, type: 'symbol', source: SRC_FLUX, filter: ['==', ['get', 'kind'], 'autre'],
     layout: { visibility: 'none', 'text-field': ['get', 'label'], 'text-size': 11, 'text-offset': [0, 1.2], 'text-anchor': 'top', 'text-font': ['Open Sans Semibold'], 'text-optional': true },
-    paint: { 'text-color': '#e8e8ec', 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.5 },
+    paint: { 'text-color': ['match', ['get', 'moment'], 'encours', '#ffffff', 'passe', '#8a8f98', '#e8e8ec'], 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.5 },
   },
   {
     id: LYR_FLUX_POINT, type: 'circle', source: SRC_FLUX, filter: ['==', ['get', 'kind'], 'rassemblement'], layout: { visibility: 'none' },

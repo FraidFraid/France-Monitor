@@ -479,18 +479,6 @@
     if (last) { if (!P.isVisible(last)) P.show(last); } else if (wasOn && P.isVisible(k)) P.hide(k);
     return true;
   };
-  // Flux piétons allumé : la carte cadre le rassemblement affiché (point et rues chargées), dès que l'app a chargé ses données.
-  const zoomFlux = async (tries = 10) => {
-    const src = S.m.getSource('flux-pietons-src');
-    const data = src?.getData ? await src.getData().catch(() => null) : null;
-    const pts = [];
-    const walk = (c) => { if (typeof c?.[0] === 'number') pts.push(c); else c?.forEach?.(walk); };
-    // Rues et point du rassemblement choisi seulement (les autres rassemblements prévus sont partout en France).
-    for (const f of data?.features ?? []) if (f.properties?.kind === 'troncon' || f.properties?.kind === 'rassemblement') walk(f.geometry?.coordinates);
-    if (!pts.length) { if (tries > 0 && S.focus.has('pedestrianFlows')) setTimeout(() => zoomFlux(tries - 1), 500); return; }
-    const lons = pts.map((c) => c[0]), lats = pts.map((c) => c[1]);
-    S.m.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]], { padding: 60, maxZoom: 15, duration: 1200 });
-  };
   const wireChips = () => {
     document.addEventListener('click', (e) => {
       if (!isSec()) return;
@@ -498,7 +486,6 @@
       const wasOn = S.focus.has(k);
       wasOn ? S.focus.delete(k) : S.focus.add(k);
       preview = null; applyFocus();
-      if (k === 'pedestrianFlows' && !wasOn) zoomFlux();
       if (followPanel(k, wasOn)) e.stopPropagation();
     }, true);
     document.addEventListener('mouseover', (e) => { const k = chipKey(e.target); const next = k in GROUPS ? k : null; if (next !== preview) { preview = next; applyFocus(); } });
@@ -720,6 +707,30 @@
       source: x.source === 'demosphere' ? `Démosphère, édition ${x.edition ?? 'n.d.'}` : x.source === 'gdelt' ? 'GDELT (presse internationale)'
         : x.source === 'prefecture' ? `${x.edition ?? 'Préfecture'}, recueil des actes administratifs` : `presse française ingérée, relevé ${when(S.data.protests?.readAt)}` };
   };
+  // Flux piétons : ce que le modèle dit du rassemblement, et l'annonce de la couche Manifestations dont il vient.
+  const MOMENT = { encours: ['En cours', '#ffffff'], avenir: ['À venir', '#e8e8ec'], passe: ['Passé', '#8a8f98'] };
+  const fluxMomentOf = (debut) => { const t = Date.parse(debut ?? ''); if (!Number.isFinite(t) || t > Date.now()) return 'avenir'; return Date.now() - t < 3 * 3600e3 ? 'encours' : 'passe'; };
+  const fluxCard = (ev, selected) => {
+    const a = ev.affluence, r = ev.resume, t = ev.temps;
+    const [word, hex] = MOMENT[fluxMomentOf(ev.debut)];
+    const src = (S.prot ?? []).find((x) => x.id && ev.evenement.startsWith(x.id));
+    const top = r?.topRues?.[0];
+    const rows = [['Début annoncé', ev.debut ? when(ev.debut) : 'n.d.'],
+      ['Lieu', `${ev.lieu}${ev.lieuSuppose ? ' (lieu habituel supposé)' : ''}`],
+      ['Affluence estimée', `≈${NB}${num(a.p50)} personnes`],
+      a.p25 != null && a.p75 != null ? ['Fourchette probable', `${num(a.p25)} à ${num(a.p75)} (1 chance sur 2)`] : null,
+      ['Fourchette large', `${num(a.p10)} à ${num(a.p90)} (8 chances sur 10)`],
+      a.plafond ? ['Plafond du lieu', `${num(a.plafond)} personnes debout`] : null,
+      r ? ['Rues à risque', r.satures ? `${num(r.satures)} rue${r.satures > 1 ? 's' : ''} saturée${r.satures > 1 ? 's' : ''} dans 1 tirage sur 10 au moins` : 'aucune saturation probable'] : null,
+      top ? ['Rue la plus chargée', `${top.rue} (${num(top.chargeP90)} passages, haut)`] : null,
+      ev.cortege ? ['Cortège', `oui${r?.goulots ? `, ${num(r.goulots)} goulot${r.goulots > 1 ? 's' : ''}` : ''}`] : null,
+      t ? ['Rythme supposé', `arrivées sur ${t.arriveeMin}${NB}min, sur place ${t.dureeMin}${NB}min, dispersion sur ${t.departMin}${NB}min`] : null,
+      ev.meteo ? ['Météo prévue', ev.meteo] : null,
+      src ? ['Annonce', `${src.title ?? 'rendez-vous'}${src.source === 'presse' ? ' (presse)' : src.source === 'prefecture' ? ' (préfecture)' : src.source === 'demosphere' ? ' (Démosphère)' : ''}`] : null].filter(Boolean);
+    return { dot: hex, title: ev.ville, state: `${word} · estimation modélisée`, stateHex: hex, rows, url: null,
+      hint: selected ? 'Rassemblement affiché : rues, phases et rejeu dans le panneau' : 'Clic : afficher ses rues et le rejeu',
+      source: `flux_osint, calcul du ${when(ev.calculeLe)} · ${a.base}` };
+  };
   const cableWatch = () => (S.data.cablesWatch?.evaluated ? 'veille active' : `veille des navires coupée (${(S.data.cablesWatch?.errors ?? [])[0] ?? 'source injoignable'})`);
   // Cloud et centres de données : bulles complètes (état publié, incidents, maintenances, voisinage, sources).
   const PROV_OF = [['ovhcloud', /^ovh/i], ['scaleway', /scaleway|iliad|online/i], ['aws', /^aws|amazon/i], ['gcp', /^gcp|google/i], ['cloudflare', /cloudflare/i], ['outscale', /outscale|dassault/i], ['azure', /microsoft|azure/i]];
@@ -827,11 +838,13 @@
   const deptAt = (c) => { if (!c) return null; for (const f of S.geo.deptShapes) if (inGeom(c, f.geometry)) return S.agg.get(f.properties.code); return null; };
 
   // Arbitre : une seule cible, la plus signifiante sous le pointeur.
-  const PRIORITY = ['mqs-air-sym', 'sov-emergencies', 'mqs-ddos', 'mqs-prot', 'mqs-cloud-sym', 'mqs-inet-disc', 'mqs-sites-recent', 'mqs-agg-disc', 'mqs-low-disc', 'mqs-crime-c', 'mqs-crime-city', 'mqs-bases-sym', 'mqs-bases-closed', 'sov-navy-reference', 'sov-navy-observed', 'mqs-landings', 'mqs-world-lp', 'mqs-dc-ref', 'mqs-suite-end', 'mqs-world-hit', 'mqs-suite-hit', 'submarine-cables-hitarea', 'mqs-anch-line', 'mqs-cz-fill', 'mqs-sites-long', 'mqs-crime-d-fill', 'mqs-dept-fill'];
+  const PRIORITY = ['mqs-air-sym', 'sov-emergencies', 'mqs-ddos', 'flux-pietons-point', 'flux-pietons-others', 'mqs-prot', 'flux-pietons-lines', 'mqs-cloud-sym', 'mqs-inet-disc', 'mqs-sites-recent', 'mqs-agg-disc', 'mqs-low-disc', 'mqs-crime-c', 'mqs-crime-city', 'mqs-bases-sym', 'mqs-bases-closed', 'sov-navy-reference', 'sov-navy-observed', 'mqs-landings', 'mqs-world-lp', 'mqs-dc-ref', 'mqs-suite-end', 'mqs-world-hit', 'mqs-suite-hit', 'submarine-cables-hitarea', 'mqs-anch-line', 'mqs-cz-fill', 'mqs-sites-long', 'mqs-crime-d-fill', 'mqs-dept-fill'];
   const pick = (point) => {
     // Une pastille active : seuls ses calques (et les départements) répondent au survol ; un calque estompé ne donne jamais de bulle.
     const on = new Set(S.focus); if (preview) on.add(preview);
-    const live = (id) => !on.size || !Object.values(GROUPS).some((ls) => ls.includes(id)) || Object.entries(GROUPS).some(([g, ls]) => on.has(g) && ls.includes(id));
+    // Les départements (état des pannes) ne répondent que sans pastille ou avec une pastille de pannes : jamais une bulle de pannes sous Flux piétons.
+    const live = (id) => !on.size || (id === 'mqs-dept-fill' ? on.has('outagesTelecom') || on.has('outagesInternet')
+      : !Object.values(GROUPS).some((ls) => ls.includes(id)) || Object.entries(GROUPS).some(([g, ls]) => on.has(g) && ls.includes(id)));
     const layers = PRIORITY.filter((id) => S.m.getLayer(id) && live(id));
     const hits = S.m.queryRenderedFeatures(point, { layers });
     if (!hits.length) return null;
@@ -861,6 +874,15 @@
           rows: [...o.rows, ['Veille des navires', S.data.cablesWatch?.evaluated ? 'active' : 'coupée']], hint: o.notes.join(' '), source: 'Shom · OpenStreetMap' } };
     }
     if (id === 'mqs-ddos') { const g = S.ddos?.[p.i]; return g && { key: `dd:${g.key}`, kind: 'raw', id: g.key, at: g.at, card: ddosCard(g) }; }
+    if (id === 'flux-pietons-others' || id === 'flux-pietons-point') {
+      const F = window.__fmFlux; const evId = id === 'flux-pietons-point' ? F?.selectedId() : p.id; const ev = evId && F?.event(evId);
+      return ev && { key: `flux:${ev.id}`, kind: 'flux', id: ev.id, at: ev.point, card: fluxCard(ev, evId === F.selectedId()) };
+    }
+    if (id === 'flux-pietons-lines') {
+      const o = parseBody(p.body);
+      return { key: `fluxr:${o.title}:${o.sub}`, kind: 'raw', id: o.title, at: null,
+        card: { dot: p.color ?? '#22d3ee', title: o.title || 'rue', state: o.sub, stateHex: '#c7c7cc', rows: o.rows, hint: o.notes.join(' '), source: 'flux_osint (estimation modélisée) · OpenStreetMap' } };
+    }
     if (id === 'mqs-prot') { const x = S.prot?.[p.i]; return x && { key: `pr:${x.id}`, kind: 'raw', id: x.id, at: [x.lon, x.lat], card: protCard(x) }; }
     if (id === 'mqs-crime-c' || id === 'mqs-crime-city') { const c = S.crime?.cities[p.i]; return c && { key: `cr:${c.city.code}`, kind: 'raw', id: c.city.code, at: [c.city.lon, c.city.lat], card: crimeCityCard(c) }; }
     if (id === 'mqs-crime-d-fill') { const d = S.crime?.depts.get(p.code); return d && { key: `crd:${p.code}`, kind: 'raw', id: p.code, at: null, card: crimeDeptCard(d) }; }
@@ -1100,7 +1122,7 @@
       <div class="mqs-row">${swatch(PROT.annonce, 'ring')}Manifestation annoncée ${swatch(PROT.signale, 'disc')}rapportée sans heurts ${swatch(L1.rouge, 'disc')}heurts ou tensions ; taille = articles sur 24${NB}h</div>
       <div class="mqs-row mqs-note">Criminalité (SSMSI, annuelle, jamais une alerte) : ${CRIME_RAMP.slice(0, 4).map(([, c, w]) => `${swatch(c, 'disc')}${w}`).join(' ')} la moyenne nationale. Sans pastille, villes à 2 fois ou plus en anneau ; avec la pastille, toutes les villes de 20${NB}000 habitants et plus et les départements, pour l’indicateur du panneau.</div>
       <div class="mqs-row">${swatch('#22d3ee', 'line')}Flux piétons (estimations modélisées) : rue chargée, ${swatch(L1.jaune, 'line')}${swatch(L1.orange, 'line')}${swatch(L1.rouge, 'line')}saturation possible, probable, très probable</div>
-      <div class="mqs-row mqs-note">Totaux de la phase : couleur = part des tirages où la rue sature, épaisseur = personnes passées. Rejeu (curseur du panneau) : couleur = débit rapporté à la capacité de la rue (jaune dès la moitié, rouge au-delà), épaisseur = débit. ${swatch('#e5e7eb', 'dash')}5, 10 et 20${NB}min à pied ; ${swatch('#ffffff', 'disc')}rassemblement choisi ; ${swatch('#ffffff', 'ring')}autre rassemblement prévu (clic).</div>
+      <div class="mqs-row mqs-note">Totaux de la phase : couleur = part des tirages où la rue sature, épaisseur = personnes passées. Rejeu (curseur du panneau) : couleur = débit rapporté à la capacité de la rue (jaune dès la moitié, rouge au-delà), épaisseur = débit. ${swatch('#e5e7eb', 'dash')}5, 10 et 20${NB}min à pied ; ${swatch('#ffffff', 'disc')}rassemblement en cours ; ${swatch('#ffffff', 'ring')}à venir ; ${swatch('#6b7280', 'ring')}passé (clic : ses rues et le rejeu ; le choisi est entouré de ses rues).</div>
       <div class="mqs-row">${swatch('#e8e8ec', 'dash')}Zone de défense et de sécurité</div>
       <div class="mqs-row mqs-note">Sans pastille active, toutes les couches sont affichées. Une pastille met sa couche en avant et estompe les autres (clic, cumulable ; survol pour un aperçu).</div>
       <details${ko ? ' open' : ''}><summary>Sources · ${src.length - ko}${NB}à jour, ${ko}${NB}en défaut</summary>${src.map(([k, v, st]) => `<div class="mqs-row mqs-src"><i class="mqs-src-${st}"></i><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}</details>`;
@@ -1134,8 +1156,8 @@
       [swatch(L1.jaune, 'line'), 'Saturation possible ; au rejeu, débit dès la moitié de la capacité'],
       [swatch(L1.orange, 'line'), 'Saturation probable ; au rejeu, débit proche de la capacité'],
       [swatch(L1.rouge, 'line'), 'Saturation très probable ; au rejeu, rue saturée'],
-      [swatch('#e5e7eb', 'dash'), 'Isochrones 5, 10 et 20 min à pied'], [swatch('#ffffff', 'disc'), 'Rassemblement choisi'],
-      [swatch('#ffffff', 'ring'), 'Autre rassemblement prévu (clic)']]],
+      [swatch('#e5e7eb', 'dash'), `Isochrones 5, 10 et 20${NB}min à pied`], [swatch('#ffffff', 'disc'), 'Rassemblement en cours'],
+      [swatch('#ffffff', 'ring'), 'Rassemblement à venir'], [swatch('#6b7280', 'ring'), 'Rassemblement passé'], [swatch('#8a93a6', 'none'), 'Clic sur un point : ses rues et le rejeu']]],
   };
   const focusKey = document.createElement('div');
   focusKey.id = 'mqs-focus-key';
@@ -1282,6 +1304,7 @@
       const r = S.m.getCanvas().getBoundingClientRect();
       const hit = pick([e.clientX - r.left, e.clientY - r.top]);
       if (!hit) { closeFiche(); pop.style.display = 'none'; popAt = null; S.hoverKey = null; return; }
+      if (hit.kind === 'flux' && window.__fmFlux?.selectedId() !== hit.id) window.__fmFlux.select(hit.id);
       const linked = hit.kind === 'base' && S.audit.get(hit.id)?.source;
       const next = linked || hit.card?.url ? 'Cliquer à nouveau pour ouvrir la source'
         : ['dept', 'air', 'base', 'site'].includes(hit.kind) ? 'Cliquer à nouveau pour ouvrir la fiche' : null;

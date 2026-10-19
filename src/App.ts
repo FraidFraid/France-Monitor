@@ -124,7 +124,7 @@ import { CRIME_LEGEND, crimeLegend } from './components/layer-panel/criminalite-
 import type { WebcamsPanel } from './components/WebcamsPanel.ts';
 import type { WebcamWall } from './components/WebcamWall.ts';
 import type { FluxPietonsPanel } from './components/FluxPietonsPanel.ts';
-import { FLUX_POLL_MS, defaultFluxEvent, fetchFluxEvent, fetchFluxIndex, type FluxFeature } from './services/flux-pietons.ts';
+import { FLUX_POLL_MS, fetchFluxEvent, fluxMoment, fetchFluxIndex, type FluxFeature } from './services/flux-pietons.ts';
 import { FLUX_LEGEND, fluxLegend } from './components/layer-panel/flux-pietons-legend.ts';
 import type { FluxIndex, FluxPhase } from './types/index.ts';
 import { fetchWebcamsDataset } from './services/webcams.ts';
@@ -2508,6 +2508,12 @@ export class App {
       show: (key: string): void => this.showFloatingPanel(key as keyof MapLayers),
       hide: (key: string): void => this.hideFloatingPanel(key as keyof MapLayers),
     };
+    // Carte Sécurité : elle capte les clics de la carte ; elle lit les rassemblements Flux piétons et en choisit un par cette passerelle.
+    (window as unknown as { __fmFlux?: object }).__fmFlux = {
+      event: (id: string): FluxIndex['evenements'][number] | null => this.fluxIndex?.evenements.find((e) => e.id === id) ?? null,
+      selectedId: (): string | null => this.fluxSelectedId,
+      select: (id: string): void => { this.selectFluxEvent(id, true).catch(() => undefined); },
+    };
     // Énergie (spec 2026-10-16 § 7) : les pastilles allumées (vertes) ne laissent vives que leurs couches, et leurs légendes
     // courtes se cumulent ; l'état reste tant que les pastilles ne changent pas. Survoler une autre pastille l'ajoute le temps
     // du survol. Le conteneur est réécrit par innerHTML à chaque rafraîchissement : on écoute le conteneur, une seule fois.
@@ -3306,6 +3312,11 @@ export class App {
         this.openFluxPanel();
       } else {
         this.fluxPanel?.hide({ silent: true });
+        // Couche rallumée : de nouveau aucune ville choisie.
+        this.fluxSelectedId = null;
+        this.fluxFeatures = null;
+        this.fluxInstant = null;
+        this.fluxGeo = 'idle';
       }
       this.syncFluxPolling();
     }
@@ -4632,10 +4643,14 @@ export class App {
    * la légende suit le mode (totaux de la phase ou instant du rejeu).
    */
   private pushFluxMap(): void {
-    const others = (this.fluxIndex?.evenements ?? []).filter((e) => e.id !== this.fluxSelectedId).map((e) => ({
-      id: e.id, point: e.point,
-      label: `${e.ville} · ${e.debut ? new Date(e.debut).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'date n.d.'}`,
-    }));
+    const now = Date.now();
+    const others = (this.fluxIndex?.evenements ?? []).filter((e) => e.id !== this.fluxSelectedId).map((e) => {
+      const moment = fluxMoment(e.debut, now);
+      const date = e.debut ? new Date(e.debut).toLocaleString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : 'date n.d.';
+      // Le mot double la valeur du point : lisible sans distinguer les gris.
+      const label = moment === 'encours' ? `${e.ville} · en cours` : moment === 'passe' ? `${e.ville} · passé ${date}` : `${e.ville} · ${date}`;
+      return { id: e.id, point: e.point, label, moment };
+    });
     this.mapContainer?.updateFluxLayer(this.fluxFeatures, this.fluxPhase, this.fluxInstantOf(this.fluxInstant), others);
     const instantMode = this.fluxInstant !== null;
     if (instantMode !== this.fluxLegendInstant) {
@@ -4680,7 +4695,7 @@ export class App {
     }, FLUX_POLL_MS);
   }
 
-  /** Index relu (une lecture à la fois) ; l'événement choisi est gardé s'il est toujours publié, sinon le prochain à venir. */
+  /** Index relu (une lecture à la fois) ; l'événement choisi est gardé s'il est toujours publié. Aucun par défaut : on choisit sur la carte. */
   private loadFlux(): Promise<void> {
     return dedupe('pedestrianFlows', async () => {
       try {
@@ -4690,7 +4705,7 @@ export class App {
         this.fluxError = err instanceof Error ? err.message : 'Flux piétons : lecture impossible';
       }
       const list = this.fluxIndex?.evenements ?? [];
-      const keep = list.find((e) => e.id === this.fluxSelectedId) ?? defaultFluxEvent(list, Date.now());
+      const keep = list.find((e) => e.id === this.fluxSelectedId) ?? null;
       this.refreshFluxLegend();
       if (keep) await this.selectFluxEvent(keep.id, false);
       else {

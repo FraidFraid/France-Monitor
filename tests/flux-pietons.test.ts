@@ -105,8 +105,16 @@ describe('panneau et légende', () => {
   const now = Date.parse('2026-10-19T08:00:00Z');
   const view = (over: Partial<Parameters<typeof buildFluxView>[0]>) => buildFluxView({ index: INDEX, error: null, selectedId: null, phase: 'arrivee', geo: 'ready', open, nowMs: now, ...over });
   const html = (v: ReturnType<typeof buildFluxView>): string => (v.bodyHtml ?? '') + v.sections.map((s) => s.html).join('');
-  it('toujours ESTIMATIONS MODÉLISÉES ; affluence médiane, fourchette, lieu supposé dit', () => {
+  it('aucune ville par défaut : liste des rassemblements, invitation à cliquer, pas d’onglets', () => {
     const v = view({});
+    expect(v.head.figure?.value).toBe('1');
+    expect(v.tabs).toBeUndefined();
+    expect(html(v)).toContain('Clique sur un rassemblement');
+    expect(html(v)).toContain('data-flux-event="presse_43_650_0_583_2026_10_17"');
+    expect(v.bodyHtml).toContain('ESTIMATIONS MODÉLISÉES');
+  });
+  it('toujours ESTIMATIONS MODÉLISÉES ; affluence médiane, fourchette, lieu supposé dit', () => {
+    const v = view({ selectedId: EV.id });
     expect(v.head.status).toContain('ESTIMATIONS MODÉLISÉES');
     expect(v.bodyHtml).toContain('ESTIMATIONS MODÉLISÉES');
     expect(v.head.figure?.value).toBe('≈ 243');
@@ -124,15 +132,15 @@ describe('panneau et légende', () => {
   it('rien de publié, illisible, chargement', () => {
     const empty = view({ index: { ...INDEX, evenements: [] } });
     expect(html(empty)).toContain('Aucun rassemblement annoncé à venir');
-    const ancien = view({ index: { ...INDEX, evenements: [{ ...EV, affluence: { ...EV.affluence, p25: null, p75: null, plafond: null } }] } });
+    const ancien = view({ selectedId: EV.id, index: { ...INDEX, evenements: [{ ...EV, affluence: { ...EV.affluence, p25: null, p75: null, plafond: null } }] } });
     expect(html(ancien)).toContain('5 à 2');
     expect(html(ancien)).not.toContain('Plafond du lieu');
-    const centre = view({ index: { ...INDEX, evenements: [{ ...EV, lieu: 'Centre de Narbonne' }] } });
+    const centre = view({ selectedId: EV.id, index: { ...INDEX, evenements: [{ ...EV, lieu: 'Centre de Narbonne' }] } });
     expect(html(centre)).toContain('lieu non précisé par l’annonce');
     expect(empty.bodyHtml).toContain('ESTIMATIONS MODÉLISÉES');
     expect(view({ index: null, error: 'x' }).head.figure?.value).toBe('n.d.');
     expect(view({ index: null }).head.status).toEqual(['chargement…']);
-    expect(html(view({ geo: 'error' }))).toContain('illisible');
+    expect(html(view({ selectedId: EV.id, geo: 'error' }))).toContain('illisible');
   });
   it('légende datée, avertissement en note', () => {
     expect(FLUX_LEGEND.notes).toContain(FLUX_WARNING);

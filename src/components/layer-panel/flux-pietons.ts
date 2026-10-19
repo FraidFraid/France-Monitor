@@ -50,16 +50,16 @@ export function eventTiming(e: FluxEvent, nowMs: number): 'à venir' | 'en cours
   return nowMs - t < 3 * 3_600_000 ? 'en cours' : 'passé';
 }
 
-function eventsSection(index: FluxIndex, selected: FluxEvent, nowMs: number, open: OpenFn): FicheSection {
+function eventsSection(index: FluxIndex, selected: FluxEvent | null, nowMs: number, open: OpenFn): FicheSection {
   const rows = index.evenements.map((e) => listRow({
     text: `${e.ville} · ${when(e)}`,
     value: eventTiming(e, nowMs),
     note: `${e.lieuSuppose ? 'Lieu supposé : ' : ''}${e.lieu}`,
-    color: e.id === selected.id ? 'var(--text-accent)' : null,
+    color: e.id === selected?.id ? 'var(--text-accent)' : null,
     data: { 'flux-event': e.id }, link: true,
   })).join('');
   return {
-    id: 'evenements', title: 'Événements', collapsible: true, open: open('evenements', index.evenements.length > 1),
+    id: 'evenements', title: 'Événements', collapsible: true, open: open('evenements', selected === null || index.evenements.length > 1),
     summary: escapeHtml(`${frNumber(index.evenements.length, 0)} prévision${index.evenements.length > 1 ? 's' : ''}`),
     html: rows + note('Clic : la carte passe à cet événement. Seuls les rassemblements réels (couche Manifestations, saisie manuelle) sont calculés, avant qu’ils aient lieu.'),
   };
@@ -165,7 +165,7 @@ const WARNING_HTML = (text: string): string => `<p class="fmk-callout lp-callout
 
 export function selectedFluxEvent(index: FluxIndex | null, selectedId: string | null): FluxEvent | null {
   if (!index || index.evenements.length === 0) return null;
-  return index.evenements.find((e) => e.id === selectedId) ?? index.evenements[0] ?? null;
+  return index.evenements.find((e) => e.id === selectedId) ?? null;
 }
 
 export function buildFluxView(input: FluxViewInput): LayerView {
@@ -181,6 +181,16 @@ export function buildFluxView(input: FluxViewInput): LayerView {
     };
   }
   const e = selectedFluxEvent(index, input.selectedId);
+  if (!e && index.evenements.length > 0) {
+    // Aucune ville par défaut : la carte montre tous les rassemblements prévus, un clic (carte ou liste) en ouvre un.
+    const n = index.evenements.length;
+    return {
+      head: { theme: FLUX_THEME, title: FLUX_TITLE, level: null, figure: { value: String(n), caption: `prévision${n > 1 ? 's' : ''} publiée${n > 1 ? 's' : ''}`, level: null }, status: ['ESTIMATIONS MODÉLISÉES'] },
+      sections: [eventsSection(index, null, input.nowMs, open), readingSection(open), methodSection(index, open)],
+      bodyHtml: WARNING_HTML(index.avertissement)
+        + emptyLine('Clique sur un rassemblement, sur la carte ou dans la liste, pour voir ses rues et le rejeu.'),
+    };
+  }
   if (!e) {
     return {
       head: { theme: FLUX_THEME, title: FLUX_TITLE, level: null, figure: { value: '0', caption: 'prévision publiée', level: null }, status: ['ESTIMATIONS MODÉLISÉES'] },
