@@ -3,6 +3,7 @@
 // limites. Avertissement ESTIMATIONS MODÉLISÉES en tête, toujours. Aucune donnée individuelle ; aucun effet sur l'indice.
 import type { FluxEvent, FluxIndex, FluxPhase } from '../../types/index.ts';
 import { BAND_WORD, FLUX_WARNING, bandHex, saturationBand, type FluxBand } from '../../services/flux-pietons.ts';
+import { momentWord, onSiteAt, relativeLabel } from '../../services/flux-timeline.ts';
 import { frDateTime } from '../../services/webcams.ts';
 import { escapeHtml } from '../france-intel-events.ts';
 import { kvRow } from '../fiche/kit.ts';
@@ -28,6 +29,10 @@ export interface FluxViewInput {
   geo: 'idle' | 'loading' | 'ready' | 'error';
   open: OpenFn;
   nowMs: number;
+  /** Bornes du curseur (minutes par rapport au début annoncé) ; null : pas de rejeu (publication ancienne, carte non lue). */
+  replay?: { min: number; max: number } | null;
+  /** Instant affiché sur la carte ; null : totaux de la phase choisie. */
+  instant?: number | null;
 }
 
 const people = (n: number): string => `${frNumber(Math.round(n), 0)}${NBSP}personne${Math.round(n) > 1 ? 's' : ''}`;
@@ -108,6 +113,35 @@ function streetsSection(e: FluxEvent, phase: FluxPhase, open: OpenFn): FicheSect
   };
 }
 
+/** Heure de Paris d'un instant du rejeu, « 18:42 », ou null si la date de l'événement est inconnue. */
+function clockAt(e: FluxEvent, atMin: number): string | null {
+  const t = e.debut ? Date.parse(e.debut) : Number.NaN;
+  if (!Number.isFinite(t)) return null;
+  return new Date(t + atMin * 60_000).toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' });
+}
+
+/** Ligne du curseur : « début − 12 min · 18:48 · arrivées · ≈ 340 personnes sur place » (médiane de l'affluence). */
+export function replayLabel(e: FluxEvent, atMin: number | null): string {
+  if (atMin === null || !e.temps) return 'Faire glisser le curseur, ou lancer la lecture, pour rejouer l’arrivée puis la dispersion.';
+  const clock = clockAt(e, atMin);
+  const here = Math.round(onSiteAt(e.affluence.p50, e.temps, atMin));
+  return [relativeLabel(atMin), clock, momentWord(e.temps, atMin), `≈${NBSP}${frNumber(here, 0)}${NBSP}personne${here > 1 ? 's' : ''} sur place`]
+    .filter((x): x is string => x !== null).join(' · ');
+}
+
+function replaySection(e: FluxEvent, replay: { min: number; max: number }, instant: number | null, open: OpenFn): FicheSection {
+  const t = e.temps;
+  const value = instant ?? replay.min;
+  const html = `<div class="flux-replay">`
+    + `<div class="flux-replay-head"><button type="button" class="flux-play" data-flux-play aria-label="Lire le rejeu">▶</button>`
+    + `<span class="flux-replay-label" data-flux-time-label aria-live="polite">${escapeHtml(replayLabel(e, instant))}</span></div>`
+    + `<input type="range" class="flux-replay-range" data-flux-time min="${replay.min}" max="${replay.max}" step="1" value="${value}" aria-label="Instant du rejeu">`
+    + `<div class="flux-replay-scale"><span>${escapeHtml(relativeLabel(replay.min))}</span><span>${escapeHtml(relativeLabel(replay.max))}</span></div></div>`
+    + (t ? note(`Hypothèses : arrivées étalées sur ${frNumber(t.arriveeMin, 0)}${NBSP}min avant le début, rassemblement de ${frNumber(t.dureeMin, 0)}${NBSP}min, dispersion sur ${frNumber(t.departMin, 0)}${NBSP}min, marche à ${String(t.vitesse).replace('.', ',')}${NBSP}m/s. Une rue s’allume quand les marcheurs y passent, plus tôt quand elle est loin du point.`) : '')
+    + note('Couleur : débit de la rue à cet instant rapporté à sa capacité (environ 73 personnes par minute et par mètre) ; valeurs hautes. Cliquer un onglet revient aux totaux de la phase.');
+  return { id: 'rejeu', title: 'Rejouer l’arrivée et la dispersion', collapsible: true, open: open('rejeu', true), html };
+}
+
 function readingSection(open: OpenFn): FicheSection {
   const bands: FluxBand[] = ['fluide', 'jaune', 'orange', 'rouge'];
   const html = bands.map((b) => listRow({ text: BAND_WORD[b], color: bandHex(b) })).join('')
@@ -162,7 +196,9 @@ export function buildFluxView(input: FluxViewInput): LayerView {
       status: ['ESTIMATIONS MODÉLISÉES', eventTiming(e, input.nowMs)],
     },
     tabs, activeTab: phase,
-    sections: [selectedSection(e, input.geo, open), streetsSection(e, phase, open), eventsSection(index, e, input.nowMs, open), readingSection(open), methodSection(index, open)],
+    sections: [selectedSection(e, input.geo, open),
+      ...(input.replay && e.temps ? [replaySection(e, input.replay, input.instant ?? null, open)] : []),
+      streetsSection(e, phase, open), eventsSection(index, e, input.nowMs, open), readingSection(open), methodSection(index, open)],
     bodyHtml: WARNING_HTML(index.avertissement)
       + (error !== null ? '<p class="fmk-callout lp-callout">Relecture impossible : dernières prévisions conservées.</p>' : ''),
   };

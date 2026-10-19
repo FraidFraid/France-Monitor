@@ -1198,6 +1198,8 @@ export class App {
   private fluxError: string | null = null;
   private fluxSelectedId: string | null = null;
   private fluxPhase: FluxPhase = 'arrivee';
+  /** Instant du rejeu (minutes après le début annoncé) ; null : totaux de la phase. */
+  private fluxInstant: number | null = null;
   private fluxFeatures: FluxFeature[] | null = null;
   private fluxGeo: 'idle' | 'loading' | 'ready' | 'error' = 'idle';
   private fluxPoll: PausableTimer | null = null;
@@ -4582,8 +4584,14 @@ export class App {
         onSelect: (id) => this.selectFluxEvent(id, true),
         onPhase: (phase) => {
           this.fluxPhase = phase;
+          this.fluxInstant = null;
           this.mapContainer?.updateFluxLayer(this.fluxFeatures, phase);
           this.pushFluxState();
+        },
+        // Curseur du rejeu : seule la carte change (le panneau met sa ligne à jour lui-même, sans nouveau rendu).
+        onTime: (atMin) => {
+          this.fluxInstant = atMin;
+          this.mapContainer?.updateFluxLayer(this.fluxFeatures, this.fluxPhase, this.fluxInstantOf(atMin));
         },
       });
       panel.mount();
@@ -4606,13 +4614,32 @@ export class App {
   private openFluxPanel(): void {
     this.fluxPanel?.show();
     this.pushFluxState();
-    this.mapContainer?.updateFluxLayer(this.fluxFeatures, this.fluxPhase);
+    this.mapContainer?.updateFluxLayer(this.fluxFeatures, this.fluxPhase, this.fluxInstantOf(this.fluxInstant));
     this.refreshFluxLegend();
     this.loadFlux().catch((err) => console.error('[App] Lecture Flux piétons en échec', err));
   }
 
   private pushFluxState(): void {
-    this.fluxPanel?.update({ index: this.fluxIndex, error: this.fluxError, selectedId: this.fluxSelectedId, phase: this.fluxPhase, geo: this.fluxGeo });
+    this.fluxPanel?.update({
+      index: this.fluxIndex, error: this.fluxError, selectedId: this.fluxSelectedId, phase: this.fluxPhase, geo: this.fluxGeo,
+      maxDistance: this.fluxMaxDistance(), instant: this.fluxInstant,
+    });
+  }
+
+  /** Distance au point de la rue la plus lointaine (m) ; null si la carte lue ne porte pas les distances (publication ancienne). */
+  private fluxMaxDistance(): number | null {
+    let max: number | null = null;
+    for (const f of this.fluxFeatures ?? []) {
+      const d = f.properties['distance'];
+      if (f.properties['kind'] === 'troncon' && typeof d === 'number' && Number.isFinite(d)) max = Math.max(max ?? 0, d);
+    }
+    return max;
+  }
+
+  /** Instant du rejeu pour la carte : minutes et paramètres de temps de l'événement choisi, ou null. */
+  private fluxInstantOf(atMin: number | null): { atMin: number; timing: NonNullable<FluxIndex['evenements'][number]['temps']> } | null {
+    const timing = this.fluxIndex?.evenements.find((e) => e.id === this.fluxSelectedId)?.temps ?? null;
+    return atMin === null || timing === null ? null : { atMin, timing };
   }
 
   /** Relève de 15 min (rythme du batch flux_osint), couche allumée seulement. */
@@ -4661,6 +4688,7 @@ export class App {
   private async selectFluxEvent(id: string, fly: boolean): Promise<void> {
     const ev = this.fluxIndex?.evenements.find((e) => e.id === id);
     if (!ev) return;
+    if (id !== this.fluxSelectedId) this.fluxInstant = null;
     this.fluxSelectedId = id;
     this.fluxGeo = 'loading';
     this.pushFluxState();
@@ -4676,7 +4704,7 @@ export class App {
       this.fluxFeatures = null;
       this.fluxGeo = 'error';
     }
-    this.mapContainer?.updateFluxLayer(this.fluxFeatures, this.fluxPhase);
+    this.mapContainer?.updateFluxLayer(this.fluxFeatures, this.fluxPhase, this.fluxInstantOf(this.fluxInstant));
     this.pushFluxState();
   }
 

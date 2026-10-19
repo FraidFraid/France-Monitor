@@ -1,9 +1,11 @@
 // src/components/deckgl/flux-pietons-map.ts : couche Flux piétons, parties pures : rues chargées (épaisseur = personnes passées,
 // couleur = probabilité de saturation : cyan fluide, L1 au-delà de 10 %), isochrones de marche 5/10/20 min en tirets, point de
-// rassemblement. Phase choisie : arrivée ou dispersion. Infobulle .hm-tip échappée, marquée ESTIMATION MODÉLISÉE.
+// rassemblement. Phase choisie : arrivée ou dispersion ; ou un instant du rejeu (curseur) : débit de la rue à cet instant, couleur
+// selon la part de sa capacité. Infobulle .hm-tip échappée, marquée ESTIMATION MODÉLISÉE.
 import type { GeoJSONSourceSpecification, LayerSpecification } from 'maplibre-gl';
-import type { FluxPhase } from '../../types/index.ts';
-import { BAND_WORD, bandHex, phaseValues, saturationBand, type FluxFeature, type FluxSegmentProps } from '../../services/flux-pietons.ts';
+import type { FluxPhase, FluxTiming } from '../../types/index.ts';
+import { BAND_WORD, bandHex, phaseValues, saturationBand, type FluxBand, type FluxFeature, type FluxSegmentProps } from '../../services/flux-pietons.ts';
+import { relativeLabel, segmentFlowAt } from '../../services/flux-timeline.ts';
 import { LYR_FLUX_ISO, LYR_FLUX_LINES, LYR_FLUX_POINT, SRC_FLUX } from './constants.ts';
 import { escapeHtml } from './format-utils.ts';
 
@@ -19,7 +21,37 @@ function segmentProps(p: Record<string, unknown>): FluxSegmentProps {
     chargeP50: num(p['chargeP50']), chargeP90: num(p['chargeP90']), densiteP90: num(p['densiteP90']), pSaturation: num(p['pSaturation']),
     chargeDepartP90: num(p['chargeDepartP90']), pSaturationDepart: num(p['pSaturationDepart']), pEmprise: num(p['pEmprise']),
     parcours: p['parcours'] === true, pGoulot: num(p['pGoulot']),
+    distance: typeof p['distance'] === 'number' && Number.isFinite(p['distance']) ? p['distance'] : null,
   };
+}
+
+/** Instant du rejeu : minutes après le début annoncé et paramètres de temps de l'événement. */
+export interface FluxInstant { atMin: number; timing: FluxTiming }
+
+/** Débit à l'instant rapporté à la capacité de la rue → niveau : L1 dès la moitié de la capacité, rouge au-delà. */
+export function instantBand(ratio: number): FluxBand {
+  if (ratio >= 1) return 'rouge';
+  if (ratio >= 0.75) return 'orange';
+  if (ratio >= 0.5) return 'jaune';
+  return 'fluide';
+}
+const INSTANT_WORD: Readonly<Record<FluxBand, string>> = {
+  fluide: 'débit sous la moitié de la capacité de la rue',
+  jaune: 'débit entre la moitié et les trois quarts de la capacité',
+  orange: 'débit proche de la capacité de la rue',
+  rouge: 'débit au-delà de la capacité : rue saturée',
+};
+
+/** Infobulle d'une rue à un instant du rejeu. */
+export function fluxInstantTipBody(p: FluxSegmentProps, flow: number, ratio: number, atMin: number): string {
+  const band = instantBand(ratio);
+  return `<b><i class="hm-dot" style="background:${bandHex(band)}"></i>${escapeHtml(p.rue)}</b>`
+    + `<div class="hm-sub">${escapeHtml(relativeLabel(atMin))} · estimation modélisée</div>`
+    + row('Débit (haut)', `${int(flow)}${NBSP}pers/min`)
+    + row('Part de la capacité', pct(ratio))
+    + row('Largeur', `${int(p.largeur)}${NBSP}m`)
+    + row('Distance au point', `${int(p.distance ?? 0)}${NBSP}m`)
+    + `<div class="hm-note">${escapeHtml(INSTANT_WORD[band])}. Haut = 9 tirages sur 10 en dessous.</div>`;
 }
 
 /** Infobulle d'une rue : valeurs de la phase choisie, toujours présentées comme des estimations. */
@@ -37,8 +69,11 @@ export function fluxTipBody(p: FluxSegmentProps, phase: FluxPhase): string {
     + `<div class="hm-note">${escapeHtml(BAND_WORD[band])}. Haut = 9 tirages sur 10 en dessous.</div>`;
 }
 
-/** Objets de la carte pour la phase choisie : rues sans passage dans cette phase (moins d'une personne) retirées. */
-export function fluxFeatures(list: readonly FluxFeature[] | null, phase: FluxPhase): GeoJSON.FeatureCollection {
+/**
+ * Objets de la carte pour la phase choisie : rues sans passage dans cette phase (moins d'une personne) retirées. Avec un instant du
+ * rejeu : débit de chaque rue à cet instant (rues vides retirées) ; épaisseur = personnes passant en 10 minutes à ce débit.
+ */
+export function fluxFeatures(list: readonly FluxFeature[] | null, phase: FluxPhase, instant: FluxInstant | null = null): GeoJSON.FeatureCollection {
   if (!list) return { type: 'FeatureCollection', features: [] };
   const features: GeoJSON.Feature[] = [];
   for (const f of list) {
@@ -48,6 +83,15 @@ export function fluxFeatures(list: readonly FluxFeature[] | null, phase: FluxPha
       continue;
     }
     const p = segmentProps(f.properties);
+    if (instant && p.distance !== null) {
+      const { flow, ratio } = segmentFlowAt({ ...p, distance: p.distance }, instant.timing, instant.atMin);
+      if (flow < 0.1) continue;
+      features.push({
+        type: 'Feature', geometry: f.geometry,
+        properties: { kind, charge: flow * 10, color: bandHex(instantBand(ratio)), sortKey: ratio * 1000 + Math.min(flow, 999), body: fluxInstantTipBody(p, flow, ratio, instant.atMin) },
+      });
+      continue;
+    }
     const { charge, pSat } = phaseValues(p, phase);
     if (charge < 1 && !(p.parcours && phase === 'arrivee')) continue;
     features.push({

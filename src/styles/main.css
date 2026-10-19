@@ -8477,3 +8477,11 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 
 /* Flux piétons : avertissement ESTIMATIONS MODÉLISÉES toujours en tête du panneau. */
 #app .flux-panel-modal .flux-warning { font-weight: 600; letter-spacing: 0.02em; }
+/* Rejeu dans le temps du panneau Flux piétons : bouton lecture, ligne de l'instant, curseur, bornes. */
+#app .flux-panel-modal .flux-replay { display: flex; flex-direction: column; gap: 6px; margin: 2px 0 8px; }
+#app .flux-panel-modal .flux-replay-head { display: flex; align-items: center; gap: 8px; }
+#app .flux-panel-modal .flux-play { flex: 0 0 auto; width: 28px; height: 28px; border-radius: 50%; border: 1px solid #22d3ee; background: rgba(34, 211, 238, 0.12); color: #e8e8ec; font-size: 11px; cursor: pointer; }
+#app .flux-panel-modal .flux-play:hover { background: rgba(34, 211, 238, 0.25); }
+#app .flux-panel-modal .flux-replay-label { font-size: 12px; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+#app .flux-panel-modal .flux-replay-range { width: 100%; accent-color: #22d3ee; cursor: pointer; }
+#app .flux-panel-modal .flux-replay-scale { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-secondary, #9898a8); white-space: nowrap; }

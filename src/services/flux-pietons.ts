@@ -2,7 +2,7 @@
 // dépôt) dans data/flux-pietons/ (index.json + un GeoJSON par événement). Contrat : flux_osint/docs/francemonitor_flux_format.md.
 // En local, le dossier est écrit dans public/ par le batch de flux_osint ; en production, dans /var/lib/francemonitor/data/flux-pietons
 // (bloc Caddy dédié). ESTIMATIONS MODÉLISÉES : jamais présentées comme des mesures. Aucun effet sur l'indice de stabilité.
-import type { FluxEvent, FluxIndex, FluxPhase, FluxTopRue } from '../types/index.ts';
+import type { FluxEvent, FluxIndex, FluxPhase, FluxTiming, FluxTopRue } from '../types/index.ts';
 import { levelHex } from './vigilance.ts';
 
 export const FLUX_BASE_URL = '/data/flux-pietons/';
@@ -24,6 +24,17 @@ function isTopRue(v: unknown): v is FluxTopRue {
 
 const isNumOrAbsent = (v: unknown): boolean => v === undefined || v === null || isNum(v);
 const numOrNull = (v: unknown): number | null => (isNum(v) ? v : null);
+
+/** Paramètres du rejeu valides (positifs), sinon null : le curseur est alors absent. */
+export function parseFluxTiming(v: unknown): FluxTiming | null {
+  if (!isRecord(v)) return null;
+  const keys = ['arriveeMin', 'pointeArrivee', 'departMin', 'pointeDepart', 'dureeMin', 'vitesse'] as const;
+  if (!keys.every((k) => isNum(v[k]) && v[k] > 0)) return null;
+  return {
+    arriveeMin: v['arriveeMin'] as number, pointeArrivee: v['pointeArrivee'] as number, departMin: v['departMin'] as number,
+    pointeDepart: v['pointeDepart'] as number, dureeMin: v['dureeMin'] as number, vitesse: v['vitesse'] as number,
+  };
+}
 
 export function isFluxEvent(v: unknown): v is FluxEvent {
   if (!isRecord(v)) return false;
@@ -58,6 +69,7 @@ function withAffluenceFields(e: FluxEvent): FluxEvent {
   const a = e.affluence as Partial<FluxEvent['affluence']> & Pick<FluxEvent['affluence'], 'p10' | 'p50' | 'p90' | 'base'>;
   return {
     ...e,
+    temps: parseFluxTiming((e as { temps?: unknown }).temps),
     affluence: {
       p10: a.p10, p25: numOrNull(a.p25), p50: a.p50, p75: numOrNull(a.p75), p90: a.p90, base: a.base,
       plafond: numOrNull(a.plafond), partPlafonnee: numOrNull(a.partPlafonnee),
@@ -85,6 +97,8 @@ export interface FluxSegmentProps {
   kind: 'troncon';
   rue: string; largeur: number; chargeP50: number; chargeP90: number; densiteP90: number; pSaturation: number;
   chargeDepartP90: number; pSaturationDepart: number; pEmprise: number; parcours: boolean; pGoulot: number;
+  /** Distance au point par le réseau (m) ; null : publication antérieure au rejeu. */
+  distance: number | null;
 }
 
 export type FluxFeature = GeoJSON.Feature<GeoJSON.Geometry, Record<string, unknown>>;

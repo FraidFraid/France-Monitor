@@ -3450,9 +3450,16 @@ export interface FluxEvent {
   meteo: string | null;
   recale: boolean;
   cortege: boolean;
+  /** Paramètres du rejeu dans le temps (curseur) ; null : publication antérieure au 19/10/2026, sans rejeu. */
+  temps: FluxTiming | null;
   calculeLe: string;
   fichier: string;
   resume: { troncons: number; satures: number; goulots: number; topRues: FluxTopRue[] };
+}
+
+/** Rejeu : fenêtres d'arrivée et de départ (minutes) et leur facteur de pointe, durée supposée du rassemblement, vitesse de marche (m/s). */
+export interface FluxTiming {
+  arriveeMin: number; pointeArrivee: number; departMin: number; pointeDepart: number; dureeMin: number; vitesse: number;
 }
 
 export interface FluxIndex {
