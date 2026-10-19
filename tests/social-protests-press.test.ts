@@ -117,3 +117,47 @@ describe('regroupement par lieu', () => {
     expect(items.map((i) => [i.city, i.lat])).toEqual([['Saint-Denis', -20.88]]);
   });
 });
+
+describe('chiffres nationaux attribués à une ville', () => {
+  it('a. marqueur national : le chiffre n’est pas local', () => {
+    expect(participantsOf('800 000 manifestants en France, vives tensions à Limoges', 1)).toBeNull();
+    expect(participantsOf('Dans toute la France, 450 000 manifestants selon la CGT, cortège à Paris', 1)).toBeNull();
+    expect(participantsOf('En France, 800 000 manifestants, cortège à Limoges', 1)).toBeNull();
+    expect(participantsOf('450 000 manifestants au niveau national, rassemblement à Paris', 1)).toBeNull();
+    expect(participantsOf('800 000 manifestants sur tout le territoire selon l’intersyndicale, défilé à Limoges', 1)).toBeNull();
+    expect(participantsOf('15 000 manifestants à Limoges', 1)).toBe(15_000);
+    expect(participantsOf('800 000 manifestants en France, 12 000 à Lyon', 1)).toBeNull();
+    expect(participantsOf('800 000 manifestants en France, dont 12 000 manifestants à Lyon', 1)).toBe(12_000);
+  });
+  const withLimoges: Record<string, { lat: number; lon: number; source: string }> = { ...PLACES, Limoges: { lat: 45.8, lon: 1.26, source: 'cities' } };
+  const resolveL = async (name: string) => { const p = withLimoges[name]; return p ? { ...p, locationName: name, confidence: 1 } : null; };
+  const population = async (p: { lat: number }) => (p.lat === 45.8 ? 130_000 : p.lat === 48.8566 ? 2_100_000 : null);
+  it('b. plafond de 15 % des habitants', async () => {
+    const { items } = await groupPress([
+      row('Mobilisation du 17 octobre : 800 000 manifestants à Limoges'),
+      row('Mobilisation du 17 octobre : 15 000 manifestants à Paris'),
+    ], NOW, resolveL, new Map(), population);
+    expect(items.find((i) => i.city === 'Limoges')?.participants).toBeNull();
+    expect(items.find((i) => i.city === 'Paris')?.participants).toBe(15_000);
+    const ok = await groupPress([row('Mobilisation du 17 octobre : 15 000 manifestants à Limoges')], NOW, resolveL, new Map(), population);
+    expect(ok.items[0].participants).toBe(15_000);
+  });
+  it('b. population illisible : la règle a seule, la source ne tombe pas', async () => {
+    const { items } = await groupPress([row('Mobilisation du 17 octobre : 800 manifestants à Gap')], NOW, resolve, new Map(),
+      async () => { throw new Error('réseau'); });
+    expect(items[0].participants).toBe(800);
+    const sans = await groupPress([row('Mobilisation du 17 octobre : 800 manifestants à Gap')], NOW, resolve, new Map(), async () => null);
+    expect(sans.items[0].participants).toBe(800);
+  });
+  it('c. même chiffre sur plusieurs villes : total repris partout', async () => {
+    const { items } = await groupPress([
+      row('Mobilisation du 17 octobre : 5 000 manifestants à Lyon'),
+      row('Manifestation du 17 octobre : 5 000 manifestants à Rennes'),
+      row('Manifestation du 17 octobre : 3 000 manifestants à Marseille'),
+      row('Manifestation du 17 octobre : 50 manifestants à Gap'),
+      row('Manifestation du 17 octobre : 50 manifestants à Grenoble'),
+    ], NOW, resolve);
+    const by = (c: string) => items.find((i) => i.city === c)?.participants;
+    expect([by('Lyon'), by('Rennes'), by('Marseille'), by('Gap'), by('Grenoble')]).toEqual([null, null, 3000, 50, 50]);
+  });
+});
