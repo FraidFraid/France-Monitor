@@ -5565,6 +5565,9 @@ export class App {
       this.energyFocusActive = [];
       this.energyFocusPreview = null;
       this.syncEnergyFocus();
+      this.generalFocusActive = null;
+      this.generalFocusPreview = null;
+      this.syncGeneralFocus();
       this.layoutFloatingPanelSwitcher();
       return;
     }
@@ -5644,13 +5647,15 @@ export class App {
       });
     });
     this.layoutFloatingPanelSwitcher();
-    // Pastilles Énergie allumées : mise en avant persistante ; la pastille survolée a été réécrite, l'aperçu tombe.
+    // Pastilles Énergie allumées : mise en avant persistante. La barre est réécrite à chaque arrivée de données : l'aperçu suit la
+    // pastille encore sous le pointeur (sinon un survol tombait au milieu, souris immobile).
+    const hovered = el.querySelector<HTMLElement>('.floating-panel-switcher__chip[data-panel-key]:hover')?.dataset['panelKey'] ?? null;
     this.energyFocusActive = energyPressed;
-    this.energyFocusPreview = null;
+    this.energyFocusPreview = hovered && isEnergyLayerKey(hovered) ? hovered : null;
     this.syncEnergyFocus();
     // Vue générale : la pastille dont le panneau est ouvert reste mise en avant, comme une pastille Énergie allumée. Lu à l'image
     // suivante : à l'ouverture ou à la fermeture d'un panneau, sa visibilité n'est à jour qu'après ce rafraîchissement.
-    this.generalFocusPreview = null;
+    this.generalFocusPreview = hovered && !isEnergyLayerKey(hovered) ? hovered as keyof MapLayers : null;
     requestAnimationFrame(() => {
       const open = this.currentFloatingPanelId;
       this.generalFocusActive = open && !isEnergyLayerKey(open) && this.isFloatingPanelVisible(open) ? open : null;
@@ -5684,7 +5689,9 @@ export class App {
     const switcher = this.floatingPanelSwitcherEl;
     const legend = key ? this.mapLegend?.getCategory(key) : undefined;
     const items = (legend?.items ?? []).filter((i) => !i.isHeader && i.visible !== false && (i.color || i.borderColor)).slice(0, 6);
-    if (!key || !legend || items.length === 0 || !switcher || switcher.hidden) {
+    // Couche sans dessin sur la carte (Vigilance cyber) : sa légende dit pourquoi, en texte.
+    const texts = items.length === 0 ? (legend?.items ?? []).filter((i) => i.visible !== false).map((i) => i.label).slice(0, 2) : [];
+    if (!key || !legend || (items.length === 0 && texts.length === 0) || !switcher || switcher.hidden) {
       panel?.remove();
       return;
     }
@@ -5693,7 +5700,8 @@ export class App {
       panel.id = 'general-focus-key';
       document.body.appendChild(panel);
     }
-    const rows = items.map((i) => `<div class="ef-row"><i class="ef-dot" style="background:${escapeHtml(i.color ?? 'transparent')};${i.borderColor ? `box-shadow:0 0 0 2px ${escapeHtml(i.borderColor)}` : ''}"></i><span>${escapeHtml(i.label)}</span></div>`).join('');
+    const rows = items.map((i) => `<div class="ef-row"><i class="ef-dot" style="background:${escapeHtml(i.color ?? 'transparent')};${i.borderColor ? `box-shadow:0 0 0 2px ${escapeHtml(i.borderColor)}` : ''}"></i><span>${escapeHtml(i.label)}</span></div>`).join('')
+      + texts.map((tx) => `<div class="ef-row"><span>${escapeHtml(tx)}</span></div>`).join('');
     panel.innerHTML = `<div class="ef-key"><div class="ef-title">${escapeHtml(legend.title)}</div>${rows}</div>`;
     const r = switcher.getBoundingClientRect();
     panel.style.left = `${Math.round(r.left)}px`;

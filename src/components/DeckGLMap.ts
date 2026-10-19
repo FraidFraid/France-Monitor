@@ -4635,6 +4635,9 @@ export class DeckGLMap {
       activeLayers = [...ENV_LAYER_KEYS[categoryId]];
     }
 
+    // Pastille de la Vue générale sans dessin sur la carte (Vigilance cyber : aucun lieu publié) : tout le reste se tamise.
+    if (categoryId !== null && categoryId === this.generalFocusKey && activeLayers.length === 0) activeLayers = ['__aucun-calque__'];
+
     const applyLegendDim = (layerId: string, prop: string, orig: unknown): void => {
       if (categoryId === null || activeLayers.length === 0) {
         // Reset to original
