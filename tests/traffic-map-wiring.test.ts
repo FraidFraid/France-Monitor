@@ -101,8 +101,9 @@ describe('DeckGLMap : couches Trafics réécrites', () => {
     expect(deck).toContain('activeLayers = [...TRAFFIC_LAYER_KEYS.trafficRail, LYR_TRAIN_ROUTE, LYR_TRAIN_STATIONS];');
     expect(deck).toContain('activeLayers = [...TRAFFIC_LAYER_KEYS.trafficMaritime];');
     // Contours colorés (anneau des signalements, aéroports, mouillages, urgences, arrêts) atténués avec leur couche.
-    // Les contours des cercles Énergie (spec 2026-10-16 § 7) suivent la même boucle.
-    expect(deck).toContain('for (const layerId of [...TRAFFIC_STROKE_DIM_LAYERS, ...ENERGY_FOCUS_ALL]) {');
+    // Les contours des cercles Énergie (spec 2026-10-16 § 7) et de toutes les couches de la légende (stations Vigicrues, 19/10/2026)
+    // suivent la même boucle.
+    expect(deck).toContain('for (const layerId of new Set([...TRAFFIC_STROKE_DIM_LAYERS, ...ENERGY_FOCUS_ALL, ...allLegendLayers])) {');
     expect(deck).toContain("this.originalOpacities.set(key, { prop: 'circle-stroke-opacity', orig: this.map.getPaintProperty(layerId, 'circle-stroke-opacity') ?? 1 });");
   });
 });
