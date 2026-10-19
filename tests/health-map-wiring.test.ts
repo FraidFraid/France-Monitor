@@ -109,8 +109,9 @@ describe('relecture de la tâche 18 : survol, fiche de site, légende, morceaux 
     expect(start).toBeGreaterThan(-1);
     return deck.slice(start, deck.indexOf('\n  }\n', start));
   };
-  it('infobulle de survol fermée quand la souris quitte la carte et quand son contenu change', () => {
-    expect(deck).toMatch(/map\.on\('mouseout', \(\) => \{\s*this\.setHealthPointer\(false\);\s*this\.hideHealthHover\(\);/);
+  it('infobulle ouverte au clic (pas au survol), fermée quand son contenu change', () => {
+    expect(deck).toContain("map.on('mouseout', () => this.setHealthPointer(false));");
+    expect(body('private initHealthInteractions(): void {')).toMatch(/map\.on\('click', \(e\) => \{[\s\S]*healthTooltipHtml\(/);
     for (const signature of ['updateHealthAlerts(alerts: AlertLevelsResponse | null, now: number): void {',
       'updateHealthDepartments(syndromic: SyndromicResponse | null, apl: AplDataset | null, now: number): void {',
       'setHealthUrgencesSyndrome(syndrome: UrgencesSyndrome): void {', 'setHealthAplProfession(profession: AplProfession): void {',
@@ -120,8 +121,8 @@ describe('relecture de la tâche 18 : survol, fiche de site, légende, morceaux 
     expect(css).toContain('.hm-hover .maplibregl-popup-content { pointer-events: none; }');
   });
   it('fiche de site : pas d’infobulle par-dessus, fermée quand la couche Hôpitaux s’éteint', () => {
-    expect(body('private initHealthInteractions(): void {')).toContain("String(hit?.properties?.['finess'] ?? '') === this.hospitalPopupFiness");
-    expect(body('private openHospitalPopup(site: EmergencySite): void {')).toContain('this.hospitalPopupFiness = site.finess;');
+    expect(body('private initHealthInteractions(): void {')).toContain('const html = hit && !onSite ? healthTooltipHtml(');
+    expect(body('private openHospitalPopup(site: EmergencySite): void {')).toContain('this.hideHealthHover();');
     expect(body('setLayerVisibility(layers: MapLayers): void {')).toContain('if (!layers.hospitals) this.hospitalPopup?.remove();');
   });
   it('survol : la couche dessinée au-dessus répond ; ordre de dessin unique', () => {
