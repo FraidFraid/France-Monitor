@@ -413,10 +413,14 @@ export class EolienTracker {
     return 0.38;
   }
 
-  async fetchDashboardSnapshot(ventMoyenKmh = 30): Promise<EolienTrackerSnapshot> {
+  /**
+   * `parks` faux : sans le fichier des parcs (4,6 Mo, carte et panneau Éolien seulement) ; la production du moment, seule lue par
+   * l'indice, suffit. Les parcs déjà lus sont repris.
+   */
+  async fetchDashboardSnapshot(ventMoyenKmh = 30, opts: { parks?: boolean } = {}): Promise<EolienTrackerSnapshot> {
     const [livePayload, geojson] = await Promise.all([
       this.fetchEco2mixLive(),
-      this.fetchParcsGeoJSON(),
+      opts.parks === false ? Promise.resolve(this.parksCache?.data ?? emptyGeoJSON()) : this.fetchParcsGeoJSON(),
     ]);
 
     const emptyLive: EolienLive = {

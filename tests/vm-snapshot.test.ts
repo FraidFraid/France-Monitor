@@ -1,4 +1,4 @@
-// tests/oil-snapshot.test.ts : relevé pétrole de la VM (minuteur fm-oil) : route qui le sert, lecture par le navigateur (à jour,
+// tests/vm-snapshot.test.ts : relevés de la VM (pétrole fm-oil, tension carburants fm-fuel) : route qui le sert, lecture par le navigateur (à jour,
 // trop vieux, mauvaise forme, absent → calcul dans le navigateur comme avant).
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -50,5 +50,25 @@ describe('lecture du relevé par le navigateur', () => {
     expect(await readOilSnapshot(NOW)).toBeNull();
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('réseau'); }));
     expect(await readOilSnapshot(NOW)).toBeNull();
+  });
+});
+
+describe('tension carburants : relevé de la VM', () => {
+  it('France entière : relevé à jour servi sans lire les 98 pages ; trop vieux : null ; route qui le sert', async () => {
+    const { FUEL_SNAPSHOT_MAX_AGE_MS, FUEL_SNAPSHOT_URL, FUEL_SNAPSHOT_VERSION, readFuelSnapshot } = await import('../src/services/fuel-tension.ts');
+    const dash = { national: { stationCount: 9631 }, summaries: [], signals: [] };
+    const fuel = (over: Record<string, unknown> = {}) => ({ version: FUEL_SNAPSHOT_VERSION, generatedAt: new Date(NOW - 600_000).toISOString(), dashboard: dash, ...over });
+    const f = vi.fn(async () => new Response(JSON.stringify(fuel()), { status: 200 }));
+    vi.stubGlobal('fetch', f);
+    expect((await readFuelSnapshot(NOW))?.national.stationCount).toBe(9631);
+    expect(f.mock.calls[0]?.[0]).toBe(FUEL_SNAPSHOT_URL);
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(fuel({ generatedAt: new Date(NOW - FUEL_SNAPSHOT_MAX_AGE_MS - 1).toISOString() })), { status: 200 })));
+    expect(await readFuelSnapshot(NOW)).toBeNull();
+    const dir = mkdtempSync(join(tmpdir(), 'fm-fuel-'));
+    writeFileSync(join(dir, 'fuel.json'), JSON.stringify(fuel()));
+    vi.stubEnv('FUEL_SNAPSHOT_FILE', join(dir, 'fuel.json'));
+    vi.resetModules();
+    const ok = await callHandler<{ dashboard: unknown }>((await import('../api/_handlers/energy/fuel-tension.js')).default);
+    expect([ok.status, ok.cache]).toEqual([200, 's-maxage=120, stale-while-revalidate=600']);
   });
 });

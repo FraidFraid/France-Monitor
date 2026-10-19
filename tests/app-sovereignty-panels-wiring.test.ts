@@ -133,7 +133,7 @@ describe('panneaux Souveraineté : un panneau par couche (contrats § 4.2 à 4.4
     expect(methodBody('loadSecondaryLayers')).toContain("name: 'cables', task: this.loadCables()");
     expect(methodBody('loadOptionalLayers')).toContain("name: 'cyber', task: this.loadCyber()");
     const warm = methodBody('warmCriticalDataCache');
-    for (const f of ['fetchMilitary(null)', 'fetchCables(null)', 'fetchCyber(null)']) expect(warm).toContain(f);
+    for (const f of ['fetchMilitary(null)', 'fetchCables(null, Date.now(), false)', 'fetchCyber(null)']) expect(warm).toContain(f);
   });
   it('panneau des sources (point 17) : lignes datées par la donnée, jamais LIVE, adsb.fi, Shodan, Censys ni NVD', () => {
     expect(methodBody('loadMilitary')).toContain("this.statusPanel?.updateSource('Vols militaires', militaryStatus(this.currentMilitary, now));");

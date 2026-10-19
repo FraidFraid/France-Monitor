@@ -18,6 +18,7 @@ import {
   OIL_VIGILANCE_THRESHOLDS,
 } from '../config/oil-infrastructure';
 import { Watchdog } from './watchdog.ts';
+import { readVmSnapshot } from './vm-snapshot.ts';
 
 Watchdog.register('oil-dashboard', {
   label: 'Pétrole SDES / INSEE',
@@ -1241,7 +1242,7 @@ function buildFreshnessInfo(
   };
 }
 
-// ─── Relevé de la VM (scripts/oil-snapshot.ts, minuteur fm-oil toutes les 3 h) ───
+// ─── Relevé de la VM (scripts/vm-snapshot.ts --what oil, minuteur fm-oil toutes les 3 h) ───
 /** Format du fichier publié ; changé si OilDashboard change de forme (l'ancien fichier est alors ignoré). */
 export const OIL_SNAPSHOT_VERSION = 1;
 export const OIL_SNAPSHOT_URL = '/api/energy/oil-dashboard';
@@ -1249,19 +1250,11 @@ export const OIL_SNAPSHOT_URL = '/api/energy/oil-dashboard';
 export const OIL_SNAPSHOT_MAX_AGE_MS = 8 * 3_600_000;
 
 /** Tableau du relevé s'il est à jour et de la bonne forme, sinon null (jamais d'erreur levée). */
-export async function readOilSnapshot(now: number = Date.now()): Promise<OilDashboard | null> {
-  try {
-    const res = await fetch(OIL_SNAPSHOT_URL, { signal: AbortSignal.timeout(10_000) });
-    if (!res.ok) return null;
-    const body = await res.json() as { version?: unknown; generatedAt?: unknown; dashboard?: Partial<OilDashboard> };
-    const at = typeof body.generatedAt === 'string' ? Date.parse(body.generatedAt) : Number.NaN;
-    const d = body.dashboard;
-    if (body.version !== OIL_SNAPSHOT_VERSION || !Number.isFinite(at) || now - at > OIL_SNAPSHOT_MAX_AGE_MS) return null;
-    if (!d || typeof d !== 'object' || !d.meta || !d.stocks || !d.flows || !d.sourceStatus || !Array.isArray(d.deliveries)) return null;
-    return d as OilDashboard;
-  } catch {
-    return null;
-  }
+export function readOilSnapshot(now: number = Date.now()): Promise<OilDashboard | null> {
+  return readVmSnapshot<OilDashboard>(OIL_SNAPSHOT_URL, OIL_SNAPSHOT_VERSION, OIL_SNAPSHOT_MAX_AGE_MS, (raw) => {
+    const d = raw as Partial<OilDashboard>;
+    return Boolean(d.meta && d.stocks && d.flows && d.sourceStatus && Array.isArray(d.deliveries));
+  }, now);
 }
 
 // Derniers fichiers JODI lus (ZIP mondial du gaz 1,6 Mo, CSV pétrole) : gardés pour les relectures sans eux.

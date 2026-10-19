@@ -103,10 +103,12 @@ async function readCablesFile(): Promise<{ file: SubseaCablesFile | null; fileEr
 }
 
 /** Ne rejette jamais : veille relue sous son cache, fichier des câbles lu une fois (gardé tant qu'il a été lu). */
-export async function fetchCables(previous: CablesState | null, now: number = Date.now()): Promise<CablesState> {
+export async function fetchCables(previous: CablesState | null, now: number = Date.now(), withFile = true): Promise<CablesState> {
+  // `withFile` faux : veille seule (lue par l'indice) ; le fichier des câbles (757 Ko) n'est lu que pour la carte et les panneaux.
   const [watch, file] = await Promise.all([
     loadSovereigntySlot(CABLES_WATCH_URL, CABLES_WATCH_TTL_MS, previous?.watch, now, WATCH_SHAPE, 'de la veille des câbles'),
-    previous?.file ? Promise.resolve({ file: previous.file, fileError: null }) : readCablesFile(),
+    previous?.file ? Promise.resolve({ file: previous.file, fileError: null })
+      : withFile ? readCablesFile() : Promise.resolve({ file: fileRead, fileError: null }),
   ]);
   return { watch, ...file };
 }

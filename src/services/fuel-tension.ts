@@ -13,6 +13,22 @@ import { fetchFuelStations, NATIONAL_FUEL_DEPARTMENT_CODES } from './fuel-prices
 import { Watchdog } from './watchdog.ts';
 import { levelHex } from './vigilance.ts';
 import { fuelTensionVigilance } from './energy-state.ts';
+import { readVmSnapshot } from './vm-snapshot.ts';
+
+// ─── Relevé de la VM (scripts/vm-snapshot.ts --what fuel, minuteur fm-fuel toutes les 15 min) ───
+/** Format du fichier publié ; changé si FuelTensionDashboard change de forme (l'ancien fichier est alors ignoré). */
+export const FUEL_SNAPSHOT_VERSION = 1;
+export const FUEL_SNAPSHOT_URL = '/api/energy/fuel-tension';
+/** Au-delà (trois relevés manqués), le relevé est jugé arrêté : 98 pages lues dans le navigateur, comme avant. */
+export const FUEL_SNAPSHOT_MAX_AGE_MS = 45 * 60_000;
+
+/** Tension nationale du relevé s'il est à jour et de la bonne forme, sinon null (jamais d'erreur levée). */
+export function readFuelSnapshot(now: number = Date.now()): Promise<FuelTensionDashboard | null> {
+  return readVmSnapshot<FuelTensionDashboard>(FUEL_SNAPSHOT_URL, FUEL_SNAPSHOT_VERSION, FUEL_SNAPSHOT_MAX_AGE_MS, (raw) => {
+    const d = raw as Partial<FuelTensionDashboard>;
+    return Boolean(d.national && Array.isArray(d.summaries) && Array.isArray(d.signals));
+  }, now);
+}
 
 const FUEL_TYPES: FuelType[] = ['gazole', 'sp95', 'sp98', 'e10'];
 const FUEL_TENSION_CACHE_TTL_MS = 5 * 60_000;
@@ -509,13 +525,18 @@ export function buildFuelTensionDashboardFromStations(
   };
 }
 
-async function fetchFuelTensionDashboardUncached(departmentCodes?: string[]): Promise<FuelTensionDashboard> {
+async function fetchFuelTensionDashboardUncached(departmentCodes?: string[], useSnapshot = true): Promise<FuelTensionDashboard> {
+  // France entière : relevé de la VM d'abord (une requête au lieu de 98 pages) ; absent ou trop vieux, calcul ici comme avant.
+  if (useSnapshot && (!departmentCodes || departmentCodes.length === 0)) {
+    const snap = await readFuelSnapshot();
+    if (snap) return snap;
+  }
   const requestedDepartmentCodes = departmentCodes?.map(normalizeDepartmentCode);
   const stations = await fetchFuelStations(requestedDepartmentCodes);
   return buildFuelTensionDashboardFromStations(stations, Date.now(), requestedDepartmentCodes);
 }
 
-export async function fetchFuelTensionDashboard(departmentCodes?: string[]): Promise<FuelTensionDashboard> {
+export async function fetchFuelTensionDashboard(departmentCodes?: string[], opts: { snapshot?: boolean } = {}): Promise<FuelTensionDashboard> {
   const normalizedCodes = departmentCodes?.map(normalizeDepartmentCode);
   const cacheKey = buildCacheKey(normalizedCodes);
   const cached = cache.get(cacheKey);
@@ -526,9 +547,10 @@ export async function fetchFuelTensionDashboard(departmentCodes?: string[]): Pro
   const inflight = inflightRequests.get(cacheKey);
   if (inflight) return inflight;
 
+
   Watchdog.report('fuel-tension', { type: 'loading' });
   const startedAt = Date.now();
-  const request = fetchFuelTensionDashboardUncached(normalizedCodes)
+  const request = fetchFuelTensionDashboardUncached(normalizedCodes, opts.snapshot !== false)
     .then((dashboard) => {
       cache.set(cacheKey, { data: dashboard, fetchedAt: Date.now() });
       inflightRequests.delete(cacheKey);

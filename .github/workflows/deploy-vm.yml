@@ -65,8 +65,8 @@ jobs:
           VITE_ENABLE_OIL_LAYER: ${{ vars.VITE_ENABLE_OIL_LAYER }}
         run: npm run build
 
-      - name: Construire le relevé pétrole (minuteur fm-oil)
-        run: npm run build:oil-snapshot
+      - name: Construire les relevés de la VM (minuteurs fm-oil, fm-fuel)
+        run: npm run build:vm-snapshot
 
       - name: Créer l'archive de déploiement
         run: |
@@ -77,7 +77,7 @@ jobs:
             src/config/government-data.js src/services/drom-energy/static-runtime.js src/services/french-warship.js \
             public/data/regions.geojson public/data/departements.geojson public/data/subsea-cables.json \
             scripts/build-eau-potable.mjs scripts/build-deces.mjs scripts/build-arretes.mjs \
-            deploy/oracle/systemd deploy/oracle/install-arretes.sh deploy/oracle/install-oil.sh
+            deploy/oracle/systemd deploy/oracle/install-arretes.sh deploy/oracle/install-snapshots.sh
 
       - name: Préparer la clé SSH et known_hosts
         env:

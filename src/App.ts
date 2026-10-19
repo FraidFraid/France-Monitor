@@ -2126,7 +2126,7 @@ export class App {
     void fetchFloods(null);
     // Souveraineté : lectures qui ne rejettent jamais, relues par loadMilitary, loadCables et loadCyber (cache par URL).
     void fetchMilitary(null);
-    void fetchCables(null);
+    void fetchCables(null, Date.now(), false);
     void fetchCyber(null);
     // Phase B : la grille GNSS nourrit le score (relue par loadGnss) ; réseaux, gels et zones drones seulement à la demande.
     void fetchGnss(null);
@@ -5184,7 +5184,9 @@ export class App {
    */
   private loadCables(): Promise<void> {
     return this.readSovereignty('subseaCables', async () => {
-      const incoming = await fetchCables(this.currentCables);
+      // Fichier des câbles seulement si la carte ou un panneau le montre (Connectivité, Défense) ; l'indice ne lit que la veille.
+      const withFile = this.activeLayers.subseaCables === true || this.connectivityPanel?.isVisible() === true || this.defensePanel?.isVisible() === true;
+      const incoming = await fetchCables(this.currentCables, Date.now(), withFile);
       this.currentCables = mergeCables(this.currentCables, incoming);
       const now = Date.now();
       this.statusPanel?.updateSource('Câbles et AIS', cablesStatus(this.currentCables, now));
@@ -6971,7 +6973,9 @@ export class App {
     this.statusPanel?.updateSource('Éolien France', { status: 'loading', lastUpdate: null });
 
     try {
-      const snapshot = await this.eolienTracker.fetchDashboardSnapshot();
+      // Parcs éoliens (4,6 Mo) seulement pour la carte ou le panneau Éolien ; l'indice ne lit que la production du moment.
+      const parks = this.activeLayers.windMonitor === true || this.eolienPanel?.isVisible() === true;
+      const snapshot = await this.eolienTracker.fetchDashboardSnapshot(undefined, { parks });
       this.currentEolienLive = snapshot.live;
       this.currentEolienParks = snapshot.parks;
 

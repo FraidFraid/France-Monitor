@@ -1,0 +1,28 @@
+[Unit]
+Description=France Monitor - tension carburants nationale calculee sur la VM (scripts/vm-snapshot.ts), lue par /api/energy/fuel-tension
+Documentation=https://github.com/FraidFraid/France-Monitor/blob/main/docs/deployment-oracle.md
+After=network-online.target fm-api.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=fm
+Group=fm
+WorkingDirectory=/srv/francemonitor/current
+# Une minute environ : 98 pages du flux instantane des prix carburants (data.economie.gouv.fr) ; historique 7 jours a cote.
+# Ecrit hors de la release : le fichier survit aux deploiements ; lu par fm-api (api/_handlers/energy/fuel-tension.js).
+ExecStart=/usr/bin/node dist-node/vm-snapshot.mjs --what fuel --out /var/lib/francemonitor/data/fuel-tension.json
+TimeoutStartSec=10min
+# Pas de Restart= : en cas d'echec (site d'une prefecture injoignable), l'ancien releve reste servi.
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/francemonitor/data
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true
