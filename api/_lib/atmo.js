@@ -3,6 +3,7 @@
 // (faits § 5.1). Garde « réponse WFS non filtrée » : trop d'entités annoncées, une date hors du filtre, ou un corps de plus de 30 Mo
 // est une erreur. Épisodes de J à J+2 (alrt:alrt3j) ; indice ATMO de J par commune (ind:ind_atmo_2021), agrégé par département.
 import { DEPT_NAMES } from '../_shared/departments.js';
+import { EPCI_DEPTS } from '../_shared/epci-depts.js';
 import { parisDay, parisHour } from './paris-time.js';
 import { cachedSourceReport, fetchStrictText, sourceError } from './source-http.js';
 
@@ -136,8 +137,14 @@ export function parseEpisodes(fc, days) {
   };
 }
 
-/** Code de commune INSEE (5 caractères, Corse 2A et 2B) ; les zones intercommunales (SIREN à 9 chiffres) ne sont pas rattachées. */
+/** Code de commune INSEE (5 caractères, Corse 2A et 2B). */
 const COMMUNE_RE = /^(?:\d{5}|2[AB]\d{3})$/;
+/**
+ * Zone intercommunale (SIREN à 9 chiffres) : Air Breizh et Atmo Occitanie publient l'indice par EPCI, pas par commune (17 départements
+ * vides sinon, 20/10/2026). L'indice d'un EPCI vaut pour chacune de ses communes, comptées dans leur département (api/_shared/epci-depts.js), sauf
+ * dans un département déjà publié par commune.
+ */
+const EPCI_RE = /^\d{9}$/;
 /** Collectivités absentes de DEPT_NAMES mais publiées par Atmo (Saint-Martin le 04/10). */
 const EXTRA_NAMES = { 975: 'Saint-Pierre-et-Miquelon', 977: 'Saint-Barthélemy', 978: 'Saint-Martin' };
 
@@ -159,26 +166,32 @@ export function aggregateIndex(fc, date) {
     const p = f?.properties ?? {};
     const code = String(p.code_zone ?? '');
     const q = Number(p.code_qual);
-    if (!COMMUNE_RE.test(code) || !Number.isInteger(q) || q < 1 || q > 7) continue;
+    if (!(COMMUNE_RE.test(code) || (EPCI_RE.test(code) && EPCI_DEPTS[code])) || !Number.isInteger(q) || q < 1 || q > 7) continue;
     best.set(code, Math.max(best.get(code) ?? 0, q));
     const t = typeof p.date_maj === 'string' ? Date.parse(p.date_maj) : Number.NaN;
     if (Number.isFinite(t) && t > updatedMs) updatedMs = t;
   }
   const byDept = new Map();
+  let communes = 0;
+  // Département publié par commune : ses intercommunalités ne comptent pas (une région qui publie les deux niveaux compterait double).
+  const communeDepts = new Set([...best.keys()].filter((c) => COMMUNE_RE.test(c)).map(deptOfCommune));
   for (const [code, q] of best) {
-    const dept = deptOfCommune(code);
-    const d = byDept.get(dept) ?? { dept, name: DEPT_NAMES[dept] ?? EXTRA_NAMES[dept] ?? dept, communes: 0, degrade: 0, mauvais: 0, tresMauvaisEtPlus: 0, maxIndex: null };
-    d.communes += 1;
-    if (q === 3) d.degrade += 1;
-    if (q === 4) d.mauvais += 1;
-    if (q >= 5) d.tresMauvaisEtPlus += 1;
-    d.maxIndex = Math.max(d.maxIndex ?? 0, q);
-    byDept.set(dept, d);
+    const parts = EPCI_RE.test(code) ? EPCI_DEPTS[code].filter(([dept]) => !communeDepts.has(dept)) : [[deptOfCommune(code), 1]];
+    for (const [dept, n] of parts) {
+      const d = byDept.get(dept) ?? { dept, name: DEPT_NAMES[dept] ?? EXTRA_NAMES[dept] ?? dept, communes: 0, degrade: 0, mauvais: 0, tresMauvaisEtPlus: 0, maxIndex: null };
+      d.communes += n;
+      if (q === 3) d.degrade += n;
+      if (q === 4) d.mauvais += n;
+      if (q >= 5) d.tresMauvaisEtPlus += n;
+      d.maxIndex = Math.max(d.maxIndex ?? 0, q);
+      byDept.set(dept, d);
+      communes += n;
+    }
   }
   return {
     date: best.size > 0 ? date : null,
     updatedAt: isoOrNull(updatedMs),
-    communes: best.size,
+    communes,
     departments: [...byDept.values()].sort((a, b) => deptKey(a.dept) - deptKey(b.dept)),
   };
 }
@@ -201,7 +214,7 @@ export async function loadAirQuality(now = Date.now()) {
     cachedSourceReport(`env:atmo:episodes:${j}`, { ttlSec, staleSec: 2 * 86_400, shared: true }, 'Atmo France, épisodes', async () => ({
       ...parseEpisodes(await fetchWfs(episodesUrl(days[0], days[2]), EPISODES_MAX_MATCHED, new Set(days)), days), readAt,
     })),
-    cachedSourceReport(`env:atmo:indice:${j}`, { ttlSec, staleSec: 2 * 86_400, shared: true }, 'Atmo France, indice', async () => ({
+    cachedSourceReport(`env:atmo:indice:v2:${j}`, { ttlSec, staleSec: 2 * 86_400, shared: true }, 'Atmo France, indice', async () => ({
       ...aggregateIndex(await fetchWfs(indexUrl(j), INDEX_MAX_MATCHED, new Set([j])), j), readAt,
     })),
   ]);

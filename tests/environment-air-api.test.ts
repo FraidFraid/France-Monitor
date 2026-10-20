@@ -25,7 +25,7 @@ function indexFeature(code_zone: string, code_qual: number, date_maj = '2026-10-
   return { type: 'Feature', geometry: null, properties: { code_zone, code_qual, date_maj, date_ech } };
 }
 
-/** Indice de J : Paris réel (75056), puis Marseille (avec un doublon), Nice, Ajaccio, Les Abymes, une zone intercommunale (SIREN). */
+/** Indice de J : Paris réel (75056), puis Marseille (avec un doublon), Nice, Ajaccio, Les Abymes, une zone intercommunale de Guyane (SIREN). */
 function indexFc(): object {
   const paris = PARIS.features.find((f) => f.properties['date_ech'] === '2026-10-04');
   return {
@@ -121,17 +121,33 @@ describe('épisodes', () => {
 });
 
 describe('indice ATMO agrégé par département (arbitrage 7)', () => {
-  it('communes INSEE seulement (zone intercommunale écartée), doublon gardé au plus haut, DROM sur trois caractères, Corse 2A', () => {
+  it('communes INSEE (zone intercommunale d’un département publié par commune écartée), doublon gardé au plus haut, DROM sur trois caractères, Corse 2A', () => {
     expect(aggregateIndex(indexFc(), '2026-10-04')).toEqual({
-      date: '2026-10-04', updatedAt: '2026-10-03T17:05:31.097Z', communes: 5,
+      date: '2026-10-04', updatedAt: '2026-10-03T17:05:31.097Z', communes: 11,
       departments: [
         { dept: '06', name: 'Alpes-Maritimes', communes: 1, degrade: 0, mauvais: 1, tresMauvaisEtPlus: 0, maxIndex: 4 },
         { dept: '13', name: 'Bouches-du-Rhône', communes: 1, degrade: 1, mauvais: 0, tresMauvaisEtPlus: 0, maxIndex: 3 },
         { dept: '2A', name: 'Corse-du-Sud', communes: 1, degrade: 0, mauvais: 0, tresMauvaisEtPlus: 0, maxIndex: 2 },
         { dept: '75', name: 'Paris', communes: 1, degrade: 0, mauvais: 0, tresMauvaisEtPlus: 0, maxIndex: 2 },
         { dept: '971', name: 'Guadeloupe', communes: 1, degrade: 0, mauvais: 0, tresMauvaisEtPlus: 0, maxIndex: 1 },
+        // Zone intercommunale de Guyane (SIREN 249730045, 6 communes) : la Guyane n'est pas publiée par commune, ses communes comptent.
+        { dept: '973', name: 'Guyane', communes: 6, degrade: 0, mauvais: 0, tresMauvaisEtPlus: 0, maxIndex: 1 },
       ],
     });
+  });
+  it('zone intercommunale (Air Breizh, Atmo Occitanie) : ses communes comptées dans leur département, jamais en double d’un département publié par commune', () => {
+    const fc = {
+      type: 'FeatureCollection',
+      features: [indexFeature('200039022', 3), indexFeature('35238', 2)],
+    };
+    const r = aggregateIndex(fc, '2026-10-04');
+    // Vitré Communauté (Ille-et-Vilaine) : département déjà publié par Rennes, l'EPCI n'y compte pas.
+    expect(r.departments.map((d) => d.dept)).toEqual(['35']);
+    expect(r.departments[0]?.communes).toBe(1);
+    const epciOnly = aggregateIndex({ type: 'FeatureCollection', features: [indexFeature('200039022', 3)] }, '2026-10-04');
+    expect(epciOnly.departments[0]).toMatchObject({ dept: '35', maxIndex: 3 });
+    expect(epciOnly.departments[0]?.communes).toBeGreaterThan(10);
+    expect(epciOnly.departments[0]?.degrade).toBe(epciOnly.departments[0]?.communes);
   });
   it('aucune commune : date null (indice non encore publié)', () => {
     expect(aggregateIndex({ type: 'FeatureCollection', features: [] }, '2026-10-04')).toEqual({ date: null, updatedAt: null, communes: 0, departments: [] });
@@ -173,7 +189,7 @@ describe('/api/environment/air', () => {
   it('panne partielle : épisodes en 500, indice servi ; jamais « aucun épisode » dans la réponse (episodesUpdatedAt null)', async () => {
     sources({ episodes: respond('erreur', 500) });
     const { status, body, cache } = await callHandler<AirQualityResponse>(handler);
-    expect([status, body.errors, body.episodesUpdatedAt, body.index.communes]).toEqual([200, ['Atmo France, épisodes : HTTP 500'], null, 5]);
+    expect([status, body.errors, body.episodesUpdatedAt, body.index.communes]).toEqual([200, ['Atmo France, épisodes : HTTP 500'], null, 11]);
     expect(cache).toBe('s-maxage=300, stale-while-revalidate=600');
   });
   it('relecture des épisodes en échec, ancienne lecture servie du cache : panne nommée, date de l’ancienne lecture gardée (S1, S3)', async () => {
@@ -183,7 +199,7 @@ describe('/api/environment/air', () => {
     sources({ episodes: respond('erreur', 503) });
     const { status, body } = await callHandler<AirQualityResponse>(handler);
     expect([status, body.errors, body.episodesUpdatedAt]).toEqual([200, ['Atmo France, épisodes : HTTP 503'], '2026-10-03T13:29:04.796Z']);
-    expect(body.index.communes).toBe(5);
+    expect(body.index.communes).toBe(11);
   });
   it('rien de lu : 502 non mis en cache, deux erreurs nommées ; page HTML nommée', async () => {
     sources({ episodes: respond('erreur', 500), index: respond('<!DOCTYPE html><html><body>GeoServer</body></html>') });
