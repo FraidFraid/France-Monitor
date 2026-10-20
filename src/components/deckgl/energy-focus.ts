@@ -115,6 +115,22 @@ export function dimOpacity(orig: unknown, factor: number): unknown {
   return ['*', orig, factor];
 }
 
+/** Plus forte opacité écrite dans une valeur ou une expression (nombres de ]0, 1] ; niveaux de zoom et autres exclus). */
+function maxOpacity(v: unknown): number {
+  if (typeof v === 'number') return v > 0 && v <= 1 ? v : 0;
+  return Array.isArray(v) ? v.reduce((m: number, x: unknown) => Math.max(m, maxOpacity(x)), 0) : 0;
+}
+
+/**
+ * Couche survolée ou sélectionnée à pleine opacité (20/10/2026, décision utilisateur) : une valeur passe à 1, une expression est
+ * multipliée pour que sa plus forte opacité atteigne 1 (les écarts internes, comme « avec alerte / sans alerte », sont gardés).
+ */
+export function fullOpacity(orig: unknown): unknown {
+  if (typeof orig === 'number') return orig > 0 ? 1 : orig;
+  const max = maxOpacity(orig);
+  return max > 0 && max < 1 ? dimOpacity(orig, 1 / max) : orig;
+}
+
 /** Pastilles Énergie vertes, dans l'ordre des pastilles : retenues par un clic, ou dont le panneau est ouvert. */
 export function energyChipsPressed(ids: readonly string[], selected: ReadonlySet<EnergyLayerKey>, panelOpen: (id: EnergyLayerKey) => boolean): EnergyLayerKey[] {
   return ids.filter((id): id is EnergyLayerKey => isEnergyLayerKey(id) && (selected.has(id) || panelOpen(id)));

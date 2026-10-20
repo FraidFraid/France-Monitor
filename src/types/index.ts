@@ -3541,3 +3541,25 @@ export interface PollenResponse {
   sources: string[];
   errors: string[];
 }
+
+// ═══ Zones inondables (Géorisques, 20/10/2026) ═══
+/** Scénario de la Directive inondation : crue fréquente, moyenne (~centennale), extrême. */
+export type FloodZoneScenario = 'frequent' | 'moyen' | 'extreme';
+
+/** Zone inondable officielle (TRI, débordement de cours d'eau) : anneau extérieur simplifié, `[lon, lat]`, fermé. */
+export interface FloodZone {
+  id: string;
+  scenario: FloodZoneScenario;
+  ring: Array<[number, number]>;
+}
+
+export interface FloodZonesResponse {
+  /** null : aucun scénario lu. */
+  readAt: string | null;
+  /** Boîte réellement lue (arrondie à 0,05°), `[minLon, minLat, maxLon, maxLat]`. */
+  bbox: [number, number, number, number];
+  zones: FloodZone[];
+  /** Au moins une zone trouvée. Faux hors des territoires à risque important (TRI) : normal, pas une absence de risque. */
+  covered: boolean;
+  errors: string[];
+}

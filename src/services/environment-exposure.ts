@@ -44,6 +44,11 @@ export interface Hazard {
   kinds: readonly ExposureAssetKind[];
   /** Instant du phénomène (début, détection, origine) ; null si sans objet. */
   since: string | null;
+  /**
+   * Crue : contours des zones inondables cartographiées (Géorisques, crue fréquente ou moyenne) le long du tronçon. Là où elles
+   * existent, l'appartenance à la zone remplace la distance au tronçon ; ailleurs, la distance reste la règle.
+   */
+  floodZones?: Array<Array<[number, number]>>;
 }
 
 export interface Exposure {
@@ -51,6 +56,8 @@ export interface Exposure {
   hazard: Hazard;
   /** Distance en km au phénomène (0 : dedans) ; null pour une vigilance départementale. */
   distanceKm: number | null;
+  /** Crue : enjeu dans la zone inondable cartographiée (et non seulement à moins de `bufferKm` du tronçon). */
+  inFloodZone?: true;
 }
 
 export interface DeptExposure {
@@ -225,23 +232,39 @@ export function buildHazards(input: HazardInput): Hazard[] {
   return all.sort((a, b) => LEVEL_RANK[b.level] - LEVEL_RANK[a.level]);
 }
 
-/** Distance d'un enjeu à la zone localisée d'un phénomène (0 dedans), Infinity hors de portée. */
-function localDistance(a: ExposureAsset, h: Hazard): number {
+/** Boîte englobante des zones inondables d'une crue : le territoire où l'appartenance à la zone fait foi. */
+function floodZonesBox(h: Hazard): [number, number, number, number] | null {
+  const pts = (h.floodZones ?? []).flat();
+  return pts.length === 0 ? null : bboxOf(pts, 0);
+}
+
+/**
+ * Distance d'un enjeu à la zone localisée d'un phénomène (0 dedans), Infinity hors de portée. Crue avec zones cartographiées : dans
+ * la zone, distance au tronçon et `inZone` ; hors zone mais sur le territoire cartographié, hors de portée ; ailleurs, tampon.
+ */
+function localDistance(a: ExposureAsset, h: Hazard): { d: number; inZone: boolean } {
   let best = Infinity;
   for (const c of h.circles) {
     const d = distanceKm(a.lon, a.lat, c.lon, c.lat);
     if (d <= c.radiusKm) best = Math.min(best, d);
   }
-  for (const line of h.lines) {
-    const d = pointLineKm(a.lon, a.lat, line);
-    if (d <= h.bufferKm) best = Math.min(best, d);
+  const zonesBox = floodZonesBox(h);
+  if (zonesBox !== null && (h.floodZones ?? []).some((ring) => pointInRing(a.lon, a.lat, ring))) {
+    const toLine = Math.min(Infinity, ...h.lines.map((line) => pointLineKm(a.lon, a.lat, line)));
+    return { d: Number.isFinite(toLine) ? Math.min(best, toLine) : 0, inZone: true };
+  }
+  if (zonesBox === null || !inBox(a, zonesBox)) {
+    for (const line of h.lines) {
+      const d = pointLineKm(a.lon, a.lat, line);
+      if (d <= h.bufferKm) best = Math.min(best, d);
+    }
   }
   for (const ring of h.rings) if (pointInRing(a.lon, a.lat, ring)) best = 0;
-  return best;
+  return { d: best, inZone: false };
 }
 
 function hazardBox(h: Hazard): [number, number, number, number] | null {
-  const pts: Array<[number, number]> = [...h.lines.flat(), ...h.rings.flat()];
+  const pts: Array<[number, number]> = [...h.lines.flat(), ...h.rings.flat(), ...(h.floodZones ?? []).flat()];
   const pad = Math.max(h.bufferKm, ...h.circles.map((c) => c.radiusKm), 0);
   for (const c of h.circles) pts.push([c.lon, c.lat]);
   return pts.length === 0 ? null : bboxOf(pts, pad);
@@ -260,12 +283,12 @@ export function computeExposure(hazards: readonly Hazard[], assets: readonly Exp
     if (box === null) continue;
     for (const a of assets) {
       if (!h.kinds.includes(a.kind) || !inBox(a, box)) continue;
-      const d = localDistance(a, h);
+      const { d, inZone } = localDistance(a, h);
       if (!Number.isFinite(d)) continue;
       const prev = best.get(a.id);
       const better = !prev || LEVEL_RANK[h.level] > LEVEL_RANK[prev.hazard.level]
         || (LEVEL_RANK[h.level] === LEVEL_RANK[prev.hazard.level] && d < (prev.distanceKm ?? Infinity));
-      if (better) best.set(a.id, { asset: a, hazard: h, distanceKm: Math.round(d * 10) / 10 });
+      if (better) best.set(a.id, { asset: a, hazard: h, distanceKm: Math.round(d * 10) / 10, ...(inZone ? { inFloodZone: true as const } : {}) });
     }
   }
   const nearby = [...best.values()].sort((x, y) => LEVEL_RANK[y.hazard.level] - LEVEL_RANK[x.hazard.level]

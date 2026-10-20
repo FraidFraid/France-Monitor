@@ -76,6 +76,8 @@ export const SRC_RADAR_PICK = 'radar-pick-src';
 export const LYR_RADAR_PICK = 'radar-pick';
 export const SRC_FIRES_ABROAD = 'fires-abroad-src';
 export const LYR_FIRES_ABROAD = 'fires-abroad';
+/** Picto flamme des foyers confirmés (orange, rouges), teinté par leur niveau (20/10/2026). */
+export const LYR_FIRES_ICON = 'fires-icon';
 export const SRC_FOREST_DANGER = 'forest-danger-src';
 export const LYR_FOREST_DANGER_FILL = 'forest-danger-fill';
 export const LYR_FOREST_DANGER_LINE = 'forest-danger-line';
@@ -813,8 +815,15 @@ export const LYR_WEBCAM_CLUSTER_COUNT = 'webcams-cluster-count';
 // Enjeux exposés (onglet Environnement, pastille En bref, 20/10/2026) : anneau du niveau du phénomène, disque du type d'enjeu.
 export const SRC_EXPOSURE = 'exposure-src';
 export const LYR_EXPOSURE_ZONES = 'exposure-zones';
+/** Zones inondables cartographiées (Géorisques) des tronçons en crue orange ou rouge, pastille Crues (20/10/2026). */
+export const SRC_FLOOD_ZONES = 'flood-zones-src';
+export const LYR_FLOOD_ZONES = 'flood-zones-fill';
 export const LYR_EXPOSURE = 'exposure-assets';
 export const LYR_EXPOSURE_LABEL = 'exposure-label';
+/** Enjeux exposés aux crues : mêmes points que les enjeux exposés, rattachés à la pastille Crues (20/10/2026). */
+export const SRC_FLOOD_ASSETS = 'flood-assets-src';
+export const LYR_FLOOD_ASSETS = 'flood-assets';
+export const LYR_FLOOD_ASSETS_LABEL = 'flood-assets-label';
 export const SRC_CRIME_DEPTS = 'crime-depts-src';
 export const SRC_CRIME_CITIES = 'crime-cities-src';
 export const LYR_CRIME_FILL = 'crime-fill';

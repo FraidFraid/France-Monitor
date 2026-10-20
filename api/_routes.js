@@ -20,6 +20,7 @@ export const ROUTES = {
   '/api/environment/earthquakes': () => import('./_handlers/environment/earthquakes.js'),
   '/api/environment/ems': () => import('./_handlers/environment/ems.js'),
   '/api/environment/fires': () => import('./_handlers/environment/fires.js'),
+  '/api/environment/flood-zones': () => import('./_handlers/environment/flood-zones.js'),
   '/api/environment/floods': () => import('./_handlers/environment/floods.js'),
   '/api/environment/pollen': () => import('./_handlers/environment/pollen.js'),
   '/api/environment/sea-levels': () => import('./_handlers/environment/sea-levels.js'),

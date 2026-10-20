@@ -16,12 +16,15 @@ import { emsZoneFeatures } from './deckgl/environment-map-ems.ts';
 import { PROTEST_LAYERS, PROTEST_LAYER_IDS, protestFeatures } from './deckgl/protests-map.ts';
 import { CRIME_CITY_LAYERS, CRIME_LAYERS, CRIME_LAYER_IDS, crimeCityFeatures, crimeDeptFeatures } from './deckgl/crime-map.ts';
 import { WEBCAM_LAYERS, WEBCAM_LAYER_IDS, webcamFeatures, webcamSourceSpec } from './deckgl/webcams-map.ts';
-import { EXPOSURE_LAYERS, EXPOSURE_LAYER_IDS, exposureFeatures, exposureSourceSpec } from './deckgl/exposure-map.ts';
-import { LYR_POLLEN_FILL, POLLEN_LAYERS, POLLEN_LAYER_IDS, SRC_POLLEN, pollenDeptFeatures } from './deckgl/pollen-map.ts';
+import {
+  EXPOSURE_LAYERS, EXPOSURE_LAYER_IDS, FLOOD_ASSET_LAYERS, FLOOD_ZONE_LAYER, exposureFeatures, exposureSourceSpec, floodZoneFeatures,
+} from './deckgl/exposure-map.ts';
+import { POLLEN_LAYERS, POLLEN_LAYER_IDS, SRC_POLLEN, pollenDeptFeatures } from './deckgl/pollen-map.ts';
 import type { PollenDay, PollenResponse } from '../types/index.ts';
 import { LYR_SEVESO, LYR_SEVESO_CLUSTER, SEVESO_LAYERS, SEVESO_LAYER_IDS, SRC_SEVESO, sevesoFeatures, sevesoSourceSpec } from './deckgl/seveso-map.ts';
 import type { Exposure, ExposureAsset } from '../services/environment-exposure.ts';
 import { FRANCE_METRO_BOUNDS, visibleFitPadding, type Rect } from './deckgl/france-fit.ts';
+import { ENV_CONTEXT_RULES, RADAR_CONTEXT_KEY, SEVESO_CONTEXT_KEY, envContextFilter, envContextRevealed } from './deckgl/env-context.ts';
 import { pulsePaint } from './deckgl/pulse.ts';
 import type { ExposureResult } from '../services/environment-exposure.ts';
 import { FLUX_LAYERS, FLUX_LAYER_IDS, fluxFeatures, fluxSourceSpec, type FluxInstant, type FluxOtherEvent } from './deckgl/flux-pietons-map.ts';
@@ -130,7 +133,7 @@ import {
   type EnergyEntry, type EnergyFlowCount, type EnergyKeyModel, type EnergyLayerKey,
 } from './deckgl/energy-map.ts';
 import { buildFlowFeatures, flowArcFromFeature, kmBetween, type FlowArc } from './deckgl/energy-flows.ts';
-import { dimOpacity, ENERGY_FOCUS_LAYERS, energyFocusLayersOf, flowKindsShown, isEnergyLayerKey } from './deckgl/energy-focus.ts';
+import { dimOpacity, fullOpacity, ENERGY_FOCUS_LAYERS, energyFocusLayersOf, flowKindsShown, isEnergyLayerKey } from './deckgl/energy-focus.ts';
 import { EnergyPopupController } from './deckgl/energy-popup.ts';
 import { OIL_REFINERIES } from '../config/oil-infrastructure.ts';
 import {
@@ -192,6 +195,7 @@ import {
   LYR_FLOODS_HIGHLIGHT,
   LYR_FIRES_GLOW,
   LYR_FIRES_POINTS,
+  LYR_FIRES_ICON,
   SRC_FIRES_HIGHLIGHT,
   LYR_FIRES_HIGHLIGHT,
   SRC_FIRES_ABROAD,
@@ -210,7 +214,10 @@ import {
   SRC_WEBCAMS,
   LYR_WEBCAMS,
   SRC_EXPOSURE,
+  SRC_FLOOD_ZONES,
+  SRC_FLOOD_ASSETS,
   LYR_EXPOSURE,
+  LYR_FLOOD_ASSETS,
   LYR_WEBCAM_CLUSTER,
   SRC_FLUX,
   LYR_FLUX_LINES,
@@ -386,6 +393,9 @@ class SatelliteBasemapControl {
 }
 
 /** Bouton « Recadrer la France et la Corse » (20/10/2026), au-dessus du zoom. */
+/** Niveau L1 d'un tronçon Vigicrues (code officiel 1 à 4), pour l'étiquette de sélection. */
+const OFFICIAL_SECTION_LEVEL: Readonly<Record<FloodSection['level'], 'vert' | 'jaune' | 'orange' | 'rouge'>> = { 1: 'vert', 2: 'jaune', 3: 'orange', 4: 'rouge' };
+
 class FranceFitControl {
   private _container: HTMLElement | null = null;
   private _map: DeckGLMap;
@@ -561,11 +571,8 @@ export class DeckGLMap {
   /** Webcams : recensement statique, points regroupés aux petites échelles, infobulle au survol, clic relayé à App.ts (fiche). */
   private webcamsData: WebcamsDataset | null = null;
   private exposureData: ExposureResult | null = null;
-  private exposureHoverPopup: maplibregl.Popup | null = null;
   private sevesoSites: readonly ExposureAsset[] | null = null;
   private sevesoExposed: readonly Exposure[] | null = null;
-  private sevesoHoverPopup: maplibregl.Popup | null = null;
-  private pollenHoverPopup: maplibregl.Popup | null = null;
   /** Calques tamisés par la mise en avant d'une pastille (setLegendHover) : leur survol est ignoré. */
   private dimmedLegendLayers = new Set<string>();
   private webcamHoverPopup: maplibregl.Popup | null = null;
@@ -587,6 +594,8 @@ export class DeckGLMap {
   private onRadarPointPick: ((lat: number, lon: number) => void) | null = null;
   private envHoverPopup: maplibregl.Popup | null = null;
   private envHoverShown = false;
+  /** Enjeu dont l'infobulle est ouverte : relue quand les enjeux changent, fermée s'il n'est plus exposé (zone inondable allumée). */
+  private envPopupAsset: { layer: string; id: string } | null = null;
   // Souveraineté (spec 2026-10-04 souveraineté § 2 ; contrats § 5) : infobulle, option des ouvrages OSM, clic transmis à App.ts, dernières
   // données (rejeu à l'heure courante au réaffichage, S2), câbles OSM et Shom (cadrage d'un câble choisi).
   private sovHoverPopup: maplibregl.Popup | null = null;
@@ -931,6 +940,8 @@ export class DeckGLMap {
     this.map.addSource(SRC_CRIME_CITIES, envSourceSpec());
     this.map.addSource(SRC_WEBCAMS, webcamSourceSpec());
     this.map.addSource(SRC_EXPOSURE, exposureSourceSpec());
+    this.map.addSource(SRC_FLOOD_ZONES, exposureSourceSpec());
+    this.map.addSource(SRC_FLOOD_ASSETS, exposureSourceSpec());
     this.map.addSource(SRC_SEVESO, sevesoSourceSpec());
     this.map.addSource(SRC_POLLEN, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_FLUX, fluxSourceSpec());
@@ -1299,6 +1310,19 @@ export class DeckGLMap {
         'circle-opacity': 0.9,
       }
     });
+    // Picto flamme des foyers confirmés (orange, rouges), teinté par leur niveau ; les pictos qui se chevauchent sont éclaircis.
+    this.map.addLayer({
+      id: LYR_FIRES_ICON,
+      type: 'symbol',
+      source: SRC_FIRES,
+      filter: ['==', ['get', 'glow'], true],
+      layout: {
+        'icon-image': envIconImage('flame'), 'icon-size': ['interpolate', ['linear'], ['zoom'], 5, 0.42, 10, 0.6],
+        'icon-allow-overlap': false, 'icon-offset': [0, -22], 'symbol-sort-key': ['-', 0, ['get', 'sortKey']],
+      },
+      paint: { 'icon-color': ['get', 'color'], 'icon-halo-color': '#0a0a0f', 'icon-halo-width': 1.5 },
+    });
+
     this.map.addLayer({
       id: LYR_FIRES_HIGHLIGHT,
       type: 'circle',
@@ -1390,16 +1414,12 @@ export class DeckGLMap {
       type: 'line',
       source: SRC_FLOODS,
       paint: {
-        'line-color': [
-          'case',
-          ['boolean', ['feature-state', 'hover'], false],
-          '#ffffff',
-          ['get', 'color'],
-        ],
+        // Survol : la couleur du niveau reste, le trait s'épaissit à peine (plus de gros trait blanc, 20/10/2026).
+        'line-color': ['get', 'color'],
         'line-width': ['interpolate', ['linear'], ['zoom'],
-          4, ['case', ['boolean', ['feature-state', 'hover'], false], 8, 3],
-          8, ['case', ['boolean', ['feature-state', 'hover'], false], 12, 5],
-          12, ['case', ['boolean', ['feature-state', 'hover'], false], 16, 8],
+          4, ['case', ['boolean', ['feature-state', 'hover'], false], 4.5, 3],
+          8, ['case', ['boolean', ['feature-state', 'hover'], false], 6.5, 5],
+          12, ['case', ['boolean', ['feature-state', 'hover'], false], 10, 8],
         ],
         'line-opacity': ['case',
           ['boolean', ['feature-state', 'hover'], false], 1,
@@ -1411,21 +1431,23 @@ export class DeckGLMap {
         'line-join': 'round',
       },
     });
+    // Tronçon sélectionné : liseré blanc fin SOUS le tracé (2 px de chaque côté), la couleur du niveau reste lisible au centre.
     this.map.addLayer({
       id: LYR_FLOODS_HIGHLIGHT,
       type: 'line',
       source: SRC_FLOODS_HIGHLIGHT,
       paint: {
         'line-color': '#ffffff',
-        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 8, 8, 12, 12, 16],
-        'line-opacity': 1,
+        'line-width': ['interpolate', ['linear'], ['zoom'], 4, 6, 8, 8.5, 12, 12],
+        'line-opacity': 0.95,
+        'line-blur': 0.4,
       },
       layout: {
         'line-cap': 'round',
         'line-join': 'round',
         'visibility': 'none',
       },
-    });
+    }, LYR_FLOODS);
     // ─── Environnement (spec 2026-10-04 § 2) : couches nouvelles de deckgl/environment-map.ts, masquées jusqu'à setLayerVisibility ───
     for (const layer of ENV_LAYERS) {
       const before = ENV_LAYER_BEFORE[layer.id];
@@ -2417,6 +2439,10 @@ export class DeckGLMap {
     for (const layer of SEVESO_LAYERS) this.map.addLayer(layer);
     // Enjeux exposés (deckgl/exposure-map.ts, onglet Environnement) : au-dessus de tout, masqués jusqu'à setLayerVisibility.
     for (const layer of EXPOSURE_LAYERS) this.map.addLayer(layer);
+    // Enjeux exposés aux crues (pastille Crues), mêmes points que ceux d'En bref.
+    for (const layer of FLOOD_ASSET_LAYERS) this.map.addLayer(layer);
+    // Zones inondables des tronçons en crue (pastille Crues) : sous les tracés de crue, pour que le niveau du tronçon reste lisible.
+    this.map.addLayer(FLOOD_ZONE_LAYER, this.map.getLayer(LYR_FLOODS) ? LYR_FLOODS : undefined);
 
     // Séismes et marégraphes (phase B) au-dessus de toutes les surfaces : ajoutés ici, sous la première couche de points qui suit la dernière surface.
     placeEnvBPoints(this.map);
@@ -2719,7 +2745,6 @@ export class DeckGLMap {
     this.initWebcamsInteractions();
     this.initExposureInteractions();
     this.initSevesoInteractions();
-    this.initPollenInteractions();
     this.initFluxInteractions();
 
 
@@ -4645,7 +4670,43 @@ export class DeckGLMap {
    */
   setGeneralFocus(keys: readonly string[]): void {
     this.generalFocusKeys = [...keys];
+    this.envRevealed = new Set(keys);
+    this.applyEnvContext();
     this.setLegendHover(null);
+  }
+
+  // ─── Onglet Environnement : « l'anormal d'abord » (20/10/2026, deckgl/env-context.ts) ───
+  private envContextOn = false;
+  /** Pastilles survolées ou allumées : leur contexte est révélé. */
+  private envRevealed = new Set<string>();
+  /** Filtre d'origine de chaque calque réglé par le mode (relu une fois, avant le premier changement). */
+  private envBaseFilters = new Map<string, maplibregl.FilterSpecification | null>();
+
+  /** Mode actif dans l'onglet Environnement seulement (App) : ailleurs, chaque couche montre tout ce qu'elle a. */
+  setEnvContext(on: boolean): void {
+    if (on === this.envContextOn) return;
+    this.envContextOn = on;
+    this.applyEnvContext();
+  }
+
+  private applyEnvContext(): void {
+    const map = this.map;
+    if (!map) return;
+    for (const id of Object.keys(ENV_CONTEXT_RULES)) {
+      if (!map.getLayer(id)) continue;
+      if (!this.envBaseFilters.has(id)) this.envBaseFilters.set(id, (map.getFilter(id) as maplibregl.FilterSpecification | undefined) ?? null);
+      map.setFilter(id, envContextFilter(id, this.envBaseFilters.get(id) ?? null, this.envContextOn, this.envRevealed));
+    }
+    this.setVis(RADAR_2D_LAYER_ID, this.radar2dShown() ? 'visible' : 'none');
+    this.setVis(ECHO_TOPS_LAYER_ID, this.echoTopsShown(this._echoTopsEnabled) ? 'visible' : 'none');
+    (map.getSource(SRC_SEVESO) as maplibregl.GeoJSONSource | undefined)?.setData(sevesoFeatures(this.sevesoShownSites(), this.sevesoExposed));
+  }
+
+  /** Sites Seveso dessinés : tous si la pastille est révélée (ou hors de l'onglet), sinon les seuls sites exposés. */
+  private sevesoShownSites(): readonly ExposureAsset[] | null {
+    if (!this.sevesoSites || envContextRevealed(SEVESO_CONTEXT_KEY, this.envContextOn, this.envRevealed)) return this.sevesoSites;
+    const exposed = new Set((this.sevesoExposed ?? []).map((e) => e.asset.id));
+    return this.sevesoSites.filter((s) => exposed.has(s.id));
   }
   /** Pastilles mises en avant hors Énergie (Vue générale : une ; onglet Environnement : cumulables, 20/10/2026). */
   private generalFocusKeys: string[] = [];
@@ -4760,8 +4821,9 @@ export class DeckGLMap {
         return;
       }
       const isTarget = activeLayers.includes(layerId);
+      // Couche mise en avant à 100 %, les autres tamisées.
       // Courbe sur le zoom atténuée palier par palier (MapLibre refuse « * » autour du zoom), le reste multiplié.
-      this.map!.setPaintProperty(layerId, prop, isTarget ? orig : dimOpacity(orig, 0.15));
+      this.map!.setPaintProperty(layerId, prop, isTarget ? fullOpacity(orig) : dimOpacity(orig, 0.15));
     };
 
     allLegendLayers.forEach(layerId => {
@@ -6301,6 +6363,7 @@ export class DeckGLMap {
   }
 
   private _highlightedFloodSegmentId: string | null = null;
+  private floodChip: HTMLElement | null = null;
 
   // ─── Environnement (spec 2026-10-04 environnement § 2 ; contrats § 5) ───
 
@@ -6439,6 +6502,51 @@ export class DeckGLMap {
     this.hideEnvironmentHover();
   }
 
+  /** Tronçon mis en avant (null : aucun). */
+  highlightedFloodSection(): string | null {
+    return this._highlightedFloodSegmentId;
+  }
+
+  /** Échap : sortie de la sélection d'un tronçon (hors saisie). */
+  private readonly onFloodSelectionKeydown = (e: KeyboardEvent): void => {
+    if (e.key !== 'Escape' || this._highlightedFloodSegmentId === null) return;
+    const t = e.target as HTMLElement | null;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    this.highlightFloodSection(null);
+  };
+
+  /**
+   * Étiquette de sélection en bas de la carte : « ● Vistre · orange ✕ ». Le nom recentre, la croix désélectionne. Retirée sans sélection.
+   */
+  private renderFloodSelectionChip(section: FloodSection | null): void {
+    this.floodChip?.remove();
+    this.floodChip = null;
+    if (typeof document === 'undefined') return;
+    document.removeEventListener('keydown', this.onFloodSelectionKeydown);
+    if (!section) return;
+    const level = OFFICIAL_SECTION_LEVEL[section.level];
+    const chip = document.createElement('div');
+    chip.className = 'flood-select-chip';
+    chip.setAttribute('role', 'status');
+    const name = document.createElement('button');
+    name.type = 'button';
+    name.className = 'flood-select-name';
+    name.title = 'Recentrer la carte sur ce tronçon';
+    name.innerHTML = `<i style="background:${levelHex(level)}"></i>${escapeHtml(section.name)}<span>${escapeHtml(level)}</span>`;
+    name.addEventListener('click', () => this.focusFloodSection(section.id));
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'flood-select-close';
+    close.title = 'Désélectionner (Échap)';
+    close.setAttribute('aria-label', 'Désélectionner le tronçon');
+    close.textContent = '\u00d7';
+    close.addEventListener('click', () => this.highlightFloodSection(null));
+    chip.append(name, close);
+    this.container.appendChild(chip);
+    this.floodChip = chip;
+    document.addEventListener('keydown', this.onFloodSelectionKeydown);
+  }
+
   /** Tronçon du panneau Crues mis en avant (null : aucun). */
   highlightFloodSection(id: string | null): void {
     if (!this.map) return;
@@ -6448,6 +6556,7 @@ export class DeckGLMap {
       highlightSrc?.setData(emptyFC());
       this.setVis(LYR_FLOODS_HIGHLIGHT, 'none');
       this._highlightedFloodSegmentId = null;
+      this.renderFloodSelectionChip(null);
       return;
     }
     highlightSrc?.setData({
@@ -6456,6 +6565,7 @@ export class DeckGLMap {
     });
     this._highlightedFloodSegmentId = section.id;
     this.setVis(LYR_FLOODS_HIGHLIGHT, envLayerOn(this.currentLayers ?? {}, 'floods') ? 'visible' : 'none');
+    this.renderFloodSelectionChip(section);
   }
 
   /** Recentre la carte sur un tronçon (clic dans le panneau Crues) et le met en avant. */
@@ -6576,7 +6686,8 @@ export class DeckGLMap {
    * l'état restauré quand une image échoue.
    */
   private radar2dShown(): boolean {
-    return this.currentLayers?.weatherRadar ?? false;
+    // Onglet Environnement : l'image radar est du contexte, montrée quand sa pastille est survolée ou allumée.
+    return (this.currentLayers?.weatherRadar ?? false) && envContextRevealed(RADAR_CONTEXT_KEY, this.envContextOn, this.envRevealed);
   }
 
   /** Sommets d'écho visibles : option cochée et couche Radar ou Feux active. */
@@ -6586,7 +6697,7 @@ export class DeckGLMap {
 
   /** Pictogrammes fmIcon en images SDF (teintés par `icon-color`) : vigilance météo et filières de l'énergie. */
   private registerEnvironmentIcons(): void {
-    this.registerSdfIcons(ENV_ICON_NAMES, envIconImage);
+    this.registerSdfIcons([...ENV_ICON_NAMES, 'flame'], envIconImage);
     this.registerSdfIcons(ENERGY_ICON_NAMES, energyIconImage);
   }
 
@@ -6629,7 +6740,25 @@ export class DeckGLMap {
   private hideEnvironmentHover(): void {
     if (!this.envHoverShown) return;
     this.envHoverShown = false;
+    this.envPopupAsset = null;
     this.envHoverPopup?.remove();
+  }
+
+  /** Retient l'enjeu dont l'infobulle s'ouvre (null pour toute autre couche). */
+  private rememberEnvPopupAsset(hit: maplibregl.MapGeoJSONFeature | undefined): void {
+    const id: unknown = hit?.properties?.['id'];
+    const layer = hit?.layer.id;
+    this.envPopupAsset = (layer === LYR_EXPOSURE || layer === LYR_FLOOD_ASSETS) && typeof id === 'string' ? { layer, id } : null;
+  }
+
+  /** Enjeux redessinés : l'infobulle ouverte suit le nouvel état de son enjeu, ou se ferme s'il n'est plus exposé. */
+  private syncEnvPopupAsset(layer: string, fc: GeoJSON.FeatureCollection): void {
+    const open = this.envPopupAsset;
+    if (!this.envHoverShown || !open || open.layer !== layer) return;
+    const f = fc.features.find((x) => x.properties?.['id'] === open.id);
+    const html = f ? envTooltipHtml(open.layer, f.properties ?? {}) : null;
+    if (html) this.envHoverPopup?.setHTML(html);
+    else this.hideEnvironmentHover();
   }
 
   /**
@@ -6640,7 +6769,8 @@ export class DeckGLMap {
     const map = this.map;
     if (!map) return;
     map.on('click', (e) => {
-      const visible = ENV_HOVER_LAYERS.filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+      // Un calque tamisé par la mise en avant d'une pastille ne répond pas (20/10/2026).
+      const visible = ENV_HOVER_LAYERS.filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none' && !this.dimmedLegendLayers.has(id));
       const hit = topEnvHit(visible.length > 0 ? map.queryRenderedFeatures(e.point, { layers: visible }) : []);
       const html = hit ? envTooltipHtml(hit.layer.id, hit.properties ?? {}) : null;
       if (hit?.layer.id === LYR_WEATHER_FILL && html) this.previewWeatherDepartment(String(hit.properties?.['code'] ?? ''));
@@ -6649,13 +6779,24 @@ export class DeckGLMap {
         return;
       }
       this.envHoverShown = true;
+      this.rememberEnvPopupAsset(hit);
       const popup = this.envHoverPopup
         ?? new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12, maxWidth: '300px', className: 'dark-popup hm-hover' });
       this.envHoverPopup = popup;
       popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
     });
+    // Tronçon cliqué sur la carte : sélectionné ; clic sur un fond vide : sélection quittée.
+    map.on('click', (e) => {
+      const floodHit = map.getLayer(LYR_FLOODS) && map.getLayoutProperty(LYR_FLOODS, 'visibility') !== 'none' && !this.dimmedLegendLayers.has(LYR_FLOODS)
+        ? map.queryRenderedFeatures(e.point, { layers: [LYR_FLOODS] })[0] : undefined;
+      const id: unknown = floodHit?.properties?.['id'];
+      if (typeof id === 'string') { this.highlightFloodSection(id); return; }
+      if (this._highlightedFloodSegmentId !== null && !this.clickHitsInteractiveFeature(e.point)) this.highlightFloodSection(null);
+    });
     map.on('click', (e) => {
       if (!this.onRadarPointPick || !(this.currentLayers?.weatherRadar ?? false)) return;
+      // Onglet Environnement : le radar est un contexte, son point de profil ne se pose que pastille Radar allumée (20/10/2026).
+      if (!envContextRevealed(RADAR_CONTEXT_KEY, this.envContextOn, this.envRevealed)) return;
       if (this.clickHitsInteractiveFeature(e.point)) return;
       this.onRadarPointPick(e.lngLat.lat, e.lngLat.lng);
     });
@@ -7826,48 +7967,19 @@ export class DeckGLMap {
     (this.map.getSource(SRC_POLLEN) as maplibregl.GeoJSONSource | undefined)?.setData(geo ? pollenDeptFeatures(geo, p, day, now) : emptyFC());
   }
 
-  /** Pollens : infobulle préparée au survol d'un département. */
-  private initPollenInteractions(): void {
-    const map = this.map;
-    if (!map) return;
-    map.on('mousemove', LYR_POLLEN_FILL, (e) => {
-      // Un point (site Seveso, enjeu exposé) sous le curseur passe devant le remplissage : une seule infobulle.
-      const points = [LYR_SEVESO, LYR_EXPOSURE].filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
-      const onPoint = points.length > 0 && map.queryRenderedFeatures(e.point, { layers: points }).length > 0;
-      const html = onPoint || this.dimmedLegendLayers.has(LYR_POLLEN_FILL) ? '' : String(e.features?.[0]?.properties?.['body'] ?? '');
-      if (!html) { this.pollenHoverPopup?.remove(); return; }
-      const popup = this.pollenHoverPopup
-        ?? new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 8, maxWidth: '300px', className: 'dark-popup hm-hover' });
-      this.pollenHoverPopup = popup;
-      popup.setLngLat(e.lngLat).setHTML(`<div class="hm-tip">${html}</div>`).addTo(map);
-    });
-    map.on('mouseleave', LYR_POLLEN_FILL, () => this.pollenHoverPopup?.remove());
-  }
-
   /** Sites Seveso et leur exposition (null : vide la carte). */
   updateSevesoLayer(sites: readonly ExposureAsset[] | null, exposed: readonly Exposure[] | null): void {
     this.sevesoSites = sites;
     this.sevesoExposed = exposed;
-    (this.map?.getSource(SRC_SEVESO) as maplibregl.GeoJSONSource | undefined)?.setData(sevesoFeatures(sites, exposed));
+    (this.map?.getSource(SRC_SEVESO) as maplibregl.GeoJSONSource | undefined)?.setData(sevesoFeatures(this.sevesoShownSites(), exposed));
   }
 
-  /** Sites Seveso : infobulle au survol d'un site ; clic sur un groupe = zoom. */
+  /** Sites Seveso : curseur ; infobulle commune de l'Environnement (clic) ; clic sur un groupe = zoom. */
   private initSevesoInteractions(): void {
     const map = this.map;
     if (!map) return;
-    map.on('mousemove', LYR_SEVESO, (e) => {
-      const html = this.dimmedLegendLayers.has(LYR_SEVESO) ? '' : String(e.features?.[0]?.properties?.['body'] ?? '');
-      if (!html) { this.sevesoHoverPopup?.remove(); return; }
-      map.getCanvas().style.cursor = 'pointer';
-      const popup = this.sevesoHoverPopup
-        ?? new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 8, maxWidth: '300px', className: 'dark-popup hm-hover' });
-      this.sevesoHoverPopup = popup;
-      popup.setLngLat(e.lngLat).setHTML(`<div class="hm-tip">${html}</div>`).addTo(map);
-    });
-    map.on('mouseleave', LYR_SEVESO, () => {
-      map.getCanvas().style.cursor = '';
-      this.sevesoHoverPopup?.remove();
-    });
+    map.on('mouseenter', LYR_SEVESO, () => { if (!this.dimmedLegendLayers.has(LYR_SEVESO)) map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', LYR_SEVESO, () => { map.getCanvas().style.cursor = ''; });
     map.on('click', LYR_SEVESO_CLUSTER, (e) => {
       const cluster = e.features?.[0];
       const clusterId = Number(cluster?.properties?.['cluster_id']);
@@ -7878,30 +7990,58 @@ export class DeckGLMap {
     });
   }
 
+  /** Zones inondables cartographiées des tronçons en crue (vide : interrupteur éteint ou rien de lu). */
+  updateFloodZonesLayer(rings: ReadonlyArray<ReadonlyArray<[number, number]>>): void {
+    (this.map?.getSource(SRC_FLOOD_ZONES) as maplibregl.GeoJSONSource | undefined)?.setData(floodZoneFeatures(rings));
+  }
+
+  /** Enjeux exposés aux crues (panneau Crues) : un point par enjeu, même rendu que la couche En bref. */
+  updateFloodAssetsLayer(nearby: readonly Exposure[]): void {
+    const fc = exposureFeatures({ hazards: [], nearby: [...nearby], departmental: [] });
+    (this.map?.getSource(SRC_FLOOD_ASSETS) as maplibregl.GeoJSONSource | undefined)?.setData(fc);
+    this.syncEnvPopupAsset(LYR_FLOOD_ASSETS, fc);
+  }
+
+  /**
+   * Recentre sur un point cliqué dans un panneau (enjeu, site) puis ouvre l'infobulle du point dessiné à cet endroit : on voit lequel
+   * c'est, même au milieu d'autres. Rien de dessiné là (couche éteinte) : simple recentrage.
+   */
+  focusPoint(lon: number, lat: number, zoom = 13): void {
+    const map = this.map;
+    if (!map) return;
+    this.flyTo(lon, lat, zoom);
+    map.once('moveend', () => {
+      const p = map.project([lon, lat]);
+      const visible = ENV_HOVER_LAYERS.filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none' && !this.dimmedLegendLayers.has(id));
+      const box: [maplibregl.PointLike, maplibregl.PointLike] = [[p.x - 6, p.y - 6], [p.x + 6, p.y + 6]];
+      const hit = topEnvHit(visible.length > 0 ? map.queryRenderedFeatures(box, { layers: visible }) : []);
+      const html = hit ? envTooltipHtml(hit.layer.id, hit.properties ?? {}) : null;
+      if (!html) return;
+      this.envHoverShown = true;
+      this.rememberEnvPopupAsset(hit);
+      const popup = this.envHoverPopup
+        ?? new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 12, maxWidth: '300px', className: 'dark-popup hm-hover' });
+      this.envHoverPopup = popup;
+      popup.setLngLat([lon, lat]).setHTML(html).addTo(map);
+    });
+  }
+
   /** Enjeux exposés : croisement de l'onglet Environnement (null : vide la carte). */
   updateExposureLayer(r: ExposureResult | null): void {
     this.exposureData = r;
-    (this.map?.getSource(SRC_EXPOSURE) as maplibregl.GeoJSONSource | undefined)?.setData(exposureFeatures(r));
-    if (r === null) this.exposureHoverPopup?.remove();
+    const fc = exposureFeatures(r);
+    (this.map?.getSource(SRC_EXPOSURE) as maplibregl.GeoJSONSource | undefined)?.setData(fc);
+    this.syncEnvPopupAsset(LYR_EXPOSURE, fc);
   }
 
-  /** Enjeux exposés : infobulle préparée et échappée au survol d'un enjeu. */
+  /** Enjeux exposés : curseur ; l'infobulle est celle de l'Environnement (clic, une seule bulle, initEnvironmentInteractions). */
   private initExposureInteractions(): void {
     const map = this.map;
     if (!map) return;
-    map.on('mousemove', LYR_EXPOSURE, (e) => {
-      const html = this.dimmedLegendLayers.has(LYR_EXPOSURE) ? '' : String(e.features?.[0]?.properties?.['body'] ?? '');
-      if (!html) { this.exposureHoverPopup?.remove(); return; }
-      map.getCanvas().style.cursor = 'pointer';
-      const popup = this.exposureHoverPopup
-        ?? new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 10, maxWidth: '300px', className: 'dark-popup hm-hover' });
-      this.exposureHoverPopup = popup;
-      popup.setLngLat(e.lngLat).setHTML(`<div class="hm-tip">${html}</div>`).addTo(map);
-    });
-    map.on('mouseleave', LYR_EXPOSURE, () => {
-      map.getCanvas().style.cursor = '';
-      this.exposureHoverPopup?.remove();
-    });
+    map.on('mouseenter', LYR_EXPOSURE, () => { if (!this.dimmedLegendLayers.has(LYR_EXPOSURE)) map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseenter', LYR_FLOOD_ASSETS, () => { if (!this.dimmedLegendLayers.has(LYR_FLOOD_ASSETS)) map.getCanvas().style.cursor = 'pointer'; });
+    map.on('mouseleave', LYR_FLOOD_ASSETS, () => { map.getCanvas().style.cursor = ''; });
+    map.on('mouseleave', LYR_EXPOSURE, () => { map.getCanvas().style.cursor = ''; });
   }
 
   /** Webcams : recensement statique (null : vide la carte). */
@@ -8524,11 +8664,8 @@ export class DeckGLMap {
     for (const id of EXPOSURE_LAYER_IDS) this.setVis(id, vis(layers.envBrief ?? false));
     for (const id of SEVESO_LAYER_IDS) this.setVis(id, vis(layers.seveso ?? false));
     for (const id of POLLEN_LAYER_IDS) this.setVis(id, vis(layers.pollens ?? false));
-    if (!layers.pollens) this.pollenHoverPopup?.remove();
-    if (layers.seveso) (this.map?.getSource(SRC_SEVESO) as maplibregl.GeoJSONSource | undefined)?.setData(sevesoFeatures(this.sevesoSites, this.sevesoExposed));
-    else this.sevesoHoverPopup?.remove();
+    if (layers.seveso) (this.map?.getSource(SRC_SEVESO) as maplibregl.GeoJSONSource | undefined)?.setData(sevesoFeatures(this.sevesoShownSites(), this.sevesoExposed));
     if (layers.envBrief) (this.map?.getSource(SRC_EXPOSURE) as maplibregl.GeoJSONSource | undefined)?.setData(exposureFeatures(this.exposureData));
-    else this.exposureHoverPopup?.remove();
     for (const id of FLUX_LAYER_IDS) this.setVis(id, vis(layers.pedestrianFlows ?? false));
     this.hideFluxHover();
     if (layers.pedestrianFlows) (this.map?.getSource(SRC_FLUX) as maplibregl.GeoJSONSource | undefined)?.setData(fluxFeatures(this.fluxData, this.fluxPhase, this.fluxInstant, this.fluxOthers));
@@ -8741,6 +8878,7 @@ export class DeckGLMap {
     // Le survol de l'énergie n'existe qu'une fois la carte montée (navigateur).
     if (this.energyHoverRaf !== 0) cancelAnimationFrame(this.energyHoverRaf);
     if (typeof document !== 'undefined') document.removeEventListener('keydown', this.onEnergyKeydown);
+    this.renderFloodSelectionChip(null);
     this.trafficHoverPopup?.remove();
     this.trafficJamPopup?.remove();
 

@@ -150,3 +150,14 @@ describe('En bref : texte pour une note', () => {
     expect(t).not.toContain('\u00a0');
   });
 });
+
+describe('En bref : habitants des communes touchées (20/10/2026)', () => {
+  it('ligne du phénomène : communes, habitants, méthode ; repris dans la note', () => {
+    const i = input();
+    const hz = i.exposure?.hazards.find((h) => h.kind === 'crue');
+    const population = new Map([[hz?.id ?? '', { communes: [{ code: '30321', name: 'Sommières', dept: '30', pop: 5000, lon: 4.09, lat: 43.785 }], total: 5000, method: 'zone-inondable' as const }]]);
+    const t = visibleText(renderLayerView('envBrief', buildEnvBriefView({ ...i, population })));
+    expect(t.replace(/[\u00a0\u202f]/g, ' ')).toContain('1 commune, 5 000 habitants (Sommières) · communes riveraines de la zone inondable cartographiée');
+    expect(envBriefNoteText({ ...i, population })).toContain('1 commune, 5 000 habitants (Sommières)');
+  });
+});

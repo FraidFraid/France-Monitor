@@ -4,6 +4,7 @@
 import type { FloodsState } from '../services/environment-floods.ts';
 import { loadSectionState } from '../services/fiche-sections-store.ts';
 import { buildCruesView } from './layer-panel/crues.ts';
+import type { CruesImpactInput } from './layer-panel/crues-impact.ts';
 import { createLayerPanelShell, isLayerPanelOpen, safeStorage, sectionOpenOf, type LayerPanelShell } from './layer-panel/frame.ts';
 
 const PANEL_ID = 'floods';
@@ -13,6 +14,9 @@ export class FloodsPanel {
   private onClose?: () => void;
   private onFocusSection?: (id: string) => void;
   private onFocusStation?: (code: string) => void;
+  private onFocusPoint?: (lon: number, lat: number) => void;
+  private onToggleZones?: (on: boolean) => void;
+  private impact: CruesImpactInput | undefined;
   private state: FloodsState | null = null;
   private readonly storage = safeStorage();
   private readonly container: HTMLElement;
@@ -27,6 +31,9 @@ export class FloodsPanel {
     });
     shell.root.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
+      if (target.closest('[data-flood-zones]')) { this.onToggleZones?.(!(this.impact?.zonesOn ?? true)); return; }
+      const point = target.closest<HTMLElement>('[data-lon][data-lat]');
+      if (point) { this.onFocusPoint?.(Number(point.dataset['lon']), Number(point.dataset['lat'])); return; }
       const station = target.closest<HTMLElement>('[data-station]')?.dataset['station'];
       if (station) { this.onFocusStation?.(station); return; }
       const section = target.closest<HTMLElement>('[data-section]')?.dataset['section'];
@@ -40,6 +47,15 @@ export class FloodsPanel {
   /** Lignes de tronçon cliquables seulement avec ce gestionnaire (carte WebGL, posé par App.ts). */
   setOnFocusSection(handler: (id: string) => void): void { this.onFocusSection = handler; }
   setOnFocusStation(handler: (code: string) => void): void { this.onFocusStation = handler; }
+  setOnFocusPoint(handler: (lon: number, lat: number) => void): void { this.onFocusPoint = handler; }
+  /** Interrupteur des zones inondables (section « Conséquences des crues »). */
+  setOnToggleZones(handler: (on: boolean) => void): void { this.onToggleZones = handler; }
+
+  /** Conséquences par tronçon (zone inondable, communes, enjeux), recalculées par App.ts. */
+  setImpact(impact: CruesImpactInput): void {
+    this.impact = impact;
+    this.render();
+  }
 
   show(state: FloodsState | null): void {
     this.shell?.root.classList.add('is-open');
@@ -71,6 +87,7 @@ export class FloodsPanel {
     const open = sectionOpenOf(loadSectionState(this.storage), PANEL_ID);
     this.shell.render(buildCruesView({
       floods: slot?.data ?? null, floodsError: slot?.error ?? null, canFocus: this.onFocusSection !== undefined, now: Date.now(), open,
+      ...(this.impact ? { impact: this.impact } : {}),
     }));
   }
 }

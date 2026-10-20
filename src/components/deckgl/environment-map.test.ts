@@ -8,7 +8,7 @@ import {
 } from '../layer-panel/environment.fixture.ts';
 import { ENV_NEUTRAL_HEX, FIRE_ABROAD_HEX, FIRE_RECURRENT_HEX, FLOOD_STATION_HEX } from '../layer-panel/environment-legend.ts';
 import {
-  LYR_FIRES_ABROAD, LYR_FIRES_GLOW, LYR_FIRES_POINTS, LYR_FLOODS, LYR_FLOOD_STATIONS, LYR_FOREST_DANGER_FILL, LYR_FOREST_DANGER_LINE,
+  LYR_FIRES_ABROAD, LYR_FIRES_GLOW, LYR_FIRES_POINTS, LYR_FLOODS, LYR_FLOOD_STATIONS, LYR_FLOOD_ZONES, LYR_FOREST_DANGER_FILL, LYR_FOREST_DANGER_LINE,
   LYR_RADAR_PICK, LYR_WEATHER_FILL, LYR_WEATHER_ICONS,
 } from './constants.ts';
 import {
@@ -187,15 +187,16 @@ describe('sources, couches, survol', () => {
     expect(ENV_LAYER_BEFORE[LYR_WEATHER_ICONS]).toBe(LYR_FIRES_GLOW);
   });
   it('couches par clé ; crues avec leur seule clé (plus de repli sur la vigilance)', () => {
-    expect(ENV_LAYER_KEYS.floods).toEqual([LYR_FLOODS, LYR_FLOOD_STATIONS]);
+    expect(ENV_LAYER_KEYS.floods).toEqual([LYR_FLOOD_ZONES, LYR_FLOODS, LYR_FLOOD_STATIONS, 'flood-assets', 'flood-assets-label']);
     expect(ENV_LAYER_KEYS.weatherRadar).toEqual([LYR_RADAR_PICK]);
     expect(envLayerOn({ environmental: true }, 'floods')).toBe(false);
     expect(envLayerOn({ environmental: false, floods: true }, 'floods')).toBe(true);
     expect(envLayerOn({ fires: true }, 'weatherRadar')).toBe(false);
   });
   it('survol : couche du dessus d’abord (points, tracés, surfaces) ; infobulle préparée ; rien sans corps', () => {
-    expect(ENV_HOVER_LAYERS.slice(0, 2)).toEqual(['disasters', 'quakes']);
-    expect(ENV_HOVER_LAYERS.at(-1)).toBe('drought-fill');
+    expect(ENV_HOVER_LAYERS.slice(0, 5)).toEqual(['exposure-assets', 'flood-assets', 'seveso', 'disasters', 'quakes']);
+    // Pollens (20/10/2026) : surface la plus basse, après la sécheresse.
+    expect(ENV_HOVER_LAYERS.at(-1)).toBe('pollen-fill');
     expect(ENV_HOVER_LAYERS.indexOf(LYR_FIRES_POINTS)).toBeLessThan(ENV_HOVER_LAYERS.indexOf(LYR_WEATHER_FILL));
     const hit = topEnvHit([{ layer: { id: LYR_WEATHER_FILL } }, { layer: { id: LYR_FLOODS } }]);
     expect(hit?.layer.id).toBe(LYR_FLOODS);

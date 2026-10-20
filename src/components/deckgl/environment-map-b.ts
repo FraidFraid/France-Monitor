@@ -155,6 +155,8 @@ export function quakeFeatures(q: EarthquakesResponse | null, now: number): Fc<Ge
         id: x.id, color: quakeHex(x, late), radius: quakeRadius(x.magnitude), sortKey: Math.round(x.magnitude * 10),
         // Anneau pulsant : plus large et plus rapide quand la magnitude est forte (pulse.ts).
         period: pulse?.period ?? 0, amp: pulse?.amp ?? 0, offset: pulseOffset(x.id, pulse?.period ?? 0), alpha: 1,
+        // Séisme notable (France, magnitude 3 ou plus) : montré sans pastille allumée, l'anormal d'abord (20/10/2026).
+        notable: quakeInFrance(x) && x.magnitude >= 3,
         label: quakeInFrance(x) && x.magnitude >= 3 ? formatMagnitude(x.magnitude) : '', body: quakeBody(x, late, now),
       },
     };
@@ -180,7 +182,8 @@ export function tideGaugeFeatures(s: SeaLevelsResponse | null, v: VigilanceRespo
     const ring = late || !domain || domain.color < 2 ? OUTLINE_HEX : levelHex(COLOR_LEVEL[domain.color]);
     return {
       type: 'Feature', geometry: point(g.lon, g.lat),
-      properties: { id: String(g.id), color: late || g.lastAt === null ? ENV_NEUTRAL_HEX : CAT_PORT_HEX, ring, body: gaugeBody(g, domain, late, now) },
+      // alert : littoral en vigilance (jaune ou plus), marégraphe montré sans pastille allumée, l'anormal d'abord (20/10/2026).
+      properties: { id: String(g.id), color: late || g.lastAt === null ? ENV_NEUTRAL_HEX : CAT_PORT_HEX, ring, alert: ring !== OUTLINE_HEX, body: gaugeBody(g, domain, late, now) },
     };
   }));
 }

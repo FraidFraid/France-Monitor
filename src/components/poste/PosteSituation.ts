@@ -638,7 +638,9 @@ export class PosteSituation {
       const source = item.ref.group.source;
       const layers = source === 'ecowatt' ? ['powerGrid'] : source === 'vigicrues' ? ['floods'] : ['environmental'];
       this.revealMap();
-      this.callbacks.onActivateLayers(layers);
+      // Couche déjà allumée : allumer ne montrait rien ; son panneau s'ouvre (tronçons, conséquences), la couche avec (20/10/2026).
+      if (this.callbacks.onOpenLayerPanel && source !== 'ecowatt') this.callbacks.onOpenLayerPanel(layers[0] ?? 'environmental');
+      else this.callbacks.onActivateLayers(layers);
       return;
     }
     const situation = item?.ref.kind === 'situation' || item?.ref.kind === 'alert'

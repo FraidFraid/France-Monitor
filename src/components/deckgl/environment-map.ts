@@ -4,6 +4,8 @@
 // teinte neutre, jamais une couleur de niveau. Couleur, rayon et ordre calculés ici, dans les propriétés ; tout texte est échappé ;
 // valeurs insécables (R1). Aucune vue importée.
 import type { ExpressionSpecification, GeoJSONSourceSpecification, LayerSpecification } from 'maplibre-gl';
+import { LYR_SEVESO } from './seveso-map.ts';
+import { LYR_POLLEN_FILL } from './pollen-map.ts';
 import type {
   FireDetection, FireFoyer, FiresResponse, FloodSection, FloodStation, FloodsResponse, OfficialColorId, VigilanceDepartment, VigilanceEcheance,
   VigilanceResponse,
@@ -20,7 +22,8 @@ import { ENV_NEUTRAL_HEX, FIRE_ABROAD_HEX, FIRE_RECURRENT_HEX, FLOOD_STATION_HEX
 import { departementName } from '../layer-panel/health-format.ts';
 import type { IconName } from '../shared/icons.ts';
 import {
-  LYR_AIR_FILL, LYR_DISASTERS, LYR_DROUGHT_FILL, LYR_EMS_ZONE_FILL, LYR_QUAKES, LYR_TIDE_GAUGES, LYR_FIRES_ABROAD, LYR_FIRES_GLOW, LYR_FIRES_HIGHLIGHT, LYR_FIRES_POINTS, LYR_FLOODS, LYR_FLOOD_STATIONS, LYR_FOREST_DANGER_FILL,
+  LYR_EXPOSURE, LYR_FLOOD_ASSETS, LYR_FLOOD_ASSETS_LABEL, LYR_FIRES_ICON,
+  LYR_AIR_FILL, LYR_DISASTERS, LYR_DROUGHT_FILL, LYR_EMS_ZONE_FILL, LYR_QUAKES, LYR_TIDE_GAUGES, LYR_FIRES_ABROAD, LYR_FIRES_GLOW, LYR_FIRES_HIGHLIGHT, LYR_FIRES_POINTS, LYR_FLOODS, LYR_FLOOD_STATIONS, LYR_FLOOD_ZONES, LYR_FOREST_DANGER_FILL,
   LYR_FOREST_DANGER_LINE, LYR_RADAR_PICK, LYR_WEATHER_FILL, LYR_WEATHER_ICONS, LYR_WEATHER_LINE, LYR_WEATHER_LINE_ORANGE, LYR_WEATHER_LINE_RED,
   LYR_WEATHER_LINE_YELLOW, SRC_DISASTERS, SRC_FIRES_ABROAD, SRC_FLOOD_STATIONS, SRC_FOREST_DANGER, SRC_RADAR_PICK, SRC_WEATHER_ICONS, SRC_EMS_ZONES,
 } from './constants.ts';
@@ -261,6 +264,8 @@ export function floodStationFeatures(f: FloodsResponse | null, now: number): Fc<
       type: 'Feature', geometry: point(st.lon, st.lat),
       properties: {
         code: st.code, section: s.id, color: late ? ENV_NEUTRAL_HEX : FLOOD_STATION_HEX, ring: ring ?? TRANSPARENT, ringWidth: ring ? 2.5 : 0,
+        // Station en hausse (mesure à jour) : montrée sans pastille allumée, l'anormal d'abord (20/10/2026).
+        rising: !late && cm > 0,
         body: stationBody(st, s, late, now),
       },
     }];
@@ -424,9 +429,9 @@ export const ENV_LAYER_BEFORE: Readonly<Record<string, string>> = {
 /** Couches MapLibre de chaque couche Environnement (visibilité, survol de légende). */
 export const ENV_LAYER_KEYS: Readonly<Record<EnvironmentMapLayer, readonly string[]>> = {
   environmental: [LYR_WEATHER_FILL, LYR_WEATHER_LINE, LYR_WEATHER_LINE_YELLOW, LYR_WEATHER_LINE_ORANGE, LYR_WEATHER_LINE_RED, LYR_WEATHER_ICONS, LYR_TIDE_GAUGES],
-  floods: [LYR_FLOODS, LYR_FLOOD_STATIONS],
+  floods: [LYR_FLOOD_ZONES, LYR_FLOODS, LYR_FLOOD_STATIONS, LYR_FLOOD_ASSETS, LYR_FLOOD_ASSETS_LABEL],
   weatherRadar: [LYR_RADAR_PICK],
-  fires: [LYR_FIRES_GLOW, LYR_FIRES_POINTS, LYR_FIRES_HIGHLIGHT, LYR_FIRES_ABROAD],
+  fires: [LYR_FIRES_GLOW, LYR_FIRES_POINTS, LYR_FIRES_ICON, LYR_FIRES_HIGHLIGHT, LYR_FIRES_ABROAD],
   ...ENV_B_LAYER_KEYS,
   ...DISASTER_LAYER_KEYS,
 };
@@ -440,6 +445,7 @@ export function envLayerOn(layers: Partial<Record<EnvironmentMapLayer, boolean>>
 }
 
 const HOVERABLE: ReadonlySet<string> = new Set([
+  LYR_EXPOSURE, LYR_FLOOD_ASSETS, LYR_SEVESO, LYR_POLLEN_FILL,
   LYR_FIRES_POINTS, LYR_FIRES_ABROAD, LYR_FLOOD_STATIONS, LYR_FLOODS, LYR_FOREST_DANGER_FILL, LYR_WEATHER_FILL,
   ...ENV_B_HOVERABLE,
   LYR_DISASTERS,
@@ -448,8 +454,10 @@ const HOVERABLE: ReadonlySet<string> = new Set([
 
 /** Couches survolées, de la plus haute à la plus basse : celle qu'on voit au-dessus répond (points avant tracés avant surfaces). */
 export const ENV_HOVER_LAYERS: readonly string[] = [
+  // Enjeux exposés et sites Seveso : points posés sur tout le reste (20/10/2026).
+  LYR_EXPOSURE, LYR_FLOOD_ASSETS, LYR_SEVESO,
   LYR_DISASTERS, LYR_QUAKES, LYR_TIDE_GAUGES, LYR_FIRES_POINTS, LYR_FIRES_ABROAD, LYR_FLOOD_STATIONS, LYR_FLOODS, LYR_EMS_ZONE_FILL, LYR_FOREST_DANGER_FILL, LYR_WEATHER_FILL, LYR_AIR_FILL,
-  LYR_DROUGHT_FILL,
+  LYR_DROUGHT_FILL, LYR_POLLEN_FILL,
 ];
 
 export function topEnvHit<T extends { layer: { id: string } }>(hits: readonly T[]): T | undefined {

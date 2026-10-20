@@ -56,6 +56,8 @@ export function disasterFeatures(d: DisastersResponse | null, now: number): GeoJ
       properties: {
         id: x.id, color: disasterHex(x, late), radius: POINT_RADIUS[x.level] - (colored(x) ? 0 : 1.5),
         alpha: colored(x) ? 1 : 0.7,
+        // Alerte sur le territoire français : montrée sans pastille allumée, l'anormal d'abord (20/10/2026).
+        french: colored(x),
         sortKey: RANK[x.level] + (colored(x) ? 10 : 0),
         // Pulsation : alerte en cours et relevé à jour seulement (0 : pas d'anneau).
         period: x.current && !late ? PULSE[x.level].period : 0,

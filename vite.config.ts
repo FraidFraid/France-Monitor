@@ -202,6 +202,8 @@ export default defineConfig(({ mode }) => {
             'data/deces.json',
             'data/webcams.json', // recensement des webcams, lu à l'ouverture de la couche
             'data/seveso.json', // sites Seveso (Géorisques), lus à l'allumage de la pastille En bref
+            'data/communes.json', // communes et populations (INSEE), lues pour la population exposée de l'Environnement
+            'data/carreaux/**', // habitants par carreau de 200 m (Insee, 46 Mo), un département lu par tronçon en crue
             'data/flux-pietons/**', // prévisions flux_osint, relues toutes les 15 min (jamais servies du cache)
           ],
           // Abaissé de 3 Mo à 1 Mo : les gros GeoJSON/JSON ci-dessus sont

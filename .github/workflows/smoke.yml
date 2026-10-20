@@ -55,6 +55,7 @@ jobs:
             "/api/traffic/air;200"
             "/api/environment/fires;200"
             "/api/environment/floods;200"
+            "/api/environment/flood-zones?bbox=4.05,43.65,4.15,43.75;200"
             "/api/environment/drought;200"
             "/api/environment/air;200"
             "/api/environment/pollen;200"

@@ -11,6 +11,7 @@ import { escapeHtml } from '../france-intel-events.ts';
 import { absoluteTime, kvRow } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
 import { lineChart, type ChartPoint } from './chart.ts';
+import { impactSection, type CruesImpactInput } from './crues-impact.ts';
 import {
   COLOR_LEVEL, COLOR_WORD, ENVIRONMENT_THEME, clockOf, dataMs, emptyOrDown, formatChangeM, formatFlowM3s, formatHeightM, glueEnvUnits, note,
   plural, readErrors, sourceDown,
@@ -19,7 +20,11 @@ import { NBSP, frNumber } from './format.ts';
 import { emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, valueHtml, type LayerHeadModel, type LayerView } from './frame.ts';
 
 export type OpenFn = (sectionId: string, byDefault: boolean) => boolean;
-export interface CruesViewInput { floods: FloodsResponse | null; floodsError: string | null; canFocus: boolean; now: number; open: OpenFn }
+export interface CruesViewInput {
+  floods: FloodsResponse | null; floodsError: string | null; canFocus: boolean; now: number; open: OpenFn;
+  /** Conséquences par tronçon (zone inondable, communes, enjeux) ; absent : section omise. */
+  impact?: CruesImpactInput;
+}
 
 export const CRUES_TITLE = 'Crues';
 const HOUR_MS = 3_600_000;
@@ -308,7 +313,12 @@ export function buildCruesView(input: CruesViewInput): LayerView {
   if (f === null && floodsError === null) {
     return { head: { theme: ENVIRONMENT_THEME, title: CRUES_TITLE, status: ['chargement…'] }, sections: [], bodyHtml: loadingBody() };
   }
-  const sections = [sectionsSection(f, canFocus, now, open), stationsSection(f, canFocus, now, open), methodSection(input)];
+  const sections = [
+    // Conséquences d'abord : ce qui aide à décider (zone, habitants, enjeux) avant la liste des tronçons.
+    ...(input.impact ? [impactSection(input.impact, open('consequences', true))] : []),
+    sectionsSection(f, canFocus, now, open),
+    stationsSection(f, canFocus, now, open), methodSection(input),
+  ];
   if (f === null || f.readAt === null) {
     return {
       head: {

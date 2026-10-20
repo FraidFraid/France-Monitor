@@ -50,7 +50,8 @@ function dataFiles(dir: string, ext: RegExp, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     const full = path.join(dir, name);
     if (statSync(full).isDirectory()) {
-      if (name !== 'node_modules') dataFiles(full, ext, out);
+      // Carreaux Insee (46 Mo de nombres et de codes de commune, sans texte) : relus, ils faisaient dépasser le délai du test.
+      if (name !== 'node_modules' && name !== 'carreaux') dataFiles(full, ext, out);
     } else if (ext.test(name)) {
       out.push(full);
     }

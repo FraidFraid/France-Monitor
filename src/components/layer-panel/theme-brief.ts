@@ -221,5 +221,5 @@ export function themeBriefNoteText(input: ThemeBriefInput): string {
     for (const c of changes.slice(0, 8)) lines.push(`- ${c.text}${c.at !== null ? ` (${formatAge(c.at, input.now)})` : ''}.`);
   }
   lines.push('', 'Source France Monitor.');
-  return lines.join('\n').replace(/\u00a0/g, ' ');
+  return lines.join('\n').replace(/[\u00a0\u202f]/g, ' ');
 }

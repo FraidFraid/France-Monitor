@@ -27,7 +27,7 @@ export function sevesoFeatures(sites: readonly ExposureAsset[] | null, exposed: 
     features: sites.filter((s) => s.kind === 'seveso-haut' || s.kind === 'seveso-bas').map((s): GeoJSON.Feature<GeoJSON.Point> => {
       const e = byId.get(s.id);
       const haut = s.kind === 'seveso-haut';
-      const where = e ? (e.distanceKm === null ? 'dans le département' : e.distanceKm === 0 ? 'dans la zone' : `à ${e.distanceKm.toFixed(1).replace('.', ',')}\u00a0km`) : '';
+      const where = e ? (e.inFloodZone ? 'dans la zone inondable cartographiée' : e.distanceKm === null ? 'dans le département' : e.distanceKm === 0 ? 'dans la zone' : `à ${e.distanceKm.toFixed(1).replace('.', ',')}\u00a0km`) : '';
       const body = `<b><i class="hm-dot" style="background:${haut ? SEVESO_HAUT_HEX : SEVESO_BAS_HEX}"></i>${escapeHtml(s.name)}</b>`
         + `<div class="hm-sub">${escapeHtml([haut ? 'Seveso seuil haut' : 'Seveso seuil bas', s.commune].filter(Boolean).join(' · '))}</div>`
         + (e ? `<div class="hm-row"><span>Exposé à</span><span>${escapeHtml(e.hazard.label)}</span></div><div class="hm-row"><span>Distance</span><span>${escapeHtml(where)}</span></div>` : '')

@@ -152,7 +152,8 @@ describe('retraits Environnement (spec 2026-10-04 environnement § 2.6, contrats
     for (const f of APP) expect(read(f), f).not.toMatch(/rainviewer\.com/);
     expect(read('src/services/freshness.ts')).not.toContain('weatherRadar');
     expect(read('src/components/layer-panel/environment-legend.ts')).toContain('export const RADAR_LEGEND');
-    expect(read('src/components/DeckGLMap.ts')).toContain('return this.currentLayers?.weatherRadar ?? false;');
+    // La mosaïque suit sa couche (et, dans l'onglet Environnement, sa pastille : deckgl/env-context.ts, 20/10/2026).
+    expect(read('src/components/DeckGLMap.ts')).toContain('return (this.currentLayers?.weatherRadar ?? false) && envContextRevealed(');
   });
 
   it('dossier d’un feu : fenêtre retirée, ses faits repris dans l’onglet du panneau Feux de forêt', () => {

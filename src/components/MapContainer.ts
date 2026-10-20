@@ -76,6 +76,9 @@ export class MapContainer {
   private onWebcamClick: ((id: string) => void) | null = null;
   private webcamsData: WebcamsDataset | null = null;
   private exposureData: ExposureResult | null = null;
+  private floodZoneRings: ReadonlyArray<ReadonlyArray<[number, number]>> = [];
+  private floodAssets: readonly Exposure[] = [];
+  private envContextOn = false;
   private pollenData: { p: PollenResponse | null; day: PollenDay; now: number } | null = null;
   private sevesoData: { sites: readonly ExposureAsset[] | null; exposed: readonly Exposure[] | null } | null = null;
   private fluxData: { data: readonly FluxFeature[] | null; phase: FluxPhase; instant: FluxInstant | null; others: readonly FluxOtherEvent[] } | null = null;
@@ -118,6 +121,9 @@ export class MapContainer {
     if (this.onWebcamClick) this.deckMap.setOnWebcamClick(this.onWebcamClick);
     if (this.webcamsData) this.deckMap.updateWebcamsLayer(this.webcamsData);
     if (this.exposureData) this.deckMap.updateExposureLayer(this.exposureData);
+    if (this.floodZoneRings.length > 0) this.deckMap.updateFloodZonesLayer(this.floodZoneRings);
+    if (this.floodAssets.length > 0) this.deckMap.updateFloodAssetsLayer(this.floodAssets);
+    if (this.envContextOn) this.deckMap.setEnvContext(true);
     if (this.sevesoData) this.deckMap.updateSevesoLayer(this.sevesoData.sites, this.sevesoData.exposed);
     if (this.pollenData) void this.deckMap.updatePollenLayer(this.pollenData.p, this.pollenData.day, this.pollenData.now);
     if (this.fluxData) this.deckMap.updateFluxLayer(this.fluxData.data, this.fluxData.phase, this.fluxData.instant, this.fluxData.others);
@@ -564,6 +570,11 @@ export class MapContainer {
     this.deckMap?.updateFloodsLayer(f, now);
   }
 
+  /** Tronçon mis en avant sur la carte (null : aucun). */
+  highlightedFloodSection(): string | null {
+    return this.deckMap?.highlightedFloodSection() ?? null;
+  }
+
   highlightFloodSection(id: string | null): void {
     this.deckMap?.highlightFloodSection(id);
   }
@@ -630,6 +641,12 @@ export class MapContainer {
     this.deckMap?.updateSevesoLayer(sites, exposed);
   }
 
+  /** Onglet Environnement : l'anormal d'abord, le contexte derrière sa pastille (deckgl/env-context.ts). */
+  setEnvContext(on: boolean): void {
+    this.envContextOn = on;
+    this.deckMap?.setEnvContext(on);
+  }
+
   /** Cadrage « France et Corse » accroché : recalculé si ce qui recouvre la carte a changé (panneau ouvert ou fermé). */
   refitFrance(): void {
     this.deckMap?.refitFrance();
@@ -639,6 +656,24 @@ export class MapContainer {
   updateExposureLayer(r: ExposureResult | null): void {
     this.exposureData = r;
     this.deckMap?.updateExposureLayer(r);
+  }
+
+  /** Enjeux exposés aux crues (gardés ici pour une carte créée après le calcul). */
+  updateFloodAssetsLayer(nearby: readonly Exposure[]): void {
+    this.floodAssets = nearby;
+    this.deckMap?.updateFloodAssetsLayer(nearby);
+  }
+
+  /** Recentre sur un point d'un panneau et ouvre l'infobulle du point dessiné là (carte WebGL) ; repli : simple recentrage. */
+  focusPoint(lon: number, lat: number, zoom = 13): void {
+    if (this.deckMap) this.deckMap.focusPoint(lon, lat, zoom);
+    else this.svgMap?.flyTo(lon, lat, zoom);
+  }
+
+  /** Zones inondables des tronçons en crue (gardées ici pour une carte créée après la lecture). */
+  updateFloodZonesLayer(rings: ReadonlyArray<ReadonlyArray<[number, number]>>): void {
+    this.floodZoneRings = rings;
+    this.deckMap?.updateFloodZonesLayer(rings);
   }
 
   /** Webcams : recensement statique (gardé ici pour une carte créée après la lecture). */

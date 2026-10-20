@@ -107,6 +107,8 @@ export const FLOODS_LEGEND: LegendCategory = {
     { id: 'flood-red', label: 'Rouge', color: levelHex('rouge'), icon: LINE, iconSize: 18 },
     { id: 'flood-orange', label: 'Orange', color: levelHex('orange'), icon: LINE, iconSize: 18 },
     { id: 'flood-yellow', label: 'Jaune', color: levelHex('jaune'), icon: LINE, iconSize: 18 },
+    { id: 'flood-zone', label: 'Zone inondable (Géorisques), tronçons orange et rouge', color: '#3b82f6', shape: 'zone' },
+    { id: 'flood-asset', label: 'Enjeu exposé (urgences, Seveso, EHPAD, centrale), anneau au niveau de la crue', color: levelHex('orange'), shape: 'ring' },
     { id: 'flood-stations-header', label: 'Stations des tronçons en vigilance', color: HEADER_HEX, isHeader: true },
     { id: 'flood-station', label: 'Station (hauteur au repère)', color: FLOOD_STATION_HEX, shape: 'circle' },
     { id: 'flood-station-up', label: 'Hauteur en hausse sur 1 h', color: levelHex('rouge'), shape: 'ring' },
@@ -116,6 +118,7 @@ export const FLOODS_LEGEND: LegendCategory = {
   refresh: { label: `Relève toutes les 10${NBSP}min` },
   notes: [
     '337 tronçons surveillés par l’État ; verts non dessinés.',
+    'Zone inondable : crue fréquente et moyenne, territoires à risque important seulement ; interrupteur dans le panneau Crues.',
     'Hauteur au repère de la station, pas une cote d’alerte : Vigicrues ne publie pas les seuils en API.',
   ],
 };
@@ -127,6 +130,7 @@ export function floodsLegend(f: FloodsResponse | null, now: number): LegendCateg
   const late = isEnvironmentDataLate('vigicrues', f.readAt, now);
   return copy(FLOODS_LEGEND, FLOODS_LEGEND.items, `Relevé Vigicrues ${clock(at)}${late ? ' (en retard)' : ''}`, [
     `${frNumber(f.total, 0)} tronçons surveillés par l’État ; verts non dessinés.`,
+    'Zone inondable : crue fréquente et moyenne, territoires à risque important seulement ; interrupteur dans le panneau Crues.',
     'Hauteur au repère de la station, pas une cote d’alerte : Vigicrues ne publie pas les seuils en API.',
     ...(late ? [COLORS_GONE] : []),
   ]);

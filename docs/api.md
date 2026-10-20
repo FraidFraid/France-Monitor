@@ -27,6 +27,7 @@ L'API est au stade **0.1.0 (expérimental)**. Aucune garantie de stabilité form
 | `GET /api/environment/fires` | Détections satellite en France (NASA FIRMS : VIIRS et MODIS) regroupées en foyers, récurrentes à part, et météo des forêts par département. |
 | `GET /api/environment/vigilance` | Vigilance Météo-France par département et par phénomène, créneaux, bulletins, historique sur 30 jours. |
 | `GET /api/environment/floods` | Tronçons Vigicrues en vigilance et hauteurs des stations (Hub'Eau). |
+| `GET /api/environment/flood-zones` | Paramètre `bbox=minLon,minLat,maxLon,maxLat` (1° au plus par côté, 400 sinon). Zones inondables officielles (Directive inondation, TRI, Géorisques) de la boîte (1° au plus par côté) : anneaux simplifiés des scénarios fréquent, moyen et extrême. Vide hors TRI : normal. |
 | `GET /api/environment/drought` | Restrictions d'eau en vigueur par département (VigiEau), comptes par niveau, série quotidienne. |
 | `GET /api/environment/air` | Qualité de l'air (Atmo France) : épisodes de pollution de J à J+2 et indice ATMO de J par département. |
 | `GET /api/environment/pollen` | Pollens (Atmo France) : niveau de J à J+2 par département (plus haut code des communes, communes à « élevé » ou plus, taxons responsables). |
@@ -84,6 +85,7 @@ Chaque fonction positionne une directive de cache CDN (`s-maxage`) qui reflète 
 | `/api/environment/air`, `/api/environment/pollen` | 30 min |
 | `/api/finance/stability` | 15 min (séries BCE relues chaque heure, écart toutes les 15 min) |
 | `/api/environment/drought` | 1 h |
+| `/api/environment/flood-zones` | 24 h (cartographie statique, relue chaque semaine par le serveur) |
 | `/api/health-check`, `/api/situation-history` | jamais mis en cache (`no-store`) |
 
 > **Note :** en sortie de CDN, l'en‑tête `Cache-Control` renvoyé au client peut être normalisé par l'hébergeur (par ex. `public` ou `public, max-age=0, must-revalidate`). Fiez‑vous à la cadence documentée ci‑dessus plutôt qu'à la valeur brute de l'en‑tête. Merci de ne pas interroger un endpoint plus fréquemment que sa cadence : les valeurs n'évoluent pas entre‑temps.

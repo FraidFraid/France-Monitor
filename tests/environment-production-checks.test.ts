@@ -24,13 +24,14 @@ async function cacheControlOf(route: string): Promise<string> {
 }
 
 describe('routes /api/environment/* : contrôles de production', () => {
-  it('dix gestionnaires (phases A et B, GDACS, Copernicus EMS, pollens)', () => {
-    expect(ROUTES).toEqual(['air', 'disasters', 'drought', 'earthquakes', 'ems', 'fires', 'floods', 'pollen', 'sea-levels', 'vigilance']);
+  it('onze gestionnaires (phases A et B, GDACS, Copernicus EMS, pollens, zones inondables)', () => {
+    expect(ROUTES).toEqual(['air', 'disasters', 'drought', 'earthquakes', 'ems', 'fires', 'flood-zones', 'floods', 'pollen', 'sea-levels', 'vigilance']);
   });
 
   it('test de fumée : chaque route interrogée, 200 attendu', () => {
     const smoke = read('.github/workflows/smoke.yml');
-    for (const r of ROUTES) expect(smoke, r).toContain(`"/api/environment/${r};200"`);
+    // Une route à paramètre obligatoire (flood-zones?bbox=…) est interrogée avec sa requête.
+    for (const r of ROUTES) expect(smoke, r).toMatch(new RegExp(`"/api/environment/${r}(\\?[^";]*)?;200"`));
   });
 
   it('OpenAPI : chaque route décrite (GET, tag Environnement, 200 et 502 sur un schéma décrit, cache CDN du gestionnaire)', async () => {

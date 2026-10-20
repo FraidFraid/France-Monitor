@@ -38,7 +38,8 @@ describe('DeckGLMap : couches Environnement de deckgl/environment-map.ts', () =>
     expect(deck).toContain('for (const id of ENV_LAYER_KEYS.fires) this.setVis(id, vis(firesOn));');
     expect(deck).toContain('for (const id of FOREST_DANGER_LAYERS) this.setVis(id, vis(firesOn && this._forestDangerFill));');
     expect(deck).toContain('this.setVis(RADAR_2D_LAYER_ID, vis(this.radar2dShown()));');
-    expect(deck).toContain('return this.currentLayers?.weatherRadar ?? false;');
+    // Onglet Environnement : l'image radar est du contexte, révélée par sa pastille (deckgl/env-context.ts, 20/10/2026).
+    expect(deck).toContain("return (this.currentLayers?.weatherRadar ?? false) && envContextRevealed(RADAR_CONTEXT_KEY, this.envContextOn, this.envRevealed);");
     expect(deck).toContain('this.setVis(ECHO_TOPS_LAYER_ID, vis(this.echoTopsShown(this._echoTopsEnabled)));');
     expect(deck).toContain("return enabled && ((this.currentLayers?.weatherRadar ?? false) || (this.currentLayers?.fires ?? false));");
   });

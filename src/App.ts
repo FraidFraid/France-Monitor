@@ -142,6 +142,11 @@ import { ENV_BRIEF_LEGEND } from './components/layer-panel/env-brief-legend.ts';
 import { ENV_FOCUS_IDS } from './components/layer-panel/env-focus.ts';
 import { buildHazards, computeExposure, type Exposure, type ExposureResult, type Hazard } from './services/environment-exposure.ts';
 import { fetchExposureAssets, fetchSevesoDataset, type ExposureAssetsState, type SevesoDataset } from './services/exposure-assets.ts';
+import { fetchCommunes, hazardPopulation, type Commune, type HazardPopulation } from './services/exposure-population.ts';
+import { cachedCarreaux, fetchCarreaux, zonePeople, type ZonePeople } from './services/flood-zone-people.ts';
+import { fetchFloodZones } from './services/environment-flood-zones.ts';
+import { EXPOSURE_SCENARIOS, floodCells, sectionFloodZones } from './services/flood-zone-geo.ts';
+import type { FloodZoneStatus, SectionImpact } from './components/layer-panel/crues-impact.ts';
 import type { SevesoPanel } from './components/SevesoPanel.ts';
 import type { PollensPanel } from './components/PollensPanel.ts';
 import type { PollenDay } from './types/index.ts';
@@ -1264,6 +1269,18 @@ export class App {
   /** Enjeux lus pour le croisement (null avant le premier allumage d'En bref) et dernier croisement calculé. */
   private exposureAssets: ExposureAssetsState | null = null;
   private currentExposure: ExposureResult | null = null;
+  /** Communes INSEE (population exposée) et habitants des communes touchées par phénomène (id). */
+  private communes: Commune[] | null = null;
+  private currentPopulation: Map<string, HazardPopulation> | null = null;
+  /** Zones inondables cartographiées par tronçon en crue orange ou rouge (id du phénomène), lues une fois par session. */
+  private floodZoneRings = new Map<string, Array<Array<[number, number]>>>();
+  private floodZoneLoading = new Set<string>();
+  /** Habitants en zone inondable par tronçon, mémorisés pour un jeu de zones donné (clé : id + nombre de zones). */
+  private floodPeople = new Map<string, { key: string; people: ZonePeople }>();
+  /** Interrupteur du panneau Crues : éteint, aucune zone lue ni dessinée (bande passante). Mémorisé par navigateur. */
+  private floodZonesOn = ((): boolean => {
+    try { return localStorage.getItem('fm.floods.zones') !== 'off'; } catch { return true; }
+  })();
   private webcamsPanelPromise: Promise<void> | null = null;
   private webcamWall: WebcamWall | null = null;
   private fluxPanel: FluxPietonsPanel | null = null;
@@ -2603,7 +2620,7 @@ export class App {
       const key = chip?.dataset['panelKey'] ?? null;
       this.setEnergyFocusPreview(key && isEnergyLayerKey(key) ? key : null);
       // « En bref » ne dessine rien : son survol ne tamise pas la carte.
-      this.setGeneralFocusPreview(key && key !== 'brief' && !isEnergyLayerKey(key) ? key as keyof MapLayers : null);
+      this.setGeneralFocusPreview(key && key !== 'brief' && key !== 'envBrief' && !isEnergyLayerKey(key) ? key as keyof MapLayers : null);
     });
     floatingPanelSwitcher.addEventListener('pointerleave', () => { this.setEnergyFocusPreview(null); this.setGeneralFocusPreview(null); });
     // La largeur de la carte change la place disponible (repli en icônes) et donc le décalage des panneaux.
@@ -3983,18 +4000,29 @@ export class App {
       const panel = new FloodsPanel(container);
       panel.setOnClose(() => this.closeEnvironmentLayer('floods'));
       if (this.mapContainer?.canFocusMap()) {
+        // Second clic sur le tronçon déjà sélectionné : sélection quittée (sortie sans chercher la croix).
         panel.setOnFocusSection((id) => {
+          if (this.mapContainer?.highlightedFloodSection() === id) {
+            this.mapContainer.highlightFloodSection(null);
+            return;
+          }
           this.mapContainer?.highlightFloodSection(id);
           this.mapContainer?.focusFloodSection(id);
         });
+        panel.setOnFocusPoint((lon, lat) => this.mapContainer?.focusPoint(lon, lat, 13));
         panel.setOnFocusStation((code) => {
           const station = this.currentFloods?.floods.data?.sections.flatMap((s) => s.stations).find((s) => s.code === code);
           if (station && station.lat !== null && station.lon !== null) this.mapContainer?.flyTo(station.lon, station.lat, 11);
         });
       }
+      panel.setOnToggleZones((on) => this.setFloodZonesOn(on));
       panel.mount();
       this.floodsPanel = panel;
-      if (this.activeLayers.floods) panel.show(this.currentFloods);
+      if (this.activeLayers.floods) {
+        panel.show(this.currentFloods);
+        this.ensureExposureData();
+        this.refreshFloodImpact();
+      }
     });
     return this.floodsPanelPromise;
   }
@@ -4146,7 +4174,7 @@ export class App {
   private openEnvironmentPanel(key: EnvironmentLayerKey): void {
     switch (key) {
       case 'environmental': this.vigilancePanel?.show({ vigilance: this.currentVigilance, seaLevels: this.currentSeaLevels }); break;
-      case 'floods': this.floodsPanel?.show(this.currentFloods); break;
+      case 'floods': this.floodsPanel?.show(this.currentFloods); this.ensureExposureData(); this.refreshFloodImpact(); break;
       case 'weatherRadar': this.weatherRadarPanel?.show(this.radarPanelState()); break;
       case 'fires': this.firesPanel?.show(this.firesPanelState()); break;
       case 'drought': this.droughtPanel?.show(this.currentDrought); break;
@@ -5053,7 +5081,7 @@ export class App {
         this.onLayerToggle('envBrief', false);
         this.layerPanel?.updateLayers(this.activeLayers);
       });
-      panel.setOnFocusPoint((lon, lat) => this.mapContainer?.flyTo(lon, lat, 11));
+      panel.setOnFocusPoint((lon, lat) => this.mapContainer?.focusPoint(lon, lat, 13));
       panel.setOnOpenPastille((key) => this.showFloatingPanel(key));
       panel.setOnWebcam((id) => {
         if (!this.activeLayers.webcams) {
@@ -5073,12 +5101,7 @@ export class App {
   private openEnvBriefPanel(): void {
     this.envBriefPanel?.show(this.envBriefData());
     if (this.currentWebcams === null) this.loadWebcams().catch((err) => console.error('[App] Lecture Webcams en échec', err));
-    if (this.exposureAssets === null || this.exposureAssets.missing.length > 0) {
-      void dedupe('exposure-assets', async () => {
-        this.exposureAssets = await fetchExposureAssets();
-        this.refreshEnvBrief();
-      });
-    }
+    this.ensureExposureData();
     this.refreshEnvBrief();
   }
 
@@ -5104,6 +5127,7 @@ export class App {
       earthquakes: this.currentEarthquakes?.quakes.data ?? null,
       ems: this.currentDisasters?.ems.data ?? null,
       exposure: this.currentExposure,
+      population: this.currentPopulation ?? undefined,
       assetsLoading: this.exposureAssets === null,
       assetsMissing: this.exposureAssets?.missing ?? [],
       webcams: this.currentWebcams,
@@ -5141,9 +5165,31 @@ export class App {
     }));
   }
 
-  /** Phénomènes en cours de l'onglet Environnement (zones de vigilance, crues, feux, séismes, zones Copernicus). */
+  /**
+   * Zones inondables cartographiées (Géorisques, crue fréquente et moyenne) des tronçons en crue orange ou rouge pas encore lus : cases
+   * de 0,05° le long du tracé (au plus 60 par tronçon), puis exposition, population et carte recalculées. Échec complet : rien retenu, relu au prochain calcul.
+   */
+  private loadFloodZones(hazards: readonly Hazard[]): void {
+    if (!this.floodZonesOn) return;
+    for (const h of hazards) {
+      if (h.kind !== 'crue' || (h.level !== 'orange' && h.level !== 'rouge')) continue;
+      if (this.floodZoneRings.has(h.id) || this.floodZoneLoading.has(h.id)) continue;
+      this.floodZoneLoading.add(h.id);
+      void Promise.all(floodCells(h.lines, 60).map((cell) => fetchFloodZones(cell, EXPOSURE_SCENARIOS))).then((responses) => {
+        this.floodZoneLoading.delete(h.id);
+        const read = responses.filter((r) => r !== null);
+        if (read.length === 0) return;
+        this.floodZoneRings.set(h.id, sectionFloodZones(read.flatMap((r) => r.zones), h.lines).map((z) => z.ring));
+        this.refreshEnvBrief();
+        this.refreshSeveso();
+        this.refreshFloodImpact();
+      });
+    }
+  }
+
+  /** Phénomènes en cours de l'onglet Environnement (zones de vigilance, crues avec leurs zones inondables lues, feux, séismes, zones Copernicus). */
   private currentHazards(): Hazard[] {
-    return buildHazards({
+    const hazards = buildHazards({
       vigilance: this.currentVigilance?.vigilance.data ?? null,
       floods: this.currentFloods?.floods.data ?? null,
       fires: this.currentFires?.fires.data ?? null,
@@ -5151,6 +5197,103 @@ export class App {
       ems: this.currentDisasters?.ems.data ?? null,
       now: Date.now(),
     });
+    this.loadFloodZones(hazards);
+    return hazards.map((h) => {
+      const rings = this.floodZonesOn ? this.floodZoneRings.get(h.id) : undefined;
+      return rings && rings.length > 0 ? { ...h, floodZones: rings } : h;
+    });
+  }
+
+  /** Enjeux et communes lus une fois (relus après un échec), puis En bref et Crues recalculés. */
+  private ensureExposureData(): void {
+    if (this.exposureAssets !== null && this.exposureAssets.missing.length === 0 && this.communes !== null) return;
+    void dedupe('exposure-assets', async () => {
+      const [assets, communes] = await Promise.all([fetchExposureAssets(), fetchCommunes()]);
+      this.exposureAssets = assets;
+      this.communes = communes;
+      this.refreshEnvBrief();
+      this.refreshFloodImpact();
+    });
+  }
+
+  /** Interrupteur des zones inondables : mémorisé, carte vidée ou relue, conséquences recalculées. */
+  private setFloodZonesOn(on: boolean): void {
+    this.floodZonesOn = on;
+    try { localStorage.setItem('fm.floods.zones', on ? 'on' : 'off'); } catch { /* stockage indisponible : réglage de session */ }
+    this.refreshEnvBrief();
+    this.refreshSeveso();
+    this.refreshFloodImpact();
+  }
+
+  /**
+   * Conséquences des crues (pastille Crues allumée) : par tronçon en vigilance, état de la zone inondable, communes touchées, enjeux ;
+   * puis panneau et zones dessinées (rien si l'interrupteur est éteint).
+   */
+  private refreshFloodImpact(): void {
+    if (!this.activeLayers.floods) return;
+    const crues = this.currentHazards().filter((h) => h.kind === 'crue');
+    const rings = crues.flatMap((h) => h.floodZones ?? []);
+    this.mapContainer?.updateFloodZonesLayer(rings);
+    const assets = this.exposureAssets;
+    const communes = this.communes;
+    if (!assets || !communes) {
+      this.floodsPanel?.setImpact({ impacts: null, zonesOn: this.floodZonesOn, canFocus: this.mapContainer?.canFocusMap() ?? false });
+      return;
+    }
+    const nearby = computeExposure(crues, assets.assets).nearby;
+    this.mapContainer?.updateFloodAssetsLayer(nearby);
+    // Enjeux retenus à la seule distance du tronçon : ceux que la zone officielle écarte sont dits dans le panneau.
+    const byDistance = computeExposure(crues.map(({ floodZones: _zones, ...h }) => h), assets.assets).nearby;
+    const byCode = new Map(communes.map((c) => [c.code, c]));
+    const impacts: SectionImpact[] = crues.map((h) => {
+      const zoneCount = h.floodZones?.length ?? 0;
+      const zone: FloodZoneStatus = h.level === 'jaune' ? 'non-demandee' : !this.floodZonesOn ? 'off'
+        : zoneCount > 0 ? 'cartographiee' : this.floodZoneRings.has(h.id) ? 'non-cartographiee' : 'lecture';
+      const population = hazardPopulation(h, communes, h.floodZones);
+      const exposures = nearby.filter((e) => e.hazard.id === h.id);
+      const kept = new Set(exposures.map((e) => e.asset.id));
+      const excluded = zone === 'cartographiee' ? byDistance.filter((e) => e.hazard.id === h.id && !kept.has(e.asset.id)) : [];
+      const found = zone === 'cartographiee' ? this.floodZonePeople(h, population) : null;
+      const people = found === null || found === 'lecture' ? found : {
+        total: found.total, over80: found.over80,
+        // Carreaux 2019 et population légale plus récente : jamais plus d'habitants en zone que dans la commune.
+        communes: found.communes.map((c) => {
+          const commune = byCode.get(c.code);
+          const pop = commune?.pop ?? null;
+          return { name: commune?.name ?? c.code, dept: commune?.dept ?? c.code.slice(0, 2), people: pop === null ? c.people : Math.min(c.people, pop), pop };
+        }),
+      };
+      return {
+        sectionId: h.id.replace(/^crue-/, ''), name: h.label.replace(/^Crue \S+ · /, ''), level: h.level, zone, zoneCount,
+        population, people, exposures, excluded,
+      };
+    });
+    this.floodsPanel?.setImpact({ impacts, zonesOn: this.floodZonesOn, canFocus: this.mapContainer?.canFocusMap() ?? false });
+  }
+
+  /**
+   * Habitants en zone inondable d'un tronçon : carreaux Insee des départements des communes touchées, lus à la demande (puis Crues
+   * recalculé) ; 'lecture' en attendant ; mémorisés tant que les zones du tronçon ne changent pas.
+   */
+  private floodZonePeople(h: Hazard, population: HazardPopulation): ZonePeople | 'lecture' | null {
+    const zones = h.floodZones ?? [];
+    if (zones.length === 0) return null;
+    const key = `${h.id}:${zones.length}`;
+    const memo = this.floodPeople.get(h.id);
+    if (memo?.key === key) return memo.people;
+    const depts = [...new Set(population.communes.map((c) => c.dept))];
+    const missing = depts.filter((d) => !cachedCarreaux(d));
+    if (missing.length > 0) {
+      void dedupe(`carreaux:${missing.join(',')}`, async () => {
+        const read = await Promise.all(missing.map((d) => fetchCarreaux(d)));
+        if (read.some((x) => x !== null)) this.refreshFloodImpact();
+      });
+      // Un département illisible (DROM non carroyé) ne bloque pas les autres : on compte dès qu'un lu suffit à tout couvrir.
+      if (missing.length === depts.length) return 'lecture';
+    }
+    const people = zonePeople(zones, depts.flatMap((d) => cachedCarreaux(d) ?? []));
+    if (missing.length === 0) this.floodPeople.set(h.id, { key, people });
+    return people;
   }
 
   // ─── Pollens (20/10/2026) ───
@@ -5205,7 +5348,7 @@ export class App {
         this.onLayerToggle('seveso', false);
         this.layerPanel?.updateLayers(this.activeLayers);
       });
-      panel.setOnFocusPoint((lon, lat) => this.mapContainer?.flyTo(lon, lat, 12));
+      panel.setOnFocusPoint((lon, lat) => this.mapContainer?.focusPoint(lon, lat, 13));
       panel.mount();
       this.sevesoPanel = panel;
       panel.update(this.sevesoData, this.sevesoError, this.sevesoExposed);
@@ -5244,6 +5387,8 @@ export class App {
     if (!this.activeLayers.envBrief) return;
     const hazards = this.currentHazards();
     this.currentExposure = this.exposureAssets ? computeExposure(hazards, this.exposureAssets.assets) : null;
+    const communes = this.communes;
+    this.currentPopulation = communes ? new Map(hazards.map((h) => [h.id, hazardPopulation(h, communes, h.floodZones)])) : null;
     this.mapContainer?.updateExposureLayer(this.currentExposure);
     this.envBriefPanel?.update(this.envBriefData());
   }
@@ -6132,10 +6277,13 @@ export class App {
 
   private syncGeneralFocus(): void {
     const inEnv = this.uiV2 && this.v2Theme === 'environment';
+    // Onglet Environnement : toutes les couches visibles à l'ouverture, comme Santé (20/10/2026, décision utilisateur). Le mode
+    // « l'anormal d'abord » (deckgl/env-context.ts, setEnvContext) reste disponible mais n'est plus activé.
     const inScope = this.uiV2 && (this.v2Theme === 'general' || inEnv);
     const keys: Array<keyof MapLayers> = [];
     if (inScope) {
-      for (const k of this.generalFocusActive) if (!keys.includes(k)) keys.push(k);
+      // Les En bref sont des synthèses : ouverts ou survolés, ils ne tamisent rien (20/10/2026).
+      for (const k of this.generalFocusActive) if (!keys.includes(k) && k !== 'envBrief' && k !== 'brief') keys.push(k);
       if (this.generalFocusPreview && !keys.includes(this.generalFocusPreview)) keys.push(this.generalFocusPreview);
     }
     const shown = keys.join(',');
@@ -7309,6 +7457,7 @@ export class App {
       this.statusPanel?.updateSource('Vigicrues', floodsStatus(this.currentFloods, now));
       this.mapContainer?.updateFloodsLayer(data, now);
       this.floodsPanel?.update(this.currentFloods);
+      this.refreshFloodImpact();
       this.refreshEnvironmentLegend();
       this.recordEnvironmentSamples(now);
       await this.refreshHydraulicLayer();

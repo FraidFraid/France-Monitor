@@ -50,7 +50,7 @@ function exposedSection(input: SevesoViewInput): FicheSection {
   const html = input.exposed === null ? emptyLine('Phénomènes en cours pas encore lus : croisement en attente.')
     : list.length === 0 ? emptyLine('Aucun site Seveso à portée d’un phénomène en cours (crue, feu, séisme, zone Copernicus, vigilance orange ou rouge).')
     : list.slice(0, MAX_EXPOSED).map((e) => listRow({
-      text: e.asset.name, value: km(e.distanceKm), level: e.hazard.level,
+      text: e.asset.name, value: e.inFloodZone ? 'en zone inondable' : km(e.distanceKm), level: e.hazard.level,
       note: [e.asset.kind === 'seveso-haut' ? 'seuil haut' : 'seuil bas', e.asset.commune, departementName(e.asset.dept), e.hazard.label]
         .filter((s): s is string => s !== null && s !== '').join(' · '),
       data: { lon: String(e.asset.lon), lat: String(e.asset.lat) }, link: input.canFocus,

@@ -39,6 +39,9 @@
     "build:deces": "node scripts/build-deces.mjs",
     "build:webcams": "node scripts/build-webcams.mjs",
     "build:seveso": "node scripts/build-seveso.mjs",
+    "build:communes": "node scripts/build-communes.mjs",
+    "build:carreaux": "node scripts/build-carreaux.mjs",
+    "build:epci": "node scripts/build-epci-depts.mjs",
     "build:vm-snapshot": "esbuild scripts/vm-snapshot.ts --bundle --platform=node --format=esm --target=node24 --outfile=dist-node/vm-snapshot.mjs --define:import.meta.env.DEV=false --define:import.meta.env.VITE_ENABLE_OIL_LAYER=\"true\" --banner:js=\"import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);\" --log-level=warning"
   },
   "devDependencies": {

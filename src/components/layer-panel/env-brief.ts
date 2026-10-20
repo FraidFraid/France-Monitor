@@ -13,6 +13,7 @@ import { emptyLine, listRow, loadingBody, type LayerView } from './frame.ts';
 import { NBSP, frNumber } from './format.ts';
 import { readForecast } from '../../services/flood-forecast.ts';
 import { pastillesSynthesisSection, type ThemeBriefPastille } from './theme-brief.ts';
+import { populationText, type HazardPopulation } from '../../services/exposure-population.ts';
 import { ENVIRONMENT_THEME, formatAge, note } from './environment-format.ts';
 import { departementName } from './health-format.ts';
 import type { WatchLevel } from './watch.ts';
@@ -39,6 +40,8 @@ export interface EnvBriefInput {
   assetsLoading: boolean;
   assetsMissing: readonly string[];
   webcams: WebcamsDataset | null;
+  /** Habitants des communes touchées, par phénomène (id) ; absent : communes pas encore lues. */
+  population?: ReadonlyMap<string, HazardPopulation>;
   /** Pastilles de l'onglet et en-tête de leur panneau (synthèse commune aux En bref) ; absent : section omise. */
   pastilles?: readonly ThemeBriefPastille[];
   changes: readonly EnvBriefChange[];
@@ -126,8 +129,23 @@ function attentionSection(input: EnvBriefInput): FicheSection {
     ? emptyLine('Aucun phénomène orange ou rouge en cours, ni crue en vigilance, ni feu confirmé, ni séisme notable.')
     : items.slice(0, MAX_HAZARD_ROWS).map((h) => listRow({
       text: h.text, value: h.where || null, level: h.level, data: h.hazardId ? { hazard: h.hazardId } : undefined,
+      note: populationNote(input, h.hazardId),
     })).join('') + (items.length > MAX_HAZARD_ROWS ? note(`Et ${items.length - MAX_HAZARD_ROWS} autres : voir les pastilles.`) : '');
   return { id: 'attention', title: 'Ce qui demande attention', collapsible: true, open: input.open('attention', true), summary: String(items.length), html };
+}
+
+const POPULATION_HOW: Readonly<Record<HazardPopulation['method'], string>> = {
+  departement: 'communes du département',
+  rayon: 'communes dans le rayon',
+  'zone-inondable': 'communes riveraines de la zone inondable cartographiée',
+  troncon: 'communes à moins de 3\u00a0km du tronçon (pas de zone inondable cartographiée ici)',
+  'zone-copernicus': 'communes dans la zone Copernicus',
+};
+
+/** « 12 communes, 85 000 habitants (Nîmes, Alès…) · communes riveraines de la zone inondable cartographiée » ; null sans donnée. */
+function populationNote(input: EnvBriefInput, hazardId: string | null): string | null {
+  const p = hazardId ? input.population?.get(hazardId) : undefined;
+  return p ? `${populationText(p, (n) => frNumber(n, 0))} · ${POPULATION_HOW[p.method]}` : null;
 }
 
 /** Ce qui a changé : passages de niveau des pastilles, stations en hausse, foyers, séismes et activations des dernières 24 h. */
@@ -240,7 +258,8 @@ function tomorrowSection(input: EnvBriefInput): FicheSection {
 function exposedSection(input: EnvBriefInput): FicheSection {
   const ex = input.exposure;
   const missing = input.assetsMissing.length > 0 ? note(`Enjeux non lus : ${input.assetsMissing.join(', ')}.`) : '';
-  const method = note(`Proches d’un phénomène : à moins de ${FLOOD_BUFFER_KM}${NBSP}km d’un tronçon de crue en vigilance, à moins de ${FIRE_RADIUS_KM}${NBSP}km d’un feu confirmé, `
+  const method = note(`Proches d’un phénomène : dans la zone inondable cartographiée (Géorisques, crue fréquente ou moyenne) d’un tronçon en crue orange ou rouge, `
+    + `à défaut à moins de ${FLOOD_BUFFER_KM}${NBSP}km du tronçon, à moins de ${FIRE_RADIUS_KM}${NBSP}km d’un feu confirmé, `
     + `de 10 à 50${NBSP}km d’un séisme selon sa magnitude, dans une zone Copernicus. Vigilance orange ou rouge : enjeux du département, selon le phénomène. `
     + 'Sources : Géorisques (Seveso), SAE et FINESS (urgences, EHPAD), EDF (centrales).');
   if (input.assetsLoading && ex === null) {
@@ -250,7 +269,7 @@ function exposedSection(input: EnvBriefInput): FicheSection {
   const dept = ex?.departmental ?? [];
   const nearbyHtml = nearby.slice(0, MAX_NEARBY_ROWS).map((e) => listRow({
     text: e.asset.name,
-    value: e.distanceKm !== null ? km(e.distanceKm) : null,
+    value: e.inFloodZone ? 'zone inondable' : e.distanceKm !== null ? km(e.distanceKm) : null,
     level: e.hazard.level,
     note: [e.asset.detail, e.asset.commune, e.hazard.label].filter((s): s is string => s !== null && s !== '').join(' · '),
     data: { lon: String(e.asset.lon), lat: String(e.asset.lat) }, link: true,
@@ -355,7 +374,10 @@ export function envBriefNoteText(input: EnvBriefInput): string {
   const attention = envAttention(input);
   lines.push('', 'Phénomènes en cours :');
   if (attention.length === 0) lines.push('- aucun phénomène orange ou rouge.');
-  for (const h of attention.slice(0, MAX_HAZARD_ROWS)) lines.push(`- ${h.text}${h.where ? ` : ${h.where}` : ''}.`);
+  for (const h of attention.slice(0, MAX_HAZARD_ROWS)) {
+    const pop = populationNote(input, h.hazardId);
+    lines.push(`- ${h.text}${h.where ? ` : ${h.where}` : ''}${pop ? ` ; ${pop}` : ''}.`);
+  }
   const changes = envChanges(input);
   if (changes.length > 0) {
     lines.push('', 'Évolutions (24 h) :');
@@ -375,13 +397,13 @@ export function envBriefNoteText(input: EnvBriefInput): string {
   if (ex && (ex.nearby.length > 0 || ex.departmental.length > 0)) {
     lines.push('', 'Enjeux exposés :');
     for (const e of ex.nearby.slice(0, MAX_NEARBY_ROWS)) {
-      lines.push(`- ${e.asset.name}${e.asset.commune ? ` (${e.asset.commune})` : ''}, ${e.distanceKm !== null ? km(e.distanceKm) : 'dans le département'} : ${e.hazard.label}.`);
+      lines.push(`- ${e.asset.name}${e.asset.commune ? ` (${e.asset.commune})` : ''}, ${e.inFloodZone ? 'en zone inondable' : e.distanceKm !== null ? km(e.distanceKm) : 'dans le département'} : ${e.hazard.label}.`);
     }
     for (const d of ex.departmental.slice(0, MAX_DEPT_ROWS)) {
       lines.push(`- ${departementName(d.dept)}, ${d.hazard.label} : ${countsText(d.counts)}.`);
     }
   }
   lines.push('', 'Sources : Météo-France, Vigicrues, Hub’Eau, NASA FIRMS, BCSF-RéNaSS, Copernicus EMS, Géorisques, FINESS. Source France Monitor.');
-  return lines.join('\n').replace(/\u00a0/g, ' ');
+  return lines.join('\n').replace(/[\u00a0\u202f]/g, ' ');
 }
 

@@ -1,6 +1,6 @@
 // src/components/deckgl/energy-focus.test.ts
 import { describe, expect, it } from 'vitest';
-import { ENERGY_FOCUS_KEY, ENERGY_FOCUS_LAYERS, energyFocusKeyHtml, dimOpacity, energyChipsPressed, energyFocusKeysHtml, energyFocusLayersOf, flowKindsShown, isEnergyLayerKey, toggleEnergyChip } from './energy-focus.ts';
+import { ENERGY_FOCUS_KEY, ENERGY_FOCUS_LAYERS, energyFocusKeyHtml, dimOpacity, fullOpacity, energyChipsPressed, energyFocusKeysHtml, energyFocusLayersOf, flowKindsShown, isEnergyLayerKey, toggleEnergyChip } from './energy-focus.ts';
 import { ENERGY_LAYER_KEYS } from './energy-map.ts';
 import { OUT_LAYER_KEYS } from './outages-map.ts';
 
@@ -58,6 +58,18 @@ describe('atténuation d’une opacité', () => {
     expect(dimOpacity(['interpolate', ['linear'], ['zoom'], 7, 0.42, 11, 0.72], 0.15))
       .toEqual(['interpolate', ['linear'], ['zoom'], 7, ['*', 0.42, 0.15], 11, ['*', 0.72, 0.15]]);
     expect(dimOpacity(['step', ['zoom'], 0, 8, 1], 0.5)).toEqual(['step', ['zoom'], ['*', 0, 0.5], 8, ['*', 1, 0.5]]);
+  });
+});
+
+describe('couche mise en avant à 100 %', () => {
+  it('nombre : 1 (0 reste 0) ; expression : sa plus forte opacité ramenée à 1, écarts internes gardés', () => {
+    expect(fullOpacity(0.45)).toBe(1);
+    expect(fullOpacity(0)).toBe(0);
+    const curve = fullOpacity(['interpolate', ['linear'], ['zoom'], 7, 0.4, 11, 0.8]);
+    expect(curve).toEqual(['interpolate', ['linear'], ['zoom'], 7, ['*', 0.4, 1.25], 11, ['*', 0.8, 1.25]]);
+    const alert = ['case', ['get', 'hasAlert'], 0.5, 0.1];
+    expect(fullOpacity(alert)).toEqual(['*', alert, 2]);
+    expect(fullOpacity(['case', ['get', 'h'], 1, 0.9])).toEqual(['case', ['get', 'h'], 1, 0.9]);
   });
 });
 
