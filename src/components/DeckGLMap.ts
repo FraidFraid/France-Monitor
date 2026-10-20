@@ -18,6 +18,7 @@ import { CRIME_CITY_LAYERS, CRIME_LAYERS, CRIME_LAYER_IDS, crimeCityFeatures, cr
 import { WEBCAM_LAYERS, WEBCAM_LAYER_IDS, webcamFeatures, webcamSourceSpec } from './deckgl/webcams-map.ts';
 import { EXPOSURE_LAYERS, EXPOSURE_LAYER_IDS, exposureFeatures, exposureSourceSpec } from './deckgl/exposure-map.ts';
 import { FRANCE_METRO_BOUNDS, visibleFitPadding, type Rect } from './deckgl/france-fit.ts';
+import { pulsePaint } from './deckgl/pulse.ts';
 import type { ExposureResult } from '../services/environment-exposure.ts';
 import { FLUX_LAYERS, FLUX_LAYER_IDS, fluxFeatures, fluxSourceSpec, type FluxInstant, type FluxOtherEvent } from './deckgl/flux-pietons-map.ts';
 import type { FluxFeature } from '../services/flux-pietons.ts';
@@ -54,7 +55,7 @@ import {
 import {
   ENV_HOVER_LAYERS, ENV_ICON_GLYPH, ENV_ICON_MARGIN, ENV_ICON_NAMES, ENV_ICON_SIZE, ENV_LAYERS, ENV_LAYER_BEFORE, ENV_LAYER_KEYS, ENV_SOURCE_IDS, FOREST_DANGER_LAYERS, alphaToSdf, envIconImage, envLayerOn,
   envSourceSpec, envTooltipHtml, fireAbroadFeatures, fireDetectionFeatures, floodSectionFeatures, floodStationFeatures, forestDangerFeatures,
-  radarPickFeature, topEnvHit, vigilanceDeptFeatures, vigilanceIconFeatures, airDeptFeatures, droughtDeptFeatures, quakeFeatures, tideGaugeFeatures, envBReshowPaints, placeEnvBPoints, disasterFeatures, placeDisasterPoints, disasterPulsePaint,
+  radarPickFeature, topEnvHit, vigilanceDeptFeatures, vigilanceIconFeatures, airDeptFeatures, droughtDeptFeatures, quakeFeatures, tideGaugeFeatures, envBReshowPaints, placeEnvBPoints, disasterFeatures, placeDisasterPoints,
   type EnvBData, type EnvBLayerState,
 } from './deckgl/environment-map.ts';
 import {
@@ -197,6 +198,8 @@ import {
   SRC_DISASTERS,
   LYR_DISASTER_PULSE,
   LYR_DISASTERS,
+  LYR_QUAKE_PULSE,
+  LYR_QUAKES,
   SRC_PROTESTS,
   LYR_PROTESTS,
   SRC_CRIME_DEPTS,
@@ -422,6 +425,12 @@ const ENERGY_FLOW_DASH_SEQ: ReadonlyArray<number[]> = [[0, 4, 3], [0.5, 4, 2.5],
 const ENERGY_FOCUS_CATEGORY = 'energy-focus';
 /** Pastilles mises en avant hors Énergie (Vue générale, onglet Environnement) : union de leurs calques. */
 const GENERAL_FOCUS_CATEGORY = 'general-focus';
+/** Anneaux pulsants (pulse.ts) : calque de l'anneau et calque des points dont il suit le tamisage. */
+type PulseKey = 'disasters' | 'earthquakes';
+const PULSE_LAYERS: Readonly<Record<PulseKey, { pulse: string; base: string }>> = {
+  disasters: { pulse: LYR_DISASTER_PULSE, base: LYR_DISASTERS },
+  earthquakes: { pulse: LYR_QUAKE_PULSE, base: LYR_QUAKES },
+};
 /**
  * Images (raster) des pastilles Environnement, hors ENV_LAYER_KEYS (ajoutées à la demande) : tamisées avec leur pastille (20/10/2026 :
  * l'image radar restait vive sous les autres pastilles).
@@ -4713,7 +4722,9 @@ export class DeckGLMap {
     }
 
 
-    this.disastersDim = categoryId !== null && activeLayers.length > 0 && !activeLayers.includes(LYR_DISASTERS) ? 0.15 : 1;
+    for (const key of Object.keys(PULSE_LAYERS) as PulseKey[]) {
+      this.pulseState[key].dim = categoryId !== null && activeLayers.length > 0 && !activeLayers.includes(PULSE_LAYERS[key].base) ? 0.15 : 1;
+    }
 
     const applyLegendDim = (layerId: string, prop: string, orig: unknown): void => {
       if (categoryId === null || activeLayers.length === 0) {
@@ -6329,41 +6340,52 @@ export class DeckGLMap {
     if (!this.map) return;
     (this.map.getSource(SRC_DISASTERS) as maplibregl.GeoJSONSource | undefined)?.setData(disasterFeatures(d, now));
     this.hideEnvironmentHover();
-    this.syncDisasterPulse();
+    this.syncPulses();
   }
 
-  // ─── Catastrophes : anneau pulsant des alertes en cours (20/10/2026) ───
-  private disasterPulseFrame: number | null = null;
-  private disasterPulseLast = 0;
-  /** Facteur de tamisage de l'anneau : 1 si la couche Catastrophes est vive, 0,15 si une autre pastille la tamise. */
-  private disastersDim = 1;
-  /** Couche Catastrophes affichée (dernière consigne de setLayerVisibility). */
-  private disastersShown = false;
+  // ─── Anneaux pulsants : catastrophes en cours, séismes récents en France (20/10/2026, pulse.ts) ───
+  private pulseFrame: number | null = null;
+  private pulseLast = 0;
+  /** Couche affichée (dernière consigne de setLayerVisibility) et facteur de tamisage (1 vive, 0,15 tamisée par une autre pastille). */
+  private pulseState: Record<PulseKey, { shown: boolean; dim: number }> = {
+    disasters: { shown: false, dim: 1 }, earthquakes: { shown: false, dim: 1 },
+  };
 
-  /** Anneau visible et animé tant que la couche Catastrophes l'est (jamais si le système demande moins d'animations). */
-  private syncDisasterPulse(): void {
-    if (!this.map || !this.map.getLayer(LYR_DISASTER_PULSE) || typeof requestAnimationFrame !== 'function') return;
+  /** Anneaux visibles et animés tant que leur couche l'est (jamais si le système demande moins d'animations). */
+  private syncPulses(): void {
+    if (!this.map || typeof requestAnimationFrame !== 'function') return;
     const reduced = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const on = !reduced && this.disastersShown;
-    this.setVis(LYR_DISASTER_PULSE, on ? 'visible' : 'none');
-    if (!on) {
-      if (this.disasterPulseFrame !== null) cancelAnimationFrame(this.disasterPulseFrame);
-      this.disasterPulseFrame = null;
+    let any = false;
+    for (const key of Object.keys(PULSE_LAYERS) as PulseKey[]) {
+      const { pulse } = PULSE_LAYERS[key];
+      if (!this.map.getLayer(pulse)) continue;
+      const on = !reduced && this.pulseState[key].shown;
+      this.setVis(pulse, on ? 'visible' : 'none');
+      any ||= on;
+    }
+    if (!any) {
+      if (this.pulseFrame !== null) cancelAnimationFrame(this.pulseFrame);
+      this.pulseFrame = null;
       return;
     }
-    if (this.disasterPulseFrame !== null) return;
+    if (this.pulseFrame !== null) return;
     const step = (ts: number): void => {
       if (!this.map) return;
       // 30 images par seconde suffisent à un anneau qui s'élargit.
-      if (ts - this.disasterPulseLast >= 33) {
-        this.disasterPulseLast = ts;
-        const paint = disasterPulsePaint(Date.now(), this.disastersDim);
-        this.map.setPaintProperty(LYR_DISASTER_PULSE, 'circle-radius', paint.radius as maplibregl.ExpressionSpecification);
-        this.map.setPaintProperty(LYR_DISASTER_PULSE, 'circle-stroke-opacity', paint.opacity as maplibregl.ExpressionSpecification);
+      if (ts - this.pulseLast >= 33) {
+        this.pulseLast = ts;
+        const t = Date.now();
+        for (const key of Object.keys(PULSE_LAYERS) as PulseKey[]) {
+          const st = this.pulseState[key];
+          if (!st.shown || !this.map.getLayer(PULSE_LAYERS[key].pulse)) continue;
+          const paint = pulsePaint(t, st.dim);
+          this.map.setPaintProperty(PULSE_LAYERS[key].pulse, 'circle-radius', paint.radius as maplibregl.ExpressionSpecification);
+          this.map.setPaintProperty(PULSE_LAYERS[key].pulse, 'circle-stroke-opacity', paint.opacity as maplibregl.ExpressionSpecification);
+        }
       }
-      this.disasterPulseFrame = requestAnimationFrame(step);
+      this.pulseFrame = requestAnimationFrame(step);
     };
-    this.disasterPulseFrame = requestAnimationFrame(step);
+    this.pulseFrame = requestAnimationFrame(step);
   }
 
   /** Catastrophes : zones Copernicus EMS des activations françaises en cours (contour violet). */
@@ -8406,9 +8428,10 @@ export class DeckGLMap {
     for (const id of ENV_LAYER_KEYS.drought) this.setVis(id, vis(envLayerOn(layers, 'drought')));
     for (const id of ENV_LAYER_KEYS.airQuality) this.setVis(id, vis(envLayerOn(layers, 'airQuality')));
     for (const id of ENV_LAYER_KEYS.earthquakes) this.setVis(id, vis(envLayerOn(layers, 'earthquakes')));
+    this.pulseState.earthquakes.shown = envLayerOn(layers, 'earthquakes');
     for (const id of ENV_LAYER_KEYS.disasters) this.setVis(id, vis(envLayerOn(layers, 'disasters')));
-    this.disastersShown = envLayerOn(layers, 'disasters');
-    this.syncDisasterPulse();
+    this.pulseState.disasters.shown = envLayerOn(layers, 'disasters');
+    this.syncPulses();
     for (const id of PROTEST_LAYER_IDS) this.setVis(id, vis(layers.protests ?? false));
     for (const id of CRIME_LAYER_IDS) this.setVis(id, vis(layers.crime ?? false));
     for (const id of WEBCAM_LAYER_IDS) this.setVis(id, vis(layers.webcams ?? false));

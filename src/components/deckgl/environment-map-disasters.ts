@@ -12,6 +12,7 @@ import { clockOf } from '../layer-panel/environment-format.ts';
 import { ALERT_WORD, DISASTER_TYPE_LABEL, ENV_NEUTRAL_HEX } from '../layer-panel/environment-legend.ts';
 import { LYR_DISASTERS, LYR_DISASTER_LABEL, LYR_DISASTER_PULSE, LYR_OUT_TELECOM_MAINT, SRC_DISASTERS } from './constants.ts';
 import { escapeHtml } from './format-utils.ts';
+import { PULSE_BY_LEVEL, pulseLayerSpec, pulseOffset, pulsePaint } from './pulse.ts';
 import { countryNameFr } from '../../utils/iso3.ts';
 import { EMS_LAYER_IDS } from './environment-map-ems.ts';
 
@@ -26,15 +27,8 @@ export function disasterHex(x: DisasterAlert, late: boolean): string {
 
 /** Rayon du point (px) par urgence ; hors de France, un pas plus petit. */
 const POINT_RADIUS = { rouge: 6, orange: 5, vert: 4 } as const;
-/** Pulsation par urgence : période (ms) et élargissement de l'anneau (px). */
-const PULSE = { rouge: { period: 1400, amp: 14 }, orange: { period: 2200, amp: 10 }, vert: { period: 3400, amp: 6 } } as const;
-
-/** Décalage stable de la pulsation d'une alerte (points voisins désynchronisés). */
-function pulseOffset(id: string, period: number): number {
-  let h = 0;
-  for (let i = 0; i < id.length; i += 1) h = (h * 31 + id.charCodeAt(i)) >>> 0;
-  return h % period;
-}
+/** Pulsation par urgence (pulse.ts, commun aux séismes). */
+const PULSE = PULSE_BY_LEVEL;
 
 function body(x: DisasterAlert, late: boolean, now: number): string {
   const context = isEuropeanContext(x);
@@ -73,27 +67,12 @@ export function disasterFeatures(d: DisastersResponse | null, now: number): GeoJ
   };
 }
 
-/**
- * Peinture de l'anneau pulsant à l'instant `t` (ms) : phase = ((t + décalage) mod période) / période ; l'anneau part du bord du
- * point, s'élargit de `amp` et s'efface. `dim` : facteur de tamisage de la couche (1 vive, 0,15 tamisée par une autre pastille).
- */
-export function disasterPulsePaint(t: number, dim: number): { radius: unknown; opacity: unknown } {
-  const phase = ['/', ['%', ['+', t % 1_000_000, ['get', 'offset']], ['max', ['get', 'period'], 1]], ['max', ['get', 'period'], 1]];
-  return {
-    radius: ['+', ['get', 'radius'], 1, ['*', ['get', 'amp'], phase]],
-    opacity: ['*', 0.85 * dim, ['get', 'alpha'], ['-', 1, phase]],
-  };
-}
+/** Peinture de l'anneau (pulse.ts) ; nom gardé pour les appelants. */
+export const disasterPulsePaint = pulsePaint;
 
 export const DISASTER_LAYERS: readonly LayerSpecification[] = [
-  {
-    // Sous le point : l'anneau s'élargit autour de lui.
-    id: LYR_DISASTER_PULSE, type: 'circle', source: SRC_DISASTERS, filter: ['>', ['get', 'period'], 0], layout: { visibility: 'none' },
-    paint: {
-      'circle-color': 'rgba(0,0,0,0)', 'circle-radius': ['get', 'radius'], 'circle-stroke-color': ['get', 'color'],
-      'circle-stroke-width': 1.6, 'circle-stroke-opacity': 0,
-    },
-  },
+  // Sous le point : l'anneau s'élargit autour de lui.
+  pulseLayerSpec(LYR_DISASTER_PULSE, SRC_DISASTERS),
   {
     id: LYR_DISASTERS, type: 'circle', source: SRC_DISASTERS, layout: { 'circle-sort-key': ['get', 'sortKey'], visibility: 'none' },
     paint: {

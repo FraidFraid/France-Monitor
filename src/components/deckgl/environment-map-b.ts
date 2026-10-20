@@ -18,10 +18,14 @@ import {
 import { CAT_SECHERESSE_VIGILANCE_HEX, DROUGHT_UNAVAILABLE_HEX, ENV_NEUTRAL_HEX, QUAKE_ABROAD_HEX, QUAKE_WEAK_HEX } from '../layer-panel/environment-legend.ts';
 import { CAT_PORT_HEX } from '../layer-panel/traffic-legend.ts';
 import {
-  LYR_AIR_FILL, LYR_AIR_LINE, LYR_DROUGHT_FILL, LYR_DROUGHT_LINE, LYR_QUAKES, LYR_OUT_TELECOM_MAINT, LYR_QUAKE_LABEL, LYR_TIDE_GAUGES, LYR_WEATHER_FILL, SRC_AIR_QUALITY, SRC_DROUGHT,
+  LYR_AIR_FILL, LYR_AIR_LINE, LYR_DROUGHT_FILL, LYR_DROUGHT_LINE, LYR_QUAKES, LYR_OUT_TELECOM_MAINT, LYR_QUAKE_LABEL, LYR_QUAKE_PULSE, LYR_TIDE_GAUGES, LYR_WEATHER_FILL, SRC_AIR_QUALITY, SRC_DROUGHT,
   SRC_QUAKES, SRC_TIDE_GAUGES,
 } from './constants.ts';
 import { escapeHtml } from './format-utils.ts';
+import { PULSE_BY_LEVEL, pulseLayerSpec, pulseOffset } from './pulse.ts';
+
+/** Séisme pulsant (20/10/2026) : en France, magnitude 2,5 ou plus, survenu depuis moins de 24 h, relevé à jour. */
+const QUAKE_PULSE_WINDOW_MS = 24 * 3_600_000;
 
 type Fc<G extends GeoJSON.Geometry = GeoJSON.Geometry> = GeoJSON.FeatureCollection<G>;
 const TRANSPARENT = 'rgba(0, 0, 0, 0)';
@@ -141,13 +145,20 @@ function quakeBody(q: Quake, late: boolean, now: number): string {
 export function quakeFeatures(q: EarthquakesResponse | null, now: number): Fc<GeoJSON.Point> {
   if (!q) return fc([]);
   const late = isEnvironmentDataLate('bcsf', q.readAt, now);
-  return fc(q.quakes.map((x): GeoJSON.Feature<GeoJSON.Point> => ({
-    type: 'Feature', geometry: point(x.lon, x.lat),
-    properties: {
-      id: x.id, color: quakeHex(x, late), radius: quakeRadius(x.magnitude), sortKey: Math.round(x.magnitude * 10),
-      label: quakeInFrance(x) && x.magnitude >= 3 ? formatMagnitude(x.magnitude) : '', body: quakeBody(x, late, now),
-    },
-  })));
+  return fc(q.quakes.map((x): GeoJSON.Feature<GeoJSON.Point> => {
+    const level = quakeLevel(x.magnitude);
+    const at = Date.parse(x.at);
+    const pulse = !late && quakeInFrance(x) && level !== 'gris' && Number.isFinite(at) && now - at <= QUAKE_PULSE_WINDOW_MS ? PULSE_BY_LEVEL[level] : null;
+    return {
+      type: 'Feature', geometry: point(x.lon, x.lat),
+      properties: {
+        id: x.id, color: quakeHex(x, late), radius: quakeRadius(x.magnitude), sortKey: Math.round(x.magnitude * 10),
+        // Anneau pulsant : plus large et plus rapide quand la magnitude est forte (pulse.ts).
+        period: pulse?.period ?? 0, amp: pulse?.amp ?? 0, offset: pulseOffset(x.id, pulse?.period ?? 0), alpha: 1,
+        label: quakeInFrance(x) && x.magnitude >= 3 ? formatMagnitude(x.magnitude) : '', body: quakeBody(x, late, now),
+      },
+    };
+  }));
 }
 
 // ─── Marégraphes (§ 3.4), avec la couche Vigilance météo ───
@@ -199,6 +210,8 @@ export const ENV_B_LAYER_BEFORE: Readonly<Record<string, string>> = Object.fromE
 
 /** Points, au-dessus des couches de la phase A. */
 export const ENV_B_POINT_LAYERS: readonly LayerSpecification[] = [
+  // Sous les séismes : l'anneau s'élargit autour du point.
+  pulseLayerSpec(LYR_QUAKE_PULSE, SRC_QUAKES),
   {
     id: LYR_QUAKES, type: 'circle', source: SRC_QUAKES, layout: { 'circle-sort-key': SORT, visibility: 'none' },
     paint: { 'circle-color': COLOR, 'circle-radius': RADIUS, 'circle-opacity': 0.85, 'circle-stroke-width': 1, 'circle-stroke-color': OUTLINE_HEX },

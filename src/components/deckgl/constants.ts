@@ -796,6 +796,8 @@ export const LYR_AIR_LINE = 'air-quality-line';
 export const SRC_QUAKES = 'quakes-src';
 export const LYR_QUAKES = 'quakes';
 export const LYR_QUAKE_LABEL = 'quakes-label';
+/** Anneau pulsant des séismes récents en France (20/10/2026), animé image par image, hors des tables de tamisage. */
+export const LYR_QUAKE_PULSE = 'quakes-pulse';
 export const SRC_DISASTERS = 'disasters-src';
 export const LYR_DISASTERS = 'disasters';
 export const LYR_DISASTER_LABEL = 'disasters-label';

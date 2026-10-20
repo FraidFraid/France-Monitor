@@ -92,6 +92,26 @@ describe('séismes : cercles proportionnels à la magnitude, couleur par seuil, 
   });
 });
 
+describe('séismes : anneau pulsant (20/10/2026)', () => {
+  const at = (h: number): string => new Date(NOW - h * 3_600_000).toISOString();
+  const one = (over: Partial<Quake>) => {
+    const q = structuredClone(QUAKES_FIXTURE);
+    q.quakes = [{ ...q.quakes[6], id: 'p', at: at(1), ...over }];
+    return props(quakeFeatures(q, NOW), 0);
+  };
+  it('en France, récent (moins de 24 h), magnitude 2,5 ou plus : pulse, plus vite et plus large quand c’est fort', () => {
+    const vert = one({ magnitude: 2.6 });
+    const orange = one({ magnitude: 4.3 });
+    expect(Number(vert['period'])).toBeGreaterThan(Number(orange['period']));
+    expect(Number(orange['amp'])).toBeGreaterThan(Number(vert['amp']));
+  });
+  it('ancien, faible, hors de France : pas d’anneau', () => {
+    expect(one({ magnitude: 3.2, at: at(30) })['period']).toBe(0);
+    expect(one({ magnitude: 2.0 })['period']).toBe(0);
+    expect(one({ magnitude: 3.2, inFrance: false })['period']).toBe(0);
+  });
+});
+
 describe('marégraphes (avec la couche Vigilance météo)', () => {
   const vigilance = (color: 1 | 2): VigilanceResponse => ({
     updateTime: '2026-10-04T08:00:12Z', textsUpdateTime: null,
