@@ -86,3 +86,11 @@ describe('Onglet Environnement : pastilles cumulables (20/10/2026)', () => {
     expect(app).toContain("const inScope = this.uiV2 && (this.v2Theme === 'general' || inEnv);");
   });
 });
+
+describe('Tamisage des pictos (20/10/2026)', () => {
+  it('l’icône d’une couche de pictos est lue par getLayoutProperty (getLayer().layout ne porte pas les propriétés) ; texte tamisé avec', () => {
+    expect(deck).toContain("prop = this.map!.getLayoutProperty(layerId, 'icon-image') ? 'icon-opacity' : 'text-opacity';");
+    expect(deck).not.toContain("symbolLayout?.['icon-image']");
+    expect(deck).toContain('const textKey = `${layerId}::text`;');
+  });
+});

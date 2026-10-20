@@ -178,7 +178,7 @@ describe('sources, couches, survol', () => {
     expect(ENV_LAYERS.map((l) => l.id)).toEqual([
       'drought-fill', 'drought-line', 'air-quality-fill', 'air-quality-line',
       LYR_FOREST_DANGER_FILL, LYR_FOREST_DANGER_LINE, LYR_FIRES_ABROAD, LYR_FLOOD_STATIONS, LYR_WEATHER_ICONS, LYR_RADAR_PICK,
-      'quakes', 'quakes-label', 'tide-gauges', 'ems-zones-fill', 'ems-zones-line', 'ems-zones-label', 'disasters', 'disasters-label',
+      'quakes', 'quakes-label', 'tide-gauges', 'ems-zones-fill', 'ems-zones-line', 'ems-zones-label', 'disasters-pulse', 'disasters', 'disasters-label',
     ]);
     expect(ENV_LAYERS.every((l) => (l.layout as { visibility?: string } | undefined)?.visibility === 'none')).toBe(true);
     expect(ENV_SOURCE_IDS).toHaveLength(10);

@@ -799,6 +799,8 @@ export const LYR_QUAKE_LABEL = 'quakes-label';
 export const SRC_DISASTERS = 'disasters-src';
 export const LYR_DISASTERS = 'disasters';
 export const LYR_DISASTER_LABEL = 'disasters-label';
+/** Anneau pulsant des alertes en cours (20/10/2026), animé image par image, hors des tables de tamisage. */
+export const LYR_DISASTER_PULSE = 'disasters-pulse';
 export const SRC_PROTESTS = 'protests-src';
 export const LYR_PROTESTS = 'protests';
 export const LYR_PROTEST_LABEL = 'protests-label';

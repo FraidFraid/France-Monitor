@@ -345,16 +345,16 @@ export const DISASTERS_LEGEND: LegendCategory = {
   title: 'Catastrophes (GDACS)',
   items: [
     { id: 'disaster-header', label: 'Alertes GDACS des 7 derniers jours', color: B_HEADER_HEX, isHeader: true },
-    { id: 'disaster-rouge', label: 'Alerte rouge, territoire français', color: levelHex('rouge'), shape: 'circle' },
-    { id: 'disaster-orange', label: 'Alerte orange, territoire français', color: levelHex('orange'), shape: 'circle' },
-    { id: 'disaster-vert', label: 'Alerte verte, territoire français', color: levelHex('vert'), shape: 'circle' },
-    { id: 'disaster-abroad', label: 'Alerte orange ou rouge hors de France', color: DISASTER_ABROAD_HEX, shape: 'circle' },
+    { id: 'disaster-rouge', label: 'Alerte rouge : point plus gros, pulsation rapide', color: levelHex('rouge'), shape: 'circle' },
+    { id: 'disaster-orange', label: 'Alerte orange', color: levelHex('orange'), shape: 'circle' },
+    { id: 'disaster-vert', label: 'Alerte verte : petit point, pulsation lente', color: levelHex('vert'), shape: 'circle' },
     { id: 'ems-zone', label: 'Zone cartographiée par Copernicus EMS (activation en cours)', color: EMS_ZONE_HEX, shape: 'zone' },
   ],
   source: { label: 'GDACS (ONU, Commission européenne)' },
   refresh: { label: `Relève toutes les 10${NBSP}min` },
   notes: [
     'Métropole, outre-mer et collectivités du Pacifique. Alertes calculées par modèle, pas une vigilance officielle française.',
+    'Couleur et taille selon l’urgence ; anneau pulsant : alerte en cours. Hors de France : point plus petit et plus pâle.',
     'Copernicus EMS : cartographie satellite d’urgence demandée par l’État (zones des activations en cours).',
   ],
 };

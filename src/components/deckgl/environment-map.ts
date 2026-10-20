@@ -31,7 +31,7 @@ import { deptCodeToId, escapeHtml } from './format-utils.ts';
 
 export { airDeptFeatures, droughtDeptFeatures, quakeFeatures, tideGaugeFeatures } from './environment-map-b.ts';
 export { envBReshowPaints, placeEnvBPoints, type EnvBData, type EnvBLayerState } from './environment-map-b.ts';
-export { disasterFeatures, placeDisasterPoints } from './environment-map-disasters.ts';
+export { disasterFeatures, disasterPulsePaint, placeDisasterPoints } from './environment-map-disasters.ts';
 
 type Fc<G extends GeoJSON.Geometry = GeoJSON.Geometry> = GeoJSON.FeatureCollection<G>;
 export type EnvironmentMapLayer = 'environmental' | 'floods' | 'weatherRadar' | 'fires' | 'drought' | 'airQuality' | 'earthquakes' | 'disasters';

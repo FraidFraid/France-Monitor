@@ -3,10 +3,10 @@
 import { describe, expect, it } from 'vitest';
 import type { DisasterAlert, DisastersResponse } from '../../types/index.ts';
 import { levelHex } from '../../services/vigilance.ts';
-import { DISASTER_ABROAD_HEX, ENV_NEUTRAL_HEX } from '../layer-panel/environment-legend.ts';
-import { DISASTER_LAYER_KEYS, disasterFeatures } from './environment-map-disasters.ts';
+import { ENV_NEUTRAL_HEX } from '../layer-panel/environment-legend.ts';
+import { DISASTER_LAYERS, DISASTER_LAYER_KEYS, disasterFeatures, disasterPulsePaint } from './environment-map-disasters.ts';
 import { ENV_LAYER_KEYS, ENV_SOURCE_IDS, envTooltipHtml } from './environment-map.ts';
-import { LYR_DISASTERS, LYR_DISASTER_LABEL, SRC_DISASTERS } from './constants.ts';
+import { LYR_DISASTERS, LYR_DISASTER_LABEL, LYR_DISASTER_PULSE, SRC_DISASTERS } from './constants.ts';
 
 const NOW = Date.parse('2026-10-12T08:00:00Z');
 const a = (over: Partial<DisasterAlert>): DisasterAlert => ({
@@ -16,10 +16,10 @@ const a = (over: Partial<DisasterAlert>): DisasterAlert => ({
 const body = (alerts: DisasterAlert[], readAt = '2026-10-12T07:55:00.000Z'): DisastersResponse => ({ readAt, alerts, errors: [] });
 
 describe('disasterFeatures', () => {
-  it('[lng, lat] ; couleur L1 en France, gris ailleurs, neutre en retard ; étiquette sur sol français seulement', () => {
+  it('[lng, lat] ; couleur du niveau partout (gradation par urgence), neutre en retard ; étiquette sur sol français seulement', () => {
     const fc = disasterFeatures(body([a({}), a({ id: 'EQ-2', level: 'orange', frenchTerritory: null, countries: ['PAN'] })]), NOW);
     expect(fc.features[0]?.geometry.coordinates).toEqual([-61.5, 16.2]);
-    expect(fc.features.map((f) => f.properties?.['color'])).toEqual([levelHex('rouge'), DISASTER_ABROAD_HEX]);
+    expect(fc.features.map((f) => f.properties?.['color'])).toEqual([levelHex('rouge'), levelHex('orange')]);
     expect(fc.features.map((f) => f.properties?.['label'])).toEqual(['Cyclone', '']);
     const late = disasterFeatures(body([a({})], '2026-10-12T07:00:00.000Z'), NOW);
     expect(late.features[0]?.properties?.['color']).toBe(ENV_NEUTRAL_HEX);
@@ -46,10 +46,37 @@ describe('contexte européen et textes français', () => {
       name: 'Drought in Austria, France', severity: 'Medium impact for agricultural drought in 1759971 km2',
     });
     const [f] = disasterFeatures(body([drought]), NOW).features;
-    expect([f?.properties?.['color'], f?.properties?.['label']]).toEqual([DISASTER_ABROAD_HEX, '']);
+    expect([f?.properties?.['color'], f?.properties?.['label'], f?.properties?.['alpha']]).toEqual([levelHex('orange'), '', 0.7]);
     const html = envTooltipHtml(LYR_DISASTERS, f?.properties ?? {}) ?? '';
     expect(html).toContain('Sécheresse agricole, impact moyen');
     expect(html).toContain('Contexte européen');
     expect(html).not.toMatch(/Drought|km2/);
+  });
+});
+
+describe('gradation par urgence et pulsation (20/10/2026)', () => {
+  const props = (x: DisasterAlert, readAt?: string) => disasterFeatures(body([x], readAt), NOW).features[0]?.properties ?? {};
+  it('petit point, plus gros et plus vite pulsant quand l’alerte est grave ; hors de France plus petit et plus pâle', () => {
+    const rouge = props(a({}));
+    const orange = props(a({ level: 'orange' }));
+    const vert = props(a({ level: 'vert' }));
+    expect([rouge['radius'], orange['radius'], vert['radius']]).toEqual([6, 5, 4]);
+    expect(Number(rouge['period'])).toBeLessThan(Number(orange['period']));
+    expect(Number(orange['period'])).toBeLessThan(Number(vert['period']));
+    expect(Number(rouge['amp'])).toBeGreaterThan(Number(vert['amp']));
+    const abroad = props(a({ frenchTerritory: null, countries: ['PAN'] }));
+    expect([abroad['radius'], abroad['alpha']]).toEqual([4.5, 0.7]);
+  });
+  it('pas de pulsation pour une alerte terminée ni un relevé en retard', () => {
+    expect(props(a({ current: false }))['period']).toBe(0);
+    expect(props(a({}), '2026-10-12T07:00:00.000Z')['period']).toBe(0);
+  });
+  it('anneau sous le point, filtré sur les alertes pulsantes ; peinture : rayon qui grandit, opacité qui s’efface, tamisage compris', () => {
+    expect(DISASTER_LAYERS.map((l) => l.id).slice(0, 2)).toEqual([LYR_DISASTER_PULSE, LYR_DISASTERS]);
+    // Hors des tables de tamisage : il suit le tamisage de la couche par son facteur.
+    expect(DISASTER_LAYER_KEYS.disasters).not.toContain(LYR_DISASTER_PULSE);
+    const p = disasterPulsePaint(1000, 0.15);
+    expect(JSON.stringify(p.opacity)).toContain('0.1275');
+    expect(JSON.stringify(p.radius)).toContain('"amp"');
   });
 });
