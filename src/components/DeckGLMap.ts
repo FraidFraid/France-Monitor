@@ -218,6 +218,7 @@ import {
   SRC_FLOOD_ASSETS,
   LYR_EXPOSURE,
   LYR_FLOOD_ASSETS,
+  LYR_FLOOD_ZONES,
   LYR_WEBCAM_CLUSTER,
   SRC_FLUX,
   LYR_FLUX_LINES,
@@ -4823,7 +4824,9 @@ export class DeckGLMap {
       const isTarget = activeLayers.includes(layerId);
       // Couche mise en avant à 100 %, les autres tamisées.
       // Courbe sur le zoom atténuée palier par palier (MapLibre refuse « * » autour du zoom), le reste multiplié.
-      this.map!.setPaintProperty(layerId, prop, isTarget ? fullOpacity(orig) : dimOpacity(orig, 0.15));
+      // Zones inondables : un fond sous les tronçons, gardé translucide même mis en avant (sinon il couvrait la carte).
+      const boost = isTarget && layerId !== LYR_FLOOD_ZONES;
+      this.map!.setPaintProperty(layerId, prop, boost ? fullOpacity(orig) : isTarget ? orig : dimOpacity(orig, 0.15));
     };
 
     allLegendLayers.forEach(layerId => {

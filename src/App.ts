@@ -643,6 +643,9 @@ const GENERAL_WATCH_POLLED: ReadonlyArray<keyof MapLayers> = ['outagesElec', 'ou
 /** Panneaux de module : ne comptent pas comme « couche intérieure » pour Échap. */
 const MODULE_PANEL_SELECTOR = '[class*="-panel-modal"], .fm-floating-panel';
 
+/** Délai de l'aperçu au survol d'une pastille (évite le clignotement en glissant d'une pastille à l'autre). */
+const PASTILLE_PREVIEW_DELAY_MS = 120;
+
 const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
   { id: 'envBrief', label: 'En bref', icon: 'target', layerKeys: ['envBrief'] },
   { id: 'brief', label: 'En bref', icon: 'target', layerKeys: ['brief'] },
@@ -2618,11 +2621,17 @@ export class App {
       if (ev.pointerType === 'touch') return;
       const chip = ev.target instanceof Element ? ev.target.closest<HTMLElement>('.floating-panel-switcher__chip[data-panel-key]') : null;
       const key = chip?.dataset['panelKey'] ?? null;
-      this.setEnergyFocusPreview(key && isEnergyLayerKey(key) ? key : null);
-      // « En bref » ne dessine rien : son survol ne tamise pas la carte.
-      this.setGeneralFocusPreview(key && key !== 'brief' && key !== 'envBrief' && !isEnergyLayerKey(key) ? key as keyof MapLayers : null);
+      // Aperçu après un court arrêt de la souris (20/10/2026) : en glissant d'une pastille à l'autre, les espaces entre pastilles
+      // (aucun aperçu, carte entière) et les pastilles traversées (Vigilance météo à 100 %) faisaient clignoter la carte.
+      this.schedulePastillePreview(() => {
+        this.setEnergyFocusPreview(key && isEnergyLayerKey(key) ? key : null);
+        // « En bref » ne dessine rien : son survol ne tamise pas la carte.
+        this.setGeneralFocusPreview(key && key !== 'brief' && key !== 'envBrief' && !isEnergyLayerKey(key) ? key as keyof MapLayers : null);
+      });
     });
-    floatingPanelSwitcher.addEventListener('pointerleave', () => { this.setEnergyFocusPreview(null); this.setGeneralFocusPreview(null); });
+    floatingPanelSwitcher.addEventListener('pointerleave', () => {
+      this.schedulePastillePreview(() => { this.setEnergyFocusPreview(null); this.setGeneralFocusPreview(null); });
+    });
     // La largeur de la carte change la place disponible (repli en icônes) et donc le décalage des panneaux.
     this.addGlobalListener(window, 'resize', () => this.layoutFloatingPanelSwitcher());
     // v2 : la zone carte change de taille sans que la fenêtre bouge (tiroir ouvert ou fermé, onglet Carte du mobile).
@@ -6249,6 +6258,14 @@ export class App {
   private generalFocusActive: Array<keyof MapLayers> = [];
   private generalFocusPreview: keyof MapLayers | null = null;
   private generalFocusShown = '';
+
+  private pastillePreviewTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Survol des pastilles : seul le dernier aperçu demandé s'applique, après 120 ms sans mouvement vers une autre pastille. */
+  private schedulePastillePreview(apply: () => void): void {
+    if (this.pastillePreviewTimer !== null) clearTimeout(this.pastillePreviewTimer);
+    this.pastillePreviewTimer = setTimeout(() => { this.pastillePreviewTimer = null; apply(); }, PASTILLE_PREVIEW_DELAY_MS);
+  }
 
   private setGeneralFocusPreview(key: keyof MapLayers | null): void {
     if (key === this.generalFocusPreview) return;

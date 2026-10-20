@@ -8453,6 +8453,8 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 }
 .wcw.is-min { resize: none; }
 .wcw.is-dragging { opacity: 0.92; user-select: none; }
+/* Pendant le glissement, les directs (iframes) n'avalent pas les mouvements de la souris. */
+.wcw.is-dragging iframe { pointer-events: none; }
 .wcw-head {
   display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; flex: none;
   background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); cursor: move; touch-action: none; user-select: none;

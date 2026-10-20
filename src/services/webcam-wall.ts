@@ -109,11 +109,12 @@ export function moveOnWall(s: WallState, id: string, delta: -1 | 1): WallState {
 }
 
 /** Garde la fenêtre dans la zone visible (au moins l'en-tête attrapable) et pas plus grande qu'elle. */
-export function clampRect(r: WallRect, viewW: number, viewH: number): WallRect {
+export function clampRect(r: WallRect, viewW: number, viewH: number, minY = 0): WallRect {
   const w = Math.min(Math.max(WALL_MIN_W, r.w), Math.max(WALL_MIN_W, viewW - 16));
-  const h = Math.min(Math.max(WALL_MIN_H, r.h), Math.max(WALL_MIN_H, viewH - 16));
+  const h = Math.min(Math.max(WALL_MIN_H, r.h), Math.max(WALL_MIN_H, viewH - minY - 16));
   const x = Math.min(Math.max(0, r.x), Math.max(0, viewW - w));
-  const y = Math.min(Math.max(0, r.y), Math.max(0, viewH - 40));
+  // `minY` : bas du bandeau de l'application ; la barre de titre (poignée) ne passe jamais dessous (20/10/2026).
+  const y = Math.min(Math.max(minY, r.y), Math.max(minY, viewH - 40));
   return { x, y, w, h };
 }
 

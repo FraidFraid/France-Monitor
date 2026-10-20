@@ -14,9 +14,8 @@ export const FIT_MARGIN_PX = 24;
 const MIN_FREE_SHARE = 0.4;
 
 /**
- * Marges dues aux éléments posés sur la carte. Un élément large (plus de 60 % de la largeur de la carte) est une bande : il
- * réserve le haut ou le bas selon sa position ; sinon il réserve la gauche ou la droite. Un élément hors de la carte ne compte
- * pas. Les marges sont bornées pour laisser au moins 40 % de la carte en largeur et en hauteur.
+ * Marges dues aux éléments posés sur la carte. Chaque élément réserve le côté (haut, bas, gauche ou droite) qui retire le moins
+ * de surface à la carte. Un élément hors de la carte ne compte pas. Les marges sont bornées pour laisser au moins 40 % de la carte en largeur et en hauteur.
  */
 export function overlayPadding(map: Rect, overlays: readonly Rect[], margin = FIT_MARGIN_PX): Padding {
   const pad: Padding = { top: 0, right: 0, bottom: 0, left: 0 };
@@ -30,14 +29,19 @@ export function overlayPadding(map: Rect, overlays: readonly Rect[], margin = FI
     const top = Math.max(o.top, map.top);
     const bottom = Math.min(o.bottom, map.bottom);
     if (right <= left || bottom <= top) continue;
-    if (right - left > width * 0.6) {
-      if ((top + bottom) / 2 < cy) pad.top = Math.max(pad.top, bottom - map.top);
-      else pad.bottom = Math.max(pad.bottom, map.bottom - top);
-    } else if ((left + right) / 2 >= cx) {
-      pad.right = Math.max(pad.right, map.right - left);
-    } else {
-      pad.left = Math.max(pad.left, right - map.left);
-    }
+    // Le côté qui coûte le moins de carte (20/10/2026) : une barre de pastilles courte en haut réservait sinon toute la moitié
+    // gauche (Transports, barre à 43 % de la largeur), et le cadrage changeait d'un onglet à l'autre. À surface égale, la moitié
+    // où se trouve l'élément.
+    const options: Array<[keyof Padding, number]> = [
+      ['top', (bottom - map.top) * width], ['bottom', (map.bottom - top) * width],
+      ['left', (right - map.left) * height], ['right', (map.right - left) * height],
+    ];
+    const near = (side: keyof Padding): boolean => (side === 'top' ? (top + bottom) / 2 < cy : side === 'bottom' ? (top + bottom) / 2 >= cy
+      : side === 'left' ? (left + right) / 2 < cx : (left + right) / 2 >= cx);
+    options.sort((x, y) => x[1] - y[1] || Number(near(y[0])) - Number(near(x[0])));
+    const side = options[0]?.[0] ?? 'top';
+    const reserve = side === 'top' ? bottom - map.top : side === 'bottom' ? map.bottom - top : side === 'left' ? right - map.left : map.right - left;
+    pad[side] = Math.max(pad[side], reserve);
   }
   const out: Padding = { top: pad.top + margin, right: pad.right + margin, bottom: pad.bottom + margin, left: pad.left + margin };
   const squeeze = (a: keyof Padding, b: keyof Padding, size: number): void => {

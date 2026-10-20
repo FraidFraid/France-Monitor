@@ -33,6 +33,14 @@ describe('recadrage France et Corse', () => {
   });
 });
 
+describe('même cadrage dans tous les onglets', () => {
+  it('barre de pastilles courte en haut (Transports, 43 % de la largeur) : marge du haut, jamais toute la gauche', () => {
+    const map = { left: 320, top: 101, right: 1943, bottom: 1177 };
+    const p = overlayPadding(map, [{ left: 332, top: 113, right: 1024, bottom: 149 }]);
+    expect(p).toEqual({ top: 48 + M, right: M, bottom: M, left: M });
+  });
+});
+
 describe('carte qui déborde de la fenêtre', () => {
   it('conteneur de 1 257 px pour 973 visibles : la partie cachée s’ajoute à la marge du bas', () => {
     const p = visibleFitPadding({ left: 320, top: 101, right: 1224, bottom: 1257 }, { left: 0, top: 0, right: 1232, bottom: 973 }, []);

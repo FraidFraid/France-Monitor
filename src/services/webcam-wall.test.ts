@@ -52,6 +52,8 @@ describe('état du mur', () => {
   });
   it('fenêtre gardée à l’écran, colonnes automatiques selon la largeur', () => {
     expect(clampRect({ x: -50, y: 5000, w: 5000, h: 50 }, 1200, 800)).toEqual({ x: 0, y: 760, w: 1184, h: 200 });
+    // Sous le bandeau de l'application (56 px) : la barre de titre reste attrapable.
+    expect(clampRect({ x: 10, y: 20, w: 560, h: 420 }, 1200, 800, 56)).toEqual({ x: 10, y: 56, w: 560, h: 420 });
     expect(wallColumns(0, 1, 2000)).toBe(1);
     expect(wallColumns(0, 6, 560)).toBe(2);
     expect(wallColumns(0, 6, 2000)).toBe(4);

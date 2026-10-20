@@ -103,7 +103,7 @@ export function floodZoneFeatures(rings: ReadonlyArray<ReadonlyArray<[number, nu
 /** Remplissage léger posé sous les tracés de crue par l'appelant (source SRC_FLOOD_ZONES). */
 export const FLOOD_ZONE_LAYER: LayerSpecification = {
   id: LYR_FLOOD_ZONES, type: 'fill', source: SRC_FLOOD_ZONES, layout: { visibility: 'none' },
-  paint: { 'fill-color': FLOOD_ZONE_HEX, 'fill-opacity': 0.3, 'fill-outline-color': FLOOD_ZONE_HEX },
+  paint: { 'fill-color': FLOOD_ZONE_HEX, 'fill-opacity': 0.25, 'fill-outline-color': FLOOD_ZONE_HEX },
 };
 
 /**

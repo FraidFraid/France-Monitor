@@ -153,9 +153,15 @@ export class WebcamWall {
     return { x: Math.max(16, Math.round((vw - w) / 2) - 200), y: Math.max(80, vh - h - 80), w, h };
   }
 
+  /** Bas du bandeau de l'application : la fenêtre reste dessous, sa barre de titre toujours attrapable. */
+  private topInset(): number {
+    const header = document.querySelector<HTMLElement>('.header');
+    return header ? Math.max(0, Math.round(header.getBoundingClientRect().bottom)) : 0;
+  }
+
   private placeRoot(): void {
     if (!this.root) return;
-    const r = clampRect(this.state.rect ?? this.defaultRect(), window.innerWidth, window.innerHeight);
+    const r = clampRect(this.state.rect ?? this.defaultRect(), window.innerWidth, window.innerHeight, this.topInset());
     const s = this.root.style;
     s.left = `${r.x}px`;
     s.top = `${r.y}px`;
@@ -168,7 +174,7 @@ export class WebcamWall {
   private saveRectFromDom(): void {
     if (!this.root || this.state.minimized) return;
     const b = this.root.getBoundingClientRect();
-    const rect = clampRect({ x: b.left, y: b.top, w: b.width, h: b.height }, window.innerWidth, window.innerHeight);
+    const rect = clampRect({ x: b.left, y: b.top, w: b.width, h: b.height }, window.innerWidth, window.innerHeight, this.topInset());
     const prev = this.state.rect;
     if (prev && prev.x === rect.x && prev.y === rect.y && prev.w === rect.w && prev.h === rect.h) return;
     this.state = { ...this.state, rect };
@@ -183,15 +189,20 @@ export class WebcamWall {
     const dx = e.clientX - b.left;
     const dy = e.clientY - b.top;
     this.root.classList.add('is-dragging');
+    // Pointeur capturé : les directs YouTube (iframes) avalaient les mouvements dès que la souris passait dessus, la fenêtre restait
+    // bloquée (20/10/2026). Les iframes ignorent aussi la souris pendant le glissement (.wcw.is-dragging iframe).
+    const handle = target.closest<HTMLElement>('[data-wall-drag]');
+    try { handle?.setPointerCapture(e.pointerId); } catch { /* pointeur déjà relâché */ }
     const move = (ev: PointerEvent): void => {
       if (!this.root) return;
-      const r = clampRect({ x: ev.clientX - dx, y: ev.clientY - dy, w: b.width, h: b.height }, window.innerWidth, window.innerHeight);
+      const r = clampRect({ x: ev.clientX - dx, y: ev.clientY - dy, w: b.width, h: b.height }, window.innerWidth, window.innerHeight, this.topInset());
       this.root.style.left = `${r.x}px`;
       this.root.style.top = `${r.y}px`;
     };
     const up = (): void => {
       document.removeEventListener('pointermove', move);
       document.removeEventListener('pointerup', up);
+      document.removeEventListener('pointercancel', up);
       if (!this.root) return;
       this.root.classList.remove('is-dragging');
       const nb = this.root.getBoundingClientRect();
@@ -201,6 +212,7 @@ export class WebcamWall {
     };
     document.addEventListener('pointermove', move);
     document.addEventListener('pointerup', up);
+    document.addEventListener('pointercancel', up);
   }
 
   private onClick(e: Event): void {
@@ -253,7 +265,7 @@ export class WebcamWall {
       const chrome = this.root.offsetHeight - body.clientHeight;
       const wanted = chrome + contentH + parseFloat(bodyStyle.paddingTop) + parseFloat(bodyStyle.paddingBottom) + 2;
       const b = this.root.getBoundingClientRect();
-      const rect = clampRect({ x: b.left, y: b.top, w: b.width, h: wanted }, window.innerWidth, window.innerHeight);
+      const rect = clampRect({ x: b.left, y: b.top, w: b.width, h: wanted }, window.innerWidth, window.innerHeight, this.topInset());
       // Trop haute pour la place sous son bord haut : remontée plutôt que coupée.
       if (rect.y + rect.h > window.innerHeight - 8) rect.y = Math.max(0, window.innerHeight - 8 - rect.h);
       this.state = { ...this.state, rect };
