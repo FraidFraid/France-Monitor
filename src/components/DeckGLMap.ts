@@ -16,6 +16,9 @@ import { emsZoneFeatures } from './deckgl/environment-map-ems.ts';
 import { PROTEST_LAYERS, PROTEST_LAYER_IDS, protestFeatures } from './deckgl/protests-map.ts';
 import { CRIME_CITY_LAYERS, CRIME_LAYERS, CRIME_LAYER_IDS, crimeCityFeatures, crimeDeptFeatures } from './deckgl/crime-map.ts';
 import { WEBCAM_LAYERS, WEBCAM_LAYER_IDS, webcamFeatures, webcamSourceSpec } from './deckgl/webcams-map.ts';
+import { EXPOSURE_LAYERS, EXPOSURE_LAYER_IDS, exposureFeatures, exposureSourceSpec } from './deckgl/exposure-map.ts';
+import { FRANCE_METRO_BOUNDS, visibleFitPadding, type Rect } from './deckgl/france-fit.ts';
+import type { ExposureResult } from '../services/environment-exposure.ts';
 import { FLUX_LAYERS, FLUX_LAYER_IDS, fluxFeatures, fluxSourceSpec, type FluxInstant, type FluxOtherEvent } from './deckgl/flux-pietons-map.ts';
 import type { FluxFeature } from '../services/flux-pietons.ts';
 import type { FluxPhase } from '../types/index.ts';
@@ -197,6 +200,8 @@ import {
   SRC_CRIME_DEPTS,
   SRC_WEBCAMS,
   LYR_WEBCAMS,
+  SRC_EXPOSURE,
+  LYR_EXPOSURE,
   LYR_WEBCAM_CLUSTER,
   SRC_FLUX,
   LYR_FLUX_LINES,
@@ -371,6 +376,33 @@ class SatelliteBasemapControl {
   }
 }
 
+/** Bouton « Recadrer la France et la Corse » (20/10/2026), au-dessus du zoom. */
+class FranceFitControl {
+  private _container: HTMLElement | null = null;
+  private _map: DeckGLMap;
+
+  constructor(map: DeckGLMap) { this._map = map; }
+
+  onAdd(_maplibre: maplibregl.Map): HTMLElement {
+    this._container = document.createElement('div');
+    this._container.className = 'maplibregl-ctrl maplibregl-ctrl-group france-fit-ctrl';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'france-fit-btn';
+    btn.title = 'Recadrer la France et la Corse dans la partie visible de la carte';
+    btn.setAttribute('aria-label', 'Recadrer la France et la Corse');
+    btn.innerHTML = fmIcon('maximize', { size: 16 });
+    btn.addEventListener('click', () => this._map.fitFrance());
+    this._container.appendChild(btn);
+    return this._container;
+  }
+
+  onRemove(): void {
+    this._container?.remove();
+    this._container = null;
+  }
+}
+
 // Point d'infrastructure enrichi des champs de production électrique (nucléaire RTE, etc.),
 // optionnels car absents des points génériques (gaz, dépôts…).
 type InfrastructureRenderPoint = InfrastructurePoint & {
@@ -386,6 +418,16 @@ const ENERGY_FLOW_DASH_SEQ: ReadonlyArray<number[]> = [[0, 4, 3], [0.5, 4, 2.5],
 
 /** Catégorie interne de setLegendHover : les pastilles Énergie allumées. */
 const ENERGY_FOCUS_CATEGORY = 'energy-focus';
+/** Pastilles mises en avant hors Énergie (Vue générale, onglet Environnement) : union de leurs calques. */
+const GENERAL_FOCUS_CATEGORY = 'general-focus';
+/**
+ * Images (raster) des pastilles Environnement, hors ENV_LAYER_KEYS (ajoutées à la demande) : tamisées avec leur pastille (20/10/2026 :
+ * l'image radar restait vive sous les autres pastilles).
+ */
+const ENV_RASTER_LAYERS: Readonly<Record<'weatherRadar' | 'fires', readonly string[]>> = {
+  weatherRadar: [RADAR_2D_LAYER_ID, ECHO_TOPS_LAYER_ID],
+  fires: [LYR_MODIS, MTG_FRP_LAYER_ID],
+};
 
 /** Calques de toutes les couches Énergie, atténués au survol d'une pastille (sans doublon : les flèches sont partagées). */
 const ENERGY_FOCUS_ALL: readonly string[] = [...new Set(Object.values(ENERGY_FOCUS_LAYERS).flat())];
@@ -503,6 +545,8 @@ export class DeckGLMap {
   private onCrimeCityClick: ((cityCode: string) => void) | null = null;
   /** Webcams : recensement statique, points regroupés aux petites échelles, infobulle au survol, clic relayé à App.ts (fiche). */
   private webcamsData: WebcamsDataset | null = null;
+  private exposureData: ExposureResult | null = null;
+  private exposureHoverPopup: maplibregl.Popup | null = null;
   private webcamHoverPopup: maplibregl.Popup | null = null;
   private webcamHoverShown = false;
   private onWebcamClick: ((id: string) => void) | null = null;
@@ -739,6 +783,16 @@ export class DeckGLMap {
       'bottom-right',
     );
     this.map.addControl(new SatelliteBasemapControl(this), 'top-right');
+    // Ajouté après le zoom : MapLibre empile les contrôles du bas vers le haut, le bouton se place donc au-dessus.
+    this.map.addControl(new FranceFitControl(this), 'bottom-right');
+    // Cadrage « France » accroché : suivi de la taille de la carte ; tout déplacement ou zoom à la main le décroche.
+    this.map.on('movestart', (e: { originalEvent?: unknown }) => { if (e.originalEvent) this.franceFitSticky = false; });
+    if (typeof ResizeObserver !== 'undefined') {
+      this.franceFitObserver = new ResizeObserver(() => this.refitFrance());
+      this.franceFitObserver.observe(this.container);
+    }
+    // Le conteneur peut déborder de la fenêtre : sa taille ne change pas toujours avec elle, d'où l'écoute de la fenêtre aussi.
+    window.addEventListener('resize', () => this.refitFrance());
 
     await new Promise<void>((r) => this.map!.on('load', r));
     // Carte Sécurité et défense (17/10/2026) : script autonome, actif seulement dans l'onglet Sécurité et défense ; ?maquette=off la coupe.
@@ -855,6 +909,7 @@ export class DeckGLMap {
     this.map.addSource(SRC_CRIME_DEPTS, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_CRIME_CITIES, envSourceSpec());
     this.map.addSource(SRC_WEBCAMS, webcamSourceSpec());
+    this.map.addSource(SRC_EXPOSURE, exposureSourceSpec());
     this.map.addSource(SRC_FLUX, fluxSourceSpec());
 
     // NASA GIBS — dernière image VIIRS publiée (fumée / cicatrices)
@@ -2333,6 +2388,8 @@ export class DeckGLMap {
     for (const layer of WEBCAM_LAYERS) this.map.addLayer(layer);
     // Flux piétons (deckgl/flux-pietons-map.ts) : isochrones, rues, rassemblement, masqués jusqu'à setLayerVisibility.
     for (const layer of FLUX_LAYERS) this.map.addLayer(layer);
+    // Enjeux exposés (deckgl/exposure-map.ts, onglet Environnement) : au-dessus de tout, masqués jusqu'à setLayerVisibility.
+    for (const layer of EXPOSURE_LAYERS) this.map.addLayer(layer);
 
     // Séismes et marégraphes (phase B) au-dessus de toutes les surfaces : ajoutés ici, sous la première couche de points qui suit la dernière surface.
     placeEnvBPoints(this.map);
@@ -2633,6 +2690,7 @@ export class DeckGLMap {
     this.initProtestsInteractions();
     this.initCrimeInteractions();
     this.initWebcamsInteractions();
+    this.initExposureInteractions();
     this.initFluxInteractions();
 
 
@@ -4556,17 +4614,72 @@ export class DeckGLMap {
    * Vue générale (19/10/2026) : pastille mise en avant, retenue ici comme les pastilles Énergie, pour qu'un retour à zéro (fin d'un
    * survol de légende, mise en avant Énergie vidée) la rétablisse au lieu de l'effacer.
    */
-  setGeneralFocus(key: string | null): void {
-    this.generalFocusKey = key;
+  setGeneralFocus(keys: readonly string[]): void {
+    this.generalFocusKeys = [...keys];
     this.setLegendHover(null);
   }
-  private generalFocusKey: string | null = null;
+  /** Pastilles mises en avant hors Énergie (Vue générale : une ; onglet Environnement : cumulables, 20/10/2026). */
+  private generalFocusKeys: string[] = [];
+
+  /** Calques d'une catégorie de légende ou d'une pastille (vide : catégorie sans dessin sur la carte). */
+  private legendCategoryLayers(categoryId: string): string[] {
+    if (categoryId === ENERGY_FOCUS_CATEGORY) {
+      return energyFocusLayersOf(this.energyFocusKeys);
+    } else if (isEnergyLayerKey(categoryId)) {
+      return [...ENERGY_FOCUS_LAYERS[categoryId]];
+    } else if (categoryId === 'health') {
+      return [LYR_HEALTH_ALERT_FILL, LYR_HEALTH_ALERT_LINE];
+    } else if (categoryId === 'healthApl') {
+      return [LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE];
+    } else if (categoryId === 'healthOscour') {
+      return [LYR_HEALTH_URG_FILL, LYR_HEALTH_URG_LINE];
+    } else if (categoryId === 'hospitals') {
+      return [LYR_HOSPITALS];
+    } else if (categoryId === 'outagesElec') {
+      return [...OUT_LAYER_KEYS.outagesElec];
+    } else if (categoryId === 'outagesTelecom') {
+      return [...OUT_LAYER_KEYS.outagesTelecom];
+    } else if (categoryId === 'outagesInternet') {
+      return [...OUT_LAYER_KEYS.outagesInternet];
+    } else if (categoryId === 'outagesCloud') {
+      return [...OUT_LAYER_KEYS.outagesCloud];
+    } else if (categoryId === 'protests') {
+      return [...PROTEST_LAYER_IDS];
+    } else if (categoryId === 'crime') {
+      return [...CRIME_LAYER_IDS];
+    } else if (categoryId === 'webcams') {
+      return [...WEBCAM_LAYER_IDS];
+    } else if (categoryId === 'envBrief') {
+      return [...EXPOSURE_LAYER_IDS];
+    } else if (categoryId === 'pedestrianFlows') {
+      return [...FLUX_LAYER_IDS];
+    } else if (categoryId === 'trafficRoad') {
+      return [LYR_TRAFFIC, ...TRAFFIC_LAYER_KEYS.trafficRoad];
+    } else if (categoryId === 'trafficAir') {
+      return [...TRAFFIC_LAYER_KEYS.trafficAir];
+    } else if (categoryId === 'trafficRail') {
+      return [...TRAFFIC_LAYER_KEYS.trafficRail, LYR_TRAIN_ROUTE, LYR_TRAIN_STATIONS];
+    } else if (categoryId === 'trafficMaritime') {
+      return [...TRAFFIC_LAYER_KEYS.trafficMaritime];
+    } else if (categoryId === 'environmental') {
+      return [...ENV_LAYER_KEYS.environmental];
+    } else if (categoryId === 'floods') {
+      return [...ENV_LAYER_KEYS.floods];
+    } else if (categoryId === 'weatherRadar') {
+      return [...ENV_LAYER_KEYS.weatherRadar, ...ENV_RASTER_LAYERS.weatherRadar];
+    } else if (categoryId === 'fires') {
+      return [...ENV_LAYER_KEYS.fires, ...FOREST_DANGER_LAYERS, ...ENV_RASTER_LAYERS.fires];
+    } else if (categoryId === 'drought' || categoryId === 'airQuality' || categoryId === 'earthquakes' || categoryId === 'disasters') {
+      return [...ENV_LAYER_KEYS[categoryId]];
+    }
+    return [];
+  }
 
   setLegendHover(categoryId: string | null): void {
     if (!this.map) return;
     // Sans survol en cours, la mise en avant des pastilles allumées s'applique (Énergie, sinon la pastille de la Vue générale).
     if (categoryId === null && this.energyFocusKeys.length > 0) categoryId = ENERGY_FOCUS_CATEGORY;
-    if (categoryId === null && this.generalFocusKey !== null) categoryId = this.generalFocusKey;
+    if (categoryId === null && this.generalFocusKeys.length > 0) categoryId = GENERAL_FOCUS_CATEGORY;
     const previousCategory = this.legendHoverCategory;
     this.legendHoverCategory = categoryId;
     const allLegendLayers = [
@@ -4575,7 +4688,7 @@ export class DeckGLMap {
       LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE,
       LYR_HOSPITALS,
       LYR_TRAFFIC, ...Object.values(TRAFFIC_LAYER_KEYS).flat(), LYR_TRAIN_ROUTE, LYR_TRAIN_STATIONS,
-      ...Object.values(ENV_LAYER_KEYS).flat(), ...FOREST_DANGER_LAYERS,
+      ...Object.values(ENV_LAYER_KEYS).flat(), ...FOREST_DANGER_LAYERS, ...Object.values(ENV_RASTER_LAYERS).flat(),
       // Pannes réseau : les quatre couches (et les maintenances télécoms) s'atténuent avec les autres au survol d'une légende.
       ...Object.values(OUT_LAYER_KEYS).flat(), OUT_MAINTENANCE_LAYER,
       // Énergie (spec 2026-10-16 § 7) : survol d'une pastille, seule sa couche reste vive.
@@ -4584,59 +4697,18 @@ export class DeckGLMap {
       ...CRIME_LAYER_IDS,
       ...WEBCAM_LAYER_IDS,
       ...FLUX_LAYER_IDS,
+      ...EXPOSURE_LAYER_IDS,
     ];
 
     let activeLayers: string[] = [];
-    if (categoryId === ENERGY_FOCUS_CATEGORY) {
-      activeLayers = energyFocusLayersOf(this.energyFocusKeys);
-    } else if (categoryId !== null && isEnergyLayerKey(categoryId)) {
-      activeLayers = [...ENERGY_FOCUS_LAYERS[categoryId]];
-    } else if (categoryId === 'health') {
-      activeLayers = [LYR_HEALTH_ALERT_FILL, LYR_HEALTH_ALERT_LINE];
-    } else if (categoryId === 'healthApl') {
-      activeLayers = [LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE];
-    } else if (categoryId === 'healthOscour') {
-      activeLayers = [LYR_HEALTH_URG_FILL, LYR_HEALTH_URG_LINE];
-    } else if (categoryId === 'hospitals') {
-      activeLayers = [LYR_HOSPITALS];
-    } else if (categoryId === 'outagesElec') {
-      activeLayers = [...OUT_LAYER_KEYS.outagesElec];
-    } else if (categoryId === 'outagesTelecom') {
-      activeLayers = [...OUT_LAYER_KEYS.outagesTelecom];
-    } else if (categoryId === 'outagesInternet') {
-      activeLayers = [...OUT_LAYER_KEYS.outagesInternet];
-    } else if (categoryId === 'outagesCloud') {
-      activeLayers = [...OUT_LAYER_KEYS.outagesCloud];
-    } else if (categoryId === 'protests') {
-      activeLayers = [...PROTEST_LAYER_IDS];
-    } else if (categoryId === 'crime') {
-      activeLayers = [...CRIME_LAYER_IDS];
-    } else if (categoryId === 'webcams') {
-      activeLayers = [...WEBCAM_LAYER_IDS];
-    } else if (categoryId === 'pedestrianFlows') {
-      activeLayers = [...FLUX_LAYER_IDS];
-    } else if (categoryId === 'trafficRoad') {
-      activeLayers = [LYR_TRAFFIC, ...TRAFFIC_LAYER_KEYS.trafficRoad];
-    } else if (categoryId === 'trafficAir') {
-      activeLayers = [...TRAFFIC_LAYER_KEYS.trafficAir];
-    } else if (categoryId === 'trafficRail') {
-      activeLayers = [...TRAFFIC_LAYER_KEYS.trafficRail, LYR_TRAIN_ROUTE, LYR_TRAIN_STATIONS];
-    } else if (categoryId === 'trafficMaritime') {
-      activeLayers = [...TRAFFIC_LAYER_KEYS.trafficMaritime];
-    } else if (categoryId === 'environmental') {
-      activeLayers = [...ENV_LAYER_KEYS.environmental];
-    } else if (categoryId === 'floods') {
-      activeLayers = [...ENV_LAYER_KEYS.floods];
-    } else if (categoryId === 'weatherRadar') {
-      activeLayers = [...ENV_LAYER_KEYS.weatherRadar];
-    } else if (categoryId === 'fires') {
-      activeLayers = [...ENV_LAYER_KEYS.fires, ...FOREST_DANGER_LAYERS];
-    } else if (categoryId === 'drought' || categoryId === 'airQuality' || categoryId === 'earthquakes' || categoryId === 'disasters') {
-      activeLayers = [...ENV_LAYER_KEYS[categoryId]];
+    if (categoryId === GENERAL_FOCUS_CATEGORY) {
+      activeLayers = [...new Set(this.generalFocusKeys.flatMap((k) => this.legendCategoryLayers(k)))];
+      // Pastille sans dessin sur la carte (Vigilance cyber : aucun lieu publié) : tout le reste se tamise.
+      if (activeLayers.length === 0) activeLayers = ['__aucun-calque__'];
+    } else if (categoryId !== null) {
+      activeLayers = this.legendCategoryLayers(categoryId);
     }
 
-    // Pastille de la Vue générale sans dessin sur la carte (Vigilance cyber : aucun lieu publié) : tout le reste se tamise.
-    if (categoryId !== null && categoryId === this.generalFocusKey && activeLayers.length === 0) activeLayers = ['__aucun-calque__'];
 
     const applyLegendDim = (layerId: string, prop: string, orig: unknown): void => {
       if (categoryId === null || activeLayers.length === 0) {
@@ -4797,6 +4869,73 @@ export class DeckGLMap {
       duration,
     });
   }
+
+  /** Cadrage « France » accroché (bouton) : recalculé tant que la carte n'a pas été déplacée à la main. */
+  private franceFitSticky = false;
+  private franceFitObserver: ResizeObserver | null = null;
+  private franceFitLast = '';
+  private franceFitFrame: number | null = null;
+
+  /** Marges du recadrage : partie de la carte à l'écran, privée de ce qui la recouvre. */
+  private franceFitPadding(r: DOMRect): { top: number; right: number; bottom: number; left: number } {
+    return visibleFitPadding({ left: r.left, top: r.top, right: r.right, bottom: r.bottom },
+      { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight }, this.mapOverlays());
+  }
+
+  /** Éléments posés sur la carte, mesurés pour les marges du recadrage (petits contrôles exclus). */
+  private mapOverlays(): Rect[] {
+    // Boutons du bas à droite (zoom, boussole, ce bouton) compris, la Corse passait dessous ; pas les crédits, trop larges.
+    const sel = ['.floating-panel-switcher', '#energy-focus-key', '#general-focus-key', '#mqs-focus-key', '#mqh-focus-key', '.lp.is-open', '.map-key',
+      '.maplibregl-ctrl-bottom-right .maplibregl-ctrl-group'];
+    const out: Rect[] = [];
+    for (const el of document.querySelectorAll<HTMLElement>(sel.join(','))) {
+      if (el.hidden || el.offsetParent === null) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width > 0 && r.height > 0) out.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+    }
+    return out;
+  }
+
+  /**
+   * Métropole et Corse dans la partie visible de la carte (marges = barre des pastilles, panneau ouvert, légendes), vue à plat
+   * et nord en haut. Le cadrage reste accroché : taille de la fenêtre ou panneaux qui changent le recalculent (refitFrance).
+   */
+  fitFrance(animate = true): void {
+    if (!this.map) return;
+    const r = this.container.getBoundingClientRect();
+    const padding = this.franceFitPadding(r);
+    this.franceFitSticky = true;
+    this.franceFitLast = `${Math.round(r.width)}x${Math.round(r.height)}|${padding.top},${padding.right},${padding.bottom},${padding.left}`;
+    const [w, s, e, n] = FRANCE_METRO_BOUNDS;
+    this.map.fitBounds([[w, s], [e, n]], { padding, bearing: 0, pitch: 0, duration: animate ? 900 : 0, essential: true });
+  }
+
+  /**
+   * Recadrage accroché : refait si la carte ou ce qui la recouvre a changé. Vérifié à l'image suivante puis 400 ms plus tard
+   * (un panneau qui s'ouvre termine son animation après coup).
+   */
+  refitFrance(): void {
+    if (!this.franceFitSticky) return;
+    const check = (): void => {
+      if (!this.franceFitSticky || !this.map) return;
+      const r = this.container.getBoundingClientRect();
+      const padding = this.franceFitPadding(r);
+      const key = `${Math.round(r.width)}x${Math.round(r.height)}|${padding.top},${padding.right},${padding.bottom},${padding.left}`;
+      if (key !== this.franceFitLast) this.fitFrance(false);
+    };
+    if (this.franceFitFrame === null) {
+      this.franceFitFrame = requestAnimationFrame(() => {
+        this.franceFitFrame = null;
+        check();
+      });
+    }
+    if (this.franceFitTimer !== null) clearTimeout(this.franceFitTimer);
+    this.franceFitTimer = setTimeout(() => {
+      this.franceFitTimer = null;
+      check();
+    }, 400);
+  }
+  private franceFitTimer: ReturnType<typeof setTimeout> | null = null;
 
   fitBounds(bounds: [number, number, number, number], padding = 60): void {
     if (!this.map) return;
@@ -7581,6 +7720,32 @@ export class DeckGLMap {
     });
   }
 
+  /** Enjeux exposés : croisement de l'onglet Environnement (null : vide la carte). */
+  updateExposureLayer(r: ExposureResult | null): void {
+    this.exposureData = r;
+    (this.map?.getSource(SRC_EXPOSURE) as maplibregl.GeoJSONSource | undefined)?.setData(exposureFeatures(r));
+    if (r === null) this.exposureHoverPopup?.remove();
+  }
+
+  /** Enjeux exposés : infobulle préparée et échappée au survol d'un enjeu. */
+  private initExposureInteractions(): void {
+    const map = this.map;
+    if (!map) return;
+    map.on('mousemove', LYR_EXPOSURE, (e) => {
+      const html = String(e.features?.[0]?.properties?.['body'] ?? '');
+      if (!html) return;
+      map.getCanvas().style.cursor = 'pointer';
+      const popup = this.exposureHoverPopup
+        ?? new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 10, maxWidth: '300px', className: 'dark-popup hm-hover' });
+      this.exposureHoverPopup = popup;
+      popup.setLngLat(e.lngLat).setHTML(`<div class="hm-tip">${html}</div>`).addTo(map);
+    });
+    map.on('mouseleave', LYR_EXPOSURE, () => {
+      map.getCanvas().style.cursor = '';
+      this.exposureHoverPopup?.remove();
+    });
+  }
+
   /** Webcams : recensement statique (null : vide la carte). */
   updateWebcamsLayer(data: WebcamsDataset | null): void {
     this.webcamsData = data;
@@ -8195,6 +8360,9 @@ export class DeckGLMap {
     for (const id of PROTEST_LAYER_IDS) this.setVis(id, vis(layers.protests ?? false));
     for (const id of CRIME_LAYER_IDS) this.setVis(id, vis(layers.crime ?? false));
     for (const id of WEBCAM_LAYER_IDS) this.setVis(id, vis(layers.webcams ?? false));
+    for (const id of EXPOSURE_LAYER_IDS) this.setVis(id, vis(layers.envBrief ?? false));
+    if (layers.envBrief) (this.map?.getSource(SRC_EXPOSURE) as maplibregl.GeoJSONSource | undefined)?.setData(exposureFeatures(this.exposureData));
+    else this.exposureHoverPopup?.remove();
     for (const id of FLUX_LAYER_IDS) this.setVis(id, vis(layers.pedestrianFlows ?? false));
     this.hideFluxHover();
     if (layers.pedestrianFlows) (this.map?.getSource(SRC_FLUX) as maplibregl.GeoJSONSource | undefined)?.setData(fluxFeatures(this.fluxData, this.fluxPhase, this.fluxInstant, this.fluxOthers));

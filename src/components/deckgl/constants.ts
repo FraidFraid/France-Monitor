@@ -806,6 +806,11 @@ export const SRC_WEBCAMS = 'webcams-src';
 export const LYR_WEBCAMS = 'webcams';
 export const LYR_WEBCAM_CLUSTER = 'webcams-cluster';
 export const LYR_WEBCAM_CLUSTER_COUNT = 'webcams-cluster-count';
+// Enjeux exposés (onglet Environnement, pastille En bref, 20/10/2026) : anneau du niveau du phénomène, disque du type d'enjeu.
+export const SRC_EXPOSURE = 'exposure-src';
+export const LYR_EXPOSURE_ZONES = 'exposure-zones';
+export const LYR_EXPOSURE = 'exposure-assets';
+export const LYR_EXPOSURE_LABEL = 'exposure-label';
 export const SRC_CRIME_DEPTS = 'crime-depts-src';
 export const SRC_CRIME_CITIES = 'crime-cities-src';
 export const LYR_CRIME_FILL = 'crime-fill';

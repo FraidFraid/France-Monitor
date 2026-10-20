@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { DisasterAlert, DisastersResponse, EmsActivation, EmsResponse } from '../../types/index.ts';
 import { visibleText } from './format.ts';
 import { renderLayerView } from './frame.ts';
-import { buildCatastrophesView } from './catastrophes.ts';
+import { buildCatastrophesView, disastersHeadLevel } from './catastrophes.ts';
 
 const NOW = Date.parse('2026-10-12T08:00:00Z');
 const a = (over: Partial<DisasterAlert>): DisasterAlert => ({
@@ -88,7 +88,7 @@ describe('correctifs de la revue finale', () => {
     expect(t).not.toMatch(/7 derniers/);
     expect(t).not.toContain('Country28');
     expect(html).toContain(`title="${long}"`);
-    expect(text(body([]))).toContain('7 derniers jours');
+    expect(text(body([]))).toContain('7\u00a0derniers jours');
   });
 });
 
@@ -112,8 +112,8 @@ describe('Copernicus EMS (spec 2026-10-12)', () => {
     expect(t).toContain('Inondation · France (Hexagone et Corse)');
     expect(t).toContain('EMSR866');
     expect(t).toContain('COGIC');
-    expect(t).toContain('14 cartes');
-    expect(t).toContain('83 890 hab. dans l’emprise');
+    expect(t).toContain('14\u00a0cartes');
+    expect(t).toContain('83\u202f890\u00a0hab. dans l’emprise');
     expect(t).toContain('Fiche Copernicus');
     expect(t).toContain('Fiche GDACS');
     expect(t).not.toContain('—');
@@ -170,5 +170,17 @@ describe('mineurs (12/10)', () => {
     const t = text(body([a({ id: 'EQ-9', type: 'seisme', level: 'orange', frenchTerritory: null, countries: ['PAN'], name: 'Earthquake in Panama' })]));
     expect(t).toContain('Séisme · Panama');
     expect(t).not.toContain('PAN');
+  });
+});
+
+describe('disastersHeadLevel (pastille de l’onglet Environnement)', () => {
+  it('même niveau que l’en-tête du panneau : rouge pour une alerte rouge en Guadeloupe, vert en temps calme', () => {
+    expect(disastersHeadLevel(body([a({})]), null, NOW)).toBe('rouge');
+    expect(disastersHeadLevel(body([]), null, NOW)).toBe('vert');
+  });
+  it('alerte hors territoire français : vert ; relevé en retard : n.d. ; aucune source : n.d.', () => {
+    expect(disastersHeadLevel(body([a({ frenchTerritory: null, countries: ['PAN'] })]), null, NOW)).toBe('vert');
+    expect(disastersHeadLevel(body([a({})], { readAt: '2026-10-12T06:00:00.000Z' }), null, NOW)).toBe('nd');
+    expect(disastersHeadLevel(null, null, NOW)).toBe('nd');
   });
 });

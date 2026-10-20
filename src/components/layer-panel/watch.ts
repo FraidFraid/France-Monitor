@@ -3,7 +3,7 @@
 // orange ou en rouge en ce moment (décision du 19/10/2026 : le jaune et les sources « n.d. » n'y figurent plus, leur onglet les montre).
 // Le niveau de chaque couche est celui de la pastille de son panneau (fonctions *HeadLevel partagées), jamais un calcul parallèle.
 import type {
-  AirQualityResponse, CloudOutagesResponse, CyberResponse, DroughtResponse, EarthquakesResponse, EcowattResponse, FiresResponse,
+  AirQualityResponse, CloudOutagesResponse, CyberResponse, DisastersResponse, DroughtResponse, EarthquakesResponse, EcowattResponse, EmsResponse, FiresResponse,
   FloodsResponse, FuelTensionDashboard, GnssResponse, InternetOutagesResponse, MapLayers, MilitaryResponse, NuclearState,
   PowerOutagesResponse, TelecomOutagesResponse, VigilanceResponse,
 } from '../../types/index.ts';
@@ -11,6 +11,7 @@ import { cloudHeadLevel } from './outages-cloud.ts';
 import { internetHeadLevel } from './outages-internet.ts';
 import { powerHeadLevel } from './outages-power.ts';
 import { droughtHeadLevel } from './secheresse.ts';
+import { disastersHeadLevel } from './catastrophes.ts';
 import { oilHeadLevel } from './oil.ts';
 import type { NationalHealthSummary } from './veille.ts';
 import { LEVEL_RANK, type VigilanceLevel } from '../../services/vigilance.ts';
@@ -49,6 +50,8 @@ export interface GeneralWatchInput {
   internet: Watched<InternetOutagesResponse>;
   cloud: Watched<CloudOutagesResponse>;
   drought: Watched<DroughtResponse>;
+  /** Catastrophes : GDACS et Copernicus EMS (20/10/2026) ; absent : couche non suivie (anciens appelants, tests). */
+  disasters?: Watched<{ gdacs: DisastersResponse | null; ems: EmsResponse | null }>;
   /** Niveau national de santé (veille sanitaire, urgences) ; le panneau Veille sanitaire le montre. */
   health: Watched<NationalHealthSummary>;
   gnss: GnssResponse | null;
@@ -66,7 +69,7 @@ export const GENERAL_SOCLE: ReadonlyArray<keyof MapLayers> = ['environmental', '
 /** Couches suivies en continu, sans que leur couche soit allumée (données chargées pour l'indice et les situations). */
 export const WATCHED_LAYERS: ReadonlyArray<keyof MapLayers> = [
   'environmental', 'floods', 'fires', 'earthquakes', 'airQuality', 'drought', 'outagesElec', 'outagesTelecom', 'outagesInternet',
-  'outagesCloud', 'powerGrid', 'nuclearFleet', 'oilNetwork', 'cyber', 'military', 'health',
+  'outagesCloud', 'powerGrid', 'nuclearFleet', 'oilNetwork', 'cyber', 'military', 'health', 'disasters',
 ];
 
 /**
@@ -100,6 +103,7 @@ export function watchLevels(input: GeneralWatchInput): Map<keyof MapLayers, Watc
   put('oilNetwork', input.fuel, (d) => oilHeadLevel(d, now));
   put('military', input.military, (d) => defenseHeadLevel(d, input.gnss, now));
   put('health', input.health, (d) => d?.level ?? 'nd');
+  if (input.disasters) put('disasters', input.disasters, (d) => disastersHeadLevel(d?.gdacs ?? null, d?.ems ?? null, now));
   return out;
 }
 

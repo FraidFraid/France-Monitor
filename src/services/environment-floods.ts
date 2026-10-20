@@ -16,9 +16,11 @@ export const FLOODS_TTL_MS = 8 * 60_000;
 export interface FloodsState { floods: SourceSlot<FloodsResponse> }
 
 const isPoint = (e: Record<string, unknown>): boolean => isStr(e.at) && isNum(e.value);
+const isForecastPoint = (e: Record<string, unknown>): boolean => isStr(e.at) && isNum(e.min) && isNum(e.mean) && isNum(e.max);
+const isForecast = (v: unknown): boolean => v === undefined || v === null || (isRecord(v) && isStr(v.producedAt) && listOf(v.points, isForecastPoint));
 const isStation = (e: Record<string, unknown>): boolean => isStr(e.code) && isStr(e.name) && isNumOrNull(e.lat) && isNumOrNull(e.lon)
   && isStrOrNull(e.lastAt) && (e.flowAt === undefined || isStrOrNull(e.flowAt)) && isNumOrNull(e.heightM) && isNumOrNull(e.flowM3s) && isNumOrNull(e.change1hM)
-  && listOf(e.heightSeries, isPoint) && listOf(e.flowSeries, isPoint);
+  && listOf(e.heightSeries, isPoint) && listOf(e.flowSeries, isPoint) && isForecast(e.forecast);
 const isSection = (e: Record<string, unknown>): boolean => isStr(e.id) && isStr(e.name) && isColorId(e.level)
   && isRecord(e.territory) && isStr(e.territory.code) && isStrOrNull(e.territory.name) && isStr(e.territory.url)
   && isMultiPath(e.path) && listOf(e.stations, isStation);

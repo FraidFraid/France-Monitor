@@ -96,10 +96,10 @@ describe('DeckGLMap : couches Trafics réécrites', () => {
     expect(deck).not.toMatch(/t === 30 \|\| t === 31|t === 55 \|\| t === 51|getShipTypeLabel/);
   });
   it('survol de légende : une catégorie par couche Trafics, rail compris', () => {
-    expect(deck).toContain('activeLayers = [LYR_TRAFFIC, ...TRAFFIC_LAYER_KEYS.trafficRoad];');
-    expect(deck).toContain('activeLayers = [...TRAFFIC_LAYER_KEYS.trafficAir];');
-    expect(deck).toContain('activeLayers = [...TRAFFIC_LAYER_KEYS.trafficRail, LYR_TRAIN_ROUTE, LYR_TRAIN_STATIONS];');
-    expect(deck).toContain('activeLayers = [...TRAFFIC_LAYER_KEYS.trafficMaritime];');
+    expect(deck).toContain('return [LYR_TRAFFIC, ...TRAFFIC_LAYER_KEYS.trafficRoad];');
+    expect(deck).toContain('return [...TRAFFIC_LAYER_KEYS.trafficAir];');
+    expect(deck).toContain('return [...TRAFFIC_LAYER_KEYS.trafficRail, LYR_TRAIN_ROUTE, LYR_TRAIN_STATIONS];');
+    expect(deck).toContain('return [...TRAFFIC_LAYER_KEYS.trafficMaritime];');
     // Contours colorés (anneau des signalements, aéroports, mouillages, urgences, arrêts) atténués avec leur couche.
     // Les contours des cercles Énergie (spec 2026-10-16 § 7) et de toutes les couches de la légende (stations Vigicrues, 19/10/2026)
     // suivent la même boucle.

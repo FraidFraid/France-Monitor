@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { computeHealthStatus } from '../api/_handlers/health-check.js';
+import { cdseState, computeHealthStatus } from '../api/_handlers/health-check.js';
 
 // Le cron d'ingestion tourne toutes les 30 min (Upstash QStash) : les seuils
 // doivent tolérer un tick manqué sans déclarer 'down' à tort.
@@ -25,5 +25,15 @@ describe('api/health-check · computeHealthStatus', () => {
     expect(computeHealthStatus(null, 10 * 60_000)).toBe('down');
     expect(computeHealthStatus(5 * 60_000, null)).toBe('degraded');
     expect(computeHealthStatus(null, null)).toBe('down');
+  });
+});
+
+describe('api/health-check · cdseState (identifiant NDWI, 20/10/2026)', () => {
+  it('accepté, refusé (identifiant expiré ou révoqué), injoignable', () => {
+    expect(cdseState(200)).toBe('ok');
+    expect(cdseState(401)).toBe('refused');
+    expect(cdseState(400)).toBe('refused');
+    expect(cdseState(503)).toBe('unreachable');
+    expect(cdseState(null)).toBe('unreachable');
   });
 });

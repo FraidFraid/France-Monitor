@@ -4557,6 +4557,9 @@ button.header-quality-link {
 .ef-title { font-weight: 600; margin-bottom: 6px; }
 .ef-row { display: flex; align-items: center; gap: 8px; padding: 1px 0; }
 .ef-dot { width: 10px; height: 10px; border-radius: 50%; flex: 0 0 10px; box-shadow: 0 0 0 1.5px #05060a; }
+/* Onglet Environnement (20/10/2026) : légendes cumulées côte à côte, ligne d'état (niveau, âge de la donnée) sous chaque légende. */
+#general-focus-key { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px; max-width: min(960px, calc(100vw - 32px)); }
+.ef-status { margin-top: 6px; padding-top: 5px; border-top: 1px solid #262a33; color: #a9adb8; white-space: nowrap; }
 
 /* Bulle unique de la carte Énergie (spec 2026-10-16 § 6) : pastille de filière, état en mots, valeurs, source. */
 .et-card { min-width: 200px; max-width: 280px; font-size: 12px; color: #e8e8ec; }
@@ -5866,6 +5869,9 @@ button.header-quality-link {
    ════════════════════════════════════════ */
 
 /* Satellite basemap toggle control (top-right map corner) */
+/* Bouton « Recadrer la France et la Corse » (20/10/2026), au-dessus du zoom. */
+.france-fit-ctrl .france-fit-btn { display: flex; align-items: center; justify-content: center; color: #1a1a1a; }
+.france-fit-ctrl .france-fit-btn svg { width: 16px; height: 16px; }
 .satellite-basemap-ctrl {
   margin-top: 10px !important;
   margin-right: 8px !important;

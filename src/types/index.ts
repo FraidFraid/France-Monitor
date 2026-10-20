@@ -131,6 +131,8 @@ export interface MapLayers {
   crime: boolean;
   /** Webcams publiques recensées (OSM, data.gouv.fr), état des liens vérifié au recensement (scripts/build-webcams.mjs). */
   webcams: boolean;
+  /** En bref de l'onglet Environnement : synthèse décideur et enjeux exposés aux phénomènes en cours (spec 2026-10-20). */
+  envBrief: boolean;
   /** Flux piétons : prévisions modélisées autour des rassemblements annoncés, publiées par flux_osint (data/flux-pietons/). */
   pedestrianFlows: boolean;
   stability: boolean;
@@ -2386,6 +2388,8 @@ export interface VigilanceResponse {
 export type FloodLevel = OfficialColorId;
 /** Point de série, valeur en unité SI (m ou m³/s). Aucun point inventé : un trou reste un trou. */
 export interface FloodSeriesPoint { at: string; value: number }
+/** Prévision de hauteur publiée par Vigicrues (service « previsions.json », Beta) : fourchette heure par heure, en m. */
+export interface FloodForecast { producedAt: string; points: Array<{ at: string; min: number; mean: number; max: number }> }
 export interface FloodStation {
   code: string;                        // « Y046401001 » (10 caractères)
   name: string;                        // « Vinca » (LbEntVigiCruInferieur)
@@ -2395,6 +2399,8 @@ export interface FloodStation {
   flowM3s: number | null;              // débit (Hub'Eau Q en L/s / 1000) ; null si la station ne publie pas Q
   flowAt?: string | null;              // date propre de la dernière mesure de débit (UTC) ; la hauteur et le débit peuvent différer
   change1hM: number | null;            // dernière hauteur moins celle d'une heure avant (à 10 min près) ; null si absente
+  /** Prévision Vigicrues (lot 3, 20/10/2026) ; null ou absente : aucune prévision publiée pour cette station. */
+  forecast?: FloodForecast | null;
   heightSeries: FloodSeriesPoint[];    // 48 h, un point par quart d'heure au plus
   flowSeries: FloodSeriesPoint[];      // [] sans débit
 }

@@ -54,10 +54,10 @@ describe('DeckGLMap : couches santé réécrites', () => {
     expect(deck).toContain('.setHTML(hospitalPopupHtml(site, this.hospitalsVintage))');
   });
   it('survol de légende : une catégorie par couche santé', () => {
-    expect(deck).toContain('activeLayers = [LYR_HEALTH_ALERT_FILL, LYR_HEALTH_ALERT_LINE];');
-    expect(deck).toContain('activeLayers = [LYR_HEALTH_URG_FILL, LYR_HEALTH_URG_LINE];');
-    expect(deck).toContain('activeLayers = [LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE];');
-    expect(deck).toContain('activeLayers = [LYR_HOSPITALS];');
+    expect(deck).toContain('return [LYR_HEALTH_ALERT_FILL, LYR_HEALTH_ALERT_LINE];');
+    expect(deck).toContain('return [LYR_HEALTH_URG_FILL, LYR_HEALTH_URG_LINE];');
+    expect(deck).toContain('return [LYR_HEALTH_APL_FILL, LYR_HEALTH_APL_LINE];');
+    expect(deck).toContain('return [LYR_HOSPITALS];');
   });
   it('MapContainer relaie les six méthodes', () => {
     for (const call of ['this.deckMap?.updateHealthAlerts(alerts, now);', 'this.deckMap?.updateHealthDepartments(syndromic, apl, now);',

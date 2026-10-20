@@ -4,6 +4,7 @@
  */
 
 import type { DeckGLMap } from './DeckGLMap.ts';
+import type { ExposureResult } from '../services/environment-exposure.ts';
 import type { EnergyKeyModel, EnergyLayerKey } from './deckgl/energy-map.ts';
 import type { EnergyState } from '../services/energy-state.ts';
 import type { Map as SVGMap } from './Map.ts';
@@ -73,6 +74,7 @@ export class MapContainer {
   private crimeIndicator: CrimeIndicatorKey | null = null;
   private onWebcamClick: ((id: string) => void) | null = null;
   private webcamsData: WebcamsDataset | null = null;
+  private exposureData: ExposureResult | null = null;
   private fluxData: { data: readonly FluxFeature[] | null; phase: FluxPhase; instant: FluxInstant | null; others: readonly FluxOtherEvent[] } | null = null;
   private onFluxEventClick: ((id: string) => void) | null = null;
   private onSovereigntyFeatureClick: ((layerId: string, props: Record<string, unknown>) => void) | null = null;
@@ -112,6 +114,7 @@ export class MapContainer {
     if (this.crimeData) this.deckMap.updateCrimeLayer(this.crimeData);
     if (this.onWebcamClick) this.deckMap.setOnWebcamClick(this.onWebcamClick);
     if (this.webcamsData) this.deckMap.updateWebcamsLayer(this.webcamsData);
+    if (this.exposureData) this.deckMap.updateExposureLayer(this.exposureData);
     if (this.fluxData) this.deckMap.updateFluxLayer(this.fluxData.data, this.fluxData.phase, this.fluxData.instant, this.fluxData.others);
     if (this.onFluxEventClick) this.deckMap.setOnFluxEventClick(this.onFluxEventClick);
     if (this.onRawMapClick) this.deckMap.setOnRawMapClick(this.onRawMapClick);
@@ -416,9 +419,9 @@ export class MapContainer {
     this.deckMap?.setLegendHover(categoryId);
   }
 
-  /** Vue générale : pastille mise en avant (survolée ou panneau ouvert), retenue par la carte ; null : aucune. */
-  setGeneralFocus(key: string | null): void {
-    this.deckMap?.setGeneralFocus(key);
+  /** Pastilles mises en avant hors Énergie (Vue générale : une ; Environnement : cumulables), retenues par la carte ; [] : aucune. */
+  setGeneralFocus(keys: readonly string[]): void {
+    this.deckMap?.setGeneralFocus(keys);
   }
 
   // ─── Events ───
@@ -608,6 +611,17 @@ export class MapContainer {
   setOnFluxEventClick(handler: (id: string) => void): void {
     this.onFluxEventClick = handler;
     this.deckMap?.setOnFluxEventClick(handler);
+  }
+
+  /** Cadrage « France et Corse » accroché : recalculé si ce qui recouvre la carte a changé (panneau ouvert ou fermé). */
+  refitFrance(): void {
+    this.deckMap?.refitFrance();
+  }
+
+  /** Enjeux exposés (pastille En bref de l'onglet Environnement) ; null : vide la carte. Gardé pour une carte créée après. */
+  updateExposureLayer(r: ExposureResult | null): void {
+    this.exposureData = r;
+    this.deckMap?.updateExposureLayer(r);
   }
 
   /** Webcams : recensement statique (gardé ici pour une carte créée après la lecture). */

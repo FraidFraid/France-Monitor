@@ -42,7 +42,7 @@ describe('Vue générale dynamique (12/10/2026)', () => {
   it('chaque couche suivie a une puce de panneau (FLOATING_PANEL_DEFS) : rien n’est suivi sans pouvoir être montré', () => {
     expect(WATCHED_LAYERS).toEqual([
       'environmental', 'floods', 'fires', 'earthquakes', 'airQuality', 'drought', 'outagesElec', 'outagesTelecom', 'outagesInternet',
-      'outagesCloud', 'powerGrid', 'nuclearFleet', 'oilNetwork', 'cyber', 'military', 'health',
+      'outagesCloud', 'powerGrid', 'nuclearFleet', 'oilNetwork', 'cyber', 'military', 'health', 'disasters',
     ]);
   });
 });

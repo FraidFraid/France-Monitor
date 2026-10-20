@@ -195,3 +195,14 @@ export function buildCatastrophesView(input: CatastrophesViewInput): LayerView {
     bodyHtml: disastersError !== null ? sourceErrorCallout(Number.isFinite(readMs) ? readMs : null, now) : undefined,
   };
 }
+
+/**
+ * Niveau de la pastille Catastrophes (onglet Environnement, 20/10/2026) : celui de l'en-tête du panneau, jamais un calcul parallèle
+ * (règle de watch.ts). GDACS et Copernicus EMS absents tous deux : n.d.
+ */
+export function disastersHeadLevel(d: DisastersResponse | null, ems: EmsResponse | null, now: number): VigilanceLevel | 'nd' {
+  if (d === null && ems === null) return 'nd';
+  const head = buildCatastrophesView({ disasters: d, disastersError: d === null ? 'absent' : null, ems, canFocus: false, now, open: () => false }).head;
+  const lvl = head.level;
+  return lvl === 'vert' || lvl === 'jaune' || lvl === 'orange' || lvl === 'rouge' ? lvl : 'nd';
+}

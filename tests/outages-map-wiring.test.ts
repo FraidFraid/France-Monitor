@@ -66,10 +66,10 @@ describe('DeckGLMap : couches Pannes réseau de deckgl/outages-map.ts', () => {
     expect(deck).not.toContain('...OUT_HOVER_LAYERS, ');
   });
   it('P37a : l’atténuation au survol de la légende couvre les quatre couches pannes ; les branches Internet et Cloud lisent OUT_LAYER_KEYS', () => {
-    const legend = deck.slice(deck.indexOf('setLegendHover(categoryId'), deck.indexOf('const applyLegendDim'));
+    const legend = deck.slice(deck.indexOf('private legendCategoryLayers(categoryId'), deck.indexOf('const applyLegendDim'));
     expect(legend).toContain('...Object.values(OUT_LAYER_KEYS).flat(), OUT_MAINTENANCE_LAYER,');
-    expect(legend).toContain("activeLayers = [...OUT_LAYER_KEYS.outagesInternet];");
-    expect(legend).toContain("activeLayers = [...OUT_LAYER_KEYS.outagesCloud];");
+    expect(legend).toContain("return [...OUT_LAYER_KEYS.outagesInternet];");
+    expect(legend).toContain("return [...OUT_LAYER_KEYS.outagesCloud];");
   });
   it('R25 : la carte importe le vocabulaire Cloud et Internet de src/services/outages-levels.ts, sans le recopier', () => {
     const map = read('src/components/deckgl/outages-map.ts');

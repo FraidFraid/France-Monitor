@@ -60,6 +60,7 @@ const LAYER_DEFS: LayerDef[] = [
   { key: 'protests', label: 'MANIFESTATIONS', icon: `<span style="color:#ec4899;">${fmIcon('megaphone')}</span>` },
   { key: 'crime', label: 'CRIMINALITÉ', icon: `<span style="color:#6366f1;">${fmIcon('siren')}</span>` },
   { key: 'webcams', label: 'WEBCAMS', icon: `<span style="color:#22c55e;">${fmIcon('camera')}</span>` },
+  { key: 'envBrief', label: 'EN BREF · ENJEUX EXPOSÉS', icon: `<span style="color:#2dd4bf;">${fmIcon('target')}</span>` },
   // Flux piétons : pas de case, la couche suit Manifestations (foule estimée des rassemblements annoncés).
 ];
 

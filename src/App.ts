@@ -8,6 +8,7 @@ import { MapPopup } from './components/MapPopup.ts';
 import { energyChipsPressed, energyFocusKeysHtml, isEnergyLayerKey, toggleEnergyChip } from './components/deckgl/energy-focus.ts';
 import { escapeHtml } from './components/deckgl/format-utils.ts';
 import type { EnergyLayerKey } from './components/deckgl/energy-map.ts';
+import type { VigilancePhenomenonId } from './types/index.ts';
 import { buildArticlePreviewHtml, buildEventPreviewHtml, MapPreviewCard } from './components/MapPreviewCard.ts';
 import { buildEventsKeyHtml } from './components/map-key/events-key.ts';
 import { MapLegend, type LegendCategory } from './components/MapLegend.ts';
@@ -74,7 +75,8 @@ import {
 } from './config/layer-presets.ts';
 import { computeISNR } from './services/stability-index.ts';
 import type { DepartmentPressure } from './services/department-pressure.ts';
-import type { WatchEntry, WatchTransition, Watched } from './components/layer-panel/watch.ts';
+import type { WatchEntry, WatchLevel, WatchTransition, Watched } from './components/layer-panel/watch.ts';
+import { envChipsPressed, envFocusStatus, isEnvFocusKey, toggleEnvChip } from './components/layer-panel/env-focus.ts';
 import type { PressurePanel } from './components/PressurePanel.ts';
 import { ALL_INFRASTRUCTURE, NUCLEAR_PLANTS } from './config/infrastructure.ts';
 // ACTIVE_INSTALLATIONS (config/military-bases-db ~1100 l.) chargé dynamiquement dans loadDefenseSites(), sans fusion OpenStreetMap.
@@ -130,6 +132,13 @@ import { FLUX_LEGEND, fluxLegend } from './components/layer-panel/flux-pietons-l
 import type { FluxIndex, FluxPhase } from './types/index.ts';
 import { fetchWebcamsDataset } from './services/webcams.ts';
 import { WEBCAMS_LEGEND, webcamsLegend } from './components/layer-panel/webcams-legend.ts';
+import type { EnvBriefData, EnvBriefPanel } from './components/EnvBriefPanel.ts';
+import { ENV_BRIEF_LEGEND } from './components/layer-panel/env-brief-legend.ts';
+import { ENV_FOCUS_IDS } from './components/layer-panel/env-focus.ts';
+import { buildHazards, computeExposure, type ExposureResult } from './services/environment-exposure.ts';
+import { fetchExposureAssets, type ExposureAssetsState } from './services/exposure-assets.ts';
+import { buildEnvironmentKeyHtml } from './components/map-key/environment-key.ts';
+import { OFFICIAL_COLOR_LEVEL } from './services/environment-levels.ts';
 import type { WebcamsDataset } from './types/index.ts';
 import type { CrimeDataset } from './types/index.ts';
 import { departementCentroid } from './config/departements.ts';
@@ -579,6 +588,7 @@ const DEFAULT_LAYERS: MapLayers = {
   protests: false,
   crime: false,
   webcams: false,
+  envBrief: false,
   pedestrianFlows: false,
   stability: false,
   cyber: false,
@@ -613,6 +623,7 @@ const GENERAL_WATCH_POLLED: ReadonlyArray<keyof MapLayers> = ['outagesElec', 'ou
 const MODULE_PANEL_SELECTOR = '[class*="-panel-modal"], .fm-floating-panel';
 
 const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
+  { id: 'envBrief', label: 'En bref', icon: 'target', layerKeys: ['envBrief'] },
   { id: 'environmental', label: 'Vigilance météo', icon: 'cloud-lightning', layerKeys: ['environmental'] },
   { id: 'floods', label: 'Crues', icon: 'waves', layerKeys: ['floods'] },
   { id: 'weatherRadar', label: 'Radar météo', icon: 'cloud-rain', layerKeys: ['weatherRadar'] },
@@ -761,9 +772,9 @@ const HEALTH_URGENCES_LEGEND: LegendCategory = {
   id: 'healthOscour',
   title: 'Urgences : syndrome choisi, comparé aux 3 saisons précédentes',
   items: [
-    { id: 'urg-rouge', label: 'Plus de 50 % au-dessus du maximum', color: levelHex('rouge'), shape: 'square' },
-    { id: 'urg-orange', label: 'De 15 à 50 % au-dessus', color: levelHex('orange'), shape: 'square' },
-    { id: 'urg-jaune', label: 'Au-dessus, de moins de 15 %', color: levelHex('jaune'), shape: 'square' },
+    { id: 'urg-rouge', label: 'Plus de 50\u00a0% au-dessus du maximum', color: levelHex('rouge'), shape: 'square' },
+    { id: 'urg-orange', label: 'De 15 à 50\u00a0% au-dessus', color: levelHex('orange'), shape: 'square' },
+    { id: 'urg-jaune', label: 'Au-dessus, de moins de 15\u00a0%', color: levelHex('jaune'), shape: 'square' },
     { id: 'urg-vert', label: 'Au plus le maximum des 3 saisons', color: levelHex('vert'), shape: 'square' },
   ],
   notes: ['Département sans couleur : moins de deux saisons de référence.'],
@@ -775,7 +786,7 @@ const HEALTH_APL_LEGEND: LegendCategory = {
   id: 'healthApl',
   title: 'Accès aux soins : APL de la profession choisie',
   items: [
-    { id: 'apl-rouge', label: 'Généralistes : moins de 2,5 consultations par an et par habitant', color: levelHex('rouge'), shape: 'square' },
+    { id: 'apl-rouge', label: 'Généralistes : moins de 2,5\u00a0consultations par an et par habitant', color: levelHex('rouge'), shape: 'square' },
     { id: 'apl-orange', label: 'De 2,5 à 3,5', color: levelHex('orange'), shape: 'square' },
     { id: 'apl-jaune', label: 'De 3,5 à 4', color: levelHex('jaune'), shape: 'square' },
     { id: 'apl-vert', label: '4 et plus', color: levelHex('vert'), shape: 'square' },
@@ -1144,6 +1155,13 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     label: 'WEBCAMS',
     legend: WEBCAMS_LEGEND,
   },
+  // ─── En bref (onglet Environnement, 20/10/2026) : synthèse décideur et enjeux exposés aux phénomènes en cours ───
+  {
+    id: 'envBrief',
+    role: 'standalone',
+    label: 'EN BREF · ENJEUX EXPOSÉS',
+    legend: ENV_BRIEF_LEGEND,
+  },
   // ─── Flux piétons : prévisions publiées par flux_osint (data/flux-pietons/), relève de 15 min couche allumée ───
   {
     id: 'pedestrianFlows',
@@ -1193,6 +1211,11 @@ export class App {
   private currentCrime: CrimeDataset | null = null;
   private crimeError: string | null = null;
   private webcamsPanel: WebcamsPanel | null = null;
+  private envBriefPanel: EnvBriefPanel | null = null;
+  private envBriefPanelPromise: Promise<void> | null = null;
+  /** Enjeux lus pour le croisement (null avant le premier allumage d'En bref) et dernier croisement calculé. */
+  private exposureAssets: ExposureAssetsState | null = null;
+  private currentExposure: ExposureResult | null = null;
   private webcamsPanelPromise: Promise<void> | null = null;
   private webcamWall: WebcamWall | null = null;
   private fluxPanel: FluxPietonsPanel | null = null;
@@ -1265,6 +1288,8 @@ export class App {
    */
   private generalAuto = new Set<keyof MapLayers>();
   private watchEntries: WatchEntry[] = [];
+  /** Niveau de chaque couche suivie (pastilles), calculé quel que soit l'onglet : voyants de l'onglet Environnement (20/10/2026). */
+  private watchLevelMap: ReadonlyMap<keyof MapLayers, WatchLevel> = new Map();
   private watchLastKnown = new Map<keyof MapLayers, VigilanceLevel>();
   private watchLog: WatchTransition[] = [];
   /** Module de surveillance chargé à la demande : il importe les vues des panneaux suivis, hors du chunk principal. */
@@ -3042,6 +3067,7 @@ export class App {
       'protests',
       'crime',
       'webcams',
+      'envBrief',
       'pedestrianFlows',
     ];
 
@@ -3302,6 +3328,16 @@ export class App {
         this.openCrimePanel();
       } else {
         this.crimePanel?.hide({ silent: true });
+      }
+    }
+
+    // En bref (20/10/2026) : enjeux lus une fois à l'allumage, croisement recalculé à chaque lecture des phénomènes.
+    if (key === 'envBrief') {
+      if (enabled) {
+        this.openEnvBriefPanel();
+      } else {
+        this.envBriefPanel?.hide({ silent: true });
+        this.mapContainer?.updateExposureLayer(null);
       }
     }
 
@@ -4865,6 +4901,120 @@ export class App {
     this.mapLegend.setCategories([{ ...webcamsLegend(this.currentWebcams), visible: this.activeLayers.webcams }]);
   }
 
+  // ─── En bref de l'onglet Environnement (spec 2026-10-20 onglet Environnement § 3, lot 2) ───
+
+  /** Panneau En bref, créé à la demande. */
+  private ensureEnvBriefPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.envBriefPanelPromise ??= import('./components/EnvBriefPanel.ts').then(({ EnvBriefPanel }) => {
+      const panel = new EnvBriefPanel(container);
+      panel.setOnClose(() => {
+        if (!this.activeLayers.envBrief) return;
+        this.onLayerToggle('envBrief', false);
+        this.layerPanel?.updateLayers(this.activeLayers);
+      });
+      panel.setOnFocusPoint((lon, lat) => this.mapContainer?.flyTo(lon, lat, 11));
+      panel.setOnWebcam((id) => {
+        if (!this.activeLayers.webcams) {
+          this.onLayerToggle('webcams', true, { suppressPanel: true });
+          this.layerPanel?.updateLayers(this.activeLayers);
+        }
+        this.onWebcamMapClick(id);
+      });
+      panel.mount();
+      this.envBriefPanel = panel;
+      if (this.activeLayers.envBrief) panel.show(this.envBriefData());
+    });
+    return this.envBriefPanelPromise;
+  }
+
+  /** Allumage : panneau sur le dernier croisement, enjeux et webcams lus une fois, carte reposée. */
+  private openEnvBriefPanel(): void {
+    this.envBriefPanel?.show(this.envBriefData());
+    if (this.currentWebcams === null) this.loadWebcams().catch((err) => console.error('[App] Lecture Webcams en échec', err));
+    if (this.exposureAssets === null || this.exposureAssets.missing.length > 0) {
+      void dedupe('exposure-assets', async () => {
+        this.exposureAssets = await fetchExposureAssets();
+        this.refreshEnvBrief();
+      });
+    }
+    this.refreshEnvBrief();
+  }
+
+  /** Données du panneau : niveaux des pastilles, phénomènes, croisement, journal des passages, fraîcheur. */
+  private envBriefData(): EnvBriefData {
+    const now = Date.now();
+    const label = (key: keyof MapLayers): string => FLOATING_PANEL_DEFS.find((d) => d.id === key)?.label ?? key;
+    const levels = new Map<keyof MapLayers, WatchLevel>();
+    for (const key of ENV_FOCUS_IDS) {
+      const l = this.watchLevelMap.get(key);
+      if (l !== undefined) levels.set(key, l);
+    }
+    const labels: Partial<Record<keyof MapLayers, string>> = {};
+    for (const key of ENV_FOCUS_IDS) labels[key] = label(key);
+    const sourceKeys: Array<keyof MapLayers> = ['environmental', 'floods', 'weatherRadar', 'fires', 'airQuality', 'drought', 'earthquakes', 'disasters'];
+    return {
+      levels, labels,
+      vigilance: this.currentVigilance?.vigilance.data ?? null,
+      floods: this.currentFloods?.floods.data ?? null,
+      fires: this.currentFires?.fires.data ?? null,
+      earthquakes: this.currentEarthquakes?.quakes.data ?? null,
+      ems: this.currentDisasters?.ems.data ?? null,
+      exposure: this.currentExposure,
+      assetsLoading: this.exposureAssets === null,
+      assetsMissing: this.exposureAssets?.missing ?? [],
+      webcams: this.currentWebcams,
+      changes: this.watchLog.filter((t) => ENV_FOCUS_IDS.includes(t.key)).map((t) => ({ ...t, label: label(t.key) })),
+      sources: sourceKeys.map((key) => {
+        const at = this.envDataAt(key);
+        return { key, label: label(key), at: at.at, verb: at.verb, level: this.watchLevelMap.get(key) ?? null };
+      }),
+      now,
+    };
+  }
+
+  /** Bloc Environnement de « Lire la carte » : grille de lecture et éléments comptés, dans l'onglet Environnement seulement. */
+  private refreshEnvironmentKey(): void {
+    const visible = this.uiV2 && this.v2Theme === 'environment';
+    if (!visible) {
+      this.mapLegend?.setEnvironmentKey('');
+      return;
+    }
+    const period = this.currentVigilance?.vigilance.data?.periods.find((p) => p.echeance === this.vigilanceEcheance);
+    const vigilance: Partial<Record<VigilanceLevel, number>> = {};
+    const phenomena = new Set<VigilancePhenomenonId>();
+    for (const d of period?.departments ?? []) {
+      const l = OFFICIAL_COLOR_LEVEL[d.color];
+      vigilance[l] = (vigilance[l] ?? 0) + 1;
+      if (d.phenomena[0]) phenomena.add(d.phenomena[0].id);
+    }
+    const counts = this.currentFloods?.floods.data?.counts;
+    this.mapLegend?.setEnvironmentKey(buildEnvironmentKeyHtml({
+      visible: this.activeLayers.environmental === true || this.activeLayers.floods === true || this.activeLayers.envBrief === true,
+      vigilance: this.activeLayers.environmental ? vigilance : {},
+      phenomena: this.activeLayers.environmental ? [...phenomena] : [],
+      floods: this.activeLayers.floods && counts ? { jaune: counts.jaune, orange: counts.orange, rouge: counts.rouge } : {},
+      exposed: this.activeLayers.envBrief ? this.currentExposure?.nearby.length ?? 0 : null,
+    }));
+  }
+
+  /** Croisement phénomènes × enjeux recalculé (pastille allumée seulement), puis carte et panneau. */
+  private refreshEnvBrief(): void {
+    if (!this.activeLayers.envBrief) return;
+    const hazards = buildHazards({
+      vigilance: this.currentVigilance?.vigilance.data ?? null,
+      floods: this.currentFloods?.floods.data ?? null,
+      fires: this.currentFires?.fires.data ?? null,
+      earthquakes: this.currentEarthquakes?.quakes.data ?? null,
+      ems: this.currentDisasters?.ems.data ?? null,
+      now: Date.now(),
+    });
+    this.currentExposure = this.exposureAssets ? computeExposure(hazards, this.exposureAssets.assets) : null;
+    this.mapContainer?.updateExposureLayer(this.currentExposure);
+    this.envBriefPanel?.update(this.envBriefData());
+  }
+
   private refreshCrimeLegend(): void {
     if (!this.mapLegend) return;
     this.mapLegend.setCategories([{ ...crimeLegend(this.currentCrime, this.crimePanel?.getIndicator() ?? 'homicides'), visible: this.activeLayers.crime }]);
@@ -5399,6 +5549,7 @@ export class App {
       case 'protests': return [this.ensureProtestsPanel()];
       case 'crime': return [this.ensureCrimePanel()];
       case 'webcams': return [this.ensureWebcamsPanel()];
+      case 'envBrief': return [this.ensureEnvBriefPanel()];
       case 'pedestrianFlows': return [this.ensureFluxPanel()];
       case 'trafficRoad': return [this.ensureTrafficPanel()];
       case 'trafficAir': return [this.ensureAirTrafficPanel()];
@@ -5473,6 +5624,7 @@ export class App {
       case 'protests': return this.protestsPanel;
       case 'crime': return this.crimePanel;
       case 'webcams': return this.webcamsPanel;
+      case 'envBrief': return this.envBriefPanel;
       case 'pedestrianFlows': return this.fluxPanel;
       default: return null;
     }
@@ -5569,7 +5721,7 @@ export class App {
       this.energyFocusActive = [];
       this.energyFocusPreview = null;
       this.syncEnergyFocus();
-      this.generalFocusActive = null;
+      this.generalFocusActive = [];
       this.generalFocusPreview = null;
       this.syncGeneralFocus();
       this.layoutFloatingPanelSwitcher();
@@ -5595,20 +5747,32 @@ export class App {
         </button>
       `;
     // Vue générale dynamique : puces dans l'ordre des niveaux (rouge d'abord), voyant de niveau ; « n.d. » en gris (12/10/2026).
+    // Onglet Environnement (20/10/2026) : même voyant, niveau de la pastille du panneau ; rouge d'abord.
+    const inEnv = this.uiV2 && this.v2Theme === 'environment';
     const watchedLevel = (id: keyof MapLayers): string | null =>
-      this.uiV2 && this.v2Theme === 'general' ? this.watchEntries.find((e) => e.key === id)?.level ?? null : null;
+      this.uiV2 && this.v2Theme === 'general' ? this.watchEntries.find((e) => e.key === id)?.level ?? null
+        : inEnv ? this.watchLevelMap.get(id) ?? null : null;
+    const ENV_ORDER: Record<string, number> = { rouge: 0, orange: 1, jaune: 2, nd: 3, vert: 4 };
+    // En bref en tête de l'onglet, puis les pastilles par niveau.
+    const envRank = (id: keyof MapLayers): number => id === 'envBrief' ? -1 : ENV_ORDER[this.watchLevelMap.get(id) ?? ''] ?? 5;
     const watchRank = (id: keyof MapLayers): number => {
       const i = this.watchEntries.findIndex((e) => e.key === id);
       return i === -1 ? this.watchEntries.length : i;
     };
-    const ordered = this.uiV2 && this.v2Theme === 'general' ? [...eligible].sort((a, b) => watchRank(a.id) - watchRank(b.id)) : eligible;
+    const ordered = this.uiV2 && this.v2Theme === 'general' ? [...eligible].sort((a, b) => watchRank(a.id) - watchRank(b.id))
+      : inEnv ? [...eligible].sort((a, b) => envRank(a.id) - envRank(b.id)) : eligible;
     // Énergie : pastilles vertes cumulables (retenues par un clic ou panneau ouvert) ; on oublie celles qui ne sont plus proposées.
     const ids = ordered.map((def) => def.id);
     for (const k of [...this.energyChipsSelected]) if (!ids.includes(k)) this.energyChipsSelected.delete(k);
     const energyPressed = energyChipsPressed(ids, this.energyChipsSelected, (id) => this.isFloatingPanelVisible(id));
+    // Environnement : pastilles cumulables comme Énergie (retenues par un clic, ou panneau ouvert).
+    if (!inEnv) this.envChipsSelected.clear();
+    for (const k of [...this.envChipsSelected]) if (!ids.includes(k)) this.envChipsSelected.delete(k);
+    const envPressed = inEnv ? envChipsPressed(ids, this.envChipsSelected, (id) => this.isFloatingPanelVisible(id)) : [];
     el.innerHTML = newsChip + ordered.map((def) => {
       // Surligné = son panneau est à l'écran (Énergie : ou pastille retenue) ; un clic l'ouvre ou le referme (la couche reste active).
-      const pressed = isEnergyLayerKey(def.id) ? energyPressed.includes(def.id) : this.isFloatingPanelVisible(def.id);
+      const pressed = isEnergyLayerKey(def.id) ? energyPressed.includes(def.id)
+        : inEnv && isEnvFocusKey(def.id) ? envPressed.includes(def.id) : this.isFloatingPanelVisible(def.id);
       const level = watchedLevel(def.id);
       const action = t(pressed ? 'app.floatingPanelHide' : 'app.floatingPanelShow', { value: def.label })
         + (level === 'nd' ? ' (source indisponible)' : '');
@@ -5646,11 +5810,22 @@ export class App {
           else this.refreshFloatingPanelSwitcher();
           return;
         }
+        if (inEnv && isEnvFocusKey(key)) {
+          // Environnement : même règle qu'Énergie, pastilles cumulables, panneau de droite = la dernière allumée.
+          const t = toggleEnvChip(this.envChipsSelected, key, envPressed.includes(key));
+          this.envChipsSelected = t.selected;
+          if (t.open) this.showFloatingPanel(key);
+          else if (this.isFloatingPanelVisible(key)) this.hideFloatingPanel(key);
+          else this.refreshFloatingPanelSwitcher();
+          return;
+        }
         if (this.isFloatingPanelVisible(key)) this.hideFloatingPanel(key);
         else this.showFloatingPanel(key);
       });
     });
     this.layoutFloatingPanelSwitcher();
+    // Cadrage « France et Corse » accroché : un panneau ouvert ou fermé change la place libre sur la carte.
+    this.mapContainer?.refitFrance();
     // Pastilles Énergie allumées : mise en avant persistante. La barre est réécrite à chaque arrivée de données : l'aperçu suit la
     // pastille encore sous le pointeur (sinon un survol tombait au milieu, souris immobile).
     const hovered = el.querySelector<HTMLElement>('.floating-panel-switcher__chip[data-panel-key]:hover')?.dataset['panelKey'] ?? null;
@@ -5661,20 +5836,25 @@ export class App {
     // suivante : à l'ouverture ou à la fermeture d'un panneau, sa visibilité n'est à jour qu'après ce rafraîchissement.
     this.generalFocusPreview = hovered && !isEnergyLayerKey(hovered) ? hovered as keyof MapLayers : null;
     requestAnimationFrame(() => {
-      const open = this.currentFloatingPanelId;
-      this.generalFocusActive = open && !isEnergyLayerKey(open) && this.isFloatingPanelVisible(open) ? open : null;
+      if (inEnv) {
+        this.generalFocusActive = envChipsPressed(ids, this.envChipsSelected, (id) => this.isFloatingPanelVisible(id));
+      } else {
+        const open = this.currentFloatingPanelId;
+        this.generalFocusActive = open && !isEnergyLayerKey(open) && this.isFloatingPanelVisible(open) ? [open] : [];
+      }
       this.syncGeneralFocus();
     });
   }
 
   /**
    * Vue générale (19/10/2026), même règle que les pastilles Énergie : la pastille survolée, ou celle dont le panneau est ouvert,
-   * laisse sa couche vive (les autres se tamisent) et montre sa légende courte sous la barre. Sécurité et Santé ont la leur
+   * laisse sa couche vive (les autres se tamisent) et montre sa légende courte sous la barre. Onglet Environnement (20/10/2026) :
+   * pastilles cumulables, légendes cumulées, chacune avec sa ligne d'état (niveau, âge de la donnée). Sécurité et Santé ont la leur
    * (public/maquette-*.js), Énergie aussi (syncEnergyFocus).
    */
-  private generalFocusActive: keyof MapLayers | null = null;
+  private generalFocusActive: Array<keyof MapLayers> = [];
   private generalFocusPreview: keyof MapLayers | null = null;
-  private generalFocusShown: keyof MapLayers | null = null;
+  private generalFocusShown = '';
 
   private setGeneralFocusPreview(key: keyof MapLayers | null): void {
     if (key === this.generalFocusPreview) return;
@@ -5682,20 +5862,55 @@ export class App {
     this.syncGeneralFocus();
   }
 
+  /** Heure de la donnée d'une couche Environnement pour la ligne d'état (lecture ; observation pour le radar). */
+  private envDataAt(key: keyof MapLayers): { at: number | null; verb: string } {
+    const read = (x: { fetchedAt: number | null } | undefined): number | null => x?.fetchedAt ?? null;
+    switch (key) {
+      case 'environmental': return { at: read(this.currentVigilance?.vigilance), verb: 'lu' };
+      case 'floods': return { at: read(this.currentFloods?.floods), verb: 'lu' };
+      case 'fires': return { at: read(this.currentFires?.fires), verb: 'lu' };
+      case 'drought': return { at: read(this.currentDrought?.drought), verb: 'lu' };
+      case 'airQuality': return { at: read(this.currentAirQuality?.air), verb: 'lu' };
+      case 'earthquakes': return { at: read(this.currentEarthquakes?.quakes), verb: 'lu' };
+      case 'disasters': return { at: read(this.currentDisasters?.disasters), verb: 'lu' };
+      case 'weatherRadar': {
+        const observed = this.radarManifest?.configured ? Date.parse(this.radarManifest.manifest.observedAt) : NaN;
+        return { at: Number.isFinite(observed) ? observed : null, verb: 'image' };
+      }
+      default: return { at: null, verb: 'lu' };
+    }
+  }
+
   private syncGeneralFocus(): void {
-    const inGeneral = this.uiV2 && this.v2Theme === 'general';
-    const key = inGeneral ? this.generalFocusPreview ?? this.generalFocusActive : null;
-    if (key !== this.generalFocusShown) {
-      this.generalFocusShown = key;
-      this.mapContainer?.setGeneralFocus(key);
+    const inEnv = this.uiV2 && this.v2Theme === 'environment';
+    const inScope = this.uiV2 && (this.v2Theme === 'general' || inEnv);
+    const keys: Array<keyof MapLayers> = [];
+    if (inScope) {
+      for (const k of this.generalFocusActive) if (!keys.includes(k)) keys.push(k);
+      if (this.generalFocusPreview && !keys.includes(this.generalFocusPreview)) keys.push(this.generalFocusPreview);
+    }
+    const shown = keys.join(',');
+    if (shown !== this.generalFocusShown) {
+      this.generalFocusShown = shown;
+      this.mapContainer?.setGeneralFocus(keys);
     }
     let panel = document.getElementById('general-focus-key');
     const switcher = this.floatingPanelSwitcherEl;
-    const legend = key ? this.mapLegend?.getCategory(key) : undefined;
-    const items = (legend?.items ?? []).filter((i) => !i.isHeader && i.visible !== false && (i.color || i.borderColor)).slice(0, 6);
-    // Couche sans dessin sur la carte (Vigilance cyber) : sa légende dit pourquoi, en texte.
-    const texts = items.length === 0 ? (legend?.items ?? []).filter((i) => i.visible !== false).map((i) => i.label).slice(0, 2) : [];
-    if (!key || !legend || (items.length === 0 && texts.length === 0) || !switcher || switcher.hidden) {
+    const now = Date.now();
+    const blocks = keys.map((key) => {
+      const legend = this.mapLegend?.getCategory(key);
+      if (!legend) return '';
+      const items = legend.items.filter((i) => !i.isHeader && i.visible !== false && (i.color || i.borderColor)).slice(0, 6);
+      // Couche sans dessin sur la carte (Vigilance cyber) : sa légende dit pourquoi, en texte.
+      const texts = items.length === 0 ? legend.items.filter((i) => i.visible !== false).map((i) => i.label).slice(0, 2) : [];
+      const dataAt = inEnv ? this.envDataAt(key) : null;
+      const status = inEnv && dataAt ? envFocusStatus(this.watchLevelMap.get(key) ?? null, dataAt.at, now, dataAt.verb) : null;
+      if (items.length === 0 && texts.length === 0 && status === null) return '';
+      const rows = items.map((i) => `<div class="ef-row"><i class="ef-dot" style="background:${escapeHtml(i.color ?? 'transparent')};${i.borderColor ? `box-shadow:0 0 0 2px ${escapeHtml(i.borderColor)}` : ''}"></i><span>${escapeHtml(i.label)}</span></div>`).join('')
+        + texts.map((tx) => `<div class="ef-row"><span>${escapeHtml(tx)}</span></div>`).join('');
+      return `<div class="ef-key"><div class="ef-title">${escapeHtml(legend.title)}</div>${rows}${status ? `<div class="ef-status">${escapeHtml(status)}</div>` : ''}</div>`;
+    }).join('');
+    if (blocks === '' || !switcher || switcher.hidden) {
       panel?.remove();
       return;
     }
@@ -5704,9 +5919,7 @@ export class App {
       panel.id = 'general-focus-key';
       document.body.appendChild(panel);
     }
-    const rows = items.map((i) => `<div class="ef-row"><i class="ef-dot" style="background:${escapeHtml(i.color ?? 'transparent')};${i.borderColor ? `box-shadow:0 0 0 2px ${escapeHtml(i.borderColor)}` : ''}"></i><span>${escapeHtml(i.label)}</span></div>`).join('')
-      + texts.map((tx) => `<div class="ef-row"><span>${escapeHtml(tx)}</span></div>`).join('');
-    panel.innerHTML = `<div class="ef-key"><div class="ef-title">${escapeHtml(legend.title)}</div>${rows}</div>`;
+    panel.innerHTML = blocks;
     const r = switcher.getBoundingClientRect();
     panel.style.left = `${Math.round(r.left)}px`;
     panel.style.top = `${Math.round(r.bottom + 6)}px`;
@@ -5716,6 +5929,8 @@ export class App {
   private energyFocusActive: EnergyLayerKey[] = [];
   /** Pastilles Énergie allumées par un clic (cumulables, indépendantes du panneau affiché). */
   private energyChipsSelected = new Set<EnergyLayerKey>();
+  /** Pastilles Environnement allumées par un clic (cumulables, 20/10/2026). */
+  private envChipsSelected = new Set<keyof MapLayers>();
   private energyFocusPreview: EnergyLayerKey | null = null;
 
   private setEnergyFocusPreview(key: EnergyLayerKey | null): void {
@@ -5850,6 +6065,7 @@ export class App {
     this.refreshFloatingPanelSwitcher();
     if (id === 'general') this.refreshGeneralWatch();
     this.syncGeneralWatchPolling();
+    this.refreshEnvironmentKey();
   }
 
   /**
@@ -5912,11 +6128,16 @@ export class App {
       internet: slot(this.currentOutInternet?.internet),
       cloud: slot(this.currentOutCloud?.cloud),
       drought: slot(this.currentDrought?.drought),
+      disasters: {
+        data: { gdacs: this.currentDisasters?.disasters.data ?? null, ems: this.currentDisasters?.ems.data ?? null },
+        loaded: [this.currentDisasters?.disasters, this.currentDisasters?.ems].some((x) => x !== undefined && (x.fetchedAt !== null || x.error !== null)),
+      },
       health: { data: healthNational, loaded: healthNational !== null },
       gnss: this.gnssState?.gnss.data ?? null,
       now,
     });
     // Journal : passages entre niveaux connus (un « n.d. » n'écrit rien) ; 50 derniers gardés pour la session.
+    this.watchLevelMap = levels;
     const transitions = watchTransitions(this.watchLastKnown, levels, now);
     for (const [key, level] of levels) if (level !== 'nd') this.watchLastKnown.set(key, level);
     if (transitions.length > 0) {
@@ -5925,6 +6146,9 @@ export class App {
     }
     // Avant les couches critiques, seul le socle : pas de puce « n.d. » pour une source simplement pas encore lue.
     this.watchEntries = this.v2IntelStarted ? generalWatch(levels) : generalWatch(new Map());
+    // En bref de l'onglet Environnement : croisement et panneau suivent chaque rafraîchissement du poste (20/10/2026).
+    this.refreshEnvBrief();
+    this.refreshEnvironmentKey();
     if (this.v2Theme !== 'general') return;
     const wanted = new Set(this.watchEntries.map((e) => e.key).filter((k) => !GENERAL_SOCLE.includes(k)));
     let changed = false;

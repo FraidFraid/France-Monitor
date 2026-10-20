@@ -72,6 +72,7 @@ export class MapLegend {
     private isCollapsed: boolean = !this.readOpenState();
     private eventsKeyHtml = '';
     private energyKeyHtml = '';
+    private environmentKeyHtml = '';
     private onKeyAction: ((action: string) => void) | null = null;
     private readonly onKeydown = (ev: KeyboardEvent): void => {
         if (ev.key !== 'Escape' || this.isCollapsed) return;
@@ -128,6 +129,13 @@ export class MapLegend {
         this.update();
     }
 
+    /** Bloc Environnement (environment-key.ts), après le bloc Énergie ; vide hors de l'onglet Environnement (20/10/2026). */
+    setEnvironmentKey(html: string): void {
+        if (html === this.environmentKeyHtml) return;
+        this.environmentKeyHtml = html;
+        this.update();
+    }
+
     setOnKeyAction(callback: (action: string) => void): void {
         this.onKeyAction = callback;
     }
@@ -138,7 +146,7 @@ export class MapLegend {
 
     private render(): string {
         const activeCategories = this.categories.filter(cat => cat.visible !== false);
-        const hasContent = activeCategories.length > 0 || this.eventsKeyHtml !== '' || this.energyKeyHtml !== '';
+        const hasContent = activeCategories.length > 0 || this.eventsKeyHtml !== '' || this.energyKeyHtml !== '' || this.environmentKeyHtml !== '';
         if (!hasContent) return '';
         const open = !this.isCollapsed;
         const button = `<button type="button" class="map-key-btn" aria-expanded="${open}" aria-controls="map-key-dialog">`
@@ -151,6 +159,7 @@ export class MapLegend {
                     <button type="button" class="map-key__close" aria-label="Fermer la légende">${fmIcon('x', { size: 14 })}</button></header>
                 ${this.eventsKeyHtml}
                 ${this.energyKeyHtml}
+                ${this.environmentKeyHtml}
                 ${cards ? `<div class="map-key__layers">${cards}</div>` : ''}
                 <footer class="map-key__foot">Seuls les éléments présents sur la carte sont listés.</footer>
             </section>

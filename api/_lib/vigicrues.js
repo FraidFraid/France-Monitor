@@ -6,6 +6,7 @@
 import { mapLimit } from './map-limit.js';
 import { cachedSource, fetchStrictJson, sourceError } from './source-http.js';
 import { CODES_PER_REQUEST, buildStations, codesFingerprint, fetchObservations } from './hubeau-stations.js';
+import { loadForecasts } from './vigicrues-forecasts.js';
 
 export const INFOVIGICRU_URL = 'https://www.vigicrues.gouv.fr/services/InfoVigiCru.geojson';
 export const TERRITORIES_URL = 'https://www.vigicrues.gouv.fr/services/TerEntVigiCru.json';
@@ -23,6 +24,8 @@ export const ROUTE_BUDGET_MS = 15_000;
 /** Territoires et référentiels des tronçons : lectures annexes, bornées pour laisser sa place à Hub'Eau. */
 const TERRITORIES_WAIT_MS = 4_000;
 const SECTIONS_WAIT_MS = 6_000;
+/** Prévisions Vigicrues des stations : 4 s au plus, le reste arrive au cache pour la relève suivante (lot 3, 20/10/2026). */
+const FORECASTS_WAIT_MS = 4_000;
 
 /** Stations d'un tronçon (la 302 vers /services/… est suivie par fetch). */
 export function sectionStationsUrl(id) {
@@ -298,13 +301,14 @@ export async function loadFloods(now = Date.now(), { hubeauWaitMs = HUBEAU_WAIT_
     stationsReadAt = read.h.readAt;
   }
 
+  const forecasts = await loadForecasts(codes, now, Math.min(FORECASTS_WAIT_MS, remaining()));
   const sections = info.sections.map((s, i) => ({
     id: s.id,
     name: s.name,
     level: s.level,
     territory: { code: s.territoryCode, name: territories[s.territoryCode] ?? null, url: territoryUrl(s.territoryCode) },
     path: s.path,
-    stations: buildStations(sectionRefs[i], hObs, qObs, now),
+    stations: buildStations(sectionRefs[i], hObs, qObs, now).map((st) => ({ ...st, forecast: forecasts.get(st.code) ?? null })),
   }));
 
   return { readAt: info.readAt, total: info.total, counts: info.counts, sections, stationsReadAt, stationsOmitted: omitted, errors };

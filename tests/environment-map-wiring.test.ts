@@ -72,3 +72,17 @@ describe('DeckGLMap : couches Environnement de deckgl/environment-map.ts', () =>
     }
   });
 });
+
+describe('Onglet Environnement : pastilles cumulables (20/10/2026)', () => {
+  const helper = deck.slice(deck.indexOf('private legendCategoryLayers(categoryId'), deck.indexOf('setLegendHover(categoryId: string | null)'));
+  const app = read('src/App.ts');
+  it('chaque pastille de l’onglet a ses calques dans la mise en avant (sinon son survol tamiserait tout)', async () => {
+    const { ENV_FOCUS_IDS } = await import('../src/components/layer-panel/env-focus.ts');
+    for (const id of ENV_FOCUS_IDS) expect(helper, id).toContain(`'${id}'`);
+  });
+  it('mise en avant cumulative : union des calques des pastilles, carte et conteneur en liste', () => {
+    expect(deck).toContain('this.generalFocusKeys.flatMap((k) => this.legendCategoryLayers(k))');
+    expect(container).toContain('setGeneralFocus(keys: readonly string[]): void {');
+    expect(app).toContain("const inScope = this.uiV2 && (this.v2Theme === 'general' || inEnv);");
+  });
+});

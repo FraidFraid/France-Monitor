@@ -3,6 +3,7 @@
 // station, jamais par département). Chaque partie porte sa date réelle (S1) : le flux InfoVigiCru n'a pas d'heure de bulletin, d'où
 // « relevé Vigicrues » ; une station a l'heure de sa dernière mesure. Une hauteur au repère de la station n'est pas une cote d'alerte.
 import type { FloodSection, FloodStation, FloodsResponse, OfficialColorId } from '../../types/index.ts';
+import { forecastText } from '../../services/flood-forecast.ts';
 import { floodsLevel, isEnvironmentDataLate, stationLate } from '../../services/environment-levels.ts';
 import { isProgressNote } from '../../services/environment-source.ts';
 import type { VigilanceLevel } from '../../services/vigilance.ts';
@@ -226,6 +227,8 @@ function stationRow(st: FloodStation, section: FloodSection, canFocus: boolean, 
     measured ? `mesure ${clockOf(st.lastAt, now)}${isLate ? ' (en retard)' : ''}`
       : flowOnly ? `${flowOnlyNote}${flowLate ? ' (en retard)' : ''}` : 'aucune mesure lue',
     measured && st.flowM3s !== null ? `débit ${formatFlowM3s(st.flowM3s)}${flowDate}` : null,
+    // Prévision publiée par Vigicrues (lot 3, 20/10/2026) ; rien si la station n'en a pas.
+    forecastText(st, now),
   ].filter((x): x is string => x !== null);
   const focusable = canFocus && st.lat !== null && st.lon !== null;
   return listRow({

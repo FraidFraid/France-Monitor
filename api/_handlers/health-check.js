@@ -12,11 +12,57 @@
 // une marge de 45/90 min absorbe un tick manqué ou retardé sans faux « down ».
 //
 // Node runtime (dépend de api/_lib/db.js → node:crypto). Sans DATABASE_URL → 503.
+//
+// Identifiants externes (20/10/2026) : `credentials.cdse` dit si Copernicus Data Space accepte le client OAuth des images NDWI
+// des crues (refusé le 20/10 sans que rien ne le signale). Testé au plus une fois par heure ; n'entre pas dans `status`.
 
 import { getDb, hasDatabaseUrl } from '../_lib/db.js';
 import { redisGet } from '../_utils/redis.js';
 
 const LAST_TICK_KEY = 'ingest:last-tick';
+const CDSE_TOKEN_URL = 'https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token';
+const CDSE_CHECK_EVERY_MS = 60 * 60_000;
+/** @type {{ at: number, value: { state: 'ok' | 'refused' | 'unreachable' | 'unconfigured', httpStatus: number | null, checkedAt: string } } | null} */
+let cdseCheck = null;
+
+/**
+ * État du client OAuth CDSE (fonction pure) : 2xx accepté, 400/401/403 refusé, autre réponse ou échec réseau injoignable.
+ * @param {number | null} httpStatus  null : pas de réponse
+ * @returns {'ok' | 'refused' | 'unreachable'}
+ */
+export function cdseState(httpStatus) {
+  if (httpStatus === null) return 'unreachable';
+  if (httpStatus >= 200 && httpStatus < 300) return 'ok';
+  if (httpStatus === 400 || httpStatus === 401 || httpStatus === 403) return 'refused';
+  return 'unreachable';
+}
+
+/**
+ * Demande un jeton CDSE (au plus une fois par heure, résultat gardé en mémoire). Jamais d'exception, jamais de secret renvoyé.
+ * @param {number} now
+ */
+async function checkCdse(now) {
+  if (cdseCheck && now - cdseCheck.at < CDSE_CHECK_EVERY_MS) return cdseCheck.value;
+  const checkedAt = new Date(now).toISOString();
+  if (!process.env.CDSE_CLIENT_ID || !process.env.CDSE_CLIENT_SECRET) {
+    cdseCheck = { at: now, value: { state: 'unconfigured', httpStatus: null, checkedAt } };
+    return cdseCheck.value;
+  }
+  let httpStatus = null;
+  try {
+    const body = new URLSearchParams({
+      grant_type: 'client_credentials', client_id: process.env.CDSE_CLIENT_ID, client_secret: process.env.CDSE_CLIENT_SECRET,
+    });
+    const response = await fetch(CDSE_TOKEN_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body, signal: AbortSignal.timeout(8_000),
+    });
+    httpStatus = response.status;
+  } catch {
+    httpStatus = null;
+  }
+  cdseCheck = { at: now, value: { state: cdseState(httpStatus), httpStatus, checkedAt } };
+  return cdseCheck.value;
+}
 const OK_TICK_MAX_MS = 45 * 60_000;
 const OK_ARTICLE_MAX_MS = 90 * 60_000;
 
@@ -112,11 +158,13 @@ export default async function handler(req, res) {
   const { lastArticleAt, lastArticleAgeMs, error: dbError } = await readLastArticle(now);
 
   const status = computeHealthStatus(lastTickAgeMs, lastArticleAgeMs);
+  const cdse = await checkCdse(now);
 
   json(res, 200, {
     status,
     checkedAt: new Date(now).toISOString(),
     ingest: { lastTick, lastTickAgeMs },
     articles: { lastArticleAt, lastArticleAgeMs, error: dbError },
+    credentials: { cdse },
   });
 }
