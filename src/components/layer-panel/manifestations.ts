@@ -143,7 +143,7 @@ function announcedRow(x: ProtestItem, canFocus: boolean): string {
       : x.source === 'giletsjaunes' ? ` · carte des gilets jaunes${x.place ? `, ${escapeHtml(x.place)}` : ''}`
       : x.edition ? ` · édition ${escapeHtml(x.edition)}` : '';
   return listRow({
-    text: x.title, value: when, color: '#ec4899',
+    text: x.title, value: when, color: x.source === 'giletsjaunes' ? '#f2e600' : '#ec4899',
     noteHtml: `annoncé, non confirmé${from}${link}${forecastLine(x)}`,
     data: key !== null ? { protest: key } : undefined, link: canFocus && key !== null,
   });

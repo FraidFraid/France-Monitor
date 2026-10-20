@@ -47,6 +47,10 @@
   // Pictos absents du jeu de l'app (tracé Lucide « server »).
   const EXTRA = { server: '<rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/>' };
   const glyph = (name, color) => EXTRA[name] ? `<g fill="none" stroke="${color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${EXTRA[name]}</g>` : fmIcon(name, { size: 24 }).replace(/^<svg[^>]*>/, `<g fill="none" stroke="${color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">`).replace('</svg>', '</g>');
+  // Action de la carte des gilets jaunes : un gilet jaune fluo, bandes réfléchissantes grises, contour sombre (lisible sur fond clair ou sombre).
+  const GILET = '<path d="M7 2h3l2 7 2-7h3l1 5c.4 1.6 1.4 2.6 3 3v11c-6 1.6-12 1.6-18 0V10c1.6-.4 2.6-1.4 3-3z" fill="#f2e600" stroke="#141414" stroke-width="1.4" stroke-linejoin="round"/>'
+    + '<path d="M3.7 14.2h16.6M3.7 18h16.6" stroke="#b8bec8" stroke-width="1.9"/><path d="M12 9v12.8" stroke="#141414" stroke-width="1.1"/>';
+  const giletSvg = (size) => `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24">${GILET}</svg>`;
   const disc = (name, ring, fill, dashed) => image(`mqs-${name}-${ring}-${fill}-${dashed ? 'd' : 'p'}`,
     `<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44"><circle cx="22" cy="22" r="19" fill="${fill}" stroke="${ring}" stroke-width="2.5" ${dashed ? 'stroke-dasharray="5 4"' : ''}/>`
     + `<g transform="translate(11 11) scale(0.9167)">${glyph(name, ring === MUTE ? MUTE : LIGHT_FILL.has(fill) ? '#0b1020' : '#ffffff')}</g></svg>`, 44);
@@ -131,14 +135,15 @@
     T_('mqs-ddos-label', pill('cyber') ? ['get', 'label'] : ['case', ['get', 'recent'], ['get', 'label'], '']);
     T_('mqs-prot-label', pill('protests') || pill('pedestrianFlows') ? ['get', 'label'] : ['case', ['any', ['>=', ['get', 'n'], 20], ['==', ['get', 'fc'], 1]], ['get', 'label'], '']);
     // Les points Foule estimée déjà portés par une annonce ne sont pas redessinés (un seul point par rassemblement) ; restent ceux dont l'annonce n'est plus dans la couche.
-    const protFilter = null;
+    // Actions de la carte des gilets jaunes : picto gilet à la place du rond.
+    const protFilter = ['!=', ['get', 'gj'], 1];
     const othersFilter = ['all', ['==', ['get', 'kind'], 'autre'], ['!', ['in', ['get', 'id'], ['literal', S.fluxMatched ?? []]]]];
     // Filtres posés seulement quand ils changent (calm tourne à chaque « idle » : un setFilter à chaque fois bouclerait).
     const key = JSON.stringify([protFilter, S.fluxMatched, Boolean(m.getLayer('mqs-prot')), Boolean(m.getLayer('flux-pietons-others'))]);
     if (S.fluxFilterKey !== key) {
       S.fluxFilterKey = key;
       try {
-        for (const id of ['mqs-prot', 'mqs-prot-label']) if (m.getLayer(id)) m.setFilter(id, protFilter);
+        if (m.getLayer('mqs-prot')) m.setFilter('mqs-prot', protFilter);
         for (const id of ['flux-pietons-others', 'flux-pietons-others-label']) if (m.getLayer(id)) m.setFilter(id, othersFilter);
       } catch (e) { /* calque absent */ }
     }
@@ -257,7 +262,7 @@
     S.protFlux = new Map(S.prot.map((x) => [x.id, fluxOf(x)]).filter(([, e]) => e));
     S.fluxMatched = [...new Set([...S.protFlux.values()].map((e) => e.id))];
     setData('mqs-prot', fc(S.prot.map((x, i) => { const ev = S.protFlux.get(x.id);
-      return pt([x.lon, x.lat], { i, kind: x.status === 'annonce' ? 'annonce' : x.violent ? 'heurts' : 'signale', n: x.articleCount ?? (x.articles ?? []).length, fc: ev ? 1 : 0,
+      return pt([x.lon, x.lat], { i, kind: x.status === 'annonce' ? 'annonce' : x.violent ? 'heurts' : 'signale', n: x.articleCount ?? (x.articles ?? []).length, fc: ev ? 1 : 0, gj: x.source === 'giletsjaunes' ? 1 : 0,
         label: `${x.city ?? x.edition ?? ''}${x.participants ? ` · ${num(x.participants)}${NB}pers.` : ''}${ev ? ` · ≈${NB}${num(Math.round(ev.affluence.p50))} estimées` : ''}` }); })));
     // Cibles françaises des hacktivistes pro-russes (NoName057(16)) : lieu sûr seulement (préfecture d'après gouv.fr, commune au nom exact) ;
     // une cible publiée n'est pas une attaque réussie. Anneau jaune : site présent dans une liste de moins de 24 h.
@@ -311,6 +316,7 @@
         cloudOk: await disc('cloud', '#ffffff', CAT.cloud), cloudJ: await disc('cloud', L1.jaune, CAT.cloud), cloudO: await disc('cloud', L1.orange, CAT.cloud), cloudR: await disc('cloud', L1.rouge, CAT.cloud),
         dc: await disc('server', '#ffffff', CAT.dc), dcProj: await disc('server', CAT.dc, DARK, true),
       };
+      await image('mqs-gilet', giletSvg(44), 44);
       for (const t of Object.keys(SHAPE)) { await shape(t, true, BASE_HEX[t], '#ffffff'); await shape(t, false, BASE_HEX[t], '#ffffff'); await shape(t, false, 'none', '#8a93a6'); }
       const icd = { air: await disc('plane', '#ffffff', BASE_HEX.air, true), navy: await disc('anchor', '#ffffff', BASE_HEX.navy, true), army: await disc('shield', '#ffffff', BASE_HEX.army, true),
         joint: await disc('swords', '#ffffff', BASE_HEX.joint, true), other: await disc('landmark', '#ffffff', BASE_HEX.other, true) };
@@ -389,6 +395,9 @@
       m.addLayer({ id: 'mqs-prot-flux', type: 'circle', source: 'mqs-prot', filter: ['==', ['get', 'fc'], 1],
         paint: { 'circle-radius': ['+', 4, ['interpolate', ['linear'], ['get', 'n'], 0, 5, 10, 7.5, 40, 11, 120, 16]], 'circle-color': 'rgba(0,0,0,0)',
           'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2 } });
+      m.addLayer({ id: 'mqs-prot-gj', type: 'symbol', source: 'mqs-prot', filter: ['==', ['get', 'gj'], 1],
+        layout: { 'icon-image': 'mqs-gilet', 'icon-size': ['interpolate', ['linear'], ['zoom'], 4, 0.7, 8, 0.9, 12, 1.1], 'icon-allow-overlap': true, 'icon-ignore-placement': true },
+        paint: { 'icon-opacity': 1 } });
       m.addLayer({ id: 'mqs-prot-label', type: 'symbol', source: 'mqs-prot', layout: { 'symbol-sort-key': ['-', 0, ['get', 'n']],
         'text-field': '', 'text-size': 10.5, 'text-font': ['Open Sans Semibold'], 'text-variable-anchor': ['top', 'bottom', 'right', 'left'], 'text-radial-offset': 1.2, 'text-optional': true },
         paint: { 'text-color': ['match', ['get', 'kind'], 'heurts', '#ff8a80', PROT.annonce], 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.4 } });
@@ -452,9 +461,9 @@
     cyber: ['mqs-ddos', 'mqs-ddos-dot', 'mqs-ddos-label', 'mqs-dc-ref', 'mqs-cloud-sym', 'mqs-landings', 'mqs-landings-label', 'submarine-cables-line'],
     stability: [],
     // Manifestations et Flux piétons fusionnés : la pastille Manifestations montre aussi les rues du rassemblement choisi.
-    protests: ['mqs-prot', 'mqs-prot-flux', 'mqs-prot-label', 'flux-pietons-lines', 'flux-pietons-iso', 'flux-pietons-point', 'flux-pietons-others', 'flux-pietons-others-label'],
+    protests: ['mqs-prot', 'mqs-prot-gj', 'mqs-prot-flux', 'mqs-prot-label', 'flux-pietons-lines', 'flux-pietons-iso', 'flux-pietons-point', 'flux-pietons-others', 'flux-pietons-others-label'],
     // Flux piétons : calques de l'application (rues chargées, isochrones, point de rassemblement), estompés comme les autres.
-    pedestrianFlows: ['mqs-prot', 'mqs-prot-flux', 'mqs-prot-label', 'flux-pietons-lines', 'flux-pietons-iso', 'flux-pietons-point', 'flux-pietons-others', 'flux-pietons-others-label'],
+    pedestrianFlows: ['mqs-prot', 'mqs-prot-gj', 'mqs-prot-flux', 'mqs-prot-label', 'flux-pietons-lines', 'flux-pietons-iso', 'flux-pietons-point', 'flux-pietons-others', 'flux-pietons-others-label'],
     crime: ['mqs-crime-city', 'mqs-crime-c', 'mqs-crime-c-label', 'mqs-crime-d-fill', 'mqs-crime-d-line'],
     outagesTelecom: ['mqs-dept-level', 'mqs-dept-level-line', 'mqs-agg-disc', 'mqs-agg-count', 'mqs-low-disc', 'mqs-low-count', 'mqs-sites-recent', 'mqs-sites-long'],
     outagesInternet: ['mqs-inet', 'mqs-inet-past-fill', 'mqs-inet-disc', 'mqs-inet-label'],
@@ -735,6 +744,7 @@
   const PROT_WORD = { annonce: 'Annoncée (agenda militant), pas constatée', signale: 'Rapportée par la presse, sans heurts', heurts: 'Heurts ou tensions rapportés par la presse' };
   const protCard = (x) => {
     const kind = x.status === 'annonce' ? 'annonce' : x.violent ? 'heurts' : 'signale';
+    const gj = x.source === 'giletsjaunes';
     const arts = [...(x.articles ?? [])].sort((a, b) => String(b.seenAt).localeCompare(String(a.seenAt)));
     const rows = [[x.status === 'annonce' ? 'Prévue' : 'Dernier article', x.status === 'annonce' ? (x.allDay ? `le ${day(x.startsAt)}, toute la journée` : when(x.startsAt)) : when(arts[0]?.seenAt ?? x.startsAt)],
       x.participants ? ['Plus haut chiffre cité', `${num(x.participants)} personnes (titre de presse)`] : null,
@@ -743,12 +753,14 @@
       x.status === 'annonce' ? ['Rendez-vous', x.title] : null,
       x.arrete?.hours ? ['Heures de l’arrêté', x.arrete.hours.join(' à ')] : null,
       x.arrete?.excerpt ? ['Motif (arrêté)', x.arrete.excerpt] : null,
-      ['Lieu', x.precision === 'departement' ? `${x.city ?? x.dept} : département seulement, point au chef-lieu` : `${x.city ?? 'n.d.'}${x.dept ? ` (${x.dept})` : ''}`]].filter(Boolean);
-    return { dot: kind === 'heurts' ? L1.rouge : PROT[kind] ?? PROT.signale, title: x.city ?? x.edition ?? 'Manifestation', state: PROT_WORD[kind], stateHex: kind === 'heurts' ? L1.rouge : '#c7c7cc', rows, url: x.url,
+      ['Lieu', x.precision === 'departement' ? `${x.city ?? x.dept} : département seulement, point au chef-lieu` : `${x.city ?? 'n.d.'}${x.dept ? ` (${x.dept})` : ''}`],
+      gj && x.place ? ['Point de rendez-vous', x.place] : null].filter(Boolean);
+    return { dot: gj ? '#f2e600' : kind === 'heurts' ? L1.rouge : PROT[kind] ?? PROT.signale, title: x.city ?? x.edition ?? 'Manifestation',
+      state: gj ? 'Annoncée sur la carte des gilets jaunes, pas constatée' : PROT_WORD[kind], stateHex: kind === 'heurts' ? L1.rouge : '#c7c7cc', rows, url: x.url,
       hint: `${x.status === 'annonce' ? 'Un rendez-vous annoncé n’est pas une manifestation constatée' : 'Classement d’après les titres de presse, à confirmer'} · clic : ouvrir ${x.status === 'annonce' ? 'l’annonce' : 'l’article'}`,
       source: x.source === 'demosphere' ? `Démosphère, édition ${x.edition ?? 'n.d.'}` : x.source === 'gdelt' ? 'GDELT (presse internationale)'
         : x.source === 'prefecture' ? `${x.edition ?? 'Préfecture'}, recueil des actes administratifs`
-        : x.source === 'giletsjaunes' ? `carte participative des gilets jaunes (17octobregiletjaune.net)${x.place ? `, ${x.place}` : ''}` : `presse française ingérée, relevé ${when(S.data.protests?.readAt)}` };
+        : x.source === 'giletsjaunes' ? 'carte participative des gilets jaunes (17octobregiletjaune.net)' : `presse française ingérée, relevé ${when(S.data.protests?.readAt)}` };
   };
   // Flux piétons : ce que le modèle dit du rassemblement, et l'annonce de la couche Manifestations dont il vient.
   const MOMENT = { encours: ['En cours', '#ffffff'], avenir: ['À venir', '#e8e8ec'], passe: ['Passé', '#8a8f98'] };
@@ -890,7 +902,7 @@
   const deptAt = (c) => { if (!c) return null; for (const f of S.geo.deptShapes) if (inGeom(c, f.geometry)) return S.agg.get(f.properties.code); return null; };
 
   // Arbitre : une seule cible, la plus signifiante sous le pointeur.
-  const PRIORITY = ['mqs-air-sym', 'sov-emergencies', 'mqs-ddos', 'flux-pietons-point', 'flux-pietons-others', 'mqs-prot', 'mqs-prot-flux', 'flux-pietons-lines', 'mqs-cloud-sym', 'mqs-inet-disc', 'mqs-sites-recent', 'mqs-agg-disc', 'mqs-low-disc', 'mqs-crime-c', 'mqs-crime-city', 'mqs-bases-sym', 'mqs-bases-closed', 'sov-navy-reference', 'sov-navy-observed', 'mqs-landings', 'mqs-world-lp', 'mqs-dc-ref', 'mqs-suite-end', 'mqs-world-hit', 'mqs-suite-hit', 'submarine-cables-hitarea', 'mqs-anch-line', 'mqs-cz-fill', 'mqs-sites-long', 'mqs-crime-d-fill', 'mqs-dept-fill'];
+  const PRIORITY = ['mqs-air-sym', 'sov-emergencies', 'mqs-ddos', 'flux-pietons-point', 'flux-pietons-others', 'mqs-prot', 'mqs-prot-gj', 'mqs-prot-flux', 'flux-pietons-lines', 'mqs-cloud-sym', 'mqs-inet-disc', 'mqs-sites-recent', 'mqs-agg-disc', 'mqs-low-disc', 'mqs-crime-c', 'mqs-crime-city', 'mqs-bases-sym', 'mqs-bases-closed', 'sov-navy-reference', 'sov-navy-observed', 'mqs-landings', 'mqs-world-lp', 'mqs-dc-ref', 'mqs-suite-end', 'mqs-world-hit', 'mqs-suite-hit', 'submarine-cables-hitarea', 'mqs-anch-line', 'mqs-cz-fill', 'mqs-sites-long', 'mqs-crime-d-fill', 'mqs-dept-fill'];
   const pick = (point) => {
     // Une pastille active : seuls ses calques (et les départements) répondent au survol ; un calque estompé ne donne jamais de bulle.
     const on = new Set(S.focus); if (preview) on.add(preview);
@@ -935,7 +947,7 @@
       return { key: `fluxr:${o.title}:${o.sub}`, kind: 'raw', id: o.title, at: null,
         card: { dot: p.color ?? '#22d3ee', title: o.title || 'rue', state: o.sub, stateHex: '#c7c7cc', rows: o.rows, hint: o.notes.join(' '), source: 'flux_osint (estimation modélisée) · OpenStreetMap' } };
     }
-    if (id === 'mqs-prot' || id === 'mqs-prot-flux') {
+    if (id === 'mqs-prot' || id === 'mqs-prot-gj' || id === 'mqs-prot-flux') {
       const x = S.prot?.[p.i]; if (!x) return null;
       const ev = S.protFlux?.get(x.id);
       // Annonce prévue : une seule bulle (l'annonce, puis la foule estimée) ; le clic choisit aussi le rassemblement (rues, rejeu).
@@ -1179,6 +1191,7 @@
       <div class="mqs-row">${swatch(CAT.internet, 'ring')}Coupure Internet terminée sur 7${NB}jours (durée cumulée, département teinté) ${swatch(L1.orange, 'disc')}coupure en cours</div>
       <div class="mqs-row">${icon('cloud', '#fff', CAT.cloud)}Site cloud (pages d’état, zones regroupées ; couleur d’état si incident) ${icon('server', '#fff', CAT.dc)}centre de données en service ${icon('server', CAT.dc, DARK)}en projet (avec la pastille)</div>
       <div class="mqs-row">${swatch(PROT.annonce, 'ring')}Manifestation annoncée ${swatch(PROT.signale, 'disc')}rapportée sans heurts ${swatch(L1.rouge, 'disc')}heurts ou tensions ; taille = articles sur 24${NB}h</div>
+      <div class="mqs-row"><span class="mqs-ic mqs-ic-bare">${giletSvg(16)}</span>Action annoncée sur la carte des gilets jaunes (manifestation, blocage, rond-point…), non confirmée</div>
       <div class="mqs-row mqs-note">Criminalité (SSMSI, annuelle, jamais une alerte) : ${CRIME_RAMP.slice(0, 4).map(([, c, w]) => `${swatch(c, 'disc')}${w}`).join(' ')} la moyenne nationale. Sans pastille, villes à 2 fois ou plus en anneau ; avec la pastille, toutes les villes de 20${NB}000 habitants et plus et les départements, pour l’indicateur du panneau.</div>
       <div class="mqs-row">${swatch('#22d3ee', 'line')}Flux piétons (estimations modélisées) : rue chargée, ${swatch(L1.jaune, 'line')}${swatch(L1.orange, 'line')}${swatch(L1.rouge, 'line')}saturation possible, probable, très probable</div>
       <div class="mqs-row mqs-note">Totaux de la phase : couleur = part des tirages où la rue sature, épaisseur = personnes passées. Rejeu (curseur du panneau) : couleur = débit rapporté à la capacité de la rue (jaune dès la moitié, rouge au-delà), épaisseur = débit. ${swatch('#e5e7eb', 'dash')}5, 10 et 20${NB}min à pied ; ${swatch('#ffffff', 'ring')}anneau blanc autour d’une manifestation : foule estimée par le modèle (clic : ses rues et le rejeu) ; prévision dont l’annonce a quitté la couche : ${swatch('#ffffff', 'disc')}en cours, ${swatch('#ffffff', 'ring')}à venir, ${swatch('#6b7280', 'ring')}passé.</div>
@@ -1207,7 +1220,7 @@
     outagesInternet: () => ['Internet', [[swatch(L1.orange, 'disc'), 'Coupure en cours (IODA)'], [swatch(CAT.internet, 'ring'), `Coupure terminée sur 7${NB}jours`]]],
     outagesCloud: () => ['Cloud et hébergement', [[icon('cloud', '#fff', CAT.cloud), 'Site cloud, couleur d’état si incident'],
       [icon('server', '#fff', CAT.dc), 'Centre de données en service'], [icon('server', CAT.dc, DARK), 'Centre de données en projet']]],
-    protests: () => ['Manifestations', [[swatch(PROT.annonce, 'ring'), 'Annoncée, non confirmée'], [swatch(PROT.signale, 'disc'), 'Rapportée sans heurts'],
+    protests: () => ['Manifestations', [[swatch(PROT.annonce, 'ring'), 'Annoncée, non confirmée'], [`<span class="mqs-ic mqs-ic-bare">${giletSvg(16)}</span>`, 'Action annoncée par les gilets jaunes'], [swatch(PROT.signale, 'disc'), 'Rapportée sans heurts'],
       [swatch(L1.rouge, 'disc'), 'Heurts ou tensions'], [swatch('#ffffff', 'ring'), 'Anneau blanc autour : foule estimée (clic : rues et rejeu)'],
       [swatch('#8a93a6', 'none'), `Taille = articles sur 24${NB}h`],
       // Rues du rassemblement choisi (foule estimée, mêmes mots que flux-pietons-legend.ts).
@@ -1301,6 +1314,7 @@
   .mqs-sw-line { width: 22px; height: 0; border-top: 2px solid var(--c); } .mqs-sw-dash { width: 22px; height: 0; border-top: 2px dashed var(--c); }
   .mqs-ic { display: inline-flex; width: 18px; height: 18px; border-radius: 50%; background: #161a22; border: 1.5px solid #8a93a6; align-items: center; justify-content: center; }
   .mqs-ic svg { width: 11px; height: 11px; }
+  .mqs-ic.mqs-ic-bare { background: none; border: none; border-radius: 0; } .mqs-ic.mqs-ic-bare svg { width: 16px; height: 16px; }
   .mqs-chev { color: #fff; font-size: 11px; } .mqs-chev-o { color: transparent; -webkit-text-stroke: 1px #fff; }
   .mqs-src { align-items: flex-start; } .mqs-src i { margin-top: 4px; } .mqs-src span { color: #9898a8; flex: 0 0 auto; white-space: nowrap; } .mqs-src b { font-weight: 500; margin-left: auto; text-align: right; flex: 1; }
   [class^="mqs-src-"] { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; margin-right: 4px; }
