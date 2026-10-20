@@ -15,6 +15,8 @@
  *   &cloud_max=30                                (optional, S2 only, default 30)
  */
 
+import { MIN_PASS_COVERAGE, groupPasses } from '../_lib/s2-passes.js';
+
 const STAC_BASE = 'https://earth-search.aws.element84.com/v1';
 const ALLOWED_COLLECTIONS = ['sentinel-2-l2a', 'sentinel-1-grd'];
 
@@ -118,7 +120,8 @@ export default async function handler(req, res) {
     collections: collection,
     bbox: bboxStr,
     datetime,
-    limit: String(limit),
+    // Sentinel-2 : deux à quatre tuiles par passage, on lit plus large puis on regroupe par passage.
+    limit: String(collection === 'sentinel-2-l2a' ? Math.min(limit * 4, 40) : limit),
   });
 
   const stacUrl = `${STAC_BASE}/search?${stacParams.toString()}`;
@@ -138,13 +141,14 @@ export default async function handler(req, res) {
     const data = await upstream.json();
     let features = data.features ?? [];
 
-    // Cloud cover filter applied server-side for S2
-    // (CQL2 GET filter on AWS Earth Search may be unreliable; filter here instead)
+    // Sentinel-2 (20/10/2026) : une scène par passage du satellite, pas par tuile ; passages couvrant moins de 90 % de la
+    // zone écartés (bordure de fauchée : image presque vide) ; nébulosité de la zone, pondérée par tuile (api/_lib/s2-passes.js).
+    let s2Passes = null;
     if (collection === 'sentinel-2-l2a') {
-      features = features.filter((f) => {
-        const cc = f.properties?.['eo:cloud_cover'];
-        return cc == null || cc <= cloudMax;
-      });
+      s2Passes = groupPasses(features, bbox)
+        .filter((p) => p.coverage >= MIN_PASS_COVERAGE && (p.cloudCover === null || p.cloudCover <= cloudMax))
+        .slice(0, limit);
+      features = s2Passes.map((p) => p.feature);
     }
 
     features.sort((a, b) => {
@@ -153,7 +157,9 @@ export default async function handler(req, res) {
       return bTime - aTime;
     });
 
-    const scenes = mapStacFeatures(features, collection);
+    const scenes = mapStacFeatures(features, collection).map((s, i) => (s2Passes?.[i]
+      ? { ...s, cloudCover: s2Passes[i].cloudCover ?? undefined, coverage: Math.round(s2Passes[i].coverage * 100) / 100 }
+      : s));
 
     // Upgrade path — Approach C: add WMS URL if credentials are set
     const clientId = process.env.COPERNICUS_CLIENT_ID;

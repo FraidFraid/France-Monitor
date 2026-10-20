@@ -18,7 +18,6 @@ import { fuelPricesProxyPlugin } from './src/plugins/fuel-prices-proxy';
 import { elusProxyPlugin } from './src/plugins/elus-proxy';
 import { synthesisProxyPlugin } from './src/plugins/synthesis-proxy';
 import { ministersProxyPlugin } from './src/plugins/ministers-proxy';
-import { copernicusProxyPlugin } from './src/plugins/copernicus-proxy';
 import { sentinelNdwiProxyPlugin } from './src/plugins/sentinel-ndwi-proxy';
 import { nuclearProxyPlugin } from './src/plugins/nuclear-proxy';
 import { gasPirProxyPlugin } from './src/plugins/gas-pir-proxy';
@@ -121,7 +120,6 @@ export default defineConfig(({ mode }) => {
       elusProxyPlugin(),
       synthesisProxyPlugin(),
       ministersProxyPlugin(),
-      copernicusProxyPlugin(),
       sentinelNdwiProxyPlugin(),
       nuclearProxyPlugin({
         clientId: env.RTE_CLIENT_ID ?? '',
@@ -203,6 +201,7 @@ export default defineConfig(({ mode }) => {
             'data/eau-potable.json',
             'data/deces.json',
             'data/webcams.json', // recensement des webcams, lu à l'ouverture de la couche
+            'data/seveso.json', // sites Seveso (Géorisques), lus à l'allumage de la pastille En bref
             'data/flux-pietons/**', // prévisions flux_osint, relues toutes les 15 min (jamais servies du cache)
           ],
           // Abaissé de 3 Mo à 1 Mo : les gros GeoJSON/JSON ci-dessus sont

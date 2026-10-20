@@ -1,4 +1,5 @@
 import { getOrRefresh } from './_utils/swr-cache.js';
+import { MIN_PASS_COVERAGE, groupPasses, passTimeRange } from './_lib/s2-passes.js';
 
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -186,20 +187,6 @@ function computeOutputSize(aoi: NdwiPolygon, maxDimension = 1280) {
   };
 }
 
-function toProcessingRange(dateString: string, paddingDays = 2) {
-  const value = new Date(dateString);
-  const from = new Date(value);
-  const to = new Date(value);
-  from.setDate(from.getDate() - paddingDays);
-  to.setDate(to.getDate() + paddingDays);
-  const fromDay = from.toISOString().split('T')[0];
-  const toDay = to.toISOString().split('T')[0];
-  return {
-    from: `${fromDay}T00:00:00Z`,
-    to: `${toDay}T23:59:59Z`,
-  };
-}
-
 function normalizeDateInput(input: string | DateRangeInput | undefined) {
   if (typeof input === 'string' && isIsoDate(input)) {
     const target = new Date(input);
@@ -296,7 +283,8 @@ async function fetchClosestScene(aoi: NdwiPolygon, dateInput: string | DateRange
       collections: ['sentinel-2-l2a'],
       intersects: aoi,
       datetime: `${searchFrom}/${searchTo}`,
-      limit: 12,
+      // Deux à quatre tuiles par passage : 24 pour garder une dizaine de passages.
+      limit: 24,
     }),
     signal: AbortSignal.timeout(12_000),
   });
@@ -310,20 +298,15 @@ async function fetchClosestScene(aoi: NdwiPolygon, dateInput: string | DateRange
   const payload = await response.json() as { features?: StacFeature[] };
   const features = Array.isArray(payload?.features) ? payload.features : [];
 
-  const filtered = features
-    .filter((feature: StacFeature) => {
-      const cloudCover = feature?.properties?.['eo:cloud_cover'];
-      return cloudCover == null || Number(cloudCover) <= maxCloudCoverage;
-    })
-    .sort((left: StacFeature, right: StacFeature) => {
-      const leftTime = Date.parse(left?.properties?.datetime ?? '') || 0;
-      const rightTime = Date.parse(right?.properties?.datetime ?? '') || 0;
-      const leftDistance = Math.abs(leftTime - targetTime);
-      const rightDistance = Math.abs(rightTime - targetTime);
+  // Passages (tuiles d'une même minute regroupées) couvrant au moins 90 % de la zone ; nébulosité de la zone, pas de la tuile
+  // (20/10/2026 : un passage en bordure de fauchée donnait une image presque vide).
+  const filtered = groupPasses(features, polygonToBbox(aoi) as [number, number, number, number])
+    .filter((p) => p.coverage >= MIN_PASS_COVERAGE && (p.cloudCover === null || p.cloudCover <= maxCloudCoverage))
+    .sort((left, right) => {
+      const leftDistance = Math.abs((Date.parse(left.datetime) || 0) - targetTime);
+      const rightDistance = Math.abs((Date.parse(right.datetime) || 0) - targetTime);
       if (leftDistance !== rightDistance) return leftDistance - rightDistance;
-      const leftCloud = Number(left?.properties?.['eo:cloud_cover'] ?? 1000);
-      const rightCloud = Number(right?.properties?.['eo:cloud_cover'] ?? 1000);
-      return leftCloud - rightCloud;
+      return (left.cloudCover ?? 1000) - (right.cloudCover ?? 1000);
     });
 
   if (filtered.length === 0) {
@@ -332,15 +315,18 @@ async function fetchClosestScene(aoi: NdwiPolygon, dateInput: string | DateRange
 
   const scene = filtered[0];
   return {
-    id: String(scene.id ?? 'unknown-scene'),
-    datetime: String(scene?.properties?.datetime ?? new Date().toISOString()),
-    cloudCover: scene?.properties?.['eo:cloud_cover'] != null ? Number(scene.properties['eo:cloud_cover']) : null,
-    bbox: Array.isArray(scene?.bbox) ? scene.bbox : polygonToBbox(aoi),
+    id: scene.id || 'unknown-scene',
+    datetime: scene.datetime || new Date().toISOString(),
+    cloudCover: scene.cloudCover,
+    bbox: polygonToBbox(aoi),
   };
 }
 
 async function fetchNdwiImage(aoi: NdwiPolygon, acquisitionDate: string, maxCloudCoverage: number, accessToken: string) {
-  const dayRange = toProcessingRange(acquisitionDate, 2);
+  // Le seul passage choisi (± 20 min), toutes ses tuiles : jamais « le plus récent sur ± 2 jours », qui pouvait prendre une
+  // bordure de fauchée d'une autre orbite. Nébulosité déjà contrôlée sur la zone au choix du passage.
+  void maxCloudCoverage;
+  const dayRange = passTimeRange(acquisitionDate);
   const outputSize = computeOutputSize(aoi);
   const payload = {
     input: {
@@ -355,7 +341,7 @@ async function fetchNdwiImage(aoi: NdwiPolygon, acquisitionDate: string, maxClou
           type: 'sentinel-2-l2a',
           dataFilter: {
             timeRange: dayRange,
-            maxCloudCoverage,
+            maxCloudCoverage: 100,
           },
         },
       ],
@@ -423,7 +409,8 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
       return;
     }
 
-    const cacheKey = `swr:sentinel-ndwi:${buildCacheKey(aoi, date, maxCloudCoverage)}`;
+    // v2 (20/10/2026) : choix par passage ; les images du choix par tuile ne sont plus servies.
+    const cacheKey = `swr:sentinel-ndwi:v2:${buildCacheKey(aoi, date, maxCloudCoverage)}`;
     const { value: payload } = (await getOrRefresh(
       cacheKey,
       { ttlSec: NDWI_CACHE_TTL_SEC },
