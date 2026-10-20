@@ -346,7 +346,7 @@ const HISTORY_FIELDS: Array<{ id: string; field: keyof Eco2mixNatRecord }> = [
 
 /**
  * Fetch les séries horaires des 7 derniers jours pour chaque frontière.
- * Appel direct ODRÉ (CORS OK). Paginé automatiquement.
+ * Export ODRÉ via le relais du site, une seule requête.
  * Cache 30 min.
  */
 export async function fetchBorderHistory(days = 7): Promise<BorderHistory> {
@@ -356,7 +356,8 @@ export async function fetchBorderHistory(days = 7): Promise<BorderHistory> {
 
   const empty: BorderHistory = new Map(HISTORY_FIELDS.map(f => [f.id, []]));
 
-  const since = new Date(Date.now() - days * 24 * 3_600_000);
+  // Départ arrondi à l'heure : même adresse pour tous les visiteurs de l'heure, servie par le cache du relais.
+  const since = new Date(Math.floor((Date.now() - days * 24 * 3_600_000) / 3_600_000) * 3_600_000);
   const sinceISO = since.toISOString().slice(0, 16); // "YYYY-MM-DDTHH:mm"
 
   const selectFields = ['date_heure', ...HISTORY_FIELDS.map(f => f.field)].join(',');
@@ -365,29 +366,19 @@ export async function fetchBorderHistory(days = 7): Promise<BorderHistory> {
   // colonne `datetime` → 400 IncompatibleTypesInComparisonFilter.
   const where = `date_heure >= date'${sinceISO}' AND ech_comm_espagne is not null`;
 
-  const records: Eco2mixNatRecord[] = [];
-  const PAGE = 100;
-  let offset = 0;
-
+  // Export ODRÉ : toute la période en une requête (~730 lignes, 140 Ko) au lieu de pages de 100 (8 requêtes).
+  let records: Eco2mixNatRecord[];
   try {
-    while (true) {
-      const upstream =
-        `${ODRE_BASE}/eco2mix-national-tr/records` +
-        `?limit=${PAGE}&offset=${offset}` +
-        `&select=${encodeURIComponent(selectFields)}` +
-        `&where=${encodeURIComponent(where)}` +
-        `&order_by=date_heure`;
-      const url = opendataProxyUrl(upstream);
-
-      const resp = await fetch(url, { signal: AbortSignal.timeout(12_000) });
-      if (!resp.ok) break;
-
-      const data = await resp.json() as { results: Eco2mixNatRecord[]; total_count: number };
-      records.push(...data.results);
-
-      if (records.length >= data.total_count || data.results.length < PAGE) break;
-      offset += PAGE;
-    }
+    const upstream =
+      `${ODRE_BASE}/eco2mix-national-tr/exports/json` +
+      `?select=${encodeURIComponent(selectFields)}` +
+      `&where=${encodeURIComponent(where)}` +
+      `&order_by=date_heure`;
+    const resp = await fetch(opendataProxyUrl(upstream), { signal: AbortSignal.timeout(15_000) });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json() as unknown;
+    if (!Array.isArray(data)) throw new Error('export ODRÉ inattendu');
+    records = data as Eco2mixNatRecord[];
   } catch (err) {
     console.warn('[energy-regions] fetchBorderHistory failed:', err);
     return historyCache?.data ?? empty;

@@ -1160,6 +1160,8 @@ const FRANCE_INTEL_BRIEF_EVENTS_WAIT_MS = 8_000;
 /** v2 (?ui=v2) : relecture des événements consolidés pour la liste et la fiche France (arbitrage A11). */
 const V2_EVENTS_REFRESH_MS = 5 * 60_000;
 const MAX_SUMMARIZE_ITEMS_PER_CYCLE = 10;
+// Résumés IA jamais pendant le démarrage (10 appels sinon) : le fil montre le texte d'origine en attendant.
+const SUMMARIZE_STARTUP_DELAY_MS = 30_000;
 
 export class App {
 
@@ -6559,22 +6561,27 @@ export class App {
 
   private async augmentItemsInBackground(items: NewsItem[], requestId: number): Promise<void> {
     // Run AI classification and geocoding in PARALLEL — geocoding must NOT wait for AI model to load
+    // Résumés à part : ils attendent la fin du démarrage, le classement et les lieux n'ont pas à les attendre.
+    const summarized = this.runSummarization(items, requestId);
     await Promise.all([
       this.runAIClassification(items, requestId),
       this.runGeocoding(items, requestId),
-      this.runSummarization(items, requestId),
     ]);
+    if (!this.applyAugmentedAndCache(items, requestId)) return;
+    console.log(`[RSS] Pipeline stage 2 (background) complete: AI & Geocoding.`);
 
+    await summarized;
+    if (this.applyAugmentedAndCache(items, requestId)) console.log('[RSS] Summarization complete.');
+  }
+
+  private applyAugmentedAndCache(items: NewsItem[], requestId: number): boolean {
     if (requestId !== this.rssRequestSeq) {
       console.log('[RSS] Background augmentation dropped for stale request', requestId);
-      return;
+      return false;
     }
-
     this.applyNewsItems(items);
-
-    // Cache the fully augmented results once both are done
     saveNewsToCache(this.newsItems);
-    console.log(`[RSS] Pipeline stage 2 (background) complete: AI, Geocoding & Summarization.`);
+    return true;
   }
 
   private publishAugmentedItemsIfCurrent(items: NewsItem[], requestId: number): void {
@@ -6662,6 +6669,8 @@ export class App {
 
     this.isSummarizationRunning = true;
     try {
+      const startupWait = SUMMARIZE_STARTUP_DELAY_MS - performance.now();
+      if (startupWait > 0) await new Promise((r) => setTimeout(r, startupWait));
       const toSummarize = items
         .filter((it) => !it.aiSummary && it.summary && it.aiSummaryStatus !== 'pending' && it.aiSummaryStatus !== 'failed' && it.aiSummaryStatus !== 'done')
         .slice(0, MAX_SUMMARIZE_ITEMS_PER_CYCLE);
