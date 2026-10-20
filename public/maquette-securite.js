@@ -747,7 +747,8 @@
     return { dot: kind === 'heurts' ? L1.rouge : PROT[kind] ?? PROT.signale, title: x.city ?? x.edition ?? 'Manifestation', state: PROT_WORD[kind], stateHex: kind === 'heurts' ? L1.rouge : '#c7c7cc', rows, url: x.url,
       hint: `${x.status === 'annonce' ? 'Un rendez-vous annoncé n’est pas une manifestation constatée' : 'Classement d’après les titres de presse, à confirmer'} · clic : ouvrir ${x.status === 'annonce' ? 'l’annonce' : 'l’article'}`,
       source: x.source === 'demosphere' ? `Démosphère, édition ${x.edition ?? 'n.d.'}` : x.source === 'gdelt' ? 'GDELT (presse internationale)'
-        : x.source === 'prefecture' ? `${x.edition ?? 'Préfecture'}, recueil des actes administratifs` : `presse française ingérée, relevé ${when(S.data.protests?.readAt)}` };
+        : x.source === 'prefecture' ? `${x.edition ?? 'Préfecture'}, recueil des actes administratifs`
+        : x.source === 'giletsjaunes' ? `carte participative des gilets jaunes (17octobregiletjaune.net)${x.place ? `, ${x.place}` : ''}` : `presse française ingérée, relevé ${when(S.data.protests?.readAt)}` };
   };
   // Flux piétons : ce que le modèle dit du rassemblement, et l'annonce de la couche Manifestations dont il vient.
   const MOMENT = { encours: ['En cours', '#ffffff'], avenir: ['À venir', '#e8e8ec'], passe: ['Passé', '#8a8f98'] };
@@ -768,7 +769,7 @@
       ev.cortege ? ['Cortège', `oui${r?.goulots ? `, ${num(r.goulots)} goulot${r.goulots > 1 ? 's' : ''}` : ''}`] : null,
       t ? ['Rythme supposé', `arrivées sur ${t.arriveeMin}${NB}min, sur place ${t.dureeMin}${NB}min, dispersion sur ${t.departMin}${NB}min`] : null,
       ev.meteo ? ['Météo prévue', ev.meteo.replace(/_/g, ' ')] : null,
-      src ? ['Annonce', `${src.title ?? 'rendez-vous'}${src.source === 'presse' ? ' (presse)' : src.source === 'prefecture' ? ' (préfecture)' : src.source === 'demosphere' ? ' (Démosphère)' : ''}`] : null].filter(Boolean);
+      src ? ['Annonce', `${src.title ?? 'rendez-vous'}${src.source === 'presse' ? ' (presse)' : src.source === 'prefecture' ? ' (préfecture)' : src.source === 'giletsjaunes' ? ' (gilets jaunes)' : src.source === 'demosphere' ? ' (Démosphère)' : ''}`] : null].filter(Boolean);
     return { dot: hex, title: ev.ville, state: `${word} · estimation modélisée`, stateHex: hex, rows, url: null,
       hint: selected ? 'Rassemblement affiché : rues, phases et rejeu dans le panneau' : 'Clic : afficher ses rues et le rejeu',
       source: `flux_osint, calcul du ${when(ev.calculeLe)} · ${a.base}` };

@@ -3292,7 +3292,7 @@ export interface CloudOutagesResponse {
 
 // ═══ Manifestations : annonces Démosphère, presse française ingérée et signal presse GDELT (spec 2026-10-17 manifestations) ═══
 
-export type ProtestSource = 'demosphere' | 'presse' | 'gdelt' | 'prefecture';
+export type ProtestSource = 'demosphere' | 'presse' | 'gdelt' | 'prefecture' | 'giletsjaunes';
 /** annonce : rendez-vous publié à l'avance (Démosphère), jamais confirmé ; signale : relevé dans la presse (française ou GDELT). */
 export type ProtestStatus = 'annonce' | 'signale';
 

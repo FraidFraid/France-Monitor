@@ -25,6 +25,7 @@ export interface ManifestationsViewInput {
 
 const PARIS = 'Europe/Paris';
 const DEMOSPHERE_URL = 'https://demosphere.net/';
+const GILETS_JAUNES_URL = 'https://www.17octobregiletjaune.net/carte/';
 const GDELT_URL = 'https://www.gdeltproject.org/';
 const NO_PLACE = 'France, sans lieu précis';
 
@@ -136,9 +137,10 @@ function announcedRow(x: ProtestItem, canFocus: boolean): string {
   const clock = x.allDay ? null : parisClock(x.startsAt);
   const when = clock ?? 'journée';
   const key = protestPlaceKey(x);
-  const link = x.url ? ` · ${sourceLinkHtml(x.source === 'presse' ? 'Article' : x.source === 'prefecture' ? 'Recueil officiel' : 'Fiche Démosphère', x.url)}` : '';
+  const link = x.url ? ` · ${sourceLinkHtml(x.source === 'presse' ? 'Article' : x.source === 'prefecture' ? 'Recueil officiel' : x.source === 'giletsjaunes' ? 'Carte des gilets jaunes' : 'Fiche Démosphère', x.url)}` : '';
   const from = x.source === 'presse' ? ` · presse${x.articles[0]?.outlet ? ` (${escapeHtml(x.articles[0].outlet)})` : ''}`
     : x.source === 'prefecture' ? ` · ${escapeHtml(x.edition ?? 'préfecture')}${x.arrete?.hours ? `, ${escapeHtml(x.arrete.hours.join(' à '))}` : ''}`
+      : x.source === 'giletsjaunes' ? ` · carte des gilets jaunes${x.place ? `, ${escapeHtml(x.place)}` : ''}`
       : x.edition ? ` · édition ${escapeHtml(x.edition)}` : '';
   return listRow({
     text: x.title, value: when, color: '#ec4899',
@@ -230,13 +232,15 @@ function methodSection(d: ProtestsResponse, now: number, open: OpenFn): FicheSec
   const html = kvRow('Démosphère', `${sourceLinkHtml('Démosphère', DEMOSPHERE_URL)} · ${escapeHtml(demoState)}`)
     + note(`Annonces : agenda militant Démosphère, ${d.demosphere.editions}${NBSP}éditions locales lues, couverture inégale selon les villes, Paris presque vide. Filtre sur le titre. Un rendez-vous annoncé n’est pas une manifestation constatée.`)
     + failed
+    + kvRow('Gilets jaunes', `${sourceLinkHtml('17octobregiletjaune.net', GILETS_JAUNES_URL)} · ${plural(d.items.filter((x) => x.source === 'giletsjaunes').length, 'action')}`)
+    + note(`Annonces : carte participative des gilets jaunes, relue toutes les 30${NBSP}min ; chaque action est posée par un visiteur sur un lieu précis (place, rond-point, gare, péage, station-service). Assemblées et messages libres non repris. Annonce non confirmée.`)
     + kvRow('Presse française', escapeHtml(presseState))
     + note(`Presse : titres des journaux nationaux et régionaux déjà suivis par France${NBSP}Monitor, lus toutes les 5${NBSP}min. Lieu = ville ou département nommé dans le titre ; une dépêche reprise par plusieurs journaux compte une fois ; « heurts » dès que le titre parle de tensions, d’affrontements ou d’interpellations. ${d.presse.matched}${NBSP}titres retenus, dont ${d.presse.unplaced}${NBSP}sans lieu (articles nationaux).`)
     + kvRow('GDELT', `${sourceLinkHtml('GDELT', GDELT_URL)} · ${escapeHtml(gdeltState)}`)
     + note(`Presse : GDELT (presse mondiale), mise à jour toutes les 15${NBSP}min ; le lieu n’est que rarement plus précis que la ville, souvent absent.`)
     + note('Cette couche n’a aucun effet sur l’indice de stabilité, les situations ni la synthèse.')
     + readErrors(d.errors);
-  return { id: 'methode', title: 'Méthode et sources', collapsible: true, open: open('methode', false), tone: 'reference', summary: 'Démosphère · presse · GDELT', html };
+  return { id: 'methode', title: 'Méthode et sources', collapsible: true, open: open('methode', false), tone: 'reference', summary: 'Démosphère · gilets jaunes · presse · GDELT', html };
 }
 
 export function buildManifestationsView(input: ManifestationsViewInput): LayerView {

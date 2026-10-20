@@ -14,6 +14,7 @@ import { sortProtests } from '../api/_lib/protests.js';
 import { loadPress } from '../api/_lib/protests-press.js';
 import { loadPressAnnouncements } from '../api/_lib/protests-press-annonces.js';
 import { loadPrefectures } from '../api/_lib/protests-prefectures.js';
+import { loadGiletsJaunes } from '../api/_lib/protests-giletsjaunes.js';
 import type { ProtestItem, ProtestsResponse } from '../src/types/index.ts';
 import handler, { CACHE_CONTROL } from '../api/_handlers/social/protests.js';
 import { callHandler, respond, stubFetch } from './helpers/traffic-fixtures.ts';
@@ -33,12 +34,16 @@ vi.mock('../api/_lib/protests-press-annonces.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/_lib/protests-press-annonces.js')>()), loadPressAnnouncements: vi.fn(),
 }));
 // Arrêtés préfectoraux : relevé du minuteur, testé seul dans tests/arretes-prefectoraux.test.ts ; aucun par défaut.
+vi.mock('../api/_lib/protests-giletsjaunes.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api/_lib/protests-giletsjaunes.js')>()), loadGiletsJaunes: vi.fn(),
+}));
 vi.mock('../api/_lib/protests-prefectures.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../api/_lib/protests-prefectures.js')>()), loadPrefectures: vi.fn(),
 }));
 beforeEach(() => {
   vi.mocked(loadPressAnnouncements).mockResolvedValue({ items: [], matched: 0, unplaced: 0, scanned: 0 });
   vi.mocked(loadPrefectures).mockResolvedValue({ items: [], acts: 0, unplaced: 0, readAt: null });
+  vi.mocked(loadGiletsJaunes).mockResolvedValue({ items: [], actions: 0, unplaced: 0 });
 });
 const pressOk = (items: ProtestItem[]) => vi.mocked(loadPress).mockResolvedValue({ items, matched: 5, unplaced: 2, scanned: 40 });
 
@@ -317,13 +322,15 @@ describe('route', () => {
     vi.mocked(loadPress).mockRejectedValue(new Error('base des articles non configurée'));
     vi.mocked(loadPressAnnouncements).mockRejectedValue(new Error('base des articles non configurée'));
     vi.mocked(loadPrefectures).mockRejectedValue(new Error('relevé des arrêtés absent'));
+    vi.mocked(loadGiletsJaunes).mockRejectedValue(new Error('HTTP 503'));
     const { status, body } = await callHandler<ProtestsResponse>(handler);
     expect(status).toBe(502);
     expect(body.readAt).toBeNull();
-    expect(body.errors).toHaveLength(5);
+    expect(body.errors).toHaveLength(6);
     expect(body.errors[1]).toMatch(/^Presse française : /);
     expect(body.errors[2]).toMatch(/^Presse française \(annonces\) : /);
     expect(body.errors[3]).toMatch(/^Arrêtés préfectoraux : /);
-    expect(body.errors[4]).toBe('GDELT : HTTP 503');
+    expect(body.errors[4]).toBe('Carte des gilets jaunes : HTTP 503');
+    expect(body.errors[5]).toBe('GDELT : HTTP 503');
   });
 });

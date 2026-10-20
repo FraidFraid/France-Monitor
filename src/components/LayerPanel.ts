@@ -678,7 +678,7 @@ export class LayerPanel {
         this.helpItem(fmIcon('cloud'), 'Cloud et hébergement', 'Incidents des pages d’état touchant une zone française (OVHcloud, Scaleway, Cloudflare, Google Cloud, AWS, Outscale), comptés une fois ; maintenances ; référentiel des centres de données et points d’échange, présenté comme inventaire.'),
       ]),
       this.helpSection(fmIcon('megaphone'), 'Manifestations', [
-        this.helpItem(fmIcon('megaphone'), 'Manifestations', 'Rendez-vous annoncés par l’agenda militant (Démosphère, non confirmés) et manifestations signalées par la presse mondiale (GDELT, 24\u00a0h) ; le lieu d’un signalement est souvent approximatif. Aucun effet sur l’indice de stabilité.', 'live'),
+        this.helpItem(fmIcon('megaphone'), 'Manifestations', 'Rendez-vous annoncés par l’agenda militant (Démosphère) et la carte des gilets jaunes (17octobregiletjaune.net), non confirmés, et manifestations signalées par la presse mondiale (GDELT, 24\u00a0h) ; le lieu d’un signalement est souvent approximatif. Aucun effet sur l’indice de stabilité.', 'live'),
       ]),
       this.helpSection(fmIcon('siren'), 'Criminalité', [
         this.helpItem(fmIcon('siren'), 'Criminalité', 'Délinquance enregistrée par la police et la gendarmerie (SSMSI, ministère de l’Intérieur), par département et par ville de 20\u00a0000 habitants et plus ; homicides au département seulement. Données annuelles : plaintes et constatations, pas la délinquance réelle. Aucun effet sur l’indice de stabilité.'),
