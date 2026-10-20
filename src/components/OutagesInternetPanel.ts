@@ -41,7 +41,7 @@ export class OutagesInternetPanel {
   /** Nouvel état ; un panneau fermé ne se rouvre pas. */
   update(state: InternetState): void {
     this.state = state;
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   hide(opts: { silent?: boolean } = {}): void {

@@ -49,7 +49,7 @@ export class NuclearPanel {
   /** Événements de sûreté ASNR (spec 2026-10-13) : section de la vue d'ensemble. */
   setAsnr(slot: SourceSlot<AsnrResponse> | null): void {
     this.asnr = slot;
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   setOnClose(cb: () => void): void { this.onCloseCallback = cb; }
@@ -65,7 +65,7 @@ export class NuclearPanel {
   update(state: NuclearState, ecowatt: EcowattResponse | null = this.ecowatt): void {
     this.state = state;
     this.ecowatt = ecowatt;
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   hide(opts: { silent?: boolean } = {}): void {

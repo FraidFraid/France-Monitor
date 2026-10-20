@@ -46,7 +46,7 @@ export class HydraulicPanel {
   update(assets: HydraulicBackboneAsset[], ecowatt: EcowattResponse | null = this.ecowatt): void {
     this.assets = assets;
     this.ecowatt = ecowatt;
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   hide(opts: { silent?: boolean } = {}): void {

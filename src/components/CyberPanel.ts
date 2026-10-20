@@ -36,7 +36,7 @@ export class CyberPanel {
   /** Nouvel état ; un panneau fermé ne se rouvre pas ; null garde le dernier état reçu. */
   update(state: SovCyberState | null): void {
     if (state) this.state = state;
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   hide(opts: { silent?: boolean } = {}): void {

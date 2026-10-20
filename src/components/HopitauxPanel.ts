@@ -48,7 +48,7 @@ export class HopitauxPanel {
       this.data = offer.hospitals.data;
       this.error = offer.hospitals.error;
     }
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   hide(opts: { silent?: boolean } = {}): void {

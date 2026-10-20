@@ -20,6 +20,8 @@ export interface LayerFigure {
 
 export interface LayerHeadModel {
   theme: string;
+  /** Nature du panneau dans le surtitre (« Thème · Couche ») ; « Synthèse » pour les En bref (20/10/2026). */
+  kind?: string;
   title: string;
   figure?: LayerFigure | null;
   level?: VigilanceLevel | 'nd' | null;
@@ -44,7 +46,7 @@ export function renderLayerHead(m: LayerHeadModel, titleId: string): string {
     ? `<div class="lp-figure"><b class="fmk-num${figLevel ? ` lp-lvl lp-lvl--${figLevel}` : ''}">${escapeHtml(f.value)}</b>`
       + `<span>${f.captionHtml ?? escapeHtml(f.caption)}</span></div>`
     : '';
-  return `<div class="fmk-eyebrow">${escapeHtml(`${m.theme} · Couche`)}</div>`
+  return `<div class="fmk-eyebrow">${escapeHtml(`${m.theme} · ${m.kind ?? 'Couche'}`)}</div>`
     + `<h2 class="lp-title" id="${escapeHtml(titleId)}" tabindex="-1">${escapeHtml(m.title)}</h2>`
     + figure
     + (pill || status ? `<div class="fmk-level">${pill}${status}</div>` : '')
@@ -232,6 +234,22 @@ export function isLayerPanelOpen(el: HTMLElement): boolean {
   return el.classList.contains('lp') && el.classList.contains('is-open');
 }
 
+/**
+ * Dernière vue de chaque panneau, ouvert ou non (20/10/2026) : l'En bref de chaque onglet en reprend l'en-tête (chiffre, niveau,
+ * phrase, état de la source) sans rien recalculer. Un panneau fermé construit sa vue mais ne touche pas au DOM.
+ */
+const LAST_VIEWS = new Map<string, LayerView>();
+
+/** En-tête de la dernière vue construite par le panneau `panelId` ; null s'il n'en a encore construit aucune. */
+export function lastLayerHead(panelId: string): LayerHeadModel | null {
+  return LAST_VIEWS.get(panelId)?.head ?? null;
+}
+
+/** Tests seulement. */
+export function resetLastLayerViews(): void {
+  LAST_VIEWS.clear();
+}
+
 export interface LayerPanelShell {
   root: HTMLElement;
   render(view: LayerView): void;
@@ -295,13 +313,16 @@ export function createLayerPanelShell(opts: {
   return {
     root,
     render(view: LayerView): void {
-      if (!viewEl) return;
+      LAST_VIEWS.set(opts.panelId, view);
+      // Panneau fermé : vue retenue pour l'En bref, DOM laissé tel quel (il sera rendu à l'ouverture).
+      if (!viewEl || !root.classList.contains('is-open')) return;
       const scroll = root.scrollTop;
       viewEl.innerHTML = renderLayerView(opts.panelId, view);
       root.scrollTop = scroll;
     },
     patch(view: LayerView): void {
-      if (viewEl) morphInto(viewEl, renderLayerView(opts.panelId, view));
+      LAST_VIEWS.set(opts.panelId, view);
+      if (viewEl && root.classList.contains('is-open')) morphInto(viewEl, renderLayerView(opts.panelId, view));
     },
     destroy(): void {
       root.removeEventListener('click', onClick);

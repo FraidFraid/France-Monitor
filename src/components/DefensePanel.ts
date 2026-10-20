@@ -106,7 +106,7 @@ export class DefensePanel {
       gnss: state.gnss !== undefined ? state.gnss : this.state?.gnss ?? null,
       sanctions: state.sanctions !== undefined ? state.sanctions : this.state?.sanctions ?? null,
     };
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   /** Positions AIS rafraîchies (App.ts, relève de 5 s) : nouveau rendu si le panneau est ouvert. */

@@ -96,6 +96,10 @@ export interface PosteCallbacks {
   onOpenLayerPanel?: (key: string) => void;
   /** Pression par département recalculée avec le fil (panneau et couche « Pression par département », 12/10/2026). */
   onPressure?: (depts: DepartmentPressure[]) => void;
+  /** Liste « À traiter » recalculée (tous thèmes) : pastille « En bref » de chaque onglet (20/10/2026). */
+  onQueue?: (queue: WorkQueue) => void;
+  /** Fiche refermée (retour à la liste) : App rouvre l'En bref de l'onglet dans la colonne (20/10/2026). */
+  onFicheClosed?: () => void;
 }
 
 export interface PosteRoots {
@@ -341,6 +345,7 @@ export class PosteSituation {
     this.selection = null;
     this.render();
     this.restoreFocus(key);
+    this.callbacks.onFicheClosed?.();
   }
 
   /**
@@ -409,6 +414,11 @@ export class PosteSituation {
     });
     this.trackAppearances(queue, data.now);
     this.queue = queue;
+    try {
+      this.callbacks.onQueue?.(queue);
+    } catch (err) {
+      console.error('[Poste] En bref', err);
+    }
     // Après le rendu du fil : un calcul en échec ne doit jamais bloquer la liste.
     this.render();
     try {

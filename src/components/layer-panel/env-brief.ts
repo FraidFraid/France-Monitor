@@ -12,6 +12,7 @@ import type { FicheSection } from '../fiche/parts.ts';
 import { emptyLine, listRow, loadingBody, type LayerView } from './frame.ts';
 import { NBSP, frNumber } from './format.ts';
 import { readForecast } from '../../services/flood-forecast.ts';
+import { pastillesSynthesisSection, type ThemeBriefPastille } from './theme-brief.ts';
 import { ENVIRONMENT_THEME, formatAge, note } from './environment-format.ts';
 import { departementName } from './health-format.ts';
 import type { WatchLevel } from './watch.ts';
@@ -38,6 +39,8 @@ export interface EnvBriefInput {
   assetsLoading: boolean;
   assetsMissing: readonly string[];
   webcams: WebcamsDataset | null;
+  /** Pastilles de l'onglet et en-tête de leur panneau (synthèse commune aux En bref) ; absent : section omise. */
+  pastilles?: readonly ThemeBriefPastille[];
   changes: readonly EnvBriefChange[];
   sources: readonly EnvBriefSource[];
   now: number;
@@ -321,12 +324,13 @@ export function buildEnvBriefView(input: EnvBriefInput): LayerView {
   const ex = input.exposure;
   // Chiffre : enjeux à portée d'un phénomène orange ou rouge (le jaune reste listé, il ne fait pas le chiffre).
   const exposedCount = ex ? ex.nearby.filter((e) => LEVEL_RANK[e.hazard.level] >= LEVEL_RANK.orange).length : null;
-  const sections = [attentionSection(input), changesSection(input), tomorrowSection(input), exposedSection(input), webcamsSection(input), sourcesSection(input)];
+  const sections = [attentionSection(input), ...(input.pastilles ? [pastillesSynthesisSection(input.pastilles, input.open)] : []),
+    changesSection(input), tomorrowSection(input), exposedSection(input), webcamsSection(input), sourcesSection(input)];
   const copy = '<div class="fiche-actions eb-actions"><button type="button" class="fiche-action" data-copy-note>Copier pour une note</button>'
     + '<span class="eb-copied" aria-live="polite"></span></div>';
   return {
     head: {
-      theme: ENVIRONMENT_THEME, title: ENV_BRIEF_TITLE, level,
+      theme: ENVIRONMENT_THEME, kind: 'Synthèse', title: ENV_BRIEF_TITLE, level,
       figure: exposedCount === null ? null : {
         value: frNumber(exposedCount, 0),
         caption: exposedCount > 1 ? 'enjeux à portée d’un phénomène orange ou rouge' : 'enjeu à portée d’un phénomène orange ou rouge',

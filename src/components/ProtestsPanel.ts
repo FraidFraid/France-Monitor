@@ -51,7 +51,7 @@ export class ProtestsPanel {
   /** Prévisions Flux piétons par rendez-vous ; le panneau se redessine s'il est ouvert. */
   setForecasts(forecasts: ReadonlyMap<string, FluxEvent>): void {
     this.forecasts = forecasts;
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   show(state: ProtestsState | null): void {
@@ -61,7 +61,7 @@ export class ProtestsPanel {
 
   update(state: ProtestsState | null): void {
     if (state) this.state = state;
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   /** Point de la carte cliqué : les lignes de sa commune sont dépliées et amenées à l'écran. */

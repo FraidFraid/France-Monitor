@@ -133,6 +133,8 @@ export interface MapLayers {
   webcams: boolean;
   /** En bref de l'onglet Environnement : synthèse décideur et enjeux exposés aux phénomènes en cours (spec 2026-10-20). */
   envBrief: boolean;
+  /** En bref des autres onglets (Vue générale, Énergie, Sécurité, Santé, Transports) : synthèse décideur, sans dessin (20/10/2026). */
+  brief: boolean;
   /** Flux piétons : prévisions modélisées autour des rassemblements annoncés, publiées par flux_osint (data/flux-pietons/). */
   pedestrianFlows: boolean;
   stability: boolean;

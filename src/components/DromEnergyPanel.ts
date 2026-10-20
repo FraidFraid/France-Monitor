@@ -83,7 +83,7 @@ export class DromEnergyPanel {
   setLive(live: DromLiveResponse | null, error: string | null = null): void {
     if (live) this.live = live;
     this.liveError = error;
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   hide(opts: { silent?: boolean } = {}): void {

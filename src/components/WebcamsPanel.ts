@@ -49,7 +49,7 @@ export class WebcamsPanel {
   /** Webcams du mur : boutons « Ajouter au mur » / « Retirer du mur » et compte du mur à jour. */
   setWallIds(ids: readonly string[]): void {
     this.wallIds = ids;
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   setOnClose(handler: () => void): void { this.onClose = handler; }
@@ -57,7 +57,7 @@ export class WebcamsPanel {
   /** Point cliqué sur la carte : fiche de la webcam en tête du panneau. */
   select(id: string): void {
     this.selectedId = id;
-    if (this.isVisible()) this.render();
+    this.render();
     this.shell?.root.querySelector<HTMLElement>('.wc-name')?.scrollIntoView({ block: 'nearest' });
   }
 
@@ -69,7 +69,7 @@ export class WebcamsPanel {
   update(data: WebcamsDataset | null, error: string | null): void {
     if (data) this.data = data;
     this.error = error;
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   hide(opts: { silent?: boolean } = {}): void {

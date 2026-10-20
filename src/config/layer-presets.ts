@@ -173,11 +173,14 @@ export function v2StartupLayers(): Partial<MapLayers> {
   return Object.fromEntries(Object.entries(themeLayers(true, 'general')).filter(([, on]) => on)) as Partial<MapLayers>;
 }
 
-/** Couches d'un thème : la vue, plus « Événements en cours » en v2 (la v1 n'a pas cette couche). */
+/**
+ * Couches d'un thème : la vue, plus « Événements en cours » en v2 (la v1 n'a pas cette couche) et la pastille « En bref » de l'onglet
+ * (20/10/2026 ; l'Environnement a la sienne, envBrief, dans ses couches).
+ */
 export function themeLayers(uiV2: boolean, id: LayerPresetId): Partial<MapLayers> {
   const layers = layersForPreset(id);
   if (!uiV2) return layers;
-  return { ...layers, events: LAYER_PRESETS.find((p) => p.id === id)?.events ?? false };
+  return { ...layers, events: LAYER_PRESETS.find((p) => p.id === id)?.events ?? false, brief: id !== 'environment' };
 }
 
 /**
@@ -189,6 +192,8 @@ export function migrateStoredLayers(parsed: Record<string, unknown>): Record<str
   const out: Record<string, unknown> = { ...parsed };
   if (!('floods' in out) && typeof out.environmental === 'boolean') out.floods = out.environmental;
   delete out.dayNight;
+  // Pastille « En bref » des onglets (20/10/2026) : présente pour un état mémorisé avant son arrivée.
+  if (!('brief' in out)) out.brief = true;
   return out;
 }
 

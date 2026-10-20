@@ -1,5 +1,6 @@
 // src/components/EnvBriefPanel.ts : panneau « En bref » de l'onglet Environnement. Coquille DOM : contenu de buildEnvBriefView (pur),
 // cadre de createLayerPanelShell. Clic sur un enjeu : la carte le cadre ; sur une webcam : sa fiche ; « Copier pour une note ».
+import type { MapLayers } from '../types/index.ts';
 import { loadSectionState } from '../services/fiche-sections-store.ts';
 import { ENV_BRIEF_TITLE, buildEnvBriefView, envBriefNoteText, type EnvBriefInput } from './layer-panel/env-brief.ts';
 import { ENVIRONMENT_THEME } from './layer-panel/environment-format.ts';
@@ -12,6 +13,7 @@ export type EnvBriefData = Omit<EnvBriefInput, 'open'>;
 export class EnvBriefPanel {
   private shell: LayerPanelShell | null = null;
   private onClose?: () => void;
+  private onOpenPastille?: (key: keyof MapLayers) => void;
   private onFocusPoint?: (lon: number, lat: number) => void;
   private onWebcam?: (id: string) => void;
   private data: EnvBriefData | null = null;
@@ -31,6 +33,8 @@ export class EnvBriefPanel {
     const onClick = (e: Event): void => {
       const t = e.target as HTMLElement;
       if (t.closest('[data-copy-note]')) { void this.copyNote(); return; }
+      const pastille = t.closest<HTMLElement>('.lp-row.is-link')?.dataset['pastille'];
+      if (pastille) { this.onOpenPastille?.(pastille as keyof MapLayers); return; }
       const row = t.closest<HTMLElement>('.lp-row.is-link');
       if (!row) return;
       const webcam = row.dataset['webcam'];
@@ -44,6 +48,8 @@ export class EnvBriefPanel {
   }
 
   setOnClose(handler: () => void): void { this.onClose = handler; }
+  /** Ligne de la synthèse des pastilles : le panneau de la pastille s'ouvre. */
+  setOnOpenPastille(handler: (key: keyof MapLayers) => void): void { this.onOpenPastille = handler; }
   setOnFocusPoint(handler: (lon: number, lat: number) => void): void { this.onFocusPoint = handler; }
   setOnWebcam(handler: (id: string) => void): void { this.onWebcam = handler; }
 

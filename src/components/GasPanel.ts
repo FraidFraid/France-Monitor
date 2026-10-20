@@ -41,7 +41,7 @@ export class GasPanel {
   update(data: GasNetworkState, biogasState?: BiogasState | null): void {
     this.data = data;
     if (biogasState !== undefined) this.biogas = biogasState;
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   hide(opts: { silent?: boolean } = {}): void {

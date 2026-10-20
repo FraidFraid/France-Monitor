@@ -56,7 +56,7 @@ export class UrgencesPanel {
       this.error = state.syndromic.error;
       this.alerts = state.alerts.data;
     }
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   hide(opts: { silent?: boolean } = {}): void {

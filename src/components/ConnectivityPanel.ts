@@ -55,7 +55,7 @@ export class ConnectivityPanel {
   /** Nouvel état ; un panneau fermé ne se rouvre pas. Grands réseaux absents de l'appel : derniers reçus gardés. */
   update(state: ConnectivityPanelState): void {
     this.state = { ...state, connectivity: state.connectivity !== undefined ? state.connectivity : this.state?.connectivity ?? null };
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   hide(opts: { silent?: boolean } = {}): void {

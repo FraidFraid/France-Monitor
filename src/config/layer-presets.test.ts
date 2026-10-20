@@ -94,7 +94,14 @@ describe('layer-presets', () => {
 
 describe('couches v2 (spec 2026-09-29 § 5)', () => {
   it('une nouvelle visite v2 démarre sur « Vue générale »', () => {
-    assert.deepEqual(v2StartupLayers(), { events: true, environmental: true, floods: true });
+    assert.deepEqual(v2StartupLayers(), { events: true, environmental: true, floods: true, brief: true });
+  });
+
+  it('v2 : pastille « En bref » dans chaque onglet, sauf Environnement qui a la sienne (envBrief)', () => {
+    for (const id of ['general', 'energy', 'security', 'health', 'transport'] as const) assert.equal(themeLayers(true, id).brief, true, id);
+    assert.equal(themeLayers(true, 'environment').brief, false);
+    assert.equal(themeLayers(true, 'environment').envBrief, true);
+    assert.equal(themeLayers(false, 'energy').brief, undefined);
   });
 
   it('v2 : chaque vue coche ou décoche « Événements en cours »', () => {
@@ -110,7 +117,7 @@ describe('couches v2 (spec 2026-09-29 § 5)', () => {
 
 describe('migration de l’état mémorisé (Vigilance météo et Crues séparées, Jour / Nuit retiré)', () => {
   it('ancien état { environmental: true } : Vigilance météo et Crues actives', () => {
-    assert.deepEqual(migrateStoredLayers({ environmental: true, news: false }), { environmental: true, news: false, floods: true });
+    assert.deepEqual(migrateStoredLayers({ environmental: true, news: false }), { environmental: true, news: false, floods: true, brief: true });
   });
   it('ancien état environmental éteint : Crues éteintes ; état récent : clé floods gardée telle quelle', () => {
     assert.equal(migrateStoredLayers({ environmental: false }).floods, false);
@@ -118,7 +125,8 @@ describe('migration de l’état mémorisé (Vigilance météo et Crues séparé
   });
   it('{ dayNight: true } seul : clé supprimée, donc aucune couche active et premier chargement (vue d’accueil)', () => {
     const migrated = migrateStoredLayers({ dayNight: true });
-    assert.deepEqual(migrated, {});
+    // La pastille « En bref » est ajoutée, mais ne compte pas comme une couche active.
+    assert.deepEqual(migrated, { brief: true });
     assert.equal(hasPersistedLayers(migrated), false);
   });
 });

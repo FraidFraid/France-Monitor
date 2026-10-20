@@ -53,7 +53,7 @@ export class AccesSoinsPanel {
       this.data = offer.apl.data;
       this.error = offer.apl.error;
     }
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   hide(opts: { silent?: boolean } = {}): void {

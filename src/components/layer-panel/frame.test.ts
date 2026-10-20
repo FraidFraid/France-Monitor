@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
 import {
-  barRow, createLayerPanelShell, freshnessSegment, listRow, valueHtml, loadLayerTab, renderLayerHead, renderLayerTabs, renderLayerSections,
+  barRow, createLayerPanelShell, freshnessSegment, lastLayerHead, resetLastLayerViews, listRow, valueHtml, loadLayerTab, renderLayerHead, renderLayerTabs, renderLayerSections,
   saveLayerTab, sectionOpenOf, sourceErrorCallout, sourceLinkHtml, LAYER_TABS_STORAGE_KEY,
 } from './frame.ts';
 
@@ -78,6 +78,7 @@ describe('cadre des panneaux de couches', () => {
     const onTab = vi.fn();
     const storage = memStorage();
     const shell = createLayerPanelShell({ container, className: 'nuclear-panel-modal', panelId: 'nuclearFleet', onClose, onTab, storage });
+    shell.root.classList.add('is-open');
     shell.render({
       head: { theme: 'Énergie', title: 'Parc nucléaire', status: [] },
       tabs: [{ id: 'vue', label: 'Vue' }, { id: 'cal', label: 'Calendrier' }], activeTab: 'vue',
@@ -136,6 +137,7 @@ describe('cadre des panneaux de couches', () => {
     const container = document.createElement('div');
     document.body.appendChild(container);
     const shell = createLayerPanelShell({ container, className: 'x', panelId: 'p', onClose: () => undefined, storage: null });
+    shell.root.classList.add('is-open');
     shell.render({ head: { theme: 'É', title: 'T', status: [] }, sections: [], bodyHtml: listRow({ text: 'Parc', link: true, data: { 'eolien-park': 'p1' } }) });
     const row = shell.root.querySelector('[data-eolien-park]') as HTMLElement;
     let clicks = 0;
@@ -180,5 +182,20 @@ describe('feuille de style des panneaux de couches', () => {
     const nd = { ...fig, value: 'n.d.' };
     expect(renderLayerHead({ theme: 'É', title: 'T', figure: nd, level: 'orange', status: [] }, 'x')).not.toMatch(/<b class="fmk-num lp-lvl/);
     expect(renderLayerHead({ theme: 'É', title: 'T', figure: { ...nd, level: 'vert' }, status: [] }, 'x')).not.toMatch(/<b class="fmk-num lp-lvl/);
+  });
+});
+
+describe('vue retenue pour l’En bref (20/10/2026)', () => {
+  it('panneau fermé : vue retenue, DOM intact ; ouvert : rendu', () => {
+    resetLastLayerViews();
+    const container = document.createElement('div');
+    const shell = createLayerPanelShell({ container, className: 'x', panelId: 'nuclearFleet', onClose: () => undefined, storage: null });
+    shell.render({ head: { theme: 'Énergie', title: 'Parc nucléaire', figure: { value: '12,4', caption: 'GW indisponibles' }, status: [] }, sections: [] });
+    expect(lastLayerHead('nuclearFleet')?.figure?.value).toBe('12,4');
+    expect(shell.root.querySelector('.lp-view')?.innerHTML).toBe('');
+    shell.root.classList.add('is-open');
+    shell.render({ head: { theme: 'Énergie', title: 'Parc nucléaire', status: [] }, sections: [] });
+    expect(shell.root.querySelector('.lp-title')?.textContent).toBe('Parc nucléaire');
+    expect(lastLayerHead('absent')).toBeNull();
   });
 });

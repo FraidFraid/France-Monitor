@@ -70,7 +70,7 @@ export class CriminalitePanel {
   update(data: CrimeDataset | null, error: string | null): void {
     if (data) this.data = data;
     this.error = error;
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   hide(opts: { silent?: boolean } = {}): void {

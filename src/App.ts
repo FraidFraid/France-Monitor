@@ -33,9 +33,9 @@ import type { FranceIntelPanel } from './components/FranceIntelPanel.ts';
 import type { PosteSituation } from './components/poste/PosteSituation.ts';
 import type { VisitBaselineSession } from './services/intel-last-visit.ts';
 import { briefSituationIds, evaluateBriefLevel, fetchFranceIntelBrief, type BriefLevelMark } from './services/france-intel-brief.ts';
-import { levelHex, scoreLevel, type VigilanceLevel } from './services/vigilance.ts';
+import { LEVEL_RANK, levelHex, scoreLevel, type VigilanceLevel } from './services/vigilance.ts';
 import { eventMapPoints } from './services/v2-map.ts';
-import type { ThemeId } from './services/themes.ts';
+import { inTheme, themeLabel, type ThemeId } from './services/themes.ts';
 import { innerLayerOpen } from './services/escape-layers.ts';
 import { isUiV2, layerActivationOptions, layerStateStorage, moduleInColumn, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
 import { restorePanelPlan, showsSwitcher, switcherPanelOffsetPx, v2ColumnVars, v2SwitcherLayout, v2TabletPanelOffsetPx } from './services/floating-panel-switcher.ts';
@@ -71,6 +71,7 @@ import { fetchNetworkBarometer, setBarometerEolienLive } from './services/networ
 import type { NetworkBarometerResult } from './services/network-barometer.ts';
 import { LayerPanel } from './components/LayerPanel.ts';
 import {
+  THEME_LAYERS,
   ALL_PRESETABLE_LAYER_KEYS, DEFAULT_PRESET_ID, hasPersistedLayers, layersForPreset, migrateStoredLayers, presetShowsEvents, themeLayers, v2StartupLayers, type LayerPresetId,
 } from './config/layer-presets.ts';
 import { computeISNR } from './services/stability-index.ts';
@@ -133,6 +134,10 @@ import type { FluxIndex, FluxPhase } from './types/index.ts';
 import { fetchWebcamsDataset } from './services/webcams.ts';
 import { WEBCAMS_LEGEND, webcamsLegend } from './components/layer-panel/webcams-legend.ts';
 import type { EnvBriefData, EnvBriefPanel } from './components/EnvBriefPanel.ts';
+import type { ThemeBriefData, ThemeBriefPanel } from './components/ThemeBriefPanel.ts';
+import type { ThemeBriefPastille } from './components/layer-panel/theme-brief.ts';
+import { lastLayerHead } from './components/layer-panel/frame.ts';
+import type { WorkQueue } from './services/work-queue.ts';
 import { ENV_BRIEF_LEGEND } from './components/layer-panel/env-brief-legend.ts';
 import { ENV_FOCUS_IDS } from './components/layer-panel/env-focus.ts';
 import { buildHazards, computeExposure, type ExposureResult } from './services/environment-exposure.ts';
@@ -589,6 +594,7 @@ const DEFAULT_LAYERS: MapLayers = {
   crime: false,
   webcams: false,
   envBrief: false,
+  brief: false,
   pedestrianFlows: false,
   stability: false,
   cyber: false,
@@ -624,6 +630,7 @@ const MODULE_PANEL_SELECTOR = '[class*="-panel-modal"], .fm-floating-panel';
 
 const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
   { id: 'envBrief', label: 'En bref', icon: 'target', layerKeys: ['envBrief'] },
+  { id: 'brief', label: 'En bref', icon: 'target', layerKeys: ['brief'] },
   { id: 'environmental', label: 'Vigilance météo', icon: 'cloud-lightning', layerKeys: ['environmental'] },
   { id: 'floods', label: 'Crues', icon: 'waves', layerKeys: ['floods'] },
   { id: 'weatherRadar', label: 'Radar météo', icon: 'cloud-rain', layerKeys: ['weatherRadar'] },
@@ -1212,6 +1219,10 @@ export class App {
   private crimeError: string | null = null;
   private webcamsPanel: WebcamsPanel | null = null;
   private envBriefPanel: EnvBriefPanel | null = null;
+  private themeBriefPanel: ThemeBriefPanel | null = null;
+  private themeBriefPanelPromise: Promise<void> | null = null;
+  /** Dernière liste « À traiter » du poste (tous thèmes), pour l'En bref des onglets. */
+  private lastQueue: WorkQueue | null = null;
   private envBriefPanelPromise: Promise<void> | null = null;
   /** Enjeux lus pour le croisement (null avant le premier allumage d'En bref) et dernier croisement calculé. */
   private exposureAssets: ExposureAssetsState | null = null;
@@ -2554,7 +2565,8 @@ export class App {
       const chip = ev.target instanceof Element ? ev.target.closest<HTMLElement>('.floating-panel-switcher__chip[data-panel-key]') : null;
       const key = chip?.dataset['panelKey'] ?? null;
       this.setEnergyFocusPreview(key && isEnergyLayerKey(key) ? key : null);
-      this.setGeneralFocusPreview(key && !isEnergyLayerKey(key) ? key as keyof MapLayers : null);
+      // « En bref » ne dessine rien : son survol ne tamise pas la carte.
+      this.setGeneralFocusPreview(key && key !== 'brief' && !isEnergyLayerKey(key) ? key as keyof MapLayers : null);
     });
     floatingPanelSwitcher.addEventListener('pointerleave', () => { this.setEnergyFocusPreview(null); this.setGeneralFocusPreview(null); });
     // La largeur de la carte change la place disponible (repli en icônes) et donc le décalage des panneaux.
@@ -3328,6 +3340,15 @@ export class App {
         this.openCrimePanel();
       } else {
         this.crimePanel?.hide({ silent: true });
+      }
+    }
+
+    // En bref des onglets (20/10/2026) : synthèse de la liste « À traiter » et des pastilles de l'onglet, sans dessin.
+    if (key === 'brief') {
+      if (enabled) {
+        this.themeBriefPanel?.show(this.themeBriefData());
+      } else {
+        this.themeBriefPanel?.hide({ silent: true });
       }
     }
 
@@ -4901,6 +4922,65 @@ export class App {
     this.mapLegend.setCategories([{ ...webcamsLegend(this.currentWebcams), visible: this.activeLayers.webcams }]);
   }
 
+  // ─── En bref des onglets autres qu'Environnement (20/10/2026) ───
+
+  private ensureThemeBriefPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.themeBriefPanelPromise ??= import('./components/ThemeBriefPanel.ts').then(({ ThemeBriefPanel }) => {
+      const panel = new ThemeBriefPanel(container);
+      // Croix : le panneau se ferme, la pastille reste (elle fait partie de chaque onglet) ; il ne revient plus d'office ici.
+      panel.setOnClose(() => {
+        this.briefDismissed = true;
+        this.refreshFloatingPanelSwitcher();
+      });
+      panel.setOnSelectWork((key) => this.poste?.select(key));
+      panel.setOnOpenPastille((key) => this.showFloatingPanel(key));
+      panel.mount();
+      this.themeBriefPanel = panel;
+      if (this.activeLayers.brief && this.isFloatingPanelVisible('brief')) panel.show(this.themeBriefData());
+    });
+    return this.themeBriefPanelPromise;
+  }
+
+  /** Pastilles de l'onglet affiché (Vue générale : le socle et les couches suivies affichées), avec leur niveau. */
+  private themeBriefPastilles(): ThemeBriefPastille[] {
+    const label = (key: keyof MapLayers): string => FLOATING_PANEL_DEFS.find((d) => d.id === key)?.label ?? key;
+    const theme = this.v2Theme;
+    const keys: Array<keyof MapLayers> = theme === 'general'
+      ? this.watchEntries.map((e) => e.key)
+      : theme === 'environment' ? [] : THEME_LAYERS[theme].filter((k) => k !== 'news' && k !== 'pedestrianFlows');
+    // En-tête du panneau de chaque pastille (dernière vue retenue par le cadre ; « Pression par département » = panneau « pressure »).
+    return keys.map((key) => ({ key, label: label(key), level: this.watchLevelMap.get(key) ?? null, head: lastLayerHead(key === 'stability' ? 'pressure' : key) }));
+  }
+
+  /** Données du panneau pour l'onglet affiché : pastilles, liste « À traiter » de l'onglet, passages de niveau. */
+  private themeBriefData(): ThemeBriefData {
+    const theme = this.v2Theme;
+    const q = this.lastQueue;
+    const pastilles = this.themeBriefPastilles();
+    const keys = new Set(pastilles.map((p) => p.key));
+    const label = (key: keyof MapLayers): string => FLOATING_PANEL_DEFS.find((d) => d.id === key)?.label ?? key;
+    const themeLevel = !q ? null : theme === 'general'
+      ? (Object.values(q.themeLevels) as VigilanceLevel[]).reduce<VigilanceLevel | null>((m, l) => (m === null || LEVEL_RANK[l] > LEVEL_RANK[m] ? l : m), null)
+      : theme === 'environment' ? null : q.themeLevels[theme];
+    return {
+      themeName: themeLabel(theme),
+      pastilles,
+      items: (q?.items ?? []).filter((it) => inTheme(it.theme, theme)),
+      themeLevel,
+      changes: this.watchLog.filter((t) => theme === 'general' || keys.has(t.key)).map((t) => ({ label: label(t.key), from: t.from, to: t.to, at: t.at })),
+      eventsStatus: q?.eventsStatus ?? null,
+      now: Date.now(),
+    };
+  }
+
+  /** Panneau ouvert : contenu de l'onglet affiché, à chaque liste « À traiter », niveau des pastilles ou changement d'onglet. */
+  private refreshThemeBrief(): void {
+    if (!this.themeBriefPanel?.isVisible()) return;
+    this.themeBriefPanel.update(this.themeBriefData());
+  }
+
   // ─── En bref de l'onglet Environnement (spec 2026-10-20 onglet Environnement § 3, lot 2) ───
 
   /** Panneau En bref, créé à la demande. */
@@ -4915,6 +4995,7 @@ export class App {
         this.layerPanel?.updateLayers(this.activeLayers);
       });
       panel.setOnFocusPoint((lon, lat) => this.mapContainer?.flyTo(lon, lat, 11));
+      panel.setOnOpenPastille((key) => this.showFloatingPanel(key));
       panel.setOnWebcam((id) => {
         if (!this.activeLayers.webcams) {
           this.onLayerToggle('webcams', true, { suppressPanel: true });
@@ -4954,8 +5035,10 @@ export class App {
     const labels: Partial<Record<keyof MapLayers, string>> = {};
     for (const key of ENV_FOCUS_IDS) labels[key] = label(key);
     const sourceKeys: Array<keyof MapLayers> = ['environmental', 'floods', 'weatherRadar', 'fires', 'airQuality', 'drought', 'earthquakes', 'disasters'];
+    const pastilleKeys = ENV_FOCUS_IDS.filter((k) => k !== 'envBrief' && this.activeLayers[k]);
     return {
       levels, labels,
+      pastilles: pastilleKeys.map((key) => ({ key, label: label(key), level: this.watchLevelMap.get(key) ?? null, head: lastLayerHead(key) })),
       vigilance: this.currentVigilance?.vigilance.data ?? null,
       floods: this.currentFloods?.floods.data ?? null,
       fires: this.currentFires?.fires.data ?? null,
@@ -5550,6 +5633,7 @@ export class App {
       case 'crime': return [this.ensureCrimePanel()];
       case 'webcams': return [this.ensureWebcamsPanel()];
       case 'envBrief': return [this.ensureEnvBriefPanel()];
+      case 'brief': return [this.ensureThemeBriefPanel()];
       case 'pedestrianFlows': return [this.ensureFluxPanel()];
       case 'trafficRoad': return [this.ensureTrafficPanel()];
       case 'trafficAir': return [this.ensureAirTrafficPanel()];
@@ -5625,6 +5709,7 @@ export class App {
       case 'crime': return this.crimePanel;
       case 'webcams': return this.webcamsPanel;
       case 'envBrief': return this.envBriefPanel;
+      case 'brief': return this.themeBriefPanel;
       case 'pedestrianFlows': return this.fluxPanel;
       default: return null;
     }
@@ -5706,10 +5791,17 @@ export class App {
       this.currentFloatingPanelId = null;
     }
 
+    // « En bref » déjà active au démarrage (état restauré) : son panneau n'a jamais été demandé, la pastille manquerait.
+    if (this.activeLayers.brief && !this.themeBriefPanel) {
+      void this.ensureThemeBriefPanel().then(() => { if (this.themeBriefPanel) this.refreshFloatingPanelSwitcher(); });
+    }
+
     // Vue générale : pas de puce pour une couche du socle au vert (13/10/2026), sa couche reste allumée.
     const hideGreen = this.uiV2 && this.v2Theme === 'general' && this.watchModule !== null;
     // Foule estimée : pas de puce, son panneau s'ouvre depuis une manifestation (fusion avec Manifestations, 19/10/2026).
+    // L'Environnement a son propre En bref (envBrief) : jamais deux pastilles « En bref ».
     const eligible = FLOATING_PANEL_DEFS.filter((def) => def.id !== 'pedestrianFlows' && this.floatingPanelIsEligible(def.id)
+      && !(def.id === 'brief' && this.v2Theme === 'environment')
       && !(hideGreen && this.watchModule?.generalChipHidden(def.id, this.watchEntries)));
 
     // v2 : puce « Actualités géolocalisées » en tête (12/10/2026), dans la vue qui affiche les actualités (Vue générale), même
@@ -5761,6 +5853,9 @@ export class App {
     };
     const ordered = this.uiV2 && this.v2Theme === 'general' ? [...eligible].sort((a, b) => watchRank(a.id) - watchRank(b.id))
       : inEnv ? [...eligible].sort((a, b) => envRank(a.id) - envRank(b.id)) : eligible;
+    // « En bref » toujours en tête de la barre, dans tous les onglets (20/10/2026).
+    const briefFirst = (d: { id: keyof MapLayers }): number => (d.id === 'brief' || d.id === 'envBrief' ? 0 : 1);
+    ordered.sort((a, b) => briefFirst(a) - briefFirst(b));
     // Énergie : pastilles vertes cumulables (retenues par un clic ou panneau ouvert) ; on oublie celles qui ne sont plus proposées.
     const ids = ordered.map((def) => def.id);
     for (const k of [...this.energyChipsSelected]) if (!ids.includes(k)) this.energyChipsSelected.delete(k);
@@ -5840,7 +5935,7 @@ export class App {
         this.generalFocusActive = envChipsPressed(ids, this.envChipsSelected, (id) => this.isFloatingPanelVisible(id));
       } else {
         const open = this.currentFloatingPanelId;
-        this.generalFocusActive = open && !isEnergyLayerKey(open) && this.isFloatingPanelVisible(open) ? [open] : [];
+        this.generalFocusActive = open && open !== 'brief' && !isEnergyLayerKey(open) && this.isFloatingPanelVisible(open) ? [open] : [];
       }
       this.syncGeneralFocus();
     });
@@ -5965,7 +6060,34 @@ export class App {
   private hideFloatingPanel(id: keyof MapLayers): void {
     this.getFloatingPanelInstance(id)?.hide({ silent: true });
     if (this.currentFloatingPanelId === id) this.currentFloatingPanelId = null;
+    // En bref refermé à la main : il ne revient plus d'office dans cet onglet ; un autre panneau refermé : retour à l'En bref.
+    if (id === 'brief' || id === 'envBrief') this.briefDismissed = true;
     this.refreshFloatingPanelSwitcher();
+    if (id !== 'brief' && id !== 'envBrief') this.showDefaultBrief();
+  }
+
+  /** En bref refermé à la main dans l'onglet affiché (remis à zéro à chaque changement d'onglet). */
+  private briefDismissed = false;
+
+  /**
+   * Colonne de droite par défaut des onglets thématiques (20/10/2026) : l'En bref de l'onglet, quand aucun autre panneau ni aucune
+   * fiche n'y est affiché. La Vue générale garde « État de la France ». Vérifié à l'image suivante (une sélection en cours de
+   * l'ouverture d'une fiche est alors posée).
+   */
+  private showDefaultBrief(): void {
+    if (!this.uiV2 || this.v2Theme === 'general' || !moduleInColumn(this.uiV2, window.innerWidth)) return;
+    requestAnimationFrame(() => {
+      const id: keyof MapLayers = this.v2Theme === 'environment' ? 'envBrief' : 'brief';
+      if (this.v2Theme === 'general' || this.briefDismissed || !this.activeLayers[id]) return;
+      if (this.poste?.selectedKey() != null) return;
+      const open = this.currentFloatingPanelId;
+      if (open && this.isFloatingPanelVisible(open)) return;
+      if (!this.getFloatingPanelInstance(id)) {
+        void Promise.all(this.ensureLazyPanelForLayer(id)).then(() => this.showDefaultBrief());
+        return;
+      }
+      this.showFloatingPanel(id);
+    });
   }
 
   /**
@@ -6052,7 +6174,7 @@ export class App {
     this.generalAuto.clear();
     const target = themeLayers(this.uiV2, id);
     // v2 : la vue décide aussi de « Événements en cours » (décision du 12/10/2026).
-    const keys: ReadonlyArray<keyof MapLayers> = this.uiV2 ? [...ALL_PRESETABLE_LAYER_KEYS, 'events'] : ALL_PRESETABLE_LAYER_KEYS;
+    const keys: ReadonlyArray<keyof MapLayers> = this.uiV2 ? [...ALL_PRESETABLE_LAYER_KEYS, 'events', 'brief'] : ALL_PRESETABLE_LAYER_KEYS;
     for (const key of keys) {
       const wanted = target[key] ?? false;
       if (this.activeLayers[key] === wanted) continue;
@@ -6066,6 +6188,9 @@ export class App {
     if (id === 'general') this.refreshGeneralWatch();
     this.syncGeneralWatchPolling();
     this.refreshEnvironmentKey();
+    // Onglet thématique : l'En bref occupe la colonne de droite par défaut (décision de l'utilisateur, 20/10/2026).
+    this.briefDismissed = false;
+    this.showDefaultBrief();
   }
 
   /**
@@ -6148,6 +6273,7 @@ export class App {
     this.watchEntries = this.v2IntelStarted ? generalWatch(levels) : generalWatch(new Map());
     // En bref de l'onglet Environnement : croisement et panneau suivent chaque rafraîchissement du poste (20/10/2026).
     this.refreshEnvBrief();
+    this.refreshThemeBrief();
     this.refreshEnvironmentKey();
     if (this.v2Theme !== 'general') return;
     const wanted = new Set(this.watchEntries.map((e) => e.key).filter((k) => !GENERAL_SOCLE.includes(k)));
@@ -8831,6 +8957,11 @@ export class App {
         onFlyTo: (lon, lat, zoom) => this.mapContainer?.flyTo(lon, lat, zoom),
         onActivateLayers: (keys) => this.activateLayersFromSituation(keys),
         onOpenLayerPanel: (key) => this.openLayerPanelFromFiche(key),
+        onFicheClosed: () => this.showDefaultBrief(),
+        onQueue: (queue) => {
+          this.lastQueue = queue;
+          this.refreshThemeBrief();
+        },
         onPressure: (depts) => {
           this.v2Pressure = depts;
           this.pressurePanel?.update(depts);

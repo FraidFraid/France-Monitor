@@ -45,7 +45,7 @@ export class OutagesTelecomPanel {
   /** Nouvel état ; un panneau fermé ne se rouvre pas. */
   update(state: TelecomState): void {
     this.state = state;
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   hide(opts: { silent?: boolean } = {}): void {

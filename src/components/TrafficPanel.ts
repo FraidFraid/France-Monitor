@@ -47,7 +47,7 @@ export class TrafficPanel {
   /** Nouvelles données : un panneau fermé ne se rouvre pas ; sections ouvertes gardées. */
   update(state: RoadTrafficState | null): void {
     if (state) this.state = state;
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   hide(opts: { silent?: boolean } = {}): void {

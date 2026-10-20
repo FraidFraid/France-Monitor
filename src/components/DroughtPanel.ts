@@ -43,7 +43,7 @@ export class DroughtPanel {
   /** Nouvelles données : un panneau fermé ne se rouvre pas ; sections ouvertes gardées. */
   update(state: DroughtState | null): void {
     if (state) this.state = state;
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   hide(opts: { silent?: boolean } = {}): void {

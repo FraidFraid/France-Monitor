@@ -131,7 +131,7 @@ export class FluxPietonsPanel {
     this.selectedId = s.selectedId;
     this.phase = s.phase;
     this.geo = s.geo;
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   hide(opts: { silent?: boolean } = {}): void {

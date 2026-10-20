@@ -47,7 +47,7 @@ export class VeilleSanitairePanel {
   /** Nouvelles données : un panneau fermé ne se rouvre pas ; onglet et sections ouvertes sont gardés. */
   update(state: HealthSurveillanceState | null): void {
     if (state) this.state = state;
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   hide(opts: { silent?: boolean } = {}): void {

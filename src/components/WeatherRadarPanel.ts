@@ -54,7 +54,7 @@ export class WeatherRadarPanel {
 
   update(state: RadarPanelState | null): void {
     if (state) this.state = state;
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   hide(opts: { silent?: boolean } = {}): void {

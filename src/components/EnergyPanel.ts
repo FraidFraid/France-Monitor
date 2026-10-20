@@ -39,13 +39,13 @@ export class EnergyPanel {
   /** Séries des 7 derniers jours par frontière (flèches d'évolution des échanges). */
   updateBorderHistory(history: ReadonlyMap<string, readonly number[]>): void {
     this.borderHistory = history;
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   /** null : NOAA jamais lu, la section dit « n.d. » sans couleur. */
   updateSpaceWeather(data: SpaceWeatherData | null): void {
     this.space = data;
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   hide(opts: { silent?: boolean } = {}): void {

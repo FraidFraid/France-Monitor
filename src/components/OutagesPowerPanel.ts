@@ -44,7 +44,7 @@ export class OutagesPowerPanel {
   update(state: PowerState, ecowatt: EcowattOfficial | null = this.ecowatt): void {
     this.state = state;
     this.ecowatt = ecowatt;
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   hide(opts: { silent?: boolean } = {}): void {

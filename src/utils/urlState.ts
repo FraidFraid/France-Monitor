@@ -59,6 +59,7 @@ const LAYER_KEYS: (keyof MapLayers)[] = [
     'crime',
     'webcams',
     'envBrief',
+    'brief',
     'pedestrianFlows',
     'cyber',
     'gasNetwork',

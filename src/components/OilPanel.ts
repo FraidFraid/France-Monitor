@@ -65,7 +65,7 @@ export class OilPanel {
   update(data: OilDashboard, fuelTension: FuelTensionDashboard | null = null): void {
     this.data = data;
     this.tension = fuelTension;
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   hide(opts: { silent?: boolean } = {}): void {

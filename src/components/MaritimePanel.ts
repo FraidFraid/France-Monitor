@@ -88,7 +88,7 @@ export class MaritimePanel {
 
   update(state: MaritimeState | null): void {
     if (state) this.state = state;
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   /** Positions AIS rafraîchies (App.ts, à chaque tour de updateShips) : nouveau rendu si le panneau est ouvert. */

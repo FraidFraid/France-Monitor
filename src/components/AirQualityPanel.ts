@@ -33,7 +33,7 @@ export class AirQualityPanel {
 
   update(state: AirQualityState | null): void {
     if (state) this.state = state;
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   hide(opts: { silent?: boolean } = {}): void {

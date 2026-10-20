@@ -93,7 +93,7 @@ export class FiresPanel {
       const ids = new Set(state.fires?.fires.data?.foyers.map((f) => f.id) ?? []);
       for (const id of [...this.plume.keys()]) if (!ids.has(id)) this.plume.delete(id);
     }
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   /**

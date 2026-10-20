@@ -41,7 +41,7 @@ export class EolienPanel {
 
   setGrid(grid: GridSnapshot | null): void {
     this.grid = grid;
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   show(live: EolienLive | null, parks: EolienParkSummary[]): void {
@@ -53,12 +53,12 @@ export class EolienPanel {
     this.live = live;
     this.parks = parks;
     if (live) this.error = null;
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   showErrorState(message: string): void {
     this.error = message;
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   hide(opts: { silent?: boolean } = {}): void {

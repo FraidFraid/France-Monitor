@@ -82,7 +82,7 @@ export class VigilancePanel {
         seaLevels: state.seaLevels !== undefined ? state.seaLevels : this.state?.seaLevels ?? null,
       };
     }
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   hide(opts: { silent?: boolean } = {}): void {

@@ -59,7 +59,7 @@ export class PressurePanel {
       this.selected = null;
       this.onSelectDepartment?.(null);
     }
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   hide(opts: { silent?: boolean } = {}): void {

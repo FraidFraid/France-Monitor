@@ -34,7 +34,7 @@ export class MetroLoadPanel {
 
   update(metros: MetropoleConsumption[] | null): void {
     this.metros = metros;
-    if (this.isVisible()) this.render();
+    this.render();
   }
 
   hide(opts: { silent?: boolean } = {}): void {
