@@ -331,7 +331,8 @@ export function buildEnvBriefView(input: EnvBriefInput): LayerView {
   return {
     head: {
       theme: ENVIRONMENT_THEME, kind: 'Synthèse', title: ENV_BRIEF_TITLE, level,
-      figure: exposedCount === null ? null : {
+      // Pas de gros « 0 » (lu comme un score) : sans enjeu exposé, la section « Enjeux exposés » le dit.
+      figure: exposedCount === null || exposedCount === 0 ? null : {
         value: frNumber(exposedCount, 0),
         caption: exposedCount > 1 ? 'enjeux à portée d’un phénomène orange ou rouge' : 'enjeu à portée d’un phénomène orange ou rouge',
         level: exposedCount > 0 ? (ex?.nearby[0]?.hazard.level ?? null) : null,

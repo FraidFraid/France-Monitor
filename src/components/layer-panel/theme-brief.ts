@@ -120,15 +120,22 @@ function changesSection(input: ThemeBriefInput): FicheSection {
 const LEAD_MAX = 160;
 const clip = (s: string): string => (s.length > LEAD_MAX ? `${s.slice(0, LEAD_MAX - 1).trimEnd()}…` : s);
 
+/** Chiffre nul (« 0 », « 0,0 ») : un compte de problèmes à zéro, dit « RAS » plutôt qu'un 0 qui se lit comme un score. */
+export function isZeroFigure(value: string): boolean {
+  return /^0(?:[,.]0+)?$/.test(value.trim());
+}
+
 /** Ligne de synthèse d'une pastille : chiffre clé de son panneau, niveau, légende du chiffre, phrase de tête, état de la source. */
 export function pastilleSynthesisRow(p: ThemeBriefPastille): string {
   const h = p.head ?? null;
   const fig = h?.figure ?? null;
   const dot: VigilanceLevel | 'gris' | null = p.level === null || p.level === 'nd' ? 'gris' : p.level;
   const figLevel = fig && fig.value !== 'n.d.' ? (fig.level ?? (p.level && p.level !== 'nd' ? p.level : null)) : null;
-  const value = fig ? valueHtml(fig.value, figLevel) : valueHtml(levelWord(p.level));
+  const zero = fig !== null && isZeroFigure(fig.value);
+  const value = !fig ? valueHtml(levelWord(p.level)) : zero ? valueHtml('RAS') : valueHtml(fig.value, figLevel);
   const parts = [
-    fig?.caption ?? null,
+    // Compte à zéro : la légende du chiffre (« aéronef en urgence ») n'a plus de sens seule, la phrase du panneau le dit.
+    fig && !zero ? fig.caption : null,
     h?.lead ? clip(h.lead) : null,
     ...(h?.status ?? []).filter((s) => s.length > 0),
     p.level === 'nd' ? 'source indisponible ou en retard' : null,
@@ -145,9 +152,23 @@ export function pastillesSynthesisSection(pastilles: readonly ThemeBriefPastille
   return { id: 'pastilles', title: 'Synthèse des pastilles', collapsible: true, open: open('pastilles', true), summary: String(sorted.length), html };
 }
 
+/** Sans rien d'orange ni de rouge : l'état des pastilles en une phrase (jaunes nommées, vertes comptées, indisponibles). */
+function calmLead(pastilles: readonly ThemeBriefPastille[], items: readonly WorkItem[]): string {
+  const yellow = pastilles.filter((p) => p.level === 'jaune').map((p) => p.label);
+  const yellowItems = items.filter((it) => it.level === 'jaune').length;
+  const green = pastilles.filter((p) => p.level === 'vert').length;
+  const nd = pastilles.filter((p) => p.level === 'nd').map((p) => p.label);
+  const parts = ['Aucun signal orange ou rouge'];
+  if (yellow.length > 0) parts.push(`en jaune : ${yellow.join(', ')}`);
+  if (yellowItems > 0) parts.push(yellowItems > 1 ? `${yellowItems} éléments jaunes à traiter` : '1 élément jaune à traiter');
+  if (green > 0) parts.push(green > 1 ? `${green} pastilles au vert` : '1 pastille au vert');
+  if (nd.length > 0) parts.push(`indisponible : ${nd.join(', ')}`);
+  return `${parts.join(' · ')}.`;
+}
+
 function lead(input: ThemeBriefInput): string | null {
   const rows = themeAttention(input);
-  if (rows.length === 0) return null;
+  if (rows.length === 0) return calmLead(input.pastilles, input.items);
   const top = rows[0].level;
   const same = rows.filter((r) => r.level === top);
   const words = same.slice(0, 3).map((r) => (r.where && r.workKey ? `${r.text} (${r.where})` : r.text));
@@ -163,7 +184,8 @@ export function buildThemeBriefView(input: ThemeBriefInput): LayerView {
   return {
     head: {
       theme: input.themeName, kind: 'Synthèse', title: THEME_BRIEF_TITLE, level,
-      figure: { value: String(hot), caption: hot > 1 ? 'éléments orange ou rouges à traiter' : 'élément orange ou rouge à traiter', level: hot > 0 ? (input.items.find((it) => isHot(it.level))?.level ?? null) : null },
+      // Pas de gros « 0 » (lu comme un score) : sans élément orange ou rouge, la phrase de tête dit l'état des pastilles.
+      figure: hot === 0 ? null : { value: String(hot), caption: hot > 1 ? 'éléments orange ou rouges à traiter' : 'élément orange ou rouge à traiter', level: input.items.find((it) => isHot(it.level))?.level ?? null },
       status: [], lead: lead(input),
     },
     sections: [attentionSection(input), pastillesSynthesisSection(input.pastilles, input.open), itemsSection(input), changesSection(input)],

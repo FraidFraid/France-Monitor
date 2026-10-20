@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { WorkItem } from '../../services/work-queue.ts';
 import { visibleText } from './format.ts';
 import { renderLayerView } from './frame.ts';
-import { buildThemeBriefView, themeAttention, themeBriefLevel, themeBriefNoteText, themeChanges, type ThemeBriefInput } from './theme-brief.ts';
+import { buildThemeBriefView, isZeroFigure, themeAttention, themeBriefLevel, themeBriefNoteText, themeChanges, type ThemeBriefInput } from './theme-brief.ts';
 
 const NOW = Date.parse('2026-10-20T10:00:00Z');
 const item = (over: Partial<WorkItem>): WorkItem => ({
@@ -94,5 +94,26 @@ describe('En bref des onglets', () => {
     expect(n).toContain('- Arrêt de 3 réacteurs : Vallée du Rhône.');
     expect(n).toContain('- Panne électrique (Gard).');
     expect(n).not.toMatch(/<| /);
+  });
+});
+
+describe('zéros lisibles (20/10/2026)', () => {
+  it('compte de problèmes à zéro : « RAS » et la phrase du panneau, pas un 0 lu comme un score', () => {
+    expect([isZeroFigure('0'), isZeroFigure('0,0'), isZeroFigure('10'), isZeroFigure('0,5')]).toEqual([true, true, false, false]);
+    const i = input({ items: [], changes: [], pastilles: [
+      { key: 'trafficAir', label: 'Trafic aérien', level: 'vert', head: { theme: 'Transports', title: 'Trafic aérien', figure: { value: '0', caption: 'aéronef en urgence' }, status: [], lead: 'Aucun code d’urgence en vol.' } },
+    ] });
+    const t = visibleText(buildThemeBriefView(i).sections.find((x) => x.id === 'pastilles')?.html ?? '');
+    expect(t).toContain('RAS');
+    expect(t).toContain('Aucun code d’urgence en vol.');
+    expect(t).not.toContain('aéronef en urgence');
+  });
+  it('rien d’orange ni de rouge : pas de gros chiffre ; phrase de l’état des pastilles', () => {
+    const v = buildThemeBriefView(input({ items: [], pastilles: [
+      { key: 'oilNetwork', label: 'Pétrole', level: 'jaune' }, { key: 'powerGrid', label: 'Réseau électrique', level: 'vert' },
+      { key: 'gasNetwork', label: 'Réseau gaz', level: 'vert' }, { key: 'nuclearFleet', label: 'Parc nucléaire', level: 'nd' },
+    ] }));
+    expect(v.head.figure).toBeNull();
+    expect(v.head.lead).toBe('Aucun signal orange ou rouge · en jaune : Pétrole · 2 pastilles au vert · indisponible : Parc nucléaire.');
   });
 });
