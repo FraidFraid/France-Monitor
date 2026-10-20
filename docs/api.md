@@ -29,6 +29,7 @@ L'API est au stade **0.1.0 (expérimental)**. Aucune garantie de stabilité form
 | `GET /api/environment/floods` | Tronçons Vigicrues en vigilance et hauteurs des stations (Hub'Eau). |
 | `GET /api/environment/drought` | Restrictions d'eau en vigueur par département (VigiEau), comptes par niveau, série quotidienne. |
 | `GET /api/environment/air` | Qualité de l'air (Atmo France) : épisodes de pollution de J à J+2 et indice ATMO de J par département. |
+| `GET /api/environment/pollen` | Pollens (Atmo France) : niveau de J à J+2 par département (plus haut code des communes, communes à « élevé » ou plus, taxons responsables). |
 | `GET /api/environment/earthquakes` | Séismes des 7 derniers jours en France et à 20 km autour (BCSF-RéNaSS, EMSC en repli). |
 | `GET /api/environment/disasters` | Alertes catastrophes GDACS des 7 derniers jours : territoire français (tous niveaux) et monde (orange, rouge). |
 | `GET /api/social/protests` | Manifestations : rendez-vous annoncés sur Démosphère (éditions françaises, -6 h à +7 jours, commune exacte) manifestations rapportées sur 24 h par la presse française ingérée (une entrée par ville ou département nommé dans le titre, participants cités, heurts) et signal presse GDELT sur 24 h (un relevé par lieu, heurts signalés). Une annonce n'est pas une manifestation constatée. |
@@ -80,7 +81,7 @@ Chaque fonction positionne une directive de cache CDN (`s-maxage`) qui reflète 
 | `/api/environment/fires`, `/api/environment/vigilance`, `/api/environment/floods` | 5 min (30 s pendant une collecte ou une lecture en cours) |
 | `/api/environment/earthquakes`, `/api/environment/sea-levels`, `/api/environment/disasters`, `/api/social/protests` | 5 min |
 | `/api/environment/ems` | 15 min (liste relue toutes les 30 min) |
-| `/api/environment/air` | 30 min |
+| `/api/environment/air`, `/api/environment/pollen` | 30 min |
 | `/api/finance/stability` | 15 min (séries BCE relues chaque heure, écart toutes les 15 min) |
 | `/api/environment/drought` | 1 h |
 | `/api/health-check`, `/api/situation-history` | jamais mis en cache (`no-store`) |

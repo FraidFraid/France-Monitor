@@ -57,6 +57,7 @@ jobs:
             "/api/environment/floods;200"
             "/api/environment/drought;200"
             "/api/environment/air;200"
+            "/api/environment/pollen;200"
             "/api/environment/earthquakes;200"
             "/api/environment/disasters;200"
             "/api/environment/ems;200"

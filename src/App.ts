@@ -140,8 +140,16 @@ import { lastLayerHead } from './components/layer-panel/frame.ts';
 import type { WorkQueue } from './services/work-queue.ts';
 import { ENV_BRIEF_LEGEND } from './components/layer-panel/env-brief-legend.ts';
 import { ENV_FOCUS_IDS } from './components/layer-panel/env-focus.ts';
-import { buildHazards, computeExposure, type ExposureResult } from './services/environment-exposure.ts';
-import { fetchExposureAssets, type ExposureAssetsState } from './services/exposure-assets.ts';
+import { buildHazards, computeExposure, type Exposure, type ExposureResult, type Hazard } from './services/environment-exposure.ts';
+import { fetchExposureAssets, fetchSevesoDataset, type ExposureAssetsState, type SevesoDataset } from './services/exposure-assets.ts';
+import type { SevesoPanel } from './components/SevesoPanel.ts';
+import type { PollensPanel } from './components/PollensPanel.ts';
+import type { PollenDay } from './types/index.ts';
+import { POLLEN_TTL_MS, fetchPollen, mergePollen, type PollenState } from './services/environment-pollen.ts';
+import { pollensHeadLevel } from './components/layer-panel/pollens-level.ts';
+import { POLLENS_LEGEND, pollensLegend } from './components/layer-panel/pollens-legend.ts';
+import { sevesoExposures, sevesoHeadLevel } from './components/layer-panel/seveso-level.ts';
+import { SEVESO_LEGEND, sevesoLegend } from './components/layer-panel/seveso-legend.ts';
 import { buildEnvironmentKeyHtml } from './components/map-key/environment-key.ts';
 import { OFFICIAL_COLOR_LEVEL } from './services/environment-levels.ts';
 import type { WebcamsDataset } from './types/index.ts';
@@ -595,6 +603,8 @@ const DEFAULT_LAYERS: MapLayers = {
   webcams: false,
   envBrief: false,
   brief: false,
+  seveso: false,
+  pollens: false,
   pedestrianFlows: false,
   stability: false,
   cyber: false,
@@ -639,6 +649,8 @@ const FLOATING_PANEL_DEFS: ReadonlyArray<FloatingPanelDef> = [
   { id: 'airQuality', label: 'Qualité de l’air', icon: 'cloud', layerKeys: ['airQuality'] },
   { id: 'earthquakes', label: 'Séismes', icon: 'activity', layerKeys: ['earthquakes'] },
   { id: 'disasters', label: 'Catastrophes', icon: 'globe', layerKeys: ['disasters'] },
+  { id: 'pollens', label: 'Pollens', icon: 'leaf', layerKeys: ['pollens'] },
+  { id: 'seveso', label: 'Seveso', icon: 'factory', layerKeys: ['seveso'] },
   { id: 'powerGrid', label: 'Réseau électrique', icon: 'zap', layerKeys: ['powerGrid'] },
   { id: 'dromEnergy', label: 'Énergie DROM', icon: 'palmtree', layerKeys: ['dromEnergy'] },
   { id: 'nuclearFleet', label: 'Parc nucléaire', icon: 'atom', layerKeys: ['nuclearFleet'] },
@@ -1162,6 +1174,20 @@ const LAYER_CONFIGS: LayerConfig<LegendCategory>[] = [
     label: 'WEBCAMS',
     legend: WEBCAMS_LEGEND,
   },
+  // ─── Pollens (onglet Environnement, 20/10/2026) : indice pollen Atmo France par département, J à J+2 ───
+  {
+    id: 'pollens',
+    role: 'standalone',
+    label: 'POLLENS',
+    legend: POLLENS_LEGEND,
+  },
+  // ─── Sites Seveso (onglet Environnement, 20/10/2026) : recensement Géorisques et exposition aux phénomènes en cours ───
+  {
+    id: 'seveso',
+    role: 'standalone',
+    label: 'SITES SEVESO',
+    legend: SEVESO_LEGEND,
+  },
   // ─── En bref (onglet Environnement, 20/10/2026) : synthèse décideur et enjeux exposés aux phénomènes en cours ───
   {
     id: 'envBrief',
@@ -1220,6 +1246,17 @@ export class App {
   private webcamsPanel: WebcamsPanel | null = null;
   private envBriefPanel: EnvBriefPanel | null = null;
   private themeBriefPanel: ThemeBriefPanel | null = null;
+  private pollensPanel: PollensPanel | null = null;
+  private pollensPanelPromise: Promise<void> | null = null;
+  private currentPollen: PollenState | null = null;
+  private pollenDay: PollenDay = 'J';
+  private pollenTimer: ReturnType<typeof setInterval> | null = null;
+  private sevesoPanel: SevesoPanel | null = null;
+  private sevesoPanelPromise: Promise<void> | null = null;
+  private sevesoData: SevesoDataset | null = null;
+  private sevesoError: string | null = null;
+  /** Sites Seveso exposés (null : phénomènes pas encore croisés). */
+  private sevesoExposed: Exposure[] | null = null;
   private themeBriefPanelPromise: Promise<void> | null = null;
   /** Dernière liste « À traiter » du poste (tous thèmes), pour l'En bref des onglets. */
   private lastQueue: WorkQueue | null = null;
@@ -3080,6 +3117,8 @@ export class App {
       'crime',
       'webcams',
       'envBrief',
+      'seveso',
+      'pollens',
       'pedestrianFlows',
     ];
 
@@ -3340,6 +3379,29 @@ export class App {
         this.openCrimePanel();
       } else {
         this.crimePanel?.hide({ silent: true });
+      }
+    }
+
+    // Pollens (20/10/2026) : lus à l'allumage puis toutes les 25 min tant que la couche est allumée.
+    if (key === 'pollens') {
+      if (enabled) {
+        this.pollensPanel?.show(this.currentPollen);
+        void this.loadPollen();
+        this.pollenTimer ??= setInterval(() => { void this.loadPollen(); }, POLLEN_TTL_MS);
+      } else {
+        this.pollensPanel?.hide({ silent: true });
+        if (this.pollenTimer !== null) clearInterval(this.pollenTimer);
+        this.pollenTimer = null;
+      }
+    }
+
+    // Sites Seveso (20/10/2026) : recensement lu une fois, exposition recalculée à chaque lecture des phénomènes.
+    if (key === 'seveso') {
+      if (enabled) {
+        this.sevesoPanel?.show();
+        void this.loadSeveso();
+      } else {
+        this.sevesoPanel?.hide({ silent: true });
       }
     }
 
@@ -4868,10 +4930,8 @@ export class App {
         panel.setWallHandlers(() => wall.open(), (id) => wall.toggle(id));
         panel.setWallIds(wall.getState().ids);
         this.webcamWall = wall;
-        if (this.activeLayers.webcams) {
-          panel.show(this.currentWebcams, this.webcamsError);
-          wall.restore();
-        }
+        // Le mur ne se rouvre jamais tout seul (20/10/2026) : seulement par « Ouvrir le mur » du panneau Webcams.
+        if (this.activeLayers.webcams) panel.show(this.currentWebcams, this.webcamsError);
       });
     return this.webcamsPanelPromise;
   }
@@ -4887,7 +4947,6 @@ export class App {
   /** Ouverture (case, restauration) : panneau sur le fichier déjà lu, carte reposée, fichier lu une fois sinon. */
   private openWebcamsPanel(): void {
     this.webcamsPanel?.show(this.currentWebcams, this.webcamsError);
-    this.webcamWall?.restore();
     if (this.currentWebcams) this.mapContainer?.updateWebcamsLayer(this.currentWebcams);
     this.refreshWebcamsLegend();
     if (this.currentWebcams === null) this.loadWebcams().catch((err) => console.error('[App] Lecture Webcams en échec', err));
@@ -5082,10 +5141,9 @@ export class App {
     }));
   }
 
-  /** Croisement phénomènes × enjeux recalculé (pastille allumée seulement), puis carte et panneau. */
-  private refreshEnvBrief(): void {
-    if (!this.activeLayers.envBrief) return;
-    const hazards = buildHazards({
+  /** Phénomènes en cours de l'onglet Environnement (zones de vigilance, crues, feux, séismes, zones Copernicus). */
+  private currentHazards(): Hazard[] {
+    return buildHazards({
       vigilance: this.currentVigilance?.vigilance.data ?? null,
       floods: this.currentFloods?.floods.data ?? null,
       fires: this.currentFires?.fires.data ?? null,
@@ -5093,6 +5151,98 @@ export class App {
       ems: this.currentDisasters?.ems.data ?? null,
       now: Date.now(),
     });
+  }
+
+  // ─── Pollens (20/10/2026) ───
+
+  private ensurePollensPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.pollensPanelPromise ??= import('./components/PollensPanel.ts').then(({ PollensPanel }) => {
+      const panel = new PollensPanel(container);
+      panel.setOnClose(() => {
+        if (!this.activeLayers.pollens) return;
+        this.onLayerToggle('pollens', false);
+        this.layerPanel?.updateLayers(this.activeLayers);
+      });
+      if (this.mapContainer?.canFocusMap()) panel.setOnFocusDepartment((code) => this.focusDepartment(code));
+      // Onglets Aujourd'hui / Demain / Après-demain : la carte suit le jour choisi.
+      panel.setOnDayChange((day) => {
+        this.pollenDay = day;
+        this.mapContainer?.updatePollenLayer(this.currentPollen?.pollen.data ?? null, day, Date.now());
+      });
+      panel.mount();
+      this.pollensPanel = panel;
+      panel.update(this.currentPollen);
+      if (this.activeLayers.pollens && this.currentFloatingPanelId === 'pollens') panel.show(this.currentPollen);
+    });
+    return this.pollensPanelPromise;
+  }
+
+  /** Lecture (cache client 25 min), puis panneau, carte, légende et voyant. */
+  private loadPollen(): Promise<void> {
+    return dedupe('pollens', async () => {
+      const incoming = await fetchPollen(this.currentPollen, Date.now());
+      this.currentPollen = mergePollen(this.currentPollen, incoming);
+      const now = Date.now();
+      const data = this.currentPollen.pollen.data;
+      this.pollensPanel?.update(this.currentPollen);
+      this.mapContainer?.updatePollenLayer(data, this.pollenDay, now);
+      this.mapLegend?.setCategories([{ ...pollensLegend(data, now), visible: this.activeLayers.pollens }]);
+      this.refreshGeneralWatch();
+    });
+  }
+
+  // ─── Sites Seveso (20/10/2026) ───
+
+  private ensureSevesoPanel(): Promise<void> {
+    const container = this.floatContainerEl;
+    if (!container) return Promise.resolve();
+    this.sevesoPanelPromise ??= import('./components/SevesoPanel.ts').then(({ SevesoPanel }) => {
+      const panel = new SevesoPanel(container);
+      panel.setOnClose(() => {
+        if (!this.activeLayers.seveso) return;
+        this.onLayerToggle('seveso', false);
+        this.layerPanel?.updateLayers(this.activeLayers);
+      });
+      panel.setOnFocusPoint((lon, lat) => this.mapContainer?.flyTo(lon, lat, 12));
+      panel.mount();
+      this.sevesoPanel = panel;
+      panel.update(this.sevesoData, this.sevesoError, this.sevesoExposed);
+      if (this.activeLayers.seveso && this.currentFloatingPanelId === 'seveso') panel.show();
+    });
+    return this.sevesoPanelPromise;
+  }
+
+  /** Recensement lu une fois (relu après un échec), puis exposition, carte, panneau et légende. */
+  private loadSeveso(): Promise<void> {
+    return dedupe('seveso', async () => {
+      if (this.sevesoData === null) {
+        try {
+          this.sevesoData = await fetchSevesoDataset();
+          this.sevesoError = null;
+        } catch (err) {
+          this.sevesoError = err instanceof Error ? err.message : 'lecture impossible';
+        }
+      }
+      this.refreshSeveso();
+    });
+  }
+
+  /** Exposition des sites Seveso aux phénomènes en cours (couche allumée), puis carte, panneau, légende. */
+  private refreshSeveso(): void {
+    if (!this.activeLayers.seveso) return;
+    const sites = this.sevesoData?.sites ?? null;
+    this.sevesoExposed = sites ? sevesoExposures(computeExposure(this.currentHazards(), sites), sites) : null;
+    this.mapContainer?.updateSevesoLayer(sites, this.sevesoExposed);
+    this.sevesoPanel?.update(this.sevesoData, this.sevesoError, this.sevesoExposed);
+    this.mapLegend?.setCategories([{ ...sevesoLegend(this.sevesoData), visible: true }]);
+  }
+
+  /** Croisement phénomènes × enjeux recalculé (pastille allumée seulement), puis carte et panneau. */
+  private refreshEnvBrief(): void {
+    if (!this.activeLayers.envBrief) return;
+    const hazards = this.currentHazards();
     this.currentExposure = this.exposureAssets ? computeExposure(hazards, this.exposureAssets.assets) : null;
     this.mapContainer?.updateExposureLayer(this.currentExposure);
     this.envBriefPanel?.update(this.envBriefData());
@@ -5634,6 +5784,8 @@ export class App {
       case 'webcams': return [this.ensureWebcamsPanel()];
       case 'envBrief': return [this.ensureEnvBriefPanel()];
       case 'brief': return [this.ensureThemeBriefPanel()];
+      case 'seveso': return [this.ensureSevesoPanel()];
+      case 'pollens': return [this.ensurePollensPanel()];
       case 'pedestrianFlows': return [this.ensureFluxPanel()];
       case 'trafficRoad': return [this.ensureTrafficPanel()];
       case 'trafficAir': return [this.ensureAirTrafficPanel()];
@@ -5710,6 +5862,8 @@ export class App {
       case 'webcams': return this.webcamsPanel;
       case 'envBrief': return this.envBriefPanel;
       case 'brief': return this.themeBriefPanel;
+      case 'seveso': return this.sevesoPanel;
+      case 'pollens': return this.pollensPanel;
       case 'pedestrianFlows': return this.fluxPanel;
       default: return null;
     }
@@ -6262,6 +6416,10 @@ export class App {
       now,
     });
     // Journal : passages entre niveaux connus (un « n.d. » n'écrit rien) ; 50 derniers gardés pour la session.
+    // Pollens : niveau de la pastille (Atmo, jour J) dès la première lecture.
+    if (this.currentPollen) levels.set('pollens', pollensHeadLevel(this.currentPollen.pollen.data, now));
+    // Sites Seveso : niveau de leur exposition (pastille allumée, recensement lu).
+    if (this.activeLayers.seveso && this.sevesoData) levels.set('seveso', sevesoHeadLevel(this.sevesoData, this.sevesoExposed));
     this.watchLevelMap = levels;
     const transitions = watchTransitions(this.watchLastKnown, levels, now);
     for (const [key, level] of levels) if (level !== 'nd') this.watchLastKnown.set(key, level);
@@ -6272,6 +6430,7 @@ export class App {
     // Avant les couches critiques, seul le socle : pas de puce « n.d. » pour une source simplement pas encore lue.
     this.watchEntries = this.v2IntelStarted ? generalWatch(levels) : generalWatch(new Map());
     // En bref de l'onglet Environnement : croisement et panneau suivent chaque rafraîchissement du poste (20/10/2026).
+    this.refreshSeveso();
     this.refreshEnvBrief();
     this.refreshThemeBrief();
     this.refreshEnvironmentKey();

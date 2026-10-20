@@ -93,7 +93,7 @@ describe('En bref des onglets', () => {
     expect(n).toContain('Énergie, point de situation du 20/10/2026 12:00');
     expect(n).toContain('- Arrêt de 3 réacteurs : Vallée du Rhône.');
     expect(n).toContain('- Panne électrique (Gard).');
-    expect(n).not.toMatch(/<| /);
+    expect(n).not.toMatch(/<|\u00a0/);
   });
 });
 

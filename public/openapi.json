@@ -380,6 +380,24 @@
         }
       }
     },
+    "/api/environment/pollen": {
+      "get": {
+        "tags": ["Environnement"],
+        "operationId": "getEnvironmentPollen",
+        "summary": "Pollens : niveau par département de J à J+2 (Atmo France)",
+        "description": "Niveau de pollens (1 très faible à 6 extrêmement élevé) de J, J+1 et J+2, agrégé par département à partir des communes : plus haut code, communes à « élevé » ou plus, alerte, et plus haut code de chaque taxon (aulne, bouleau, olivier, graminées, armoise, ambroisie). Requêtes WFS filtrées par date, un jour par requête ; un jour non publié est absent de `days`.\n\nCache CDN visé : `s-maxage=1800, stale-while-revalidate=3600` (plus court si la réponse est partielle).",
+        "responses": {
+          "200": {
+            "description": "Au moins un jour lu ; un jour en panne est nommé dans `errors`.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PollenResponse" } } }
+          },
+          "502": {
+            "description": "Aucun jour lu : même corps, pannes nommées dans `errors`, jamais mis en cache.",
+            "content": { "application/json": { "schema": { "$ref": "#/components/schemas/PollenResponse" } } }
+          }
+        }
+      }
+    },
     "/api/environment/air": {
       "get": {
         "tags": ["Environnement"],
@@ -944,6 +962,19 @@
           "errors": { "type": "array", "description": "Pannes nommées (source et cause).", "items": { "type": "string" } }
         },
         "required": ["days", "episodesUpdatedAt", "zonesCovered", "episodes", "perPollutant", "index", "readAt", "errors"]
+      },
+      "PollenResponse": {
+        "type": "object",
+        "description": "Pollens, type `PollenResponse` de `src/types/index.ts`.",
+        "properties": {
+          "readAt": { "type": ["string", "null"], "format": "date-time", "description": "Lecture du serveur ; `null` : aucun jour lu." },
+          "days": { "type": "array", "description": "Jours publiés parmi J, J+1 et J+2 (heure de Paris).", "items": { "type": "string", "format": "date" } },
+          "updatedAt": { "type": ["string", "null"], "format": "date-time", "description": "`date_maj` la plus récente." },
+          "departments": { "type": "array", "description": "Départements couverts : code, nom, et par jour plus haut code, communes comptées, communes à 4 ou plus, alerte, taxons triés par code décroissant.", "items": { "type": "object" } },
+          "sources": { "type": "array", "description": "Associations de surveillance (AASQA) vues dans la réponse.", "items": { "type": "string" } },
+          "errors": { "type": "array", "description": "Pannes nommées (source et cause).", "items": { "type": "string" } }
+        },
+        "required": ["readAt", "days", "updatedAt", "departments", "sources", "errors"]
       },
       "EarthquakesResponse": {
         "type": "object",

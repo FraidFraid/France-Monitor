@@ -1,0 +1,134 @@
+{
+ "_note": "Extrait réel de ind_pol:ind_national_pol du 2026-10-20 (propertyName réduit, sans géométrie). Le 20/10 tous les codes valent 1 (hors saison) : les codes de 69123, 69002, 13055 et 13001 ont été ÉDITÉS À LA MAIN pour couvrir les niveaux 3 à 5, l'alerte et plusieurs taxons.",
+ "type": "FeatureCollection",
+ "numberMatched": 7,
+ "numberReturned": 7,
+ "features": [
+  {
+   "type": "Feature",
+   "geometry": null,
+   "properties": {
+    "date_maj": "2026-10-20T12:18:03.306Z",
+    "code_qual": 1,
+    "source": "Airparif",
+    "code_aul": 1,
+    "code_boul": 1,
+    "code_oliv": 1,
+    "code_gram": 1,
+    "code_arm": 1,
+    "code_ambr": 1,
+    "alerte": false,
+    "date_ech": "2026-10-20",
+    "code_zone": "75056"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": null,
+   "properties": {
+    "date_maj": "2026-10-20T12:52:05.977Z",
+    "code_qual": 1,
+    "source": "Atmo Auvergne-Rhône-Alpes",
+    "code_aul": 1,
+    "code_boul": 1,
+    "code_oliv": 1,
+    "code_gram": 1,
+    "code_arm": 1,
+    "code_ambr": 1,
+    "alerte": false,
+    "date_ech": "2026-10-20",
+    "code_zone": "69035"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": null,
+   "properties": {
+    "date_maj": "2026-10-20T12:52:05.977Z",
+    "code_qual": 4,
+    "source": "Atmo Auvergne-Rhône-Alpes",
+    "code_aul": 1,
+    "code_boul": 1,
+    "code_oliv": 1,
+    "code_gram": 1,
+    "code_arm": 1,
+    "code_ambr": 4,
+    "alerte": false,
+    "date_ech": "2026-10-20",
+    "code_zone": "69002"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": null,
+   "properties": {
+    "date_maj": "2026-10-20T12:52:05.977Z",
+    "code_qual": 5,
+    "source": "Atmo Auvergne-Rhône-Alpes",
+    "code_aul": 1,
+    "code_boul": 1,
+    "code_oliv": 1,
+    "code_gram": 4,
+    "code_arm": 2,
+    "code_ambr": 5,
+    "alerte": false,
+    "date_ech": "2026-10-20",
+    "code_zone": "69123"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": null,
+   "properties": {
+    "date_maj": "2026-10-20T12:54:03.681Z",
+    "code_qual": 4,
+    "source": "AtmoSud",
+    "code_aul": 1,
+    "code_boul": 1,
+    "code_oliv": 4,
+    "code_gram": 1,
+    "code_arm": 1,
+    "code_ambr": 1,
+    "alerte": true,
+    "date_ech": "2026-10-20",
+    "code_zone": "13001"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": null,
+   "properties": {
+    "date_maj": "2026-10-20T12:54:03.681Z",
+    "code_qual": 3,
+    "source": "AtmoSud",
+    "code_aul": 1,
+    "code_boul": 1,
+    "code_oliv": 2,
+    "code_gram": 1,
+    "code_arm": 3,
+    "code_ambr": 1,
+    "alerte": false,
+    "date_ech": "2026-10-20",
+    "code_zone": "13055"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": null,
+   "properties": {
+    "date_maj": "2026-10-20T12:54:03.695Z",
+    "code_qual": 1,
+    "source": "Qualitair Corse",
+    "code_aul": 1,
+    "code_boul": 1,
+    "code_oliv": 1,
+    "code_gram": 1,
+    "code_arm": 1,
+    "code_ambr": 1,
+    "alerte": false,
+    "date_ech": "2026-10-20",
+    "code_zone": "2A004"
+   }
+  }
+ ]
+}

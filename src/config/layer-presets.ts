@@ -73,6 +73,8 @@ export const ALL_PRESETABLE_LAYER_KEYS: ReadonlyArray<keyof MapLayers> = [
   'crime',
   'webcams',
   'envBrief',
+  'seveso',
+  'pollens',
   'pedestrianFlows',
 ];
 
@@ -84,7 +86,7 @@ export const THEME_LAYERS: Readonly<Record<Exclude<LayerPresetId, 'general'>, Re
   energy: ['powerGrid', 'nuclearFleet', 'gasNetwork', 'oilNetwork', 'outagesElec', 'hydroBackbone', 'windMonitor', 'dromEnergy', 'metroLoad'],
   security: ['military', 'cyber', 'outagesTelecom', 'outagesInternet', 'outagesCloud', 'subseaCables', 'protests', 'pedestrianFlows', 'crime', 'news', 'stability'],
   health: ['health', 'healthOscour', 'hospitals', 'healthApl'],
-  environment: ['envBrief', 'environmental', 'floods', 'weatherRadar', 'fires', 'airQuality', 'drought', 'earthquakes', 'disasters', 'webcams'],
+  environment: ['envBrief', 'environmental', 'floods', 'weatherRadar', 'fires', 'airQuality', 'pollens', 'drought', 'earthquakes', 'disasters', 'seveso', 'webcams'],
   transport: ['trafficRoad', 'trafficRail', 'trafficMaritime', 'trafficAir'],
 };
 
@@ -132,7 +134,7 @@ export const LAYER_PRESETS: ReadonlyArray<LayerPreset> = [
     id: 'environment',
     label: 'Environnement',
     icon: 'leaf',
-    description: 'Tout le thème environnement : synthèse En bref et enjeux exposés, vigilance météo, crues, radar météo, feux de forêt, qualité de l’air, sécheresse, séismes, catastrophes (GDACS) et webcams publiques.',
+    description: 'Tout le thème environnement : synthèse En bref et enjeux exposés, sites Seveso, pollens, vigilance météo, crues, radar météo, feux de forêt, qualité de l’air, sécheresse, séismes, catastrophes (GDACS) et webcams publiques.',
     layers: THEME_LAYERS.environment,
     events: false,
   },

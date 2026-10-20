@@ -45,11 +45,6 @@ export class WebcamWall {
     if (this.root) this.render();
   }
 
-  /** Couche allumée : le mur reparaît s'il était ouvert à la dernière visite. */
-  restore(): void {
-    if (this.state.open) this.mount();
-  }
-
   open(): void {
     this.commit({ ...this.state, open: true, minimized: false });
     this.fitHeight();

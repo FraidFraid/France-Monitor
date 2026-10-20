@@ -21,6 +21,7 @@ export const ROUTES = {
   '/api/environment/ems': () => import('./_handlers/environment/ems.js'),
   '/api/environment/fires': () => import('./_handlers/environment/fires.js'),
   '/api/environment/floods': () => import('./_handlers/environment/floods.js'),
+  '/api/environment/pollen': () => import('./_handlers/environment/pollen.js'),
   '/api/environment/sea-levels': () => import('./_handlers/environment/sea-levels.js'),
   '/api/environment/vigilance': () => import('./_handlers/environment/vigilance.js'),
   '/api/events/changes': () => import('./_handlers/events/changes.js'),

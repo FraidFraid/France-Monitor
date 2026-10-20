@@ -72,6 +72,22 @@ export function ehpadAssets(json: unknown): ExposureAsset[] {
   return out;
 }
 
+/** Fichier Seveso pour la pastille « Sites Seveso » (20/10/2026) : sites et date du recensement Géorisques. */
+export interface SevesoDataset { sites: ExposureAsset[]; readAt: string | null; source: string }
+
+let sevesoCache: SevesoDataset | null = null;
+
+/** Lecture unique par session (relue après un échec) ; rejette si le fichier est illisible. */
+export async function fetchSevesoDataset(): Promise<SevesoDataset> {
+  if (sevesoCache) return sevesoCache;
+  const json = await readHealthJsonShared(SEVESO_URL);
+  const sites = sevesoAssets(json);
+  const readAt = isRecord(json) && str(json.readAt) ? json.readAt : null;
+  const source = isRecord(json) && str(json.source) ? json.source : 'Géorisques';
+  sevesoCache = { sites, readAt, source };
+  return sevesoCache;
+}
+
 export interface ExposureAssetsState {
   assets: ExposureAsset[];
   /** Fichiers illisibles (« Seveso », « hôpitaux », « EHPAD ») : leurs enjeux manquent, c'est dit dans le panneau. */

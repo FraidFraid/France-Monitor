@@ -4,7 +4,8 @@
  */
 
 import type { DeckGLMap } from './DeckGLMap.ts';
-import type { ExposureResult } from '../services/environment-exposure.ts';
+import type { Exposure, ExposureAsset, ExposureResult } from '../services/environment-exposure.ts';
+import type { PollenDay, PollenResponse } from '../types/index.ts';
 import type { EnergyKeyModel, EnergyLayerKey } from './deckgl/energy-map.ts';
 import type { EnergyState } from '../services/energy-state.ts';
 import type { Map as SVGMap } from './Map.ts';
@@ -75,6 +76,8 @@ export class MapContainer {
   private onWebcamClick: ((id: string) => void) | null = null;
   private webcamsData: WebcamsDataset | null = null;
   private exposureData: ExposureResult | null = null;
+  private pollenData: { p: PollenResponse | null; day: PollenDay; now: number } | null = null;
+  private sevesoData: { sites: readonly ExposureAsset[] | null; exposed: readonly Exposure[] | null } | null = null;
   private fluxData: { data: readonly FluxFeature[] | null; phase: FluxPhase; instant: FluxInstant | null; others: readonly FluxOtherEvent[] } | null = null;
   private onFluxEventClick: ((id: string) => void) | null = null;
   private onSovereigntyFeatureClick: ((layerId: string, props: Record<string, unknown>) => void) | null = null;
@@ -115,6 +118,8 @@ export class MapContainer {
     if (this.onWebcamClick) this.deckMap.setOnWebcamClick(this.onWebcamClick);
     if (this.webcamsData) this.deckMap.updateWebcamsLayer(this.webcamsData);
     if (this.exposureData) this.deckMap.updateExposureLayer(this.exposureData);
+    if (this.sevesoData) this.deckMap.updateSevesoLayer(this.sevesoData.sites, this.sevesoData.exposed);
+    if (this.pollenData) void this.deckMap.updatePollenLayer(this.pollenData.p, this.pollenData.day, this.pollenData.now);
     if (this.fluxData) this.deckMap.updateFluxLayer(this.fluxData.data, this.fluxData.phase, this.fluxData.instant, this.fluxData.others);
     if (this.onFluxEventClick) this.deckMap.setOnFluxEventClick(this.onFluxEventClick);
     if (this.onRawMapClick) this.deckMap.setOnRawMapClick(this.onRawMapClick);
@@ -611,6 +616,18 @@ export class MapContainer {
   setOnFluxEventClick(handler: (id: string) => void): void {
     this.onFluxEventClick = handler;
     this.deckMap?.setOnFluxEventClick(handler);
+  }
+
+  /** Pollens : jour choisi ; gardés pour une carte créée après la lecture. */
+  updatePollenLayer(p: PollenResponse | null, day: PollenDay, now: number): void {
+    this.pollenData = { p, day, now };
+    void this.deckMap?.updatePollenLayer(p, day, now);
+  }
+
+  /** Sites Seveso et leur exposition ; gardés pour une carte créée après la lecture. */
+  updateSevesoLayer(sites: readonly ExposureAsset[] | null, exposed: readonly Exposure[] | null): void {
+    this.sevesoData = { sites, exposed };
+    this.deckMap?.updateSevesoLayer(sites, exposed);
   }
 
   /** Cadrage « France et Corse » accroché : recalculé si ce qui recouvre la carte a changé (panneau ouvert ou fermé). */

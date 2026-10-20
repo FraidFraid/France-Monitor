@@ -17,6 +17,10 @@ import { PROTEST_LAYERS, PROTEST_LAYER_IDS, protestFeatures } from './deckgl/pro
 import { CRIME_CITY_LAYERS, CRIME_LAYERS, CRIME_LAYER_IDS, crimeCityFeatures, crimeDeptFeatures } from './deckgl/crime-map.ts';
 import { WEBCAM_LAYERS, WEBCAM_LAYER_IDS, webcamFeatures, webcamSourceSpec } from './deckgl/webcams-map.ts';
 import { EXPOSURE_LAYERS, EXPOSURE_LAYER_IDS, exposureFeatures, exposureSourceSpec } from './deckgl/exposure-map.ts';
+import { LYR_POLLEN_FILL, POLLEN_LAYERS, POLLEN_LAYER_IDS, SRC_POLLEN, pollenDeptFeatures } from './deckgl/pollen-map.ts';
+import type { PollenDay, PollenResponse } from '../types/index.ts';
+import { LYR_SEVESO, LYR_SEVESO_CLUSTER, SEVESO_LAYERS, SEVESO_LAYER_IDS, SRC_SEVESO, sevesoFeatures, sevesoSourceSpec } from './deckgl/seveso-map.ts';
+import type { Exposure, ExposureAsset } from '../services/environment-exposure.ts';
 import { FRANCE_METRO_BOUNDS, visibleFitPadding, type Rect } from './deckgl/france-fit.ts';
 import { pulsePaint } from './deckgl/pulse.ts';
 import type { ExposureResult } from '../services/environment-exposure.ts';
@@ -558,6 +562,12 @@ export class DeckGLMap {
   private webcamsData: WebcamsDataset | null = null;
   private exposureData: ExposureResult | null = null;
   private exposureHoverPopup: maplibregl.Popup | null = null;
+  private sevesoSites: readonly ExposureAsset[] | null = null;
+  private sevesoExposed: readonly Exposure[] | null = null;
+  private sevesoHoverPopup: maplibregl.Popup | null = null;
+  private pollenHoverPopup: maplibregl.Popup | null = null;
+  /** Calques tamisés par la mise en avant d'une pastille (setLegendHover) : leur survol est ignoré. */
+  private dimmedLegendLayers = new Set<string>();
   private webcamHoverPopup: maplibregl.Popup | null = null;
   private webcamHoverShown = false;
   private onWebcamClick: ((id: string) => void) | null = null;
@@ -921,6 +931,8 @@ export class DeckGLMap {
     this.map.addSource(SRC_CRIME_CITIES, envSourceSpec());
     this.map.addSource(SRC_WEBCAMS, webcamSourceSpec());
     this.map.addSource(SRC_EXPOSURE, exposureSourceSpec());
+    this.map.addSource(SRC_SEVESO, sevesoSourceSpec());
+    this.map.addSource(SRC_POLLEN, { type: 'geojson', data: emptyFC() });
     this.map.addSource(SRC_FLUX, fluxSourceSpec());
 
     // NASA GIBS — dernière image VIIRS publiée (fumée / cicatrices)
@@ -2399,6 +2411,10 @@ export class DeckGLMap {
     for (const layer of WEBCAM_LAYERS) this.map.addLayer(layer);
     // Flux piétons (deckgl/flux-pietons-map.ts) : isochrones, rues, rassemblement, masqués jusqu'à setLayerVisibility.
     for (const layer of FLUX_LAYERS) this.map.addLayer(layer);
+    // Pollens (deckgl/pollen-map.ts) : remplissage départemental sous les vigilances météo (pas au-dessus des points).
+    for (const layer of POLLEN_LAYERS) this.map.addLayer(layer, this.map.getLayer(LYR_WEATHER_FILL) ? LYR_WEATHER_FILL : undefined);
+    // Sites Seveso (deckgl/seveso-map.ts), sous les enjeux exposés ; masqués jusqu'à setLayerVisibility.
+    for (const layer of SEVESO_LAYERS) this.map.addLayer(layer);
     // Enjeux exposés (deckgl/exposure-map.ts, onglet Environnement) : au-dessus de tout, masqués jusqu'à setLayerVisibility.
     for (const layer of EXPOSURE_LAYERS) this.map.addLayer(layer);
 
@@ -2702,6 +2718,8 @@ export class DeckGLMap {
     this.initCrimeInteractions();
     this.initWebcamsInteractions();
     this.initExposureInteractions();
+    this.initSevesoInteractions();
+    this.initPollenInteractions();
     this.initFluxInteractions();
 
 
@@ -4662,6 +4680,10 @@ export class DeckGLMap {
       return [...WEBCAM_LAYER_IDS];
     } else if (categoryId === 'envBrief') {
       return [...EXPOSURE_LAYER_IDS];
+    } else if (categoryId === 'seveso') {
+      return [...SEVESO_LAYER_IDS];
+    } else if (categoryId === 'pollens') {
+      return [...POLLEN_LAYER_IDS];
     } else if (categoryId === 'pedestrianFlows') {
       return [...FLUX_LAYER_IDS];
     } else if (categoryId === 'trafficRoad') {
@@ -4709,6 +4731,8 @@ export class DeckGLMap {
       ...WEBCAM_LAYER_IDS,
       ...FLUX_LAYER_IDS,
       ...EXPOSURE_LAYER_IDS,
+      ...SEVESO_LAYER_IDS,
+      ...POLLEN_LAYER_IDS,
     ];
 
     let activeLayers: string[] = [];
@@ -4722,6 +4746,9 @@ export class DeckGLMap {
     }
 
 
+    // Calques tamisés par la mise en avant : ils ne répondent plus au survol (infobulles des couches ajoutées le 20/10/2026).
+    this.dimmedLegendLayers = categoryId === null || activeLayers.length === 0
+      ? new Set<string>() : new Set(allLegendLayers.filter((id) => !activeLayers.includes(id)));
     for (const key of Object.keys(PULSE_LAYERS) as PulseKey[]) {
       this.pulseState[key].dim = categoryId !== null && activeLayers.length > 0 && !activeLayers.includes(PULSE_LAYERS[key].base) ? 0.15 : 1;
     }
@@ -7792,6 +7819,65 @@ export class DeckGLMap {
     });
   }
 
+  /** Pollens : indice le plus haut du jour choisi (J, J+1, J+2) par département. */
+  async updatePollenLayer(p: PollenResponse | null, day: PollenDay, now: number): Promise<void> {
+    const geo = await this.getDepartmentsGeojson();
+    if (!this.map) return;
+    (this.map.getSource(SRC_POLLEN) as maplibregl.GeoJSONSource | undefined)?.setData(geo ? pollenDeptFeatures(geo, p, day, now) : emptyFC());
+  }
+
+  /** Pollens : infobulle préparée au survol d'un département. */
+  private initPollenInteractions(): void {
+    const map = this.map;
+    if (!map) return;
+    map.on('mousemove', LYR_POLLEN_FILL, (e) => {
+      // Un point (site Seveso, enjeu exposé) sous le curseur passe devant le remplissage : une seule infobulle.
+      const points = [LYR_SEVESO, LYR_EXPOSURE].filter((id) => map.getLayer(id) && map.getLayoutProperty(id, 'visibility') !== 'none');
+      const onPoint = points.length > 0 && map.queryRenderedFeatures(e.point, { layers: points }).length > 0;
+      const html = onPoint || this.dimmedLegendLayers.has(LYR_POLLEN_FILL) ? '' : String(e.features?.[0]?.properties?.['body'] ?? '');
+      if (!html) { this.pollenHoverPopup?.remove(); return; }
+      const popup = this.pollenHoverPopup
+        ?? new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 8, maxWidth: '300px', className: 'dark-popup hm-hover' });
+      this.pollenHoverPopup = popup;
+      popup.setLngLat(e.lngLat).setHTML(`<div class="hm-tip">${html}</div>`).addTo(map);
+    });
+    map.on('mouseleave', LYR_POLLEN_FILL, () => this.pollenHoverPopup?.remove());
+  }
+
+  /** Sites Seveso et leur exposition (null : vide la carte). */
+  updateSevesoLayer(sites: readonly ExposureAsset[] | null, exposed: readonly Exposure[] | null): void {
+    this.sevesoSites = sites;
+    this.sevesoExposed = exposed;
+    (this.map?.getSource(SRC_SEVESO) as maplibregl.GeoJSONSource | undefined)?.setData(sevesoFeatures(sites, exposed));
+  }
+
+  /** Sites Seveso : infobulle au survol d'un site ; clic sur un groupe = zoom. */
+  private initSevesoInteractions(): void {
+    const map = this.map;
+    if (!map) return;
+    map.on('mousemove', LYR_SEVESO, (e) => {
+      const html = this.dimmedLegendLayers.has(LYR_SEVESO) ? '' : String(e.features?.[0]?.properties?.['body'] ?? '');
+      if (!html) { this.sevesoHoverPopup?.remove(); return; }
+      map.getCanvas().style.cursor = 'pointer';
+      const popup = this.sevesoHoverPopup
+        ?? new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 8, maxWidth: '300px', className: 'dark-popup hm-hover' });
+      this.sevesoHoverPopup = popup;
+      popup.setLngLat(e.lngLat).setHTML(`<div class="hm-tip">${html}</div>`).addTo(map);
+    });
+    map.on('mouseleave', LYR_SEVESO, () => {
+      map.getCanvas().style.cursor = '';
+      this.sevesoHoverPopup?.remove();
+    });
+    map.on('click', LYR_SEVESO_CLUSTER, (e) => {
+      const cluster = e.features?.[0];
+      const clusterId = Number(cluster?.properties?.['cluster_id']);
+      const source = map.getSource(SRC_SEVESO) as maplibregl.GeoJSONSource | undefined;
+      if (!cluster || !Number.isFinite(clusterId) || !source || cluster.geometry.type !== 'Point') return;
+      const [lng, lat] = cluster.geometry.coordinates;
+      void source.getClusterExpansionZoom(clusterId).then((zoom) => map.easeTo({ center: [lng ?? 0, lat ?? 0], zoom: zoom + 0.5 })).catch(() => undefined);
+    });
+  }
+
   /** Enjeux exposés : croisement de l'onglet Environnement (null : vide la carte). */
   updateExposureLayer(r: ExposureResult | null): void {
     this.exposureData = r;
@@ -7804,8 +7890,8 @@ export class DeckGLMap {
     const map = this.map;
     if (!map) return;
     map.on('mousemove', LYR_EXPOSURE, (e) => {
-      const html = String(e.features?.[0]?.properties?.['body'] ?? '');
-      if (!html) return;
+      const html = this.dimmedLegendLayers.has(LYR_EXPOSURE) ? '' : String(e.features?.[0]?.properties?.['body'] ?? '');
+      if (!html) { this.exposureHoverPopup?.remove(); return; }
       map.getCanvas().style.cursor = 'pointer';
       const popup = this.exposureHoverPopup
         ?? new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 10, maxWidth: '300px', className: 'dark-popup hm-hover' });
@@ -8436,6 +8522,11 @@ export class DeckGLMap {
     for (const id of CRIME_LAYER_IDS) this.setVis(id, vis(layers.crime ?? false));
     for (const id of WEBCAM_LAYER_IDS) this.setVis(id, vis(layers.webcams ?? false));
     for (const id of EXPOSURE_LAYER_IDS) this.setVis(id, vis(layers.envBrief ?? false));
+    for (const id of SEVESO_LAYER_IDS) this.setVis(id, vis(layers.seveso ?? false));
+    for (const id of POLLEN_LAYER_IDS) this.setVis(id, vis(layers.pollens ?? false));
+    if (!layers.pollens) this.pollenHoverPopup?.remove();
+    if (layers.seveso) (this.map?.getSource(SRC_SEVESO) as maplibregl.GeoJSONSource | undefined)?.setData(sevesoFeatures(this.sevesoSites, this.sevesoExposed));
+    else this.sevesoHoverPopup?.remove();
     if (layers.envBrief) (this.map?.getSource(SRC_EXPOSURE) as maplibregl.GeoJSONSource | undefined)?.setData(exposureFeatures(this.exposureData));
     else this.exposureHoverPopup?.remove();
     for (const id of FLUX_LAYER_IDS) this.setVis(id, vis(layers.pedestrianFlows ?? false));

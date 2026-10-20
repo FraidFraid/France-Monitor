@@ -5755,6 +5755,8 @@ button.header-quality-link {
   .maritime-panel-modal,
   .pressure-panel-modal,
   .theme-brief-panel-modal,
+  .seveso-panel-modal,
+  .pollens-panel-modal,
   .env-brief-panel-modal,
   .fm-floating-panel {
     position: fixed !important;
@@ -5812,6 +5814,8 @@ button.header-quality-link {
   .maritime-panel-modal::before,
   .pressure-panel-modal::before,
   .theme-brief-panel-modal::before,
+  .seveso-panel-modal::before,
+  .pollens-panel-modal::before,
   .env-brief-panel-modal::before,
   .fm-floating-panel::before {
     content: '';
@@ -7810,6 +7814,8 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
   #app.ui-v2 .pressure-panel-modal,
   /* En bref des onglets (20/10/2026) : dans la colonne, à la place de la fiche, jamais flottant. */
   #app.ui-v2 .theme-brief-panel-modal,
+  #app.ui-v2 .seveso-panel-modal,
+  #app.ui-v2 .pollens-panel-modal,
   #app.ui-v2 .env-brief-panel-modal,
   #app.ui-v2 .fm-floating-panel,
   body:has(#app.ui-v2) > .fm-floating-panel {

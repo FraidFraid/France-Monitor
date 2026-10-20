@@ -7,7 +7,7 @@ import type { WatchLevel } from './watch.ts';
 
 /** Pastilles de l'onglet Environnement (ordre de FLOATING_PANEL_DEFS), webcams comprises. */
 export const ENV_FOCUS_IDS: ReadonlyArray<keyof MapLayers> = [
-  'envBrief', 'environmental', 'floods', 'weatherRadar', 'fires', 'drought', 'airQuality', 'earthquakes', 'disasters', 'webcams',
+  'envBrief', 'environmental', 'floods', 'weatherRadar', 'fires', 'drought', 'airQuality', 'pollens', 'earthquakes', 'disasters', 'seveso', 'webcams',
 ];
 
 export function isEnvFocusKey(id: string): id is keyof MapLayers {

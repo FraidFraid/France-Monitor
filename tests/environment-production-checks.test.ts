@@ -24,8 +24,8 @@ async function cacheControlOf(route: string): Promise<string> {
 }
 
 describe('routes /api/environment/* : contrôles de production', () => {
-  it('neuf gestionnaires (phases A et B, GDACS, Copernicus EMS)', () => {
-    expect(ROUTES).toEqual(['air', 'disasters', 'drought', 'earthquakes', 'ems', 'fires', 'floods', 'sea-levels', 'vigilance']);
+  it('dix gestionnaires (phases A et B, GDACS, Copernicus EMS, pollens)', () => {
+    expect(ROUTES).toEqual(['air', 'disasters', 'drought', 'earthquakes', 'ems', 'fires', 'floods', 'pollen', 'sea-levels', 'vigilance']);
   });
 
   it('test de fumée : chaque route interrogée, 200 attendu', () => {

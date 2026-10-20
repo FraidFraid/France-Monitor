@@ -133,6 +133,10 @@ export interface MapLayers {
   webcams: boolean;
   /** En bref de l'onglet Environnement : synthèse décideur et enjeux exposés aux phénomènes en cours (spec 2026-10-20). */
   envBrief: boolean;
+  /** Sites Seveso (Géorisques) et leur exposition aux phénomènes en cours, onglet Environnement (20/10/2026). */
+  seveso: boolean;
+  /** Pollens : indice pollen Atmo France par département, J à J+2, onglet Environnement (20/10/2026). */
+  pollens: boolean;
   /** En bref des autres onglets (Vue générale, Énergie, Sécurité, Santé, Transports) : synthèse décideur, sans dessin (20/10/2026). */
   brief: boolean;
   /** Flux piétons : prévisions modélisées autour des rassemblements annoncés, publiées par flux_osint (data/flux-pietons/). */
@@ -3490,3 +3494,50 @@ export interface FluxIndex {
 }
 
 export type FluxPhase = 'arrivee' | 'depart';
+
+// ═══ Pollens (Atmo France, 20/10/2026) ═══
+
+/** Taxon publié par Atmo France : aulne, bouleau, olivier, graminées, armoise, ambroisie. */
+export type PollenTaxon = 'aulne' | 'bouleau' | 'olivier' | 'graminees' | 'armoise' | 'ambroisie';
+
+/** Échéance du panneau et de la carte : J, J+1, J+2. */
+export type PollenDay = 'J' | 'J1' | 'J2';
+
+export interface PollenTaxonLevel {
+  taxon: PollenTaxon;
+  /** Plus haut code Atmo du taxon dans le département (1 très faible à 6 extrêmement élevé). */
+  code: number;
+}
+
+export interface PollenDeptDay {
+  /** Jour d'échéance « AAAA-MM-JJ ». */
+  date: string;
+  /** Plus haut code Atmo des communes (1 à 6). */
+  maxCode: number;
+  /** Communes comptées (code lisible). */
+  communes: number;
+  /** Communes au code 4 (élevé) ou plus. */
+  high: number;
+  alerte: boolean;
+  /** Taxons par code décroissant. */
+  taxa: PollenTaxonLevel[];
+}
+
+export interface PollenDept {
+  /** Code département (« 01 », « 2A », « 971 »). */
+  code: string;
+  name: string;
+  days: PollenDeptDay[];
+}
+
+export interface PollenResponse {
+  readAt: string | null;
+  /** Jours publiés parmi J, J+1 et J+2. */
+  days: string[];
+  /** `date_maj` la plus récente. */
+  updatedAt: string | null;
+  departments: PollenDept[];
+  /** Associations de surveillance (AASQA) vues dans la réponse. */
+  sources: string[];
+  errors: string[];
+}
