@@ -14,6 +14,7 @@ import { pressOutages } from './telecom-press.js';
 import { ensureSocialFresh, socialErrors, socialOutages, socialReadAt, SOCIAL_MAX_AGE_MS } from './outages-social.js';
 import { ATLAS_MAX_AGE_MS, atlasOutages, atlasStatus, ensureAtlasFresh } from './outages-atlas.js';
 import { ensureStatusFresh, statusOutages } from './outages-status.js';
+import { exposureOf, loadServices } from './outages-exposure.js';
 
 export const ROOM_KEY = 'out:room:v1';
 const ROOM_TTL_SEC = 8 * 24 * 3600;
@@ -49,7 +50,7 @@ async function readStatus(now) {
   return statusOutages(now).outages;
 }
 
-const DEFAULT_READERS = { readTelecom: loadTelecom, readInternet: loadInternet, readPower: loadPower, readCloud: loadCloud, readPress, readSocial, readAtlas, readStatus };
+const DEFAULT_READERS = { readTelecom: loadTelecom, readInternet: loadInternet, readPower: loadPower, readCloud: loadCloud, readPress, readSocial, readAtlas, readStatus, readServices: loadServices };
 
 /** @type {{ loaded: boolean, state: any, journal: any[], tickAt: number, outages: any[], sources: any[], errors: string[] } | null} */
 let room = null;
@@ -91,7 +92,14 @@ async function run(now, readers) {
     settle(readers.readTelecom, now), settle(readers.readInternet, now), settle(readers.readPower, now), settle(readers.readCloud, now),
     settle(readers.readPress ?? readPress, now), settle(readers.readSocial ?? readSocial, now), settle(readers.readAtlas ?? readAtlas, now), settle(readers.readStatus ?? readStatus, now),
   ]);
-  const outages = outagesNow({ telecom, internet, power, cloud, now, press: press ?? undefined, social: social ?? [], atlas: atlas ?? [], status: status ?? [] });
+  const fused = outagesNow({ telecom, internet, power, cloud, now, press: press ?? undefined, social: social ?? [], atlas: atlas ?? [], status: status ?? [] });
+  // Services publics exposés (lot 2) : départements, communes des antennes coupées de l'opérateur, ou décompte national.
+  const services = (readers.readServices ?? loadServices)();
+  const sites = Array.isArray(telecom?.sites) ? telecom.sites : [];
+  const outages = fused.map((o) => {
+    const exposed = exposureOf(o, { services, sites });
+    return exposed ? { ...o, exposed } : o;
+  });
   const loaded = room.loaded;
   const { state, entries } = loaded ? diffOutages(room.state, outages, now) : { state: room.state, entries: [] };
   const cut = now - JOURNAL_MAX_AGE_MS;

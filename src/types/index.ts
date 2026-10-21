@@ -3222,6 +3222,7 @@ export interface OutageNow {
   measured: boolean;                    // vue par une source autre que la presse (rung !== 'signalee')
   rung: OutageRung;
   evidence: OutageNowEvidence[];
+  exposed?: OutageExposure;             // services publics exposés ; absent : panne sans territoire
 }
 /** Changement d'état d'une panne (journal serveur, 7 jours). `name` : libellé de la panne, ou code du département (nommé par le client). */
 export interface OutageJournalEntry {
@@ -3233,6 +3234,14 @@ export interface OutageJournalEntry {
   dept: string | null;
   level: 'jaune' | 'orange' | 'rouge';
   rung: OutageRung;
+}
+/** Services publics exposés à une panne (lot 2) : département, communes des antennes coupées de l'opérateur, ou décompte national. */
+export type PublicServiceType = 'prefecture' | 'sous_pref' | 'police' | 'gendarmerie' | 'sdis' | 'hopital';
+export interface OutageExposure {
+  basis: 'departement' | 'communes' | 'national';
+  total: number;
+  byType: Partial<Record<PublicServiceType, number>>;
+  sample: Array<{ type: PublicServiceType; name: string; commune: string | null; dept: string }>;   // vide pour « national »
 }
 export interface OutagesNowResponse {
   generatedAt: string;

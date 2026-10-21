@@ -39,6 +39,7 @@
     "build:deces": "node scripts/build-deces.mjs",
     "build:webcams": "node scripts/build-webcams.mjs",
     "build:seveso": "node scripts/build-seveso.mjs",
+    "build:services-publics": "node scripts/build-services-publics.mjs",
     "build:communes": "node scripts/build-communes.mjs",
     "build:carreaux": "node scripts/build-carreaux.mjs",
     "build:epci": "node scripts/build-epci-depts.mjs",

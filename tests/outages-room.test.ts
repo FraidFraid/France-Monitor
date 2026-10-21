@@ -16,6 +16,7 @@ const readers = {
   readSocial: async () => [],
   readAtlas: async () => [],
   readStatus: async () => [],
+  readServices: () => [],
 };
 let writes = 0;
 const store = new Map<string, string>();
@@ -91,6 +92,18 @@ describe('presse de tous les réseaux', () => {
     }] };
     const snap = await roomSnapshot(T0, withPress);
     expect(snap.outages.map((o) => o.id)).toEqual(['electricite|op:Enedis']);
+  });
+});
+
+describe('services publics exposés', () => {
+  it('chaque panne porte ses services exposés (communes des antennes coupées de l’opérateur)', async () => {
+    const withSites = {
+      ...readers,
+      readTelecom: async () => ({ file: null, summary: null, byDept: [], press: pressList, errors: [], sites: [{ insee: '32013', operator: 'Orange', lon: 0.59, lat: 43.645, cls: 'recente' }] }),
+      readServices: () => [{ t: 'police', n: 'Commissariat de police - Auch', c: '32013', d: '32', x: 0.585, y: 43.646 }],
+    };
+    const snap = await roomSnapshot(T0, withSites);
+    expect(snap.outages[0]).toMatchObject({ id: 'mobile|op:Orange', exposed: { basis: 'communes', total: 1, byType: { police: 1 } } });
   });
 });
 

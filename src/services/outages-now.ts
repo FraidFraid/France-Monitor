@@ -18,6 +18,7 @@ const LEVELS: ReadonlySet<string> = new Set(['jaune', 'orange', 'rouge']);
 const network = value((v) => isOneOf(v, NETWORKS));
 const rung = value((v) => isOneOf(v, RUNGS));
 const level = value((v) => isOneOf(v, LEVELS));
+const SERVICE_TYPES: ReadonlySet<string> = new Set(['prefecture', 'sous_pref', 'police', 'gendarmerie', 'sdis', 'hopital']);
 const SHAPE = shapeOf<OutagesNowResponse>(record({
   generatedAt: value(isStr),
   outages: list(record({
@@ -26,7 +27,12 @@ const SHAPE = shapeOf<OutagesNowResponse>(record({
     level, since: value(isDateOrNull),
     national: value(isBool), measured: value(isBool),
     evidence: list(record({ source, text: value(isStr), at: value(isDateOrNull), link: value(isStrOrNull) })),
-  })),
+    exposed: record({
+      basis: value((v) => isOneOf(v, new Set(['departement', 'communes', 'national']))), total: value((v) => typeof v === 'number' && v >= 0),
+      byType: value((v) => typeof v === 'object' && v !== null && Object.entries(v).every(([k, n]) => SERVICE_TYPES.has(k) && typeof n === 'number')),
+      sample: list(record({ type: value((v) => isOneOf(v, SERVICE_TYPES)), name: value(isStr), commune: value(isStrOrNull), dept: value(isStr) })),
+    }),
+  }, ['exposed'])),
   journal: list(record({
     at: value(isStr), kind: value((v) => isOneOf(v, new Set(['nouvelle', 'aggravee', 'attenuee', 'confirmee', 'retablie']))),
     id: value(isStr), network, name: value(isStr), dept: value(isStrOrNull), level, rung,

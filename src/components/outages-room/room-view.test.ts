@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { OutageNow, OutagesNowResponse } from '../../types/index.ts';
-import { NBSP } from '../layer-panel/format.ts';
+import { NBSP, frNumber } from '../layer-panel/format.ts';
 import { detailHtml, feedHtml, nationalBox, networkStrip } from './room-view.ts';
 
 const NOW = Date.parse('2026-10-21T12:30:00Z');
@@ -84,5 +84,27 @@ describe('salle des pannes : encart national, fil, détail', () => {
     const html = detailHtml(o, [], NOW);
     expect(html).not.toContain('javascript:');
     expect(html).toContain('piège');
+  });
+});
+
+describe('salle des pannes : services publics exposés (lot 2)', () => {
+  it('détail : décompte par type, liste nommée, base du croisement dite, jamais « coupé »', () => {
+    const o = outage({ exposed: { basis: 'communes', total: 3, byType: { police: 1, gendarmerie: 1, hopital: 1 }, sample: [
+      { type: 'police', name: 'Commissariat de police - Auch', commune: '32013', dept: '32' },
+      { type: 'gendarmerie', name: 'Brigade de gendarmerie - Auch', commune: '32013', dept: '32' },
+      { type: 'hopital', name: 'CH AUCH (AUCH)', commune: null, dept: '32' },
+    ] } });
+    const t = text(detailHtml(o, [], NOW));
+    expect(t).toContain('Services publics exposés');
+    expect(t).toContain(`1${NBSP}commissariat`);
+    expect(t).toContain(`1${NBSP}brigade de gendarmerie`);
+    expect(t).toContain(`1${NBSP}hôpital avec urgences`);
+    expect(t).toContain('Commissariat de police - Auch');
+    expect(t).toContain('communes où ses antennes sont coupées');
+    expect(t).toContain('Exposés, pas forcément coupés');
+  });
+  it('encart national : nombre de services exposés à côté de la panne', () => {
+    const o = outage({ exposed: { basis: 'national', total: 4845, byType: { gendarmerie: 3064 }, sample: [] } });
+    expect(text(nationalBox(body({ outages: [o] }), null, NOW))).toContain(`${frNumber(4845, 0)}${NBSP}services publics exposés`);
   });
 });

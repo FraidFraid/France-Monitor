@@ -2221,6 +2221,7 @@ button.header-quality-link {
 .orm-item b { display: block; font-weight: 600; } .orm-item small { color: var(--text-muted); }
 .orm-item:hover b { text-decoration: underline; }
 .orm-empty { color: var(--text-muted); margin: 4px 0; }
+.orm-note { color: var(--text-muted); font-size: 11px; margin: 2px 0 4px; }
 .orm-detail ul { margin: 0; padding-left: 16px; color: var(--text-secondary, var(--text-muted)); } .orm-detail a { color: inherit; }
 .orm-back { background: none; border: 1px solid var(--border); border-radius: 6px; color: inherit; font: inherit; padding: 2px 8px; cursor: pointer; }
 @container (max-width: 980px) {

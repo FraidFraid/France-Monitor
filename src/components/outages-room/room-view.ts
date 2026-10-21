@@ -1,10 +1,10 @@
 // src/components/outages-room/room-view.ts : vue pure de la control room des pannes (spec 2026-10-21 § 5.1) : barre des réseaux,
 // encart « national et sans lieu », fil des changements, détail d'une panne. Aucun accès réseau ni DOM ; tout texte venu d'une
 // source est échappé.
-import type { OutageJournalEntry, OutageNetwork, OutageNow, OutageNowSource, OutagesNowResponse } from '../../types/index.ts';
+import type { OutageExposure, OutageJournalEntry, OutageNetwork, OutageNow, OutageNowSource, OutagesNowResponse, PublicServiceType } from '../../types/index.ts';
 import { escapeHtml, safeHref } from '../france-intel-events.ts';
 import { departementName } from '../layer-panel/health-format.ts';
-import { NBSP } from '../layer-panel/format.ts';
+import { NBSP, frNumber } from '../layer-panel/format.ts';
 import { parisClock } from '../layer-panel/outages-format.ts';
 import { NETWORK_LABEL, outageProof, RUNG_LABEL, SOURCE_LABEL } from '../../services/outages-now.ts';
 import { outageSince, outageTitle } from '../OutagesNowBanner.ts';
@@ -48,9 +48,40 @@ export function networkStrip(r: OutagesNowResponse | null, filter: OutageNetwork
   return cells.join('');
 }
 
+/** Libellés des services, au singulier et au pluriel. */
+const SERVICE_WORD: Readonly<Record<PublicServiceType, readonly [string, string]>> = {
+  prefecture: ['préfecture', 'préfectures'], sous_pref: ['sous-préfecture', 'sous-préfectures'], police: ['commissariat', 'commissariats'],
+  gendarmerie: ['brigade de gendarmerie', 'brigades de gendarmerie'], sdis: ['SDIS', 'SDIS'], hopital: ['hôpital avec urgences', 'hôpitaux avec urgences'],
+};
+const SERVICE_ORDER: readonly PublicServiceType[] = ['prefecture', 'sous_pref', 'police', 'gendarmerie', 'sdis', 'hopital'];
+const BASIS_TEXT: Readonly<Record<OutageExposure['basis'], string>> = {
+  departement: 'Services du département touché.',
+  communes: 'Services des communes où ses antennes sont coupées (fichier ARCEP), hôpitaux à moins de 3\u00a0km.',
+  national: 'Panne nationale : tous les services publics peuvent être touchés.',
+};
+
+/** « 1 commissariat, 2 brigades de gendarmerie » dans l'ordre de l'État. */
+function exposureCounts(e: OutageExposure): string {
+  return SERVICE_ORDER.flatMap((t) => {
+    const n = e.byType[t] ?? 0;
+    return n > 0 ? [`${frNumber(n, 0)}${NBSP}${SERVICE_WORD[t][n > 1 ? 1 : 0]}`] : [];
+  }).join(', ');
+}
+
+/** Section du détail : services exposés, jamais dits coupés (rien ne dit qu'ils dépendent de ce réseau). */
+function exposureHtml(e: OutageExposure | undefined): string {
+  if (!e) return '';
+  if (e.total === 0) return `<h4>Services publics exposés</h4><p class="orm-empty">Aucun service public recensé dans la zone.</p>`;
+  const list = e.sample.map((s) => `<li>${escapeHtml(s.name)}</li>`).join('');
+  const more = e.total > e.sample.length && e.sample.length > 0 ? `<li>et ${frNumber(e.total - e.sample.length, 0)}${NBSP}autres</li>` : '';
+  return `<h4>Services publics exposés</h4><p>${escapeHtml(exposureCounts(e))}</p><p class="orm-note">${BASIS_TEXT[e.basis]} Exposés, pas forcément coupés.</p>`
+    + (list ? `<ul>${list}${more}</ul>` : '');
+}
+
 function outageRow(o: OutageNow, now: number): string {
+  const exposed = o.exposed && o.exposed.total > 0 ? ` · ${frNumber(o.exposed.total, 0)}${NBSP}services publics exposés` : '';
   return `<button type="button" class="orm-item" data-outage="${escapeHtml(o.id)}">${dot(o.level)}<span><b>${escapeHtml(outageTitle(o))}</b>`
-    + `<small>${escapeHtml(outageSince(o.since, now))} · ${escapeHtml(outageProof(o))}</small></span></button>`;
+    + `<small>${escapeHtml(outageSince(o.since, now))} · ${escapeHtml(outageProof(o))}${exposed}</small></span></button>`;
 }
 
 /** Pannes sans département (opérateur, pays, ouvrage) : elles n'ont pas de lieu sur la carte. */
@@ -82,5 +113,5 @@ export function detailHtml(o: OutageNow, journal: readonly OutageJournalEntry[],
   const story = journal.filter((e) => e.id === o.id).map((e) => `<li>${clock(e.at)} · ${VERB[e.kind]} (${LEVEL_WORD[e.level]})</li>`).join('');
   return `<div class="orm-detail"><button type="button" class="orm-back" data-back>← fil</button>`
     + `<h3>${escapeHtml(outageTitle(o))}</h3><p>${dot(o.level)} ${LEVEL_WORD[o.level]} · ${RUNG_LABEL[o.rung]} · ${escapeHtml(outageSince(o.since, now))}</p>`
-    + `<h4>Preuves</h4><ul>${proofs || '<li>aucune</li>'}</ul><h4>Chronologie</h4><ul>${story || '<li>aucun changement depuis le premier relevé</li>'}</ul></div>`;
+    + `<h4>Preuves</h4><ul>${proofs || '<li>aucune</li>'}</ul>${exposureHtml(o.exposed)}<h4>Chronologie</h4><ul>${story || '<li>aucun changement depuis le premier relevé</li>'}</ul></div>`;
 }
