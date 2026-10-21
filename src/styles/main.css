@@ -2194,6 +2194,41 @@ button.header-quality-link {
   .outages-now-banner { bottom: 72px; max-width: calc(100% - 32px); }
 }
 
+/* Control room des pannes (onglet Pannes, 21/10/2026) : barre des réseaux, encart national, fil ou détail */
+.orm { position: absolute; inset: 0; pointer-events: none; z-index: var(--z-map-widget-popup); font-size: 12.5px; color: var(--text-primary, #e8e8ec); }
+.orm > * { pointer-events: auto; }
+.orm-strip { position: absolute; top: 108px; left: 12px; right: 384px; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; }
+.orm-net { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 6px; padding: 6px 8px; min-width: 0; text-align: left;
+  background: rgba(10, 12, 20, 0.9); border: 1px solid var(--border); border-radius: 8px; color: inherit; font: inherit; cursor: pointer; }
+.orm-net[aria-pressed="true"] { outline: 2px solid var(--accent, #6c7cff); }
+.orm-net.is-none { cursor: default; opacity: 0.6; }
+.orm-net-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.orm-net-n { grid-column: 1 / -1; font-size: 20px; line-height: 1.2; }
+.orm-net small { grid-column: 1 / -1; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.orm-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex: none; }
+.orm-dot--jaune { background: var(--lvl-jaune, #ffcc00); } .orm-dot--orange { background: var(--lvl-orange, #ff9500); }
+.orm-dot--rouge { background: var(--lvl-rouge, #ff3b30); } .orm-dot--vert { background: var(--lvl-vert, #34c759); } .orm-dot--nd { background: var(--text-muted); }
+.orm-nat { position: absolute; top: 196px; left: 12px; width: 300px; max-height: 40%; overflow: auto; background: rgba(10, 12, 20, 0.92);
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
+.orm-side { position: absolute; top: 108px; right: 12px; bottom: 56px; width: 360px; overflow: auto; background: rgba(10, 12, 20, 0.92);
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; }
+.orm h3 { margin: 0 0 6px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted); }
+.orm h4 { margin: 10px 0 4px; font-size: 12px; }
+.orm-item { display: flex; gap: 8px; align-items: flex-start; width: 100%; padding: 6px 0; background: none; border: 0; border-top: 1px solid rgba(255, 255, 255, 0.06);
+  color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.orm-item .orm-dot { margin-top: 4px; }
+.orm-item b { display: block; font-weight: 600; } .orm-item small { color: var(--text-muted); }
+.orm-item:hover b { text-decoration: underline; }
+.orm-empty { color: var(--text-muted); margin: 4px 0; }
+.orm-detail ul { margin: 0; padding-left: 16px; color: var(--text-secondary, var(--text-muted)); } .orm-detail a { color: inherit; }
+.orm-back { background: none; border: 1px solid var(--border); border-radius: 6px; color: inherit; font: inherit; padding: 2px 8px; cursor: pointer; }
+@media (max-width: 640px) {
+  .orm-strip { position: absolute; top: 96px; left: 8px; right: 8px; display: flex; overflow-x: auto; }
+  .orm-net { flex: 0 0 140px; }
+  .orm-nat { top: auto; bottom: 280px; left: 8px; right: 8px; width: auto; max-height: 120px; }
+  .orm-side { top: auto; left: 8px; right: 8px; bottom: 56px; width: auto; height: 210px; }
+}
+
 /* Pastille compacte affichée quand le bandeau est masqué (permet de le rouvrir) */
 .situation-brief.sit-brief--chip {
   background: none;
