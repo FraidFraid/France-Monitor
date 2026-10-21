@@ -508,7 +508,7 @@ export class MapContainer {
   }
 
   /** Calques de la control room des pannes (carte WebGL seulement ; le repli mobile D3 ne les dessine pas). */
-  setOutagesRoom(state: { depts: GeoJSON.FeatureCollection } | null): void {
+  setOutagesRoom(state: { depts: GeoJSON.FeatureCollection; services?: GeoJSON.FeatureCollection } | null): void {
     this.deckMap?.setOutagesRoom(state);
   }
 

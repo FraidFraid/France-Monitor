@@ -6,7 +6,7 @@
  */
 
 import { levelHex } from '../services/vigilance.ts';
-import { LYR_ROOM_DEPT_FILL, SRC_ROOM_DEPTS } from './deckgl/outages-room-map.ts';
+import { LYR_ROOM_DEPT_FILL, LYR_ROOM_SERVICES, LYR_ROOM_SERVICES_LETTER, SRC_ROOM_DEPTS, SRC_ROOM_SERVICES } from './deckgl/outages-room-map.ts';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { MapboxOverlay } from '@deck.gl/mapbox';
@@ -6490,13 +6490,32 @@ export class DeckGLMap {
 
   // ─── Control room des pannes (onglet Pannes, 21/10/2026) : départements touchés ───
   /** Départements touchés (propriété `level`) ; `null` : calque retiré (sortie de l'onglet). */
-  setOutagesRoom(state: { depts: GeoJSON.FeatureCollection } | null): void {
+  setOutagesRoom(state: { depts: GeoJSON.FeatureCollection; services?: GeoJSON.FeatureCollection } | null): void {
     const map = this.map;
     if (!map) return;
     if (state === null) {
-      if (map.getLayer(LYR_ROOM_DEPT_FILL)) map.removeLayer(LYR_ROOM_DEPT_FILL);
-      if (map.getSource(SRC_ROOM_DEPTS)) map.removeSource(SRC_ROOM_DEPTS);
+      for (const id of [LYR_ROOM_SERVICES_LETTER, LYR_ROOM_SERVICES, LYR_ROOM_DEPT_FILL]) if (map.getLayer(id)) map.removeLayer(id);
+      for (const id of [SRC_ROOM_SERVICES, SRC_ROOM_DEPTS]) if (map.getSource(id)) map.removeSource(id);
       return;
+    }
+    // Services publics exposés : disque gris sobre, lettre du type, cerclé à la couleur de la panne (au-dessus des départements).
+    const services = state.services ?? { type: 'FeatureCollection', features: [] };
+    const servicesSrc = map.getSource(SRC_ROOM_SERVICES) as maplibregl.GeoJSONSource | undefined;
+    if (servicesSrc) servicesSrc.setData(services);
+    else map.addSource(SRC_ROOM_SERVICES, { type: 'geojson', data: services });
+    if (!map.getLayer(LYR_ROOM_SERVICES)) {
+      map.addLayer({
+        id: LYR_ROOM_SERVICES, type: 'circle', source: SRC_ROOM_SERVICES,
+        paint: {
+          'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 5, 10, 8], 'circle-color': '#3a3f4b',
+          'circle-stroke-width': 1.8, 'circle-stroke-color': ['match', ['get', 'level'], 'jaune', levelHex('jaune'), 'orange', levelHex('orange'), levelHex('rouge')],
+        },
+      });
+      map.addLayer({
+        id: LYR_ROOM_SERVICES_LETTER, type: 'symbol', source: SRC_ROOM_SERVICES,
+        layout: { 'text-field': ['get', 'letter'], 'text-size': ['interpolate', ['linear'], ['zoom'], 5, 7, 10, 10], 'text-font': ['Open Sans Bold'], 'text-allow-overlap': true },
+        paint: { 'text-color': '#e8e8ec' },
+      });
     }
     const depts = map.getSource(SRC_ROOM_DEPTS) as maplibregl.GeoJSONSource | undefined;
     if (depts) depts.setData(state.depts);
@@ -6505,8 +6524,10 @@ export class DeckGLMap {
       map.addLayer({
         id: LYR_ROOM_DEPT_FILL, type: 'fill', source: SRC_ROOM_DEPTS,
         paint: { 'fill-color': ['match', ['get', 'level'], 'jaune', levelHex('jaune'), 'orange', levelHex('orange'), levelHex('rouge')], 'fill-opacity': 0.3 },
-      });
+      }, map.getLayer(LYR_ROOM_SERVICES) ? LYR_ROOM_SERVICES : undefined);
     }
+    // L'anti-flash (addLayer patché à l'init) masque toute couche ajoutée : la salle montre les siennes tant qu'elle est montée.
+    for (const id of [LYR_ROOM_DEPT_FILL, LYR_ROOM_SERVICES, LYR_ROOM_SERVICES_LETTER]) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'visible');
   }
 
   /** Catastrophes : zones Copernicus EMS des activations françaises en cours (contour violet). */

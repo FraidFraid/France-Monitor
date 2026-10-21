@@ -48,7 +48,7 @@ describe('pilote des pannes en cours', () => {
     expect(mapEl.querySelector('.orm')).not.toBeNull();
     expect(mapEl.querySelector('.outages-now-banner')?.hasAttribute('hidden')).toBe(true);
     expect(timers.at(-1)).toBe(ROOM_POLL_MS);
-    expect(calls.at(-1)).toMatchObject({ depts: { features: [{ properties: { code: '13', level: 'rouge' } }] } });
+    expect(calls.at(-1)).toMatchObject({ depts: { features: [{ properties: { code: '13', level: 'rouge' } }] }, services: { type: 'FeatureCollection' } });
     await ctl.setRoomActive(false);
     expect(mapEl.querySelector('.orm')).toBeNull();
     expect(calls.at(-1)).toBeNull();

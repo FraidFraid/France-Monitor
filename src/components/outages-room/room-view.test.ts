@@ -106,5 +106,9 @@ describe('salle des pannes : services publics exposés (lot 2)', () => {
   it('encart national : nombre de services exposés à côté de la panne', () => {
     const o = outage({ exposed: { basis: 'national', total: 4845, byType: { gendarmerie: 3064 }, sample: [] } });
     expect(text(nationalBox(body({ outages: [o] }), null, NOW))).toContain(`${frNumber(4845, 0)}${NBSP}services publics exposés`);
+    // Clé des pictos de la carte, dès qu'un service exposé y est placé.
+    const placed = outage({ exposed: { basis: 'communes', total: 1, byType: { police: 1 }, sample: [], points: [{ type: 'police', name: 'C', lon: 0, lat: 0 }] } });
+    expect(text(nationalBox(body({ outages: [placed] }), null, NOW))).toContain('Carte : P préfecture, S sous-préfecture, C commissariat, G gendarmerie, I SDIS, H hôpital');
+    expect(text(nationalBox(body({ outages: [o] }), null, NOW))).not.toContain('Carte : P');
   });
 });

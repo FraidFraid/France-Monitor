@@ -35,7 +35,8 @@ const SHAPE = shapeOf<OutagesNowResponse>(record({
       basis: value((v) => isOneOf(v, new Set(['departement', 'communes', 'national']))), total: value((v) => typeof v === 'number' && v >= 0),
       byType: value((v) => typeof v === 'object' && v !== null && Object.entries(v).every(([k, n]) => SERVICE_TYPES.has(k) && typeof n === 'number')),
       sample: list(record({ type: value((v) => isOneOf(v, SERVICE_TYPES)), name: value(isStr), commune: value(isStrOrNull), dept: value(isStr) })),
-    }),
+      points: list(record({ type: value((v) => isOneOf(v, SERVICE_TYPES)), name: value(isStr), lon: value((v) => typeof v === 'number'), lat: value((v) => typeof v === 'number') })),
+    }, ['points']),
   }, ['exposed'])),
   cascades: list(record({
     key: value(isStr), dept: value(isStrOrNull), national: value(isBool), level,

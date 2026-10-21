@@ -5,6 +5,11 @@ import type { OutageNetwork, OutageNow } from '../../types/index.ts';
 
 export const SRC_ROOM_DEPTS = 'room-depts';
 export const LYR_ROOM_DEPT_FILL = 'room-dept-fill';
+export const SRC_ROOM_SERVICES = 'room-services';
+export const LYR_ROOM_SERVICES = 'room-services-disc';
+export const LYR_ROOM_SERVICES_LETTER = 'room-services-letter';
+/** Lettre de chaque type de service exposé (pictos sobres de la salle). */
+export const SERVICE_LETTER = { prefecture: 'P', sous_pref: 'S', police: 'C', gendarmerie: 'G', sdis: 'I', hopital: 'H' } as const;
 
 type Level = OutageNow['level'];
 const RANK: Readonly<Record<Level, number>> = { jaune: 1, orange: 2, rouge: 3 };
@@ -25,4 +30,21 @@ export function roomDeptFeatures(outages: readonly DeptOutage[], filter: OutageN
     return level === undefined ? [] : [{ ...f, properties: { code, level } }];
   });
   return { type: 'FeatureCollection', features };
+}
+
+/** Services publics exposés aux pannes affichées (une fois chacun, au niveau de la panne la plus grave qui l'expose). */
+export function roomServiceFeatures(outages: readonly OutageNow[], filter: OutageNetwork | null): GeoJSON.FeatureCollection {
+  const byKey = new Map<string, GeoJSON.Feature>();
+  for (const o of outages.filter(keep(filter))) {
+    for (const p of o.exposed?.points ?? []) {
+      const key = `${p.type}|${p.name}|${p.lon}|${p.lat}`;
+      const before = byKey.get(key);
+      if (before && RANK[before.properties?.level as Level] >= RANK[o.level]) continue;
+      byKey.set(key, {
+        type: 'Feature', geometry: { type: 'Point', coordinates: [p.lon, p.lat] },
+        properties: { letter: SERVICE_LETTER[p.type], type: p.type, name: p.name, level: o.level },
+      });
+    }
+  }
+  return { type: 'FeatureCollection', features: [...byKey.values()] };
 }

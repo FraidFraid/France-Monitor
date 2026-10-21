@@ -8,7 +8,7 @@ import { loadDepartementsGeojson } from '../../services/departements-geojson.ts'
 import { fetchOutagesJournal, fetchOutagesNow, OUTAGES_NOW_POLL_MS } from '../../services/outages-now.ts';
 import type { VigilanceLevel } from '../../services/vigilance.ts';
 import { OutagesNowBanner } from '../OutagesNowBanner.ts';
-import { roomDeptFeatures } from '../deckgl/outages-room-map.ts';
+import { roomDeptFeatures, roomServiceFeatures } from '../deckgl/outages-room-map.ts';
 import { OutagesRoom } from './OutagesRoom.ts';
 import { activeAt, TIMELINE_WINDOW_MS, timelineBars } from './timeline.ts';
 
@@ -17,7 +17,7 @@ export const ROOM_POLL_MS = 60_000;
 const RANK: Readonly<Record<VigilanceLevel, number>> = { vert: 0, jaune: 1, orange: 2, rouge: 3 };
 
 export interface RoomMap {
-  setOutagesRoom(state: { depts: GeoJSON.FeatureCollection } | null): void;
+  setOutagesRoom(state: { depts: GeoJSON.FeatureCollection; services?: GeoJSON.FeatureCollection } | null): void;
   flyTo(lon: number, lat: number, zoom: number): void;
   refitFrance(): void;
 }
@@ -143,6 +143,8 @@ export class OutagesNowController<T = unknown> {
       : activeAt(timelineBars(this.journal24, this.data?.outages ?? [], Date.now()), this.cursor);
     this.opts.map.setOutagesRoom({
       depts: this.depts ? roomDeptFeatures(outages, this.filter, this.depts) : { type: 'FeatureCollection', features: [] },
+      // Services exposés en direct seulement (le rejeu ne garde que les départements).
+      services: this.cursor === null ? roomServiceFeatures(this.data?.outages ?? [], this.filter) : { type: 'FeatureCollection', features: [] },
     });
   }
 

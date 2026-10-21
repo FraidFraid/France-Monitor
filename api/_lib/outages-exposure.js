@@ -13,6 +13,8 @@ export const SERVICES_PATH = new URL('../../public/data/services-publics.json', 
 export const HOSPITAL_RADIUS_KM = 3;
 /** Services nommés dans le détail d'une panne. */
 export const SAMPLE_MAX = 40;
+/** Services placés sur la carte par panne (pictos de la salle). */
+export const POINTS_MAX = 300;
 const TYPE_ORDER = ['prefecture', 'sous_pref', 'police', 'gendarmerie', 'sdis', 'hopital'];
 const NATIONAL_NETWORKS = new Set(['mobile', 'internet', 'urgence']);
 
@@ -45,6 +47,7 @@ function summarize(list, basis) {
   return {
     basis, total: list.length, byType,
     sample: basis === 'national' ? [] : sorted.slice(0, SAMPLE_MAX).map((s) => ({ type: s.t, name: s.n, commune: s.c, dept: s.d })),
+    points: basis === 'national' ? [] : sorted.slice(0, POINTS_MAX).map((s) => ({ type: s.t, name: s.n, lon: s.x, lat: s.y })),
   };
 }
 

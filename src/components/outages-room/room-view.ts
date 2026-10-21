@@ -87,7 +87,10 @@ function outageRow(o: OutageNow, now: number): string {
 /** Pannes sans département (opérateur, pays, ouvrage) : elles n'ont pas de lieu sur la carte. */
 export function nationalBox(r: OutagesNowResponse | null, filter: OutageNetwork | null, now: number): string {
   const rows = (r?.outages ?? []).filter((o) => o.dept === null).filter(keep(filter)).map((o) => outageRow(o, now)).join('');
-  return `<h3>National et sans lieu</h3>${rows || '<p class="orm-empty">aucune</p>'}`;
+  // Clé des pictos de services exposés, dès qu'une panne affichée en place sur la carte.
+  const placed = (r?.outages ?? []).filter(keep(filter)).some((o) => (o.exposed?.points?.length ?? 0) > 0);
+  const key = placed ? '<p class="orm-note">Carte : P préfecture, S sous-préfecture, C commissariat, G gendarmerie, I SDIS, H hôpital (services exposés, pas forcément coupés).</p>' : '';
+  return `<h3>National et sans lieu</h3>${rows || '<p class="orm-empty">aucune</p>'}${key}`;
 }
 
 function entryName(e: OutageJournalEntry): string {

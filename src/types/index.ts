@@ -3242,6 +3242,7 @@ export interface OutageExposure {
   total: number;
   byType: Partial<Record<PublicServiceType, number>>;
   sample: Array<{ type: PublicServiceType; name: string; commune: string | null; dept: string }>;   // vide pour « national »
+  points?: Array<{ type: PublicServiceType; name: string; lon: number; lat: number }>;            // carte de la salle ; vide pour « national »
 }
 /** Panne en cascade (lot 3) : un territoire touché par plusieurs réseaux en moins de 6 h, étapes dans l'ordre des débuts. */
 export interface OutageCascade {

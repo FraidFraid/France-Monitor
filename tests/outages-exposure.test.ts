@@ -18,6 +18,9 @@ describe('services publics exposés', () => {
     const e = exposureOf(outage({}), { services, sites: [] });
     expect(e).toMatchObject({ basis: 'departement', total: 5, byType: { police: 1, gendarmerie: 2, prefecture: 1, hopital: 1 } });
     expect(e?.sample.map((s) => s.name)).toContain('Commissariat de police - Auch');
+    // Points pour la carte : tous les services exposés, avec leur position.
+    expect(e?.points).toHaveLength(5);
+    expect(e?.points[0]).toMatchObject({ type: expect.any(String), name: expect.any(String), lon: expect.any(Number), lat: expect.any(Number) });
   });
   it('panne d’un opérateur mobile : services des communes de ses antennes coupées, hôpitaux à moins de 3 km', () => {
     const e = exposureOf(outage({ id: 'mobile|op:Orange', scope: 'operateur', operator: 'Orange', dept: null, national: true }), {
@@ -28,7 +31,7 @@ describe('services publics exposés', () => {
   });
   it('panne nationale sans antenne : décompte national seulement ; réseau sans lieu (cloud, ouvrage) : rien', () => {
     expect(exposureOf(outage({ id: 'internet|national', network: 'internet', scope: 'national', dept: null, national: true }), { services, sites: [] }))
-      .toMatchObject({ basis: 'national', total: 6, sample: [] });
+      .toMatchObject({ basis: 'national', total: 6, sample: [], points: [] });
     expect(exposureOf(outage({ network: 'cloud', scope: 'operateur', operator: 'OVHcloud', dept: null }), { services, sites: [] })).toBeNull();
     expect(exposureOf(outage({ network: 'electricite', scope: 'inconnu', dept: null }), { services, sites: [] })).toBeNull();
   });

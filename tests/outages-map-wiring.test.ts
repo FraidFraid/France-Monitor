@@ -90,3 +90,10 @@ describe('DeckGLMap : couches Pannes réseau de deckgl/outages-map.ts', () => {
     expect(container).toContain('this.deckMap?.updateOutagesCloud(r, now);');
   });
 });
+
+describe('DeckGLMap : calques de la control room des pannes (21/10/2026)', () => {
+  it('rendus visibles après ajout (l’anti-flash masque toute couche ajoutée)', () => {
+    const deck = readFileSync(new URL('../src/components/DeckGLMap.ts', import.meta.url), 'utf8');
+    expect(deck).toContain("for (const id of [LYR_ROOM_DEPT_FILL, LYR_ROOM_SERVICES, LYR_ROOM_SERVICES_LETTER]) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'visible');");
+  });
+});
