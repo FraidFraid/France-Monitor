@@ -88,5 +88,25 @@ describe('pilote des pannes en cours', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(levels).toEqual(['rouge']);
   });
+  it('rejeu : journal des 24 h lu à l’entrée ; instant choisi sur la frise : carte des départements actifs à cet instant', async () => {
+    const mapEl = document.createElement('div');
+    const calls: Array<unknown> = [];
+    const journal = [
+      { at: new Date(Date.now() - 5 * 3600_000).toISOString(), kind: 'nouvelle' as const, id: 'internet|dept:13', network: 'internet' as const, name: '13', dept: '13', level: 'jaune' as const, rung: 'mesuree' as const },
+      { at: new Date(Date.now() - 2 * 3600_000).toISOString(), kind: 'retablie' as const, id: 'internet|dept:13', network: 'internet' as const, name: '13', dept: '13', level: 'jaune' as const, rung: 'mesuree' as const },
+    ];
+    const ctl = new OutagesNowController({
+      mapEl, map: { setOutagesRoom: (st) => calls.push(st), flyTo: () => undefined, refitFrance: () => undefined },
+      read: async () => ({ ...body, outages: [] }), readJournal: async () => journal, loadDepts: async () => depts,
+      schedule: () => 0, unschedule: () => undefined,
+    });
+    await ctl.start();
+    await ctl.setRoomActive(true);
+    expect(calls.at(-1)).toMatchObject({ depts: { features: [] } });
+    const area = mapEl.querySelector('[data-frise]') as HTMLElement;
+    area.getBoundingClientRect = () => ({ left: 0, width: 240, top: 0, height: 40, right: 240, bottom: 40, x: 0, y: 0, toJSON: () => ({}) });
+    area.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 200 }));
+    expect(calls.at(-1)).toMatchObject({ depts: { features: [{ properties: { code: '13', level: 'jaune' } }] } });
+  });
 });
 

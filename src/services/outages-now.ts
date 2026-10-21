@@ -1,6 +1,6 @@
 // src/services/outages-now.ts : lecture client des pannes de téléphone et d'internet en cours (/api/outages/now, 21/10/2026). Garde de forme
 // exacte, lecture qui ne rejette jamais (la précédente est gardée), relue toutes les 2 min dans tous les onglets.
-import type { OutageNetwork, OutageNow, OutageRung, OutagesNowResponse } from '../types/index.ts';
+import type { OutageJournalEntry, OutageNetwork, OutageNow, OutageRung, OutagesNowResponse } from '../types/index.ts';
 import {
   isBool, isDateOrNull, isOneOf, isStr, isStrOrNull, isStringList, list, loadSovereigntySlot, record, shapeOf, value, type SourceSlot,
 } from './sovereignty-source.ts';
@@ -19,6 +19,10 @@ const network = value((v) => isOneOf(v, NETWORKS));
 const rung = value((v) => isOneOf(v, RUNGS));
 const level = value((v) => isOneOf(v, LEVELS));
 const SERVICE_TYPES: ReadonlySet<string> = new Set(['prefecture', 'sous_pref', 'police', 'gendarmerie', 'sdis', 'hopital']);
+const journalEntry = record({
+  at: value(isStr), kind: value((v) => isOneOf(v, new Set(['nouvelle', 'aggravee', 'attenuee', 'confirmee', 'retablie']))),
+  id: value(isStr), network, name: value(isStr), dept: value(isStrOrNull), level, rung,
+});
 const SHAPE = shapeOf<OutagesNowResponse>(record({
   generatedAt: value(isStr),
   outages: list(record({
@@ -33,15 +37,30 @@ const SHAPE = shapeOf<OutagesNowResponse>(record({
       sample: list(record({ type: value((v) => isOneOf(v, SERVICE_TYPES)), name: value(isStr), commune: value(isStrOrNull), dept: value(isStr) })),
     }),
   }, ['exposed'])),
-  journal: list(record({
-    at: value(isStr), kind: value((v) => isOneOf(v, new Set(['nouvelle', 'aggravee', 'attenuee', 'confirmee', 'retablie']))),
-    id: value(isStr), network, name: value(isStr), dept: value(isStrOrNull), level, rung,
+  cascades: list(record({
+    key: value(isStr), dept: value(isStrOrNull), national: value(isBool), level,
+    steps: list(record({ id: value(isStr), network, since: value(isDateOrNull) })),
   })),
+  journal: list(journalEntry),
   sources: list(record({ source, readAt: value(isDateOrNull), ok: value(isBool) })),
   errors: value(isStringList),
-}));
+}, ['cascades']));
 
 export function isOutagesNowResponse(v: unknown): v is OutagesNowResponse { return SHAPE.is(v); }
+
+const JOURNAL_SHAPE = shapeOf<{ entries: OutageJournalEntry[]; errors: string[] }>(record({ entries: list(journalEntry), errors: value(isStringList) }, ['errors']));
+
+/** Journal des pannes depuis `sinceMs` (frise et rejeu) ; vide si la route ne répond pas (la frise se rabat sur le journal servi avec l'état). */
+export async function fetchOutagesJournal(sinceMs: number): Promise<OutageJournalEntry[]> {
+  try {
+    const res = await fetch(`/api/outages/journal?since=${Math.round(sinceMs)}`);
+    if (!res.ok) return [];
+    const json: unknown = await res.json();
+    return JOURNAL_SHAPE.is(json) ? json.entries : [];
+  } catch {
+    return [];
+  }
+}
 
 export async function fetchOutagesNow(previous: SourceSlot<OutagesNowResponse> | undefined, now: number = Date.now()): Promise<SourceSlot<OutagesNowResponse>> {
   return loadSovereigntySlot(OUTAGES_NOW_URL, TTL_MS, previous, now, SHAPE, 'des pannes en cours');

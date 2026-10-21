@@ -107,6 +107,15 @@ describe('services publics exposés', () => {
   });
 });
 
+describe('pannes en cascade', () => {
+  it('instantané : cascades calculées sur les pannes du moment', async () => {
+    const r = { ...readers, readAtlas: async () => [{ asn: null, operator: null, down: 25, active: 200, level: 'orange', since: '2026-10-21T11:00:00Z' }],
+      readPress: async () => [{ network: 'mobile', operator: null, severity: 'high', level: 'orange', articles: 3, sources: 2, firstAt: '2026-10-21T11:30:00Z', lastAt: '2026-10-21T11:40:00Z', title: 'Panne nationale', link: 'https://ex.fr', national: true }] };
+    const snap = await roomSnapshot(T0, r);
+    expect(snap.cascades).toEqual([expect.objectContaining({ key: 'national', steps: [expect.objectContaining({ network: 'internet' }), expect.objectContaining({ network: 'mobile' })] })]);
+  });
+});
+
 describe('route du journal', () => {
   it('since : ISO, millisecondes, absent (24 h), borné à 7 jours', async () => {
     const { sinceOf } = await import('../api/_handlers/outages/journal.js');

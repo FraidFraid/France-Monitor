@@ -38,3 +38,24 @@ describe('OutagesRoom', () => {
     expect(filters).toEqual(['mobile', null, 'gaz']);
   });
 });
+
+describe('OutagesRoom : frise, rejeu et cascades (lot 3)', () => {
+  it('frise affichée en bas ; clic dans la frise : rejeu à l’instant cliqué ; « maintenant » : retour au direct', () => {
+    const host = document.createElement('div');
+    const room = new OutagesRoom(host);
+    const cursors: Array<number | null> = [];
+    room.setOnCursor((t) => cursors.push(t));
+    room.update({ ...body, cascades: [{ key: 'dept:13', dept: '13', national: false, level: 'orange', steps: [
+      { id: 'a', network: 'electricite', since: '2026-10-21T08:12:00Z' }, { id: 'b', network: 'mobile', since: '2026-10-21T08:40:00Z' }] }] });
+    room.setJournal(body.journal);
+    expect(host.querySelector('.orm-frise')).not.toBeNull();
+    expect(host.querySelector('.orm-cascade')).not.toBeNull();
+    const area = host.querySelector('[data-frise]') as HTMLElement;
+    area.getBoundingClientRect = () => ({ left: 100, width: 400, top: 0, height: 50, right: 500, bottom: 50, x: 100, y: 0, toJSON: () => ({}) });
+    area.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 300 }));
+    expect(cursors).toHaveLength(1);
+    expect(Math.abs((cursors[0] ?? 0) - (Date.now() - 12 * 3600_000))).toBeLessThan(5000);
+    (host.querySelector('[data-now]') as HTMLElement).click();
+    expect(cursors.at(-1)).toBeNull();
+  });
+});

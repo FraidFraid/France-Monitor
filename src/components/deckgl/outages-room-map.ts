@@ -8,10 +8,11 @@ export const LYR_ROOM_DEPT_FILL = 'room-dept-fill';
 
 type Level = OutageNow['level'];
 const RANK: Readonly<Record<Level, number>> = { jaune: 1, orange: 2, rouge: 3 };
-const keep = (filter: OutageNetwork | null) => (o: OutageNow): boolean => filter === null || o.network === filter;
+type DeptOutage = Pick<OutageNow, 'network' | 'dept' | 'level'>;
+const keep = (filter: OutageNetwork | null) => (o: DeptOutage): boolean => filter === null || o.network === filter;
 
 /** Départements touchés (propriétés `code` et `level`), dans l'ordre du fichier des départements. */
-export function roomDeptFeatures(outages: readonly OutageNow[], filter: OutageNetwork | null, depts: GeoJSON.FeatureCollection): GeoJSON.FeatureCollection {
+export function roomDeptFeatures(outages: readonly DeptOutage[], filter: OutageNetwork | null, depts: GeoJSON.FeatureCollection): GeoJSON.FeatureCollection {
   const byDept = new Map<string, Level>();
   for (const o of outages.filter(keep(filter))) {
     if (o.dept === null) continue;

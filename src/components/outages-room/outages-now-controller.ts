@@ -1,15 +1,16 @@
 // src/components/outages-room/outages-now-controller.ts : pilote des pannes en cours (21/10/2026), chargé à la demande par App pour
 // garder le chunk App sous 1 Mio. Relève /api/outages/now (toutes les 2 min, 60 s dans l'onglet Pannes), bandeau hors de l'onglet,
 // salle de contrôle et calques de carte dans l'onglet.
-import type { OutageNetwork, OutagesNowResponse, OutageNow } from '../../types/index.ts';
+import type { OutageJournalEntry, OutageNetwork, OutagesNowResponse, OutageNow } from '../../types/index.ts';
 import type { SourceSlot } from '../../services/environment-source.ts';
 import { DEPARTEMENT_CENTERS } from '../../config/departement-centers.ts';
 import { loadDepartementsGeojson } from '../../services/departements-geojson.ts';
-import { fetchOutagesNow, OUTAGES_NOW_POLL_MS } from '../../services/outages-now.ts';
+import { fetchOutagesJournal, fetchOutagesNow, OUTAGES_NOW_POLL_MS } from '../../services/outages-now.ts';
 import type { VigilanceLevel } from '../../services/vigilance.ts';
 import { OutagesNowBanner } from '../OutagesNowBanner.ts';
 import { roomDeptFeatures } from '../deckgl/outages-room-map.ts';
 import { OutagesRoom } from './OutagesRoom.ts';
+import { activeAt, TIMELINE_WINDOW_MS, timelineBars } from './timeline.ts';
 
 /** Relève dans l'onglet Pannes. */
 export const ROOM_POLL_MS = 60_000;
@@ -26,6 +27,8 @@ export interface OutagesNowControllerOptions<T> {
   map: RoomMap;
   /** Lecture de /api/outages/now (défaut : fetchOutagesNow, la précédente gardée en cas d'échec). */
   read?: () => Promise<OutagesNowResponse | null>;
+  /** Journal des 24 dernières heures (défaut : /api/outages/journal). */
+  readJournal?: () => Promise<OutageJournalEntry[]>;
   /** Géométrie des départements (défaut : loadDepartementsGeojson, mémorisée). */
   loadDepts?: () => Promise<GeoJSON.FeatureCollection | null>;
   schedule: (fn: () => void, ms: number) => T;
@@ -42,6 +45,9 @@ export class OutagesNowController<T = unknown> {
   private timer: T | null = null;
   private filter: OutageNetwork | null = null;
   private depts: GeoJSON.FeatureCollection | null = null;
+  private journal24: OutageJournalEntry[] = [];
+  /** Rejeu : instant choisi sur la frise ; null : direct. */
+  private cursor: number | null = null;
   private readonly read: () => Promise<OutagesNowResponse | null>;
   private readonly opts: OutagesNowControllerOptions<T>;
 
@@ -77,6 +83,10 @@ export class OutagesNowController<T = unknown> {
         this.filter = n;
         this.paintMap();
       });
+      this.room.setOnCursor((t) => {
+        this.cursor = t;
+        this.paintMap();
+      });
       const room = this.room;
       this.depts ??= await (this.opts.loadDepts ?? loadDepartementsGeojson)();
       // Onglet quitté pendant le chargement : la sortie a déjà tout remis en place.
@@ -87,6 +97,7 @@ export class OutagesNowController<T = unknown> {
       this.room?.destroy();
       this.room = null;
       this.filter = null;
+      this.cursor = null;
       this.opts.map.setOutagesRoom(null);
       this.reschedule(OUTAGES_NOW_POLL_MS);
       this.render();
@@ -108,6 +119,10 @@ export class OutagesNowController<T = unknown> {
 
   private async refresh(): Promise<void> {
     this.data = await this.read();
+    if (this.room) {
+      this.journal24 = await (this.opts.readJournal ?? (() => fetchOutagesJournal(Date.now() - TIMELINE_WINDOW_MS)))();
+      this.room?.setJournal(this.journal24);
+    }
     this.render();
     const level = this.level();
     if (level !== this.lastLevel) {
@@ -123,7 +138,9 @@ export class OutagesNowController<T = unknown> {
   }
 
   private paintMap(): void {
-    const outages = this.data?.outages ?? [];
+    // Rejeu : départements des pannes actives à l'instant choisi (journal seul) ; direct : pannes du moment.
+    const outages = this.cursor === null ? this.data?.outages ?? []
+      : activeAt(timelineBars(this.journal24, this.data?.outages ?? [], Date.now()), this.cursor);
     this.opts.map.setOutagesRoom({
       depts: this.depts ? roomDeptFeatures(outages, this.filter, this.depts) : { type: 'FeatureCollection', features: [] },
     });

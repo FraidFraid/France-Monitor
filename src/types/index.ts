@@ -3243,9 +3243,18 @@ export interface OutageExposure {
   byType: Partial<Record<PublicServiceType, number>>;
   sample: Array<{ type: PublicServiceType; name: string; commune: string | null; dept: string }>;   // vide pour « national »
 }
+/** Panne en cascade (lot 3) : un territoire touché par plusieurs réseaux en moins de 6 h, étapes dans l'ordre des débuts. */
+export interface OutageCascade {
+  key: string;                          // « dept:13 », « national »
+  dept: string | null;
+  national: boolean;
+  level: 'jaune' | 'orange' | 'rouge';
+  steps: Array<{ id: string; network: OutageNetwork; since: string | null }>;
+}
 export interface OutagesNowResponse {
   generatedAt: string;
   outages: OutageNow[];
+  cascades?: OutageCascade[];           // absent : serveur antérieur au lot 3
   journal: OutageJournalEntry[];        // 50 dernières entrées, plus récente d'abord
   sources: Array<{ source: OutageNowSource; readAt: string | null; ok: boolean }>;
   errors: string[];

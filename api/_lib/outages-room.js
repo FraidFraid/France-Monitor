@@ -15,6 +15,7 @@ import { ensureSocialFresh, socialErrors, socialOutages, socialReadAt, SOCIAL_MA
 import { ATLAS_MAX_AGE_MS, atlasOutages, atlasStatus, ensureAtlasFresh } from './outages-atlas.js';
 import { ensureStatusFresh, statusOutages } from './outages-status.js';
 import { exposureOf, loadServices } from './outages-exposure.js';
+import { cascadesOf } from './outages-cascade.js';
 
 export const ROOM_KEY = 'out:room:v1';
 const ROOM_TTL_SEC = 8 * 24 * 3600;
@@ -142,6 +143,7 @@ export async function roomSnapshot(now = Date.now(), readers = DEFAULT_READERS) 
   return {
     generatedAt: iso(room?.tickAt || now),
     outages: room?.outages ?? [],
+    cascades: cascadesOf(room?.outages ?? []),
     journal: (room?.journal ?? []).slice(0, SNAPSHOT_JOURNAL),
     sources: room?.sources ?? [],
     errors: room?.errors ?? [],
