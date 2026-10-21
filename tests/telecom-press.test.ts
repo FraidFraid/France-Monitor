@@ -34,3 +34,35 @@ describe('pannes télécoms signalées par la presse', () => {
     expect(r).toEqual([expect.objectContaining({ operator: null, articles: 1 })]);
   });
 });
+
+describe('pannes de tous les réseaux signalées par la presse (21/10/2026)', () => {
+  const at = '2026-10-21T10:00:00Z';
+  it('un réseau par article, urgences d’abord ; opérateur cité ; urgences toujours en rouge', async () => {
+    const { pressOutages } = await import('../api/_lib/telecom-press.js');
+    const r = pressOutages([
+      item('Le 112 injoignable, panne du réseau Orange', at, { severity: 'high' }),
+      item('Panne de courant : 5 000 clients Enedis privés d’électricité', at, { category: 'energy', severity: 'high' }),
+      item('Coupure de gaz GRDF dans un quartier de Lyon', at),
+      item('Coupure d’eau : privés d’eau potable à Nîmes', at),
+      item('Panne géante des terminaux de paiement', at, { severity: 'high' }),
+      item('Panne de la TNT : privés de télévision', at),
+      item('Panne réseau chez SFR', at),
+    ], NOW);
+    const by = (n: string) => r.filter((x: { network: string }) => x.network === n);
+    expect(by('urgence')).toEqual([expect.objectContaining({ operator: null, level: 'rouge', articles: 1 })]);
+    expect(by('electricite')).toEqual([expect.objectContaining({ operator: 'Enedis', level: 'orange' })]);
+    expect(by('gaz')).toEqual([expect.objectContaining({ operator: 'GRDF', level: 'jaune' })]);
+    expect(by('eau')).toHaveLength(1);
+    expect(by('paiement')).toEqual([expect.objectContaining({ level: 'orange' })]);
+    expect(by('tv')).toHaveLength(1);
+    expect(by('mobile')).toEqual([expect.objectContaining({ operator: 'SFR' })]);
+  });
+  it('mots seuls sans panne : écartés (fuite de gaz, gaz de schiste, eau de pluie)', async () => {
+    const { pressOutages } = await import('../api/_lib/telecom-press.js');
+    expect(pressOutages([
+      item('Fuite de gaz : un immeuble évacué', at, { severity: 'high' }),
+      item('Le gaz de schiste fait débat', at),
+      item('Eau de pluie : les nappes remontent', at),
+    ], NOW)).toEqual([]);
+  });
+});

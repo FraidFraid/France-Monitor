@@ -182,8 +182,10 @@ const KEYWORDS: Record<EventCategory, { high: string[]; medium: string[]; low: s
         low: ['cambriolage', 'vol', 'interpellation', 'garde à vue', 'délinquance', 'trafic', 'stupéfiants', 'fait divers', 'dégradation', 'vandalisme'],
     },
     energy: {
-        high: ['coupure d\'électricité', 'blackout', 'délestage', 'ecowatt rouge', 'pénurie'],
-        medium: ['tension réseau', 'ecowatt orange', 'maintenance nucléaire', 'arrêt réacteur', 'baisse production'],
+        // Coupures d'usagers (21/10/2026, control room des pannes) : « privés d'électricité », « panne de courant ».
+        high: ['coupure d\'électricité', 'blackout', 'délestage', 'ecowatt rouge', 'pénurie', 'panne d\'électricité', 'privés d\'électricité'],
+        medium: ['tension réseau', 'ecowatt orange', 'maintenance nucléaire', 'arrêt réacteur', 'baisse production',
+            'panne de courant', 'coupure de courant', 'privés de courant'],
         low: ['consommation élevée', 'pic de demande', 'prix électricité', 'éolien', 'solaire', 'mix énergétique'],
     },
     weather: {
@@ -200,10 +202,14 @@ const KEYWORDS: Record<EventCategory, { high: string[]; medium: string[]; low: s
         // Pannes télécoms (21/10/2026 : panne nationale d'Orange restée « info », aucun mot-clé ne la voyait). Toujours « panne de
         // réseau » ou « réseau mobile », jamais « panne » seul (ascenseur, voiture).
         high: ['rupture barrage', 'effondrement', 'fuite nucléaire', 'contamination', 'explosion usine',
-            'panne nationale', 'panne au niveau national', 'panne géante', 'numéros d\'urgence inaccessibles'],
+            'panne nationale', 'panne au niveau national', 'panne géante', 'numéros d\'urgence inaccessibles',
+            'numéros d\'urgence perturbés', 'numéro d\'urgence injoignable', '112 injoignable', 'samu injoignable'],
         medium: ['fuite gaz', 'incendie industriel', 'pollution', 'coupure eau', 'incident seveso',
             'panne réseau', 'panne de réseau', 'panne du réseau', 'panne internet', 'coupure internet', 'panne téléphonique',
-            'réseau mobile perturbé', 'réseau mobile touché', 'privés de réseau', 'panne de la fibre'],
+            'réseau mobile perturbé', 'réseau mobile touché', 'privés de réseau', 'panne de la fibre',
+            // Gaz, eau, paiement, télévision (21/10/2026) : toujours une coupure ou une panne, jamais le mot seul.
+            'coupure de gaz', 'privés de gaz', 'coupure d\'eau', 'privés d\'eau', 'eau impropre', 'eau du robinet impropre', 'eau non potable',
+            'panne de paiement', 'terminaux de paiement', 'paiement par carte impossible', 'panne de la tnt', 'privés de télévision'],
         low: ['maintenance', 'travaux', 'rénovation', 'mise aux normes'],
     },
     health: {

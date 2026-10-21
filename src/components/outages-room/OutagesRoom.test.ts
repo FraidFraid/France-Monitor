@@ -34,6 +34,7 @@ describe('OutagesRoom', () => {
     room.update(body);
     (host.querySelector('[data-net="mobile"]') as HTMLElement).click();
     (host.querySelector('[data-net="mobile"]') as HTMLElement).click();
-    expect(filters).toEqual(['mobile', null]);
+    (host.querySelector('[data-net="gaz"]') as HTMLElement).click();
+    expect(filters).toEqual(['mobile', null, 'gaz']);
   });
 });

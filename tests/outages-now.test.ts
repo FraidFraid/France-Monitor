@@ -111,3 +111,21 @@ describe('pannes en cours : électricité, cloud et échelon', () => {
     expect(only({ telecom: telecom({ summary: { recent: 10 }, byDept: [] }) })[0]).toMatchObject({ rung: 'signalee' });
   });
 });
+
+describe('pannes en cours : presse de tous les réseaux (21/10/2026)', () => {
+  const report = (over: Record<string, unknown>) => ({
+    network: 'electricite', operator: 'Enedis', severity: 'high', level: 'orange', articles: 4, sources: 3,
+    firstAt: '2026-10-21T10:00:00Z', lastAt: '2026-10-21T11:00:00Z', title: 'Panne de courant', link: 'https://ex.fr', national: false, ...over,
+  });
+  it('signalements presse de tous les réseaux : réseau, opérateur, niveau du signalement, échelon signalé', () => {
+    const all = outagesNow({
+      telecom: telecom({ press: [] }), internet: null, power: null, cloud: null, now: NOW,
+      press: [report({}), report({ network: 'urgence', operator: null, level: 'rouge', title: '112 injoignable' })],
+    });
+    expect(all.find((o) => o.id === 'electricite|op:Enedis')).toMatchObject({ network: 'electricite', level: 'orange', rung: 'signalee' });
+    expect(all.find((o) => o.network === 'urgence')).toMatchObject({ level: 'rouge', label: 'signalement presse', scope: 'inconnu' });
+  });
+  it('sans signalements fournis : presse des télécoms reprise (réseau mobile)', () => {
+    expect(outagesNow({ telecom: telecom(), internet: null, power: null, cloud: null, now: NOW }).some((o) => o.id === 'mobile|op:Orange')).toBe(true);
+  });
+});

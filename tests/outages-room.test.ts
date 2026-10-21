@@ -12,6 +12,7 @@ const readers = {
   readInternet: async () => ({ iodaReadAt: null, events: [], radar: { configured: false, readAt: null, items: [] }, errors: ['IODA : HTTP 503'] }),
   readPower: async () => ({ edfReadAt: '2026-10-21T11:55:00Z', iipReadAt: '2026-10-21T11:55:00Z', unplanned: [], transmission: { unplanned: [], planned: [] }, errors: [] }),
   readCloud: async () => ({ readAt: '2026-10-21T11:50:00Z', providers: [], incidents: [], errors: [] }),
+  readPress: async () => null,
 };
 let writes = 0;
 const store = new Map<string, string>();
@@ -76,6 +77,17 @@ describe('control room : tick et journal', () => {
     const snap = await roomSnapshot(T0, readers);
     expect(snap.outages).toHaveLength(1);
     expect(snap.generatedAt).toBe('2026-10-21T12:00:00.000Z');
+  });
+});
+
+describe('presse de tous les réseaux', () => {
+  it('signalements lus par le tick : panne d’électricité signalée par la presse', async () => {
+    const withPress = { ...readers, readPress: async () => [{
+      network: 'electricite', operator: 'Enedis', severity: 'high', level: 'orange', articles: 2, sources: 2,
+      firstAt: '2026-10-21T11:00:00Z', lastAt: '2026-10-21T11:30:00Z', title: 'Panne de courant', link: 'https://ex.fr', national: false,
+    }] };
+    const snap = await roomSnapshot(T0, withPress);
+    expect(snap.outages.map((o) => o.id)).toEqual(['electricite|op:Enedis']);
   });
 });
 

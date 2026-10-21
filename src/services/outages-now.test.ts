@@ -20,7 +20,7 @@ describe('contrat /api/outages/now', () => {
     expect(isOutagesNowResponse(noJournal)).toBe(false);
     expect(isOutagesNowResponse({ ...body(), sources: [{ source: 'downdetector', readAt: null, ok: true }] })).toBe(false);
     const bad = body();
-    bad.outages[0] = { ...bad.outages[0], network: 'eau' } as never;
+    bad.outages[0] = { ...bad.outages[0], network: 'egouts' } as never;
     expect(isOutagesNowResponse(bad)).toBe(false);
   });
   it('preuve : échelon en mots et sources', () => {

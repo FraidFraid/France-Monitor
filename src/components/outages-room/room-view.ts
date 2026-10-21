@@ -11,15 +11,15 @@ import { outageSince, outageTitle } from '../OutagesNowBanner.ts';
 
 const RANK = { jaune: 1, orange: 2, rouge: 3 } as const;
 const LEVEL_WORD = { jaune: 'Vigilance', orange: 'Alerte', rouge: 'Crise' } as const;
-const NETWORKS: readonly OutageNetwork[] = ['mobile', 'internet', 'electricite', 'cloud'];
-/** Réseaux sans source temps réel (recherche du 21/10/2026) : la case dit le manque. */
-const NO_SOURCE: readonly string[] = ['Gaz', 'Eau', 'Numéros d’urgence', 'Paiement'];
+const NETWORKS: readonly OutageNetwork[] = ['mobile', 'internet', 'electricite', 'cloud', 'gaz', 'eau', 'urgence', 'paiement', 'tv'];
 /**
  * Sources qui mesurent chaque réseau : un réseau sans panne n'est vert que si l'une d'elles est fraîche. La presse n'y figure pas :
  * l'absence d'article ne mesure rien (spec § 3).
  */
 export const NETWORK_SOURCES: Readonly<Record<OutageNetwork, readonly OutageNowSource[]>> = {
   mobile: ['arcep'], internet: ['ioda', 'radar'], electricite: ['rte', 'edf'], cloud: ['statut'],
+  // Aucune mesure ouverte (recherche du 21/10/2026) : la presse seule, jamais verte.
+  gaz: [], eau: [], urgence: [], paiement: [], tv: [],
 };
 const VERB: Readonly<Record<OutageJournalEntry['kind'], string>> = {
   nouvelle: 'nouvelle panne', aggravee: 'aggravée', attenuee: 'atténuée', confirmee: 'confirmée', retablie: 'rétablie',
@@ -32,7 +32,7 @@ const clock = (iso: string): string => {
   return Number.isFinite(t) ? parisClock(t) : 'n.d.';
 };
 
-/** Huit cases : les quatre réseaux suivis, puis ceux sans source temps réel. */
+/** Neuf cases : les réseaux mesurés, puis ceux que seule la presse signale. */
 export function networkStrip(r: OutagesNowResponse | null, filter: OutageNetwork | null, now: number): string {
   void now;
   const cells = NETWORKS.map((n) => {
@@ -40,12 +40,12 @@ export function networkStrip(r: OutagesNowResponse | null, filter: OutageNetwork
     const worst = outs.reduce<OutageNow['level'] | null>((m, o) => (m === null || RANK[o.level] > RANK[m] ? o.level : m), null);
     const fresh = (r?.sources ?? []).filter((s) => NETWORK_SOURCES[n].includes(s.source) && s.ok);
     const cls = worst ?? (fresh.length > 0 ? 'vert' : 'nd');
-    const state = r === null ? 'chargement…' : fresh.length > 0 ? fresh.map((s) => SOURCE_LABEL[s.source]).join(', ') : 'sources n.d.';
+    const state = r === null ? 'chargement…' : NETWORK_SOURCES[n].length === 0 ? 'presse seule'
+      : fresh.length > 0 ? fresh.map((s) => SOURCE_LABEL[s.source]).join(', ') : 'sources n.d.';
     return `<button type="button" class="orm-net" data-net="${n}" aria-pressed="${filter === n}">${dot(cls)}<span class="orm-net-name">${NETWORK_LABEL[n]}</span>`
       + `<b class="orm-net-n">${r === null ? 'n.d.' : outs.length}</b><small>${escapeHtml(state)}</small></button>`;
   });
-  const none = NO_SOURCE.map((name) => `<div class="orm-net is-none">${dot('nd')}<span class="orm-net-name">${name}</span><b class="orm-net-n">n.d.</b><small>pas de source temps réel</small></div>`);
-  return [...cells, ...none].join('');
+  return cells.join('');
 }
 
 function outageRow(o: OutageNow, now: number): string {

@@ -2198,7 +2198,7 @@ button.header-quality-link {
    à droite ; empilés quand la carte est étroite (requête de conteneur sur la carte, pas sur la fenêtre). */
 .orm { position: absolute; inset: 0; z-index: var(--z-map-widget-popup); container-type: size; pointer-events: none; display: flex;
   flex-direction: column; gap: 8px; padding: var(--orm-top, 108px) 12px 56px; font-size: 12.5px; color: var(--text-primary, #e8e8ec); }
-.orm-strip { pointer-events: auto; display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; flex: none; }
+.orm-strip { pointer-events: auto; display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 6px; flex: none; }
 .orm-net { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 6px; padding: 6px 8px; min-width: 0; text-align: left;
   background: rgba(10, 12, 20, 0.9); border: 1px solid var(--border); border-radius: 8px; color: inherit; font: inherit; cursor: pointer; }
 .orm-net[aria-pressed="true"] { outline: 2px solid var(--accent, #6c7cff); }
@@ -2224,7 +2224,7 @@ button.header-quality-link {
 .orm-detail ul { margin: 0; padding-left: 16px; color: var(--text-secondary, var(--text-muted)); } .orm-detail a { color: inherit; }
 .orm-back { background: none; border: 1px solid var(--border); border-radius: 6px; color: inherit; font: inherit; padding: 2px 8px; cursor: pointer; }
 @container (max-width: 980px) {
-  .orm-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .orm-strip { grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .orm-net { padding: 4px 6px; } .orm-net-n { font-size: 16px; }
 }
 @container (max-width: 640px) {

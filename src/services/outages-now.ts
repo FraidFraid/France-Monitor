@@ -12,7 +12,7 @@ const TTL_MS = 90_000;
 
 const SOURCES: ReadonlySet<string> = new Set(['presse', 'arcep', 'ioda', 'radar', 'rte', 'edf', 'statut']);
 const source = value((v) => isOneOf(v, SOURCES));
-const NETWORKS: ReadonlySet<string> = new Set(['mobile', 'internet', 'electricite', 'cloud']);
+const NETWORKS: ReadonlySet<string> = new Set(['mobile', 'internet', 'electricite', 'cloud', 'gaz', 'eau', 'urgence', 'paiement', 'tv']);
 const RUNGS: ReadonlySet<string> = new Set(['signalee', 'mesuree', 'confirmee']);
 const LEVELS: ReadonlySet<string> = new Set(['jaune', 'orange', 'rouge']);
 const network = value((v) => isOneOf(v, NETWORKS));
@@ -43,6 +43,7 @@ export async function fetchOutagesNow(previous: SourceSlot<OutagesNowResponse> |
 
 export const NETWORK_LABEL: Readonly<Record<OutageNetwork, string>> = {
   mobile: 'Téléphone mobile', internet: 'Internet', electricite: 'Électricité', cloud: 'Cloud',
+  gaz: 'Gaz', eau: 'Eau', urgence: 'Numéros d’urgence', paiement: 'Paiement', tv: 'Télévision',
 };
 export const RUNG_LABEL: Readonly<Record<OutageRung, string>> = {
   signalee: 'signalée, non confirmée', mesuree: 'mesurée', confirmee: 'confirmée',

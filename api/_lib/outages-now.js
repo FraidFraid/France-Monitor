@@ -39,10 +39,11 @@ const fresh = (iso, now, maxAge) => {
 const gw = (mw) => `${(mw / 1000).toFixed(1).replace('.', ',')} GW`;
 
 /**
- * @param {{ telecom: any, internet: any, power: any, cloud: any, now: number }} input réponses des routes /api/outages/* (null : non lue)
+ * @param {{ telecom: any, internet: any, power: any, cloud: any, now: number, press?: any[] }} input réponses des routes /api/outages/* (null :
+ *   non lue) ; `press` : signalements de tous les réseaux (pressOutages, telecom-press.js), à défaut la presse télécoms (réseau mobile)
  * @returns {import('../../src/types/index.ts').OutageNow[]}
  */
-export function outagesNow({ telecom, internet, power, cloud, now }) {
+export function outagesNow({ telecom, internet, power, cloud, now, press }) {
   /** @type {Map<string, any>} */
   const byKey = new Map();
   const add = (network, key, base, evidence) => {
@@ -62,12 +63,13 @@ export function outagesNow({ telecom, internet, power, cloud, now }) {
   const operatorBase = (name) => ({ scope: 'operateur', operator: name, dept: null, label: name });
   const nationalBase = { scope: 'national', operator: null, dept: null, label: 'France entière' };
 
-  // Presse : un signalement par opérateur cité (ou sans opérateur), réseau mobile.
-  for (const p of telecom?.press ?? []) {
+  // Presse : un signalement par réseau et opérateur cité (ou sans opérateur).
+  const reports = press ?? (telecom?.press ?? []).map((p) => ({ ...p, network: 'mobile', level: PRESS_LEVEL[p.severity] }));
+  for (const p of reports) {
     const key = p.operator !== null ? `op:${p.operator}` : p.national ? 'national' : 'presse:sans-operateur';
-    const base = p.operator !== null ? operatorBase(p.operator) : p.national ? nationalBase : { scope: 'inconnu', operator: null, dept: null, label: 'Opérateur non précisé' };
-    const o = add('mobile', key, base, {
-      source: 'presse', level: PRESS_LEVEL[p.severity], since: p.firstAt, link: p.link,
+    const base = p.operator !== null ? operatorBase(p.operator) : p.national ? nationalBase : { scope: 'inconnu', operator: null, dept: null, label: 'signalement presse' };
+    const o = add(p.network, key, base, {
+      source: 'presse', level: p.level, since: p.firstAt, link: p.link,
       text: `${p.articles} article${p.articles > 1 ? 's' : ''}, ${p.sources} source${p.sources > 1 ? 's' : ''}${p.national ? ', panne dite nationale' : ''} : ${p.title}`,
     });
     if (p.national) o.national = true;

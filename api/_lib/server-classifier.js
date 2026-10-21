@@ -1248,8 +1248,18 @@ var KEYWORDS = {
     low: ["cambriolage", "vol", "interpellation", "garde \xE0 vue", "d\xE9linquance", "trafic", "stup\xE9fiants", "fait divers", "d\xE9gradation", "vandalisme"]
   },
   energy: {
-    high: ["coupure d'\xE9lectricit\xE9", "blackout", "d\xE9lestage", "ecowatt rouge", "p\xE9nurie"],
-    medium: ["tension r\xE9seau", "ecowatt orange", "maintenance nucl\xE9aire", "arr\xEAt r\xE9acteur", "baisse production"],
+    // Coupures d'usagers (21/10/2026, control room des pannes) : « privés d'électricité », « panne de courant ».
+    high: ["coupure d'\xE9lectricit\xE9", "blackout", "d\xE9lestage", "ecowatt rouge", "p\xE9nurie", "panne d'\xE9lectricit\xE9", "priv\xE9s d'\xE9lectricit\xE9"],
+    medium: [
+      "tension r\xE9seau",
+      "ecowatt orange",
+      "maintenance nucl\xE9aire",
+      "arr\xEAt r\xE9acteur",
+      "baisse production",
+      "panne de courant",
+      "coupure de courant",
+      "priv\xE9s de courant"
+    ],
     low: ["consommation \xE9lev\xE9e", "pic de demande", "prix \xE9lectricit\xE9", "\xE9olien", "solaire", "mix \xE9nerg\xE9tique"]
   },
   weather: {
@@ -1274,7 +1284,11 @@ var KEYWORDS = {
       "panne nationale",
       "panne au niveau national",
       "panne g\xE9ante",
-      "num\xE9ros d'urgence inaccessibles"
+      "num\xE9ros d'urgence inaccessibles",
+      "num\xE9ros d'urgence perturb\xE9s",
+      "num\xE9ro d'urgence injoignable",
+      "112 injoignable",
+      "samu injoignable"
     ],
     medium: [
       "fuite gaz",
@@ -1291,7 +1305,20 @@ var KEYWORDS = {
       "r\xE9seau mobile perturb\xE9",
       "r\xE9seau mobile touch\xE9",
       "priv\xE9s de r\xE9seau",
-      "panne de la fibre"
+      "panne de la fibre",
+      // Gaz, eau, paiement, télévision (21/10/2026) : toujours une coupure ou une panne, jamais le mot seul.
+      "coupure de gaz",
+      "priv\xE9s de gaz",
+      "coupure d'eau",
+      "priv\xE9s d'eau",
+      "eau impropre",
+      "eau du robinet impropre",
+      "eau non potable",
+      "panne de paiement",
+      "terminaux de paiement",
+      "paiement par carte impossible",
+      "panne de la tnt",
+      "priv\xE9s de t\xE9l\xE9vision"
     ],
     low: ["maintenance", "travaux", "r\xE9novation", "mise aux normes"]
   },

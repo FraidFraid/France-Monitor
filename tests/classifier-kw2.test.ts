@@ -64,4 +64,15 @@ describe('qualifyByKeywords — règles kw-2', () => {
     expect(classifyByKeywords('Orange : l\'opérateur est victime d\'une panne réseau ce mercredi')?.category).toBe('infrastructure');
     expect(classifyByKeywords('Besançon. « Nous vivons dans une situation indigne » : ascenseur en panne, couloirs dégradés')).toBeUndefined();
   });
+  it('pannes des autres réseaux : électricité, gaz, eau, urgences, paiement, télévision (21/10/2026)', () => {
+    const lvl = (t: string) => classifyByKeywords(t)?.level ?? 'info';
+    expect(lvl('Panne de courant géante dans le Var : des milliers de foyers privés d’électricité')).not.toBe('info');
+    expect(lvl('Coupure de gaz dans tout un quartier de Lyon après une fuite')).not.toBe('info');
+    expect(lvl('Coupure d\'eau : 20 000 habitants privés d\'eau potable à Nîmes')).not.toBe('info');
+    expect(lvl('L\'eau du robinet impropre à la consommation dans 12 communes')).not.toBe('info');
+    expect(lvl('Le 112 injoignable pendant plusieurs heures, les numéros d\'urgence perturbés')).toBe('high');
+    expect(lvl('Panne de la TNT : des milliers de téléspectateurs privés de télévision')).not.toBe('info');
+    expect(lvl('Le gaz de schiste fait débat à l’Assemblée')).toBe('info');
+  });
 });
+

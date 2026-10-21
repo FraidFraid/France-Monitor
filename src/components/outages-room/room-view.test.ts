@@ -32,11 +32,19 @@ const cell = (html: string, net: string): string => html.match(new RegExp(`<butt
 const text = (html: string): string => html.replace(/<[^>]+>/g, ' ').replace(/[ \t\n]+/g, ' ');
 
 describe('salle des pannes : barre des réseaux', () => {
-  it('huit cases dans l’ordre ; quatre sans source temps réel', () => {
-    const t = text(networkStrip(body(), null, NOW));
-    const order = ['Téléphone mobile', 'Internet', 'Électricité', 'Cloud', 'Gaz', 'Eau', 'Numéros d’urgence', 'Paiement'].map((n) => t.indexOf(n));
+  it('neuf cases dans l’ordre ; les réseaux suivis par la seule presse le disent et ne sont jamais verts', () => {
+    const html = networkStrip(body({ sources: [...body().sources, { source: 'presse', readAt: null, ok: true }] }), null, NOW);
+    const t = text(html);
+    const order = ['Téléphone mobile', 'Internet', 'Électricité', 'Cloud', 'Gaz', 'Eau', 'Numéros d’urgence', 'Paiement', 'Télévision'].map((n) => t.indexOf(n));
     expect(order.every((i, k) => i >= 0 && (k === 0 || i > (order[k - 1] ?? -1)))).toBe(true);
-    expect(t.match(/pas de source temps réel/g)).toHaveLength(4);
+    expect(t.match(/presse seule/g)).toHaveLength(5);
+    for (const n of ['gaz', 'eau', 'urgence', 'paiement', 'tv']) expect(cell(html, n)).toContain('orm-dot--nd');
+  });
+  it('panne de gaz signalée par la presse : la case Gaz compte 1, au niveau du signalement', () => {
+    const gaz = { ...body().outages[0], id: 'gaz|op:GRDF', network: 'gaz' as const, operator: 'GRDF', label: 'GRDF', level: 'jaune' as const };
+    const html = networkStrip(body({ outages: [gaz] }), null, NOW);
+    expect(cell(html, 'gaz')).toContain('orm-dot--jaune');
+    expect(text(cell(html, 'gaz'))).toContain(' 1 ');
   });
   it('voyant : niveau de la panne la plus grave ; sans panne, vert seulement avec une source fraîche, sinon n.d.', () => {
     const html = networkStrip(body(), null, NOW);

@@ -2,7 +2,9 @@
 // Pannes est actif. Barre des réseaux en haut, encart national à gauche, fil (ou détail d'une panne) à droite. La carte elle-même
 // (départements, contour national) est pilotée par App à partir des rappels onFocus et onFilter.
 import type { OutageNetwork, OutageNow, OutagesNowResponse } from '../../types/index.ts';
-import { detailHtml, feedHtml, nationalBox, networkStrip } from './room-view.ts';
+import { detailHtml, feedHtml, nationalBox, networkStrip, NETWORK_SOURCES } from './room-view.ts';
+
+const isNetwork = (v: string): v is OutageNetwork => Object.hasOwn(NETWORK_SOURCES, v);
 
 export class OutagesRoom {
   private readonly el: HTMLElement;
@@ -68,7 +70,7 @@ export class OutagesRoom {
     const target = ev.target instanceof Element ? ev.target : null;
     if (!target || target.closest('a')) return;
     const net = target.closest<HTMLElement>('button[data-net]')?.dataset.net;
-    if (net === 'mobile' || net === 'internet' || net === 'electricite' || net === 'cloud') {
+    if (net !== undefined && isNetwork(net)) {
       this.filter = this.filter === net ? null : net;
       this.onFilter?.(this.filter);
       this.render();

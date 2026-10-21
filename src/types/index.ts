@@ -3204,7 +3204,8 @@ export interface TelecomOutagesResponse {
 
 // ─── Pannes en cours : GET /api/outages/now (téléphone et internet, toutes sources, api/_lib/outages-now.js, 21/10/2026) ───
 export type OutageNowSource = 'presse' | 'arcep' | 'ioda' | 'radar' | 'rte' | 'edf' | 'statut';
-export type OutageNetwork = 'mobile' | 'internet' | 'electricite' | 'cloud';
+/** Réseaux suivis ; gaz, eau, urgences, paiement et télévision n'ont que la presse (aucun flux ouvert, recherche du 21/10/2026). */
+export type OutageNetwork = 'mobile' | 'internet' | 'electricite' | 'cloud' | 'gaz' | 'eau' | 'urgence' | 'paiement' | 'tv';
 /** Échelle de confirmation : presse seule, mesurée par une source réseau, confirmée par la page d'état du fournisseur. */
 export type OutageRung = 'signalee' | 'mesuree' | 'confirmee';
 export interface OutageNowEvidence { source: OutageNowSource; text: string; at: string | null; link: string | null }

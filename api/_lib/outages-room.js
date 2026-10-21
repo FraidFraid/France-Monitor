@@ -9,6 +9,8 @@ import { loadCloud } from '../_handlers/outages/cloud.js';
 import { loadInternet } from '../_handlers/outages/internet.js';
 import { loadPower } from '../_handlers/outages/power.js';
 import { loadTelecom } from '../_handlers/outages/telecom.js';
+import { snapshotItems } from '../_handlers/news.js';
+import { pressOutages } from './telecom-press.js';
 
 export const ROOM_KEY = 'out:room:v1';
 const ROOM_TTL_SEC = 8 * 24 * 3600;
@@ -20,7 +22,13 @@ export const SNAPSHOT_STALE_MS = 3 * 60_000;
 /** Entrées du journal servies avec l'état. */
 export const SNAPSHOT_JOURNAL = 50;
 
-const DEFAULT_READERS = { readTelecom: loadTelecom, readInternet: loadInternet, readPower: loadPower, readCloud: loadCloud };
+/** Pannes de tous les réseaux signalées par la presse (instantané d'actualités en mémoire, aucune lecture Neon de plus) ; null sans base. */
+async function readPress(now) {
+  const items = await snapshotItems(now);
+  return items === null ? null : pressOutages(items, now);
+}
+
+const DEFAULT_READERS = { readTelecom: loadTelecom, readInternet: loadInternet, readPower: loadPower, readCloud: loadCloud, readPress };
 
 /** @type {{ loaded: boolean, state: any, journal: any[], tickAt: number, outages: any[], sources: any[], errors: string[] } | null} */
 let room = null;
@@ -58,10 +66,11 @@ async function run(now, readers) {
       loaded: !read.failed, state: stored?.state ?? null, journal: Array.isArray(stored?.journal) ? stored.journal : [],
     };
   }
-  const [telecom, internet, power, cloud] = await Promise.all([
+  const [telecom, internet, power, cloud, press] = await Promise.all([
     settle(readers.readTelecom, now), settle(readers.readInternet, now), settle(readers.readPower, now), settle(readers.readCloud, now),
+    settle(readers.readPress ?? readPress, now),
   ]);
-  const outages = outagesNow({ telecom, internet, power, cloud, now });
+  const outages = outagesNow({ telecom, internet, power, cloud, now, press: press ?? undefined });
   const loaded = room.loaded;
   const { state, entries } = loaded ? diffOutages(room.state, outages, now) : { state: room.state, entries: [] };
   const cut = now - JOURNAL_MAX_AGE_MS;
@@ -72,7 +81,7 @@ async function run(now, readers) {
   room = {
     loaded, state, journal, tickAt: now, outages,
     sources: [
-      { source: 'presse', readAt: telecom?.press ? iso(now) : null, ok: Array.isArray(telecom?.press) },
+      { source: 'presse', readAt: press || telecom?.press ? iso(now) : null, ok: Array.isArray(press) || Array.isArray(telecom?.press) },
       { source: 'arcep', readAt: telecom?.file?.publishedAt ?? null, ok: fresh(telecom?.file?.publishedAt, now, ARCEP_MAX_AGE_MS) },
       { source: 'ioda', readAt: internet?.iodaReadAt ?? null, ok: fresh(internet?.iodaReadAt, now, LIVE_MAX_AGE_MS) },
       { source: 'radar', readAt: internet?.radar?.readAt ?? null, ok: Boolean(internet?.radar?.configured) && fresh(internet?.radar?.readAt, now, LIVE_MAX_AGE_MS) },
