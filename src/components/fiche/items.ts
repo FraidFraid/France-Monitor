@@ -141,6 +141,9 @@ function themeFigures(theme: SpecificThemeId, snapshot: ThemeFicheInput['snapsho
             : `${s.jammingSignals}${s.gnssPartialHours !== undefined ? ` (${gnssPartialText(s.gnssPartialHours, lang)})` : ''}`,
         },
       ];
+    case 'outages':
+      // Onglet Pannes : la salle de contrôle porte ses propres chiffres (barre des réseaux).
+      return [];
     case 'environment':
       return [
         // Source indisponible (S3) : « n.d. », jamais un « 0 ».

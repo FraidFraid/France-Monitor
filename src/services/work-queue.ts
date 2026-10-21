@@ -104,6 +104,8 @@ export interface WorkQueueInput {
   /** Heure d'apparition pendant la session, par clé (après la chauffe du démarrage). */
   firstSeen: ReadonlyMap<string, number>;
   lang: Lang;
+  /** Panne en cours la plus grave (/api/outages/now) : niveau de l'onglet Pannes ; null sans réponse. */
+  outagesLevel?: VigilanceLevel | null;
   /** Départements (lieu des événements, nom des codes) ; null tant que la géométrie n'est pas chargée. */
   departements?: DepartementIndex | null;
   /** Horodatage de référence (ms epoch) pour les signaux datés (Écowatt…). Défaut : Date.now(). */
@@ -428,12 +430,14 @@ export function buildWorkQueue(input: WorkQueueInput): WorkQueue {
   const themeLevels: Record<SpecificThemeId, VigilanceLevel> = {
     energy: themeLevel('energy'),
     security: themeLevel('security'),
+    // Onglet Pannes : panne en cours la plus grave (/api/outages/now), vert sans panne.
+    outages: input.outagesLevel ?? 'vert',
     health: themeLevel('health'),
     environment: themeLevel('environment'),
     transport: themeLevel('transport'),
   };
 
-  const greenTracked: Record<ThemeId, number> = { general: 0, energy: 0, security: 0, health: 0, environment: 0, transport: 0 };
+  const greenTracked: Record<ThemeId, number> = { general: 0, energy: 0, security: 0, outages: 0, health: 0, environment: 0, transport: 0 };
   const countGreen = (theme: ThemeId): void => {
     greenTracked.general += 1;
     if (theme !== 'general') greenTracked[theme] += 1;

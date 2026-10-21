@@ -61,17 +61,17 @@ describe('StatusBar (spec §5.2)', () => {
 });
 
 describe('ThemeBar (spec §5.3)', () => {
-  it('Intelligence France puis six thèmes ; un même voyant de niveau sur chaque thème ; le thème choisi est pressé', () => {
+  it('Intelligence France puis sept thèmes (Pannes depuis le 21/10/2026) ; un même voyant de niveau sur chaque thème ; le thème choisi est pressé', () => {
     const html = renderThemeBar({
       selected: 'energy',
-      levels: { general: 'rouge', energy: 'rouge', security: 'orange', health: 'vert', environment: 'jaune', transport: 'vert' },
+      levels: { general: 'rouge', energy: 'rouge', security: 'orange', outages: 'vert', health: 'vert', environment: 'jaune', transport: 'vert' },
       lang: 'fr',
     });
     expect(html.indexOf('data-france')).toBeLessThan(html.indexOf('data-theme='));
-    expect(html.match(/data-theme=/g)).toHaveLength(6);
+    expect(html.match(/data-theme=/g)).toHaveLength(7);
     expect(html).toContain('data-theme="energy" aria-pressed="true"');
     // Décision du 12/10/2026 : voyant sur les six thèmes (Vue générale comprise), plus de pastille avec le mot.
-    expect(html.match(/class="tb-dot /g)).toHaveLength(6);
+    expect(html.match(/class="tb-dot /g)).toHaveLength(7);
     expect(html).not.toContain('fm-vig');
     expect(html).toContain('Sécurité et défense <span class="tb-dot tb-dot--orange" title="Orange" aria-hidden="true"></span><span class="visually-hidden">· Orange</span>');
     expect(html).toContain('<span class="tb-dot tb-dot--rouge" title="Rouge"');
@@ -85,7 +85,7 @@ describe('ThemeBar (spec §5.3)', () => {
     const bar = new ThemeBar(root);
     const onSelect = vi.fn();
     bar.setOnSelect(onSelect);
-    bar.update({ selected: 'general', levels: { general: 'jaune', energy: 'vert', security: 'vert', health: 'vert', environment: 'vert', transport: 'vert' }, lang: 'fr' });
+    bar.update({ selected: 'general', levels: { general: 'jaune', energy: 'vert', security: 'vert', outages: 'vert', health: 'vert', environment: 'vert', transport: 'vert' }, lang: 'fr' });
     root.querySelector<HTMLButtonElement>('[data-theme="health"]')?.click();
     expect(onSelect).toHaveBeenCalledWith('health');
   });

@@ -13,10 +13,11 @@
  * à partir de l'état de leurs enfants — pas la responsabilité de ce module.
  */
 
+import { OUTAGES_LAYER_KEYS } from './outages-sources.ts';
 import type { MapLayers } from '../types/index.ts';
 import type { IconName } from '../components/shared/icons.ts';
 
-export type LayerPresetId = 'general' | 'energy' | 'security' | 'health' | 'environment' | 'transport';
+export type LayerPresetId = 'general' | 'energy' | 'security' | 'outages' | 'health' | 'environment' | 'transport';
 
 export interface LayerPreset {
   id: LayerPresetId;
@@ -82,7 +83,8 @@ export const ALL_PRESETABLE_LAYER_KEYS: ReadonlyArray<keyof MapLayers> = [
  * Appartenance de chaque couche à un thème : chaque couche de `ALL_PRESETABLE_LAYER_KEYS` est dans
  * exactement un thème (vérifié par test). La vue d'un thème les coche toutes, sauf `news`.
  */
-export const THEME_LAYERS: Readonly<Record<Exclude<LayerPresetId, 'general'>, ReadonlyArray<keyof MapLayers>>> = {
+/** Partition des couches par thème. « Pannes » n'y figure pas : c'est une vue transversale (ses couches restent à Sécurité et Énergie). */
+export const THEME_LAYERS: Readonly<Record<Exclude<LayerPresetId, 'general' | 'outages'>, ReadonlyArray<keyof MapLayers>>> = {
   energy: ['powerGrid', 'nuclearFleet', 'gasNetwork', 'oilNetwork', 'outagesElec', 'hydroBackbone', 'windMonitor', 'dromEnergy', 'metroLoad'],
   security: ['military', 'cyber', 'outagesTelecom', 'outagesInternet', 'outagesCloud', 'subseaCables', 'protests', 'pedestrianFlows', 'crime', 'news', 'stability'],
   health: ['health', 'healthOscour', 'hospitals', 'healthApl'],
@@ -120,6 +122,15 @@ export const LAYER_PRESETS: ReadonlyArray<LayerPreset> = [
     icon: 'shield',
     description: 'Tout le thème sécurité & défense : défense, cyber, pannes télécoms, Internet et cloud, manifestations, flux piétons estimés, criminalité, connectivité et indice de stabilité.',
     layers: THEME_LAYERS.security.filter((key) => key !== 'news'),
+    events: false,
+  },
+  {
+    // Control room des pannes (21/10/2026) : vue transversale des quatre couches Pannes, aussi présentes dans Sécurité et Énergie.
+    id: 'outages',
+    label: 'Pannes',
+    icon: 'plug-zap',
+    description: 'Toutes les pannes en cours : téléphone mobile, internet, électricité, cloud ; presse, mesures et pages d’état, au plus près du temps réel.',
+    layers: OUTAGES_LAYER_KEYS,
     events: false,
   },
   {

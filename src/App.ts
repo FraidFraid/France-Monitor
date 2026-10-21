@@ -4594,6 +4594,13 @@ export class App {
     });
   }
 
+  /** Panne en cours la plus grave d'après la dernière réponse /api/outages/now ; null sans réponse. */
+  private outagesNowLevel(): VigilanceLevel | null {
+    const outages = this.outagesNowSlot?.data?.outages;
+    if (!outages) return null;
+    return outages.reduce<VigilanceLevel>((m, o) => (LEVEL_RANK[o.level] > LEVEL_RANK[m] ? o.level : m), 'vert');
+  }
+
   /** Bandeau « Pannes en cours » : lu au montage puis toutes les 2 min, quel que soit l'onglet (21/10/2026). */
   private mountOutagesNow(mapEl: HTMLElement): void {
     // Chargé à part : le chunk App reste sous 1 Mio.
@@ -5070,7 +5077,8 @@ export class App {
     const theme = this.v2Theme;
     const keys: Array<keyof MapLayers> = theme === 'general'
       ? this.watchEntries.map((e) => e.key)
-      : theme === 'environment' ? [] : THEME_LAYERS[theme].filter((k) => k !== 'news' && k !== 'pedestrianFlows');
+      : theme === 'environment' ? [] : theme === 'outages' ? [...OUTAGES_LAYER_KEYS]
+        : THEME_LAYERS[theme].filter((k) => k !== 'news' && k !== 'pedestrianFlows');
     // En-tête du panneau de chaque pastille (dernière vue retenue par le cadre ; « Pression par département » = panneau « pressure »).
     return keys.map((key) => ({ key, label: label(key), level: this.watchLevelMap.get(key) ?? null, head: lastLayerHead(key === 'stability' ? 'pressure' : key) }));
   }
@@ -9409,6 +9417,7 @@ export class App {
       floods: env.floodSegments,
       markets: this.currentMarketData,
       commodities: this.currentCommodityData,
+      outagesLevel: this.outagesNowLevel(),
       sources: this.statusPanel?.getSources() ?? [],
       infra: { result: this.currentNetworkBarometer, nuclear: this.currentNuclearState, eolien: this.currentEolienLive },
       health: this.healthNationalNow(now),

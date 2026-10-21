@@ -25,8 +25,16 @@ const GROUP_KEYS = new Set([
 ]);
 
 describe('layer-presets', () => {
-  it('expose exactement 6 vues nommées, dans l’ordre de la barre des thèmes', () => {
-    assert.deepEqual(LAYER_PRESETS.map((p) => p.id), ['general', 'energy', 'security', 'health', 'environment', 'transport']);
+  it('expose exactement 7 vues nommées, dans l’ordre de la barre des thèmes', () => {
+    assert.deepEqual(LAYER_PRESETS.map((p) => p.id), ['general', 'energy', 'security', 'outages', 'health', 'environment', 'transport']);
+  });
+
+  it('« Pannes » : vue transversale des quatre couches Pannes, qui restent dans Sécurité et Énergie (21/10/2026)', () => {
+    assert.deepEqual(LAYER_PRESETS.find((p) => p.id === 'outages')?.layers, ['outagesElec', 'outagesTelecom', 'outagesInternet', 'outagesCloud']);
+    const on = Object.entries(layersForPreset('outages')).filter(([, v]) => v).map(([k]) => k).sort();
+    assert.deepEqual(on, ['outagesCloud', 'outagesElec', 'outagesInternet', 'outagesTelecom']);
+    assert.ok(THEME_LAYERS.security.includes('outagesTelecom'));
+    assert.ok(THEME_LAYERS.energy.includes('outagesElec'));
   });
 
   it("n'inclut jamais une clé de groupe dans les couches d'une vue", () => {
@@ -49,7 +57,7 @@ describe('layer-presets', () => {
 
   it('une vue thématique coche toutes les couches de son thème, sauf les actualités brutes (décision du 12/10/2026)', () => {
     for (const preset of LAYER_PRESETS) {
-      if (preset.id === 'general') continue;
+      if (preset.id === 'general' || preset.id === 'outages') continue;
       assert.deepEqual([...preset.layers].sort(), THEME_LAYERS[preset.id].filter((key) => key !== 'news').sort(), preset.id);
     }
   });

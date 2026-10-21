@@ -77,7 +77,7 @@ function market(over: Partial<MarketLine> = {}): MarketLine {
 function input(over: Partial<WorkQueueInput> = {}): WorkQueueInput {
   return {
     situations: [], alerts: [], events: eventsState(), ecowatt: null, meteo: [], floods: [], markets: [],
-    baseline: null, firstSeen: new Map(), lang: 'fr', now: NOW, ...over,
+    baseline: null, firstSeen: new Map(), lang: 'fr', now: NOW, outagesLevel: null, ...over,
   };
 }
 
@@ -307,7 +307,7 @@ describe('buildWorkQueue — états (spec §7.4)', () => {
       events: eventsState({ events: [event({ id: 1, severity: 'low', category: 'health' }), event({ id: 2, severity: 'info', category: 'finance' })] }),
       markets: [market()],
     }));
-    expect(q.greenTracked).toEqual({ general: 4, energy: 1, security: 0, health: 1, environment: 0, transport: 0 });
+    expect(q.greenTracked).toEqual({ general: 4, energy: 1, security: 0, outages: 0, health: 1, environment: 0, transport: 0 });
   });
 
   it('ligne de base à enregistrer : niveaux des éléments, sans les événements', () => {
@@ -363,7 +363,7 @@ describe('viewWorkQueue (spec §7.2, §7.3)', () => {
 
 describe('drivingThemes (spec §5.2)', () => {
   const levels = (over: Partial<Record<SpecificThemeId, VigilanceLevel>>): Record<SpecificThemeId, VigilanceLevel> => ({
-    energy: 'vert', security: 'vert', health: 'vert', environment: 'vert', transport: 'vert', ...over,
+    energy: 'vert', security: 'vert', outages: 'vert', health: 'vert', environment: 'vert', transport: 'vert', ...over,
   });
 
   it('les thèmes au niveau national, deux au plus', () => {
@@ -456,3 +456,11 @@ describe('fil de la refonte 29/09 (spec 2026-09-29 § 6)', () => {
     expect(place('situation:energy-stress')).toBe('Ain');
   });
 });
+
+describe('onglet Pannes (21/10/2026)', () => {
+  it('niveau de l’onglet = panne en cours la plus grave ; vert sans panne', () => {
+    expect(buildWorkQueue(input({ outagesLevel: 'orange' })).themeLevels.outages).toBe('orange');
+    expect(buildWorkQueue(input()).themeLevels.outages).toBe('vert');
+  });
+});
+

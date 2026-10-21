@@ -68,6 +68,8 @@ export interface PosteData {
   /** Niveau national de santé (fiche thème Santé, spec 2026-10-03 § 3.5) ; absent ou null tant que la veille n'est pas chargée. */
   health?: NationalHealthSummary | null;
   commodities: readonly CommodityData[];
+  /** Panne en cours la plus grave (/api/outages/now) : niveau de l'onglet Pannes ; absent ou null sans réponse. */
+  outagesLevel?: VigilanceLevel | null;
   sources: readonly DataSourceStatus[];
   score: { delta24h: number | null; pillarDeltas: StabilityPillarValues | null; series: number[] };
   /**
@@ -411,6 +413,7 @@ export class PosteSituation {
       firstSeen: this.firstSeen,
       departements: this.departements,
       lang: data.lang,
+      outagesLevel: data.outagesLevel ?? null,
     });
     this.trackAppearances(queue, data.now);
     this.queue = queue;

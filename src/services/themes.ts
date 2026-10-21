@@ -22,13 +22,14 @@ export const THEMES: ReadonlyArray<ThemeDef> = [
   { id: 'general', fr: 'Vue générale', en: 'Overview', driverFr: 'l’ensemble', driverEn: 'overall' },
   { id: 'energy', fr: 'Énergie', en: 'Energy', driverFr: 'l’énergie', driverEn: 'energy' },
   { id: 'security', fr: 'Sécurité et défense', en: 'Security and defence', driverFr: 'la sécurité et la défense', driverEn: 'security and defence' },
+  { id: 'outages', fr: 'Pannes', en: 'Outages', driverFr: 'les pannes', driverEn: 'outages' },
   { id: 'health', fr: 'Santé', en: 'Health', driverFr: 'la santé', driverEn: 'health' },
   { id: 'environment', fr: 'Environnement', en: 'Environment', driverFr: 'l’environnement', driverEn: 'environment' },
   { id: 'transport', fr: 'Transports', en: 'Transport', driverFr: 'les transports', driverEn: 'transport' },
 ];
 
 /** Thèmes proprement dits : « Vue générale » les montre tous. */
-export const SPECIFIC_THEMES: ReadonlyArray<SpecificThemeId> = ['energy', 'security', 'health', 'environment', 'transport'];
+export const SPECIFIC_THEMES: ReadonlyArray<SpecificThemeId> = ['energy', 'security', 'outages', 'health', 'environment', 'transport'];
 
 function def(id: ThemeId): ThemeDef {
   return THEMES.find((th) => th.id === id) ?? THEMES[0];
