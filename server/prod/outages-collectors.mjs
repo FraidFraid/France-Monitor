@@ -7,12 +7,15 @@ import { ensurePowerFresh } from '../../api/_lib/outages-power.js';
 import { ensureInternetFresh } from '../../api/_lib/outages-internet.js';
 import { ensureCloudFresh } from '../../api/_lib/outages-cloud.js';
 import { tickOutagesRoom } from '../../api/_lib/outages-room.js';
+import { ensureSocialFresh } from '../../api/_lib/outages-social.js';
 
 export const OUTAGES_COLLECTORS = [
   { name: 'outages-telecom', run: ensureTelecomFresh },
   { name: 'outages-power', run: ensurePowerFresh },
   { name: 'outages-internet', run: ensureInternetFresh },
   { name: 'outages-cloud', run: ensureCloudFresh },
+  // Signalements d'usagers (Bluesky, Mastodon), toutes les 2 min.
+  { name: 'outages-social', run: ensureSocialFresh },
   // Control room (21/10/2026) : en dernier, après les relevés de la minute.
   { name: 'outages-room', run: tickOutagesRoom },
 ];

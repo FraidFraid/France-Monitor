@@ -31,7 +31,7 @@ const RANK = { jaune: 1, orange: 2, rouge: 3 };
 const RUNG_RANK = { signalee: 0, mesuree: 1, confirmee: 2 };
 const PRESS_LEVEL = { medium: 'jaune', high: 'orange', critical: 'rouge' };
 const CLOUD_LEVEL = { critical: 'rouge', major: 'orange', minor: 'jaune', none: 'jaune' };
-const RUNG_OF = { presse: 'signalee', statut: 'confirmee' };
+const RUNG_OF = { presse: 'signalee', usagers: 'signalee', statut: 'confirmee' };
 const fresh = (iso, now, maxAge) => {
   const t = Date.parse(iso ?? '');
   return Number.isFinite(t) && now - t <= maxAge;
@@ -40,10 +40,11 @@ const gw = (mw) => `${(mw / 1000).toFixed(1).replace('.', ',')} GW`;
 
 /**
  * @param {{ telecom: any, internet: any, power: any, cloud: any, now: number, press?: any[] }} input réponses des routes /api/outages/* (null :
- *   non lue) ; `press` : signalements de tous les réseaux (pressOutages, telecom-press.js), à défaut la presse télécoms (réseau mobile)
+ *   non lue) ; `press` : signalements de tous les réseaux (pressOutages, telecom-press.js), à défaut la presse télécoms (réseau mobile) ;
+ *   `social` : pics de signalements d'usagers (socialOutages, outages-social.js)
  * @returns {import('../../src/types/index.ts').OutageNow[]}
  */
-export function outagesNow({ telecom, internet, power, cloud, now, press }) {
+export function outagesNow({ telecom, internet, power, cloud, now, press, social }) {
   /** @type {Map<string, any>} */
   const byKey = new Map();
   const add = (network, key, base, evidence) => {
@@ -73,6 +74,16 @@ export function outagesNow({ telecom, internet, power, cloud, now, press }) {
       text: `${p.articles} article${p.articles > 1 ? 's' : ''}, ${p.sources} source${p.sources > 1 ? 's' : ''}${p.national ? ', panne dite nationale' : ''} : ${p.title}`,
     });
     if (p.national) o.national = true;
+  }
+
+  // Usagers (Bluesky, Mastodon) : un pic de messages sur 15 min, toujours « signalée ».
+  for (const s of social ?? []) {
+    const key = s.operator !== null ? `op:${s.operator}` : 'usagers:sans-operateur';
+    const base = s.operator !== null ? operatorBase(s.operator) : { scope: 'inconnu', operator: null, dept: null, label: 'signalement d’usagers' };
+    add(s.network, key, base, {
+      source: 'usagers', level: s.level, since: s.since, link: s.link,
+      text: `${s.recent}\u00a0messages en 15\u00a0min sur Bluesky et Mastodon (normale\u00a0: ${String(s.baseline).replace('.', ',')})`,
+    });
   }
 
   // ARCEP : départements au-dessus du seuil, pays entier au-delà de 300 antennes récentes.

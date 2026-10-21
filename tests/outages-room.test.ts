@@ -13,6 +13,7 @@ const readers = {
   readPower: async () => ({ edfReadAt: '2026-10-21T11:55:00Z', iipReadAt: '2026-10-21T11:55:00Z', unplanned: [], transmission: { unplanned: [], planned: [] }, errors: [] }),
   readCloud: async () => ({ readAt: '2026-10-21T11:50:00Z', providers: [], incidents: [], errors: [] }),
   readPress: async () => null,
+  readSocial: async () => [],
 };
 let writes = 0;
 const store = new Map<string, string>();
@@ -32,7 +33,7 @@ describe('control room : tick et journal', () => {
     expect(snap.outages.map((o) => o.id).sort()).toEqual(['mobile|op:Orange', 'mobile|op:SFR']);
     expect(snap.journal).toEqual([expect.objectContaining({ kind: 'nouvelle', id: 'mobile|op:SFR', at: '2026-10-21T12:01:00.000Z' })]);
     expect(snap.errors).toEqual(['IODA : HTTP 503']);
-    expect(snap.sources.map((s) => s.source)).toEqual(['presse', 'arcep', 'ioda', 'radar', 'rte', 'edf', 'statut']);
+    expect(snap.sources.map((s) => s.source)).toEqual(['presse', 'usagers', 'arcep', 'ioda', 'radar', 'rte', 'edf', 'statut']);
     const before = writes;
     await tickOutagesRoom(T0 + 120_000, readers);
     expect(writes).toBe(before);

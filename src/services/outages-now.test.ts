@@ -27,5 +27,7 @@ describe('contrat /api/outages/now', () => {
     const [o] = body().outages;
     if (o) expect(outageProof(o as never)).toBe('confirmée : page d’état');
     expect(outageProof({ rung: 'signalee', evidence: [{ source: 'presse', text: '', at: null, link: null }] })).toBe('signalée, non confirmée : presse');
+    expect(outageProof({ rung: 'signalee', evidence: [{ source: 'usagers', text: '', at: null, link: null }] })).toBe('signalée, non confirmée : usagers (Bluesky, Mastodon)');
+    expect(isOutagesNowResponse({ ...body(), sources: [{ source: 'usagers', readAt: null, ok: true }] })).toBe(true);
   });
 });

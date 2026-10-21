@@ -129,3 +129,20 @@ describe('pannes en cours : presse de tous les réseaux (21/10/2026)', () => {
     expect(outagesNow({ telecom: telecom(), internet: null, power: null, cloud: null, now: NOW }).some((o) => o.id === 'mobile|op:Orange')).toBe(true);
   });
 });
+
+describe('pannes en cours : signalements d’usagers (21/10/2026)', () => {
+  it('pic d’usagers : panne signalée, rejoint la presse du même opérateur ; jamais mesurée', () => {
+    const all = outagesNow({
+      telecom: telecom({ summary: { recent: 10 }, byDept: [] }), internet: null, power: null, cloud: null, now: NOW,
+      social: [
+        { network: 'mobile', operator: 'Orange', level: 'orange', recent: 42, baseline: 1.5, since: '2026-10-21T09:45:00Z', link: 'https://bsky.app/search?q=panne+orange', queries: ['panne orange'] },
+        { network: 'eau', operator: null, level: 'jaune', recent: 11, baseline: 0.2, since: '2026-10-21T11:40:00Z', link: 'https://bsky.app/search?q=x', queries: ['x'] },
+      ],
+    });
+    const orange = all.find((o) => o.id === 'mobile|op:Orange');
+    expect(orange).toMatchObject({ rung: 'signalee', since: '2026-10-21T09:45:00Z' });
+    expect(orange?.evidence.map((e) => e.source)).toEqual(['presse', 'usagers']);
+    expect(orange?.evidence[1]?.text).toContain('42 messages en 15 min');
+    expect(all.find((o) => o.network === 'eau')).toMatchObject({ level: 'jaune', rung: 'signalee', label: 'signalement d’usagers' });
+  });
+});
