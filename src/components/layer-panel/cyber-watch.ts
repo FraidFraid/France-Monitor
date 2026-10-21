@@ -6,7 +6,7 @@
 // aucune n'entre dans la pastille ni dans l'indice (informations d'appui). Une cible publiée n'est jamais présentée comme une attaque
 // réussie ; un domaine imitateur n'est jamais un lien cliquable (écrit « [.] »).
 import type {
-  CyberResponse, CyberWatchCount, CyberWatchResponse, CyberWatchService, CyberWatchTarget, DdosiaHost, RadarAs,
+  CyberResponse, CyberWatchCount, CyberWatchExposure, CyberWatchResponse, CyberWatchService, CyberWatchTarget, DdosiaHost, RadarAs,
 } from '../../types/index.ts';
 import type { VigilanceLevel } from '../../services/vigilance.ts';
 import { escapeHtml } from '../france-intel-events.ts';
@@ -43,6 +43,7 @@ const EUVD_URL = 'https://euvd.enisa.europa.eu/';
 const EPSS_URL = 'https://www.first.org/epss/';
 const EUROPOL_URL = 'https://www.europol.europa.eu/media-press/newsroom/news/global-operation-targets-noname05716-pro-russian-cybercrime-network';
 const SIGNAL_URL = 'https://www.internet-signalement.gouv.fr/';
+const INTERNETDB_URL = 'https://internetdb.shodan.io/';
 
 /** « à 16:30 » le jour même, « le 03/10 à 14:00 » sinon (heure de Paris). */
 function atText(iso: string | null | undefined, now: number): string {
@@ -362,6 +363,67 @@ function servicesSection(w: CyberWatchResponse, now: number, open: OpenFn): Fich
   };
 }
 
+// ─── Exposition des sites sondés (Shodan InternetDB, 20/10/2026) ───
+
+/**
+ * Niveau d'un site : orange s'il expose une vulnérabilité suivie par la Vigilance cyber (KEV, alerte ou avis CERT-FR) ; sinon sans
+ * couleur (les autres vulnérabilités sont déduites des versions annoncées par le logiciel : à vérifier, jamais un constat).
+ */
+export function exposureLevel(e: CyberWatchExposure): VigilanceLevel | null {
+  return e.tracked.length > 0 ? 'orange' : null;
+}
+
+/** Ce qu'InternetDB voit du site, en mots. */
+export function exposureText(e: CyberWatchExposure): string {
+  if (e.ips.length === 0) return 'adresse non résolue';
+  if (!e.known) return 'inconnu d’InternetDB';
+  const parts: string[] = [];
+  if (e.tracked.length > 0) parts.push(`vulnérabilité suivie par la Vigilance cyber : ${e.tracked.slice(0, 3).join(', ')}`);
+  const other = e.vulnCount - e.tracked.length;
+  if (other > 0) {
+    parts.push(`${e.tracked.length > 0 ? plural(other, 'autre vulnérabilité supposée', 'autres vulnérabilités supposées')
+      : plural(other, 'vulnérabilité supposée', 'vulnérabilités supposées')} d’après la version`);
+  }
+  // Derrière un CDN, les ports sont ceux du réseau de diffusion (des centaines chez Imperva) : non listés.
+  if (e.cdn) parts.push('derrière un réseau de diffusion (CDN) : InternetDB voit le CDN, pas le serveur d’origine');
+  else if (e.portCount > 0) parts.push(`ports ouverts ${e.ports.slice(0, 8).join(', ')}${e.portCount > 8 ? '…' : ''}`);
+  if (e.products.length > 0) parts.push(`logiciels vus : ${e.products.slice(0, 3).join(', ')}`);
+  return parts.join(' · ') || 'rien de notable';
+}
+
+function exposureRow(e: CyberWatchExposure): string {
+  const value = e.tracked.length > 0 ? plural(e.tracked.length, 'vulnérabilité suivie', 'vulnérabilités suivies')
+    : e.vulnCount > 0 ? plural(e.vulnCount, 'vulnérabilité supposée', 'vulnérabilités supposées') : e.known ? 'aucune vulnérabilité connue' : 'n.d.';
+  return listRow({
+    text: e.host, value, level: exposureLevel(e),
+    noteHtml: `${escapeHtml(`${e.kind} · ${exposureText(e)}`)}${e.ips[0] ? ` · ${sourceLinkHtml('fiche', `${INTERNETDB_URL}${e.ips[0]}`)}` : ''}`,
+  });
+}
+
+function exposureSection(w: CyberWatchResponse, now: number, open: OpenFn): FicheSection {
+  const x = w.exposure ?? null;
+  const flagged = (x?.items ?? []).filter((e) => e.tracked.length > 0);
+  const base = { id: 'exposition', title: 'Exposition des sites sondés (Shodan InternetDB)', collapsible: true, open: open('exposition', flagged.length > 0) };
+  if (x === null) return { ...base, summary: 'n.d.', html: sourceDown('Shodan InternetDB') };
+  const rank = (e: CyberWatchExposure): number => e.tracked.length * 1000 + e.vulnCount;
+  // Les services publics toujours ; un site visé seulement s'il montre quelque chose (vulnérabilité ou logiciel identifié).
+  const shown = [...x.items].filter((e) => e.kind === 'service public' || e.vulnCount > 0 || e.products.length > 0)
+    .sort((a, b) => rank(b) - rank(a) || (a.kind === b.kind ? a.host.localeCompare(b.host) : a.kind === 'service public' ? -1 : 1));
+  const withVulns = x.items.filter((e) => e.vulnCount > 0).length;
+  return {
+    ...base,
+    summary: summaryText(flagged.length > 0 ? `${plural(flagged.length, 'site expose', 'sites exposent')} une vulnérabilité suivie`
+      : `aucune vulnérabilité suivie sur ${plural(x.items.length, 'site', 'sites')}`),
+    html: (shown.length > 0 ? shown.slice(0, 15).map(exposureRow).join('') : emptyLine('Rien de notable sur les sites sondés.'))
+      + (shown.length > 15 ? note(`Et ${plural(shown.length - 15, 'autre site', 'autres sites')}.`) : '')
+      + note(`${plural(x.items.length, 'site lu', 'sites lus')} (services publics sondés, sites visés par NoName057(16) sur 7 jours), `
+        + `dont ${withVulns} avec une vulnérabilité supposée. Lu ${atText(x.readAt, now)} ; InternetDB est mis à jour chaque semaine. `
+        + 'Vulnérabilités déduites des versions annoncées par les logiciels : un correctif appliqué sans changer de version passe inaperçu. '
+        + 'Orange : vulnérabilité suivie par la Vigilance cyber (KEV, CERT-FR), à signaler à l’exploitant du site.'
+        + (x.unresolved > 0 || x.failed > 0 ? ` Non lus : ${x.unresolved + x.failed}.` : '')),
+  };
+}
+
 // ─── Violations de données notifiées à la CNIL ───
 
 function cnilSection(w: CyberWatchResponse, now: number, open: OpenFn): FicheSection {
@@ -449,7 +511,7 @@ export function frenchHijacks(w: CyberWatchResponse | null): number {
 export function cyberWatchSections(w: CyberWatchResponse | null, cyber: CyberResponse | null, now: number, open: OpenFn): { decision: FicheSection[]; technical: FicheSection[] } {
   if (w === null) return { decision: [], technical: [] };
   return {
-    decision: [hacktivistSection(w, now, open), servicesSection(w, now, open), ddosSection(w, now, open)],
+    decision: [hacktivistSection(w, now, open), servicesSection(w, now, open), exposureSection(w, now, open), ddosSection(w, now, open)],
     technical: [...(frenchHijacks(w) > 0 ? [bgpSection(w, now, open)] : []), abuseSection(w, now, open), lookalikeSection(w, now, open),
       euvdSection(w, cyber, now, open), cnilSection(w, now, open)],
   };
@@ -473,6 +535,7 @@ export function cyberWatchMethodRows(w: CyberWatchResponse | null, now: number):
     + kvRow('Base européenne', `${sourceLinkHtml('EUVD (ENISA)', EUVD_URL)} · ${escapeHtml(state(w?.euvd?.readAt))}`)
     + kvRow('Violations notifiées', `${sourceLinkHtml('CNIL', CNIL_URL)} · ${escapeHtml(`Licence ouverte · ${state(w?.cnil?.readAt)}`)}`)
     + kvRow('Services publics', escapeHtml(`sondes de France Monitor · ${state(w?.services?.readAt)}`))
+    + kvRow('Exposition des sites', `${sourceLinkHtml('Shodan InternetDB', INTERNETDB_URL)} · ${escapeHtml(`usage non commercial · ${state(w?.exposure?.readAt)}`)}`)
     + note('Veille élargie : informations d’appui, hors de la pastille et de l’indice de stabilité.')
     + (w !== null && w.errors.length > 0 ? note(`Erreurs : ${w.errors.join(' ; ')}`) : '');
 }

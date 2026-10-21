@@ -35,7 +35,7 @@ const view = (w: CyberWatchResponse | null) => buildCyberView({ cyber: CYBER_FIX
 describe('veille cyber élargie dans le panneau', () => {
   it('deux niveaux de lecture : synthèse et décision en haut, détails techniques repliés au-dessous', () => {
     const ids = view(watch()).sections.map((s) => s.id);
-    expect(ids.slice(0, 6)).toEqual(['enbref', 'certfr', 'hacktivistes', 'services', 'ddos', 'revendications']);
+    expect(ids.slice(0, 7)).toEqual(['enbref', 'certfr', 'hacktivistes', 'services', 'exposition', 'ddos', 'revendications']);
     expect(ids.indexOf('technique')).toBeLessThan(ids.indexOf('kev'));
     expect(ids.indexOf('technique')).toBeLessThan(ids.indexOf('imitations'));
     expect(view(watch()).sections.find((s) => s.id === 'kev')?.open).toBe(false);

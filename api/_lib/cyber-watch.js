@@ -11,8 +11,12 @@
 //   epss       probabilité d'exploitation à 30 jours (FIRST EPSS) des vulnérabilités suivies par la Vigilance cyber (12 h).
 //   euvd       vulnérabilités exploitées de la base européenne de l'ENISA (EUVD), 30 jours (6 h).
 //   services   disponibilité des grands services publics en ligne, sondés par le serveur (5 min, 24 h d'historique).
+//   exposure   exposition des sites sondés (services publics, sites visés par NoName057(16) sur 7 jours) : ports ouverts, logiciels et
+//              vulnérabilités connues selon Shodan InternetDB (gratuit, sans clé, usage non commercial, mis à jour chaque semaine),
+//              croisées avec les vulnérabilités suivies par la Vigilance cyber (24 h).
 // Aucune donnée personnelle : statistiques, indicateurs techniques publics (domaines, adresses de serveurs malveillants) et sites
 // d'organisations visées tels que publiés par les sources. Seules des valeurs de moins de 200 Ko vont au stockage clé-valeur.
+import { resolve4 } from 'node:dns/promises';
 import { inflateRawSync } from 'node:zlib';
 import { DEPT_NAMES } from '../_shared/departments.js';
 import { CYBER_KEY } from './cyber-collect.js';
@@ -29,13 +33,13 @@ const NBSP = ' ';
 
 /** Cadence de chaque partie. */
 export const CADENCE_MS = {
-  radar: HOUR, abuse: 6 * HOUR, ddosia: HOUR, lookalikes: 6 * HOUR, cnil: DAY, epss: 12 * HOUR, euvd: 6 * HOUR, services: 5 * MIN, targets: 10 * MIN,
+  radar: HOUR, abuse: 6 * HOUR, ddosia: HOUR, lookalikes: 6 * HOUR, cnil: DAY, epss: 12 * HOUR, euvd: 6 * HOUR, services: 5 * MIN, targets: 10 * MIN, exposure: DAY,
 };
 /** Nouvel essai d'une partie en échec : 10 min (5 min pour les sondes). */
 const RETRY_MS = 10 * MIN;
 const PREFIX = {
   radar: 'Cloudflare Radar', abuse: 'abuse.ch', ddosia: 'DDoSia (witha.name)', lookalikes: 'Domaines imitateurs (whoisds)', cnil: 'CNIL',
-  epss: 'EPSS (FIRST)', euvd: 'EUVD (ENISA)', services: 'Services publics', targets: 'Sites visés',
+  epss: 'EPSS (FIRST)', euvd: 'EUVD (ENISA)', services: 'Services publics', targets: 'Sites visés', exposure: 'Shodan InternetDB',
 };
 export const PARTS = Object.keys(CADENCE_MS);
 
@@ -593,11 +597,69 @@ async function readTargets(now, prev, all) {
   return { readAt: new Date(now).toISOString(), items };
 }
 
+// ─── Exposition des sites sondés (Shodan InternetDB) ───
+
+export const INTERNETDB_URL = 'https://internetdb.shodan.io/';
+/** Sites visés relevés dans les 7 derniers jours ; au plus 60 sites, 2 adresses chacun. */
+const EXPOSURE_WINDOW_MS = 7 * DAY;
+const EXPOSURE_MAX_HOSTS = 60;
+const EXPOSURE_MAX_IPS = 2;
+
+/**
+ * Exposition d'un site d'après les fiches InternetDB de ses adresses (`null` : adresse inconnue d'InternetDB) : ports, logiciels (CPE
+ * réduits au produit), vulnérabilités, dont celles suivies par la Vigilance cyber (KEV, CERT-FR), et marques (« cdn » : InternetDB voit
+ * le réseau de diffusion, pas le serveur d'origine). Pur.
+ */
+export function exposureOf(host, kind, ips, records, tracked) {
+  const known = records.filter((r) => isRecord(r));
+  const ports = [...new Set(known.flatMap((r) => (Array.isArray(r.ports) ? r.ports : []).filter((p) => Number.isInteger(p))))].sort((a, b) => a - b);
+  const vulns = [...new Set(known.flatMap((r) => (Array.isArray(r.vulns) ? r.vulns : []).filter((v) => typeof v === 'string' && /^CVE-\d{4}-\d{4,}$/.test(v))))].sort().reverse();
+  const tags = [...new Set(known.flatMap((r) => (Array.isArray(r.tags) ? r.tags : []).filter((t) => typeof t === 'string')))].sort();
+  // « cpe:/a:apache:http_server:2.4.62 » → « apache http_server 2.4.62 ».
+  const products = [...new Set(known.flatMap((r) => (Array.isArray(r.cpes) ? r.cpes : []).filter((c) => typeof c === 'string')
+    .map((c) => c.replace(/^cpe:2\.3:|^cpe:\//, '').split(':').slice(1).filter((x) => x && x !== '*').join(' '))
+    .filter(Boolean)))].slice(0, 8);
+  const trackedSet = new Set(tracked);
+  return {
+    // Derrière un CDN (Imperva, Cloudflare…), des centaines de ports répondent pour le réseau de diffusion : 25 au plus, compte gardé.
+    host, kind, ips, known: known.length > 0, ports: ports.slice(0, 25), portCount: ports.length, products, tags, cdn: tags.includes('cdn'),
+    vulns: vulns.slice(0, 30), vulnCount: vulns.length, tracked: vulns.filter((v) => trackedSet.has(v)),
+  };
+}
+
+async function internetDb(ip) {
+  const res = await fetch(`${INTERNETDB_URL}${ip}`, { headers: { 'User-Agent': SOURCE_USER_AGENT }, signal: AbortSignal.timeout(15_000) });
+  // 404 « No information available » : adresse jamais vue par Shodan, pas une erreur.
+  if (res.status === 404) { await res.body?.cancel().catch(() => {}); return null; }
+  if (!res.ok) throw new Error(`InternetDB : HTTP ${res.status}`);
+  return res.json();
+}
+
+async function readExposure(now, prev, all) {
+  const sites = [
+    ...SERVICES.map((sv) => ({ host: new URL(sv.url).hostname, kind: 'service public' })),
+    ...(all?.ddosia?.hosts ?? []).filter((h) => now - Date.parse(h.last) < EXPOSURE_WINDOW_MS).map((h) => ({ host: h.host, kind: 'site visé' })),
+  ].filter((x, i, list) => list.findIndex((y) => y.host === x.host) === i).slice(0, EXPOSURE_MAX_HOSTS);
+  const tracked = trackedCves(await kvGetJson(CYBER_KEY, now));
+  const resolved = await mapLimit(sites, 8, async (x) => (await resolve4(x.host)).slice(0, EXPOSURE_MAX_IPS));
+  const ips = [...new Set(resolved.flatMap((r) => (r.ok ? r.value : [])))];
+  const looked = await mapLimit(ips, 4, internetDb);
+  const failed = looked.filter((r) => !r.ok).length;
+  // Toutes les lectures en échec : InternetDB indisponible, la partie garde sa dernière valeur.
+  if (ips.length > 0 && failed === ips.length) throw new Error('aucune adresse lue');
+  const byIp = new Map(ips.map((ip, i) => [ip, looked[i].ok ? looked[i].value : null]));
+  const items = sites.map((x, i) => {
+    const addr = resolved[i].ok ? resolved[i].value : [];
+    return exposureOf(x.host, x.kind, addr, addr.map((ip) => byIp.get(ip) ?? null), tracked);
+  });
+  return { readAt: new Date(now).toISOString(), items, unresolved: resolved.filter((r) => !r.ok).length, failed };
+}
+
 // ─── Collecte ───────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 const READERS = {
   radar: (now) => readRadar(now), abuse: (now) => readAbuse(now), ddosia: readDdosia, lookalikes: readLookalikes, cnil: (now) => readCnil(now),
-  epss: (now) => readEpss(now), euvd: (now) => readEuvd(now), services: readServices, targets: readTargets,
+  epss: (now) => readEpss(now), euvd: (now) => readEuvd(now), services: readServices, targets: readTargets, exposure: readExposure,
 };
 
 /** Réservé aux tests : lecteurs remplacés. */
@@ -632,9 +694,10 @@ async function collect(now) {
       next.failures[part] = sourceError(PREFIX[part], err);
     }
   };
-  // Sondes des sites visés après la lecture des listes de cibles : elles portent sur les sites de la liste du moment.
-  await Promise.all(work.filter((p) => p !== 'targets').map(run));
-  if (work.includes('targets')) await run('targets');
+  // Sondes des sites visés et exposition après la lecture des listes de cibles : elles portent sur les sites de la liste du moment.
+  const after = new Set(['targets', 'exposure']);
+  await Promise.all(work.filter((p) => !after.has(p)).map(run));
+  await Promise.all(work.filter((p) => after.has(p)).map(run));
   const dates = PARTS.map((p) => next[p]?.readAt).filter((d) => typeof d === 'string').sort();
   next.readAt = dates.at(-1) ?? null;
   next.errors = Object.values(next.failures);

@@ -3034,6 +3034,11 @@ export interface CyberWatchTarget {
   host: string; ok: boolean; status: number | null; ms: number | null; error: string | null; medianMs: number | null;
   state: 'joignable' | 'lent' | 'injoignable'; since: string | null;
 }
+/** Exposition d'un site sondé selon Shodan InternetDB (20/10/2026) : ports, logiciels, vulnérabilités connues et suivies. */
+export interface CyberWatchExposure {
+  host: string; kind: 'service public' | 'site visé'; ips: string[]; known: boolean; ports: number[]; portCount: number; products: string[];
+  tags: string[]; cdn: boolean; vulns: string[]; vulnCount: number; tracked: string[];
+}
 export interface CyberWatchResponse {
   readAt: string | null;
   radar: CyberWatchRadar | null;
@@ -3045,6 +3050,8 @@ export interface CyberWatchResponse {
   euvd: CyberWatchEuvd | null;
   services: { readAt: string; items: CyberWatchService[] } | null;
   targets: { readAt: string; items: CyberWatchTarget[] } | null;
+  /** Absent des réponses d'avant le 20/10/2026 : traité comme null. */
+  exposure?: { readAt: string; items: CyberWatchExposure[]; unresolved: number; failed: number } | null;
   errors: string[];
 }
 

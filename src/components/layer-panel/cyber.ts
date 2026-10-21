@@ -625,7 +625,7 @@ function methodSection(input: CyberViewInput): FicheSection {
     + note('Retard : CERT-FR lu il y a plus de 6 heures, catalogue KEV il y a plus de 26 heures, fichier de ransomware.live publié il y a plus de '
       + '24 heures, liste de Have I Been Pwned lue il y a plus de 26 heures, flux de Cybermalveillance.gouv.fr lus il y a plus de 6 heures.')
     + note('Carte : aucune de ces sources ne publie de lieu ; seules les cibles françaises des hacktivistes dont le lieu se déduit du domaine sont placées.')
-    + note('Retirés : exposition Shodan et Censys, FrenchBreaches, fuites de plus de 30 jours, titres et domaines des fuites, CVE mondiales hors catalogue KEV.')
+    + note('Retirés : recherche Shodan payante et Censys (remplacées par Shodan InternetDB, gratuit, sur les sites sondés), FrenchBreaches, fuites de plus de 30 jours, titres et domaines des fuites, CVE mondiales hors catalogue KEV.')
     + readErrors(c !== null ? c.errors.map(glueSovUnits) : [])
     + cyberWatchMethodRows(input.watch ?? null, now);
   return { id: 'methode', title: 'Méthode et sources', collapsible: true, open: open('methode', false), tone: 'reference', html, summary: summaryText('13 sources') };

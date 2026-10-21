@@ -3,7 +3,7 @@
 import { deflateRawSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import {
-  brandOf, communeCandidates, communeOf, euvdDay, hostKind, hourly, isFrenchHost, lastVsMedian, parseCnil, parseEuvd, parseFeodo, parseUrlhaus,
+  brandOf, communeCandidates, communeOf, euvdDay, exposureOf, hostKind, hourly, isFrenchHost, lastVsMedian, parseCnil, parseEuvd, parseFeodo, parseUrlhaus,
   prefectureOf, publicWatch, radarBgp, radarSeries, slug, targetState, trackedCves, unzipFirst,
 } from '../api/_lib/cyber-watch.js';
 
@@ -119,6 +119,16 @@ describe('veille cyber élargie : domaines imitateurs', () => {
   });
 });
 
+describe('veille cyber élargie : exposition (Shodan InternetDB)', () => {
+  it('ports, logiciels, vulnérabilités suivies ; adresse inconnue ; CDN', () => {
+    const rec = { ports: [443, 80], cpes: ['cpe:/a:f5:big-ip', 'cpe:2.3:a:nginx:nginx:1.25.3:*:*:*:*:*:*:*'], tags: ['cdn'], vulns: ['CVE-2023-46747', 'CVE-2021-1111', 'pas-une-cve'] };
+    const e = exposureOf('www.exemple.fr', 'service public', ['1.2.3.4', '5.6.7.8'], [rec, null], ['CVE-2023-46747']);
+    expect(e).toMatchObject({ known: true, ports: [80, 443], portCount: 2, cdn: true, vulnCount: 2, tracked: ['CVE-2023-46747'] });
+    expect(e.products).toEqual(['f5 big-ip', 'nginx nginx 1.25.3']);
+    expect(exposureOf('x.fr', 'site visé', ['9.9.9.9'], [null], [])).toMatchObject({ known: false, ports: [], vulnCount: 0, tracked: [] });
+  });
+});
+
 describe('veille cyber élargie : réponse publique', () => {
   it('sans état interne (essais, configurations lues, cache des lieux, échantillons bruts)', () => {
     const body = publicWatch({
@@ -127,7 +137,7 @@ describe('veille cyber élargie : réponse publique', () => {
       lookalikes: { readAt: 'x', domains: [], perDay: [], days: ['2026-10-17'] },
       services: { readAt: 'x', items: [{ id: 'a', name: 'A', url: 'u', ok: true, samples: [[29_000_000, 300]] }] },
     });
-    expect(Object.keys(body).sort()).toEqual(['abuse', 'cnil', 'ddosia', 'epss', 'errors', 'euvd', 'lookalikes', 'radar', 'readAt', 'services', 'targets']);
+    expect(Object.keys(body).sort()).toEqual(['abuse', 'cnil', 'ddosia', 'epss', 'errors', 'euvd', 'exposure', 'lookalikes', 'radar', 'readAt', 'services', 'targets']);
     expect(body.ddosia).not.toHaveProperty('configsSeen');
     expect(body.lookalikes).not.toHaveProperty('days');
     expect(body.services.items[0]).not.toHaveProperty('samples');

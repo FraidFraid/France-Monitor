@@ -294,7 +294,7 @@ describe('vue Vigilance cyber (spec 2026-10-04 souveraineté § 2.3, amendement 
     expect(t).toContain('revendications de la semaine dépassent 1,5 fois la moyenne (jaune au plus');
     expect(t).not.toMatch(/3 fois la moyenne/);
     expect(t).toContain('aucune de ces sources ne publie de lieu');
-    expect(t).toContain('Retirés : exposition Shodan et Censys, FrenchBreaches, fuites de plus de 30\u00a0jours, titres et domaines des fuites, CVE mondiales hors catalogue KEV.');
+    expect(t).toContain('Retirés : recherche Shodan payante et Censys (remplacées par Shodan InternetDB, gratuit, sur les sites sondés), FrenchBreaches, fuites de plus de 30\u00a0jours, titres et domaines des fuites, CVE mondiales hors catalogue KEV.');
     expect(h).toContain('href="https://www.ransomware.live/t&amp;c"');
   });
 });
@@ -382,9 +382,10 @@ describe('hygiène du rendu', () => {
     for (const over of variants) {
       const h = html(over);
       expect(h).not.toMatch(/\u2014|&mdash;|monospace|#[0-9a-fA-F]{6}\b|rgba?\(/);
-      expect(visibleText(h).replace('Retirés : exposition Shodan et Censys', '')).not.toMatch(/temps réel|CACHE FIGÉ/i);
-      // Casse respectée : « Ransomware.live » est le nom de la source, pas un badge « LIVE ».
-      expect(visibleText(h).replace('Retirés : exposition Shodan et Censys', '')).not.toMatch(/\bLIVE\b|Shodan|Censys|\bNVD\b/);
+      expect(visibleText(h).replace(/Retirés : recherche Shodan payante et Censys[^.]*\./, '')).not.toMatch(/temps réel|CACHE FIGÉ/i);
+      // Casse respectée : « Ransomware.live » est le nom de la source, pas un badge « LIVE ». Shodan seulement sous le nom d'InternetDB
+      // (gratuit, sans clé, 20/10/2026) : la recherche Shodan payante et Censys restent retirées.
+      expect(visibleText(h).replace(/Retirés : recherche Shodan payante et Censys[^.]*\./, '').replace(/Shodan InternetDB/g, '')).not.toMatch(/\bLIVE\b|Shodan|Censys|\bNVD\b/);
     }
   });
   it('R1 : aucune valeur coupée entre nombre et unité', () => {

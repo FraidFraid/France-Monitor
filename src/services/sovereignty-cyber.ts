@@ -137,11 +137,20 @@ const target = record({
   host: str, ok: bool, status: num, ms: num, error: strOrNull, medianMs: num, state: value((v) => isOneOf(v, TARGET_STATES)), since: dateOrNull,
 });
 
+const EXPOSURE_KINDS: ReadonlySet<string> = new Set(['service public', 'site visé']);
+const isNumberList = (v: unknown): boolean => Array.isArray(v) && v.every((x) => typeof x === 'number' && Number.isInteger(x));
+const exposureItem = record({
+  host: str, kind: value((v) => isOneOf(v, EXPOSURE_KINDS)), ips: strings, known: bool, ports: value(isNumberList), portCount: count,
+  products: strings, tags: strings, cdn: bool, vulns: strings, vulnCount: count, tracked: strings,
+});
+
 const CYBER_WATCH_SHAPE = shapeOf<CyberWatchResponse>(record({
   readAt: dateOrNull, radar, abuse, ddosia, lookalikes, cnil, epss, euvd,
   services: nullable(record({ readAt: date, items: list(service, 'id') })),
-  targets: nullable(record({ readAt: date, items: list(target, 'host') })), errors: strings,
-}));
+  targets: nullable(record({ readAt: date, items: list(target, 'host') })),
+  // Exposition (Shodan InternetDB, 20/10/2026) : absente des réponses plus anciennes.
+  exposure: nullable(record({ readAt: date, items: list(exposureItem, 'host'), unresolved: count, failed: count })), errors: strings,
+}, ['exposure']));
 
 /** Écarts à la forme de /api/sovereignty/cyber-watch, nommés un par un ; liste vide : conforme. */
 export function cyberWatchProblems(v: unknown): string[] {

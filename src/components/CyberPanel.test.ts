@@ -45,7 +45,7 @@ describe('CyberPanel', () => {
     }
     expect(c.querySelector('.lp-tabs, canvas, .cyber-ring-container, .cyber-bento-grid')).toBeNull();
     // La méthode nomme une fois ce qui a été retiré ; rien d'autre.
-    expect((c.textContent ?? '').replace(/Retirés : exposition Shodan et Censys[^.]*\./, '')).not.toMatch(/TEMPS RÉEL|CACHE FIGÉ|temps réel|Shodan|Censys|NVD/);
+    expect((c.textContent ?? '').replace(/Retirés : recherche Shodan payante et Censys[^.]*\./, '').replace(/Shodan InternetDB/g, '')).not.toMatch(/TEMPS RÉEL|CACHE FIGÉ|temps réel|Shodan|Censys|NVD/);
   });
   it('mise à jour d’un panneau fermé sans le rouvrir ; null garde le dernier état ; fermer une seule fois ; destroy retire', () => {
     const { c, p } = mount();

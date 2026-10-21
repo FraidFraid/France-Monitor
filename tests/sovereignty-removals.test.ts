@@ -144,8 +144,9 @@ describe('retraits Souveraineté (spec 2026-10-04 souveraineté § 2.5, contrats
 
   it('plus aucun nom de source retirée dans le code de l’application ; aucun badge ni « Situation normale » dans les panneaux Souveraineté', () => {
     for (const f of APP) {
-      // La méthode du panneau Vigilance cyber nomme une fois ce qui a été retiré.
-      const text = code(f).replace('Retirés : exposition Shodan et Censys', '');
+      // La méthode du panneau Vigilance cyber nomme une fois ce qui a été retiré. Shodan InternetDB (gratuit, sans clé, 20/10/2026) est
+      // permis : seules la recherche Shodan payante (clé SHODAN_API_KEY) et Censys restent retirées.
+      const text = code(f).replace(/Retirés : recherche Shodan payante et Censys[^.]*\./, '').replace(/Shodan InternetDB|internetdb\.shodan\.io/g, '');
       expect(text.match(/Shodan|Censys|adsb\.fi|hexdb\.io|nvd\.nist/)?.[0] ?? null, f).toBeNull();
     }
     for (const f of [
