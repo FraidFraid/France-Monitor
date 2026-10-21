@@ -56,6 +56,7 @@ describe('pannes en cours : fusion des sources', () => {
 });
 
 const power = (over: Record<string, unknown> = {}) => ({
+  iipReadAt: '2026-10-21T11:55:00Z', edfReadAt: '2026-10-21T11:55:00Z',
   unplanned: [{ id: 'u1', name: 'PALUEL 1', lostMw: 1300, start: '2026-10-21T08:00:00Z', end: null }, { id: 'u2', name: 'FLAMANVILLE 2', lostMw: 1700, start: '2026-10-21T09:00:00Z', end: null }],
   transmission: { unplanned: [
     { id: '1', asset: 'Mandarins-Sellindge 1', start: '2026-10-21T07:00:00Z', end: null, publishedAt: '2026-10-21T07:05:00Z', reason: 'Défaillance' },
@@ -88,6 +89,11 @@ describe('pannes en cours : électricité, cloud et échelon', () => {
     expect(nat(2999)).toBeUndefined();
     expect(fleetLevel(3000)).toBe('orange');
     expect(fleetLevel(6000)).toBe('rouge');
+  });
+  it('électricité : relève RTE ou EDF de plus d’une heure ignorée (une source en retard ne compte pas)', () => {
+    expect(only({ power: power({ iipReadAt: '2026-10-21T10:30:00Z' }) }).some((o) => o.id.startsWith('electricite|ouvrage'))).toBe(false);
+    const stale = power({ edfReadAt: '2026-10-21T10:30:00Z', unplanned: [{ id: 'u', name: 'X', lostMw: 7000, start: '2026-10-21T08:00:00Z', end: null }] });
+    expect(only({ power: stale }).some((o) => o.id === 'electricite|national')).toBe(false);
   });
   it('cloud : incident en cours d’un fournisseur lu depuis moins de 2 h, niveau par impact, confirmée par la page d’état', () => {
     const all = only({ cloud: cloud() });

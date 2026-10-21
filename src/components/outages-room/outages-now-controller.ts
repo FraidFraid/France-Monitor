@@ -30,6 +30,8 @@ export interface OutagesNowControllerOptions<T> {
   loadDepts?: () => Promise<GeoJSON.FeatureCollection | null>;
   schedule: (fn: () => void, ms: number) => T;
   unschedule: (timer: T | null) => void;
+  /** Niveau de la panne la plus grave changé (voyant de l'onglet Pannes, repeint par App). */
+  onLevelChange?: (level: VigilanceLevel | null) => void;
 }
 
 export class OutagesNowController<T = unknown> {
@@ -75,7 +77,10 @@ export class OutagesNowController<T = unknown> {
         this.filter = n;
         this.paintMap();
       });
+      const room = this.room;
       this.depts ??= await (this.opts.loadDepts ?? loadDepartementsGeojson)();
+      // Onglet quitté pendant le chargement : la sortie a déjà tout remis en place.
+      if (this.room !== room) return;
       this.reschedule(ROOM_POLL_MS);
       await this.refresh();
     } else {
@@ -99,9 +104,16 @@ export class OutagesNowController<T = unknown> {
     this.timer = this.opts.schedule(() => { void this.refresh(); }, ms);
   }
 
+  private lastLevel: VigilanceLevel | null = null;
+
   private async refresh(): Promise<void> {
     this.data = await this.read();
     this.render();
+    const level = this.level();
+    if (level !== this.lastLevel) {
+      this.lastLevel = level;
+      this.opts.onLevelChange?.(level);
+    }
   }
 
   private render(): void {

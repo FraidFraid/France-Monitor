@@ -6,7 +6,7 @@ import { DEPARTEMENT_CENTERS } from '../config/departement-centers.ts';
 import { departementName } from './layer-panel/health-format.ts';
 import { NBSP } from './layer-panel/format.ts';
 import { parisClock } from './layer-panel/outages-format.ts';
-import { escapeHtml } from './france-intel-events.ts';
+import { escapeHtml, safeHref } from './france-intel-events.ts';
 import { levelColorVar } from '../services/vigilance.ts';
 import { NETWORK_LABEL, outageProof, SOURCE_LABEL } from '../services/outages-now.ts';
 import { parisDayOf } from '../services/environment-levels.ts';
@@ -41,7 +41,8 @@ function dot(level: OutageNow['level']): string {
 function evidenceHtml(o: OutageNow): string {
   return o.evidence.map((e) => {
     const text = escapeHtml(e.text);
-    const body = e.link ? `<a href="${escapeHtml(e.link)}" target="_blank" rel="noopener noreferrer">${text}</a>` : text;
+    const href = e.link === null ? null : safeHref(e.link);
+    const body = href ? `<a href="${href}" target="_blank" rel="noopener noreferrer">${text}</a>` : text;
     return `<li><b>${escapeHtml(SOURCE_LABEL[e.source])}</b>${NBSP}: ${body}</li>`;
   }).join('');
 }
@@ -62,7 +63,7 @@ export function renderOutagesNow(r: OutagesNowResponse, open: boolean, now: numb
       + `<div class="onb-meta">${escapeHtml(outageSince(o.since, now))} · ${escapeHtml(outageProof(o))}</div><ul>${evidenceHtml(o)}</ul></div></div>`;
   }).join('');
   const down = r.sources.filter((s) => !s.ok).map((s) => SOURCE_LABEL[s.source]);
-  const foot = `<p class="onb-foot">Téléphone et internet, tous opérateurs : presse (toutes les 5${NBSP}min), IODA et Cloudflare Radar (10${NBSP}min), ARCEP (un fichier par jour).`
+  const foot = `<p class="onb-foot">Téléphone mobile, internet, électricité et cloud, tous opérateurs${NBSP}: presse (toutes les 5${NBSP}min), IODA et Cloudflare Radar (10${NBSP}min), RTE et EDF (10${NBSP}min), pages d’état (30${NBSP}min), ARCEP (un fichier par jour).`
     + `${down.length > 0 ? ` Indisponibles ou en retard${NBSP}: ${escapeHtml(down.join(', '))}.` : ''}</p>`;
   return `${head}<div class="onb-list">${rows}${foot}</div>`;
 }

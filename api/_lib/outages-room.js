@@ -2,7 +2,7 @@
 // server/prod/outages-collectors.mjs) : relevés déjà tenus par les routes /api/outages/* (aucune lecture de source de plus), fusion
 // (outages-now.js), comparaison à l'état précédent (outages-journal.js). État et journal (7 jours) gardés en mémoire et dans le
 // stockage clé-valeur, écrit seulement quand l'état change ; relus au redémarrage. Sans collecteur (serveur de dev), calcul à la demande.
-import { kvGetJson, kvWriteJson } from './kv-history.js';
+import { kvReadJson, kvWriteJson } from './kv-history.js';
 import { diffOutages } from './outages-journal.js';
 import { ARCEP_MAX_AGE_MS, CLOUD_MAX_AGE_MS, LIVE_MAX_AGE_MS, outagesNow } from './outages-now.js';
 import { loadCloud } from '../_handlers/outages/cloud.js';
@@ -22,7 +22,7 @@ export const SNAPSHOT_JOURNAL = 50;
 
 const DEFAULT_READERS = { readTelecom: loadTelecom, readInternet: loadInternet, readPower: loadPower, readCloud: loadCloud };
 
-/** @type {{ state: any, journal: any[], tickAt: number, outages: any[], sources: any[], errors: string[] } | null} */
+/** @type {{ loaded: boolean, state: any, journal: any[], tickAt: number, outages: any[], sources: any[], errors: string[] } | null} */
 let room = null;
 /** @type {Promise<void> | null} */
 let running = null;
@@ -48,22 +48,29 @@ async function settle(read, now) {
 }
 
 async function run(now, readers) {
-  if (room === null) {
-    const stored = await kvGetJson(ROOM_KEY, now);
-    room = { state: stored?.state ?? null, journal: Array.isArray(stored?.journal) ? stored.journal : [], tickAt: 0, outages: [], sources: [], errors: [] };
+  // État relu tant qu'une lecture n'a pas abouti : sur une panne du stockage, on sert les pannes du moment sans journal et sans
+  // rien écrire (un état vide écraserait le journal de 7 jours).
+  if (room === null || !room.loaded) {
+    const read = await kvReadJson(ROOM_KEY, now);
+    const stored = read.value;
+    room = {
+      ...(room ?? { tickAt: 0, outages: [], sources: [], errors: [] }),
+      loaded: !read.failed, state: stored?.state ?? null, journal: Array.isArray(stored?.journal) ? stored.journal : [],
+    };
   }
   const [telecom, internet, power, cloud] = await Promise.all([
     settle(readers.readTelecom, now), settle(readers.readInternet, now), settle(readers.readPower, now), settle(readers.readCloud, now),
   ]);
   const outages = outagesNow({ telecom, internet, power, cloud, now });
-  const { state, entries } = diffOutages(room.state, outages, now);
+  const loaded = room.loaded;
+  const { state, entries } = loaded ? diffOutages(room.state, outages, now) : { state: room.state, entries: [] };
   const cut = now - JOURNAL_MAX_AGE_MS;
   const journal = [...entries.reverse(), ...room.journal].filter((e) => Date.parse(e.at) >= cut);
   const changed = room.state === null || entries.length > 0 || journal.length !== room.journal.length
     || JSON.stringify(state.items) !== JSON.stringify(room.state.items);
-  if (changed) await kvWriteJson(ROOM_KEY, { state, journal }, ROOM_TTL_SEC, now);
+  if (loaded && changed) await kvWriteJson(ROOM_KEY, { state, journal }, ROOM_TTL_SEC, now);
   room = {
-    state, journal, tickAt: now, outages,
+    loaded, state, journal, tickAt: now, outages,
     sources: [
       { source: 'presse', readAt: telecom?.press ? iso(now) : null, ok: Array.isArray(telecom?.press) },
       { source: 'arcep', readAt: telecom?.file?.publishedAt ?? null, ok: fresh(telecom?.file?.publishedAt, now, ARCEP_MAX_AGE_MS) },

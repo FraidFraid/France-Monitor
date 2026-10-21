@@ -2,7 +2,7 @@
 // encart « national et sans lieu », fil des changements, détail d'une panne. Aucun accès réseau ni DOM ; tout texte venu d'une
 // source est échappé.
 import type { OutageJournalEntry, OutageNetwork, OutageNow, OutageNowSource, OutagesNowResponse } from '../../types/index.ts';
-import { escapeHtml } from '../france-intel-events.ts';
+import { escapeHtml, safeHref } from '../france-intel-events.ts';
 import { departementName } from '../layer-panel/health-format.ts';
 import { NBSP } from '../layer-panel/format.ts';
 import { parisClock } from '../layer-panel/outages-format.ts';
@@ -14,9 +14,12 @@ const LEVEL_WORD = { jaune: 'Vigilance', orange: 'Alerte', rouge: 'Crise' } as c
 const NETWORKS: readonly OutageNetwork[] = ['mobile', 'internet', 'electricite', 'cloud'];
 /** Réseaux sans source temps réel (recherche du 21/10/2026) : la case dit le manque. */
 const NO_SOURCE: readonly string[] = ['Gaz', 'Eau', 'Numéros d’urgence', 'Paiement'];
-/** Sources qui mesurent chaque réseau : un réseau sans panne n'est vert que si l'une d'elles est fraîche. */
+/**
+ * Sources qui mesurent chaque réseau : un réseau sans panne n'est vert que si l'une d'elles est fraîche. La presse n'y figure pas :
+ * l'absence d'article ne mesure rien (spec § 3).
+ */
 export const NETWORK_SOURCES: Readonly<Record<OutageNetwork, readonly OutageNowSource[]>> = {
-  mobile: ['presse', 'arcep'], internet: ['ioda', 'radar'], electricite: ['rte', 'edf'], cloud: ['statut'],
+  mobile: ['arcep'], internet: ['ioda', 'radar'], electricite: ['rte', 'edf'], cloud: ['statut'],
 };
 const VERB: Readonly<Record<OutageJournalEntry['kind'], string>> = {
   nouvelle: 'nouvelle panne', aggravee: 'aggravée', attenuee: 'atténuée', confirmee: 'confirmée', retablie: 'rétablie',
@@ -66,14 +69,15 @@ export function feedHtml(journal: readonly OutageJournalEntry[], filter: OutageN
   const rows = journal.filter(keep(filter)).map((e) => `<button type="button" class="orm-item" data-outage="${escapeHtml(e.id)}">${dot(e.kind === 'retablie' ? 'vert' : e.level)}`
     + `<span><b>${clock(e.at)} · ${VERB[e.kind]} · ${escapeHtml(`${NETWORK_LABEL[e.network]} · ${entryName(e)}`)}</b>`
     + `<small>${e.kind === 'retablie' ? 'rétablie' : LEVEL_WORD[e.level]} · ${RUNG_LABEL[e.rung]}</small></span></button>`).join('');
-  return `<h3>Fil en direct</h3>${rows || '<p class="orm-empty">Aucun changement enregistré sur 7 jours.</p>'}`;
+  return `<h3>Fil en direct</h3>${rows || `<p class="orm-empty">Aucun changement enregistré sur 7${NBSP}jours.</p>`}`;
 }
 
 /** Détail d'une panne : niveau, échelon, depuis, preuves, chronologie. */
 export function detailHtml(o: OutageNow, journal: readonly OutageJournalEntry[], now: number): string {
   const proofs = o.evidence.map((e) => {
     const t = escapeHtml(e.text);
-    return `<li><b>${escapeHtml(SOURCE_LABEL[e.source])}</b>${NBSP}: ${e.link ? `<a href="${escapeHtml(e.link)}" target="_blank" rel="noopener noreferrer">${t}</a>` : t}</li>`;
+    const href = e.link === null ? null : safeHref(e.link);
+    return `<li><b>${escapeHtml(SOURCE_LABEL[e.source])}</b>${NBSP}: ${href ? `<a href="${href}" target="_blank" rel="noopener noreferrer">${t}</a>` : t}</li>`;
   }).join('');
   const story = journal.filter((e) => e.id === o.id).map((e) => `<li>${clock(e.at)} · ${VERB[e.kind]} (${LEVEL_WORD[e.level]})</li>`).join('');
   return `<div class="orm-detail"><button type="button" class="orm-back" data-back>← fil</button>`

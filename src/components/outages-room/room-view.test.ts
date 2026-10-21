@@ -27,6 +27,8 @@ const body = (over: Partial<OutagesNowResponse> = {}): OutagesNowResponse => ({
   errors: [],
   ...over,
 });
+/** HTML de la seule case d'un réseau. */
+const cell = (html: string, net: string): string => html.match(new RegExp(`<button[^>]*data-net="${net}"[\\s\\S]*?</button>`))?.[0] ?? '';
 const text = (html: string): string => html.replace(/<[^>]+>/g, ' ').replace(/[ \t\n]+/g, ' ');
 
 describe('salle des pannes : barre des réseaux', () => {
@@ -38,10 +40,12 @@ describe('salle des pannes : barre des réseaux', () => {
   });
   it('voyant : niveau de la panne la plus grave ; sans panne, vert seulement avec une source fraîche, sinon n.d.', () => {
     const html = networkStrip(body(), null, NOW);
-    expect(html).toMatch(/data-net="mobile"[^>]*>[\s\S]*?orm-dot--orange/);
-    expect(html).toMatch(/data-net="cloud"[^>]*>[\s\S]*?orm-dot--vert/);
-    expect(html).toMatch(/data-net="electricite"[^>]*>[\s\S]*?orm-dot--nd/);
+    expect(cell(html, 'mobile')).toContain('orm-dot--orange');
+    expect(cell(html, 'cloud')).toContain('orm-dot--vert');
+    expect(cell(html, 'electricite')).toContain('orm-dot--nd');
     expect(networkStrip(body(), 'internet', NOW)).toContain('data-net="internet" aria-pressed="true"');
+    // La presse ne mesure rien : ARCEP en retard, téléphone mobile sans panne = n.d., jamais vert (spec § 3).
+    expect(cell(networkStrip(body({ outages: [] }), null, NOW), 'mobile')).toContain('orm-dot--nd');
   });
 });
 
@@ -56,7 +60,7 @@ describe('salle des pannes : encart national, fil, détail', () => {
     expect(t).toContain('Oise (60)');
     expect(t).toContain('aggravée');
     expect(text(feedHtml(body().journal, 'mobile', NOW))).not.toContain('Oise');
-    expect(text(feedHtml([], null, NOW))).toContain('Aucun changement');
+    expect(text(feedHtml([], null, NOW))).toContain(`Aucun changement enregistré sur 7${NBSP}jours`);
   });
   it('détail : preuves avec lien, chronologie de la panne, texte des sources échappé', () => {
     const o = outage({ evidence: [{ source: 'presse', text: '<img src=x onerror=alert(1)>', at: null, link: 'https://ex.fr/a' }] });
@@ -66,5 +70,11 @@ describe('salle des pannes : encart national, fil, détail', () => {
     expect(html).toContain('href="https://ex.fr/a"');
     expect(text(html)).toContain('signalée, non confirmée');
     expect(text(html)).toContain('aggravée');
+  });
+  it('lien de preuve : http(s) seulement, jamais javascript:', () => {
+    const o = outage({ evidence: [{ source: 'presse', text: 'piège', at: null, link: 'javascript:alert(1)' }] });
+    const html = detailHtml(o, [], NOW);
+    expect(html).not.toContain('javascript:');
+    expect(html).toContain('piège');
   });
 });

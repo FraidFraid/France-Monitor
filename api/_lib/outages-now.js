@@ -116,12 +116,14 @@ export function outagesNow({ telecom, internet, power, cloud, now }) {
   }
 
   // Électricité : ouvrages de transport RTE en coupure imprévue ; arrêts imprévus de production de 3 GW ou plus.
-  if (power) {
+  if (power && fresh(power.iipReadAt, now, LIVE_MAX_AGE_MS)) {
     for (const t of power.transmission?.unplanned ?? []) {
       if (t.end !== null && Date.parse(t.end) <= now) continue;
       add('electricite', `ouvrage:${t.asset}`, { scope: 'inconnu', operator: 'RTE', dept: null, label: t.asset },
         { source: 'rte', level: 'orange', since: t.start, text: `coupure imprévue de l’ouvrage de transport ${t.asset}${t.reason ? ` (${t.reason})` : ''}` });
     }
+  }
+  if (power && fresh(power.edfReadAt, now, LIVE_MAX_AGE_MS)) {
     const lost = (power.unplanned ?? []).reduce((sum, u) => sum + (u.lostMw ?? 0), 0);
     if (lost >= FLEET_ORANGE_MW) {
       const since = (power.unplanned ?? []).map((u) => u.start).sort()[0] ?? null;

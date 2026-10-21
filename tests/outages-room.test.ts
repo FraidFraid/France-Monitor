@@ -48,6 +48,20 @@ describe('control room : tick et journal', () => {
     await tickOutagesRoom(T0 + 60_000, readers);
     expect((await roomSnapshot(T0 + 61_000, readers)).journal).toEqual([]);
   });
+  it('redémarrage pendant une panne de Redis : aucune écriture (le journal de 7 jours n’est pas écrasé), relu au tick suivant', async () => {
+    await tickOutagesRoom(T0, readers);
+    pressList = [press('Orange'), press('SFR')];
+    await tickOutagesRoom(T0 + 60_000, readers);
+    const saved = store.get('out:room:v1');
+    __resetKvForTests(); __resetRoomForTests();
+    __setKvClientForTests({ get: async () => { throw new Error('Upstash'); }, set: async (k: string, v: string) => { writes += 1; store.set(k, v); } });
+    await tickOutagesRoom(T0 + 120_000, readers);
+    expect(store.get('out:room:v1')).toBe(saved);
+    __setKvClientForTests({ get: async (k: string) => store.get(k) ?? null, set: async (k: string, v: string) => { writes += 1; store.set(k, v); } });
+    await tickOutagesRoom(T0 + 180_000, readers);
+    const snap = await roomSnapshot(T0 + 181_000, readers);
+    expect(snap.journal.map((e) => [e.kind, e.id])).toEqual([['nouvelle', 'mobile|op:SFR']]);
+  });
   it('journal : plus récent d’abord, purgé au-delà de 7 jours, filtré par roomJournal(since)', async () => {
     await tickOutagesRoom(T0, readers);
     pressList = [];

@@ -4610,6 +4610,7 @@ export class App {
         },
         schedule: (fn, ms) => this.registerPausableInterval(fn, ms),
         unschedule: (timer) => this.removePausableInterval(timer),
+        onLevelChange: () => this.repaintPoste(),
       });
       await this.outagesNow.start();
       this.syncOutagesRoom();

@@ -34,8 +34,15 @@ describe('bandeau Pannes en cours', () => {
     expect(html).toContain('data-dept="32"');
     expect(html).toContain('coupure &lt;b&gt;');
     expect(html).toContain(`Indisponibles ou en retard${NBSP}: Cloudflare Radar`);
+    expect(html).toContain('Téléphone mobile, internet, électricité et cloud');
     const [first] = body().outages;
     if (first) expect(outageName({ ...first, national: false })).toBe('Orange');
+  });
+  it('lien de preuve : http(s) seulement, jamais javascript:', () => {
+    const b = body();
+    const [first] = b.outages;
+    if (first) first.evidence = [{ source: 'presse', text: 'piège', at: null, link: 'javascript:alert(1)' }];
+    expect(renderOutagesNow(b, true, NOW)).not.toContain('javascript:');
   });
   it('aucune panne : bandeau masqué ; clic sur la tête : déplié ; clic sur un département : recentrage', () => {
     const host = document.createElement('div');

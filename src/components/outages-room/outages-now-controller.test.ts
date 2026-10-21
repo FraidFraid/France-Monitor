@@ -16,7 +16,7 @@ const body: OutagesNowResponse = {
 };
 const depts: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [{ type: 'Feature', properties: { code: '13' }, geometry: { type: 'Point', coordinates: [5, 43.5] } }] };
 
-function setup() {
+function setup(loadDepts: () => Promise<GeoJSON.FeatureCollection | null> = async () => depts) {
   const mapEl = document.createElement('div');
   const calls: Array<unknown> = [];
   const timers: number[] = [];
@@ -25,7 +25,7 @@ function setup() {
     mapEl,
     map: { setOutagesRoom: (s) => calls.push(s), flyTo: (lon, lat, zoom) => flights.push([lon, lat, zoom]), refitFrance: () => flights.push([]) },
     read: async () => body,
-    loadDepts: async () => depts,
+    loadDepts,
     schedule: (_fn, ms) => { timers.push(ms); return ms; },
     unschedule: () => undefined,
   });
@@ -62,4 +62,31 @@ describe('pilote des pannes en cours', () => {
     expect(flights.at(-1)).toEqual([]);
     expect(ROOM_POLL_MS).toBe(60_000);
   });
+  it('sortie de l’onglet pendant le chargement des départements : relève revenue à 2 min, calques retirés', async () => {
+    let release: (v: GeoJSON.FeatureCollection) => void = () => undefined;
+    const slow = new Promise<GeoJSON.FeatureCollection>((r) => { release = r; });
+    const { mapEl, calls, timers, ctl } = setup(() => slow);
+    await ctl.start();
+    const entering = ctl.setRoomActive(true);
+    await ctl.setRoomActive(false);
+    release(depts);
+    await entering;
+    expect(timers.at(-1)).toBe(OUTAGES_NOW_POLL_MS);
+    expect(calls.at(-1)).toBeNull();
+    expect(mapEl.querySelector('.orm')).toBeNull();
+  });
+  it('niveau changé : App prévenue (voyant de l’onglet Pannes) ; inchangé : rien', async () => {
+    const levels: Array<string | null> = [];
+    const ctl = new OutagesNowController({
+      mapEl: document.createElement('div'),
+      map: { setOutagesRoom: () => undefined, flyTo: () => undefined, refitFrance: () => undefined },
+      read: async () => body, loadDepts: async () => depts,
+      schedule: (fn) => { fn(); return 0; }, unschedule: () => undefined,
+      onLevelChange: (l) => levels.push(l),
+    });
+    await ctl.start();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(levels).toEqual(['rouge']);
+  });
 });
+
