@@ -1338,6 +1338,18 @@
     S.m = window._franceMonitorMap;
     const lib = window.__fmMaquette ?? {};
     fmIcon = lib.fmIcon ?? (await import('/src/components/shared/icons.ts')).fmIcon;
+    // Calques de l'app remplacés par cette carte : masqués dès que l'onglet est choisi et jamais rallumés tant qu'il l'est
+    // (20/10/2026). Sinon ils restaient visibles le temps du chargement de cette carte, puis revenaient quand l'app relisait ses
+    // données, jusqu'à la vérification suivante.
+    const setLayout = S.m.setLayoutProperty.bind(S.m);
+    S.m.setLayoutProperty = (id, key, value, options) =>
+      setLayout(id, key, key === 'visibility' && value === 'visible' && HIDE.includes(id) && isSec() ? 'none' : value, options);
+    const hideNative = () => {
+      if (!isSec()) return;
+      for (const id of HIDE) if (S.m.getLayer(id) && S.m.getLayoutProperty(id, 'visibility') !== 'none') setLayout(id, 'visibility', 'none');
+    };
+    new MutationObserver(hideNative).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-pressed'] });
+    hideNative();
     // Rien n'est chargé tant que l'onglet Sécurité et défense n'a pas été ouvert.
     while (!isSec()) await wait(1000);
     for (let i = 0; i < 120 && !S.m.getLayer('military-bases-circle'); i += 1) await wait(250);
@@ -1370,6 +1382,10 @@
     S.m.on('idle', calm);
     // Changement d'onglet : la carte Sécurité se retire ou revient sans attendre un mouvement de la carte.
     setInterval(() => { if (isSec() !== Boolean(S.wasSec)) applyFocus(); }, 700);
+    // Onglet changé : réaction immédiate (20/10/2026), avant que l'image suivante montre les anciennes couches de l'app pendant
+    // jusqu'à 700 ms ; l'intervalle ci-dessus reste en filet de sécurité.
+    new MutationObserver(() => { if (isSec() !== Boolean(S.wasSec)) applyFocus(); })
+      .observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-pressed'] });
     S.m.on('move', placePop);
     S.m.on('mousemove', onMove);
     S.m.getCanvas().addEventListener('mouseleave', () => setDeptHover(null));

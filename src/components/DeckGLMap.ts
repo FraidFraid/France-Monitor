@@ -833,8 +833,8 @@ export class DeckGLMap {
         // Carte Santé (18/10/2026) : même mécanique, active seulement dans l'onglet Santé.
         for (const name of ['maquette-securite', 'maquette-sante']) {
           const sc = document.createElement('script');
-          // Version du jour : le navigateur ne garde pas une ancienne version plus d'une journée.
-          sc.src = `/${name}.js?v=${new Date().toISOString().slice(0, 10)}`;
+          // Version du build : un déploiement est pris tout de suite (avec la date du jour, l'ancienne version restait la journée).
+          sc.src = `/${name}.js?v=${__BUILD_ID__}`;
           document.head.appendChild(sc);
         }
       });

@@ -104,6 +104,8 @@ export default defineConfig(({ mode }) => {
   return {
     define: {
       __APP_VERSION__: JSON.stringify(pkg.version),
+      // Identifiant du build : version des scripts autonomes de public/ (cartes Sécurité et Santé), changée à chaque déploiement.
+      __BUILD_ID__: JSON.stringify(Date.now().toString(36)),
     },
     plugins: [
       rssProxyPlugin(),
