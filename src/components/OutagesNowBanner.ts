@@ -8,16 +8,21 @@ import { NBSP } from './layer-panel/format.ts';
 import { parisClock } from './layer-panel/outages-format.ts';
 import { escapeHtml } from './france-intel-events.ts';
 import { levelColorVar } from '../services/vigilance.ts';
-import { outageProof, SOURCE_LABEL } from '../services/outages-now.ts';
+import { NETWORK_LABEL, outageProof, SOURCE_LABEL } from '../services/outages-now.ts';
 import { parisDayOf } from '../services/environment-levels.ts';
 
 const LEVEL_WORD = { jaune: 'Vigilance', orange: 'Alerte', rouge: 'Crise' } as const;
 
-/** Nom de la panne : opérateur (« nationale » si dite telle), département, ou pays entier. */
-export function outageName(o: OutageNow): string {
+/** Nom de la panne : opérateur (« nationale » si dite telle), département, ouvrage, ou pays entier. */
+export function outageName(o: Pick<OutageNow, 'scope' | 'dept' | 'operator' | 'label' | 'national'>): string {
   if (o.scope === 'departement' && o.dept !== null) return `${departementName(o.dept)} (${o.dept})`;
   if (o.scope === 'operateur') return `${o.operator ?? o.label ?? 'Opérateur'}${o.national ? ', panne nationale' : ''}`;
   return o.label ?? 'France entière';
+}
+
+/** « Téléphone mobile · Orange, panne nationale » : le réseau d'abord. */
+export function outageTitle(o: OutageNow): string {
+  return `${NETWORK_LABEL[o.network]} · ${outageName(o)}`;
 }
 
 /** « depuis 12 h 00 » le jour même, « depuis le 20/10 à 23 h 10 » sinon. */
@@ -47,12 +52,12 @@ export function renderOutagesNow(r: OutagesNowResponse, open: boolean, now: numb
   if (top === undefined) return '';
   const more = rest.length > 0 ? ` <span class="onb-more">+${NBSP}${rest.length}${NBSP}autre${rest.length > 1 ? 's' : ''}</span>` : '';
   const head = `<button type="button" class="onb-head" aria-expanded="${open}">${dot(top.level)}<span class="onb-title">Panne en cours${NBSP}: `
-    + `${escapeHtml(outageName(top))}</span><span class="onb-meta">${escapeHtml(outageSince(top.since, now))} · ${escapeHtml(outageProof(top))}</span>${more}`
+    + `${escapeHtml(outageTitle(top))}</span><span class="onb-meta">${escapeHtml(outageSince(top.since, now))} · ${escapeHtml(outageProof(top))}</span>${more}`
     + `<span class="onb-chev">${open ? '▾' : '▴'}</span></button>`;
   if (!open) return head;
   const rows = r.outages.map((o) => {
     const focus = o.scope === 'departement' && o.dept !== null ? ` data-dept="${escapeHtml(o.dept)}" role="button" tabindex="0"` : '';
-    return `<div class="onb-row${focus ? ' is-link' : ''}"${focus}>${dot(o.level)}<div><div class="onb-row-title">${escapeHtml(outageName(o))}`
+    return `<div class="onb-row${focus ? ' is-link' : ''}"${focus}>${dot(o.level)}<div><div class="onb-row-title">${escapeHtml(outageTitle(o))}`
       + ` <span class="onb-level" style="color:${levelColorVar(o.level)}">${LEVEL_WORD[o.level]}</span></div>`
       + `<div class="onb-meta">${escapeHtml(outageSince(o.since, now))} · ${escapeHtml(outageProof(o))}</div><ul>${evidenceHtml(o)}</ul></div></div>`;
   }).join('');

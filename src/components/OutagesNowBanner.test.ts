@@ -21,15 +21,16 @@ const body = (): OutagesNowResponse => ({
 describe('bandeau Pannes en cours', () => {
   it('fermé : la plus grave, depuis quand, presse seule dite non confirmée, « + 1 autre »', () => {
     const text = renderOutagesNow(body(), false, NOW).replace(/<[^>]+>/g, '');
-    expect(text).toContain(`Panne en cours${NBSP}: Orange, panne nationale`);
+    expect(text).toContain(`Panne en cours${NBSP}: Téléphone mobile · Orange, panne nationale`);
     expect(text).toContain(`depuis 12${NBSP}h${NBSP}00`);
-    expect(text).toContain('presse seule, non confirmée par une mesure');
+    expect(text).toContain('signalée, non confirmée : presse');
     expect(text).toContain(`+${NBSP}1${NBSP}autre`);
   });
   it('ouvert : chaque panne avec ses preuves, texte échappé, département cliquable, sources en défaut', () => {
     const html = renderOutagesNow(body(), true, NOW);
     expect(html).toContain('Gers (32)');
     expect(html).toContain('mesurée : ARCEP, IODA');
+    expect(html).toContain('Internet · Gers (32)');
     expect(html).toContain('data-dept="32"');
     expect(html).toContain('coupure &lt;b&gt;');
     expect(html).toContain(`Indisponibles ou en retard${NBSP}: Cloudflare Radar`);
