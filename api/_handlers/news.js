@@ -142,6 +142,89 @@ function toBooleanOrNull(value) {
   return null;
 }
 
+// ─── Instantané des dernières 24 h (20/10/2026) ───
+// La page demande les 1 000 derniers articles des 24 h toutes les 5 min (adresse nouvelle à chaque palier) : environ 1 Mo lu sur Neon
+// à chaque fois, l'essentiel avec la passe des événements du transfert mensuel du palier gratuit (5 Go). Le processus d'API garde ces
+// articles en mémoire : relecture complète toutes les 3 h, et entre deux, seulement les articles collectés depuis (après chaque
+// passage d'ingestion, signalé par markNewsSnapshotStale, ou au plus tard toutes les 30 min). Seule la requête standard (since et
+// limit, since dans les 25 dernières heures) en profite ; toute autre requête va en base.
+const SNAPSHOT_FULL_MS = 3 * 60 * 60 * 1000;
+const SNAPSHOT_INCREMENT_MS = 30 * 60 * 1000;
+const SNAPSHOT_WINDOW_MS = 26 * 60 * 60 * 1000;
+const SNAPSHOT_MAX_SINCE_AGE_MS = 25 * 60 * 60 * 1000;
+const SELECT_COLUMNS = `
+      n.id, n.feed_id, f.name AS feed_name, f.region AS feed_region, f.tier,
+      n.title, n.link, n.description, n.published_at, n.collected_at,
+      n.category, n.severity, n.confidence, n.lat, n.lon, n.event_id, n.classifier_version,
+      to_jsonb(n)->>'relevance' AS relevance,
+      to_jsonb(n)->>'is_noise' AS is_noise,
+      to_jsonb(n)->>'alertable' AS alertable,
+      to_jsonb(n)->>'scope' AS scope,
+      to_jsonb(n)->>'reported_severity' AS reported_severity,
+      to_jsonb(n)->>'temporality' AS temporality,
+      to_jsonb(n)->>'zone' AS zone,
+      to_jsonb(n)->>'reasons' AS reasons`;
+
+/** @type {{ items: object[], fullAt: number, incrementAt: number, maxCollectedMs: number, stale: boolean } | null} */
+let snapshot = null;
+/** @type {Promise<void> | null} */
+let snapshotInFlight = null;
+
+/** Fin d'un passage d'ingestion : les articles collectés depuis la dernière lecture seront lus à la prochaine requête. */
+export function markNewsSnapshotStale() {
+  if (snapshot) snapshot.stale = true;
+}
+
+/** Réservé aux tests. */
+export function resetNewsSnapshot() {
+  snapshot = null;
+  snapshotInFlight = null;
+}
+
+const publishedMs = (item) => (item.publishedAt ? Date.parse(item.publishedAt) : -Infinity);
+const collectedMs = (item) => (item.collectedAt ? Date.parse(item.collectedAt) : -Infinity);
+/** Ordre de la requête SQL : publication décroissante (sans date en dernier), puis id décroissant. */
+const byPublishedDesc = (a, b) => publishedMs(b) - publishedMs(a) || (b.id ?? 0) - (a.id ?? 0);
+
+/** Requête standard (since et limit seulement, since récent) : servie par l'instantané. */
+export function isSnapshotQuery(searchParams, since, now) {
+  for (const key of searchParams.keys()) if (key !== 'since' && key !== 'limit') return false;
+  return now - since.getTime() <= SNAPSHOT_MAX_SINCE_AGE_MS;
+}
+
+async function refreshSnapshot(sql, now) {
+  if (snapshot === null || now - snapshot.fullAt >= SNAPSHOT_FULL_MS || now < snapshot.fullAt) {
+    const rows = await sql.query(`
+      SELECT ${SELECT_COLUMNS}
+      FROM news_items n
+      LEFT JOIN feeds f ON f.id = n.feed_id
+      WHERE n.published_at >= $1
+      ORDER BY n.published_at DESC NULLS LAST, n.id DESC
+      LIMIT $2
+    `, [new Date(now - SNAPSHOT_WINDOW_MS).toISOString(), MAX_LIMIT]);
+    const items = rows.map(mapNewsRow);
+    snapshot = { items, fullAt: now, incrementAt: now, maxCollectedMs: Math.max(-Infinity, ...items.map(collectedMs)), stale: false };
+    return;
+  }
+  if (!snapshot.stale && now - snapshot.incrementAt < SNAPSHOT_INCREMENT_MS) return;
+  // Articles collectés depuis la dernière lecture (bornes incluses, doublons écartés par id).
+  const from = Number.isFinite(snapshot.maxCollectedMs) ? new Date(snapshot.maxCollectedMs).toISOString() : new Date(now - SNAPSHOT_WINDOW_MS).toISOString();
+  const rows = await sql.query(`
+    SELECT ${SELECT_COLUMNS}
+    FROM news_items n
+    LEFT JOIN feeds f ON f.id = n.feed_id
+    WHERE n.collected_at >= $1 AND n.published_at >= $2
+  `, [from, new Date(now - SNAPSHOT_WINDOW_MS).toISOString()]);
+  const fresh = rows.map(mapNewsRow);
+  const ids = new Set(fresh.map((i) => i.id));
+  const cut = now - SNAPSHOT_WINDOW_MS;
+  const items = [...snapshot.items.filter((i) => !ids.has(i.id) && publishedMs(i) >= cut), ...fresh].sort(byPublishedDesc).slice(0, MAX_LIMIT);
+  snapshot = {
+    items, fullAt: snapshot.fullAt, incrementAt: now, stale: false,
+    maxCollectedMs: Math.max(snapshot.maxCollectedMs, ...fresh.map(collectedMs)),
+  };
+}
+
 /**
  * Core query logic, shared between the Vercel handler and the Vite dev proxy.
  * @param {URLSearchParams} searchParams
@@ -197,6 +280,21 @@ export async function queryNews(searchParams) {
     conditions.push(`coalesce((to_jsonb(n)->>'is_noise')::boolean, false) = false`);
   }
 
+  if (isSnapshotQuery(searchParams, since, Date.now())) {
+    try {
+      const sql = neon(databaseUrl);
+      snapshotInFlight ??= refreshSnapshot(sql, Date.now()).finally(() => { snapshotInFlight = null; });
+      await snapshotInFlight;
+      const sinceMs = since.getTime();
+      const items = (snapshot?.items ?? []).filter((i) => publishedMs(i) >= sinceMs).slice(0, limit);
+      return { status: 200, body: { items, count: items.length, generatedAt: new Date().toISOString() } };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'unknown database error';
+      console.error('[api/news] snapshot refresh failed:', message);
+      return { status: 503, body: { error: 'news database unavailable' } };
+    }
+  }
+
   const until = parseDateParam(searchParams.get('until'), null);
   if (until) {
     params.push(until.toISOString());
@@ -213,18 +311,7 @@ export async function queryNews(searchParams) {
   const limitPlaceholder = `$${params.length}`;
 
   const queryText = `
-    SELECT
-      n.id, n.feed_id, f.name AS feed_name, f.region AS feed_region, f.tier,
-      n.title, n.link, n.description, n.published_at, n.collected_at,
-      n.category, n.severity, n.confidence, n.lat, n.lon, n.event_id, n.classifier_version,
-      to_jsonb(n)->>'relevance' AS relevance,
-      to_jsonb(n)->>'is_noise' AS is_noise,
-      to_jsonb(n)->>'alertable' AS alertable,
-      to_jsonb(n)->>'scope' AS scope,
-      to_jsonb(n)->>'reported_severity' AS reported_severity,
-      to_jsonb(n)->>'temporality' AS temporality,
-      to_jsonb(n)->>'zone' AS zone,
-      to_jsonb(n)->>'reasons' AS reasons
+    SELECT ${SELECT_COLUMNS}
     FROM news_items n
     LEFT JOIN feeds f ON f.id = n.feed_id
     WHERE ${conditions.join(' AND ')}

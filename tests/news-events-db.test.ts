@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 // @ts-expect-error — module JS sans déclaration de types
-import { ensureEventTables, runEventPass } from '../api/_lib/news-events-db.js';
+import { ensureEventTables, resetEventMembersCache, runEventPass } from '../api/_lib/news-events-db.js';
 import { createTestSql, seedFeeds, insertArticles, type Sql } from './helpers/pglite-sql.ts';
 
 const H = 60 * 60 * 1000;
@@ -33,6 +33,29 @@ describe('ensureEventTables', () => {
     await ensureEventTables(sql);
     const cols = await sql`SELECT column_name FROM information_schema.columns WHERE table_name = 'news_items' AND column_name = 'event_id'`;
     expect(cols).toHaveLength(1);
+  });
+});
+
+describe('runEventPass : transfert Neon', () => {
+  it('articles groupés relus une fois, puis tenus en mémoire : un second passage rattache sans les relire', async () => {
+    resetEventMembersCache();
+    const queries: string[] = [];
+    // Même connexion instrumentée pour les deux passages (le cache est lié à la connexion).
+    const counted = ((strings: TemplateStringsArray, ...values: unknown[]) => {
+      queries.push(strings.join('?'));
+      return sql(strings, ...values);
+    }) as unknown as Sql;
+    const memberReads = (): number => queries.filter((q) => q.includes('event_id IS NOT NULL')).length;
+    await insertArticles(sql, [{ id: 1, feedId: 'le-progres', title: RINER, publishedAt: T0 }]);
+    await runEventPass(counted, { now: T0 + H, insertedIds: [1] });
+    await insertArticles(sql, [{ id: 2, feedId: 'le-monde', title: 'Teddy Riner visé par des messages haineux, le parquet ouvre une enquête pour injures racistes', publishedAt: T0 + 1.5 * H }]);
+    const stats = await runEventPass(counted, { now: T0 + 2 * H, insertedIds: [2] });
+    expect(stats).toMatchObject({ considered: 1, attached: 1, created: 0 });
+    expect(memberReads()).toBe(1);
+    // Au-delà de 6 h : relecture complète.
+    await insertArticles(sql, [{ id: 3, feedId: 'sud-ouest', title: 'Gironde : le pont de Saint-Nazaire fermé pour travaux', publishedAt: T0 + 8 * H }]);
+    await runEventPass(counted, { now: T0 + 9 * H, insertedIds: [3] });
+    expect(memberReads()).toBe(2);
   });
 });
 

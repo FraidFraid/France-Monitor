@@ -62,6 +62,7 @@ import { buildState } from '../_lib/jev-questions.js';
 import { derive as deriveJevJudgment } from '../_lib/jev-policy.js';
 import { redisSet } from '../_utils/redis.js';
 import { ensureEventTables, runEventPass } from '../_lib/news-events-db.js';
+import { markNewsSnapshotStale } from '../_handlers/news.js';
 
 export const config = { maxDuration: 300 };
 
@@ -684,6 +685,8 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
 
     // 5. Rétention 90 jours
     await sql`DELETE FROM news_items WHERE collected_at < now() - interval '90 days'`;
+    // Articles du passage écrits (événements compris) : l'instantané de /api/news les lira à la prochaine requête.
+    markNewsSnapshotStale();
 
     tickSummary = {
       timestamp: new Date().toISOString(),

@@ -15,6 +15,43 @@ export const EVENTS_BUDGET_PER_TICK = 1000;
 const WINDOW_HOURS = 72;
 // Les membres couvrent la fenêtre de rattachement (72 h avant) plus les 6 h « après ».
 const MEMBER_WINDOW_HOURS = 78;
+/**
+ * Articles déjà groupés de la fenêtre, gardés en mémoire du processus d'API entre deux passages (20/10/2026) : les relire toutes les
+ * 30 min (8 à 11 000 lignes avec leur titre) consommait l'essentiel du transfert mensuel de Neon (palier gratuit, 5 Go). Relecture
+ * complète toutes les 6 h ou à la première passe ; entre deux, les rattachements écrits par la passe sont ajoutés localement. Lié à la
+ * connexion `sql` : une autre connexion (tests, autre base) relit tout.
+ */
+const MEMBERS_REFRESH_MS = 6 * 3600_000;
+/** @type {{ sql: unknown, at: number, rows: Map<number, { articleId: number, eventId: number, title: string, publishedAt: number, collectedAt: number, lat: number | null, lon: number | null }> } | null} */
+let membersCache = null;
+
+/** Réservé aux tests et à une reprise : oublie les articles groupés gardés en mémoire. */
+export function resetEventMembersCache() {
+  membersCache = null;
+}
+
+/** Articles groupés collectés après `memberStart` : mémoire, ou relecture complète si trop ancienne. */
+async function eventMembers(sql, memberStart, now) {
+  if (membersCache === null || membersCache.sql !== sql || now - membersCache.at >= MEMBERS_REFRESH_MS || now < membersCache.at) {
+    const rows = await sql`
+      SELECT n.id, n.event_id, n.title,
+             LEAST(coalesce(n.published_at, n.collected_at), n.collected_at + interval '1 hour') AS effective_at,
+             n.collected_at, n.lat, n.lon
+      FROM news_items n
+      WHERE n.event_id IS NOT NULL AND n.collected_at > ${memberStart}
+    `;
+    membersCache = {
+      sql, at: now,
+      rows: new Map(rows.map((r) => [Number(r.id), {
+        articleId: Number(r.id), eventId: Number(r.event_id), title: String(r.title), publishedAt: toMs(r.effective_at),
+        collectedAt: toMs(r.collected_at), lat: toNum(r.lat), lon: toNum(r.lon),
+      }])),
+    };
+  }
+  const start = Date.parse(memberStart);
+  for (const [id, m] of membersCache.rows) if (!(m.collectedAt > start)) membersCache.rows.delete(id);
+  return [...membersCache.rows.values()];
+}
 const RETENTION_DAYS = 90;
 
 /** @typedef {(strings: TemplateStringsArray, ...params: unknown[]) => Promise<Record<string, unknown>[]>} Sql */
@@ -82,7 +119,7 @@ export async function runEventPass(sql, options = {}) {
   const pending = await sql`
     SELECT n.id, n.title,
            LEAST(coalesce(n.published_at, n.collected_at), n.collected_at + interval '1 hour') AS effective_at,
-           n.lat, n.lon
+           n.collected_at, n.lat, n.lon
     FROM news_items n
     WHERE n.event_id IS NULL
       AND n.collected_at > ${windowStart}
@@ -93,16 +130,10 @@ export async function runEventPass(sql, options = {}) {
   stats.considered = pending.length;
 
   if (pending.length > 0 && Date.now() < deadline) {
-    const members = await sql`
-      SELECT n.id, n.event_id, n.title,
-             LEAST(coalesce(n.published_at, n.collected_at), n.collected_at + interval '1 hour') AS effective_at,
-             n.lat, n.lon
-      FROM news_items n
-      WHERE n.event_id IS NOT NULL AND n.collected_at > ${memberStart}
-    `;
+    const members = await eventMembers(sql, memberStart, now);
     const plan = planEventAssignments(
       pending.map((r) => ({ id: Number(r.id), title: String(r.title), publishedAt: toMs(r.effective_at), lat: toNum(r.lat), lon: toNum(r.lon) })),
-      members.map((r) => ({ articleId: Number(r.id), eventId: Number(r.event_id), title: String(r.title), publishedAt: toMs(r.effective_at), lat: toNum(r.lat), lon: toNum(r.lon) })),
+      members.map(({ collectedAt: _collectedAt, ...m }) => m),
     );
     stats.skipped = plan.skipped.length;
     stats.ambiguous = plan.ambiguous.length;
@@ -156,6 +187,17 @@ export async function runEventPass(sql, options = {}) {
         FROM unnest(${[...assignments.keys()]}::bigint[], ${[...assignments.values()]}::bigint[]) AS v(id, event_id)
         WHERE n.id = v.id
       `;
+      // Rattachements écrits : ajoutés aux articles groupés gardés en mémoire (relecture évitée au passage suivant).
+      if (membersCache !== null && membersCache.sql === sql) {
+        for (const [id, eventId] of assignments) {
+          const r = seedRows.get(id);
+          if (!r) continue;
+          membersCache.rows.set(id, {
+            articleId: id, eventId, title: String(r.title), publishedAt: toMs(r.effective_at), collectedAt: toMs(r.collected_at),
+            lat: toNum(r.lat), lon: toNum(r.lon),
+          });
+        }
+      }
     }
   }
 
