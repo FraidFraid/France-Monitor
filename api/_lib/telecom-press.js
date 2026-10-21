@@ -9,6 +9,9 @@ const OPERATORS = [['Orange', /\b(?:orange|sosh)\b/], ['SFR', /\b(?:sfr|red by s
 /** Panne de réseau au titre : « panne » ou « coupure » avec réseau, internet, mobile, téléphone, fibre ou opérateur (dans un sens ou dans l'autre). */
 const OUTAGE = /\b(?:panne|coupure|perturb\w*)\b.*\b(?:reseau|internet|mobile|telephon\w*|fibre|sms|appels|operateur)\b|\b(?:reseau|internet|mobile|telephon\w*|fibre|operateur)\b.*\b(?:panne|coupure|perturb\w*)\b|\bprives de reseau\b/;
 
+/** Portée nationale dite par un titre : « panne nationale », « au niveau national », « toute la France », « panne géante ». */
+const NATIONAL = /\b(?:national|nationale|toute la france|partout en france|geante|grande envergure)\b/;
+
 const fold = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/['’]/g, ' ').toLowerCase();
 
 /** Article retenu : titre de panne de réseau, infrastructure, medium ou plus, publié dans la fenêtre. */
@@ -48,6 +51,7 @@ export function telecomPressReports(items, now) {
       lastAt: latest.publishedAt,
       title: latest.title,
       link: latest.link,
+      national: list.some((i) => NATIONAL.test(fold(i.title))),
     };
   }).sort((a, b) => rank(b.severity) - rank(a.severity) || Date.parse(b.lastAt) - Date.parse(a.lastAt));
 }

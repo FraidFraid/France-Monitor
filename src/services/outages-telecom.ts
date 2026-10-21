@@ -47,7 +47,7 @@ const SHAPE = shapeOf<TelecomOutagesResponse>(record({
   sites: list(site), history: list(record({ day, recent: count })), errors: value(isStringList),
   press: list(record({
     operator: strOrNull, severity: value((v) => v === 'medium' || v === 'high' || v === 'critical'), articles: count, sources: count,
-    firstAt: date, lastAt: date, title: str, link: str,
+    firstAt: date, lastAt: date, title: str, link: str, national: value((v) => typeof v === 'boolean'),
   })),
 }, ['press']));
 

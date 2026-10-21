@@ -3202,6 +3202,28 @@ export interface TelecomOutagesResponse {
   press?: TelecomPressReport[];         // pannes signalées par la presse (24 h) ; absent : non lu
 }
 
+// ─── Pannes en cours : GET /api/outages/now (téléphone et internet, toutes sources, api/_lib/outages-now.js, 21/10/2026) ───
+export type OutageNowSource = 'presse' | 'arcep' | 'ioda' | 'radar';
+export interface OutageNowEvidence { source: OutageNowSource; text: string; at: string | null; link: string | null }
+export interface OutageNow {
+  id: string;                           // « op:Orange », « dept:32 », « national »
+  scope: 'operateur' | 'departement' | 'national' | 'inconnu';
+  operator: string | null;
+  dept: string | null;
+  label: string | null;                 // opérateur, « France entière », nom IODA du département ; null : le client nomme le département
+  level: 'jaune' | 'orange' | 'rouge';
+  since: string | null;                 // première preuve
+  national: boolean;                    // pays entier, ou panne d'opérateur dite nationale
+  measured: boolean;                    // vue par une source autre que la presse
+  evidence: OutageNowEvidence[];
+}
+export interface OutagesNowResponse {
+  generatedAt: string;
+  outages: OutageNow[];
+  sources: Array<{ source: OutageNowSource; readAt: string | null; ok: boolean }>;
+  errors: string[];
+}
+
 /** Panne télécom signalée par la presse (api/_lib/telecom-press.js, 21/10/2026) : regroupée par opérateur cité, null si aucun. */
 export interface TelecomPressReport {
   operator: string | null;
@@ -3212,6 +3234,7 @@ export interface TelecomPressReport {
   lastAt: string;
   title: string;                        // article le plus récent
   link: string;
+  national: boolean;                    // un titre au moins dit la panne nationale
 }
 
 // ─── Électricité : GET /api/outages/power (EDF OpenData, RTE IIP, EDF SEI) ───

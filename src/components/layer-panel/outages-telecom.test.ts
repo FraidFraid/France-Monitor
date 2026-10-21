@@ -188,7 +188,7 @@ describe('hygiène du rendu', () => {
 describe('vue Télécoms : pannes signalées par la presse (21/10/2026)', () => {
   const press = [{
     operator: 'Orange', severity: 'high' as const, articles: 20, sources: 12, firstAt: '2026-10-08T10:00:00Z', lastAt: '2026-10-08T11:03:00Z',
-    title: 'Orange : panne au niveau national', link: 'https://ex.fr/orange',
+    title: 'Orange : panne au niveau national', link: 'https://ex.fr/orange', national: true,
   }];
   it('section en tête, pastille orange même si l’ARCEP est vert, gros chiffre inchangé, source dite', () => {
     const v = view({ telecom: { ...telecomFixtureResponse(), press } });

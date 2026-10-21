@@ -272,6 +272,8 @@ import { buildNuclearState } from './services/nuclear-correlation.ts';
 import type { NuclearPanel } from './components/NuclearPanel.ts';
 import { SituationMonitor } from './components/SituationMonitor.ts';
 import { SituationBrief } from './components/SituationBrief.ts';
+import type { OutagesNowBanner } from './components/OutagesNowBanner.ts';
+import type { OutagesNowResponse } from './types/index.ts';
 import { resolvedSituationsFromHistory } from './services/situation-brief.ts';
 import type { SituationHistoryPanel } from './components/SituationHistoryPanel.ts';
 import { getHistory, pushHistorySnapshot } from './services/situation-history.ts';
@@ -1368,6 +1370,10 @@ export class App {
   private franceIntelPanel: FranceIntelPanel | null = null;
   private situationMonitor: SituationMonitor | null = null;
   private situationBrief: SituationBrief | null = null;
+  /** Bandeau « Pannes en cours » (téléphone et internet, toutes sources), dans tous les onglets. */
+  private outagesNowBanner: OutagesNowBanner | null = null;
+  private outagesNowSlot: SourceSlot<OutagesNowResponse> | undefined;
+  private outagesNowPoll: PausableTimer | null = null;
   private situationHistoryPanel: SituationHistoryPanel | null = null;
   private alertMonitor: AlertMonitor | null = null;
   private updateNotification: UpdateNotification | null = null;
@@ -4588,6 +4594,25 @@ export class App {
     });
   }
 
+  /** Bandeau « Pannes en cours » : lu au montage puis toutes les 2 min, quel que soit l'onglet (21/10/2026). */
+  private mountOutagesNow(mapEl: HTMLElement): void {
+    // Chargé à part : le chunk App reste sous 1 Mio.
+    void Promise.all([import('./components/OutagesNowBanner.ts'), import('./services/outages-now.ts')]).then(([{ OutagesNowBanner }, { fetchOutagesNow, OUTAGES_NOW_POLL_MS }]) => {
+      this.outagesNowBanner?.destroy();
+      this.outagesNowBanner = new OutagesNowBanner(mapEl);
+      this.outagesNowBanner.setOnFlyTo((lon, lat, zoom) => this.mapContainer?.flyTo(lon, lat, zoom));
+      const read = (): void => {
+        void fetchOutagesNow(this.outagesNowSlot).then((slot) => {
+          this.outagesNowSlot = slot;
+          this.outagesNowBanner?.update(slot.data);
+        });
+      };
+      read();
+      this.removePausableInterval(this.outagesNowPoll);
+      this.outagesNowPoll = this.registerPausableInterval(read, OUTAGES_NOW_POLL_MS);
+    }).catch((err) => console.error('[App] Bandeau des pannes en cours indisponible', err));
+  }
+
   /** Jeton Cloudflare Radar absent d'après la dernière réponse lue (inconnu tant qu'aucune réponse n'est lisible). */
   private radarNotConfigured(): boolean {
     return this.currentOutInternet?.internet.data?.radar.configured === false;
@@ -6774,6 +6799,7 @@ export class App {
     await this.mapContainer.init();
     // Pannes réseau : les sources de la carte n'existaient pas quand le premier relevé (Télécoms, au démarrage) a répondu ; repeinture (R35).
     for (const key of OUTAGES_LAYER_KEYS) this.repaintOutagesMap(key);
+    this.mountOutagesNow(mapEl);
     // v2 (?ui=v2) : alertes, convergences et situations passent dans la liste « À traiter » et
     // leurs fiches ; les trois panneaux flottants ne sont créés que pour l'interface par défaut.
     if (!this.uiV2) {

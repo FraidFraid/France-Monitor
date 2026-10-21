@@ -367,7 +367,9 @@
         paint: { 'icon-opacity': 1, 'text-color': ['get', 'color'], 'text-halo-color': '#0a0a0f', 'text-halo-width': 1.5 } }, b);
       // Pannes anciennes (stock) : semis magenta pâle ; maintenances : gris clair. Jamais une alerte.
       m.addLayer({ id: 'mqs-sites-long', type: 'circle', source: 'mqs-sites', minzoom: 7, filter: ['!=', ['get', 'cls'], 'recente'],
-        paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 1.5, 10, 3], 'circle-color': ['match', ['get', 'cls'], 'maintenance', '#c7c7cc', '#a855f7'], 'circle-opacity': 0.5 } }, b);
+        // Même taille que la Vue générale (21/10/2026 : à 1,5 px et demi-transparents, les sites en panne ne se voyaient plus).
+        paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 2.5, 10, 4.5], 'circle-color': ['match', ['get', 'cls'], 'maintenance', '#c7c7cc', '#a855f7'], 'circle-opacity': 0.8,
+          'circle-stroke-width': 0.5, 'circle-stroke-color': '#0a0a0f' } }, b);
       m.addLayer({ id: 'mqs-sites-recent', type: 'symbol', source: 'mqs-sites', minzoom: 7, filter: ['==', ['get', 'cls'], 'recente'],
         layout: { 'icon-image': ['concat', 'mqs-op-', ['get', 'op'], '-', ['get', 'ring']], 'icon-size': ['interpolate', ['linear'], ['zoom'], 4, 0.55, 6, 0.65, 9, 0.75, 12, 0.85],
           'icon-allow-overlap': true, 'icon-ignore-placement': true }, paint: { 'icon-opacity': 1 } }, b);

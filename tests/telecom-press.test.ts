@@ -18,8 +18,9 @@ describe('pannes télécoms signalées par la presse', () => {
     expect(r).toHaveLength(2);
     expect(r[0]).toMatchObject({
       operator: 'Orange', severity: 'high', articles: 3, sources: 3, firstAt: '2026-10-21T10:06:00.000Z', lastAt: '2026-10-21T10:52:00Z',
-      title: 'Le réseau mobile d’Orange touché par une panne ce mercredi',
+      title: 'Le réseau mobile d’Orange touché par une panne ce mercredi', national: true,
     });
+    expect(r[1]?.national).toBe(false);
     expect(r[1]).toMatchObject({ operator: 'SFR', severity: 'medium', articles: 1 });
   });
   it('écartés : info ou low, autre catégorie, plus de 24 h, sans panne de réseau au titre ; aucun opérateur cité : null', () => {
