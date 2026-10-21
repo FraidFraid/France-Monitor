@@ -3203,10 +3203,14 @@ export interface TelecomOutagesResponse {
 }
 
 // ─── Pannes en cours : GET /api/outages/now (téléphone et internet, toutes sources, api/_lib/outages-now.js, 21/10/2026) ───
-export type OutageNowSource = 'presse' | 'arcep' | 'ioda' | 'radar';
+export type OutageNowSource = 'presse' | 'arcep' | 'ioda' | 'radar' | 'rte' | 'edf' | 'statut';
+export type OutageNetwork = 'mobile' | 'internet' | 'electricite' | 'cloud';
+/** Échelle de confirmation : presse seule, mesurée par une source réseau, confirmée par la page d'état du fournisseur. */
+export type OutageRung = 'signalee' | 'mesuree' | 'confirmee';
 export interface OutageNowEvidence { source: OutageNowSource; text: string; at: string | null; link: string | null }
 export interface OutageNow {
-  id: string;                           // « op:Orange », « dept:32 », « national »
+  id: string;                           // « mobile|op:Orange », « mobile|dept:32 », « internet|national », « electricite|ouvrage:<nom> »
+  network: OutageNetwork;
   scope: 'operateur' | 'departement' | 'national' | 'inconnu';
   operator: string | null;
   dept: string | null;
@@ -3214,7 +3218,8 @@ export interface OutageNow {
   level: 'jaune' | 'orange' | 'rouge';
   since: string | null;                 // première preuve
   national: boolean;                    // pays entier, ou panne d'opérateur dite nationale
-  measured: boolean;                    // vue par une source autre que la presse
+  measured: boolean;                    // vue par une source autre que la presse (rung !== 'signalee')
+  rung: OutageRung;
   evidence: OutageNowEvidence[];
 }
 export interface OutagesNowResponse {

@@ -18,7 +18,7 @@ export async function loadOutagesNow(now = Date.now(), { readTelecom = loadTelec
   const [telecom, internet] = await Promise.all([readTelecom(now), readInternet(now)]);
   return {
     generatedAt: new Date(now).toISOString(),
-    outages: outagesNow({ telecom, internet, now }),
+    outages: outagesNow({ telecom, internet, power: null, cloud: null, now }),
     sources: [
       { source: 'presse', readAt: telecom.press ? new Date(now).toISOString() : null, ok: telecom.press !== undefined },
       { source: 'arcep', readAt: telecom.file?.publishedAt ?? null, ok: fresh(telecom.file?.publishedAt, now, ARCEP_MAX_AGE_MS) },

@@ -10,7 +10,7 @@ export const OUTAGES_NOW_URL = '/api/outages/now';
 export const OUTAGES_NOW_POLL_MS = 2 * 60_000;
 const TTL_MS = 90_000;
 
-const SOURCES: ReadonlySet<string> = new Set(['presse', 'arcep', 'ioda', 'radar']);
+const SOURCES: ReadonlySet<string> = new Set(['presse', 'arcep', 'ioda', 'radar', 'rte', 'edf', 'statut']);
 const source = value((v) => isOneOf(v, SOURCES));
 const SHAPE = shapeOf<OutagesNowResponse>(record({
   generatedAt: value(isStr),
@@ -38,5 +38,5 @@ export function outageProof(o: Pick<OutageNow, 'measured' | 'evidence'>): string
 }
 
 export const SOURCE_LABEL: Readonly<Record<OutageNow['evidence'][number]['source'], string>> = {
-  presse: 'presse', arcep: 'ARCEP', ioda: 'IODA', radar: 'Cloudflare Radar',
+  presse: 'presse', arcep: 'ARCEP', ioda: 'IODA', radar: 'Cloudflare Radar', rte: 'RTE', edf: 'EDF', statut: 'page d’état',
 };

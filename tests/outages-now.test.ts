@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { outagesNow } from '../api/_lib/outages-now.js';
 import { loadOutagesNow } from '../api/_handlers/outages/now.js';
+import { fleetLevel } from '../src/services/nuclear-fleet.ts';
 
 const NOW = Date.parse('2026-10-21T12:00:00Z');
 const press = (over: Record<string, unknown> = {}) => ({
@@ -23,30 +24,35 @@ const internet = (over: Record<string, unknown> = {}) => ({
 });
 
 describe('pannes en cours : fusion des sources', () => {
-  it('même opérateur vu par la presse et par IODA : une seule panne, mesurée, depuis la première preuve', () => {
-    const [orange] = outagesNow({ telecom: telecom(), internet: internet(), now: NOW });
-    expect(orange).toMatchObject({ id: 'op:Orange', level: 'orange', national: true, measured: true, since: '2026-10-21T09:50:00Z' });
-    expect(orange?.evidence.map((e) => e.source).sort()).toEqual(['ioda', 'presse']);
+  it('presse Orange et IODA AS3215 : deux pannes distinctes, mobile|op:Orange (signalee) et internet|op:Orange (mesuree)', () => {
+    const all = outagesNow({ telecom: telecom(), internet: internet(), power: null, cloud: null, now: NOW });
+    const orange = all.find((o) => o.id === 'mobile|op:Orange');
+    expect(all.find((o) => o.id === 'internet|op:Orange')).toMatchObject({ network: 'internet', rung: 'mesuree', since: '2026-10-21T09:50:00Z' });
+    expect(orange).toMatchObject({ id: 'mobile|op:Orange', network: 'mobile', level: 'orange', national: true, rung: 'signalee', measured: false });
   });
-  it('département : ARCEP au-dessus du seuil et IODA réunis ; sous le seuil ou recalage IODA écartés', () => {
-    const all = outagesNow({ telecom: telecom(), internet: internet(), now: NOW });
-    expect(all.map((o) => o.id)).toEqual(['op:Orange', 'dept:13', 'dept:32']);
-    expect(all.find((o) => o.id === 'dept:32')).toMatchObject({ level: 'jaune', label: 'Gers', evidence: [{ source: 'arcep' }, { source: 'ioda' }] });
+  it('départements : ARCEP (mobile) et IODA (internet) séparés ; sous le seuil ou recalage IODA écartés', () => {
+    const all = outagesNow({ telecom: telecom(), internet: internet(), power: null, cloud: null, now: NOW });
+    expect(all.find((o) => o.id === 'mobile|dept:13')).toMatchObject({ level: 'orange', rung: 'mesuree', network: 'mobile' });
+    expect(all.find((o) => o.id === 'mobile|dept:32')).toMatchObject({ level: 'jaune', evidence: [{ source: 'arcep' }] });
+    expect(all.find((o) => o.id === 'internet|dept:32')).toMatchObject({ level: 'jaune', label: 'Gers', evidence: [{ source: 'ioda' }] });
+    expect(all.some((o) => o.id === 'internet|dept:60' || o.id === 'mobile|dept:31')).toBe(false);
   });
   it('sources en retard ignorées : ARCEP de plus de 30 h, IODA de plus d’une heure ; la presse reste', () => {
     const all = outagesNow({
       telecom: telecom({ file: { day: '2026-10-19', publishedAt: '2026-10-19T09:02:00Z' } }),
-      internet: internet({ iodaReadAt: '2026-10-21T10:00:00Z' }), now: NOW,
+      internet: internet({ iodaReadAt: '2026-10-21T10:00:00Z' }), power: null, cloud: null, now: NOW,
     });
-    expect(all).toEqual([expect.objectContaining({ id: 'op:Orange', measured: false })]);
+    expect(all).toEqual([expect.objectContaining({ id: 'mobile|op:Orange', measured: false })]);
   });
-  it('pays entier : plus de 600 antennes récentes en rouge ; anomalie Radar nationale en orange', () => {
+  it('pays entier : plus de 600 antennes récentes en rouge (mobile) ; anomalie Radar nationale en orange (internet)', () => {
     const all = outagesNow({
       telecom: telecom({ summary: { recent: 650 }, byDept: [], press: [] }),
       internet: internet({ events: [], radar: { configured: true, readAt: '2026-10-21T11:55:00Z', items: [{ id: 'r1', kind: 'anomalie', label: 'France', asn: null, start: '2026-10-21T11:00:00Z', end: null, cause: null, national: true }] } }),
-      now: NOW,
+      power: null, cloud: null, now: NOW,
     });
-    expect(all).toEqual([expect.objectContaining({ id: 'national', scope: 'national', level: 'rouge', evidence: [expect.objectContaining({ source: 'arcep' }), expect.objectContaining({ source: 'radar' })] })]);
+    expect(all.map((o) => o.id)).toEqual(['mobile|national', 'internet|national']);
+    expect(all[0]).toMatchObject({ scope: 'national', level: 'rouge', evidence: [expect.objectContaining({ source: 'arcep' })] });
+    expect(all[1]).toMatchObject({ level: 'orange', evidence: [expect.objectContaining({ source: 'radar' })] });
   });
   it('route : sources datées, erreurs reprises, jamais d’exception', async () => {
     const body = await loadOutagesNow(NOW, { readTelecom: async () => telecom({ errors: ['Presse : Neon injoignable'] }), readInternet: async () => internet({ radar: { configured: false, readAt: null, items: [] } }) });
@@ -55,6 +61,57 @@ describe('pannes en cours : fusion des sources', () => {
       { source: 'ioda', readAt: '2026-10-21T11:50:00Z', ok: true }, { source: 'radar', readAt: null, ok: false },
     ]);
     expect(body.errors).toEqual(['Presse : Neon injoignable']);
-    expect(body.outages.length).toBe(3);
+    expect(body.outages.length).toBe(5);
+  });
+});
+
+const power = (over: Record<string, unknown> = {}) => ({
+  unplanned: [{ id: 'u1', name: 'PALUEL 1', lostMw: 1300, start: '2026-10-21T08:00:00Z', end: null }, { id: 'u2', name: 'FLAMANVILLE 2', lostMw: 1700, start: '2026-10-21T09:00:00Z', end: null }],
+  transmission: { unplanned: [
+    { id: '1', asset: 'Mandarins-Sellindge 1', start: '2026-10-21T07:00:00Z', end: null, publishedAt: '2026-10-21T07:05:00Z', reason: 'Défaillance' },
+    { id: '2', asset: 'Ligne terminée', start: '2026-10-20T07:00:00Z', end: '2026-10-21T08:00:00Z', publishedAt: '2026-10-20T07:05:00Z', reason: null },
+  ], planned: [] },
+  ...over,
+});
+const cloud = (over: Record<string, unknown> = {}) => ({
+  providers: [{ provider: 'ovhcloud', label: 'OVHcloud', readAt: '2026-10-21T11:40:00Z' }, { provider: 'scaleway', label: 'Scaleway', readAt: '2026-10-21T08:00:00Z' }],
+  incidents: [
+    { id: 'i1', provider: 'ovhcloud', title: 'Incident <b>RBX</b>', zones: ['rbx'], state: 'en-cours', impact: 'critical', start: '2026-10-21T11:00:00Z', updatedAt: null, url: 'https://status.ovh/i1' },
+    { id: 'i2', provider: 'scaleway', title: 'Incident PAR', zones: ['par'], state: 'en-cours', impact: 'major', start: '2026-10-21T07:00:00Z', updatedAt: null, url: null },
+    { id: 'i3', provider: 'ovhcloud', title: 'Surveillé', zones: [], state: 'surveille', impact: 'minor', start: '2026-10-21T10:00:00Z', updatedAt: null, url: null },
+  ],
+  ...over,
+});
+const only = (o: { telecom?: unknown; internet?: unknown; power?: unknown; cloud?: unknown }) =>
+  outagesNow({ telecom: o.telecom ?? null, internet: o.internet ?? null, power: o.power ?? null, cloud: o.cloud ?? null, now: NOW });
+
+describe('pannes en cours : électricité, cloud et échelon', () => {
+  it('RTE transport imprévu en cours : electricite|ouvrage, orange, rte, mesurée ; terminé : absent', () => {
+    const all = only({ power: power() }).filter((o) => o.id.startsWith('electricite|ouvrage'));
+    expect(all).toEqual([expect.objectContaining({ id: 'electricite|ouvrage:Mandarins-Sellindge 1', network: 'electricite', level: 'orange', rung: 'mesuree', evidence: [expect.objectContaining({ source: 'rte' })] })]);
+  });
+  it('arrêts imprévus de production : 3 000 MW orange, 6 000 MW rouge, 2 999 MW absent (aligné sur fleetLevel)', () => {
+    const nat = (mw: number) => only({ power: power({ unplanned: [{ id: 'u', name: 'X', lostMw: mw, start: '2026-10-21T08:00:00Z', end: null }], transmission: null }) })
+      .find((o) => o.id === 'electricite|national');
+    expect(nat(3000)).toMatchObject({ level: 'orange', evidence: [expect.objectContaining({ source: 'edf' })] });
+    expect(nat(6000)?.level).toBe('rouge');
+    expect(nat(2999)).toBeUndefined();
+    expect(fleetLevel(3000)).toBe('orange');
+    expect(fleetLevel(6000)).toBe('rouge');
+  });
+  it('cloud : incident en cours d’un fournisseur lu depuis moins de 2 h, niveau par impact, confirmée par la page d’état', () => {
+    const all = only({ cloud: cloud() });
+    expect(all).toEqual([expect.objectContaining({
+      id: 'cloud|op:OVHcloud', network: 'cloud', level: 'rouge', rung: 'confirmee', measured: true,
+      evidence: [expect.objectContaining({ source: 'statut', link: 'https://status.ovh/i1' })],
+    })]);
+    const fresh = only({ cloud: cloud({ providers: [{ provider: 'scaleway', label: 'Scaleway', readAt: '2026-10-21T11:00:00Z' }] }) });
+    expect(fresh).toEqual([expect.objectContaining({ id: 'cloud|op:Scaleway', level: 'orange' })]);
+  });
+  it('échelon : presse seule signalée ; presse + ARCEP sur le même territoire mesurée', () => {
+    const t = telecom({ press: [press({ operator: null, national: true })], summary: { recent: 650 }, byDept: [] });
+    const nat = only({ telecom: t }).find((o) => o.id === 'mobile|national');
+    expect(nat).toMatchObject({ rung: 'mesuree', evidence: [expect.objectContaining({ source: 'presse' }), expect.objectContaining({ source: 'arcep' })] });
+    expect(only({ telecom: telecom({ summary: { recent: 10 }, byDept: [] }) })[0]).toMatchObject({ rung: 'signalee' });
   });
 });

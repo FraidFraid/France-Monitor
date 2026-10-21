@@ -8,9 +8,9 @@ const NOW = Date.parse('2026-10-21T12:30:00Z');
 const body = (): OutagesNowResponse => ({
   generatedAt: '2026-10-21T12:30:00Z',
   outages: [
-    { id: 'op:Orange', scope: 'operateur', operator: 'Orange', dept: null, label: 'Orange', level: 'orange', since: '2026-10-21T10:00:00Z', national: true, measured: false,
+    { id: 'mobile|op:Orange', network: 'mobile', rung: 'signalee', scope: 'operateur', operator: 'Orange', dept: null, label: 'Orange', level: 'orange', since: '2026-10-21T10:00:00Z', national: true, measured: false,
       evidence: [{ source: 'presse', text: '19 articles : Orange en panne', at: '2026-10-21T10:00:00Z', link: 'https://ex.fr/a' }] },
-    { id: 'dept:32', scope: 'departement', operator: null, dept: '32', label: null, level: 'jaune', since: '2026-10-21T09:02:00Z', national: false, measured: true,
+    { id: 'internet|dept:32', network: 'internet', rung: 'mesuree', scope: 'departement', operator: null, dept: '32', label: null, level: 'jaune', since: '2026-10-21T09:02:00Z', national: false, measured: true,
       evidence: [{ source: 'arcep', text: '25 antennes', at: null, link: null }, { source: 'ioda', text: 'coupure <b>', at: null, link: null }] },
   ],
   sources: [{ source: 'presse', readAt: null, ok: true }, { source: 'radar', readAt: null, ok: false }],
