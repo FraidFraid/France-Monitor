@@ -41,10 +41,11 @@ const gw = (mw) => `${(mw / 1000).toFixed(1).replace('.', ',')} GW`;
 /**
  * @param {{ telecom: any, internet: any, power: any, cloud: any, now: number, press?: any[] }} input réponses des routes /api/outages/* (null :
  *   non lue) ; `press` : signalements de tous les réseaux (pressOutages, telecom-press.js), à défaut la presse télécoms (réseau mobile) ;
- *   `social` : pics de signalements d'usagers (socialOutages, outages-social.js) ; `atlas` : sondes RIPE Atlas décrochées (atlasOutages)
+ *   `social` : pics de signalements d'usagers (socialOutages, outages-social.js) ; `atlas` : sondes RIPE Atlas décrochées (atlasOutages) ;
+ *   `status` : incidents des pages d'état élargies (Google Workspace, Statuspage : outages-status.js)
  * @returns {import('../../src/types/index.ts').OutageNow[]}
  */
-export function outagesNow({ telecom, internet, power, cloud, now, press, social, atlas }) {
+export function outagesNow({ telecom, internet, power, cloud, now, press, social, atlas, status }) {
   /** @type {Map<string, any>} */
   const byKey = new Map();
   const add = (network, key, base, evidence) => {
@@ -160,6 +161,11 @@ export function outagesNow({ telecom, internet, power, cloud, now, press, social
       const name = CLOUD_LABEL[i.provider] ?? i.provider;
       add('cloud', `op:${name}`, operatorBase(name), { source: 'statut', level: CLOUD_LEVEL[i.impact] ?? 'jaune', since: i.start, link: i.url, text: i.title });
     }
+  }
+
+  // Pages d'état élargies : incidents mondiaux publiés par le fournisseur (confirmés).
+  for (const s of status ?? []) {
+    add('cloud', `op:${s.operator}`, operatorBase(s.operator), { source: 'statut', level: s.level, since: s.since, link: s.link, text: `${s.title} (incident mondial)` });
   }
 
   return [...byKey.values()].sort((a, b) => RANK[b.level] - RANK[a.level] || Number(b.national) - Number(a.national)

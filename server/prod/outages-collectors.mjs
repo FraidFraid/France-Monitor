@@ -9,6 +9,7 @@ import { ensureCloudFresh } from '../../api/_lib/outages-cloud.js';
 import { tickOutagesRoom } from '../../api/_lib/outages-room.js';
 import { ensureSocialFresh } from '../../api/_lib/outages-social.js';
 import { ensureAtlasFresh } from '../../api/_lib/outages-atlas.js';
+import { ensureStatusFresh } from '../../api/_lib/outages-status.js';
 
 export const OUTAGES_COLLECTORS = [
   { name: 'outages-telecom', run: ensureTelecomFresh },
@@ -19,6 +20,8 @@ export const OUTAGES_COLLECTORS = [
   { name: 'outages-social', run: ensureSocialFresh },
   // Sondes RIPE Atlas décrochées, toutes les 5 min.
   { name: 'outages-atlas', run: ensureAtlasFresh },
+  // Pages d'état élargies (Google Workspace, Statuspage), toutes les 5 min.
+  { name: 'outages-status', run: ensureStatusFresh },
   // Control room (21/10/2026) : en dernier, après les relevés de la minute.
   { name: 'outages-room', run: tickOutagesRoom },
 ];

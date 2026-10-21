@@ -63,7 +63,7 @@ export function renderOutagesNow(r: OutagesNowResponse, open: boolean, now: numb
       + `<div class="onb-meta">${escapeHtml(outageSince(o.since, now))} · ${escapeHtml(outageProof(o))}</div><ul>${evidenceHtml(o)}</ul></div></div>`;
   }).join('');
   const down = r.sources.filter((s) => !s.ok).map((s) => SOURCE_LABEL[s.source]);
-  const foot = `<p class="onb-foot">Téléphone mobile, internet, électricité et cloud, tous opérateurs${NBSP}: presse (toutes les 5${NBSP}min), usagers sur Bluesky et Mastodon (2${NBSP}min), IODA et Cloudflare Radar (10${NBSP}min), RIPE Atlas (5${NBSP}min), RTE et EDF (10${NBSP}min), pages d’état (30${NBSP}min), ARCEP (un fichier par jour).`
+  const foot = `<p class="onb-foot">Téléphone mobile, internet, électricité et cloud, tous opérateurs${NBSP}: presse (toutes les 5${NBSP}min), usagers sur Bluesky et Mastodon (2${NBSP}min), IODA et Cloudflare Radar (10${NBSP}min), RIPE Atlas (5${NBSP}min), RTE et EDF (10${NBSP}min), pages d’état (5 à 30${NBSP}min), ARCEP (un fichier par jour).`
     + `${down.length > 0 ? ` Indisponibles ou en retard${NBSP}: ${escapeHtml(down.join(', '))}.` : ''}</p>`;
   return `${head}<div class="onb-list">${rows}${foot}</div>`;
 }

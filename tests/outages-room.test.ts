@@ -15,6 +15,7 @@ const readers = {
   readPress: async () => null,
   readSocial: async () => [],
   readAtlas: async () => [],
+  readStatus: async () => [],
 };
 let writes = 0;
 const store = new Map<string, string>();

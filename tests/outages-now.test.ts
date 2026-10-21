@@ -161,3 +161,14 @@ describe('pannes en cours : sondes RIPE Atlas (21/10/2026)', () => {
     expect(all.find((o) => o.id === 'internet|national')).toMatchObject({ national: true, rung: 'mesuree' });
   });
 });
+
+describe('pannes en cours : pages d’état élargies (21/10/2026)', () => {
+  it('incident Google Workspace ou GitHub : panne cloud confirmée, dite mondiale', () => {
+    const all = outagesNow({
+      telecom: null, internet: null, power: null, cloud: null, now: NOW,
+      status: [{ operator: 'Google Workspace', level: 'rouge', title: 'Gmail : coupure de service', since: '2026-10-21T10:00:00Z', link: 'https://www.google.com/appsstatus/dashboard/incidents/a' }],
+    });
+    expect(all).toEqual([expect.objectContaining({ id: 'cloud|op:Google Workspace', level: 'rouge', rung: 'confirmee' })]);
+    expect(all[0]?.evidence[0]?.text).toBe('Gmail : coupure de service (incident mondial)');
+  });
+});

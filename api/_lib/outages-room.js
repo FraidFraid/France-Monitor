@@ -13,6 +13,7 @@ import { snapshotItems } from '../_handlers/news.js';
 import { pressOutages } from './telecom-press.js';
 import { ensureSocialFresh, socialErrors, socialOutages, socialReadAt, SOCIAL_MAX_AGE_MS } from './outages-social.js';
 import { ATLAS_MAX_AGE_MS, atlasOutages, atlasStatus, ensureAtlasFresh } from './outages-atlas.js';
+import { ensureStatusFresh, statusOutages } from './outages-status.js';
 
 export const ROOM_KEY = 'out:room:v1';
 const ROOM_TTL_SEC = 8 * 24 * 3600;
@@ -42,7 +43,13 @@ async function readAtlas(now) {
   return atlasOutages(now);
 }
 
-const DEFAULT_READERS = { readTelecom: loadTelecom, readInternet: loadInternet, readPower: loadPower, readCloud: loadCloud, readPress, readSocial, readAtlas };
+/** Incidents des pages d'état élargies (relève toutes les 5 min, déjà faite par le collecteur en production). */
+async function readStatus(now) {
+  await ensureStatusFresh(now);
+  return statusOutages(now).outages;
+}
+
+const DEFAULT_READERS = { readTelecom: loadTelecom, readInternet: loadInternet, readPower: loadPower, readCloud: loadCloud, readPress, readSocial, readAtlas, readStatus };
 
 /** @type {{ loaded: boolean, state: any, journal: any[], tickAt: number, outages: any[], sources: any[], errors: string[] } | null} */
 let room = null;
@@ -80,11 +87,11 @@ async function run(now, readers) {
       loaded: !read.failed, state: stored?.state ?? null, journal: Array.isArray(stored?.journal) ? stored.journal : [],
     };
   }
-  const [telecom, internet, power, cloud, press, social, atlas] = await Promise.all([
+  const [telecom, internet, power, cloud, press, social, atlas, status] = await Promise.all([
     settle(readers.readTelecom, now), settle(readers.readInternet, now), settle(readers.readPower, now), settle(readers.readCloud, now),
-    settle(readers.readPress ?? readPress, now), settle(readers.readSocial ?? readSocial, now), settle(readers.readAtlas ?? readAtlas, now),
+    settle(readers.readPress ?? readPress, now), settle(readers.readSocial ?? readSocial, now), settle(readers.readAtlas ?? readAtlas, now), settle(readers.readStatus ?? readStatus, now),
   ]);
-  const outages = outagesNow({ telecom, internet, power, cloud, now, press: press ?? undefined, social: social ?? [], atlas: atlas ?? [] });
+  const outages = outagesNow({ telecom, internet, power, cloud, now, press: press ?? undefined, social: social ?? [], atlas: atlas ?? [], status: status ?? [] });
   const loaded = room.loaded;
   const { state, entries } = loaded ? diffOutages(room.state, outages, now) : { state: room.state, entries: [] };
   const cut = now - JOURNAL_MAX_AGE_MS;
@@ -105,7 +112,7 @@ async function run(now, readers) {
       { source: 'edf', readAt: power?.edfReadAt ?? null, ok: fresh(power?.edfReadAt, now, LIVE_MAX_AGE_MS) },
       { source: 'statut', readAt: cloud?.readAt ?? null, ok: fresh(cloud?.readAt, now, CLOUD_MAX_AGE_MS) },
     ],
-    errors: [...[telecom, internet, power, cloud].flatMap((r) => (Array.isArray(r?.errors) ? r.errors : [])), ...socialErrors(), ...(atlasStatus().error ? [atlasStatus().error] : [])],
+    errors: [...[telecom, internet, power, cloud].flatMap((r) => (Array.isArray(r?.errors) ? r.errors : [])), ...socialErrors(), ...(atlasStatus().error ? [atlasStatus().error] : []), ...statusOutages(now).errors],
   };
 }
 
