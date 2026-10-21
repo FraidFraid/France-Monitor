@@ -146,3 +146,18 @@ describe('pannes en cours : signalements d’usagers (21/10/2026)', () => {
     expect(all.find((o) => o.network === 'eau')).toMatchObject({ level: 'jaune', rung: 'signalee', label: 'signalement d’usagers' });
   });
 });
+
+describe('pannes en cours : sondes RIPE Atlas (21/10/2026)', () => {
+  it('sondes décrochées : panne d’internet fixe mesurée par opérateur, et nationale', () => {
+    const all = outagesNow({
+      telecom: null, internet: null, power: null, cloud: null, now: NOW,
+      atlas: [
+        { asn: 12322, operator: 'Free', down: 9, active: 60, level: 'orange', since: '2026-10-21T11:50:00Z' },
+        { asn: null, operator: null, down: 25, active: 200, level: 'orange', since: '2026-10-21T11:48:00Z' },
+      ],
+    });
+    expect(all.find((o) => o.id === 'internet|op:Free')).toMatchObject({ level: 'orange', rung: 'mesuree', evidence: [expect.objectContaining({ source: 'atlas' })] });
+    expect(all.find((o) => o.id === 'internet|op:Free')?.evidence[0]?.text).toContain('9 sondes RIPE Atlas décrochées sur 60 (15 %)');
+    expect(all.find((o) => o.id === 'internet|national')).toMatchObject({ national: true, rung: 'mesuree' });
+  });
+});

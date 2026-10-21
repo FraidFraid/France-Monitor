@@ -1,5 +1,6 @@
 import { tickOutagesRoom } from '../api/_lib/outages-room.js';
 import { ensureSocialFresh } from '../api/_lib/outages-social.js';
+import { ensureAtlasFresh } from '../api/_lib/outages-atlas.js';
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { OUTAGES_COLLECTORS } from '../server/prod/outages-collectors.mjs';
@@ -10,8 +11,8 @@ import { ensureCloudFresh } from '../api/_lib/outages-cloud.js';
 
 describe('collecteurs Pannes réseau', () => {
   it('Télécoms, Électricité, Internet et Cloud, mêmes fonctions que les routes, puis le tick de la control room (21/10/2026)', () => {
-    expect(OUTAGES_COLLECTORS.map((c) => c.name)).toEqual(['outages-telecom', 'outages-power', 'outages-internet', 'outages-cloud', 'outages-social', 'outages-room']);
-    expect(OUTAGES_COLLECTORS.map((c) => c.run)).toEqual([ensureTelecomFresh, ensurePowerFresh, ensureInternetFresh, ensureCloudFresh, ensureSocialFresh, tickOutagesRoom]);
+    expect(OUTAGES_COLLECTORS.map((c) => c.name)).toEqual(['outages-telecom', 'outages-power', 'outages-internet', 'outages-cloud', 'outages-social', 'outages-atlas', 'outages-room']);
+    expect(OUTAGES_COLLECTORS.map((c) => c.run)).toEqual([ensureTelecomFresh, ensurePowerFresh, ensureInternetFresh, ensureCloudFresh, ensureSocialFresh, ensureAtlasFresh, tickOutagesRoom]);
   });
   it('le serveur de production les lance avec les autres', () => {
     const server = readFileSync(new URL('../server/prod/http-server.mjs', import.meta.url), 'utf8');

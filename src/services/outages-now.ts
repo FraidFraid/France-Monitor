@@ -10,7 +10,7 @@ export const OUTAGES_NOW_URL = '/api/outages/now';
 export const OUTAGES_NOW_POLL_MS = 2 * 60_000;
 const TTL_MS = 90_000;
 
-const SOURCES: ReadonlySet<string> = new Set(['presse', 'usagers', 'arcep', 'ioda', 'radar', 'rte', 'edf', 'statut']);
+const SOURCES: ReadonlySet<string> = new Set(['presse', 'usagers', 'arcep', 'ioda', 'radar', 'atlas', 'rte', 'edf', 'statut']);
 const source = value((v) => isOneOf(v, SOURCES));
 const NETWORKS: ReadonlySet<string> = new Set(['mobile', 'internet', 'electricite', 'cloud', 'gaz', 'eau', 'urgence', 'paiement', 'tv']);
 const RUNGS: ReadonlySet<string> = new Set(['signalee', 'mesuree', 'confirmee']);
@@ -56,5 +56,5 @@ export function outageProof(o: Pick<OutageNow, 'rung' | 'evidence'>): string {
 }
 
 export const SOURCE_LABEL: Readonly<Record<OutageNow['evidence'][number]['source'], string>> = {
-  presse: 'presse', usagers: 'usagers (Bluesky, Mastodon)', arcep: 'ARCEP', ioda: 'IODA', radar: 'Cloudflare Radar', rte: 'RTE', edf: 'EDF', statut: 'page d’état',
+  presse: 'presse', usagers: 'usagers (Bluesky, Mastodon)', arcep: 'ARCEP', ioda: 'IODA', radar: 'Cloudflare Radar', atlas: 'RIPE Atlas', rte: 'RTE', edf: 'EDF', statut: 'page d’état',
 };

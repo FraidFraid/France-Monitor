@@ -41,10 +41,10 @@ const gw = (mw) => `${(mw / 1000).toFixed(1).replace('.', ',')} GW`;
 /**
  * @param {{ telecom: any, internet: any, power: any, cloud: any, now: number, press?: any[] }} input réponses des routes /api/outages/* (null :
  *   non lue) ; `press` : signalements de tous les réseaux (pressOutages, telecom-press.js), à défaut la presse télécoms (réseau mobile) ;
- *   `social` : pics de signalements d'usagers (socialOutages, outages-social.js)
+ *   `social` : pics de signalements d'usagers (socialOutages, outages-social.js) ; `atlas` : sondes RIPE Atlas décrochées (atlasOutages)
  * @returns {import('../../src/types/index.ts').OutageNow[]}
  */
-export function outagesNow({ telecom, internet, power, cloud, now, press, social }) {
+export function outagesNow({ telecom, internet, power, cloud, now, press, social, atlas }) {
   /** @type {Map<string, any>} */
   const byKey = new Map();
   const add = (network, key, base, evidence) => {
@@ -113,6 +113,13 @@ export function outagesNow({ telecom, internet, power, cloud, now, press, social
         add('internet', `op:${name}`, operatorBase(name), { source: 'ioda', level: 'orange', since: e.start, text: `${text}, réseau AS${e.asn}` });
       }
     }
+  }
+
+  // RIPE Atlas : sondes décrochées ensemble chez un opérateur (internet fixe), ou dans tout le pays.
+  for (const a of atlas ?? []) {
+    const text = `${a.down}\u00a0sondes RIPE Atlas décrochées sur ${a.active} (${Math.round((100 * a.down) / a.active)}\u00a0%)`;
+    if (a.operator === null) add('internet', 'national', nationalBase, { source: 'atlas', level: a.level, since: a.since, text: `${text} en France` });
+    else add('internet', `op:${a.operator}`, operatorBase(a.operator), { source: 'atlas', level: a.level, since: a.since, text });
   }
 
   // Cloudflare Radar : anomalies de trafic et pannes annotées en cours.

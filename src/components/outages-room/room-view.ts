@@ -17,7 +17,7 @@ const NETWORKS: readonly OutageNetwork[] = ['mobile', 'internet', 'electricite',
  * l'absence d'article ne mesure rien (spec § 3).
  */
 export const NETWORK_SOURCES: Readonly<Record<OutageNetwork, readonly OutageNowSource[]>> = {
-  mobile: ['arcep'], internet: ['ioda', 'radar'], electricite: ['rte', 'edf'], cloud: ['statut'],
+  mobile: ['arcep'], internet: ['ioda', 'radar', 'atlas'], electricite: ['rte', 'edf'], cloud: ['statut'],
   // Aucune mesure ouverte (recherche du 21/10/2026) : la presse seule, jamais verte.
   gaz: [], eau: [], urgence: [], paiement: [], tv: [],
 };

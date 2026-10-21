@@ -8,6 +8,7 @@ import { ensureInternetFresh } from '../../api/_lib/outages-internet.js';
 import { ensureCloudFresh } from '../../api/_lib/outages-cloud.js';
 import { tickOutagesRoom } from '../../api/_lib/outages-room.js';
 import { ensureSocialFresh } from '../../api/_lib/outages-social.js';
+import { ensureAtlasFresh } from '../../api/_lib/outages-atlas.js';
 
 export const OUTAGES_COLLECTORS = [
   { name: 'outages-telecom', run: ensureTelecomFresh },
@@ -16,6 +17,8 @@ export const OUTAGES_COLLECTORS = [
   { name: 'outages-cloud', run: ensureCloudFresh },
   // Signalements d'usagers (Bluesky, Mastodon), toutes les 2 min.
   { name: 'outages-social', run: ensureSocialFresh },
+  // Sondes RIPE Atlas décrochées, toutes les 5 min.
+  { name: 'outages-atlas', run: ensureAtlasFresh },
   // Control room (21/10/2026) : en dernier, après les relevés de la minute.
   { name: 'outages-room', run: tickOutagesRoom },
 ];
