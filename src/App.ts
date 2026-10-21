@@ -77,7 +77,7 @@ import {
 import { computeISNR } from './services/stability-index.ts';
 import type { DepartmentPressure } from './services/department-pressure.ts';
 import type { WatchEntry, WatchLevel, WatchTransition, Watched } from './components/layer-panel/watch.ts';
-import { envChipsPressed, envFocusStatus, isEnvFocusKey, toggleEnvChip } from './components/layer-panel/env-focus.ts';
+import { cumulFocusKey, envChipsPressed, envFocusStatus, toggleEnvChip, usesEnergyFocus } from './components/layer-panel/env-focus.ts';
 import type { PressurePanel } from './components/PressurePanel.ts';
 import { ALL_INFRASTRUCTURE, NUCLEAR_PLANTS } from './config/infrastructure.ts';
 // ACTIVE_INSTALLATIONS (config/military-bases-db ~1100 l.) chargé dynamiquement dans loadDefenseSites(), sans fusion OpenStreetMap.
@@ -270,13 +270,13 @@ import { ENERGY_STATE_HEX, ENERGY_STATES, type EnergyState } from './services/en
 import { buildEnergyKeyHtml } from './components/map-key/energy-key.ts';
 import { buildNuclearState } from './services/nuclear-correlation.ts';
 import type { NuclearPanel } from './components/NuclearPanel.ts';
-import { SituationMonitor } from './components/SituationMonitor.ts';
-import { SituationBrief } from './components/SituationBrief.ts';
+import type { SituationMonitor } from './components/SituationMonitor.ts';
+import type { SituationBrief } from './components/SituationBrief.ts';
 import type { OutagesNowController } from './components/outages-room/outages-now-controller.ts';
 import { resolvedSituationsFromHistory } from './services/situation-brief.ts';
 import type { SituationHistoryPanel } from './components/SituationHistoryPanel.ts';
 import { getHistory, pushHistorySnapshot } from './services/situation-history.ts';
-import { AlertMonitor } from './components/AlertMonitor.ts';
+import type { AlertMonitor } from './components/AlertMonitor.ts';
 import { UpdateNotification } from './components/UpdateNotification.ts';
 import type { NuclearState, NuclearUnavailability, InfrastructurePoint } from './types/index.ts';
 import { fetchSpaceWeather } from './services/space-weather.ts';
@@ -2627,9 +2627,10 @@ export class App {
       // Aperçu après un court arrêt de la souris (20/10/2026) : en glissant d'une pastille à l'autre, les espaces entre pastilles
       // (aucun aperçu, carte entière) et les pastilles traversées (Vigilance météo à 100 %) faisaient clignoter la carte.
       this.schedulePastillePreview(() => {
-        this.setEnergyFocusPreview(key && isEnergyLayerKey(key) ? key : null);
+        const theme = this.uiV2 ? this.v2Theme : 'general';
+        this.setEnergyFocusPreview(key && isEnergyLayerKey(key) && usesEnergyFocus(theme, key) ? key : null);
         // « En bref » ne dessine rien : son survol ne tamise pas la carte.
-        this.setGeneralFocusPreview(key && key !== 'brief' && key !== 'envBrief' && !isEnergyLayerKey(key) ? key as keyof MapLayers : null);
+        this.setGeneralFocusPreview(key && key !== 'brief' && key !== 'envBrief' && !usesEnergyFocus(theme, key) ? key as keyof MapLayers : null);
       });
     });
     floatingPanelSwitcher.addEventListener('pointerleave', () => {
@@ -6184,6 +6185,10 @@ export class App {
     // Vue générale dynamique : puces dans l'ordre des niveaux (rouge d'abord), voyant de niveau ; « n.d. » en gris (12/10/2026).
     // Onglet Environnement (20/10/2026) : même voyant, niveau de la pastille du panneau ; rouge d'abord.
     const inEnv = this.uiV2 && this.v2Theme === 'environment';
+    // Pastilles cumulables avec mise en avant : Environnement et Pannes (21/10/2026), comme Santé et Énergie.
+    const theme = this.uiV2 ? this.v2Theme : 'general';
+    const cumul = this.uiV2 && (theme === 'environment' || theme === 'outages');
+    const isCumul = (id: string): id is keyof MapLayers => cumul && cumulFocusKey(theme, id);
     const watchedLevel = (id: keyof MapLayers): string | null =>
       this.uiV2 && this.v2Theme === 'general' ? this.watchEntries.find((e) => e.key === id)?.level ?? null
         : inEnv ? this.watchLevelMap.get(id) ?? null : null;
@@ -6204,13 +6209,13 @@ export class App {
     for (const k of [...this.energyChipsSelected]) if (!ids.includes(k)) this.energyChipsSelected.delete(k);
     const energyPressed = energyChipsPressed(ids, this.energyChipsSelected, (id) => this.isFloatingPanelVisible(id));
     // Environnement : pastilles cumulables comme Énergie (retenues par un clic, ou panneau ouvert).
-    if (!inEnv) this.envChipsSelected.clear();
+    if (!cumul) this.envChipsSelected.clear();
     for (const k of [...this.envChipsSelected]) if (!ids.includes(k)) this.envChipsSelected.delete(k);
-    const envPressed = inEnv ? envChipsPressed(ids, this.envChipsSelected, (id) => this.isFloatingPanelVisible(id)) : [];
+    const envPressed = cumul ? envChipsPressed(ids, this.envChipsSelected, (id) => this.isFloatingPanelVisible(id), isCumul) : [];
     el.innerHTML = newsChip + ordered.map((def) => {
       // Surligné = son panneau est à l'écran (Énergie : ou pastille retenue) ; un clic l'ouvre ou le referme (la couche reste active).
-      const pressed = isEnergyLayerKey(def.id) ? energyPressed.includes(def.id)
-        : inEnv && isEnvFocusKey(def.id) ? envPressed.includes(def.id) : this.isFloatingPanelVisible(def.id);
+      const pressed = isEnergyLayerKey(def.id) && usesEnergyFocus(theme, def.id) ? energyPressed.includes(def.id)
+        : isCumul(def.id) ? envPressed.includes(def.id) : this.isFloatingPanelVisible(def.id);
       const level = watchedLevel(def.id);
       const action = t(pressed ? 'app.floatingPanelHide' : 'app.floatingPanelShow', { value: def.label })
         + (level === 'nd' ? ' (source indisponible)' : '');
@@ -6239,7 +6244,7 @@ export class App {
       btn.addEventListener('click', () => {
         const key = btn.dataset['panelKey'] as keyof MapLayers | undefined;
         if (!key) return;
-        if (isEnergyLayerKey(key)) {
+        if (isEnergyLayerKey(key) && usesEnergyFocus(theme, key)) {
           // Pastilles Énergie cumulables : un seul panneau à droite (le dernier allumé), plusieurs couches mises en avant.
           const t = toggleEnergyChip(this.energyChipsSelected, key, energyPressed.includes(key));
           this.energyChipsSelected = t.selected;
@@ -6248,8 +6253,8 @@ export class App {
           else this.refreshFloatingPanelSwitcher();
           return;
         }
-        if (inEnv && isEnvFocusKey(key)) {
-          // Environnement : même règle qu'Énergie, pastilles cumulables, panneau de droite = la dernière allumée.
+        if (isCumul(key)) {
+          // Environnement et Pannes : même règle qu'Énergie, pastilles cumulables, panneau de droite = la dernière allumée.
           const t = toggleEnvChip(this.envChipsSelected, key, envPressed.includes(key));
           this.envChipsSelected = t.selected;
           if (t.open) this.showFloatingPanel(key);
@@ -6267,15 +6272,15 @@ export class App {
     // Pastilles Énergie allumées : mise en avant persistante. La barre est réécrite à chaque arrivée de données : l'aperçu suit la
     // pastille encore sous le pointeur (sinon un survol tombait au milieu, souris immobile).
     const hovered = el.querySelector<HTMLElement>('.floating-panel-switcher__chip[data-panel-key]:hover')?.dataset['panelKey'] ?? null;
-    this.energyFocusActive = energyPressed;
-    this.energyFocusPreview = hovered && isEnergyLayerKey(hovered) ? hovered : null;
+    this.energyFocusActive = energyPressed.filter((k) => usesEnergyFocus(theme, k));
+    this.energyFocusPreview = hovered && isEnergyLayerKey(hovered) && usesEnergyFocus(theme, hovered) ? hovered : null;
     this.syncEnergyFocus();
     // Vue générale : la pastille dont le panneau est ouvert reste mise en avant, comme une pastille Énergie allumée. Lu à l'image
     // suivante : à l'ouverture ou à la fermeture d'un panneau, sa visibilité n'est à jour qu'après ce rafraîchissement.
-    this.generalFocusPreview = hovered && !isEnergyLayerKey(hovered) ? hovered as keyof MapLayers : null;
+    this.generalFocusPreview = hovered && !usesEnergyFocus(theme, hovered) ? hovered as keyof MapLayers : null;
     requestAnimationFrame(() => {
-      if (inEnv) {
-        this.generalFocusActive = envChipsPressed(ids, this.envChipsSelected, (id) => this.isFloatingPanelVisible(id));
+      if (cumul) {
+        this.generalFocusActive = envChipsPressed(ids, this.envChipsSelected, (id) => this.isFloatingPanelVisible(id), isCumul);
       } else {
         const open = this.currentFloatingPanelId;
         this.generalFocusActive = open && open !== 'brief' && !isEnergyLayerKey(open) && this.isFloatingPanelVisible(open) ? [open] : [];
@@ -6331,7 +6336,7 @@ export class App {
     const inEnv = this.uiV2 && this.v2Theme === 'environment';
     // Onglet Environnement : toutes les couches visibles à l'ouverture, comme Santé (20/10/2026, décision utilisateur). Le mode
     // « l'anormal d'abord » (deckgl/env-context.ts, setEnvContext) reste disponible mais n'est plus activé.
-    const inScope = this.uiV2 && (this.v2Theme === 'general' || inEnv);
+    const inScope = this.uiV2 && (this.v2Theme === 'general' || inEnv || this.v2Theme === 'outages');
     const keys: Array<keyof MapLayers> = [];
     if (inScope) {
       // Les En bref sont des synthèses : ouverts ou survolés, ils ne tamisent rien (20/10/2026).
@@ -6814,6 +6819,10 @@ export class App {
     // v2 (?ui=v2) : alertes, convergences et situations passent dans la liste « À traiter » et
     // leurs fiches ; les trois panneaux flottants ne sont créés que pour l'interface par défaut.
     if (!this.uiV2) {
+      // Interface v1 seulement : chargés à part (chunk App < 1 Mio, 21/10/2026).
+      const [{ AlertMonitor }, { SituationMonitor }, { SituationBrief }] = await Promise.all([
+        import('./components/AlertMonitor.ts'), import('./components/SituationMonitor.ts'), import('./components/SituationBrief.ts'),
+      ]);
       this.alertMonitor?.destroy();
       this.alertMonitor = new AlertMonitor(mapEl);
       this.alertMonitor.setDossierHandler((situation) => this.openAlertDossier(situation));

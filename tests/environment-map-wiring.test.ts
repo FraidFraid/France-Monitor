@@ -84,7 +84,7 @@ describe('Onglet Environnement : pastilles cumulables (20/10/2026)', () => {
   it('mise en avant cumulative : union des calques des pastilles, carte et conteneur en liste', () => {
     expect(deck).toContain('this.generalFocusKeys.flatMap((k) => this.legendCategoryLayers(k))');
     expect(container).toContain('setGeneralFocus(keys: readonly string[]): void {');
-    expect(app).toContain("const inScope = this.uiV2 && (this.v2Theme === 'general' || inEnv);");
+    expect(app).toContain("const inScope = this.uiV2 && (this.v2Theme === 'general' || inEnv || this.v2Theme === 'outages');");
   });
 });
 

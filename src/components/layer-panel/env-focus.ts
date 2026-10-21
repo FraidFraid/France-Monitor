@@ -4,6 +4,7 @@ import type { MapLayers } from '../../types/index.ts';
 import { levelLabel } from '../../services/vigilance.ts';
 import { formatAge } from './environment-format.ts';
 import type { WatchLevel } from './watch.ts';
+import { isEnergyLayerKey } from '../deckgl/energy-focus.ts';
 
 /** Pastilles de l'onglet Environnement (ordre de FLOATING_PANEL_DEFS), webcams comprises. */
 export const ENV_FOCUS_IDS: ReadonlyArray<keyof MapLayers> = [
@@ -17,8 +18,9 @@ export function isEnvFocusKey(id: string): id is keyof MapLayers {
 /** Pastilles allumées, dans l'ordre des pastilles : retenues par un clic, ou dont le panneau est ouvert. */
 export function envChipsPressed(
   ids: readonly string[], selected: ReadonlySet<keyof MapLayers>, panelOpen: (id: keyof MapLayers) => boolean,
+  isKey: (id: string) => id is keyof MapLayers = isEnvFocusKey,
 ): Array<keyof MapLayers> {
-  return ids.filter((id): id is keyof MapLayers => isEnvFocusKey(id) && (selected.has(id) || panelOpen(id)));
+  return ids.filter((id): id is keyof MapLayers => isKey(id) && (selected.has(id) || panelOpen(id)));
 }
 
 /** Clic : pastille allumée → elle s'éteint (panneau fermé) ; sinon elle s'allume et son panneau s'ouvre. Cumulables. */
@@ -42,4 +44,18 @@ export function envFocusStatus(level: WatchLevel | null, at: number | null, now:
   const word = level !== null ? levelLabel(level) : null;
   const parts = [word, age].filter((s): s is string => s !== null);
   return parts.length > 0 ? parts.join(' · ') : null;
+}
+
+/** Pastilles de l'onglet Pannes (21/10/2026) : mêmes règles qu'Environnement et Santé (cumulables, couche vive, mini-légende). */
+const OUTAGES_FOCUS_IDS: readonly string[] = ['outagesTelecom', 'outagesInternet', 'outagesElec', 'outagesCloud'];
+
+/** Pastille cumulable (clic qui la retient, mise en avant de sa couche) dans l'onglet affiché. */
+export function cumulFocusKey(theme: string, id: string): id is keyof MapLayers {
+  if (theme === 'environment') return isEnvFocusKey(id);
+  return theme === 'outages' && OUTAGES_FOCUS_IDS.includes(id);
+}
+
+/** Pastille qui passe par le mécanisme Énergie (pastilles vertes) : une couche énergie, hors de l'onglet Pannes. */
+export function usesEnergyFocus(theme: string, id: string): boolean {
+  return theme !== 'outages' && isEnergyLayerKey(id);
 }
