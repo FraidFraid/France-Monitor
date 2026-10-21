@@ -189,6 +189,9 @@ export const SRC_OUT_TELECOM = 'out-telecom-src';
 export const SRC_OUT_POWER = 'out-power-src';
 export const LYR_OUT_TELECOM_LONG = 'out-telecom-long';
 export const LYR_OUT_TELECOM_RECENT = 'out-telecom-recent';
+/** Anneaux pulsants des pannes urgentes (21/10/2026) : antennes coupées depuis moins de 24 h, arrêts imprévus de production. */
+export const LYR_OUT_TELECOM_PULSE = 'out-telecom-pulse';
+export const LYR_OUT_POWER_PULSE = 'out-power-pulse';
 export const LYR_OUT_TELECOM_MAINT = 'out-telecom-maint';
 export const LYR_OUT_POWER_PLANNED = 'out-power-planned';
 export const LYR_OUT_POWER_UNPLANNED = 'out-power-unplanned';

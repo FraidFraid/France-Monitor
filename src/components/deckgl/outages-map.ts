@@ -23,12 +23,19 @@ import { countText, dayMonth, formatDuration, parisClock, placeOf, when } from '
 import { OUT_LATE_HEX, OUT_LONG_HEX, OUT_MAINT_HEX, OUT_RECENT_HEX, OUT_REF_HEX } from '../layer-panel/outages-legend.ts';
 import {
   LYR_OUT_CLOUD_REF, LYR_OUT_CLOUD_ZONES, LYR_OUT_INTERNET_FILL, LYR_OUT_INTERNET_LINE, LYR_OUT_POWER_PLANNED, LYR_OUT_POWER_UNPLANNED, LYR_OUT_TELECOM_LONG,
-  LYR_OUT_TELECOM_MAINT, LYR_OUT_TELECOM_RECENT, SRC_OUT_CLOUD_REF, SRC_OUT_CLOUD_ZONES, SRC_OUT_INTERNET, SRC_OUT_POWER, SRC_OUT_TELECOM,
+  LYR_OUT_POWER_PULSE, LYR_OUT_TELECOM_MAINT, LYR_OUT_TELECOM_PULSE, LYR_OUT_TELECOM_RECENT, SRC_OUT_CLOUD_REF, SRC_OUT_CLOUD_ZONES, SRC_OUT_INTERNET, SRC_OUT_POWER, SRC_OUT_TELECOM,
 } from './constants.ts';
 import { escapeHtml } from './format-utils.ts';
 import { ENERGY_SECTOR_HEX, ENERGY_STATE_HEX, powerOutageState } from '../../services/energy-state.ts';
 import { discColorExpr, discCompanionLayers, ENERGY_DISC_RADIUS, energyIconImage, glyphColorExpr } from './energy-map.ts';
 import { resolveAssetCoords } from './iip-geocoding.ts';
+import { PULSE_BY_LEVEL, pulseLayerSpec, pulseOffset } from './pulse.ts';
+
+/** Anneau pulsant d'un point urgent (pulse.ts) ; `period` 0 : pas d'anneau. */
+function pulseProps(id: string, urgent: boolean, radius: number, level: 'rouge' | 'orange'): Record<string, number> {
+  const { period, amp } = PULSE_BY_LEVEL[level];
+  return urgent ? { radius, amp, period, offset: pulseOffset(id, period), alpha: 1 } : { radius, amp: 0, period: 0, offset: 0, alpha: 0 };
+}
 
 type Fc = GeoJSON.FeatureCollection<GeoJSON.Point>;
 type PointFeature = GeoJSON.Feature<GeoJSON.Point>;
@@ -79,7 +86,7 @@ export function telecomFeatures(t: TelecomOutagesResponse | null, now: number): 
   const late = isArcepFileLate(t.file.day, now);
   return fc(t.sites.filter((s) => Number.isFinite(s.lon) && Number.isFinite(s.lat)).map((s): PointFeature => ({
     type: 'Feature', geometry: { type: 'Point', coordinates: [s.lon, s.lat] },
-    properties: { id: s.id, cls: s.cls, color: late ? OUT_LATE_HEX : CLASS_HEX[s.cls], body: telecomBody(s, late) },
+    properties: { id: s.id, cls: s.cls, color: late ? OUT_LATE_HEX : CLASS_HEX[s.cls], body: telecomBody(s, late), ...pulseProps(s.id, !late && s.cls === 'recente', 5, 'rouge') },
   })));
 }
 
@@ -106,7 +113,7 @@ export function powerFeatures(p: PowerOutagesResponse | null, now: number): Fc {
       type: 'Feature', geometry: { type: 'Point', coordinates: at },
       properties: {
         id: `edf-${i}-${u.name}`, name: u.name, kind: u.kind, energyState, color: ENERGY_STATE_HEX[energyState], body: powerBody(u, late),
-        lostMw: u.lostMw, sector: u.sector,
+        lostMw: u.lostMw, sector: u.sector, ...pulseProps(`edf-${i}-${u.name}`, !late && u.kind === 'imprevue', ENERGY_DISC_RADIUS.powerUnit, 'rouge'),
       },
     });
   }
@@ -319,6 +326,7 @@ export const OUT_LAYERS: readonly LayerSpecification[] = [
     id: LYR_OUT_TELECOM_MAINT, type: 'circle', source: SRC_OUT_TELECOM, filter: ['==', ['get', 'cls'], 'maintenance'], layout: { visibility: 'none' },
     paint: { 'circle-color': ['get', 'color'], 'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 2, 10, 4], 'circle-opacity': 0.7 },
   },
+  pulseLayerSpec(LYR_OUT_TELECOM_PULSE, SRC_OUT_TELECOM),
   {
     id: LYR_OUT_TELECOM_LONG, type: 'circle', source: SRC_OUT_TELECOM, filter: ['in', ['get', 'cls'], ['literal', ['longue', 'sans-date']]], layout: { visibility: 'none' },
     paint: { 'circle-color': ['get', 'color'], 'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, 2.5, 10, 4.5], 'circle-opacity': 0.8 },
@@ -330,6 +338,7 @@ export const OUT_LAYERS: readonly LayerSpecification[] = [
       'circle-stroke-width': 1, 'circle-stroke-color': '#0a0a0f',
     },
   },
+  pulseLayerSpec(LYR_OUT_POWER_PULSE, SRC_OUT_POWER),
   ...powerUnitLayers(LYR_OUT_POWER_PLANNED, POWER_PLANNED_FILTER),
   ...powerUnitLayers(LYR_OUT_POWER_UNPLANNED, POWER_UNPLANNED_FILTER),
   {

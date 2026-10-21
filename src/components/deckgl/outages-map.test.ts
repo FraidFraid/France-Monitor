@@ -121,10 +121,11 @@ describe('carte des pannes : couches et infobulle', () => {
     expect(OUT_LAYER_KEYS.outagesCloud).toEqual(['out-cloud-ref', 'out-cloud-zones']);
     expect(Object.keys(OUT_LAYER_KEYS).sort()).toEqual(['outagesCloud', 'outagesElec', 'outagesInternet', 'outagesTelecom']);
     expect(OUT_MAINTENANCE_LAYER).toBe('out-telecom-maint');
-    expect(OUT_LAYERS.map((l) => l.id).sort()).toEqual([...Object.values(OUT_LAYER_KEYS).flat(), OUT_MAINTENANCE_LAYER].sort());
+    // Anneaux pulsants (21/10/2026) : animés par DeckGLMap.syncPulses, hors des listes de visibilité.
+    expect(OUT_LAYERS.map((l) => l.id).sort()).toEqual([...Object.values(OUT_LAYER_KEYS).flat(), OUT_MAINTENANCE_LAYER, 'out-telecom-pulse', 'out-power-pulse'].sort());
     expect(OUT_SOURCE_IDS).toEqual(['out-telecom-src', 'out-power-src', 'out-internet-src', 'out-cloud-ref-src', 'out-cloud-zones-src']);
     // Les unités EDF répondent à l'arbitre de survol de l'énergie (spec 2026-10-16), pas au survol des pannes.
-    expect([...OUT_HOVER_LAYERS].sort()).toEqual(OUT_LAYERS.map((l) => l.id).filter((id) => !id.startsWith('out-power')).sort());
+    expect([...OUT_HOVER_LAYERS].sort()).toEqual(OUT_LAYERS.map((l) => l.id).filter((id) => !id.startsWith('out-power') && !id.endsWith('-pulse')).sort());
   });
   it('chaque couche lit une source déclarée ; le remplissage Internet ne montre que les départements en cours, le contour tous', () => {
     for (const l of OUT_LAYERS) expect(OUT_SOURCE_IDS, l.id).toContain((l as { source: string }).source);
@@ -550,5 +551,24 @@ describe('carte des pannes : Électricité sur les états de l’énergie', () =
     const fc = powerFeatures(powerFixtureResponse(), LATE_NOW);
     expect(fc.features.length).toBeGreaterThan(0);
     expect(new Set(fc.features.map((f) => f.properties?.energyState))).toEqual(new Set(['nonSuivi']));
+  });
+});
+
+describe('carte des pannes : points pulsants (21/10/2026)', () => {
+  it('antenne coupée depuis moins de 24 h et arrêt imprévu : anneau pulsant ; ancien, maintenance, donnée en retard : aucun', () => {
+    const tel = telecomFeatures(telecomFixtureResponse(), OUTAGES_FIXTURE_NOW).features;
+    expect(tel.filter((f) => f.properties?.cls === 'recente').every((f) => Number(f.properties?.period) > 0)).toBe(true);
+    expect(tel.filter((f) => f.properties?.cls !== 'recente').every((f) => f.properties?.period === 0)).toBe(true);
+    expect(telecomFeatures(telecomFixtureResponse(), LATE_NOW).features.every((f) => f.properties?.period === 0)).toBe(true);
+    const pow = powerFeatures(powerFixtureResponse(), OUTAGES_FIXTURE_NOW).features;
+    expect(pow.find((f) => f.properties?.name === 'PALUEL 1')?.properties?.period).toBeGreaterThan(0);
+    expect(pow.filter((f) => f.properties?.kind !== 'imprevue').every((f) => f.properties?.period === 0)).toBe(true);
+  });
+  it('calques d’anneaux sous les points, rattachés aux couches Télécoms et Électricité', () => {
+    const ids = OUT_LAYERS.map((l) => l.id);
+    expect(ids.indexOf('out-telecom-pulse')).toBeGreaterThanOrEqual(0);
+    expect(ids.indexOf('out-telecom-pulse')).toBeLessThan(ids.indexOf('out-telecom-recent'));
+    expect(ids.indexOf('out-power-pulse')).toBeGreaterThanOrEqual(0);
+    expect(OUT_LAYER_KEYS.outagesTelecom).not.toContain('out-telecom-pulse');
   });
 });

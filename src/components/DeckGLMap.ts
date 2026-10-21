@@ -6,7 +6,7 @@
  */
 
 import { levelHex } from '../services/vigilance.ts';
-import { LYR_ROOM_DEPT_FILL, LYR_ROOM_NATIONAL_LINE, ROOM_OUTLINE_URL, SRC_ROOM_DEPTS, SRC_ROOM_NATIONAL, roomPulsePaint } from './deckgl/outages-room-map.ts';
+import { LYR_ROOM_DEPT_FILL, SRC_ROOM_DEPTS } from './deckgl/outages-room-map.ts';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { MapboxOverlay } from '@deck.gl/mapbox';
@@ -324,6 +324,9 @@ import {
   DEFAULT_VIEW,
   LYR_OUT_POWER_PLANNED,
   LYR_OUT_POWER_UNPLANNED,
+  LYR_OUT_POWER_PULSE,
+  LYR_OUT_TELECOM_PULSE,
+  LYR_OUT_TELECOM_RECENT,
   SRC_ENERGY_FLOWS,
   SRC_ENERGY_FLOW_HEADS,
   SRC_ENERGY_FLOW_LABELS,
@@ -442,10 +445,13 @@ const ENERGY_FOCUS_CATEGORY = 'energy-focus';
 /** Pastilles mises en avant hors Énergie (Vue générale, onglet Environnement) : union de leurs calques. */
 const GENERAL_FOCUS_CATEGORY = 'general-focus';
 /** Anneaux pulsants (pulse.ts) : calque de l'anneau et calque des points dont il suit le tamisage. */
-type PulseKey = 'disasters' | 'earthquakes';
+type PulseKey = 'disasters' | 'earthquakes' | 'telecomOutage' | 'powerOutage';
 const PULSE_LAYERS: Readonly<Record<PulseKey, { pulse: string; base: string }>> = {
   disasters: { pulse: LYR_DISASTER_PULSE, base: LYR_DISASTERS },
   earthquakes: { pulse: LYR_QUAKE_PULSE, base: LYR_QUAKES },
+  // Pannes urgentes (21/10/2026) : antennes coupées depuis moins de 24 h, arrêts imprévus de production.
+  telecomOutage: { pulse: LYR_OUT_TELECOM_PULSE, base: LYR_OUT_TELECOM_RECENT },
+  powerOutage: { pulse: LYR_OUT_POWER_PULSE, base: LYR_OUT_POWER_UNPLANNED },
 };
 /**
  * Images (raster) des pastilles Environnement, hors ENV_LAYER_KEYS (ajoutées à la demande) : tamisées avec leur pastille (20/10/2026 :
@@ -6442,7 +6448,7 @@ export class DeckGLMap {
   private pulseLast = 0;
   /** Couche affichée (dernière consigne de setLayerVisibility) et facteur de tamisage (1 vive, 0,15 tamisée par une autre pastille). */
   private pulseState: Record<PulseKey, { shown: boolean; dim: number }> = {
-    disasters: { shown: false, dim: 1 }, earthquakes: { shown: false, dim: 1 },
+    disasters: { shown: false, dim: 1 }, earthquakes: { shown: false, dim: 1 }, telecomOutage: { shown: false, dim: 1 }, powerOutage: { shown: false, dim: 1 },
   };
 
   /** Anneaux visibles et animés tant que leur couche l'est (jamais si le système demande moins d'animations). */
@@ -6482,58 +6488,25 @@ export class DeckGLMap {
     this.pulseFrame = requestAnimationFrame(step);
   }
 
-  // ─── Control room des pannes (onglet Pannes, 21/10/2026) : départements touchés, contour national pulsant ───
-  private roomFrame: number | null = null;
-  private roomLast = 0;
-
-  /**
-   * Calques de la salle : départements touchés (propriété `level`) et contour de la France à la couleur de la panne nationale la plus
-   * grave (null : contour masqué). `null` : calques et animation retirés (sortie de l'onglet).
-   */
-  setOutagesRoom(state: { depts: GeoJSON.FeatureCollection; nationalLevel: 'jaune' | 'orange' | 'rouge' | null } | null): void {
+  // ─── Control room des pannes (onglet Pannes, 21/10/2026) : départements touchés ───
+  /** Départements touchés (propriété `level`) ; `null` : calque retiré (sortie de l'onglet). */
+  setOutagesRoom(state: { depts: GeoJSON.FeatureCollection } | null): void {
     const map = this.map;
     if (!map) return;
     if (state === null) {
-      if (this.roomFrame !== null) cancelAnimationFrame(this.roomFrame);
-      this.roomFrame = null;
-      for (const id of [LYR_ROOM_NATIONAL_LINE, LYR_ROOM_DEPT_FILL]) if (map.getLayer(id)) map.removeLayer(id);
-      for (const id of [SRC_ROOM_NATIONAL, SRC_ROOM_DEPTS]) if (map.getSource(id)) map.removeSource(id);
+      if (map.getLayer(LYR_ROOM_DEPT_FILL)) map.removeLayer(LYR_ROOM_DEPT_FILL);
+      if (map.getSource(SRC_ROOM_DEPTS)) map.removeSource(SRC_ROOM_DEPTS);
       return;
     }
     const depts = map.getSource(SRC_ROOM_DEPTS) as maplibregl.GeoJSONSource | undefined;
     if (depts) depts.setData(state.depts);
     else map.addSource(SRC_ROOM_DEPTS, { type: 'geojson', data: state.depts });
-    if (!map.getSource(SRC_ROOM_NATIONAL)) map.addSource(SRC_ROOM_NATIONAL, { type: 'geojson', data: ROOM_OUTLINE_URL });
     if (!map.getLayer(LYR_ROOM_DEPT_FILL)) {
       map.addLayer({
         id: LYR_ROOM_DEPT_FILL, type: 'fill', source: SRC_ROOM_DEPTS,
-        paint: { 'fill-color': ['match', ['get', 'level'], 'jaune', levelHex('jaune'), 'orange', levelHex('orange'), levelHex('rouge')], 'fill-opacity': 0.45 },
+        paint: { 'fill-color': ['match', ['get', 'level'], 'jaune', levelHex('jaune'), 'orange', levelHex('orange'), levelHex('rouge')], 'fill-opacity': 0.3 },
       });
     }
-    if (!map.getLayer(LYR_ROOM_NATIONAL_LINE)) {
-      map.addLayer({ id: LYR_ROOM_NATIONAL_LINE, type: 'line', source: SRC_ROOM_NATIONAL, paint: { 'line-width': 3, 'line-color': levelHex('orange') } });
-    }
-    const level = state.nationalLevel;
-    map.setLayoutProperty(LYR_ROOM_NATIONAL_LINE, 'visibility', level === null ? 'none' : 'visible');
-    if (level !== null) map.setPaintProperty(LYR_ROOM_NATIONAL_LINE, 'line-color', levelHex(level));
-    const reduced = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (level === null || reduced || typeof requestAnimationFrame !== 'function') {
-      if (this.roomFrame !== null) cancelAnimationFrame(this.roomFrame);
-      this.roomFrame = null;
-      return;
-    }
-    if (this.roomFrame !== null) return;
-    const step = (ts: number): void => {
-      if (!this.map?.getLayer(LYR_ROOM_NATIONAL_LINE)) { this.roomFrame = null; return; }
-      if (ts - this.roomLast >= 33) {
-        this.roomLast = ts;
-        const paint = roomPulsePaint(Date.now());
-        this.map.setPaintProperty(LYR_ROOM_NATIONAL_LINE, 'line-width', paint.width);
-        this.map.setPaintProperty(LYR_ROOM_NATIONAL_LINE, 'line-opacity', paint.opacity);
-      }
-      this.roomFrame = requestAnimationFrame(step);
-    };
-    this.roomFrame = requestAnimationFrame(step);
   }
 
   /** Catastrophes : zones Copernicus EMS des activations françaises en cours (contour violet). */
@@ -8811,6 +8784,9 @@ export class DeckGLMap {
     for (const id of SOV_LAYER_KEYS.subseaCables) this.setVis(id, vis(layers.subseaCables));
     // Pannes réseau : Télécoms (sites récents et anciens ; maintenances en option) et Électricité (unités en arrêt imprévu et en maintenance).
     for (const id of OUT_LAYER_KEYS.outagesTelecom) this.setVis(id, vis(layers.outagesTelecom));
+    this.pulseState.telecomOutage.shown = layers.outagesTelecom ?? false;
+    this.pulseState.powerOutage.shown = layers.outagesElec ?? false;
+    this.syncPulses();
     for (const id of OUT_LAYER_KEYS.outagesElec) this.setVis(id, vis(layers.outagesElec));
     for (const id of OUT_LAYER_KEYS.outagesInternet) this.setVis(id, vis(layers.outagesInternet));
     for (const id of OUT_LAYER_KEYS.outagesCloud) this.setVis(id, vis(layers.outagesCloud));

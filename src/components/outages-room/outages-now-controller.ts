@@ -8,7 +8,7 @@ import { loadDepartementsGeojson } from '../../services/departements-geojson.ts'
 import { fetchOutagesNow, OUTAGES_NOW_POLL_MS } from '../../services/outages-now.ts';
 import type { VigilanceLevel } from '../../services/vigilance.ts';
 import { OutagesNowBanner } from '../OutagesNowBanner.ts';
-import { roomDeptFeatures, roomNationalLevel } from '../deckgl/outages-room-map.ts';
+import { roomDeptFeatures } from '../deckgl/outages-room-map.ts';
 import { OutagesRoom } from './OutagesRoom.ts';
 
 /** Relève dans l'onglet Pannes. */
@@ -16,7 +16,7 @@ export const ROOM_POLL_MS = 60_000;
 const RANK: Readonly<Record<VigilanceLevel, number>> = { vert: 0, jaune: 1, orange: 2, rouge: 3 };
 
 export interface RoomMap {
-  setOutagesRoom(state: { depts: GeoJSON.FeatureCollection; nationalLevel: 'jaune' | 'orange' | 'rouge' | null } | null): void;
+  setOutagesRoom(state: { depts: GeoJSON.FeatureCollection } | null): void;
   flyTo(lon: number, lat: number, zoom: number): void;
   refitFrance(): void;
 }
@@ -126,7 +126,6 @@ export class OutagesNowController<T = unknown> {
     const outages = this.data?.outages ?? [];
     this.opts.map.setOutagesRoom({
       depts: this.depts ? roomDeptFeatures(outages, this.filter, this.depts) : { type: 'FeatureCollection', features: [] },
-      nationalLevel: roomNationalLevel(outages, this.filter),
     });
   }
 
