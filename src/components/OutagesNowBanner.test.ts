@@ -13,6 +13,7 @@ const body = (): OutagesNowResponse => ({
     { id: 'internet|dept:32', network: 'internet', rung: 'mesuree', scope: 'departement', operator: null, dept: '32', label: null, level: 'jaune', since: '2026-10-21T09:02:00Z', national: false, measured: true,
       evidence: [{ source: 'arcep', text: '25 antennes', at: null, link: null }, { source: 'ioda', text: 'coupure <b>', at: null, link: null }] },
   ],
+  journal: [],
   sources: [{ source: 'presse', readAt: null, ok: true }, { source: 'radar', readAt: null, ok: false }],
   errors: [],
 });

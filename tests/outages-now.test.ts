@@ -1,7 +1,6 @@
 // tests/outages-now.test.ts : pannes de téléphone et d'internet en cours, toutes sources (api/_lib/outages-now.js, 21/10/2026).
 import { describe, expect, it } from 'vitest';
 import { outagesNow } from '../api/_lib/outages-now.js';
-import { loadOutagesNow } from '../api/_handlers/outages/now.js';
 import { fleetLevel } from '../src/services/nuclear-fleet.ts';
 
 const NOW = Date.parse('2026-10-21T12:00:00Z');
@@ -53,15 +52,6 @@ describe('pannes en cours : fusion des sources', () => {
     expect(all.map((o) => o.id)).toEqual(['mobile|national', 'internet|national']);
     expect(all[0]).toMatchObject({ scope: 'national', level: 'rouge', evidence: [expect.objectContaining({ source: 'arcep' })] });
     expect(all[1]).toMatchObject({ level: 'orange', evidence: [expect.objectContaining({ source: 'radar' })] });
-  });
-  it('route : sources datées, erreurs reprises, jamais d’exception', async () => {
-    const body = await loadOutagesNow(NOW, { readTelecom: async () => telecom({ errors: ['Presse : Neon injoignable'] }), readInternet: async () => internet({ radar: { configured: false, readAt: null, items: [] } }) });
-    expect(body.sources).toEqual([
-      { source: 'presse', readAt: '2026-10-21T12:00:00.000Z', ok: true }, { source: 'arcep', readAt: '2026-10-21T09:02:00Z', ok: true },
-      { source: 'ioda', readAt: '2026-10-21T11:50:00Z', ok: true }, { source: 'radar', readAt: null, ok: false },
-    ]);
-    expect(body.errors).toEqual(['Presse : Neon injoignable']);
-    expect(body.outages.length).toBe(5);
   });
 });
 

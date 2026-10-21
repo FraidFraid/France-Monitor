@@ -3222,9 +3222,21 @@ export interface OutageNow {
   rung: OutageRung;
   evidence: OutageNowEvidence[];
 }
+/** Changement d'état d'une panne (journal serveur, 7 jours). `name` : libellé de la panne, ou code du département (nommé par le client). */
+export interface OutageJournalEntry {
+  at: string;
+  kind: 'nouvelle' | 'aggravee' | 'attenuee' | 'confirmee' | 'retablie';
+  id: string;
+  network: OutageNetwork;
+  name: string;
+  dept: string | null;
+  level: 'jaune' | 'orange' | 'rouge';
+  rung: OutageRung;
+}
 export interface OutagesNowResponse {
   generatedAt: string;
   outages: OutageNow[];
+  journal: OutageJournalEntry[];        // 50 dernières entrées, plus récente d'abord
   sources: Array<{ source: OutageNowSource; readAt: string | null; ok: boolean }>;
   errors: string[];
 }

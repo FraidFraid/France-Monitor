@@ -78,6 +78,7 @@ jobs:
             "/api/outages/internet;200"
             "/api/outages/cloud;200"
             "/api/outages/now;200"
+            "/api/outages/journal;200"
             "/api/rte-iip;200"
             "/api/ministers/composition;200"
             "/api/energy/drom;200"

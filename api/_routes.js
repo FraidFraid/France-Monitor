@@ -67,6 +67,7 @@ export const ROUTES = {
   '/api/opendata-proxy': () => import('./_handlers/opendata-proxy.js'),
   '/api/outages/cloud': () => import('./_handlers/outages/cloud.js'),
   '/api/outages/internet': () => import('./_handlers/outages/internet.js'),
+  '/api/outages/journal': () => import('./_handlers/outages/journal.js'),
   '/api/outages/now': () => import('./_handlers/outages/now.js'),
   '/api/outages/power': () => import('./_handlers/outages/power.js'),
   '/api/outages/telecom': () => import('./_handlers/outages/telecom.js'),
