@@ -184,3 +184,30 @@ describe('hygiène du rendu', () => {
     expect(h).toContain('&lt;img src=x onerror=alert(1)&gt;');
   });
 });
+
+describe('vue Télécoms : pannes signalées par la presse (21/10/2026)', () => {
+  const press = [{
+    operator: 'Orange', severity: 'high' as const, articles: 20, sources: 12, firstAt: '2026-10-08T10:00:00Z', lastAt: '2026-10-08T11:03:00Z',
+    title: 'Orange : panne au niveau national', link: 'https://ex.fr/orange',
+  }];
+  it('section en tête, pastille orange même si l’ARCEP est vert, gros chiffre inchangé, source dite', () => {
+    const v = view({ telecom: { ...telecomFixtureResponse(), press } });
+    expect(v.sections[0]?.id).toBe('presse');
+    expect(v.head.level).toBe('orange');
+    expect(v.head.figure?.value).toBe('18');
+    expect(v.head.status).toContain('panne signalée par la presse');
+    const t = visibleText(section({ telecom: { ...telecomFixtureResponse(), press } }, 'presse'));
+    expect(t).toContain('Orange : panne signalée par la presse');
+    expect(t).toContain(`depuis 12${NBSP}h${NBSP}00`);
+    expect(t).toContain(`20${NBSP}articles, 12${NBSP}sources`);
+    expect(t).toContain('non confirmés par l’ARCEP');
+  });
+  it('fichier ARCEP en retard ou absent : la presse donne encore la pastille ; sans signalement, rien ne change', () => {
+    expect(view({ telecom: { ...telecomFixtureResponse(), press }, now: Date.parse('2026-10-09T16:00:00+02:00') }).head.level).toBe('orange');
+    const empty: TelecomOutagesResponse = { ...telecomFixtureResponse(), file: null, previousFile: null, summary: null, sites: [], byOperator: [], byDept: [], press };
+    expect(view({ telecom: empty }).head.level).toBe('orange');
+    expect(view({ telecom: empty }).sections.map((s) => s.id)).toEqual(['presse']);
+    expect(view({ telecom: { ...telecomFixtureResponse(), press: [] } }).sections.map((s) => s.id)).not.toContain('presse');
+  });
+});
+

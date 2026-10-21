@@ -3199,6 +3199,19 @@ export interface TelecomOutagesResponse {
   sites: TelecomSite[];                 // tous les sites, récentes d'abord
   history: Array<{ day: string; recent: number }>;  // 30 jours au plus, plus ancien d'abord
   errors: string[];
+  press?: TelecomPressReport[];         // pannes signalées par la presse (24 h) ; absent : non lu
+}
+
+/** Panne télécom signalée par la presse (api/_lib/telecom-press.js, 21/10/2026) : regroupée par opérateur cité, null si aucun. */
+export interface TelecomPressReport {
+  operator: string | null;
+  severity: 'medium' | 'high' | 'critical';
+  articles: number;
+  sources: number;
+  firstAt: string;
+  lastAt: string;
+  title: string;                        // article le plus récent
+  link: string;
 }
 
 // ─── Électricité : GET /api/outages/power (EDF OpenData, RTE IIP, EDF SEI) ───

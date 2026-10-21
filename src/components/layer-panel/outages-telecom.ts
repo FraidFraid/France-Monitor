@@ -2,10 +2,10 @@
 // ni DOM. Pannes imprévues récentes (moins de 24 h avant la publication du fichier ARCEP) en gros chiffre ; longues, maintenances et sans
 // date à part (P1) ; par opérateur, par département, depuis le fichier précédent, ancienneté, liste paginée, courbe de 30 jours.
 // Fichier en retard (isArcepFileLate, passé explicitement) : « (en retard) », plus aucune couleur de niveau ni de catégorie (R30).
-import type { TelecomOutagesResponse, TelecomSite } from '../../types/index.ts';
+import type { TelecomOutagesResponse, TelecomPressReport, TelecomSite } from '../../types/index.ts';
 import { parisDayOf } from '../../services/environment-levels.ts';
-import { isArcepFileLate, telecomLevel } from '../../services/outages-levels.ts';
-import type { VigilanceLevel } from '../../services/vigilance.ts';
+import { isArcepFileLate, telecomLevel, telecomPressLevel } from '../../services/outages-levels.ts';
+import { LEVEL_RANK, type VigilanceLevel } from '../../services/vigilance.ts';
 import { escapeHtml } from '../france-intel-events.ts';
 import { kvRow } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
@@ -55,6 +55,34 @@ function siteRow(s: TelecomSite, now: number, canFocus: boolean, isLate: boolean
   });
 }
 
+/** « Orange : panne signalée par la presse », depuis l'heure du premier article, articles et sources, dernier article en lien. */
+function pressRow(p: TelecomPressReport, now: number): string {
+  const counts = `${countText(p.articles, 'article', 'articles')}, ${countText(p.sources, 'source', 'sources')}`;
+  const first = parisDayOf(Date.parse(p.firstAt)) === parisDayOf(now) ? parisClock(Date.parse(p.firstAt)) : `${dayMonth(parisDayOf(Date.parse(p.firstAt)))} à ${parisClock(Date.parse(p.firstAt))}`;
+  return listRow({
+    text: `${p.operator ?? 'Opérateur non précisé'} : panne signalée par la presse`, value: `depuis ${first}`, level: telecomPressLevel([p]) ?? 'jaune',
+    noteHtml: `${escapeHtml(counts)} · dernier${NBSP}: ${sourceLinkHtml(p.title, p.link)}`,
+  });
+}
+
+/** Section « Signalé par la presse » (21/10/2026) : le fichier ARCEP ne paraît qu'une fois par jour et ne voit pas une panne du cœur de réseau. */
+function pressSection(t: TelecomOutagesResponse | null, now: number): FicheSection[] {
+  const press = t?.press ?? [];
+  if (press.length === 0) return [];
+  return [{
+    id: 'presse', title: 'Signalé par la presse', collapsible: false, open: true,
+    html: press.map((p) => pressRow(p, now)).join('')
+      + note(`Articles des dernières 24${NBSP}h, non confirmés par l’ARCEP : son fichier ne paraît qu’une fois par jour et ne compte que les antennes hors service.`),
+  }];
+}
+
+/** Niveau le plus grave des deux ; null si aucun. */
+function worst(a: VigilanceLevel | null, b: VigilanceLevel | null): VigilanceLevel | null {
+  if (a === null) return b;
+  if (b === null) return a;
+  return LEVEL_RANK[a] >= LEVEL_RANK[b] ? a : b;
+}
+
 function sections(t: TelecomOutagesResponse, input: TelecomViewInput, isLate: boolean): FicheSection[] {
   const { now, open, canFocus, shown } = input;
   const s = t.summary;
@@ -96,6 +124,7 @@ function sections(t: TelecomOutagesResponse, input: TelecomViewInput, isLate: bo
     + `<p class="fmk-note">${sourceLinkHtml('ARCEP, sites mobiles indisponibles (Licence Ouverte)', ARCEP_URL)}</p>`;
   const noneRecent = emptyLine(`Aucune panne imprévue de moins de 24${NBSP}h dans le fichier.`);
   return [
+    ...pressSection(t, now),
     { id: 'operateurs', title: 'Par opérateur', collapsible: true, open: open('operateurs', true), html: operators || emptyLine('Aucun opérateur dans le fichier.') },
     { id: 'departements', title: 'Pannes récentes par département', collapsible: true, open: open('departements', true), html: depts || noneRecent },
     { id: 'evolution', title: 'Depuis le fichier précédent', collapsible: true, open: open('evolution', true), html: evolution },
@@ -109,9 +138,10 @@ function sections(t: TelecomOutagesResponse, input: TelecomViewInput, isLate: bo
 
 /** Niveau de la pastille : partagé avec la Vue générale dynamique (12/10/2026). */
 export function telecomHeadLevel(t: TelecomOutagesResponse | null, now: number): VigilanceLevel | 'nd' {
-  if (t === null || t.summary === null || t.file === null) return 'nd';
-  const level = telecomLevel(t);
-  return isArcepFileLate(t.file.day, now) || level === null ? 'nd' : level;
+  const press = telecomPressLevel(t?.press);
+  if (t === null || t.summary === null || t.file === null) return press ?? 'nd';
+  const level = isArcepFileLate(t.file.day, now) ? null : telecomLevel(t);
+  return worst(level, press) ?? 'nd';
 }
 
 export function buildTelecomView(input: TelecomViewInput): LayerView {
@@ -122,16 +152,17 @@ export function buildTelecomView(input: TelecomViewInput): LayerView {
   if (t === null || t.summary === null || t.file === null) {
     const reasons = [error, ...(t?.errors ?? [])].filter((x): x is string => x !== null && x.length > 0);
     return {
-      head: { theme: OUTAGES_THEME, title: TELECOM_TITLE, level: 'nd', figure: { value: 'n.d.', caption: FIGURE_CAPTION, level: null }, status: ['fichier ARCEP indisponible'] },
-      sections: [], bodyHtml: sourceErrorCallout(null, now) + reasons.map(note).join(''),
+      head: { theme: OUTAGES_THEME, title: TELECOM_TITLE, level: telecomHeadLevel(t, now), figure: { value: 'n.d.', caption: FIGURE_CAPTION, level: null }, status: ['fichier ARCEP indisponible'] },
+      sections: pressSection(t, now), bodyHtml: sourceErrorCallout(null, now) + reasons.map(note).join(''),
     };
   }
   const isLate = isArcepFileLate(t.file.day, now);
-  const level = telecomLevel(t);
-  // Même règle que telecomHeadLevel (Vue générale).
+  // Même règle que la Vue générale : le gros chiffre reste celui de l'ARCEP, la pastille prend aussi la presse.
   const figure = { value: frNumber(t.summary.recent, 0), caption: FIGURE_CAPTION, ...(isLate ? { level: null } : {}) };
+  const pressCount = t.press?.length ?? 0;
+  const status = [fileStatus(t.file, now), ...(pressCount > 0 ? ['panne signalée par la presse'] : [])];
   return {
-    head: { theme: OUTAGES_THEME, title: TELECOM_TITLE, figure, level: isLate || level === null ? 'nd' : level, status: [fileStatus(t.file, now)] },
+    head: { theme: OUTAGES_THEME, title: TELECOM_TITLE, figure, level: telecomHeadLevel(t, now), status },
     sections: sections(t, input, isLate),
     ...(error !== null ? { bodyHtml: sourceErrorCallout(Date.parse(t.file.publishedAt), now) } : {}),
   };

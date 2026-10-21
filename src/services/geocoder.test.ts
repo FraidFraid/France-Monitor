@@ -38,6 +38,13 @@ describe('extractLocations : préposition + lieu', () => {
   it('la ville connue du titre reste en dernier recours quand un autre candidat échoue', () => {
     expect(extractLocations('Lens mène face à l’Olympique Lyonnais grâce à Sotoca')).toEqual(['Sotoca', 'Lens']);
   });
+
+  it('l’opérateur Orange n’est pas la ville d’Orange (panne du 21/10/2026 placée dans le Vaucluse)', () => {
+    expect(extractLocations('Orange : panne «au niveau national» de l’opérateur et de sa filiale Sosh')).toEqual([]);
+    expect(extractLocations('Le réseau mobile d’Orange touché par une panne ce mercredi')).toEqual([]);
+    expect(extractLocations('Panne réseau en cours chez Orange : les abonnés privés d’appels à Auch')).toEqual(['Auch']);
+    expect(extractLocations('Orange : un incendie au théâtre antique')).toEqual(['Orange']);
+  });
 });
 
 describe('géocodage : départements et API Adresse', () => {

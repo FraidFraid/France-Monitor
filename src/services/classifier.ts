@@ -197,8 +197,13 @@ const KEYWORDS: Record<EventCategory, { high: string[]; medium: string[]; low: s
         low: ['ralentissement', 'travaux', 'retard', 'déviation', 'circulation dense', 'accident', 'accrochage'],
     },
     infrastructure: {
-        high: ['rupture barrage', 'effondrement', 'fuite nucléaire', 'contamination', 'explosion usine'],
-        medium: ['fuite gaz', 'incendie industriel', 'pollution', 'coupure eau', 'incident seveso'],
+        // Pannes télécoms (21/10/2026 : panne nationale d'Orange restée « info », aucun mot-clé ne la voyait). Toujours « panne de
+        // réseau » ou « réseau mobile », jamais « panne » seul (ascenseur, voiture).
+        high: ['rupture barrage', 'effondrement', 'fuite nucléaire', 'contamination', 'explosion usine',
+            'panne nationale', 'panne au niveau national', 'panne géante', 'numéros d\'urgence inaccessibles'],
+        medium: ['fuite gaz', 'incendie industriel', 'pollution', 'coupure eau', 'incident seveso',
+            'panne réseau', 'panne de réseau', 'panne du réseau', 'panne internet', 'coupure internet', 'panne téléphonique',
+            'réseau mobile perturbé', 'réseau mobile touché', 'privés de réseau', 'panne de la fibre'],
         low: ['maintenance', 'travaux', 'rénovation', 'mise aux normes'],
     },
     health: {

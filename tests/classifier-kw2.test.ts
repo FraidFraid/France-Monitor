@@ -56,4 +56,12 @@ describe('qualifyByKeywords — règles kw-2', () => {
     expect(classifyByKeywords('Une maison détruite par un attentat en Haute-Corse, le Parquet national antiterroriste saisi')?.level).toBe('high');
     expect(classifyByKeywords('Attentat au marché de Noël : trois morts')?.level).toBe('critical');
   });
+  it('panne télécom : nationale high, locale medium, panne d’ascenseur ignorée (panne Orange du 21/10/2026)', () => {
+    expect(classifyByKeywords('Orange : panne «au niveau national» de l’opérateur et de sa filiale Sosh')).toMatchObject({ level: 'high', category: 'infrastructure' });
+    expect(classifyByKeywords('Des milliers de signalements dans toute la France : grosse panne de réseau chez l’opérateur Orange et sa filiale Sosh'))
+      .toMatchObject({ level: 'medium', category: 'infrastructure' });
+    expect(classifyByKeywords('Panne Orange : le réseau mobile perturbé ce mercredi, de nombreux abonnés privés d’appels et de données')?.category).toBe('infrastructure');
+    expect(classifyByKeywords('Orange : l\'opérateur est victime d\'une panne réseau ce mercredi')?.category).toBe('infrastructure');
+    expect(classifyByKeywords('Besançon. « Nous vivons dans une situation indigne » : ascenseur en panne, couloirs dégradés')).toBeUndefined();
+  });
 });

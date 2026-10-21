@@ -1,6 +1,6 @@
 // src/services/outages-levels.ts : module pur des panneaux Pannes réseau (spec 2026-10-08 panneaux pannes § 1, § 2) : sources et
 // retards (S2), seuils partagés avec la situation « Perturbation télécom », niveaux des panneaux. Aucun accès réseau ni DOM.
-import type { CloudIncident, CloudOutagesResponse, CloudProvider, CloudStatus, CloudZone, EcowattSignal, InternetOutagesResponse, InternetScope, PowerOutagesResponse, RadarItem, TelecomOutagesResponse } from '../types/index.ts';
+import type { CloudIncident, CloudOutagesResponse, CloudProvider, CloudStatus, CloudZone, EcowattSignal, InternetOutagesResponse, InternetScope, PowerOutagesResponse, RadarItem, TelecomOutagesResponse, TelecomPressReport } from '../types/index.ts';
 import { parisDayOf } from './environment-levels.ts';
 import { fleetLevel } from './nuclear-fleet.ts';
 import { parisHour } from './traffic-levels.ts';
@@ -57,6 +57,21 @@ export function telecomLevel(r: Pick<TelecomOutagesResponse, 'summary' | 'byDept
   if (top >= t.deptHigh || national >= t.nationalHigh) return 'orange';
   if (top >= t.deptMedium) return 'jaune';
   return 'vert';
+}
+
+const PRESS_LEVEL: Readonly<Record<TelecomPressReport['severity'], VigilanceLevel>> = { critical: 'rouge', high: 'orange', medium: 'jaune' };
+
+/**
+ * Pastille Télécoms d'après les pannes signalées par la presse (21/10/2026) : la plus grave, null sans signalement. Jamais verte :
+ * l'absence d'article ne mesure rien.
+ */
+export function telecomPressLevel(press: readonly TelecomPressReport[] | undefined): VigilanceLevel | null {
+  let best: VigilanceLevel | null = null;
+  for (const p of press ?? []) {
+    const level = PRESS_LEVEL[p.severity];
+    if (best === null || LEVEL_RANK[level] > LEVEL_RANK[best]) best = level;
+  }
+  return best;
 }
 
 /**

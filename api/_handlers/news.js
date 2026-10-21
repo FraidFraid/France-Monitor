@@ -226,6 +226,18 @@ async function refreshSnapshot(sql, now) {
 }
 
 /**
+ * Articles de l'instantané (24 h environ), relu au besoin, pour les autres routes (pannes télécoms signalées par la presse) :
+ * aucune lecture Neon de plus que /api/news. null sans base configurée ; lève si la base est injoignable.
+ */
+export async function snapshotItems(now = Date.now()) {
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) return null;
+  snapshotInFlight ??= refreshSnapshot(neon(databaseUrl), now).finally(() => { snapshotInFlight = null; });
+  await snapshotInFlight;
+  return snapshot?.items ?? [];
+}
+
+/**
  * Core query logic, shared between the Vercel handler and the Vite dev proxy.
  * @param {URLSearchParams} searchParams
  * @returns {Promise<{ status: number, body: object }>}

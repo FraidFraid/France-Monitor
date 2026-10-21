@@ -45,7 +45,11 @@ const SHAPE = shapeOf<TelecomOutagesResponse>(record({
   byOperator: list(record({ operator: str, recent: count, long: count, maintenance: count, voiceCut: count, dataCut: count })),
   byDept: list(record({ dept: strOrNull, recent: count })),
   sites: list(site), history: list(record({ day, recent: count })), errors: value(isStringList),
-}));
+  press: list(record({
+    operator: strOrNull, severity: value((v) => v === 'medium' || v === 'high' || v === 'critical'), articles: count, sources: count,
+    firstAt: date, lastAt: date, title: str, link: str,
+  })),
+}, ['press']));
 
 export function telecomResponseProblems(v: unknown): string[] { return SHAPE.problems(v); }
 export function isTelecomOutagesResponse(v: unknown): v is TelecomOutagesResponse { return SHAPE.is(v); }

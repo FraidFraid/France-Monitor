@@ -55,4 +55,16 @@ describe('/api/outages/telecom', () => {
     expect(body.errors).toContain('ARCEP : lecture en cours');
     release();
   });
+  it('presse : pannes signalées ajoutées (champ press), base injoignable nommée sans casser la réponse', async () => {
+    stubFetch(ok);
+    const items = [{ title: 'Panne réseau en cours chez Orange', link: 'https://ex.fr/a', publishedAt: '2026-10-08T19:00:00Z', feedName: 'BFM TV', category: 'infrastructure', severity: 'high' }];
+    const withPress = await loadTelecom(NOW, { readItems: async () => items });
+    expect(withPress.press).toEqual([expect.objectContaining({ operator: 'Orange', severity: 'high', articles: 1 })]);
+    __resetSwrCacheForTests(); __resetTelecomForTests();
+    const broken = await loadTelecom(NOW, { readItems: async () => { throw new Error('Neon injoignable'); } });
+    expect(broken.press).toBeUndefined();
+    expect(broken.errors).toContain('Presse : Neon injoignable');
+    expect(broken.summary?.recent).toBe(18);
+  });
 });
+

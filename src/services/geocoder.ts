@@ -251,8 +251,13 @@ export function extractLocations(title: string): string[] {
         }
     }
 
-    return [...new Set(locations)];
+    // L'opérateur Orange n'est pas la ville d'Orange (21/10/2026 : la panne nationale d'Orange était placée dans le Vaucluse).
+    const unique = [...new Set(locations)];
+    return OPERATOR_CONTEXT.test(title.normalize('NFD').replace(/[̀-ͯ]/g, '')) ? unique.filter((loc) => loc !== 'Orange') : unique;
 }
+
+/** Contexte télécom : « Orange » y désigne l'opérateur. */
+const OPERATOR_CONTEXT = /\b(?:operateur|sosh|reseau|abonnes?|panne|livebox|fibre|forfait|telecoms?|4G|5G|SMS)\b/i;
 
 /**
  * Geocode a location string using API Adresse Gouv.

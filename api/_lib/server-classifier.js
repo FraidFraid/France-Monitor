@@ -1263,8 +1263,36 @@ var KEYWORDS = {
     low: ["ralentissement", "travaux", "retard", "d\xE9viation", "circulation dense", "accident", "accrochage"]
   },
   infrastructure: {
-    high: ["rupture barrage", "effondrement", "fuite nucl\xE9aire", "contamination", "explosion usine"],
-    medium: ["fuite gaz", "incendie industriel", "pollution", "coupure eau", "incident seveso"],
+    // Pannes télécoms (21/10/2026 : panne nationale d'Orange restée « info », aucun mot-clé ne la voyait). Toujours « panne de
+    // réseau » ou « réseau mobile », jamais « panne » seul (ascenseur, voiture).
+    high: [
+      "rupture barrage",
+      "effondrement",
+      "fuite nucl\xE9aire",
+      "contamination",
+      "explosion usine",
+      "panne nationale",
+      "panne au niveau national",
+      "panne g\xE9ante",
+      "num\xE9ros d'urgence inaccessibles"
+    ],
+    medium: [
+      "fuite gaz",
+      "incendie industriel",
+      "pollution",
+      "coupure eau",
+      "incident seveso",
+      "panne r\xE9seau",
+      "panne de r\xE9seau",
+      "panne du r\xE9seau",
+      "panne internet",
+      "coupure internet",
+      "panne t\xE9l\xE9phonique",
+      "r\xE9seau mobile perturb\xE9",
+      "r\xE9seau mobile touch\xE9",
+      "priv\xE9s de r\xE9seau",
+      "panne de la fibre"
+    ],
     low: ["maintenance", "travaux", "r\xE9novation", "mise aux normes"]
   },
   health: {

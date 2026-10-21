@@ -1000,8 +1000,10 @@ function extractLocations(title) {
       if (wordBoundary.test(normTitle)) locations.push(cityName);
     }
   }
-  return [...new Set(locations)];
+  const unique = [...new Set(locations)];
+  return OPERATOR_CONTEXT.test(title.normalize("NFD").replace(/[̀-ͯ]/g, "")) ? unique.filter((loc) => loc !== "Orange") : unique;
 }
+var OPERATOR_CONTEXT = /\b(?:operateur|sosh|reseau|abonnes?|panne|livebox|fibre|forfait|telecoms?|4G|5G|SMS)\b/i;
 
 // generated-entry-server-geocoder.js.ts
 var geoCache = /* @__PURE__ */ new Map();
