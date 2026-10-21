@@ -76,3 +76,18 @@ describe('qualifyByKeywords — règles kw-2', () => {
   });
 });
 
+
+describe('qualifyByKeywords — crash militaire et faille critique mondiale (21/10/2026)', () => {
+  it('crash d’un Mirage : critical, sécurité, même sans mot-clé', () => {
+    const q = qualifyByKeywords('Crash d’un Mirage 2000 près de Nancy : les recherches sont toujours en cours');
+    expect(q.classification).toMatchObject({ level: 'critical', category: 'security' });
+    expect(q.reportedLevel).toBe('critical');
+  });
+  it('faille PHP mondiale : critical, cyber', () => {
+    const q = qualifyByKeywords('Préfectures, médias, impôts... De nombreux sites internet inaccessibles afin de corriger une faille de sécurité mondiale');
+    expect(q.classification).toMatchObject({ level: 'critical', category: 'cyber' });
+  });
+  it('les plafonds du titre s’appliquent ensuite (procès → low)', () => {
+    expect(qualifyByKeywords('Crash d’un Mirage : le procès s’ouvre dix ans après').classification?.level).not.toBe('critical');
+  });
+});

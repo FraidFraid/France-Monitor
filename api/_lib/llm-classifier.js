@@ -101,7 +101,8 @@ export function parseBatchResponse(content, count) {
  * @param {LlmJudgment} judgment
  * Terrorisme au titre : gravité signalée 3 au moins — la clause « menace » de la grille ne suffit pas,
  * le modèle note 1 un projet déjoué ou une arrestation (vérifié le 29/09) ; les plafonds s'appliquent ensuite.
- * @param {{ maxSeverity: string, temporality: string, zone: string, reasons: string[], terrorism?: boolean }} title  titleQualification(title)
+ * Crash d'un aéronef militaire ou faille critique mondiale au titre (21/10/2026) : gravité signalée 4 et catégorie du titre.
+ * @param {{ maxSeverity: string, temporality: string, zone: string, reasons: string[], terrorism?: boolean, criticalCategory?: string | null }} title  titleQualification(title)
  */
 export function qualifyJudgment(judgment, title) {
   const zone = title.zone === 'etranger' || !judgment.inFrance ? 'etranger' : 'france';
@@ -109,13 +110,14 @@ export function qualifyJudgment(judgment, title) {
   let cap = RANK[/** @type {keyof typeof RANK} */ (title.maxSeverity)] ?? RANK.critical;
   if (zone === 'etranger') cap = Math.min(cap, RANK.medium);
   if (temporality === 'passe') cap = Math.min(cap, RANK.low);
-  const reported = title.terrorism ? Math.max(judgment.severity, RANK.high) : judgment.severity;
+  const floor = title.criticalCategory ? RANK.critical : title.terrorism ? RANK.high : RANK.info;
+  const reported = Math.max(judgment.severity, floor);
   /** @type {string[]} */
   const reasons = [];
   if (temporality === 'passe' && reported > RANK.low) reasons.push('passe');
   if (title.reasons.includes('hypothetique') && reported > RANK.low) reasons.push('hypothetique');
   if (zone === 'etranger' && reported > RANK.medium) reasons.push('etranger');
-  return { severity: SEVERITIES[Math.min(reported, cap)], reportedSeverity: SEVERITIES[reported], temporality, zone, reasons };
+  return { category: title.criticalCategory ?? judgment.category, severity: SEVERITIES[Math.min(reported, cap)], reportedSeverity: SEVERITIES[reported], temporality, zone, reasons };
 }
 
 /**

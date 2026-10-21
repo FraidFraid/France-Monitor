@@ -69,7 +69,7 @@ describe('parseBatchResponse', () => {
 describe('qualifyJudgment', () => {
   const j = (severity: number, inFrance = true, ongoing = true) => ({ category: 'security', severity, inFrance, ongoing });
   it('en France, en cours : gravité du modèle, sans motif', () => {
-    expect(qualifyJudgment(j(4), titleQ())).toEqual({ severity: 'critical', reportedSeverity: 'critical', temporality: 'en_cours', zone: 'france', reasons: [] });
+    expect(qualifyJudgment(j(4), titleQ())).toEqual({ category: 'security', severity: 'critical', reportedSeverity: 'critical', temporality: 'en_cours', zone: 'france', reasons: [] });
   });
   it('hors de France selon le modèle : retenue medium, motif étranger', () => {
     expect(qualifyJudgment(j(4, false), titleQ())).toMatchObject({ severity: 'medium', reportedSeverity: 'critical', zone: 'etranger', reasons: ['etranger'] });
@@ -130,6 +130,17 @@ describe('classifyBatch', () => {
     const fetchImpl = vi.fn();
     expect(await classifyBatch(LLM, [], { fetchImpl })).toEqual([]);
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe('qualifyJudgment — crash militaire et faille critique mondiale (21/10/2026)', () => {
+  const j = (severity: number, category = 'transport') => ({ category, severity, inFrance: true, ongoing: true });
+  it('gravité critical et catégorie du titre imposées, même si le modèle dit 1', () => {
+    expect(qualifyJudgment(j(1), titleQ({ criticalCategory: 'security' }))).toMatchObject({ severity: 'critical', reportedSeverity: 'critical', category: 'security' });
+    expect(qualifyJudgment(j(0, 'general'), titleQ({ criticalCategory: 'cyber' }))).toMatchObject({ severity: 'critical', category: 'cyber' });
+  });
+  it('sans motif au titre : catégorie et note du modèle', () => {
+    expect(qualifyJudgment(j(1), titleQ({ criticalCategory: null }))).toMatchObject({ severity: 'low', category: 'transport' });
   });
 });
 

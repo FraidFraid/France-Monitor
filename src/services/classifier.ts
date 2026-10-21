@@ -458,13 +458,17 @@ export function qualifyByKeywords(title: string, summary?: string): KeywordQuali
     const neutralized = neutralizeMetaphors(normalized);
     const reasons: ClassificationReason[] = neutralized === normalized ? [] : ['metaphore'];
     const titleQ = titleQualification(title);
-    const full = classifyNormalized(neutralized);
+    const keywords = classifyNormalized(neutralized);
+    // Crash militaire ou faille critique mondiale au titre : critical et catégorie imposés, même sans mot-clé (21/10/2026).
+    const full: ThreatClassification | undefined = titleQ.criticalCategory
+        ? { level: 'critical', category: titleQ.criticalCategory, confidence: 0.9, source: 'keyword' }
+        : keywords;
     if (!full) {
         return { classification: undefined, reportedLevel: 'info', temporality: titleQ.temporality, zone: titleQ.zone, reasons };
     }
     let reportedLevel = full.level;
     let confidence = full.confidence;
-    if (levelRank(reportedLevel) >= levelRank('high')) {
+    if (levelRank(reportedLevel) >= levelRank('high') && !titleQ.criticalCategory) {
         const titleLevel = classifyNormalized(neutralizeMetaphors(normalizeForMatch(title)))?.level ?? 'info';
         if (levelRank(titleLevel) >= levelRank('high')) {
             reportedLevel = minLevel(reportedLevel, titleLevel);

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  titleCriticalCategory,
   normalizeForMatch, neutralizeMetaphors, isJudicialOrRetrospective, isHypothetical, titleZone,
   titleQualification, minLevel, levelRank, TITLE_REASON_CAP, FRENCH_ANCHOR_FORMS, FOREIGN_FORMS, isTerrorWithoutVictims,
 } from '../src/services/classification-guards.ts';
@@ -111,17 +112,45 @@ describe('titleZone', () => {
 describe('titleQualification', () => {
   it('sans garde : critical, en cours', () => {
     expect(titleQualification('Attentat à Paris : plusieurs blessés')).toEqual({
-      maxSeverity: 'critical', temporality: 'en_cours', zone: 'france', reasons: [], terrorism: true,
+      maxSeverity: 'critical', temporality: 'en_cours', zone: 'france', reasons: [], terrorism: true, criticalCategory: null,
     });
   });
   it('cumule les gardes et garde le plafond le plus bas', () => {
     expect(titleQualification('Royaume-Uni : cinq hommes condamnés pour terrorisme')).toEqual({
-      maxSeverity: 'low', temporality: 'passe', zone: 'etranger', reasons: ['passe', 'etranger'], terrorism: true,
+      maxSeverity: 'low', temporality: 'passe', zone: 'etranger', reasons: ['passe', 'etranger'], terrorism: true, criticalCategory: null,
     });
     expect(titleQualification('Thaïlande : Bangkok sous les eaux')).toEqual({
-      maxSeverity: 'medium', temporality: 'en_cours', zone: 'etranger', reasons: ['etranger'], terrorism: false,
+      maxSeverity: 'medium', temporality: 'en_cours', zone: 'etranger', reasons: ['etranger'], terrorism: false, criticalCategory: null,
     });
     expect(titleQualification('Et si la Seine débordait ?')).toMatchObject({ maxSeverity: 'low', temporality: 'a_venir', reasons: ['hypothetique'] });
+  });
+  it('crash d’un aéronef militaire : critical, sécurité (Mirage 2000D, 21/10/2026)', () => {
+    for (const t of [
+      "Un Mirage 2000-D, avion de chasse de l'armée, s'est écrasé près de Nancy, faisant au moins un mort",
+      'Crash d’un Mirage 2000 près de Nancy : les recherches sont toujours en cours',
+      'Un mort et un disparu dans le crash d’un Mirage 2000D',
+      'Un Rafale s’écrase en Haute-Marne, les deux pilotes éjectés',
+      'Un hélicoptère militaire s’abîme en mer au large de Toulon',
+    ]) expect(titleCriticalCategory(t), t).toBe('security');
+  });
+  it('faille critique de portée mondiale : critical, cyber (PHP, 21/10/2026)', () => {
+    for (const t of [
+      "Une partie de l'Internet mondial mise à l'arrêt après la découverte de failles «critiques» dans le langage informatique PHP",
+      'Préfectures, médias, impôts... De nombreux sites internet inaccessibles afin de corriger une faille de sécurité mondiale',
+      'Failles PHP : pourquoi de nombreux sites ont soudainement été mis « en maintenance »',
+    ]) expect(titleCriticalCategory(t), t).toBe('cyber');
+  });
+  it('sans crash ni faille massive : rien', () => {
+    for (const t of [
+      'Nancy. Mirage 2000 : à force de tirer sur la machine, jusqu’où peut-on aller ?',
+      'Le Rafale séduit un nouveau client à l’export',
+      'Chrome : une faille critique corrigée en urgence',
+      'Un avion de tourisme s’écrase dans le Gers',
+      'Tempête : une rafale de vent, un arbre s’écrase sur une voiture',
+    ]) expect(titleCriticalCategory(t), t).toBeNull();
+  });
+  it('le titre porte la catégorie critique', () => {
+    expect(titleQualification('Crash d’un Mirage 2000D près de Nancy')).toMatchObject({ criticalCategory: 'security', maxSeverity: 'critical' });
   });
   it('plafonds par motif', () => {
     expect(TITLE_REASON_CAP).toEqual({ passe: 'low', hypothetique: 'low', etranger: 'medium' });

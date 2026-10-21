@@ -68,7 +68,7 @@ export async function runLlmPass(sql, { llm, insertedIds, keywordVersion, deadli
       const q = qualifyJudgment(judgment, titleQualification(batch[k].title));
       await sql`
         UPDATE news_items
-        SET category = ${judgment.category}, severity = ${q.severity}, confidence = ${LLM_CONFIDENCE},
+        SET category = ${q.category}, severity = ${q.severity}, confidence = ${LLM_CONFIDENCE},
             classifier_version = ${llm.version}, reported_severity = ${q.reportedSeverity},
             temporality = ${q.temporality}, zone = ${q.zone}, reasons = ${encodeReasons(q.reasons)}
         WHERE id = ${batch[k].id}

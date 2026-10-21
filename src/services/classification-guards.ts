@@ -116,6 +116,29 @@ export function isTerrorWithoutVictims(title: string): boolean {
     return TERROR_RE.test(text) && !VICTIM_RE.test(text);
 }
 
+// ─── Gravité critique imposée par le titre (21/10/2026) ───
+
+const CRASH_RE = /\b(?:crash|s ecrase|ecrase|ecrasee|s abime|abime|abattu)\b/;
+const MILITARY_AIRCRAFT_RE = /\b(?:mirage|mirages|rafale|avions? de chasse|avions? militaires?|avion de l armee|aeronefs? militaires?|helicopteres? militaires?|helicoptere de l armee|a400m|alphajet|alpha jet|patrouille de france)\b/;
+/** « Rafale » désigne aussi le vent : un titre de tempête n'est jamais un crash militaire. */
+const WIND_RE = /\b(?:vents?|tempete|orages?)\b/;
+const VULN_RE = /\b(?:failles?|vulnerabilites?)\b/;
+/** Portée massive : l'internet mondial, des sites entiers coupés ou mis en maintenance (une faille « corrigée en urgence » ne suffit pas). */
+const MASSIVE_RE = /\b(?:mondial|mondiale|internet mondial|inaccessibles?|en maintenance|des milliers de sites|des millions de sites)\b/;
+
+/**
+ * Catégorie d'un titre qui vaut à lui seul une gravité critical, ou null : crash d'un aéronef militaire (Mirage 2000D près de Nancy,
+ * 20/10/2026, classé high par le modèle, jamais rouge) ; faille critique de portée mondiale (failles PHP du 21/10/2026, sites des
+ * préfectures et des ministères coupés, éclatée entre cyber medium, infrastructure low et général). Les plafonds du titre (procès,
+ * rétrospective, hypothèse, étranger) s'appliquent ensuite.
+ */
+export function titleCriticalCategory(title: string): 'security' | 'cyber' | null {
+    const text = normalizeForMatch(title);
+    if (CRASH_RE.test(text) && MILITARY_AIRCRAFT_RE.test(text) && !WIND_RE.test(text)) return 'security';
+    if (VULN_RE.test(text) && MASSIVE_RE.test(text)) return 'cyber';
+    return null;
+}
+
 // ─── Zone (titre) ───
 
 /** Mots courants homonymes de lieux français : jamais une ancre (« Corée du Nord », « à l'aube »). */
@@ -170,6 +193,8 @@ export interface TitleQualification {
     reasons: TitleReason[];
     /** Le titre parle de terrorisme : le serveur impose au LLM une gravité signalée de 3 au moins (décision du 29/09). */
     terrorism: boolean;
+    /** Crash d'un aéronef militaire ou faille critique mondiale : gravité signalée critical et catégorie imposées (21/10/2026). */
+    criticalCategory: 'security' | 'cyber' | null;
 }
 
 export function titleQualification(title: string): TitleQualification {
@@ -186,5 +211,5 @@ export function titleQualification(title: string): TitleQualification {
     const zone = titleZone(title);
     if (zone === 'etranger') reasons.push('etranger');
     const maxSeverity = reasons.reduce<ThreatLevel>((cap, r) => minLevel(cap, TITLE_REASON_CAP[r]), 'critical');
-    return { maxSeverity, temporality, zone, reasons, terrorism: TERROR_RE.test(normalizeForMatch(title)) };
+    return { maxSeverity, temporality, zone, reasons, terrorism: TERROR_RE.test(normalizeForMatch(title)), criticalCategory: titleCriticalCategory(title) };
 }

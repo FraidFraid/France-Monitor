@@ -939,6 +939,17 @@ function isTerrorWithoutVictims(title) {
   const text = normalizeForMatch(title);
   return TERROR_RE.test(text) && !VICTIM_RE.test(text);
 }
+var CRASH_RE = /\b(?:crash|s ecrase|ecrase|ecrasee|s abime|abime|abattu)\b/;
+var MILITARY_AIRCRAFT_RE = /\b(?:mirage|mirages|rafale|avions? de chasse|avions? militaires?|avion de l armee|aeronefs? militaires?|helicopteres? militaires?|helicoptere de l armee|a400m|alphajet|alpha jet|patrouille de france)\b/;
+var WIND_RE = /\b(?:vents?|tempete|orages?)\b/;
+var VULN_RE = /\b(?:failles?|vulnerabilites?)\b/;
+var MASSIVE_RE = /\b(?:mondial|mondiale|internet mondial|inaccessibles?|en maintenance|des milliers de sites|des millions de sites)\b/;
+function titleCriticalCategory(title) {
+  const text = normalizeForMatch(title);
+  if (CRASH_RE.test(text) && MILITARY_AIRCRAFT_RE.test(text) && !WIND_RE.test(text)) return "security";
+  if (VULN_RE.test(text) && MASSIVE_RE.test(text)) return "cyber";
+  return null;
+}
 var AMBIGUOUS_ANCHORS = /* @__PURE__ */ new Set([
   "nord",
   "cher",
@@ -1028,7 +1039,7 @@ function titleQualification(title) {
   const zone = titleZone(title);
   if (zone === "etranger") reasons.push("etranger");
   const maxSeverity = reasons.reduce((cap, r) => minLevel(cap, TITLE_REASON_CAP[r]), "critical");
-  return { maxSeverity, temporality, zone, reasons, terrorism: TERROR_RE.test(normalizeForMatch(title)) };
+  return { maxSeverity, temporality, zone, reasons, terrorism: TERROR_RE.test(normalizeForMatch(title)), criticalCategory: titleCriticalCategory(title) };
 }
 
 // src/services/classifier.ts
@@ -1531,13 +1542,14 @@ function qualifyByKeywords(title, summary) {
   const neutralized = neutralizeMetaphors(normalized);
   const reasons = neutralized === normalized ? [] : ["metaphore"];
   const titleQ = titleQualification(title);
-  const full = classifyNormalized(neutralized);
+  const keywords = classifyNormalized(neutralized);
+  const full = titleQ.criticalCategory ? { level: "critical", category: titleQ.criticalCategory, confidence: 0.9, source: "keyword" } : keywords;
   if (!full) {
     return { classification: void 0, reportedLevel: "info", temporality: titleQ.temporality, zone: titleQ.zone, reasons };
   }
   let reportedLevel = full.level;
   let confidence = full.confidence;
-  if (levelRank(reportedLevel) >= levelRank("high")) {
+  if (levelRank(reportedLevel) >= levelRank("high") && !titleQ.criticalCategory) {
     const titleLevel = classifyNormalized(neutralizeMetaphors(normalizeForMatch(title)))?.level ?? "info";
     if (levelRank(titleLevel) >= levelRank("high")) {
       reportedLevel = minLevel(reportedLevel, titleLevel);
