@@ -25,7 +25,10 @@ export class OutagesRoom {
     this.side = document.createElement('div');
     this.side.className = 'orm-side';
     this.side.setAttribute('aria-live', 'polite');
-    this.el.append(this.strip, this.nat, this.side);
+    const body = document.createElement('div');
+    body.className = 'orm-body';
+    body.append(this.nat, this.side);
+    this.el.append(this.strip, body);
     this.el.addEventListener('click', (ev) => this.onClick(ev));
     host.appendChild(this.el);
     this.render();
@@ -43,8 +46,18 @@ export class OutagesRoom {
     this.el.remove();
   }
 
+  /** Sous la barre des pastilles posée sur la carte (sa hauteur dépend de la largeur), sinon 108 px. */
+  private placeBelowPills(): void {
+    const host = this.el.parentElement;
+    const pills = host?.parentElement?.querySelector('.floating-panel-switcher');
+    if (!host || !pills) return;
+    const top = pills.getBoundingClientRect().bottom - host.getBoundingClientRect().top;
+    if (top > 0) this.el.style.setProperty('--orm-top', `${Math.round(top + 8)}px`);
+  }
+
   private render(): void {
     const now = Date.now();
+    this.placeBelowPills();
     this.strip.innerHTML = networkStrip(this.data, this.filter, now);
     this.nat.innerHTML = nationalBox(this.data, this.filter, now);
     const picked = this.picked === null ? undefined : this.data?.outages.find((o) => o.id === this.picked);

@@ -507,6 +507,11 @@ export class MapContainer {
     this.svgMap?.selectItem(item);
   }
 
+  /** Calques de la control room des pannes (carte WebGL seulement ; le repli mobile D3 ne les dessine pas). */
+  setOutagesRoom(state: { depts: GeoJSON.FeatureCollection; nationalLevel: 'jaune' | 'orange' | 'rouge' | null } | null): void {
+    this.deckMap?.setOutagesRoom(state);
+  }
+
   flyTo(longitude: number, latitude: number, zoom?: number): void {
     this.deckMap?.flyTo(longitude, latitude, zoom);
     this.svgMap?.flyTo(longitude, latitude, zoom);

@@ -272,8 +272,7 @@ import { buildNuclearState } from './services/nuclear-correlation.ts';
 import type { NuclearPanel } from './components/NuclearPanel.ts';
 import { SituationMonitor } from './components/SituationMonitor.ts';
 import { SituationBrief } from './components/SituationBrief.ts';
-import type { OutagesNowBanner } from './components/OutagesNowBanner.ts';
-import type { OutagesNowResponse } from './types/index.ts';
+import type { OutagesNowController } from './components/outages-room/outages-now-controller.ts';
 import { resolvedSituationsFromHistory } from './services/situation-brief.ts';
 import type { SituationHistoryPanel } from './components/SituationHistoryPanel.ts';
 import { getHistory, pushHistorySnapshot } from './services/situation-history.ts';
@@ -1370,10 +1369,8 @@ export class App {
   private franceIntelPanel: FranceIntelPanel | null = null;
   private situationMonitor: SituationMonitor | null = null;
   private situationBrief: SituationBrief | null = null;
-  /** Bandeau « Pannes en cours » (téléphone et internet, toutes sources), dans tous les onglets. */
-  private outagesNowBanner: OutagesNowBanner | null = null;
-  private outagesNowSlot: SourceSlot<OutagesNowResponse> | undefined;
-  private outagesNowPoll: PausableTimer | null = null;
+  /** Pannes en cours (bandeau hors de l'onglet Pannes, control room dedans), chargé à la demande. */
+  private outagesNow: OutagesNowController<PausableTimer> | null = null;
   private situationHistoryPanel: SituationHistoryPanel | null = null;
   private alertMonitor: AlertMonitor | null = null;
   private updateNotification: UpdateNotification | null = null;
@@ -4594,30 +4591,34 @@ export class App {
     });
   }
 
-  /** Panne en cours la plus grave d'après la dernière réponse /api/outages/now ; null sans réponse. */
+  /** Panne en cours la plus grave (niveau de l'onglet Pannes) ; null sans réponse. */
   private outagesNowLevel(): VigilanceLevel | null {
-    const outages = this.outagesNowSlot?.data?.outages;
-    if (!outages) return null;
-    return outages.reduce<VigilanceLevel>((m, o) => (LEVEL_RANK[o.level] > LEVEL_RANK[m] ? o.level : m), 'vert');
+    return this.outagesNow?.level() ?? null;
   }
 
-  /** Bandeau « Pannes en cours » : lu au montage puis toutes les 2 min, quel que soit l'onglet (21/10/2026). */
+  /** Pannes en cours : bandeau dans tous les onglets, control room dans l'onglet Pannes (21/10/2026). Chargé à part (chunk App < 1 Mio). */
   private mountOutagesNow(mapEl: HTMLElement): void {
-    // Chargé à part : le chunk App reste sous 1 Mio.
-    void Promise.all([import('./components/OutagesNowBanner.ts'), import('./services/outages-now.ts')]).then(([{ OutagesNowBanner }, { fetchOutagesNow, OUTAGES_NOW_POLL_MS }]) => {
-      this.outagesNowBanner?.destroy();
-      this.outagesNowBanner = new OutagesNowBanner(mapEl);
-      this.outagesNowBanner.setOnFlyTo((lon, lat, zoom) => this.mapContainer?.flyTo(lon, lat, zoom));
-      const read = (): void => {
-        void fetchOutagesNow(this.outagesNowSlot).then((slot) => {
-          this.outagesNowSlot = slot;
-          this.outagesNowBanner?.update(slot.data);
-        });
-      };
-      read();
-      this.removePausableInterval(this.outagesNowPoll);
-      this.outagesNowPoll = this.registerPausableInterval(read, OUTAGES_NOW_POLL_MS);
-    }).catch((err) => console.error('[App] Bandeau des pannes en cours indisponible', err));
+    void import('./components/outages-room/outages-now-controller.ts').then(async ({ OutagesNowController }) => {
+      this.outagesNow?.destroy();
+      const map = this.mapContainer;
+      this.outagesNow = new OutagesNowController<PausableTimer>({
+        mapEl,
+        map: {
+          setOutagesRoom: (state) => map?.setOutagesRoom(state),
+          flyTo: (lon, lat, zoom) => map?.flyTo(lon, lat, zoom),
+          refitFrance: () => map?.refitFrance(),
+        },
+        schedule: (fn, ms) => this.registerPausableInterval(fn, ms),
+        unschedule: (timer) => this.removePausableInterval(timer),
+      });
+      await this.outagesNow.start();
+      this.syncOutagesRoom();
+    }).catch((err) => console.error('[App] Pannes en cours indisponibles', err));
+  }
+
+  /** Control room montée seulement dans l'onglet Pannes (v2). */
+  private syncOutagesRoom(): void {
+    void this.outagesNow?.setRoomActive(this.uiV2 && this.v2Theme === 'outages');
   }
 
   /** Jeton Cloudflare Radar absent d'après la dernière réponse lue (inconnu tant qu'aucune réponse n'est lisible). */
@@ -6524,6 +6525,7 @@ export class App {
   private applyLayerPreset(id: LayerPresetId): void {
     // Une vue choisie reprend la main sur toutes les couches : plus aucune n'est « allumée par la Vue générale ».
     this.generalAuto.clear();
+    this.syncOutagesRoom();
     const target = themeLayers(this.uiV2, id);
     // v2 : la vue décide aussi de « Événements en cours » (décision du 12/10/2026).
     const keys: ReadonlyArray<keyof MapLayers> = this.uiV2 ? [...ALL_PRESETABLE_LAYER_KEYS, 'events', 'brief'] : ALL_PRESETABLE_LAYER_KEYS;

@@ -6,6 +6,7 @@
  */
 
 import { levelHex } from '../services/vigilance.ts';
+import { LYR_ROOM_DEPT_FILL, LYR_ROOM_NATIONAL_LINE, ROOM_OUTLINE_URL, SRC_ROOM_DEPTS, SRC_ROOM_NATIONAL, roomPulsePaint } from './deckgl/outages-room-map.ts';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { MapboxOverlay } from '@deck.gl/mapbox';
@@ -6479,6 +6480,60 @@ export class DeckGLMap {
       this.pulseFrame = requestAnimationFrame(step);
     };
     this.pulseFrame = requestAnimationFrame(step);
+  }
+
+  // ─── Control room des pannes (onglet Pannes, 21/10/2026) : départements touchés, contour national pulsant ───
+  private roomFrame: number | null = null;
+  private roomLast = 0;
+
+  /**
+   * Calques de la salle : départements touchés (propriété `level`) et contour de la France à la couleur de la panne nationale la plus
+   * grave (null : contour masqué). `null` : calques et animation retirés (sortie de l'onglet).
+   */
+  setOutagesRoom(state: { depts: GeoJSON.FeatureCollection; nationalLevel: 'jaune' | 'orange' | 'rouge' | null } | null): void {
+    const map = this.map;
+    if (!map) return;
+    if (state === null) {
+      if (this.roomFrame !== null) cancelAnimationFrame(this.roomFrame);
+      this.roomFrame = null;
+      for (const id of [LYR_ROOM_NATIONAL_LINE, LYR_ROOM_DEPT_FILL]) if (map.getLayer(id)) map.removeLayer(id);
+      for (const id of [SRC_ROOM_NATIONAL, SRC_ROOM_DEPTS]) if (map.getSource(id)) map.removeSource(id);
+      return;
+    }
+    const depts = map.getSource(SRC_ROOM_DEPTS) as maplibregl.GeoJSONSource | undefined;
+    if (depts) depts.setData(state.depts);
+    else map.addSource(SRC_ROOM_DEPTS, { type: 'geojson', data: state.depts });
+    if (!map.getSource(SRC_ROOM_NATIONAL)) map.addSource(SRC_ROOM_NATIONAL, { type: 'geojson', data: ROOM_OUTLINE_URL });
+    if (!map.getLayer(LYR_ROOM_DEPT_FILL)) {
+      map.addLayer({
+        id: LYR_ROOM_DEPT_FILL, type: 'fill', source: SRC_ROOM_DEPTS,
+        paint: { 'fill-color': ['match', ['get', 'level'], 'jaune', levelHex('jaune'), 'orange', levelHex('orange'), levelHex('rouge')], 'fill-opacity': 0.45 },
+      });
+    }
+    if (!map.getLayer(LYR_ROOM_NATIONAL_LINE)) {
+      map.addLayer({ id: LYR_ROOM_NATIONAL_LINE, type: 'line', source: SRC_ROOM_NATIONAL, paint: { 'line-width': 3, 'line-color': levelHex('orange') } });
+    }
+    const level = state.nationalLevel;
+    map.setLayoutProperty(LYR_ROOM_NATIONAL_LINE, 'visibility', level === null ? 'none' : 'visible');
+    if (level !== null) map.setPaintProperty(LYR_ROOM_NATIONAL_LINE, 'line-color', levelHex(level));
+    const reduced = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (level === null || reduced || typeof requestAnimationFrame !== 'function') {
+      if (this.roomFrame !== null) cancelAnimationFrame(this.roomFrame);
+      this.roomFrame = null;
+      return;
+    }
+    if (this.roomFrame !== null) return;
+    const step = (ts: number): void => {
+      if (!this.map?.getLayer(LYR_ROOM_NATIONAL_LINE)) { this.roomFrame = null; return; }
+      if (ts - this.roomLast >= 33) {
+        this.roomLast = ts;
+        const paint = roomPulsePaint(Date.now());
+        this.map.setPaintProperty(LYR_ROOM_NATIONAL_LINE, 'line-width', paint.width);
+        this.map.setPaintProperty(LYR_ROOM_NATIONAL_LINE, 'line-opacity', paint.opacity);
+      }
+      this.roomFrame = requestAnimationFrame(step);
+    };
+    this.roomFrame = requestAnimationFrame(step);
   }
 
   /** Catastrophes : zones Copernicus EMS des activations françaises en cours (contour violet). */
