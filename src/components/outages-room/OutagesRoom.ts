@@ -2,7 +2,7 @@
 // Pannes est actif. Barre des réseaux en haut, encart national à gauche, fil (ou détail d'une panne) à droite. La carte elle-même
 // (départements, contour national) est pilotée par App à partir des rappels onFocus et onFilter.
 import type { OutageJournalEntry, OutageNetwork, OutageNow, OutagesNowResponse } from '../../types/index.ts';
-import { detailHtml, feedHtml, nationalBox, networkStrip, NETWORK_SOURCES } from './room-view.ts';
+import { bulletinBox, detailHtml, feedHtml, nationalBox, networkStrip, NETWORK_SOURCES } from './room-view.ts';
 import { cascadeHtml, friseHtml, TIMELINE_WINDOW_MS, timelineBars } from './timeline.ts';
 
 const isNetwork = (v: string): v is OutageNetwork => Object.hasOwn(NETWORK_SOURCES, v);
@@ -87,8 +87,8 @@ export class OutagesRoom {
     const now = Date.now();
     this.placeBelowPills();
     this.strip.innerHTML = networkStrip(this.data, this.filter, now);
-    this.nat.innerHTML = nationalBox(this.data, this.filter, now);
-    const picked = this.picked === null ? undefined : this.data?.outages.find((o) => o.id === this.picked);
+    this.nat.innerHTML = nationalBox(this.data, this.filter, now) + bulletinBox(this.data, this.filter, now);
+    const picked = this.picked === null ? undefined : [...this.data?.outages ?? [], ...this.data?.bulletin ?? []].find((o) => o.id === this.picked);
     this.side.innerHTML = picked ? detailHtml(picked, this.data?.journal ?? [], now)
       : cascadeHtml(this.data?.cascades ?? []) + feedHtml(this.data?.journal ?? [], this.filter, now);
     const bars = timelineBars(this.journal24.length > 0 ? this.journal24 : this.data?.journal ?? [], this.data?.outages ?? [], now)

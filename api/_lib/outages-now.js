@@ -171,3 +171,12 @@ export function outagesNow({ telecom, internet, power, cloud, now, press, social
   return [...byKey.values()].sort((a, b) => RANK[b.level] - RANK[a.level] || Number(b.national) - Number(a.national)
     || Date.parse(b.since ?? '') - Date.parse(a.since ?? ''));
 }
+
+/**
+ * Panne vue par le seul fichier ARCEP (22/10/2026) : le fichier paraît une fois par jour et compte les antennes coupées depuis moins de
+ * 24 h ; il est en retard sur le rétablissement (panne Orange du 21/10 finie à 21 h, encore « France entière » rouge le lendemain matin).
+ * Elle va au bulletin du jour, pas aux pannes en cours.
+ */
+export function isBulletinOnly(outage) {
+  return outage.evidence.length > 0 && outage.evidence.every((e) => e.source === 'arcep');
+}

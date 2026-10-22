@@ -14,6 +14,25 @@ const NATIONAL = /\b(?:national|nationale|toute la france|partout en france|gean
 
 const fold = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/['’]/g, ' ').toLowerCase();
 
+/**
+ * Rétablissement annoncé au titre (« réseau rétabli », « le réseau revient », « fin de la panne »), ou article d'après-panne (cause,
+ * excuses, dédommagement, « ont été privés ») : la panne n'est plus en cours.
+ */
+const RESTORED = /\b(?:retabli|retablie|retablis|retablies|retablissement|revient|revenu|revenue|retour a la normale|fin de la panne|resolue?)\b|\b(?:ont ete prives?|a prive|que s est.il (?:reellement )?passe|dedommag\w*|indemnis\w*|s excuse\w*|excuser|origine de la panne|cause de la panne)\b/;
+const inWindow = (item, now) => {
+  const at = Date.parse(item.publishedAt ?? '');
+  return Number.isFinite(at) && at <= now && now - at <= PRESS_WINDOW_MS;
+};
+
+/**
+ * Articles d'une panne encore en cours (22/10/2026) : ceux publiés après le dernier article annonçant le rétablissement ; aucun si le
+ * plus récent l'annonce.
+ */
+function stillOngoing(list) {
+  const restoredAt = Math.max(-Infinity, ...list.filter((i) => i.restored).map((i) => Date.parse(i.item.publishedAt)));
+  return list.filter((i) => !i.restored && Date.parse(i.item.publishedAt) > restoredAt).map((i) => i.item);
+}
+
 /** Article retenu : titre de panne de réseau, infrastructure, medium ou plus, publié dans la fenêtre. */
 export function isTelecomOutageItem(item, now) {
   const at = Date.parse(item.publishedAt ?? '');
@@ -29,17 +48,19 @@ export function isTelecomOutageItem(item, now) {
 export function telecomPressReports(items, now) {
   const groups = new Map();
   for (const item of items) {
-    if (!isTelecomOutageItem(item, now)) continue;
-    const title = fold(item.title);
+    const title = fold(item.title ?? '');
+    // Un article de rétablissement compte quels que soient sa catégorie et sa gravité ; un récit après coup ne compte pas (22/10/2026).
+    const restored = inWindow(item, now) && OUTAGE.test(title) && RESTORED.test(title);
+    if (!restored && (item.temporality === 'passe' || !isTelecomOutageItem(item, now))) continue;
     const named = OPERATORS.filter(([, re]) => re.test(title)).map(([name]) => name);
     for (const operator of named.length > 0 ? named : [null]) {
       const g = groups.get(operator) ?? { operator, items: [] };
-      g.items.push(item);
+      g.items.push({ item, restored });
       groups.set(operator, g);
     }
   }
   const rank = (s) => SEVERITIES.indexOf(s);
-  return [...groups.values()].map(({ operator, items: list }) => {
+  return [...groups.values()].map(({ operator, items: tagged }) => ({ operator, list: stillOngoing(tagged) })).filter(({ list }) => list.length > 0).map(({ operator, list }) => {
     const sorted = [...list].sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
     const latest = sorted[0];
     return {
@@ -93,26 +114,29 @@ export function networkOfTitle(folded) {
 
 /**
  * Pannes signalées par la presse, tous réseaux : articles des dernières 24 h, medium ou plus (quelle que soit la catégorie), regroupés
- * par réseau et opérateur cité. Niveau = gravité la plus haute (urgences : toujours rouge).
+ * par réseau et opérateur cité. Niveau = gravité la plus haute (urgences : toujours rouge). Récits après coup écartés ; seuls comptent
+ * les articles postérieurs au dernier qui annonce le rétablissement (22/10/2026).
  */
 export function pressOutages(items, now) {
   const groups = new Map();
   for (const item of items) {
-    const at = Date.parse(item.publishedAt ?? '');
-    if (!SEVERITIES.includes(item.severity) || !Number.isFinite(at) || at > now || now - at > PRESS_WINDOW_MS) continue;
+    if (!inWindow(item, now)) continue;
     const title = fold(item.title ?? '');
     const network = networkOfTitle(title);
     if (network === null) continue;
+    // Un article de rétablissement compte quelles que soient sa gravité et sa temporalité ; un récit après coup ne compte pas (22/10/2026).
+    const restored = RESTORED.test(title);
+    if (!restored && (item.temporality === 'passe' || !SEVERITIES.includes(item.severity))) continue;
     const named = (NETWORK_OPERATORS[network] ?? []).filter(([, re]) => re.test(title)).map(([name]) => name);
     for (const operator of named.length > 0 ? named : [null]) {
       const key = `${network}|${operator ?? ''}`;
       const g = groups.get(key) ?? { network, operator, items: [] };
-      g.items.push(item);
+      g.items.push({ item, restored });
       groups.set(key, g);
     }
   }
   const rank = (s) => SEVERITIES.indexOf(s);
-  return [...groups.values()].map(({ network, operator, items: list }) => {
+  return [...groups.values()].map((g) => ({ ...g, list: stillOngoing(g.items) })).filter(({ list }) => list.length > 0).map(({ network, operator, list }) => {
     const latest = [...list].sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt))[0];
     const severity = SEVERITIES[Math.max(...list.map((i) => rank(i.severity)))];
     return {

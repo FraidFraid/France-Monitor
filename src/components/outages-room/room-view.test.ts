@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { OutageNow, OutagesNowResponse } from '../../types/index.ts';
 import { NBSP, frNumber } from '../layer-panel/format.ts';
-import { detailHtml, feedHtml, nationalBox, networkStrip } from './room-view.ts';
+import { bulletinBox, detailHtml, feedHtml, nationalBox, networkStrip } from './room-view.ts';
 
 const NOW = Date.parse('2026-10-21T12:30:00Z');
 const outage = (over: Partial<OutageNow>): OutageNow => ({
@@ -110,5 +110,27 @@ describe('salle des pannes : services publics exposés (lot 2)', () => {
     const placed = outage({ exposed: { basis: 'communes', total: 1, byType: { police: 1 }, sample: [], points: [{ type: 'police', name: 'C', lon: 0, lat: 0 }] } });
     expect(text(nationalBox(body({ outages: [placed] }), null, NOW))).toContain('Carte : P préfecture, S sous-préfecture, C commissariat, G gendarmerie, I SDIS, H hôpital');
     expect(text(nationalBox(body({ outages: [o] }), null, NOW))).not.toContain('Carte : P');
+  });
+});
+
+describe('salle des pannes : bulletin ARCEP (22/10/2026)', () => {
+  const arcepOnly = outage({ id: 'mobile|national', scope: 'national', operator: null, label: 'France entière', level: 'rouge', measured: true, rung: 'mesuree',
+    since: '2026-10-22T09:04:46Z', evidence: [{ source: 'arcep', text: '1077 antennes en panne imprévue depuis moins de 24 h en France', at: '2026-10-22T09:04:46Z', link: null }] });
+  it('rien au bulletin : pas de bloc', () => {
+    expect(bulletinBox(body(), null, NOW)).toBe('');
+  });
+  it('à part des pannes en cours : titre, heure de publication, avertissement, lignes cliquables', () => {
+    const html = bulletinBox(body({ bulletin: [arcepOnly], sources: [{ source: 'arcep', readAt: '2026-10-22T09:04:46Z', ok: true }] }), null, NOW);
+    const t = text(html);
+    expect(t).toContain('Bulletin ARCEP');
+    expect(t).toContain(`publié à 11${NBSP}h${NBSP}04`);
+    expect(t).toContain('pas forcément encore en panne');
+    expect(html).toContain('data-outage="mobile|national"');
+    expect(bulletinBox(body({ bulletin: [arcepOnly] }), 'internet', NOW)).toBe('');
+  });
+  it('téléphone mobile sans panne en cours : jamais vert sur le seul fichier ARCEP', () => {
+    const html = networkStrip(body({ outages: [], sources: [{ source: 'arcep', readAt: '2026-10-22T09:04:46Z', ok: true }] }), null, NOW);
+    expect(cell(html, 'mobile')).toContain('orm-dot--nd');
+    expect(text(cell(html, 'mobile'))).toContain('presse et usagers');
   });
 });

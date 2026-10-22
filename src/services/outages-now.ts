@@ -23,9 +23,7 @@ const journalEntry = record({
   at: value(isStr), kind: value((v) => isOneOf(v, new Set(['nouvelle', 'aggravee', 'attenuee', 'confirmee', 'retablie']))),
   id: value(isStr), network, name: value(isStr), dept: value(isStrOrNull), level, rung,
 });
-const SHAPE = shapeOf<OutagesNowResponse>(record({
-  generatedAt: value(isStr),
-  outages: list(record({
+const outageShape = record({
     id: value(isStr), network, rung, scope: value((v) => isOneOf(v, new Set(['operateur', 'departement', 'national', 'inconnu']))),
     operator: value(isStrOrNull), dept: value(isStrOrNull), label: value(isStrOrNull),
     level, since: value(isDateOrNull),
@@ -37,7 +35,11 @@ const SHAPE = shapeOf<OutagesNowResponse>(record({
       sample: list(record({ type: value((v) => isOneOf(v, SERVICE_TYPES)), name: value(isStr), commune: value(isStrOrNull), dept: value(isStr) })),
       points: list(record({ type: value((v) => isOneOf(v, SERVICE_TYPES)), name: value(isStr), lon: value((v) => typeof v === 'number'), lat: value((v) => typeof v === 'number') })),
     }, ['points']),
-  }, ['exposed'])),
+  }, ['exposed']);
+const SHAPE = shapeOf<OutagesNowResponse>(record({
+  generatedAt: value(isStr),
+  outages: list(outageShape),
+  bulletin: list(outageShape),
   cascades: list(record({
     key: value(isStr), dept: value(isStrOrNull), national: value(isBool), level,
     steps: list(record({ id: value(isStr), network, since: value(isDateOrNull) })),
@@ -45,7 +47,7 @@ const SHAPE = shapeOf<OutagesNowResponse>(record({
   journal: list(journalEntry),
   sources: list(record({ source, readAt: value(isDateOrNull), ok: value(isBool) })),
   errors: value(isStringList),
-}, ['cascades']));
+}, ['cascades', 'bulletin']));
 
 export function isOutagesNowResponse(v: unknown): v is OutagesNowResponse { return SHAPE.is(v); }
 

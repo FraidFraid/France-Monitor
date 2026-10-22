@@ -76,3 +76,58 @@ describe('pressOutages — faille de sécurité (22/10/2026)', () => {
     ], NOW)).toEqual([]);
   });
 });
+
+describe('pressOutages — panne finie (22/10/2026)', () => {
+  it('récit après coup (temporalité passée) : écarté', async () => {
+    const { pressOutages } = await import('../api/_lib/telecom-press.js');
+    expect(pressOutages([
+      item('Panne Orange/Sosh : voici pourquoi des millions d’abonnés ont été privés de réseau mobile', '2026-10-21T10:30:00Z', { temporality: 'passe' }),
+    ], NOW)).toEqual([]);
+  });
+  it('dernier article : réseau rétabli → la panne n’est plus en cours', async () => {
+    const { pressOutages } = await import('../api/_lib/telecom-press.js');
+    expect(pressOutages([
+      item('Panne nationale du réseau mobile Orange', '2026-10-21T09:00:00Z', { severity: 'critical' }),
+      item('Panne Orange : le réseau mobile rétabli après dix heures', '2026-10-21T11:00:00Z'),
+    ], NOW)).toEqual([]);
+  });
+  it('rétabli puis nouvelle coupure : en cours', async () => {
+    const { pressOutages } = await import('../api/_lib/telecom-press.js');
+    const r = pressOutages([
+      item('Panne Orange : le réseau mobile rétabli', '2026-10-21T09:00:00Z'),
+      item('Nouvelle panne du réseau mobile Orange', '2026-10-21T11:00:00Z', { severity: 'high' }),
+    ], NOW);
+    expect(r.map((p: { operator: string | null }) => p.operator)).toEqual(['Orange']);
+  });
+});
+
+describe('pressOutages — rétablissement noté au passé', () => {
+  it('un article de rétablissement classé « passé » clôt quand même la panne', async () => {
+    const { pressOutages } = await import('../api/_lib/telecom-press.js');
+    expect(pressOutages([
+      item('Panne nationale du réseau mobile Orange', '2026-10-21T09:00:00Z', { severity: 'critical' }),
+      item('Panne Orange et Sosh : le réseau revient après près de 10 heures', '2026-10-21T11:00:00Z', { severity: 'info', temporality: 'passe' }),
+    ], NOW)).toEqual([]);
+  });
+});
+
+describe('pressOutages — articles d’après-panne (22/10/2026)', () => {
+  it('cause, excuses, dédommagement, « ont été privés » : la panne est finie', async () => {
+    const { pressOutages } = await import('../api/_lib/telecom-press.js');
+    for (const t of [
+      'Panne Orange/Sosh : voici pourquoi des millions d’abonnés ont été privés de réseau mobile',
+      'Panne Orange : l’opérateur confirme l’origine de la panne qui a privé des millions d’abonnés de réseau',
+      'Panne Orange : voici comment l’opérateur va dédommager ses clients',
+      'Panne géante chez Orange : après dix heures sans réseau, que s’est-il réellement passé ?',
+    ]) {
+      expect(pressOutages([
+        item('Panne nationale du réseau mobile Orange', '2026-10-21T09:00:00Z', { severity: 'critical' }),
+        item(t, '2026-10-21T11:00:00Z'),
+      ], NOW), t).toEqual([]);
+    }
+  });
+  it('« voici pourquoi vous n’avez plus de réseau » au présent : en cours', async () => {
+    const { pressOutages } = await import('../api/_lib/telecom-press.js');
+    expect(pressOutages([item('Panne Orange : voici pourquoi vous n’avez plus de réseau mobile', '2026-10-21T11:00:00Z', { severity: 'high' })], NOW)).toHaveLength(1);
+  });
+});

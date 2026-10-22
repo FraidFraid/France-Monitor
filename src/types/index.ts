@@ -3254,7 +3254,8 @@ export interface OutageCascade {
 }
 export interface OutagesNowResponse {
   generatedAt: string;
-  outages: OutageNow[];
+  outages: OutageNow[];                 // en cours : vues par au moins une source en direct
+  bulletin?: OutageNow[];               // vues par le seul fichier ARCEP du jour (22/10/2026) ; absent : serveur antérieur
   cascades?: OutageCascade[];           // absent : serveur antérieur au lot 3
   journal: OutageJournalEntry[];        // 50 dernières entrées, plus récente d'abord
   sources: Array<{ source: OutageNowSource; readAt: string | null; ok: boolean }>;

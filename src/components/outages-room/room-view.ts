@@ -17,7 +17,8 @@ const NETWORKS: readonly OutageNetwork[] = ['mobile', 'internet', 'electricite',
  * l'absence d'article ne mesure rien (spec § 3).
  */
 export const NETWORK_SOURCES: Readonly<Record<OutageNetwork, readonly OutageNowSource[]>> = {
-  mobile: ['arcep'], internet: ['ioda', 'radar', 'atlas'], electricite: ['rte', 'edf'], cloud: ['statut'],
+  // Le fichier ARCEP (un par jour) ne mesure pas l'instant : il fait le bulletin, jamais le vert du téléphone mobile (22/10/2026).
+  mobile: [], internet: ['ioda', 'radar', 'atlas'], electricite: ['rte', 'edf'], cloud: ['statut'],
   // Aucune mesure ouverte (recherche du 21/10/2026) : la presse seule, jamais verte.
   gaz: [], eau: [], urgence: [], paiement: [], tv: [],
 };
@@ -40,7 +41,7 @@ export function networkStrip(r: OutagesNowResponse | null, filter: OutageNetwork
     const worst = outs.reduce<OutageNow['level'] | null>((m, o) => (m === null || RANK[o.level] > RANK[m] ? o.level : m), null);
     const fresh = (r?.sources ?? []).filter((s) => NETWORK_SOURCES[n].includes(s.source) && s.ok);
     const cls = worst ?? (fresh.length > 0 ? 'vert' : 'nd');
-    const state = r === null ? 'chargement…' : NETWORK_SOURCES[n].length === 0 ? 'presse seule'
+    const state = r === null ? 'chargement…' : NETWORK_SOURCES[n].length === 0 ? (n === 'mobile' ? 'presse et usagers' : 'presse seule')
       : fresh.length > 0 ? fresh.map((s) => SOURCE_LABEL[s.source]).join(', ') : 'sources n.d.';
     return `<button type="button" class="orm-net" data-net="${n}" aria-pressed="${filter === n}">${dot(cls)}<span class="orm-net-name">${NETWORK_LABEL[n]}</span>`
       + `<b class="orm-net-n">${r === null ? 'n.d.' : outs.length}</b><small>${escapeHtml(state)}</small></button>`;
@@ -91,6 +92,19 @@ export function nationalBox(r: OutagesNowResponse | null, filter: OutageNetwork 
   const placed = (r?.outages ?? []).filter(keep(filter)).some((o) => (o.exposed?.points?.length ?? 0) > 0);
   const key = placed ? '<p class="orm-note">Carte : P préfecture, S sous-préfecture, C commissariat, G gendarmerie, I SDIS, H hôpital (services exposés, pas forcément coupés).</p>' : '';
   return `<h3>National et sans lieu</h3>${rows || '<p class="orm-empty">aucune</p>'}${key}`;
+}
+
+/**
+ * Bulletin ARCEP (22/10/2026) : pannes vues par le seul fichier du jour, à part des pannes en cours. Le fichier compte les antennes
+ * coupées depuis moins de 24 h au moment du relevé : il est en retard sur un rétablissement.
+ */
+export function bulletinBox(r: OutagesNowResponse | null, filter: OutageNetwork | null, now: number): string {
+  const rows = (r?.bulletin ?? []).filter(keep(filter)).map((o) => outageRow(o, now)).join('');
+  if (rows === '') return '';
+  const at = r?.sources.find((s) => s.source === 'arcep')?.readAt ?? null;
+  const when = at === null ? '' : ` <small>publié à ${clock(at)}</small>`;
+  return `<h3>Bulletin ARCEP du jour${when}</h3>${rows}`
+    + '<p class="orm-note">Antennes coupées depuis moins de 24\u00a0h au relevé du fichier quotidien, pas forcément encore en panne.</p>';
 }
 
 function entryName(e: OutageJournalEntry): string {

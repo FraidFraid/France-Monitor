@@ -4,7 +4,7 @@
 // stockage clé-valeur, écrit seulement quand l'état change ; relus au redémarrage. Sans collecteur (serveur de dev), calcul à la demande.
 import { kvReadJson, kvWriteJson } from './kv-history.js';
 import { diffOutages } from './outages-journal.js';
-import { ARCEP_MAX_AGE_MS, CLOUD_MAX_AGE_MS, LIVE_MAX_AGE_MS, outagesNow } from './outages-now.js';
+import { ARCEP_MAX_AGE_MS, CLOUD_MAX_AGE_MS, LIVE_MAX_AGE_MS, isBulletinOnly, outagesNow } from './outages-now.js';
 import { loadCloud } from '../_handlers/outages/cloud.js';
 import { loadInternet } from '../_handlers/outages/internet.js';
 import { loadPower } from '../_handlers/outages/power.js';
@@ -85,7 +85,7 @@ async function run(now, readers) {
     const read = await kvReadJson(ROOM_KEY, now);
     const stored = read.value;
     room = {
-      ...(room ?? { tickAt: 0, outages: [], sources: [], errors: [] }),
+      ...(room ?? { tickAt: 0, outages: [], bulletin: [], sources: [], errors: [] }),
       loaded: !read.failed, state: stored?.state ?? null, journal: Array.isArray(stored?.journal) ? stored.journal : [],
     };
   }
@@ -97,10 +97,13 @@ async function run(now, readers) {
   // Services publics exposés (lot 2) : départements, communes des antennes coupées de l'opérateur, ou décompte national.
   const services = (readers.readServices ?? loadServices)();
   const sites = Array.isArray(telecom?.sites) ? telecom.sites : [];
-  const outages = fused.map((o) => {
+  const withExposure = fused.map((o) => {
     const exposed = exposureOf(o, { services, sites });
     return exposed ? { ...o, exposed } : o;
   });
+  // En cours : vues par au moins une source en direct ; le fichier ARCEP seul fait le bulletin du jour (hors journal et cascades).
+  const outages = withExposure.filter((o) => !isBulletinOnly(o));
+  const bulletin = withExposure.filter(isBulletinOnly);
   const loaded = room.loaded;
   const { state, entries } = loaded ? diffOutages(room.state, outages, now) : { state: room.state, entries: [] };
   const cut = now - JOURNAL_MAX_AGE_MS;
@@ -109,7 +112,7 @@ async function run(now, readers) {
     || JSON.stringify(state.items) !== JSON.stringify(room.state.items);
   if (loaded && changed) await kvWriteJson(ROOM_KEY, { state, journal }, ROOM_TTL_SEC, now);
   room = {
-    loaded, state, journal, tickAt: now, outages,
+    loaded, state, journal, tickAt: now, outages, bulletin,
     sources: [
       { source: 'presse', readAt: press || telecom?.press ? iso(now) : null, ok: Array.isArray(press) || Array.isArray(telecom?.press) },
       { source: 'usagers', readAt: socialReadAt(), ok: fresh(socialReadAt(), now, SOCIAL_MAX_AGE_MS) },
@@ -143,6 +146,7 @@ export async function roomSnapshot(now = Date.now(), readers = DEFAULT_READERS) 
   return {
     generatedAt: iso(room?.tickAt || now),
     outages: room?.outages ?? [],
+    bulletin: room?.bulletin ?? [],
     cascades: cascadesOf(room?.outages ?? []),
     journal: (room?.journal ?? []).slice(0, SNAPSHOT_JOURNAL),
     sources: room?.sources ?? [],

@@ -125,3 +125,28 @@ describe('route du journal', () => {
     expect(sinceOf('2026-01-01', T0)).toBe(T0 - 7 * 86_400_000);
   });
 });
+
+describe('temps réel et bulletin ARCEP (22/10/2026)', () => {
+  const arcep = {
+    ...readers,
+    readTelecom: async () => ({
+      file: { day: '2026-10-21', publishedAt: '2026-10-21T09:04:00Z' }, summary: { recent: 1077 },
+      byDept: [{ dept: '32', recent: 120 }], press: [], errors: [], sites: [],
+    }),
+  };
+  it('pannes vues par le seul fichier ARCEP : bulletin, hors des pannes en cours, du journal et des cascades', async () => {
+    await tickOutagesRoom(T0, arcep);
+    const snap = await roomSnapshot(T0 + 1_000, arcep);
+    expect(snap.outages).toEqual([]);
+    expect(snap.bulletin.map((o) => o.id).sort()).toEqual(['mobile|dept:32', 'mobile|national']);
+    expect(snap.journal).toEqual([]);
+    expect(snap.cascades).toEqual([]);
+  });
+  it('une source en direct qui voit la même panne la fait passer en cours, preuve ARCEP comprise', async () => {
+    const live = { ...arcep, readPress: async () => [{ network: 'mobile', operator: null, severity: 'high', level: 'orange', articles: 2, sources: 2, firstAt: '2026-10-21T11:30:00Z', lastAt: '2026-10-21T11:40:00Z', title: 'Panne nationale du réseau mobile', link: 'https://ex.fr', national: true }] };
+    const snap = await roomSnapshot(T0, live);
+    expect(snap.outages.map((o) => o.id)).toEqual(['mobile|national']);
+    expect(snap.outages[0]?.evidence.map((e) => e.source).sort()).toEqual(['arcep', 'presse']);
+    expect(snap.bulletin.map((o) => o.id)).toEqual(['mobile|dept:32']);
+  });
+});
