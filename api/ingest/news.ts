@@ -219,11 +219,18 @@ function getRedis(): Redis | null {
   }
 }
 
-function parsePublishedAt(pubDate: string | undefined): string | null {
+/** Décalage d'horloge toléré entre un flux et le serveur. */
+const FUTURE_TOLERANCE_MS = 60 * 60 * 1000;
+
+/**
+ * Date de publication ISO, ou null si absente ou illisible. Une date future au-delà d'une heure (Nice Matin en 2034, Le Télégramme au
+ * 25/10, vus le 22/10/2026) devient l'heure de la collecte : sinon l'article reste en tête de toutes les listes triées par date.
+ */
+export function parsePublishedAt(pubDate: string | undefined, now = Date.now()): string | null {
   if (!pubDate) return null;
   const time = Date.parse(pubDate);
   if (Number.isNaN(time)) return null;
-  return new Date(time).toISOString();
+  return new Date(time > now + FUTURE_TOLERANCE_MS ? now : time).toISOString();
 }
 
 // ─── Sync feeds config → table feeds ───

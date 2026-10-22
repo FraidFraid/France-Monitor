@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi } from 'vitest';
-import { NewsWire, WIRE_MAX_ITEMS, renderNewsWire, wireDurationSeconds, wireItems, wireTime } from './NewsWire.ts';
+import { NewsWire, WIRE_MAX_ITEMS, renderNewsWire, wireDurationSeconds, wireItems as wireItemsAt, wireTime } from './NewsWire.ts';
 import type { WorkItem } from '../../services/work-queue.ts';
 import type { NewsEvent } from '../../types/index.ts';
 
 const NOW = Date.parse('2026-10-12T08:00:00Z');
+const wireItems = (items: readonly WorkItem[]) => wireItemsAt(items, NOW);
 
 const EVENT: NewsEvent = {
   id: 42, evidenceId: 'E42', title: 'Explosion dans une usine chimique', category: 'security', severity: 'critical',
@@ -19,16 +20,18 @@ function item(over: Partial<WorkItem> = {}): WorkItem {
   };
 }
 
+const ALERT_REF = { kind: 'situation', situation: {} } as unknown as WorkItem['ref'];
+
 describe('wireItems (fil des alertes, 12/10/2026)', () => {
-  it('tous thèmes, jaune et au-delà, sans les cours de marché ; rouges en tête, puis par date', () => {
+  it('tous thèmes, jaune et au-delà, sans les cours de marché ; alertes : rouges en tête, puis par date', () => {
     const items = wireItems([
-      item({ key: 'a', level: 'jaune', theme: 'health', since: NOW - 3_600_000 }),
-      item({ key: 'b', level: 'vert', since: NOW }),
-      item({ key: 'c', level: 'rouge', theme: 'environment', since: NOW - 60_000 }),
-      item({ key: 'd', level: 'orange', since: null }),
+      item({ key: 'a', level: 'jaune', theme: 'health', since: NOW - 3_600_000, ref: ALERT_REF }),
+      item({ key: 'b', level: 'vert', since: NOW, ref: ALERT_REF }),
+      item({ key: 'c', level: 'rouge', theme: 'environment', since: NOW - 60_000, ref: ALERT_REF }),
+      item({ key: 'd', level: 'orange', since: null, ref: ALERT_REF }),
       item({ key: 'e', level: 'orange', ref: { kind: 'market', line: { symbol: 'BZ=F', name: 'Brent', price: 80, changePercent: 5, kind: 'energy' } } }),
-      item({ key: 'f', level: 'jaune', since: NOW - 60_000 }),
-      item({ key: 'g', level: 'rouge', since: NOW - 7_200_000 }),
+      item({ key: 'f', level: 'jaune', since: NOW - 60_000, ref: ALERT_REF }),
+      item({ key: 'g', level: 'rouge', since: NOW - 7_200_000, ref: ALERT_REF }),
     ]);
     // Rouges d'abord, puis orange, puis jaunes ; dans chaque niveau, la plus récente d'abord (date inconnue en dernier).
     expect(items.map((i) => i.key)).toEqual(['c', 'g', 'd', 'f', 'a']);
@@ -40,8 +43,8 @@ describe('wireItems (fil des alertes, 12/10/2026)', () => {
   });
 
   it('jaunes en appoint : les alertes orange et rouges passent toujours, même plus anciennes que dix jaunes récentes', () => {
-    const jaunes = Array.from({ length: 10 }, (_, n) => item({ key: `j${n}`, level: 'jaune', since: NOW - n * 1000 }));
-    const graves = [item({ key: 'o', level: 'orange', since: NOW - 86_000_000 }), item({ key: 'r', level: 'rouge', since: NOW - 90_000_000 })];
+    const jaunes = Array.from({ length: 10 }, (_, n) => item({ key: `j${n}`, level: 'jaune', since: NOW - n * 1000, ref: ALERT_REF }));
+    const graves = [item({ key: 'o', level: 'orange', since: NOW - 86_000_000, ref: ALERT_REF }), item({ key: 'r', level: 'rouge', since: NOW - 90_000_000, ref: ALERT_REF })];
     const keys = wireItems([...jaunes, ...graves]).map((i) => i.key);
     expect(WIRE_MAX_ITEMS).toBe(8);
     expect(keys.slice(0, 2)).toEqual(['r', 'o']);
@@ -102,7 +105,7 @@ describe('alertes distinctes des actualités (13/10/2026)', () => {
   const alert = (key: string, level: WorkItem['level'], since: number | null = NOW): WorkItem => item({ key, level, since, ref: SITUATION });
   const news = (key: string, level: WorkItem['level'], since: number | null = NOW): WorkItem => item({ key, level, since });
 
-  it('alertes (situations, surveillance, vigilances) d’abord, puis les actualités ; chaque groupe trié par gravité puis date', () => {
+  it('alertes (situations, surveillance, vigilances) d’abord, triées par gravité puis date, puis les actualités', () => {
     const items = wireItems([
       news('n-rouge', 'rouge', NOW), alert('a-orange', 'orange', NOW), news('n-orange', 'orange', NOW),
       item({ key: 'a-officiel', level: 'jaune', ref: { kind: 'official', group: {} } as unknown as WorkItem['ref'] }),
@@ -113,11 +116,20 @@ describe('alertes distinctes des actualités (13/10/2026)', () => {
     ]);
   });
 
-  it('les actualités gardent au moins 2 places quand les alertes débordent', () => {
+  it('les actualités gardent au moins 4 places quand les alertes débordent', () => {
     const alerts = Array.from({ length: 12 }, (_, n) => alert(`a${n}`, 'rouge', NOW - n * 1000));
-    const items = wireItems([...alerts, news('n1', 'jaune'), news('n2', 'jaune', NOW - 5000), news('n3', 'jaune', NOW - 9000)]);
+    const items = wireItems([...alerts, ...['n1', 'n2', 'n3', 'n4', 'n5'].map((k, n) => news(k, 'jaune', NOW - n * 5000))]);
     expect(items).toHaveLength(WIRE_MAX_ITEMS);
-    expect(items.filter((i) => i.type === 'actu').map((i) => i.key)).toEqual(['n1', 'n2']);
+    expect(items.filter((i) => i.type === 'actu').map((i) => i.key)).toEqual(['n1', 'n2', 'n3', 'n4']);
+  });
+
+  it('actualités : les plus fraîches d’abord, quel que soit le niveau ; plus de 6 h sans nouvel article : hors du fil (22/10/2026)', () => {
+    const H = 3_600_000;
+    const items = wireItems([
+      news('hier-soir-rouge', 'rouge', NOW - 16 * H), news('matin-orange', 'orange', NOW - 2 * H),
+      news('frais-jaune', 'jaune', NOW - 10 * 60_000), news('rouge-recent', 'rouge', NOW - H), news('sans-date', 'orange', null),
+    ]);
+    expect(items.map((i) => i.key)).toEqual(['frais-jaune', 'rouge-recent', 'matin-orange']);
   });
 
   it('peu d’actualités : les alertes prennent les places libres', () => {

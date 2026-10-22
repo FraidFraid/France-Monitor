@@ -484,7 +484,7 @@ export class PosteSituation {
       freshness: freshnessCounts(data.sources),
       lang,
     });
-    this.newsWire.update(wireItems(queue.items), now, lang);
+    this.newsWire.update(wireItems(queue.items, now), now, lang);
     const franceOn = this.selection === 'france' || (this.selection === null && (this.layout() === 'desktop' || this.tab === 'fiche'));
     this.themeBar.update({ selected: this.theme, franceOn, levels: national ? { general: national, ...queue.themeLevels } : null, lang });
     this.workList.update({ view: viewWorkQueue(queue, this.theme, this.showAll), selectedKey: this.selection, ready: data.ready, lang, now, foreignOpen: this.foreignOpen });

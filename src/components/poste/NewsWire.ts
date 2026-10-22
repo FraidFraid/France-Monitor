@@ -24,23 +24,27 @@ export interface WireItem {
 
 /** Au plus huit dépêches : un tour du fil dure alors environ deux minutes (décision du 12/10/2026). */
 export const WIRE_MAX_ITEMS = 8;
-/** Places gardées aux actualités quand les alertes débordent (décision du 13/10/2026). */
-export const WIRE_MIN_NEWS = 2;
+/** Places gardées aux actualités quand les alertes débordent (13/10/2026 ; 4 depuis le 22/10/2026). */
+export const WIRE_MIN_NEWS = 4;
+/** Actualité sans nouvel article depuis plus de 6 h : hors du fil (22/10/2026 : le fil passait des articles de la veille au soir). */
+export const WIRE_NEWS_MAX_AGE_MS = 6 * 3_600_000;
 
 /**
  * Dépêches du fil : tous thèmes confondus, sans les cours de marché. Les alertes (situations, surveillance, vigilances officielles)
- * d'abord, puis les actualités de presse (décision du 13/10/2026) ; dans chaque groupe, les rouges d'abord, puis les orange, puis
- * les jaunes en appoint, du plus récent au plus ancien (date inconnue en dernier). Au plus `WIRE_MAX_ITEMS`, dont au moins
+ * d'abord, rouges puis orange puis jaunes, du plus récent au plus ancien ; puis les actualités de presse (décision du 13/10/2026),
+ * les plus fraîches d'abord et seulement celles mises à jour depuis moins de 6 h (22/10/2026). Au plus `WIRE_MAX_ITEMS`, dont au moins
  * `WIRE_MIN_NEWS` actualités quand il y en a ; des places libres côté actualités reviennent aux alertes. Pure.
  */
-export function wireItems(items: readonly WorkItem[]): WireItem[] {
+export function wireItems(items: readonly WorkItem[], now = Date.now()): WireItem[] {
   const rank: Record<VigilanceLevel, number> = { rouge: 0, orange: 1, jaune: 2, vert: 3 };
-  const sorted = items
+  const all = items
     .filter((i) => i.level !== 'vert' && i.ref.kind !== 'market')
-    .map((i): WireItem => ({ key: i.key, type: i.ref.kind === 'event' ? 'actu' : 'alerte', level: i.level, title: i.title, place: i.place, at: i.since }))
+    .map((i): WireItem => ({ key: i.key, type: i.ref.kind === 'event' ? 'actu' : 'alerte', level: i.level, title: i.title, place: i.place, at: i.since }));
+  const alerts = all.filter((i) => i.type === 'alerte')
     .sort((a, b) => rank[a.level] - rank[b.level] || (b.at ?? -Infinity) - (a.at ?? -Infinity));
-  const alerts = sorted.filter((i) => i.type === 'alerte');
-  const news = sorted.filter((i) => i.type === 'actu');
+  // Actualités : un fil de dépêches, les plus fraîches d'abord ; la gravité départage seulement à la même heure.
+  const news = all.filter((i) => i.type === 'actu' && i.at !== null && now - i.at <= WIRE_NEWS_MAX_AGE_MS)
+    .sort((a, b) => (b.at ?? 0) - (a.at ?? 0) || rank[a.level] - rank[b.level]);
   const keptAlerts = alerts.slice(0, WIRE_MAX_ITEMS - Math.min(WIRE_MIN_NEWS, news.length));
   return [...keptAlerts, ...news.slice(0, WIRE_MAX_ITEMS - keptAlerts.length)];
 }
