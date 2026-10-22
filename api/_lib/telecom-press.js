@@ -18,7 +18,7 @@ const fold = (s) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/
 export function isTelecomOutageItem(item, now) {
   const at = Date.parse(item.publishedAt ?? '');
   return item.category === 'infrastructure' && SEVERITIES.includes(item.severity) && Number.isFinite(at)
-    && at <= now && now - at <= PRESS_WINDOW_MS && OUTAGE.test(fold(item.title ?? ''));
+    && at <= now && now - at <= PRESS_WINDOW_MS && OUTAGE.test(fold(item.title ?? '')) && !SECURITY_FLAW.test(fold(item.title ?? ''));
 }
 
 /**
@@ -81,8 +81,12 @@ const NETWORK_OPERATORS = {
 };
 const PRESS_SEVERITY_LEVEL = { medium: 'jaune', high: 'orange', critical: 'rouge' };
 
+/** Faille logicielle (failles PHP du 21/10/2026 : « panne internet mondiale », sites inaccessibles) : jamais une panne de réseau. */
+const SECURITY_FLAW = /\b(?:failles?|vulnerabilites?)\b/;
+
 /** Réseau d'un titre déjà replié (premier réseau qui correspond), sinon null. */
 export function networkOfTitle(folded) {
+  if (SECURITY_FLAW.test(folded)) return null;
   for (const [network, re] of NETWORK_RULES) if (re.test(folded)) return network;
   return OUTAGE.test(folded) ? 'mobile' : null;
 }

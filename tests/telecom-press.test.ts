@@ -66,3 +66,13 @@ describe('pannes de tous les réseaux signalées par la presse (21/10/2026)', ()
     ], NOW)).toEqual([]);
   });
 });
+
+describe('pressOutages — faille de sécurité (22/10/2026)', () => {
+  it('une faille logicielle n’est pas une panne de réseau, même « panne internet mondiale »', async () => {
+    const { pressOutages } = await import('../api/_lib/telecom-press.js');
+    expect(pressOutages([
+      item('DÉCRYPTAGE. Panne internet mondiale : pourquoi des failles de sécurité perturbent des millions de sites web', '2026-10-21T10:31:00Z', { severity: 'critical', category: 'cyber' }),
+      item('Vulnérabilité critique : sites des préfectures inaccessibles', '2026-10-21T10:00:00Z', { severity: 'critical', category: 'cyber' }),
+    ], NOW)).toEqual([]);
+  });
+});
