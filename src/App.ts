@@ -4325,6 +4325,7 @@ export class App {
       panel.setOnDroneZones((on) => this.setDroneZones(on));
       panel.mount();
       this.defensePanel = panel;
+      panel.setPressEvents(this.v2EventsState?.events ?? []);
       if (this.activeLayers.military) panel.show(this.defensePanelStateB());
     });
     return this.defensePanelPromise;
@@ -4356,6 +4357,7 @@ export class App {
       panel.setOnClose(() => this.closeSovereigntyLayer('cyber'));
       panel.mount();
       this.cyberPanel = panel;
+      panel.setPressEvents(this.v2EventsState?.events ?? []);
       if (this.activeLayers.cyber) panel.show(this.currentSovCyber);
     });
     return this.cyberPanelPromise;
@@ -9495,10 +9497,18 @@ export class App {
     if (!poste) return;
     poste.setEvents(state);
     this.v2EventsState = state;
+    this.pushPressEventsToPanels();
     this.refreshEventPoints();
     // Les alertes presse suivent les événements tout juste chargés (spec 2026-09-28 § 4.7).
     this.repaintPoste();
     if (state && !state.unavailable) this.recordV2VisitBaseline();
+  }
+
+  /** Événements de presse vers les panneaux Défense et Cyber (section « Signalé par la presse », 22/10/2026). */
+  private pushPressEventsToPanels(): void {
+    const events = this.v2EventsState?.events ?? [];
+    this.defensePanel?.setPressEvents(events);
+    this.cyberPanel?.setPressEvents(events);
   }
 
   /**

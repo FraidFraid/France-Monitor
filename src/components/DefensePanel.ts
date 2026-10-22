@@ -16,10 +16,11 @@ import type { GnssState } from '../services/sovereignty-gnss.ts';
 import type { MilitaryState } from '../services/sovereignty-military.ts';
 import type { SanctionsState } from '../services/sovereignty-sanctions.ts';
 import type { VigipirateCheckState } from '../services/sovereignty-vigipirate.ts';
-import type { MilitaryAircraft, MilitaryEmergency } from '../types/index.ts';
+import type { MilitaryAircraft, MilitaryEmergency, NewsEvent } from '../types/index.ts';
 import { buildDefenseView, type DefenseSitesSummary } from './layer-panel/defense.ts';
 import { createLayerPanelShell, isLayerPanelOpen, safeStorage, sectionOpenOf, type LayerPanelShell } from './layer-panel/frame.ts';
 import { findShipByKey } from './layer-panel/navy.ts';
+import { pressEventsFor, pressEventsSection } from './layer-panel/press-events.ts';
 import { cablesAisDown } from './layer-panel/sovereignty-format.ts';
 
 const PANEL_ID = 'military';
@@ -65,6 +66,7 @@ export class DefensePanel {
   private onDroneZones?: (on: boolean) => void;
   private onFocusGnssCell?: (cell: { lat: number; lon: number }) => void;
   private state: DefensePanelState | null = null;
+  private press: NewsEvent[] = [];
   private readonly storage = safeStorage();
   private readonly container: HTMLElement;
   private readonly live: DefenseLiveSource;
@@ -106,6 +108,12 @@ export class DefensePanel {
       gnss: state.gnss !== undefined ? state.gnss : this.state?.gnss ?? null,
       sanctions: state.sanctions !== undefined ? state.sanctions : this.state?.sanctions ?? null,
     };
+    this.render();
+  }
+
+  /** Événements de presse consolidés (22/10/2026) : les sujets militaires en France passent en tête du panneau. */
+  setPressEvents(events: readonly NewsEvent[]): void {
+    this.press = pressEventsFor('defense', events);
     this.render();
   }
 
@@ -173,7 +181,7 @@ export class DefensePanel {
     const connection = this.live.connection();
     const watch = cables?.watch.data ?? null;
     const open = sectionOpenOf(loadSectionState(this.storage), PANEL_ID);
-    this.shell.patch(buildDefenseView({
+    const view = buildDefenseView({
       military: military?.military.data ?? null, militaryError: military?.military.error ?? null, vigipirate: VIGIPIRATE,
       vigipirateCheck: vigipirate?.check ?? null,
       navy: { status: connection.status, lastMessageAt: connection.lastMessageAt, ships: this.live.navy() },
@@ -183,6 +191,7 @@ export class DefensePanel {
       gnss: gnss?.gnss.data ?? null, gnssError: gnss?.gnss.error ?? null,
       sanctions: sanctions?.sanctions.data ?? null, sanctionsError: sanctions?.sanctions.error ?? null,
       canFocus: this.onFocusAircraft !== undefined, now: Date.now(), open,
-    }));
+    });
+    this.shell.patch({ ...view, sections: [...pressEventsSection(this.press, Date.now()), ...view.sections] });
   }
 }

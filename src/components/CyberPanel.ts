@@ -4,7 +4,9 @@
 // catalogue KEV, revendications agrégées, fuites en compte et lien, alertes Cybermalveillance) ; liens externes seulement.
 import type { SovCyberState } from '../services/sovereignty-cyber.ts';
 import { loadSectionState } from '../services/fiche-sections-store.ts';
+import type { NewsEvent } from '../types/index.ts';
 import { buildCyberView } from './layer-panel/cyber.ts';
+import { pressEventsFor, pressEventsSection } from './layer-panel/press-events.ts';
 import { createLayerPanelShell, isLayerPanelOpen, safeStorage, sectionOpenOf, type LayerPanelShell } from './layer-panel/frame.ts';
 
 const PANEL_ID = 'cyber';
@@ -13,6 +15,7 @@ export class CyberPanel {
   private shell: LayerPanelShell | null = null;
   private onClose?: () => void;
   private state: SovCyberState | null = null;
+  private press: NewsEvent[] = [];
   private readonly storage = safeStorage();
   private readonly container: HTMLElement;
 
@@ -39,6 +42,12 @@ export class CyberPanel {
     this.render();
   }
 
+  /** Événements de presse consolidés (22/10/2026) : les sujets cyber en France passent en tête du panneau. */
+  setPressEvents(events: readonly NewsEvent[]): void {
+    this.press = pressEventsFor('cyber', events);
+    this.render();
+  }
+
   hide(opts: { silent?: boolean } = {}): void {
     this.shell?.root.classList.remove('is-open');
     // Masquage « silencieux » (bascule entre panneaux) : ne désactive pas la couche.
@@ -58,6 +67,7 @@ export class CyberPanel {
     if (!this.shell) return;
     const slot = this.state?.cyber ?? null;
     const open = sectionOpenOf(loadSectionState(this.storage), PANEL_ID);
-    this.shell.render(buildCyberView({ cyber: slot?.data ?? null, cyberError: slot?.error ?? null, now: Date.now(), open, watch: this.state?.watch?.data ?? null }));
+    const view = buildCyberView({ cyber: slot?.data ?? null, cyberError: slot?.error ?? null, now: Date.now(), open, watch: this.state?.watch?.data ?? null });
+    this.shell.render({ ...view, sections: [...pressEventsSection(this.press, Date.now()), ...view.sections] });
   }
 }
