@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
 import type { OutagesNowResponse } from '../../types/index.ts';
 import { OutagesNowController, ROOM_POLL_MS } from './outages-now-controller.ts';
