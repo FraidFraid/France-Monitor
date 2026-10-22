@@ -21,8 +21,6 @@ export class OutagesRoom {
   private picked: string | null = null;
   private onFocus: ((o: OutageNow) => void) | null = null;
   private onFilter: ((n: OutageNetwork | null) => void) | null = null;
-  /** Suit l'apparition et le contenu de la mini-légende des pastilles (#general-focus-key), posée sous la barre des pastilles. */
-  private readonly legendWatch: MutationObserver | null;
 
   constructor(host: HTMLElement) {
     this.el = document.createElement('div');
@@ -42,8 +40,6 @@ export class OutagesRoom {
     this.el.append(this.strip, body, this.frise);
     this.el.addEventListener('click', (ev) => this.onClick(ev));
     host.appendChild(this.el);
-    this.legendWatch = typeof MutationObserver === 'function' ? new MutationObserver(() => this.placeBelowPills()) : null;
-    this.legendWatch?.observe(document.body, { childList: true });
     this.render();
   }
 
@@ -64,22 +60,18 @@ export class OutagesRoom {
   }
 
   destroy(): void {
-    this.legendWatch?.disconnect();
     this.el.remove();
   }
 
   /**
-   * Sous la barre des pastilles posée sur la carte (sa hauteur dépend de la largeur), et sous leur mini-légende quand elle est
-   * affichée (survol ou pastille allumée) ; sinon 108 px.
+   * Sous la barre des pastilles posée sur la carte (sa hauteur dépend de la largeur) ; sinon 108 px. La mini-légende des pastilles ne
+   * décale plus la salle (22/10/2026) : dans cet onglet, App la pose en bas à gauche de la carte, au-dessus de la frise.
    */
   private placeBelowPills(): void {
     const host = this.el.parentElement;
     const pills = host?.parentElement?.querySelector('.floating-panel-switcher');
     if (!host || !pills) return;
-    const legend = document.getElementById('general-focus-key');
-    if (legend && this.legendWatch) this.legendWatch.observe(legend, { childList: true, subtree: true });
-    const bottom = Math.max(pills.getBoundingClientRect().bottom, legend?.getBoundingClientRect().bottom ?? 0);
-    const top = bottom - host.getBoundingClientRect().top;
+    const top = pills.getBoundingClientRect().bottom - host.getBoundingClientRect().top;
     if (top > 0) this.el.style.setProperty('--orm-top', `${Math.round(top + 8)}px`);
   }
 

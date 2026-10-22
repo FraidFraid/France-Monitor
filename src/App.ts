@@ -6379,6 +6379,14 @@ export class App {
     const r = switcher.getBoundingClientRect();
     panel.style.left = `${Math.round(r.left)}px`;
     panel.style.top = `${Math.round(r.bottom + 6)}px`;
+    // Onglet Pannes (22/10/2026) : sous les pastilles, la légende recouvrait la barre des réseaux de la salle ; posée en bas à gauche
+    // de la carte, au-dessus de la frise.
+    const frise = this.v2Theme === 'outages' ? document.querySelector('.orm-frise') : null;
+    if (frise) {
+      const f = frise.getBoundingClientRect();
+      panel.style.left = `${Math.round(f.left)}px`;
+      panel.style.top = `${Math.round(f.top - panel.getBoundingClientRect().height - 8)}px`;
+    }
   }
 
   /** Pastilles Énergie allumées (vertes) et pastille survolée en aperçu. */

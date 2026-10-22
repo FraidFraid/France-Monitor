@@ -57,26 +57,56 @@ export function activeAt(bars: readonly TimelineBar[], t: number): TimelineBar[]
 }
 
 const pct = (t: number, from: number, span: number): string => `${(Math.min(Math.max((t - from) / span, 0), 1) * 100).toFixed(1)}%`;
+const PARIS_HOUR = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: 'numeric', hourCycle: 'h23' });
+const PARIS_DAY = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', weekday: 'short', day: 'numeric' });
+const LEVEL_KEY = '<span class="orm-key"><i class="orm-bar--jaune"></i>Vigilance<i class="orm-bar--orange"></i>Alerte<i class="orm-bar--rouge"></i>Crise</span>';
 
-/** Frise : une ligne par réseau touché, graduations toutes les 6 h, curseur de rejeu (null : direct). */
+/**
+ * Graduations (22/10/2026) : heures rondes de Paris toutes les 3 h (« 21 h »), et à minuit le jour (« jeu. 22 ») avec un trait sur
+ * toutes les lignes ; rien trop près des bords, où se lisent le jour de départ et « maintenant ».
+ */
+function axis(from: number, span: number): { ticks: string; days: string } {
+  let ticks = '';
+  let days = '';
+  for (let t = Math.ceil(from / 3_600_000) * 3_600_000; t < from + span; t += 3_600_000) {
+    const h = Number(PARIS_HOUR.formatToParts(t).find((p) => p.type === 'hour')?.value ?? NaN);
+    const x = (t - from) / span;
+    if (h % 3 !== 0 || x < 0.06 || x > 0.9) continue;
+    if (h === 0) {
+      days += `<span class="orm-day" style="left:${pct(t, from, span)}"></span>`;
+      ticks += `<span class="is-day" style="left:${pct(t, from, span)}">${escapeHtml(PARIS_DAY.format(t))}</span>`;
+    } else {
+      ticks += `<span style="left:${pct(t, from, span)}">${h}\u00a0h</span>`;
+    }
+  }
+  return { ticks, days };
+}
+
+/**
+ * Frise : une ligne par réseau touché, le temps de gauche (il y a 24 h) à droite (maintenant) ; heures rondes, jour à minuit ; une barre
+ * = une panne, du début à la fin (jusqu'au bord droit si elle dure encore), couleur du niveau le plus haut atteint ; curseur de rejeu
+ * (null : direct).
+ */
 export function friseHtml(bars: readonly TimelineBar[], now: number, cursor: number | null, windowMs = TIMELINE_WINDOW_MS): string {
   const from = now - windowMs;
-  // Curseur tracé dans chaque ligne : la colonne des libellés n'entre pas dans l'échelle du temps.
+  const { ticks, days } = axis(from, windowMs);
+  // Curseur et jours tracés dans chaque ligne : la colonne des libellés n'entre pas dans l'échelle du temps.
   const cursorLine = cursor === null ? '' : `<span class="orm-cursor" style="left:${pct(cursor, from, windowMs)}"></span>`;
   const rows = ORDER.filter((n) => bars.some((b) => b.network === n)).map((n) => {
     const cells = bars.filter((b) => b.network === n).map((b) => {
       const left = (b.start - from) / windowMs;
       const width = Math.max(((b.end ?? now) - b.start) / windowMs, 0.004);
       const title = `${b.dept !== null ? `${departementName(b.dept)} (${b.dept})` : b.name} · ${parisClock(b.start)} → ${b.end === null ? 'en cours' : parisClock(b.end)}`;
-      return `<i class="orm-bar orm-bar--${b.level}" data-outage="${escapeHtml(b.id)}" style="left:${(left * 100).toFixed(1)}%;width:${(width * 100).toFixed(1)}%" title="${escapeHtml(title)}"></i>`;
+      return `<i class="orm-bar orm-bar--${b.level}${b.end === null ? ' is-open' : ''}" data-outage="${escapeHtml(b.id)}" style="left:${(left * 100).toFixed(1)}%;width:${(width * 100).toFixed(1)}%" title="${escapeHtml(title)}"></i>`;
     }).join('');
-    return `<div class="orm-frise-row"><span class="orm-frise-label">${NETWORK_LABEL[n]}</span><div class="orm-frise-track">${cells}${cursorLine}</div></div>`;
+    return `<div class="orm-frise-row"><span class="orm-frise-label">${NETWORK_LABEL[n]}</span><div class="orm-frise-track">${days}${cells}${cursorLine}</div></div>`;
   }).join('');
-  const ticks = [0, 6, 12, 18, 24].map((h) => `<span style="left:${pct(from + h * 3600_000, from, windowMs)}">${parisClock(from + h * 3600_000)}</span>`).join('');
+  // Bord gauche : le jour de départ de la fenêtre, pour situer les heures qui précèdent minuit.
+  const scale = `${days}<span class="is-start" style="left:0">${escapeHtml(PARIS_DAY.format(from))}</span>${ticks}<span class="is-now" style="left:100%">maintenant</span>`;
   const head = cursor === null
-    ? '<h3>Frise des 24 dernières heures <small>(clic : rejeu)</small></h3>'
-    : `<h3>Rejeu à ${parisClock(cursor)} <button type="button" class="orm-back" data-now>maintenant</button></h3>`;
-  return `${head}<div class="orm-frise-area" data-frise>${rows || '<p class="orm-empty">Aucune panne sur 24 h.</p>'}<div class="orm-frise-row"><span class="orm-frise-label"></span><div class="orm-frise-track orm-frise-ticks">${ticks}</div></div></div>`;
+    ? `<h3>Pannes des 24 dernières heures <small>plus ancien ← → maintenant · clic : revoir la carte à cette heure</small>${LEVEL_KEY}</h3>`
+    : `<h3>Carte revue à ${parisClock(cursor)} <button type="button" class="orm-back" data-now>revenir à maintenant</button>${LEVEL_KEY}</h3>`;
+  return `${head}<div class="orm-frise-area" data-frise>${rows || '<p class="orm-empty">Aucune panne sur 24 h.</p>'}<div class="orm-frise-row"><span class="orm-frise-label"></span><div class="orm-frise-track orm-frise-ticks">${scale}</div></div></div>`;
 }
 
 /** Cascades : territoire, puis réseaux dans l'ordre des débuts, avec l'heure. */

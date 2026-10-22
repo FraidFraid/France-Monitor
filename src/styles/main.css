@@ -8628,3 +8628,17 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 #app .flux-panel-modal .flux-replay-label { font-size: 12px; color: var(--text-primary); font-variant-numeric: tabular-nums; }
 #app .flux-panel-modal .flux-replay-range { width: 100%; accent-color: #22d3ee; cursor: pointer; }
 #app .flux-panel-modal .flux-replay-scale { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-secondary, #9898a8); white-space: nowrap; }
+
+/* Frise des pannes lisible (22/10/2026) : sens du temps, jours, « maintenant », clé des couleurs ; sans barres de défilement. */
+.orm-frise { overflow: hidden auto; }
+.orm-frise h3 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.orm-key { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 400; }
+.orm-key i { display: inline-block; width: 14px; height: 8px; border-radius: 2px; margin-left: 6px; }
+.orm-frise-track { border-right: 2px solid rgba(255, 255, 255, 0.55); }
+.orm-frise-ticks { border-right: 0; height: 16px; }
+.orm-frise-ticks .is-start { transform: none; }
+.orm-frise-ticks .is-now { transform: translateX(-100%); color: var(--text-primary, #e8e8ec); font-weight: 600; }
+.orm-frise-ticks .is-day { color: var(--text-primary, #e8e8ec); font-weight: 600; }
+.orm-day { position: absolute; top: -3px; bottom: -3px; width: 1px; background: rgba(255, 255, 255, 0.35); pointer-events: none; }
+.orm-frise-ticks .orm-day { top: -2px; bottom: auto; height: 4px; }
+.orm-bar.is-open { border-top-right-radius: 0; border-bottom-right-radius: 0; }

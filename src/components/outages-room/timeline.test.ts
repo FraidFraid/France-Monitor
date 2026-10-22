@@ -49,4 +49,16 @@ describe('frise des 24 h', () => {
     expect(html.replace(/<[^>]+>/g, '')).toMatch(/Électricité 10\u00a0h\u00a012 → Téléphone mobile 10\u00a0h\u00a040/);
     expect(cascadeHtml([])).toBe('');
   });
+  it('frise lisible (22/10/2026) : heures rondes, jour à minuit, « maintenant » à droite, sens du temps et clé des couleurs', () => {
+    // NOW = 21/10 16 h UTC = 18 h à Paris : fenêtre du mardi 20 à 18 h au mercredi 21 à 18 h.
+    const html = friseHtml([], NOW, null);
+    const t = html.replace(/<[^>]+>/g, ' ');
+    expect(t).toContain('maintenant');
+    expect(t).toMatch(/mer\.? 21/);
+    expect(t).toContain(`21\u00a0h`);
+    expect(t).not.toMatch(/\d+\u00a0h\u00a0\d{2}/);
+    expect(t).toContain('plus ancien');
+    expect(t).toMatch(/Vigilance.*Alerte.*Crise/s);
+    expect(html).toContain('orm-day');
+  });
 });
