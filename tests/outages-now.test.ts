@@ -81,6 +81,11 @@ describe('pannes en cours : électricité, cloud et échelon', () => {
     const all = only({ power: power() }).filter((o) => o.id.startsWith('electricite|ouvrage'));
     expect(all).toEqual([expect.objectContaining({ id: 'electricite|ouvrage:Mandarins-Sellindge 1', network: 'electricite', level: 'orange', rung: 'mesuree', evidence: [expect.objectContaining({ source: 'rte' })] })]);
   });
+  it('ouvrage RTE à fin publiée (« jusqu’au 24/10 ») : fin prévue reprise (22/10/2026) ; sans fin : aucune', () => {
+    const p = power({ transmission: { unplanned: [{ id: '1', asset: 'Mandarins-Sellindge 1', start: '2026-10-21T07:00:00Z', end: '2026-10-24T07:00:00Z', publishedAt: null, reason: null }], planned: [] } });
+    expect(only({ power: p }).find((o) => o.id.startsWith('electricite|ouvrage'))).toMatchObject({ until: '2026-10-24T07:00:00Z' });
+    expect(only({ power: power() }).find((o) => o.id.startsWith('electricite|ouvrage'))?.until ?? null).toBeNull();
+  });
   it('arrêts imprévus de production : 3 000 MW orange, 6 000 MW rouge, 2 999 MW absent (aligné sur fleetLevel)', () => {
     const nat = (mw: number) => only({ power: power({ unplanned: [{ id: 'u', name: 'X', lostMw: mw, start: '2026-10-21T08:00:00Z', end: null }], transmission: null }) })
       .find((o) => o.id === 'electricite|national');

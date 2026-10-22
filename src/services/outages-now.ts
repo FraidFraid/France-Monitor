@@ -26,7 +26,7 @@ const journalEntry = record({
 const outageShape = record({
     id: value(isStr), network, rung, scope: value((v) => isOneOf(v, new Set(['operateur', 'departement', 'national', 'inconnu']))),
     operator: value(isStrOrNull), dept: value(isStrOrNull), label: value(isStrOrNull),
-    level, since: value(isDateOrNull),
+    level, since: value(isDateOrNull), until: value(isDateOrNull),
     national: value(isBool), measured: value(isBool),
     evidence: list(record({ source, text: value(isStr), at: value(isDateOrNull), link: value(isStrOrNull) })),
     exposed: record({
@@ -35,7 +35,7 @@ const outageShape = record({
       sample: list(record({ type: value((v) => isOneOf(v, SERVICE_TYPES)), name: value(isStr), commune: value(isStrOrNull), dept: value(isStr) })),
       points: list(record({ type: value((v) => isOneOf(v, SERVICE_TYPES)), name: value(isStr), lon: value((v) => typeof v === 'number'), lat: value((v) => typeof v === 'number') })),
     }, ['points']),
-  }, ['exposed']);
+  }, ['exposed', 'until']);
 const SHAPE = shapeOf<OutagesNowResponse>(record({
   generatedAt: value(isStr),
   outages: list(outageShape),

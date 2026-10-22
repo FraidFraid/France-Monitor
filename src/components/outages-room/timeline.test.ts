@@ -37,7 +37,8 @@ describe('frise des 24 h', () => {
     const html = friseHtml(bars, NOW, NOW - 3 * H);
     expect(html).toContain('Téléphone mobile');
     expect(html).toContain('Internet');
-    expect(html).toMatch(/left:50(\.0+)?%/);
+    // Fenêtre de 48 h, maintenant au milieu : 3 h avant = 21 / 48 = 43,75 %.
+    expect(html).toMatch(/orm-cursor" style="left:43\.8%/);
     expect(html).toContain('data-now');
     expect(friseHtml(bars, NOW, null)).not.toContain('data-now');
   });
@@ -49,16 +50,30 @@ describe('frise des 24 h', () => {
     expect(html.replace(/<[^>]+>/g, '')).toMatch(/Électricité 10\u00a0h\u00a012 → Téléphone mobile 10\u00a0h\u00a040/);
     expect(cascadeHtml([])).toBe('');
   });
-  it('frise lisible (22/10/2026) : heures rondes, jour à minuit, « maintenant » à droite, sens du temps et clé des couleurs', () => {
-    // NOW = 21/10 16 h UTC = 18 h à Paris : fenêtre du mardi 20 à 18 h au mercredi 21 à 18 h.
+  it('frise lisible (22/10/2026) : maintenant au milieu, 24 h passées à gauche, 24 h à venir à droite, jours à minuit', () => {
+    // NOW = mer. 21/10 18 h à Paris : fenêtre du mar. 20 à 18 h au jeu. 22 à 18 h.
     const html = friseHtml([], NOW, null);
     const t = html.replace(/<[^>]+>/g, ' ');
+    expect(html).toMatch(/class="is-now" style="left:50\.0%"/);
     expect(t).toContain('maintenant');
     expect(t).toMatch(/mer\.? 21/);
-    expect(t).toContain(`21\u00a0h`);
+    expect(t).toMatch(/jeu\.? 22/);
+    expect(t).toContain(`6\u00a0h`);
     expect(t).not.toMatch(/\d+\u00a0h\u00a0\d{2}/);
-    expect(t).toContain('plus ancien');
+    expect(t).toContain('passé');
+    expect(t).toContain('à venir');
     expect(t).toMatch(/Vigilance.*Alerte.*Crise/s);
     expect(html).toContain('orm-day');
+  });
+  it('panne en cours : pleine jusqu’à maintenant, puis fin prévue (hachurée) ou fin inconnue (dégradé)', () => {
+    const known = friseHtml([{ id: 'e', network: 'electricite', name: 'Ouvrage', dept: null, level: 'orange', start: NOW - 6 * H, end: null, until: NOW + 12 * H }], NOW, null);
+    expect(known).toMatch(/orm-bar orm-bar--orange is-open" data-outage="e" style="left:37\.5%;width:12\.5%"/);
+    expect(known).toMatch(/orm-bar orm-bar--orange is-prevu" data-outage="e" style="left:50\.0%;width:25\.0%"/);
+    const unknown = friseHtml([{ id: 'm', network: 'mobile', name: 'Orange', dept: null, level: 'rouge', start: NOW - 2 * H, end: null, until: null }], NOW, null);
+    expect(unknown).toContain('is-inconnu');
+  });
+  it('barres : fin prévue reprise de la panne en cours', () => {
+    const bars = timelineBars([], [outage({ until: new Date(NOW + 5 * H).toISOString() })], NOW);
+    expect(bars[0]).toMatchObject({ until: NOW + 5 * H });
   });
 });

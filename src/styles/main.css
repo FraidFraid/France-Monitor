@@ -2154,7 +2154,7 @@ button.header-quality-link {
   transform: translateX(-50%);
   width: max-content;
   max-width: min(640px, calc(100% - 32px));
-  z-index: var(--z-map-widget-popup);
+  z-index: calc(var(--z-map-overlay) + 1); /* au-dessus des étiquettes d'événements de la carte (22/10/2026) */
   background: rgba(10, 12, 20, 0.92);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -2196,7 +2196,7 @@ button.header-quality-link {
 
 /* Control room des pannes (onglet Pannes, 21/10/2026) : barre des réseaux sous les pastilles, encart national à gauche, fil ou détail
    à droite ; empilés quand la carte est étroite (requête de conteneur sur la carte, pas sur la fenêtre). */
-.orm { position: absolute; inset: 0; z-index: var(--z-map-widget-popup); container-type: size; pointer-events: none; display: flex;
+.orm { position: absolute; inset: 0; z-index: calc(var(--z-map-overlay) + 1); container-type: size; pointer-events: none; display: flex;
   flex-direction: column; gap: 8px; padding: var(--orm-top, 108px) 12px 56px; font-size: 12.5px; color: var(--text-primary, #e8e8ec); }
 .orm-strip { pointer-events: auto; display: grid; grid-template-columns: repeat(9, minmax(0, 1fr)); gap: 6px; flex: none; }
 .orm-net { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 6px; padding: 6px 8px; min-width: 0; text-align: left;
@@ -2248,7 +2248,7 @@ button.header-quality-link {
   .orm-nat { width: auto; max-height: 22%; }
   .orm-side { width: auto; max-height: 38%; }
   .orm-net small { display: none; }
-  .orm-frise { max-height: 110px; }
+  .orm-frise { max-height: 140px; overflow: hidden auto; }
   .orm-frise-label { flex-basis: 70px; }
 }
 
@@ -8630,14 +8630,22 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 #app .flux-panel-modal .flux-replay-scale { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-secondary, #9898a8); white-space: nowrap; }
 
 /* Frise des pannes lisible (22/10/2026) : sens du temps, jours, « maintenant », clé des couleurs ; sans barres de défilement. */
-.orm-frise { overflow: hidden auto; }
+@container (min-width: 641px) { .orm-frise { overflow: hidden; max-height: none; } }
 .orm-frise h3 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
 .orm-key { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 400; }
 .orm-key i { display: inline-block; width: 14px; height: 8px; border-radius: 2px; margin-left: 6px; }
-.orm-frise-track { border-right: 2px solid rgba(255, 255, 255, 0.55); }
-.orm-frise-ticks { border-right: 0; height: 16px; }
+/* « Maintenant » au milieu (22/10/2026) : passé à gauche, à venir à droite (fond plus clair). */
+.orm-now { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: #fff; pointer-events: none; z-index: 1; }
+.orm-frise-track:not(.orm-frise-ticks) { background: linear-gradient(90deg, rgba(255, 255, 255, 0.04) 50%, rgba(255, 255, 255, 0.09) 50%); }
+.orm-frise-ticks { height: 16px; }
+.orm-frise-ticks .is-end { transform: translateX(-100%); color: var(--text-primary, #e8e8ec); font-weight: 600; }
+.orm-frise-ticks .orm-now { display: none; }
+.orm-bar.is-prevu { opacity: 0.9; background-image: repeating-linear-gradient(135deg, rgba(10, 12, 20, 0.55) 0 3px, transparent 3px 6px); border-radius: 0 3px 3px 0; }
+.orm-bar.is-inconnu { -webkit-mask-image: linear-gradient(90deg, #000, transparent); mask-image: linear-gradient(90deg, #000, transparent); border-radius: 0; }
+.orm-key i.is-prevu { background-image: repeating-linear-gradient(135deg, rgba(10, 12, 20, 0.55) 0 3px, transparent 3px 6px); }
+.orm-key i.is-inconnu { -webkit-mask-image: linear-gradient(90deg, #000, transparent); mask-image: linear-gradient(90deg, #000, transparent); }
 .orm-frise-ticks .is-start { transform: none; }
-.orm-frise-ticks .is-now { transform: translateX(-100%); color: var(--text-primary, #e8e8ec); font-weight: 600; }
+.orm-frise-ticks .is-now { color: #fff; font-weight: 700; }
 .orm-frise-ticks .is-day { color: var(--text-primary, #e8e8ec); font-weight: 600; }
 .orm-day { position: absolute; top: -3px; bottom: -3px; width: 1px; background: rgba(255, 255, 255, 0.35); pointer-events: none; }
 .orm-frise-ticks .orm-day { top: -2px; bottom: auto; height: 4px; }

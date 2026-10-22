@@ -52,10 +52,15 @@ describe('OutagesRoom : frise, rejeu et cascades (lot 3)', () => {
     expect(host.querySelector('.orm-cascade')).not.toBeNull();
     const area = host.querySelector('[data-frise]') as HTMLElement;
     area.getBoundingClientRect = () => ({ left: 100, width: 400, top: 0, height: 50, right: 500, bottom: 50, x: 100, y: 0, toJSON: () => ({}) });
-    area.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 300 }));
+    // Maintenant au milieu de la frise (48 h) : le quart gauche = 12 h avant ; un clic dans la partie à venir revient au direct.
+    area.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 200 }));
     expect(cursors).toHaveLength(1);
     expect(Math.abs((cursors[0] ?? 0) - (Date.now() - 12 * 3600_000))).toBeLessThan(5000);
     (host.querySelector('[data-now]') as HTMLElement).click();
+    expect(cursors.at(-1)).toBeNull();
+    const again = host.querySelector('[data-frise]') as HTMLElement;
+    again.getBoundingClientRect = area.getBoundingClientRect;
+    again.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 450 }));
     expect(cursors.at(-1)).toBeNull();
   });
 });

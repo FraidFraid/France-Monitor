@@ -3,7 +3,7 @@
 // (départements, contour national) est pilotée par App à partir des rappels onFocus et onFilter.
 import type { OutageJournalEntry, OutageNetwork, OutageNow, OutagesNowResponse } from '../../types/index.ts';
 import { bulletinBox, detailHtml, feedHtml, nationalBox, networkStrip, NETWORK_SOURCES } from './room-view.ts';
-import { cascadeHtml, friseHtml, TIMELINE_WINDOW_MS, timelineBars } from './timeline.ts';
+import { cascadeHtml, friseHtml, TIMELINE_FUTURE_MS, TIMELINE_WINDOW_MS, timelineBars } from './timeline.ts';
 
 const isNetwork = (v: string): v is OutageNetwork => Object.hasOwn(NETWORK_SOURCES, v);
 
@@ -115,7 +115,9 @@ export class OutagesRoom {
       const r = track && track.width > 0 ? track : area.getBoundingClientRect();
       if (r.width > 0) {
         const share = Math.min(Math.max((ev.clientX - r.left) / r.width, 0), 1);
-        this.setCursor(Math.round(Date.now() - TIMELINE_WINDOW_MS * (1 - share)));
+        // Maintenant au milieu : un clic dans la partie à venir revient au direct (22/10/2026).
+        const t = Math.round(Date.now() - TIMELINE_WINDOW_MS + share * (TIMELINE_WINDOW_MS + TIMELINE_FUTURE_MS));
+        this.setCursor(t >= Date.now() ? null : t);
       }
       return;
     }

@@ -3218,6 +3218,7 @@ export interface OutageNow {
   label: string | null;                 // opérateur, « France entière », nom IODA du département ; null : le client nomme le département
   level: 'jaune' | 'orange' | 'rouge';
   since: string | null;                 // première preuve
+  until?: string | null;                // fin prévue, quand la source la donne (ouvrage RTE, 22/10/2026)
   national: boolean;                    // pays entier, ou panne d'opérateur dite nationale
   measured: boolean;                    // vue par une source autre que la presse (rung !== 'signalee')
   rung: OutageRung;

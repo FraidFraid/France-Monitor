@@ -58,6 +58,8 @@ export function outagesNow({ telecom, internet, power, cloud, now, press, social
     o.measured = o.rung !== 'signalee';
     if (base.scope === 'national') o.national = true;
     o.label ??= base.label;
+    // Fin prévue publiée par la source (ouvrage RTE, 22/10/2026) : la plus tardive.
+    if (evidence.until && (o.until == null || Date.parse(evidence.until) > Date.parse(o.until))) o.until = evidence.until;
     o.evidence.push({ source: evidence.source, text: evidence.text, at: evidence.since, link: evidence.link ?? null });
     byKey.set(id, o);
     return o;
@@ -141,7 +143,7 @@ export function outagesNow({ telecom, internet, power, cloud, now, press, social
     for (const t of power.transmission?.unplanned ?? []) {
       if (t.end !== null && Date.parse(t.end) <= now) continue;
       add('electricite', `ouvrage:${t.asset}`, { scope: 'inconnu', operator: 'RTE', dept: null, label: t.asset },
-        { source: 'rte', level: 'orange', since: t.start, text: `coupure imprévue de l’ouvrage de transport ${t.asset}${t.reason ? ` (${t.reason})` : ''}` });
+        { source: 'rte', level: 'orange', since: t.start, until: t.end, text: `coupure imprévue de l’ouvrage de transport ${t.asset}${t.reason ? ` (${t.reason})` : ''}` });
     }
   }
   if (power && fresh(power.edfReadAt, now, LIVE_MAX_AGE_MS)) {
