@@ -33,7 +33,7 @@
     if ((yi > pt[1]) !== (yj > pt[1]) && pt[0] < ((xj - xi) * (pt[1] - yi)) / (yj - yi) + xi) ins = !ins; } return ins; };
   const inGeom = (pt, g) => (g.type === 'Polygon' ? [g.coordinates] : g.coordinates).some((p) => inRing(pt, p[0]) && !p.slice(1).some((h) => inRing(pt, h)));
 
-  const S = { m: null, geo: null, depts: null, deptByCode: new Map(), data: {}, agg: new Map(), focus: new Set(), fiche: null, hoverKey: null };
+  const S = { m: null, geo: null, depts: null, deptByCode: new Map(), data: {}, agg: new Map(), focus: new Set(), fiche: null, hoverKey: null, wanted: new Map() };
 
   // ─── Pictos : Lucide sur disque sombre cerclé (gabarit des disques Énergie) ───
   let fmIcon = null;
@@ -1344,10 +1344,19 @@
     // (20/10/2026). Sinon ils restaient visibles le temps du chargement de cette carte, puis revenaient quand l'app relisait ses
     // données, jusqu'à la vérification suivante.
     const setLayout = S.m.setLayoutProperty.bind(S.m);
-    S.m.setLayoutProperty = (id, key, value, options) =>
-      setLayout(id, key, key === 'visibility' && value === 'visible' && HIDE.includes(id) && isSec() ? 'none' : value, options);
+    // Visibilité demandée par l'app pour ces calques, rétablie en quittant l'onglet (24/10/2026) : au changement d'onglet, l'app les
+    // rallume avant que le bouton Sécurité ne soit relâché ; sans ce souvenir, les antennes coupées et l'internet restaient masqués dans Pannes.
+    S.m.setLayoutProperty = (id, key, value, options) => {
+      if (key === 'visibility' && HIDE.includes(id)) S.wanted.set(id, value);
+      return setLayout(id, key, key === 'visibility' && value === 'visible' && HIDE.includes(id) && isSec() ? 'none' : value, options);
+    };
+    let secBefore = isSec();
     const hideNative = () => {
-      if (!isSec()) return;
+      const sec = isSec();
+      // Sortie de l'onglet : les calques reprennent la visibilité demandée par l'app (même si cette carte n'a pas fini de charger).
+      if (secBefore && !sec) for (const [id, v] of S.wanted) if (S.m.getLayer(id)) setLayout(id, 'visibility', v);
+      secBefore = sec;
+      if (!sec) return;
       for (const id of HIDE) if (S.m.getLayer(id) && S.m.getLayoutProperty(id, 'visibility') !== 'none') setLayout(id, 'visibility', 'none');
     };
     new MutationObserver(hideNative).observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['aria-pressed'] });
