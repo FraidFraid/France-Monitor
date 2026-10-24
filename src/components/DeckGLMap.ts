@@ -26,7 +26,7 @@ import { LYR_SEVESO, LYR_SEVESO_CLUSTER, SEVESO_LAYERS, SEVESO_LAYER_IDS, SRC_SE
 import type { Exposure, ExposureAsset } from '../services/environment-exposure.ts';
 import { FRANCE_METRO_BOUNDS, visibleFitPadding, type Rect } from './deckgl/france-fit.ts';
 import { ENV_CONTEXT_RULES, RADAR_CONTEXT_KEY, SEVESO_CONTEXT_KEY, envContextFilter, envContextRevealed } from './deckgl/env-context.ts';
-import { pulsePaint } from './deckgl/pulse.ts';
+import { pulseAllowed, pulsePaint } from './deckgl/pulse.ts';
 import type { ExposureResult } from '../services/environment-exposure.ts';
 import { FLUX_LAYERS, FLUX_LAYER_IDS, fluxFeatures, fluxSourceSpec, type FluxInstant, type FluxOtherEvent } from './deckgl/flux-pietons-map.ts';
 import type { FluxFeature } from '../services/flux-pietons.ts';
@@ -6459,7 +6459,7 @@ export class DeckGLMap {
     for (const key of Object.keys(PULSE_LAYERS) as PulseKey[]) {
       const { pulse } = PULSE_LAYERS[key];
       if (!this.map.getLayer(pulse)) continue;
-      const on = !reduced && this.pulseState[key].shown;
+      const on = !reduced && this.pulseState[key].shown && pulseAllowed(key, this.outagesRoomActive);
       this.setVis(pulse, on ? 'visible' : 'none');
       any ||= on;
     }
@@ -6489,8 +6489,12 @@ export class DeckGLMap {
   }
 
   // ─── Control room des pannes (onglet Pannes, 21/10/2026) : départements touchés ───
+  /** Salle des pannes ouverte : seule à faire pulser les antennes coupées (pulseAllowed). */
+  private outagesRoomActive = false;
   /** Départements touchés (propriété `level`) ; `null` : calque retiré (sortie de l'onglet). */
   setOutagesRoom(state: { depts: GeoJSON.FeatureCollection; services?: GeoJSON.FeatureCollection } | null): void {
+    this.outagesRoomActive = state !== null;
+    this.syncPulses();
     const map = this.map;
     if (!map) return;
     if (state === null) {

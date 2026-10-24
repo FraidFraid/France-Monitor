@@ -9,6 +9,14 @@ export const PULSE_BY_LEVEL: Readonly<Record<VigilanceLevel, { period: number; a
   rouge: { period: 1400, amp: 14 }, orange: { period: 2200, amp: 10 }, jaune: { period: 2800, amp: 8 }, vert: { period: 3400, amp: 6 },
 };
 
+/** Anneaux réservés à l'onglet Pannes (24/10/2026) : en Vue générale, les antennes coupées ne pulsent pas. */
+const ROOM_ONLY_PULSES: ReadonlySet<string> = new Set(['telecomOutage']);
+
+/** Anneau autorisé pour la couche `key`, selon que la salle des pannes est ouverte. */
+export function pulseAllowed(key: string, roomActive: boolean): boolean {
+  return roomActive || !ROOM_ONLY_PULSES.has(key);
+}
+
 /** Décalage stable de la pulsation d'un point (points voisins désynchronisés). */
 export function pulseOffset(id: string, period: number): number {
   let h = 0;
