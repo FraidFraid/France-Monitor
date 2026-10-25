@@ -6,6 +6,7 @@ import { fmLoaderHTML } from './shared/loader.ts';
 import { fmIcon, type IconName } from './shared/icons.ts';
 import { confidenceBand } from '../services/vigilance.ts';
 import { noEmDash } from '../services/typography.ts';
+import { floorToBucket, HOUR_MS } from '../utils/time-bucket.ts';
 
 function escapeHtml(str: string): string {
   const div = document.createElement('div');
@@ -1103,7 +1104,8 @@ export class UnderMapNewsFeed {
       params.set('until', end.toISOString());
     } else {
       const daysBack = this.filter.historyPeriod === '30d' ? 30 : this.filter.historyPeriod === '90d' ? 90 : 7;
-      params.set('since', new Date(Date.now() - daysBack * 86_400_000).toISOString());
+      // Borne arrondie à l'heure : même URL pour tous les visiteurs de l'heure, servie par le cache Cloudflare.
+      params.set('since', new Date(floorToBucket(Date.now() - daysBack * 86_400_000, HOUR_MS)).toISOString());
     }
 
     if (this.filter.historyCategory) params.set('category', this.filter.historyCategory);

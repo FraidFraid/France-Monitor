@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from 'vitest';
 // @ts-expect-error — module JS sans déclaration de types
-import { scoredByFromVersion, mapNewsRow, parseDateParam } from '../api/_handlers/news.js';
+import { scoredByFromVersion, mapNewsRow, parseDateParam, newsCacheControl } from '../api/_handlers/news.js';
 
 describe('scoredByFromVersion', () => {
   it('kw-1 → keywords', () => expect(scoredByFromVersion('kw-1')).toBe('keywords'));
@@ -118,5 +118,17 @@ describe('qualification des articles (spec 2026-09-28 § 4.6)', () => {
     expect(mapNewsRow({ ...ROW, reported_severity: 'critical', temporality: 'passe', zone: 'etranger', reasons: 'passe,etranger' }))
       .toMatchObject({ reportedSeverity: 'critical', temporality: 'passe', zone: 'etranger', reasons: ['passe', 'etranger'] });
     expect(mapNewsRow({ ...ROW })).toMatchObject({ reportedSeverity: null, temporality: null, zone: null, reasons: [] });
+  });
+});
+
+describe('newsCacheControl (transfert Neon)', () => {
+  const now = Date.parse('2026-10-25T14:37:00Z');
+  it('fil des 24 h : 1 min', () => {
+    const p = new URLSearchParams({ since: '2026-10-24T14:35:00.000Z', limit: '1000' });
+    expect(newsCacheControl(p, now)).toContain('s-maxage=60');
+  });
+  it('historique 7 j filtré : 5 min', () => {
+    const p = new URLSearchParams({ limit: '50', since: '2026-10-18T14:00:00.000Z', category: 'energy' });
+    expect(newsCacheControl(p, now)).toContain('s-maxage=300');
   });
 });

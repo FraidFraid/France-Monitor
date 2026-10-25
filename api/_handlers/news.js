@@ -347,6 +347,17 @@ export async function queryNews(searchParams) {
   }
 }
 
+/**
+ * Historique (filtres, pages, borne arrondie à l'heure côté client) : 5 min au cache Cloudflare pour épargner le transfert Neon ;
+ * fil des 24 h (servi par l'instantané) : 1 min.
+ */
+export function newsCacheControl(searchParams, now) {
+  const since = parseDateParam(searchParams.get('since'), new Date(now - DAY_MS)) ?? new Date(now);
+  return isSnapshotQuery(searchParams, since, now)
+    ? 'public, s-maxage=60, stale-while-revalidate=300'
+    : 'public, s-maxage=300, stale-while-revalidate=600';
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Content-Type', 'application/json');
@@ -359,7 +370,7 @@ export default async function handler(req, res) {
   const { status, body } = await queryNews(url.searchParams);
 
   if (status === 200) {
-    res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+    res.setHeader('Cache-Control', newsCacheControl(url.searchParams, Date.now()));
   }
   res.status(status).json(body);
 }

@@ -13,6 +13,7 @@ import type { NewsItem, Feed, ThreatClassification, ThreatLevel, EventCategory }
 import { Watchdog } from './watchdog.ts';
 import { dropPlaceholderDrafts } from './rss-dates.ts';
 import { noEmDash } from './typography.ts';
+import { floorToBucket } from '../utils/time-bucket.ts';
 
 // ── Watchdog registration ──
 Watchdog.register('rss-pqr', {
@@ -414,10 +415,6 @@ const INGEST_MEMO_TTL_MS = 60_000;
 
 let ingestInFlight: Promise<NewsItem[] | null> | null = null;
 let ingestMemo: { items: NewsItem[] | null; fetchedAt: number } | null = null;
-
-function floorToBucket(ms: number, bucketMs: number): number {
-    return Math.floor(ms / bucketMs) * bucketMs;
-}
 
 /**
  * Tente le chemin consolidé /api/news (items déjà classifiés + géocodés serveur).
