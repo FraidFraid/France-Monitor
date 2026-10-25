@@ -3,6 +3,7 @@
  * Expose toutes les méthodes de calques unifié.
  */
 
+import type { TransportVigilancePoint } from './layer-panel/transport-vigilance.ts';
 import type { DeckGLMap } from './DeckGLMap.ts';
 import type { Exposure, ExposureAsset, ExposureResult } from '../services/environment-exposure.ts';
 import type { PollenDay, PollenResponse } from '../types/index.ts';
@@ -113,6 +114,7 @@ export class MapContainer {
     if (this.onMilitaryBaseClick) this.deckMap.setOnMilitaryBaseClick(this.onMilitaryBaseClick);
     if (this.onRadarPointPick) this.deckMap.setOnRadarPointPick(this.onRadarPointPick);
     if (this.radarPick) this.deckMap.setRadarPick(this.radarPick);
+    if (this.transportPoints) this.deckMap.setTransportVigilance(this.transportPoints);
     if (this.onSovereigntyFeatureClick) this.deckMap.setOnSovereigntyFeatureClick(this.onSovereigntyFeatureClick);
     if (this.onProtestClick) this.deckMap.setOnProtestClick(this.onProtestClick);
     if (this.onCrimeCityClick) this.deckMap.setOnCrimeCityClick(this.onCrimeCityClick);
@@ -433,6 +435,18 @@ export class MapContainer {
   /** Pastilles mises en avant hors Énergie (Vue générale : une ; Environnement : cumulables), retenues par la carte ; [] : aucune. */
   setGeneralFocus(keys: readonly string[]): void {
     this.deckMap?.setGeneralFocus(keys);
+  }
+
+  /** Onglet Transports : points de vigilance numérotés (null : retirés) ; gardés pour une carte créée après. */
+  setTransportVigilance(points: readonly TransportVigilancePoint[] | null): void {
+    this.transportPoints = points;
+    this.deckMap?.setTransportVigilance(points);
+  }
+  private transportPoints: readonly TransportVigilancePoint[] | null = null;
+
+  /** Pastilles Transports mises en avant : étiquettes des autres modes tamisées. */
+  setTransportFocus(keys: readonly string[]): void {
+    this.deckMap?.setTransportFocus(keys);
   }
 
   // ─── Events ───

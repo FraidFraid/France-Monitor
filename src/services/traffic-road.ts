@@ -4,7 +4,7 @@
 import type { RoadNationalResponse, RoadUrbanResponse } from '../types/index.ts';
 import { isRecord, isStringArray } from './health-surveillance.ts';
 import {
-  isBool, isNum, isNumOrNull, isPoint, isStr, isStrOrNull, listOf, loadSlot, mergeSlot, numbersIn, trafficSlotStatus, type SourceSlot, type TrafficStatus,
+  expireSlot, isBool, isNum, isNumOrNull, isPoint, isStr, isStrOrNull, listOf, loadSlot, mergeSlot, numbersIn, trafficSlotStatus, type SourceSlot, type TrafficStatus,
 } from './traffic-source.ts';
 
 export const ROAD_NATIONAL_URL = '/api/traffic/road-national';
@@ -62,9 +62,17 @@ export async function fetchRoadTraffic(previous: RoadTrafficState | null, now: n
   return { national, urban };
 }
 
-/** Écriture d'une lecture dans l'état courant (fusion à l'écriture, S3) : une route en échec garde ses données actuelles. */
-export function mergeRoadTraffic(current: RoadTrafficState | null, incoming: RoadTrafficState): RoadTrafficState {
-  return { national: mergeSlot(current?.national, incoming.national), urban: mergeSlot(current?.urban, incoming.urban) };
+/**
+ * Écriture d'une lecture dans l'état courant (fusion à l'écriture, S3) : une route en échec garde ses données actuelles, sauf
+ * périmées (expireSlot).
+ */
+export function mergeRoadTraffic(current: RoadTrafficState | null, incoming: RoadTrafficState, now: number): RoadTrafficState {
+  const national = mergeSlot(current?.national, incoming.national);
+  const urban = mergeSlot(current?.urban, incoming.urban);
+  return {
+    national: expireSlot(national, national.data?.publishedAt, 'DIR', now),
+    urban: expireSlot(urban, urban.data?.collectedAt, 'TomTom', now),
+  };
 }
 
 /** Panneau des sources : publication DIR (« Trafic ») ou collecte TomTom (« TomTom agglomérations »). */

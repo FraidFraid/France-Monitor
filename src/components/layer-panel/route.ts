@@ -4,13 +4,15 @@
 // un événement planifié ou démarré depuis plus de 24 h va dans « Fermetures et chantiers de longue durée » (T2).
 import type { ConcededJam, RoadAggloOfficial, RoadEvent, RoadNationalResponse, RoadUrbanResponse, UrbanAgglo } from '../../types/index.ts';
 import { isTrafficDataLate, roadLevel } from '../../services/traffic-levels.ts';
+import type { VigilanceLevel } from '../../services/vigilance.ts';
 import { escapeHtml } from '../france-intel-events.ts';
 import { kvRow } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
 import { NBSP, frNumber } from './format.ts';
 import { barRow, emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, valueHtml, type LayerHeadModel, type LayerView } from './frame.ts';
+import { ROAD_EVENT_STYLE } from './traffic-legend.ts';
 import {
-  IMPORTANCE_LEVEL, ROAD_EVENT_LEVEL, ROAD_KIND_ORDER, TRAFFIC_THEME, clockOf, dataMs, dateOf, dirLoadLevel, emptyOrDown, fold, formatKm,
+  IMPORTANCE_LEVEL, ROAD_KIND_ORDER, TRAFFIC_THEME, clockOf, dataMs, dateOf, dirLoadLevel, emptyOrDown, fold, formatKm,
   formatKmh, formatMinutes, formatShare, glueUnits, note, plural, readErrors, shortDate, sourceDown, speedLevel, stamp,
 } from './traffic-format.ts';
 
@@ -101,6 +103,8 @@ function lead(n: RoadNationalResponse, u: RoadUrbanResponse | null, now: number)
 
 function urbanStamp(u: RoadUrbanResponse | null, urbanError: string | null, now: number): string {
   if (u) return stamp('TomTom', u.collectedAt, isTrafficDataLate('tomtom', u.collectedAt, now), now);
+  // Donnée périmée (expireSlot) : le message dit depuis quand ; sinon la route n'a pas répondu.
+  if (urbanError?.startsWith('TomTom : ')) return glueUnits(urbanError);
   return urbanError !== null ? 'TomTom injoignable' : 'TomTom chargement…';
 }
 
@@ -125,13 +129,22 @@ function headOf(input: RouteViewInput, n: RoadNationalResponse): LayerHeadModel 
 
 // ─── Événements en cours ───
 
+/** Puce d'un événement : niveau L1 (bouchon, coupure, météo), jeton rose de la couche (accident, obstacle, voie fermée), sinon grise. */
+function roadEventMarker(kind: RoadEvent['kind']): { level: VigilanceLevel | 'gris' } | { color: string } {
+  const style = ROAD_EVENT_STYLE[kind];
+  if (style.level) return { level: style.level };
+  return style.token ? { color: style.token } : { level: 'gris' };
+}
+
 function eventRow(e: RoadEvent, late: boolean, canFocus: boolean, now: number): string {
   const end = e.end !== null ? `fin prévue ${clockOf(e.end, now)}` : e.kind === 'closure' ? 'sans fin déclarée' : null;
   const parts = [e.detail.trim() || null, e.direction, end, e.severity ? SEVERITY_WORDS[e.severity] : null, e.dir]
     .filter((x): x is string => x !== null && x !== '');
   const focusable = canFocus && e.lat !== null && e.lon !== null;
   return listRow({
-    text: eventTitle(e), value: clockOf(e.start, now), level: late ? 'gris' : ROAD_EVENT_LEVEL[e.kind], note: parts.join(' · '),
+    // Même couleur que la carte (ROAD_EVENT_STYLE) : niveau L1 pour bouchons, coupures et météo ; rose de la couche sinon.
+    text: eventTitle(e), value: clockOf(e.start, now), note: parts.join(' · '),
+    ...(late ? { level: 'gris' as const } : roadEventMarker(e.kind)),
     ...(focusable ? { data: { 'road-event': e.id }, link: true } : {}),
   });
 }
@@ -352,7 +365,7 @@ function methodSection(input: RouteViewInput): FicheSection {
     + note(`Pastille : rouge si un événement météo (neige, verglas, inondation, éboulement récent) touche au moins 2 DIR, ou au moins 5 coupures non planifiées de moins de 24${NBSP}h ; orange si un événement météo est actif, ou au moins 2 coupures ; jaune si au moins une coupure ou au moins 5 accidents ; vert sinon : les accidents ne dépassent jamais le jaune.`)
     + note(T2_NOTE)
     + note(`Retard : événements DIR au-delà de 30${NBSP}min après leur publication ; vitesses et Traficolor au-delà de 20${NBSP}min ; récapitulatif du CNIR au-delà de 2${NBSP}h ; TomTom au-delà de 45${NBSP}min le jour et 75${NBSP}min la nuit. Une donnée en retard perd ses couleurs ; la pastille passe à n.d.`)
-    + note(`Couleurs : puce de l’événement selon sa nature (accident rouge ; bouchon, coupure, météo orange ; obstacle, voie fermée jaune) ; jauge par DIR selon le nombre d’incidents (jaune dès 7, orange dès 20, rouge dès 40) ; vitesse d’une station rouge sous 30${NBSP}km/h, orange sous 50, jaune sous 70.`)
+    + note(`Couleurs : puce de l’événement selon sa nature (bouchon, coupure, météo orange ; accident, obstacle, voie fermée en roses, hors des niveaux, une forme chacun sur la carte) ; jauge par DIR selon le nombre d’incidents (jaune dès 7, orange dès 20, rouge dès 40) ; vitesse d’une station rouge sous 30${NBSP}km/h, orange sous 50, jaune sous 70.`)
     + note('Carte : événements des DIR (accidents et coupures au premier plan), bouchons TomTom des agglomérations (clic : vitesse mesurée sur le tronçon), tuiles de circulation TomTom à partir du zoom 10. Les sections Traficolor géolocalisées (référentiel des DIR) sont colorées par leur dernier niveau : fluide, dense, saturé.')
     + readErrors([...(n?.errors ?? []), ...(u?.errors ?? [])]);
   return {

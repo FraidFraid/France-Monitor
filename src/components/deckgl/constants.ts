@@ -215,6 +215,8 @@ export const LYR_ROAD_SECTIONS = 'road-sections';
 export const LYR_ROAD_JAMS = 'road-jams-line';
 export const LYR_ROAD_JAM_POINTS = 'road-jams-point';
 export const LYR_ROAD_EVENTS = 'road-events';
+/** Fond rond des pastilles routières, sous leur pictogramme (LYR_ROAD_EVENTS). */
+export const LYR_ROAD_EVENT_BADGES = 'road-event-badges';
 export const SRC_AIRPORTS = 'airports-src';
 export const SRC_AIR_EMERGENCIES = 'air-emergencies-src';
 export const LYR_AIRPORTS = 'airports-departures';
@@ -222,6 +224,8 @@ export const LYR_AIR_EMERGENCIES = 'air-emergencies';
 export const LYR_AIR_EMERGENCY_LABEL = 'air-emergencies-label';
 export const SRC_RAIL_STATIONS = 'rail-stations-src';
 export const LYR_RAIL_STATION = 'rail-stations-disrupted';
+/** Icône train des pastilles de gare, au-dessus de LYR_RAIL_STATION. */
+export const LYR_RAIL_STATION_ICON = 'rail-station-icon';
 export const LYR_RAIL_STATION_LABEL = 'rail-station-label';
 export const SRC_ANCHORAGES = 'ais-anchorages-src';
 export const LYR_ANCHORAGES = 'ais-anchorages';

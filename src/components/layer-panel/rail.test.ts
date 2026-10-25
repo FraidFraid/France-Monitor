@@ -126,7 +126,7 @@ describe('vue Réseau ferroviaire (spec 2026-10-03 trafics § 3.3)', () => {
   it('méthode et sources : périmètre (T1), règle de la pastille, axes, effets exacts, retards', () => {
     const t = visibleText(sectionOf('method')?.html ?? '');
     for (const part of ['réponse de 15:10', 'trains signalés par la SNCF (pas le plan de transport complet)',
-      `à partir de 5${NBSP}min`, 'au moins 3 trains', `90${NBSP}min de retard moyen ou plus`, 'au moins 10 trains supprimés',
+      `à partir de 5${NBSP}min`, 'au moins 3 trains', `90${NBSP}min de retard moyen ou plus`, `au moins 10${NBSP}% des trains suivis`,
       'au moins 15 trains grandes lignes', 'service réduit (REDUCED_SERVICE)', 'train ajouté (ADDITIONAL_SERVICE)', `au-delà de 20${NBSP}min`]) {
       expect(t).toContain(part);
     }

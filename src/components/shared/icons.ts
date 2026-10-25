@@ -44,7 +44,9 @@ export type IconName =
   | 'volume-x' | 'bot' | 'dna' | 'circle-help' | 'rotate-ccw' | 'user'
   | 'palmtree' | 'pill' | 'link' | 'lightbulb' | 'leaf' | 'check'
   | 'hand-fist' | 'cloud' | 'factory' | 'activity'
-  | 'chevron-left' | 'minus' | 'maximize-2' | 'minimize-2' | 'maximize';
+  | 'chevron-left' | 'minus' | 'maximize-2' | 'minimize-2' | 'maximize'
+  // Incidents de circulation (pastilles de la couche Route, 25/10/2026)
+  | 'car-crash' | 'traffic-cone' | 'lane-closed' | 'no-entry' | 'info';
 
 export interface FmIconOptions {
   /** Taille en px (largeur = hauteur). Défaut : 14. */
@@ -57,6 +59,12 @@ export interface FmIconOptions {
 
 /** Contenu interne `<svg>` (paths/cercles/lignes) par nom d'icône — voir licence en tête de fichier. */
 const ICON_PATHS: Record<IconName, string> = {
+  // Dessinées pour la couche Route, même grille 24 px et même trait que Lucide (cône et info : Lucide).
+  'car-crash': '<path d="M12 1.5v3" /> <path d="m5.5 3.5 2 2" /> <path d="m18.5 3.5-2 2" /> <path d="m19 13-1.3-3.2A2 2 0 0 0 15.8 8.5H8.2a2 2 0 0 0-1.9 1.3L5 13" /> <rect width="16" height="7" x="4" y="13" rx="2" /> <path d="M8 16.5h.01" /> <path d="M16 16.5h.01" />',
+  'traffic-cone': '<path d="M16.05 10.966a5 2.5 0 0 1-8.1 0" /> <path d="m16.923 14.049 4.48 2.04a1 1 0 0 1 .001 1.831l-8.574 3.9a2 2 0 0 1-1.66 0l-8.574-3.91a1 1 0 0 1 0-1.83l4.484-2.04" /> <path d="M16.949 14.14a5 2.5 0 1 1-9.9 0L10.063 3.5a2 2 0 0 1 3.874 0z" /> <path d="M9.194 6.57a5 2.5 0 0 0 5.61 0" />',
+  'lane-closed': '<path d="M4 3v18" /> <path d="M20 3v18" /> <path d="m8.5 8.5 7 7" /> <path d="m15.5 8.5-7 7" />',
+  'no-entry': '<circle cx="12" cy="12" r="10" /> <path d="M7 12h10" />',
+  'info': '<circle cx="12" cy="12" r="10" /> <path d="M12 16v-4" /> <path d="M12 8h.01" />',
   'plane': '<path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z" />',
   'map-pin': '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" /> <circle cx="12" cy="10" r="3" />',
   'zap': '<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z" />',

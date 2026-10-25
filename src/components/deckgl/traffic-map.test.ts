@@ -10,7 +10,7 @@ import {
   TRAFFIC_NOW, airOverviewFixture, maritimeSnapshotFixture, paris, railOverviewFixture, roadNationalFixture, roadUrbanFixture,
 } from '../layer-panel/traffic.fixture.ts';
 import {
-  LYR_AIRPORTS, LYR_AIR_EMERGENCIES, LYR_AIR_EMERGENCY_LABEL, LYR_AIS_SIGNALS, LYR_ANCHORAGES, LYR_RAIL_STATION, LYR_ROAD_EVENTS, LYR_ROAD_JAMS, LYR_ROAD_JAM_POINTS,
+  LYR_AIRPORTS, LYR_AIR_EMERGENCIES, LYR_AIR_EMERGENCY_LABEL, LYR_AIS_SIGNALS, LYR_ANCHORAGES, LYR_RAIL_STATION, LYR_ROAD_EVENT_BADGES, LYR_ROAD_EVENTS, LYR_ROAD_JAMS, LYR_ROAD_JAM_POINTS,
   LYR_ROAD_SECTIONS, LYR_TRAIN_STATIONS,
 } from './constants.ts';
 import {
@@ -35,14 +35,16 @@ describe('couleurs de la carte', () => {
 });
 
 describe('route (§ 3.1)', () => {
-  it('événements DIR géolocalisés, couleur du type ; accidents et coupures au premier plan', () => {
+  it('événements DIR géolocalisés, couleur et forme de la nature (L1 réservé aux perturbations) ; accidents et coupures au premier plan', () => {
     const fc = roadEventFeatures(roadNationalFixture(), TRAFFIC_NOW);
     expect(fc.features.map((f) => props(f)['id'])).toEqual(['acc-a55', 'acc-a86', 'acc-n10-yrieix', 'acc-n10-vignolles', 'queue-a7', 'closure-a63', 'gravel-flumet']);
     const byId = new Map(fc.features.map((f) => [props(f)['id'], props(f)]));
-    expect(byId.get('acc-a55')?.['color']).toBe(levelHex('rouge'));
-    expect(byId.get('closure-a63')?.['color']).toBe(levelHex('orange'));
-    expect(byId.get('gravel-flumet')?.['color']).toBe(levelHex('jaune'));
-    expect([byId.get('closure-a63')?.['radius'], byId.get('queue-a7')?.['radius']]).toEqual([7, 5]);
+    // Pastille ronde : fond de la nature, pictogramme (blanc sur rose, sombre sur orange) ; accidents, coupures et météo plus grands.
+    expect([byId.get('acc-a55')?.['color'], byId.get('acc-a55')?.['icon'], byId.get('acc-a55')?.['glyph']]).toEqual(['#c026d3', 'traffic-road-car-crash', '#ffffff']);
+    expect([byId.get('closure-a63')?.['color'], byId.get('closure-a63')?.['icon'], byId.get('closure-a63')?.['glyph']]).toEqual([levelHex('orange'), 'traffic-road-no-entry', '#0a0a0f']);
+    expect([byId.get('gravel-flumet')?.['color'], byId.get('gravel-flumet')?.['icon']]).toEqual(['#c026d3', 'traffic-road-traffic-cone']);
+    expect([byId.get('closure-a63')?.['front'], byId.get('queue-a7')?.['front']]).toEqual([1, 0]);
+    expect(roadEventFeatures(roadNationalFixture(), TRAFFIC_NOW + 2 * 3_600_000).features.every((f) => props(f)['color'] === TRAFFIC_NEUTRAL_HEX)).toBe(true);
     expect([roadEventSortKey('accident'), roadEventSortKey('closure'), roadEventSortKey('queue'), roadEventSortKey('works')]).toEqual([100, 99, 89, 84]);
     expect(fc.features[0].geometry.coordinates).toEqual([5.321, 43.371]);
   });
@@ -165,11 +167,11 @@ describe('aérien (§ 3.2)', () => {
 });
 
 describe('rail (§ 3.3)', () => {
-  it('gares des trains en cours, couleur du plus fort retard à l’arrêt ; trains à venir écartés ; supprimé rouge', () => {
+  it('gares des trains en cours, pastille train à la couleur du plus fort retard à l’arrêt (jaune en anneau) ; trains à venir écartés ; supprimé rouge', () => {
     const fc = railStationFeatures(railOverviewFixture(), TRAFFIC_NOW);
     expect(Object.fromEntries(fc.features.map((f) => [String(props(f)['name']), props(f)['color']]))).toEqual({
       'Paris Gare de Lyon': levelHex('rouge'), Perpignan: levelHex('rouge'), 'Barcelone Sants': levelHex('rouge'), Narbonne: levelHex('rouge'),
-      'Marseille Saint-Charles': levelHex('vert'), 'Lille Europe': levelHex('orange'), 'Bruxelles-Midi': levelHex('rouge'),
+      'Marseille Saint-Charles': TRAFFIC_NEUTRAL_HEX, 'Lille Europe': levelHex('orange'), 'Bruxelles-Midi': levelHex('rouge'),
       'Toulouse Matabiau': levelHex('rouge'), 'Bordeaux Saint-Jean': levelHex('orange'), 'Lyon Part-Dieu': levelHex('rouge'), Tours: levelHex('rouge'),
     });
     const of = (name: string): string => body(fc.features.find((f) => props(f)['name'] === name) ?? fc.features[0]);
@@ -224,7 +226,7 @@ describe('sources, couches et survol', () => {
     expect(new Set(ids).size).toBe(ids.length);
     expect(TRAFFIC_LAYERS.every((l) => l.layout?.visibility === 'none')).toBe(true);
     expect(Object.values(TRAFFIC_LAYER_KEYS).flat().sort()).toEqual([...ids].sort());
-    expect(TRAFFIC_LAYER_KEYS.trafficRoad).toEqual([LYR_ROAD_SECTIONS, LYR_ROAD_JAMS, LYR_ROAD_JAM_POINTS, LYR_ROAD_EVENTS]);
+    expect(TRAFFIC_LAYER_KEYS.trafficRoad).toEqual([LYR_ROAD_SECTIONS, LYR_ROAD_JAMS, LYR_ROAD_JAM_POINTS, LYR_ROAD_EVENT_BADGES, LYR_ROAD_EVENTS]);
     expect(TRAFFIC_SOURCE_IDS).toHaveLength(8);
     expect(TRAFFIC_JAM_LAYERS).toEqual([LYR_ROAD_JAMS, LYR_ROAD_JAM_POINTS]);
   });

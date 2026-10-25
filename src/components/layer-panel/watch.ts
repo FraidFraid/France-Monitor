@@ -4,9 +4,10 @@
 // Le niveau de chaque couche est celui de la pastille de son panneau (fonctions *HeadLevel partagées), jamais un calcul parallèle.
 import type {
   AirQualityResponse, CloudOutagesResponse, CyberResponse, DisastersResponse, DroughtResponse, EarthquakesResponse, EcowattResponse, EmsResponse, FiresResponse,
-  FloodsResponse, FuelTensionDashboard, GnssResponse, InternetOutagesResponse, MapLayers, MilitaryResponse, NuclearState,
-  PowerOutagesResponse, TelecomOutagesResponse, VigilanceResponse,
+  AirOverviewResponse, FloodsResponse, FuelTensionDashboard, GnssResponse, InternetOutagesResponse, MapLayers, MaritimeSnapshot, MilitaryResponse,
+  NuclearState, PowerOutagesResponse, RailOverviewResponse, RoadNationalResponse, TelecomOutagesResponse, VigilanceResponse,
 } from '../../types/index.ts';
+import { airLevel, maritimeLevel, railLevel, roadLevel } from '../../services/traffic-levels.ts';
 import { cloudHeadLevel } from './outages-cloud.ts';
 import { internetHeadLevel } from './outages-internet.ts';
 import { powerHeadLevel } from './outages-power.ts';
@@ -52,6 +53,13 @@ export interface GeneralWatchInput {
   drought: Watched<DroughtResponse>;
   /** Catastrophes : GDACS et Copernicus EMS (20/10/2026) ; absent : couche non suivie (anciens appelants, tests). */
   disasters?: Watched<{ gdacs: DisastersResponse | null; ems: EmsResponse | null }>;
+  /** Trafics (lot 1 Transports, 25/10/2026) : niveaux des pastilles des 4 panneaux ; absent : couches non suivies (anciens appelants, tests). */
+  traffic?: {
+    road: Watched<RoadNationalResponse>;
+    air: Watched<AirOverviewResponse>;
+    rail: Watched<RailOverviewResponse>;
+    maritime: Watched<MaritimeSnapshot>;
+  };
   /** Niveau national de santé (veille sanitaire, urgences) ; le panneau Veille sanitaire le montre. */
   health: Watched<NationalHealthSummary>;
   gnss: GnssResponse | null;
@@ -70,6 +78,7 @@ export const GENERAL_SOCLE: ReadonlyArray<keyof MapLayers> = ['environmental', '
 export const WATCHED_LAYERS: ReadonlyArray<keyof MapLayers> = [
   'environmental', 'floods', 'fires', 'earthquakes', 'airQuality', 'drought', 'outagesElec', 'outagesTelecom', 'outagesInternet',
   'outagesCloud', 'powerGrid', 'nuclearFleet', 'oilNetwork', 'cyber', 'military', 'health', 'disasters',
+  'trafficRail', 'trafficRoad', 'trafficAir', 'trafficMaritime',
 ];
 
 /**
@@ -104,6 +113,14 @@ export function watchLevels(input: GeneralWatchInput): Map<keyof MapLayers, Watc
   put('military', input.military, (d) => defenseHeadLevel(d, input.gnss, now));
   put('health', input.health, (d) => d?.level ?? 'nd');
   if (input.disasters) put('disasters', input.disasters, (d) => disastersHeadLevel(d?.gdacs ?? null, d?.ems ?? null, now));
+  // Trafics : même niveau que l'en-tête de chaque panneau (traffic-levels.ts) ; donnée absente ou périmée (expireSlot) : n.d.
+  const t = input.traffic;
+  if (t) {
+    put('trafficRoad', t.road, (d) => (d ? roadLevel(d).level : 'nd'));
+    put('trafficAir', t.air, (d) => (d ? airLevel(d).level : 'nd'));
+    put('trafficRail', t.rail, (d) => (d ? railLevel(d).level : 'nd'));
+    put('trafficMaritime', t.maritime, (d) => (d ? maritimeLevel(d).level : 'nd'));
+  }
   return out;
 }
 

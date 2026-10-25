@@ -3,12 +3,13 @@
 // retirées. Léger (aucune vue, aucun service réseau) : App.ts l'importe au démarrage pour ses définitions de couches ;
 // deckgl/traffic-map.ts et DeckGLMap.ts y lisent les teintes qu'ils partagent avec la légende (avions, navires par type).
 import type {
-  AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailSituationsResponse, RoadNationalResponse, RoadUrbanResponse,
+  AirOverviewResponse, MaritimeSnapshot, RailOverviewResponse, RailSituationsResponse, RoadEventKind, RoadNationalResponse, RoadUrbanResponse,
 } from '../../types/index.ts';
+import type { VigilanceLevel } from '../../services/vigilance.ts';
 import { isTrafficDataLate, type TrafficSource } from '../../services/traffic-levels.ts';
 import { levelHex } from '../../services/vigilance.ts';
 import type { LegendCategory, LegendItem } from '../MapLegend.ts';
-import { fmIcon } from '../shared/icons.ts';
+import { fmIcon, type IconName } from '../shared/icons.ts';
 import { NBSP, frNumber } from './format.ts';
 import { squawkPair } from './traffic-format.ts';
 
@@ -22,34 +23,62 @@ export const TRAFFIC_NEUTRAL_HEX = '#c7c7cc';
 /** Jetons de catégorie de main.css (R2), copiés pour MapLibre qui ne lit pas les variables CSS (vérifié par test). */
 export const CAT_AIRPORT_HEX = '#5ac8fa';
 export const CAT_PORT_HEX = '#30b0c7';
-// ─── Avions civils : couleur selon l'altitude (retour utilisateur, couleurs d'avant la tâche 15 ; remplace l'arbitrage 28) ───
-
-/** Tranches d'altitude (pieds) et teinte de l'icône, de bas en haut ; la dernière n'a pas de plafond. */
-export const AIR_ALTITUDE_BANDS: ReadonlyArray<{ id: string; below: number; hex: string }> = [
-  { id: 'air-alt-low', below: 5_000, hex: '#ff7832' },
-  { id: 'air-alt-climb', below: 15_000, hex: '#ffd232' },
-  { id: 'air-alt-mid', below: 25_000, hex: '#82e650' },
-  { id: 'air-alt-cruise', below: 35_000, hex: '#32c8ff' },
-  { id: 'air-alt-high', below: Number.POSITIVE_INFINITY, hex: '#8264ff' },
-];
+// ─── Événements routiers : pastille ronde à pictogramme par nature (25/10/2026, remplace les petites formes roses) ───
 
 /**
- * Teinte d'un avion selon son altitude (pieds) : moins de 5 000 orange, puis jaune, vert, bleu, violet dès 35 000 ; altitude non
- * transmise (absente, nulle ou négative) : teinte neutre, jamais une tranche inventée (S5).
+ * Pastille de chaque nature : fond, pictogramme (`icon`) et sa teinte (`glyph`). Le jaune, l'orange et le rouge sont réservés aux
+ * perturbations (L1) : accidents, obstacles et voies fermées, plafonnés au jaune par la pastille, gardent le rose de la couche et se
+ * distinguent par le pictogramme ; bouchons, coupures et météo restent orange ; travaux et information en teinte neutre.
+ * `level` : niveau L1 quand le fond en est un ; `token` : jeton CSS du fond pour les panneaux (aucune couleur brute).
  */
-export function airAltitudeHex(altitudeFt: number | null | undefined): string {
-  if (typeof altitudeFt !== 'number' || !(altitudeFt > 0)) return TRAFFIC_NEUTRAL_HEX;
-  const band = AIR_ALTITUDE_BANDS.find((b) => altitudeFt < b.below) ?? AIR_ALTITUDE_BANDS[AIR_ALTITUDE_BANDS.length - 1];
-  return band.hex;
+export const ROAD_EVENT_STYLE: Readonly<Record<RoadEventKind, {
+  hex: string; token: string | null; icon: IconName; glyph: string; level: VigilanceLevel | null; label: string;
+}>> = {
+  accident: { hex: '#c026d3', token: 'var(--road-accident)', icon: 'car-crash', glyph: '#ffffff', level: null, label: 'Accident' },
+  obstruction: { hex: '#c026d3', token: 'var(--road-accident)', icon: 'traffic-cone', glyph: '#ffffff', level: null, label: 'Obstacle sur la chaussée' },
+  lane: { hex: '#c026d3', token: 'var(--road-accident)', icon: 'lane-closed', glyph: '#ffffff', level: null, label: 'Voie fermée' },
+  queue: { hex: levelHex('orange'), token: null, icon: 'car-front', glyph: '#0a0a0f', level: 'orange', label: 'Bouchon signalé' },
+  closure: { hex: levelHex('orange'), token: null, icon: 'no-entry', glyph: '#0a0a0f', level: 'orange', label: 'Route coupée' },
+  weather: { hex: levelHex('orange'), token: null, icon: 'droplet', glyph: '#0a0a0f', level: 'orange', label: 'Météo, inondation, éboulement' },
+  works: { hex: TRAFFIC_NEUTRAL_HEX, token: null, icon: 'construction', glyph: '#0a0a0f', level: null, label: 'Travaux' },
+  info: { hex: TRAFFIC_NEUTRAL_HEX, token: null, icon: 'info', glyph: '#0a0a0f', level: null, label: 'Information' },
+};
+
+/** Pictogrammes des pastilles routières (images SDF de la carte, teintées par `icon-color`). */
+export const ROAD_EVENT_ICONS: readonly IconName[] = [...new Set(Object.values(ROAD_EVENT_STYLE).map((s) => s.icon))];
+
+/** Pastille d'une nature en SVG (légendes, mini-légende) : même fond, même liseré, même pictogramme que la carte. */
+export function roadBadgeSvg(kind: RoadEventKind, size = 16): string {
+  const { hex, icon, glyph } = ROAD_EVENT_STYLE[kind];
+  const g = Math.round(size * 0.6);
+  const off = (size - g) / 2;
+  const inner = fmIcon(icon, { size: g }).replace('<svg ', `<svg x="${off}" y="${off}" style="color:${glyph}" `).replace('stroke-width="2"', 'stroke-width="2.6"');
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true"><circle cx="${size / 2}" cy="${size / 2}" r="${size / 2 - 0.75}" fill="${hex}" stroke="#0a0a0f" stroke-width="1.5"/>${inner}</svg>`;
 }
 
-/** « Moins de 5 000 ft », « 5 000 à 15 000 ft », …, « 35 000 ft ou plus » (unité de l'infobulle d'un avion). */
-function altitudeBandLabel(index: number): string {
-  const ft = (v: number): string => frNumber(v, 0);
-  const band = AIR_ALTITUDE_BANDS[index];
-  if (index === 0) return `Moins de ${ft(band.below)}${NBSP}ft`;
-  const floor = AIR_ALTITUDE_BANDS[index - 1].below;
-  return Number.isFinite(band.below) ? `${ft(floor)} à ${ft(band.below)}${NBSP}ft` : `${ft(floor)}${NBSP}ft ou plus`;
+// ─── Avions civils : une seule teinte, bleu ciel (25/10/2026 : les gris de l'altitude ne se distinguaient pas, hors palette L1 et
+// hors roses de la route) ; l'altitude se lit à la taille et à l'opacité ───
+
+/** Teinte unique des avions civils sur la carte et dans la légende. */
+export const AIR_TRAFFIC_HEX = '#38bdf8';
+
+/** Tranches d'altitude (pieds), de bas en haut : un avion bas est plus petit et plein, un avion en croisière plus grand et plus discret. */
+export const AIR_ALTITUDE_BANDS: ReadonlyArray<{ id: string; below: number; size: number; alpha: number }> = [
+  { id: 'air-alt-low', below: 5_000, size: 18, alpha: 255 },
+  { id: 'air-alt-climb', below: 15_000, size: 19, alpha: 235 },
+  { id: 'air-alt-mid', below: 25_000, size: 20, alpha: 205 },
+  { id: 'air-alt-cruise', below: 35_000, size: 21, alpha: 180 },
+  { id: 'air-alt-high', below: Number.POSITIVE_INFINITY, size: 22, alpha: 160 },
+];
+
+/** Altitude non transmise (absente, nulle ou négative) : taille moyenne, très estompé, jamais une tranche inventée (S5). */
+const AIR_ALTITUDE_UNKNOWN = { size: 18, alpha: 110 } as const;
+
+/** Taille (px) et opacité (0 à 255) de l'icône d'un avion selon son altitude (pieds). */
+export function airAltitudeStyle(altitudeFt: number | null | undefined): { size: number; alpha: number } {
+  if (typeof altitudeFt !== 'number' || !(altitudeFt > 0)) return AIR_ALTITUDE_UNKNOWN;
+  const band = AIR_ALTITUDE_BANDS.find((b) => altitudeFt < b.below) ?? AIR_ALTITUDE_BANDS[AIR_ALTITUDE_BANDS.length - 1];
+  return { size: band.size, alpha: band.alpha };
 }
 
 // ─── Types de navires : teinte de la carte, légende et comptes de l'instantané, un seul classement ───
@@ -121,13 +150,11 @@ export const ROAD_TRAFFIC_LEGEND: LegendCategory = {
   id: 'trafficRoad',
   title: 'Trafic routier',
   columns: 2,
-  splitIndex: 5,
+  splitIndex: 9,
   items: [
     { id: 'road-dir-header', label: 'Événements DIR en cours', color: HEADER_HEX, isHeader: true },
-    { id: 'road-accident', label: 'Accident', color: levelHex('rouge'), shape: 'circle' },
-    { id: 'road-major', label: 'Bouchon, coupure, météo', color: levelHex('orange'), shape: 'circle' },
-    { id: 'road-minor', label: 'Obstacle, voie fermée', color: levelHex('jaune'), shape: 'circle' },
-    { id: 'road-other', label: 'Travaux, information', color: TRAFFIC_NEUTRAL_HEX, shape: 'circle' },
+    ...(['weather', 'closure', 'queue', 'accident', 'obstruction', 'lane', 'works', 'info'] as const).map((k): LegendItem => (
+      { id: `road-${k}`, label: ROAD_EVENT_STYLE[k].label, color: ROAD_EVENT_STYLE[k].hex, icon: roadBadgeSvg(k, 14) })),
     { id: 'road-jams-header', label: 'Bouchons TomTom', color: HEADER_HEX, isHeader: true },
     { id: 'road-jam-3', label: 'Bouchon', color: levelHex('rouge'), icon: LINE, iconSize: 18 },
     { id: 'road-jam-2', label: 'À-coups', color: levelHex('orange'), icon: LINE, iconSize: 18 },
@@ -150,11 +177,13 @@ export const AIR_TRAFFIC_LEGEND: LegendCategory = {
   id: 'trafficAir',
   title: 'Trafic aérien',
   columns: 2,
-  splitIndex: 7,
+  splitIndex: 5,
   items: [
-    { id: 'air-plane-header', label: 'Avions civils : altitude, indicatif au survol', color: HEADER_HEX, isHeader: true },
-    ...AIR_ALTITUDE_BANDS.map(({ id, hex }, i): LegendItem => ({ id, label: altitudeBandLabel(i), color: hex, icon: fmIcon('plane') })),
-    { id: 'air-alt-unknown', label: 'Altitude non transmise', color: TRAFFIC_NEUTRAL_HEX, icon: fmIcon('plane') },
+    { id: 'air-plane-header', label: 'Avions civils : orientés selon le cap, indicatif au survol', color: HEADER_HEX, isHeader: true },
+    { id: 'air-plane', label: 'Avion civil', color: AIR_TRAFFIC_HEX, icon: fmIcon('plane') },
+    { id: 'air-alt-low', label: `Bas (moins de 5${NBSP}000${NBSP}ft) : petit et plein`, color: AIR_TRAFFIC_HEX, icon: fmIcon('plane', { size: 11 }) },
+    { id: 'air-alt-high', label: 'En croisière : plus grand et plus discret', color: AIR_TRAFFIC_HEX, icon: fmIcon('plane', { size: 15 }) },
+    { id: 'air-alt-unknown', label: 'Altitude non transmise : très estompé', color: TRAFFIC_NEUTRAL_HEX, icon: fmIcon('plane') },
     { id: 'air-emergency-header', label: 'Urgences et aéroports', color: HEADER_HEX, isHeader: true },
     { id: 'air-emergency-7500', label: squawkPair('7500'), color: levelHex('rouge'), shape: 'circle' },
     { id: 'air-emergency-7700', label: squawkPair('7700'), color: levelHex('orange'), shape: 'circle' },
@@ -178,13 +207,13 @@ export const RAIL_TRAFFIC_LEGEND: LegendCategory = {
     { id: 'rail-header', label: 'Gares des trains perturbés en cours', color: HEADER_HEX, isHeader: true },
     { id: 'rail-red', label: `Retard de 90${NBSP}min ou plus, ou train supprimé`, color: levelHex('rouge'), shape: 'circle' },
     { id: 'rail-orange', label: `De 45 à 89${NBSP}min`, color: levelHex('orange'), shape: 'circle' },
-    { id: 'rail-yellow', label: `De 15 à 44${NBSP}min`, color: levelHex('jaune'), shape: 'circle' },
-    { id: 'rail-green', label: `Moins de 15${NBSP}min`, color: levelHex('vert'), shape: 'circle' },
+    { id: 'rail-minor', label: `De 15 à 44${NBSP}min (anneau jaune)`, color: levelHex('jaune'), icon: fmIcon('train-front') },
   ],
   source: { label: 'SNCF (perturbations du jour) · SIRI SX (situations)' },
   refresh: { label: `Relève toutes les 5${NBSP}min` },
   notes: [
-    'Couleur d’une gare : retard du train le plus en retard à cet arrêt ; trains à venir dans le panneau seulement.',
+    'Pastille d’une gare (icône train) : retard du train le plus en retard à cet arrêt ; pleine à partir de 45\u00a0min, anneau jaune de 15 à 44\u00a0min ; trains à venir dans le panneau seulement.',
+    'Numéros pulsants (onglet Transports) : axes ou régions où au moins 3 trains ont 90\u00a0min de retard ou plus, ou sont supprimés.',
     'Situations SIRI SX : dans le panneau ; elles ne sont pas placées sur la carte (le flux ne publie pas de lieu).',
     'Train choisi dans le panneau : trajet tracé dans la couleur de son retard.',
   ],

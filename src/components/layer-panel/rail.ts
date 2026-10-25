@@ -128,7 +128,7 @@ function groupSummary(groups: readonly RailGroupStats[], late: boolean): string 
   return worst ? `${worst.label} ${formatMinutes(worst.avgDelayMin, { signed: true })}${late ? ' (en retard)' : ''}` : 'n.d.';
 }
 
-const GROUP_RULE = `Puce : retard moyen de 20${NBSP}min ou plus jaune, 45${NBSP}min orange, 90${NBSP}min rouge, ou 10 trains supprimés ; `
+const GROUP_RULE = `Puce : retard moyen de 20${NBSP}min ou plus jaune, 45${NBSP}min orange, 90${NBSP}min rouge ; trains supprimés : orange dès 5${NBSP}% (5 trains), rouge dès 10${NBSP}% (10 trains) ; `
   + `retard moyen et maximum mesurés entre l’horaire prévu et l’horaire corrigé de chaque arrêt.`;
 
 function axesSection(o: RailOverviewResponse | null, now: number, open: OpenFn): FicheSection {
@@ -264,8 +264,9 @@ function methodSection(input: RailViewInput): FicheSection {
     + kvRow('Situations', `${sourceLinkHtml('SIRI SX (point d’accès national)', SIRI_URL)} · ${escapeHtml(state(s !== null, situationsError !== null,
       s ? `réponse de ${clockOf(s.at, now)}${isTrafficDataLate('siri-sx', s.at, now) ? ' (en retard)' : ''}` : ''))}`)
     + note(`Périmètre : trains signalés par la SNCF (pas le plan de transport complet), retards signalés à partir de 5${NBSP}min ; aucun taux de régularité.`)
-    + note(`Pastille : rouge si un axe ou une région d’au moins 3 trains a 90${NBSP}min de retard moyen ou plus, ou au moins 10 trains supprimés en cours ; `
-      + `orange si un axe ou une région d’au moins 3 trains a 45${NBSP}min ou plus ; jaune si au moins 15 trains grandes lignes ont 15${NBSP}min ou plus ; vert sinon.`)
+    + note(`Pastille : rouge si un axe ou une région d’au moins 3 trains a 90${NBSP}min de retard moyen ou plus, ou si au moins 10${NBSP}% des trains suivis `
+      + `sont supprimés (10 trains au moins) ; orange si un axe ou une région d’au moins 3 trains a 45${NBSP}min ou plus, ou dès 5${NBSP}% de trains `
+      + `supprimés (5 trains au moins) ; jaune si au moins 15 trains grandes lignes ont 15${NBSP}min ou plus ; vert sinon.`)
     + note(AXES_NOTE)
     + note('Effets : retard (SIGNIFICANT_DELAYS), supprimé (NO_SERVICE), service réduit (REDUCED_SERVICE), détour (DETOUR), service modifié '
       + '(MODIFIED_SERVICE), train ajouté (ADDITIONAL_SERVICE) ; trains en cours et à venir séparés.')

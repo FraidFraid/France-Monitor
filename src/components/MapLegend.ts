@@ -73,6 +73,7 @@ export class MapLegend {
     private eventsKeyHtml = '';
     private energyKeyHtml = '';
     private environmentKeyHtml = '';
+    private transportKeyHtml = '';
     private onKeyAction: ((action: string) => void) | null = null;
     private readonly onKeydown = (ev: KeyboardEvent): void => {
         if (ev.key !== 'Escape' || this.isCollapsed) return;
@@ -136,6 +137,13 @@ export class MapLegend {
         this.update();
     }
 
+    /** Bloc Transports (transport-key.ts), après le bloc Environnement ; vide hors de l'onglet Transports (25/10/2026). */
+    setTransportKey(html: string): void {
+        if (html === this.transportKeyHtml) return;
+        this.transportKeyHtml = html;
+        this.update();
+    }
+
     setOnKeyAction(callback: (action: string) => void): void {
         this.onKeyAction = callback;
     }
@@ -146,7 +154,7 @@ export class MapLegend {
 
     private render(): string {
         const activeCategories = this.categories.filter(cat => cat.visible !== false);
-        const hasContent = activeCategories.length > 0 || this.eventsKeyHtml !== '' || this.energyKeyHtml !== '' || this.environmentKeyHtml !== '';
+        const hasContent = activeCategories.length > 0 || this.eventsKeyHtml !== '' || this.energyKeyHtml !== '' || this.environmentKeyHtml !== '' || this.transportKeyHtml !== '';
         if (!hasContent) return '';
         const open = !this.isCollapsed;
         const button = `<button type="button" class="map-key-btn" aria-expanded="${open}" aria-controls="map-key-dialog">`
@@ -160,6 +168,7 @@ export class MapLegend {
                 ${this.eventsKeyHtml}
                 ${this.energyKeyHtml}
                 ${this.environmentKeyHtml}
+                ${this.transportKeyHtml}
                 ${cards ? `<div class="map-key__layers">${cards}</div>` : ''}
                 <footer class="map-key__foot">Seuls les éléments présents sur la carte sont listés.</footer>
             </section>

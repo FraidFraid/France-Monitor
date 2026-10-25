@@ -255,7 +255,8 @@ function cumulativeTurn(samples) {
 
 /**
  * Trajectoires inhabituelles (détection automatique, information, jamais une alerte) : déroutement probable,
- * manœuvre brusque, circuit d'attente, approche interrompue ; sur l'historique des collectes (2 min).
+ * circuit d'attente, approche interrompue ; sur l'historique des collectes (2 min). « Manœuvre brusque » retirée le 24/10/2026 :
+ * 85° entre deux relevés espacés jusqu'à 2 min, c'est un virage standard (3°/s), soit une dizaine de faux signaux par lecture.
  */
 export function detectTrajectoryAnomalies(flight, now) {
   const samples = (flightHistory.get(flight.id) ?? []).filter((s) => now - s.ts <= 15 * 60_000);
@@ -270,9 +271,6 @@ export function detectTrajectoryAnomalies(flight, now) {
   if (samples.length < 2) return out;
   const last = samples.at(-1);
   const previous = samples.at(-2);
-  if (headingDiff(last.heading, previous.heading) >= 85 && last.speed >= 180 && last.altitude >= 5000) {
-    out.push({ type: 'rapid-manoeuvre', label: 'Manœuvre brusque', severity: 'medium', airportIata: airportRef?.iata });
-  }
   if (airportRef) {
     const near = samples.filter((s) => haversineKm(s.lat, s.lon, airportRef.lat, airportRef.lon) <= 80);
     if (near.length >= 4) {

@@ -77,7 +77,7 @@ import {
 import { computeISNR } from './services/stability-index.ts';
 import type { DepartmentPressure } from './services/department-pressure.ts';
 import type { WatchEntry, WatchLevel, WatchTransition, Watched } from './components/layer-panel/watch.ts';
-import { cumulFocusKey, envChipsPressed, envFocusStatus, toggleEnvChip, usesEnergyFocus } from './components/layer-panel/env-focus.ts';
+import { cumulFocusKey, envChipsPressed, envFocusStatus, focusSwatchHtml, toggleEnvChip, usesEnergyFocus } from './components/layer-panel/env-focus.ts';
 import type { PressurePanel } from './components/PressurePanel.ts';
 import { ALL_INFRASTRUCTURE, NUCLEAR_PLANTS } from './config/infrastructure.ts';
 // ACTIVE_INSTALLATIONS (config/military-bases-db ~1100 l.) chargé dynamiquement dans loadDefenseSites(), sans fusion OpenStreetMap.
@@ -140,6 +140,8 @@ import { lastLayerHead } from './components/layer-panel/frame.ts';
 import type { WorkQueue } from './services/work-queue.ts';
 import { ENV_BRIEF_LEGEND } from './components/layer-panel/env-brief-legend.ts';
 import { ENV_FOCUS_IDS } from './components/layer-panel/env-focus.ts';
+import { railStationCounts, transportVigilancePoints, type TransportMode, type TransportVigilancePoint } from './components/layer-panel/transport-vigilance.ts';
+import { buildTransportKeyHtml } from './components/map-key/transport-key.ts';
 import { buildHazards, computeExposure, type Exposure, type ExposureResult, type Hazard } from './services/environment-exposure.ts';
 import { fetchExposureAssets, fetchSevesoDataset, type ExposureAssetsState, type SevesoDataset } from './services/exposure-assets.ts';
 import { fetchCommunes, hazardPopulation, type Commune, type HazardPopulation } from './services/exposure-population.ts';
@@ -293,7 +295,7 @@ import { fetchGasNetwork, isGasPanelEnabled } from './services/gas.ts';
 import { buildDegradedFuelTensionDashboard, fetchFuelTensionDashboard } from './services/fuel-tension.ts';
 import { readUrlState, writeUrlState } from './utils/urlState.ts';
 import { loadNewsFromCache, saveNewsToCache } from './utils/newsCache.ts';
-import type { DromLiveResponse, NewsItem, FilterState, FuelTensionDashboard, MapLayers, EcowattResponse, ISNRData, LayerConfig, OilDashboard, EventCategory, AisAnomaly, RailTrain, RoadEvent, HydraulicBackboneAsset, MarketData, DetectedSituation, SituationSeverity, ThreatLevel, BiogasState, BiomethaneSite, FireObservationFeedState, CommodityData, VigilanceEcheance } from './types/index.ts';
+import type { DromLiveResponse, NewsItem, FilterState, FuelTensionDashboard, MapLayers, EcowattResponse, ISNRData, LayerConfig, OilDashboard, EventCategory, AisAnomaly, RailTrain, RoadEvent, RoadEventKind, HydraulicBackboneAsset, MarketData, DetectedSituation, SituationSeverity, ThreatLevel, BiogasState, BiomethaneSite, FireObservationFeedState, CommodityData, VigilanceEcheance } from './types/index.ts';
 import { fetchISNRSynthesis, type NuclearBriefingContext, type EolienBriefingContext, type OilBriefingContext } from './services/isnr-synthesis.ts';
 import type { EolienLive, EolienParkSummary } from './services/eolien/types.ts';
 import { Watchdog } from './services/watchdog.ts';
@@ -639,7 +641,11 @@ interface FloatingPanelDef {
 }
 
 /** Sources relevées pour la seule Vue générale dynamique (lot C) : hors du socle de relève permanent. */
-const GENERAL_WATCH_POLLED: ReadonlyArray<keyof MapLayers> = ['outagesElec', 'outagesInternet', 'outagesCloud', 'drought'];
+const GENERAL_WATCH_POLLED: ReadonlyArray<keyof MapLayers> = [
+  'outagesElec', 'outagesInternet', 'outagesCloud', 'drought',
+  // Trafics (lot 1 Transports, 25/10/2026) : un mode passé en orange ou en rouge entre dans la Vue générale.
+  'trafficRoad', 'trafficRail', 'trafficAir', 'trafficMaritime',
+];
 
 /** Panneaux de module : ne comptent pas comme « couche intérieure » pour Échap. */
 const MODULE_PANEL_SELECTOR = '[class*="-panel-modal"], .fm-floating-panel';
@@ -3925,7 +3931,7 @@ export class App {
 
   /** Relève voulue : couche active OU panneau ouvert (ligne du panneau des sources cliquée couche éteinte). */
   private trafficPollWanted(key: TrafficLayerKey): boolean {
-    return this.activeLayers[key] || (this.getFloatingPanelInstance(key)?.isVisible?.() ?? false);
+    return this.activeLayers[key] || (this.getFloatingPanelInstance(key)?.isVisible?.() ?? false) || this.generalWatchPolls(key);
   }
 
   /**
@@ -5069,6 +5075,7 @@ export class App {
       });
       panel.setOnSelectWork((key) => this.poste?.select(key));
       panel.setOnOpenPastille((key) => this.showFloatingPanel(key));
+      panel.setOnFocusPoint((lon, lat) => this.mapContainer?.focusPoint(lon, lat, 9));
       panel.mount();
       this.themeBriefPanel = panel;
       if (this.activeLayers.brief && this.isFloatingPanelVisible('brief')) panel.show(this.themeBriefData());
@@ -5105,6 +5112,7 @@ export class App {
       themeLevel,
       changes: this.watchLog.filter((t) => theme === 'general' || keys.has(t.key)).map((t) => ({ label: label(t.key), from: t.from, to: t.to, at: t.at })),
       eventsStatus: q?.eventsStatus ?? null,
+      ...(theme === 'transport' ? { transport: this.transportBriefData() } : {}),
       now: Date.now(),
     };
   }
@@ -5113,6 +5121,55 @@ export class App {
   private refreshThemeBrief(): void {
     if (!this.themeBriefPanel?.isVisible()) return;
     this.themeBriefPanel.update(this.themeBriefData());
+  }
+
+  // ─── Onglet Transports : points de vigilance (lots 1 et 2, 25/10/2026, layer-panel/transport-vigilance.ts) ───
+
+  private transportPoints: TransportVigilancePoint[] = [];
+
+  /** Points recalculés à chaque lecture d'une source Trafics ; numéros pulsants sur la carte dans l'onglet Transports seulement. */
+  private refreshTransportVigilance(): void {
+    this.transportPoints = transportVigilancePoints({
+      rail: this.currentRailTraffic?.overview.data ?? null,
+      situations: this.currentRailTraffic?.situations.data ?? null,
+      road: this.currentRoadTraffic?.national.data ?? null,
+      air: this.currentAirOverview?.overview.data ?? null,
+      maritime: this.currentMaritimeSnapshot?.snapshot.data ?? null,
+      now: Date.now(),
+    });
+    const shown = this.uiV2 && this.v2Theme === 'transport';
+    this.mapContainer?.setTransportVigilance(shown ? this.transportPoints : null);
+    // Bloc Transports de « Lire la carte » : éléments comptés à l'écran.
+    const road = shown && this.activeLayers.trafficRoad ? this.currentRoadTraffic?.national.data ?? null : null;
+    const roadKinds: Partial<Record<RoadEventKind, number>> = {};
+    for (const e of road?.events ?? []) if (e.lat !== null && e.lon !== null) roadKinds[e.kind] = (roadKinds[e.kind] ?? 0) + 1;
+    const rail = shown && this.activeLayers.trafficRail ? this.currentRailTraffic?.overview.data ?? null : null;
+    this.mapLegend?.setTransportKey(buildTransportKeyHtml({
+      visible: shown,
+      points: this.transportPoints,
+      roadKinds: road ? roadKinds : null,
+      stations: rail ? railStationCounts(rail) : null,
+    }));
+  }
+
+  /** Données Transports de l'En bref : points, données des quatre panneaux, niveaux de leurs pastilles. */
+  private transportBriefData(): NonNullable<ThemeBriefData['transport']> {
+    const levels: Partial<Record<TransportMode, WatchLevel>> = {};
+    for (const key of ['trafficRail', 'trafficRoad', 'trafficAir', 'trafficMaritime'] as const) {
+      const l = this.watchLevelMap.get(key);
+      if (l !== undefined) levels[key] = l;
+    }
+    return {
+      points: this.transportPoints,
+      rail: this.currentRailTraffic?.overview.data ?? null,
+      situations: this.currentRailTraffic?.situations.data ?? null,
+      road: this.currentRoadTraffic?.national.data ?? null,
+      urban: this.currentRoadTraffic?.urban.data ?? null,
+      urbanError: this.currentRoadTraffic?.urban.error ?? null,
+      air: this.currentAirOverview?.overview.data ?? null,
+      maritime: this.currentMaritimeSnapshot?.snapshot.data ?? null,
+      levels,
+    };
   }
 
   // ─── En bref de l'onglet Environnement (spec 2026-10-20 onglet Environnement § 3, lot 2) ───
@@ -6186,10 +6243,11 @@ export class App {
       `;
     // Vue générale dynamique : puces dans l'ordre des niveaux (rouge d'abord), voyant de niveau ; « n.d. » en gris (12/10/2026).
     // Onglet Environnement (20/10/2026) : même voyant, niveau de la pastille du panneau ; rouge d'abord.
-    const inEnv = this.uiV2 && this.v2Theme === 'environment';
-    // Pastilles cumulables avec mise en avant : Environnement et Pannes (21/10/2026), comme Santé et Énergie.
+    // Onglet Transports (lot 1, 25/10/2026) : voyants et ordre par niveau comme l'Environnement.
+    const inEnv = this.uiV2 && (this.v2Theme === 'environment' || this.v2Theme === 'transport');
+    // Pastilles cumulables avec mise en avant : Environnement et Pannes (21/10/2026), Transports (25/10/2026), comme Santé et Énergie.
     const theme = this.uiV2 ? this.v2Theme : 'general';
-    const cumul = this.uiV2 && (theme === 'environment' || theme === 'outages');
+    const cumul = this.uiV2 && (theme === 'environment' || theme === 'outages' || theme === 'transport');
     const isCumul = (id: string): id is keyof MapLayers => cumul && cumulFocusKey(theme, id);
     const watchedLevel = (id: keyof MapLayers): string | null =>
       this.uiV2 && this.v2Theme === 'general' ? this.watchEntries.find((e) => e.key === id)?.level ?? null
@@ -6330,15 +6388,21 @@ export class App {
         const observed = this.radarManifest?.configured ? Date.parse(this.radarManifest.manifest.observedAt) : NaN;
         return { at: Number.isFinite(observed) ? observed : null, verb: 'image' };
       }
+      case 'trafficRoad': return { at: read(this.currentRoadTraffic?.national), verb: 'lu' };
+      case 'trafficAir': return { at: read(this.currentAirOverview?.overview), verb: 'lu' };
+      case 'trafficRail': return { at: read(this.currentRailTraffic?.overview), verb: 'lu' };
+      case 'trafficMaritime': return { at: read(this.currentMaritimeSnapshot?.snapshot), verb: 'lu' };
       default: return { at: null, verb: 'lu' };
     }
   }
 
   private syncGeneralFocus(): void {
-    const inEnv = this.uiV2 && this.v2Theme === 'environment';
+    // Ligne d'état de la mini-légende (niveau, âge de la donnée) : Environnement et Transports.
+    const inEnv = this.uiV2 && (this.v2Theme === 'environment' || this.v2Theme === 'transport');
     // Onglet Environnement : toutes les couches visibles à l'ouverture, comme Santé (20/10/2026, décision utilisateur). Le mode
     // « l'anormal d'abord » (deckgl/env-context.ts, setEnvContext) reste disponible mais n'est plus activé.
     const inScope = this.uiV2 && (this.v2Theme === 'general' || inEnv || this.v2Theme === 'outages');
+    this.mapContainer?.setTransportFocus(inScope && this.v2Theme === 'transport' ? [...this.generalFocusActive, ...(this.generalFocusPreview ? [this.generalFocusPreview] : [])] : []);
     const keys: Array<keyof MapLayers> = [];
     if (inScope) {
       // Les En bref sont des synthèses : ouverts ou survolés, ils ne tamisent rien (20/10/2026).
@@ -6362,7 +6426,7 @@ export class App {
       const dataAt = inEnv ? this.envDataAt(key) : null;
       const status = inEnv && dataAt ? envFocusStatus(this.watchLevelMap.get(key) ?? null, dataAt.at, now, dataAt.verb) : null;
       if (items.length === 0 && texts.length === 0 && status === null) return '';
-      const rows = items.map((i) => `<div class="ef-row"><i class="ef-dot" style="background:${escapeHtml(i.color ?? 'transparent')};${i.borderColor ? `box-shadow:0 0 0 2px ${escapeHtml(i.borderColor)}` : ''}"></i><span>${escapeHtml(i.label)}</span></div>`).join('')
+      const rows = items.map((i) => `<div class="ef-row">${focusSwatchHtml(i)}<span>${escapeHtml(i.label)}</span></div>`).join('')
         + texts.map((tx) => `<div class="ef-row"><span>${escapeHtml(tx)}</span></div>`).join('');
       return `<div class="ef-key"><div class="ef-title">${escapeHtml(legend.title)}</div>${rows}${status ? `<div class="ef-status">${escapeHtml(status)}</div>` : ''}</div>`;
     }).join('');
@@ -6558,6 +6622,7 @@ export class App {
     if (id === 'general') this.refreshGeneralWatch();
     this.syncGeneralWatchPolling();
     this.refreshEnvironmentKey();
+    this.refreshTransportVigilance();
     // Onglet thématique : l'En bref occupe la colonne de droite par défaut (décision de l'utilisateur, 20/10/2026).
     this.briefDismissed = false;
     this.showDefaultBrief();
@@ -6585,6 +6650,20 @@ export class App {
     }
     this.syncEnvironmentPolling('drought');
     if (this.generalWatchPolls('drought') && this.currentDrought === null) void this.loadDrought();
+    for (const key of TRAFFIC_LAYER_KEYS) {
+      this.syncTrafficPolling(key);
+      if (this.generalWatchPolls(key) && !this.trafficLoaded(key)) this.loadTrafficSource(key).catch((err) => console.error(`[App] Lecture ${key} en échec`, err));
+    }
+  }
+
+  /** Source Trafics déjà lue au moins une fois (donnée ou erreur). */
+  private trafficLoaded(key: TrafficLayerKey): boolean {
+    switch (key) {
+      case 'trafficRoad': return this.currentRoadTraffic !== null;
+      case 'trafficAir': return this.currentAirOverview !== null;
+      case 'trafficRail': return this.currentRailTraffic !== null;
+      case 'trafficMaritime': return this.currentMaritimeSnapshot !== null;
+    }
   }
 
   private refreshGeneralWatch(): void {
@@ -6628,6 +6707,12 @@ export class App {
         loaded: [this.currentDisasters?.disasters, this.currentDisasters?.ems].some((x) => x !== undefined && (x.fetchedAt !== null || x.error !== null)),
       },
       health: { data: healthNational, loaded: healthNational !== null },
+      traffic: {
+        road: slot(this.currentRoadTraffic?.national),
+        air: slot(this.currentAirOverview?.overview),
+        rail: slot(this.currentRailTraffic?.overview),
+        maritime: slot(this.currentMaritimeSnapshot?.snapshot),
+      },
       gnss: this.gnssState?.gnss.data ?? null,
       now,
     });
@@ -6648,9 +6733,14 @@ export class App {
     // En bref de l'onglet Environnement : croisement et panneau suivent chaque rafraîchissement du poste (20/10/2026).
     this.refreshSeveso();
     this.refreshEnvBrief();
+    this.refreshTransportVigilance();
     this.refreshThemeBrief();
     this.refreshEnvironmentKey();
-    if (this.v2Theme !== 'general') return;
+    if (this.v2Theme !== 'general') {
+      // Voyants des pastilles d'un onglet à niveaux (Environnement, Transports) : la barre suit les niveaux.
+      if (this.v2Theme === 'transport') this.refreshFloatingPanelSwitcher();
+      return;
+    }
     const wanted = new Set(this.watchEntries.map((e) => e.key).filter((k) => !GENERAL_SOCLE.includes(k)));
     let changed = false;
     for (const key of wanted) {
@@ -7828,7 +7918,7 @@ export class App {
       const now = Date.now();
       const read = await fetchRoadTraffic(this.currentRoadTraffic, now);
       // État relu APRÈS la lecture, jamais celui capturé à son départ.
-      const state = mergeRoadTraffic(this.currentRoadTraffic, read);
+      const state = mergeRoadTraffic(this.currentRoadTraffic, read, now);
       this.currentRoadTraffic = state;
       this.trafficPanel?.update(state);
       this.mapContainer?.updateRoadTraffic(state.national.data, state.urban.data, now);
@@ -7865,13 +7955,14 @@ export class App {
       const { fetchAirOverview, mergeAirOverview, airStatus } = await import('./services/traffic-air.ts');
       const now = Date.now();
       const read = await fetchAirOverview(this.currentAirOverview, now);
-      const state = mergeAirOverview(this.currentAirOverview, read);
+      const state = mergeAirOverview(this.currentAirOverview, read, now);
       this.currentAirOverview = state;
       this.airTrafficPanel?.update(state);
       this.mapContainer?.updateAirOverview(state.overview.data, now);
       this.mapLegend?.addCategory(airLegend(state.overview.data, now));
       this.statusPanel?.updateSource('Trafic aérien', airStatus(state, now));
       this.recordTrafficSamples(now);
+      this.refreshGeneralWatch();
     });
   }
 
@@ -8209,7 +8300,7 @@ export class App {
       const { fetchRailTraffic, mergeRailTraffic, railStatus } = await import('./services/traffic-rail.ts');
       const now = Date.now();
       const read = await fetchRailTraffic(this.currentRailTraffic, now);
-      const state = mergeRailTraffic(this.currentRailTraffic, read);
+      const state = mergeRailTraffic(this.currentRailTraffic, read, now);
       this.currentRailTraffic = state;
       this.transportPanel?.update(state);
       this.mapContainer?.updateRailTraffic(state.overview.data, now);
@@ -8227,13 +8318,14 @@ export class App {
       const { fetchMaritimeSnapshot, mergeMaritimeState, maritimeStatus } = await import('./services/traffic-maritime.ts');
       const now = Date.now();
       const read = await fetchMaritimeSnapshot(this.currentMaritimeSnapshot, AIS_RELAY_URL, now);
-      const state = mergeMaritimeState(this.currentMaritimeSnapshot, read);
+      const state = mergeMaritimeState(this.currentMaritimeSnapshot, read, now);
       this.currentMaritimeSnapshot = state;
       this.maritimePanel?.update(state);
       this.mapContainer?.updateMaritimeSnapshot(state.snapshot.data, now);
       this.mapLegend?.addCategory(maritimeLegend(state.snapshot.data, now));
       this.statusPanel?.updateSource('AIS instantané', maritimeStatus(state, now));
       this.recordTrafficSamples(now);
+      this.refreshGeneralWatch();
     });
   }
 

@@ -8,6 +8,10 @@
 import { levelHex } from '../services/vigilance.ts';
 import { LYR_ROOM_DEPT_FILL, LYR_ROOM_SERVICES, LYR_ROOM_SERVICES_LETTER, SRC_ROOM_DEPTS, SRC_ROOM_SERVICES } from './deckgl/outages-room-map.ts';
 import maplibregl from 'maplibre-gl';
+import type { TransportVigilancePoint } from './layer-panel/transport-vigilance.ts';
+import {
+  calloutAnchorHtml, calloutDimmed, calloutLabelHtml, calloutRoutesFeatures, calloutTooltipHtml, calloutsSignature, layoutCallouts,
+} from './deckgl/transport-callouts.ts';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
@@ -57,7 +61,7 @@ import {
   AIR_TWEEN_MIN_ZOOM, TRAFFIC_COLOR, TRAFFIC_HOVER_LAYERS, TRAFFIC_JAM_LAYERS, TRAFFIC_LAYERS, TRAFFIC_LAYER_KEYS, TRAFFIC_SOURCE_IDS,
   TRAFFIC_STROKE_DIM_LAYERS, shouldTweenAirPositions,
   airEmergencyFeatures, airFlightTooltipHtml, airportFeatures, anchorageFeatures, jamPopupHtml, maritimeSignalFeatures, railOverviewLate,
-  railStationFeatures, roadEventFeatures, topTrafficHit, trafficSourceSpec, trafficTooltipHtml, traficolorFeatures, trainRouteFeatures,
+  railStationFeatures, railStationTierMax, roadEventFeatures, trafficIconImage, topTrafficHit, trafficSourceSpec, trafficTooltipHtml, traficolorFeatures, trainRouteFeatures,
   urbanJamFeatures,
 } from './deckgl/traffic-map.ts';
 import {
@@ -86,7 +90,7 @@ import type {
   SubseaCablesFile, TelecomOutagesResponse,
 } from '../types/index.ts';
 import {
-  VESSEL_TYPE_HEX, type VesselCategory, airAltitudeHex, vesselCategory, vesselHex, vesselTypeLabel,
+  VESSEL_TYPE_HEX, type VesselCategory, AIR_TRAFFIC_HEX, ROAD_EVENT_ICONS, airAltitudeStyle, vesselCategory, vesselHex, vesselTypeLabel,
 } from './layer-panel/traffic-legend.ts';
 import { identifyFrenchCallsign, identifyAlliedCallsign } from '../config/military.ts';
 import { getAllLiveTraffic, type MilitaryShip } from '../services/military-ships.ts';
@@ -167,6 +171,7 @@ import {
   SRC_WIND_PARKS,
   SRC_TRAFFIC,
   SRC_TRAIN_ROUTE,
+  LYR_RAIL_STATION, LYR_RAIL_STATION_ICON, LYR_RAIL_STATION_LABEL,
   LYR_GLOW,
   LYR_POINTS,
   LYR_CLUSTER_CIRCLE,
@@ -444,6 +449,14 @@ const ENERGY_FLOW_DASH_SEQ: ReadonlyArray<number[]> = [[0, 4, 3], [0.5, 4, 2.5],
 const ENERGY_FOCUS_CATEGORY = 'energy-focus';
 /** Pastilles mises en avant hors Énergie (Vue générale, onglet Environnement) : union de leurs calques. */
 const GENERAL_FOCUS_CATEGORY = 'general-focus';
+/** Trajets des trains d'un point de vigilance, allumés au survol (onglet Transports, 25/10/2026). */
+const SRC_TV_ROUTES = 'tv-routes';
+const LYR_TV_ROUTES_GLOW = 'tv-routes-glow';
+const LYR_TV_ROUTES = 'tv-routes-line';
+/** Opacité des avions dans l'onglet Transports tant que la pastille Aérien n'est pas mise en avant (25/10/2026). */
+const AIR_TRANSPORT_TAB_OPACITY = 0.3;
+/** Navires dans l'onglet Transports, même règle (étiquettes d'abord). */
+const MARITIME_TRANSPORT_TAB_OPACITY = 0.55;
 /** Anneaux pulsants (pulse.ts) : calque de l'anneau et calque des points dont il suit le tamisage. */
 type PulseKey = 'disasters' | 'earthquakes' | 'telecomOutage' | 'powerOutage';
 const PULSE_LAYERS: Readonly<Record<PulseKey, { pulse: string; base: string }>> = {
@@ -2854,6 +2867,7 @@ export class DeckGLMap {
     }
 
     // Track view state
+    this.map.on('zoomend', () => this.syncRailStationTier());
     this.map.on('moveend', () => {
       if (!this.map) return;
       const c = this.map.getCenter();
@@ -2928,22 +2942,30 @@ export class DeckGLMap {
    * WorldMonitor uses Deck.gl for dynamic feeds; align road incidents and civil air traffic here too.
    */
   private buildAisLayers() {
+    // Pastilles mises en avant (onglet Transports, 25/10/2026) : avions et navires se tamisent comme les couches MapLibre.
+    const focused = this.legendHoverCategory === GENERAL_FOCUS_CATEGORY && this.generalFocusKeys.length > 0;
     const maritimeDeckOpacity =
       this.legendHoverCategory == null
-        ? 1
-        : this.legendHoverCategory === 'trafficMaritime'
-          ? 1
-          : ['trafficRoad', 'trafficAir', 'trafficRail', 'health', 'healthApl', 'healthOscour', 'hospitals'].includes(this.legendHoverCategory)
-            ? 0.15
-            : 1;
+        ? (this.transportTabActive ? MARITIME_TRANSPORT_TAB_OPACITY : 1)
+        : focused
+          ? (this.generalFocusKeys.includes('trafficMaritime') ? 1 : 0.15)
+          : this.legendHoverCategory === 'trafficMaritime'
+            ? 1
+            : ['trafficRoad', 'trafficAir', 'trafficRail', 'health', 'healthApl', 'healthOscour', 'hospitals'].includes(this.legendHoverCategory)
+              ? 0.15
+              : 1;
+    // Onglet Transports (25/10/2026) : le millier d'avions reste en retrait tant que la pastille Aérien n'est pas mise en avant ;
+    // les urgences (couche MapLibre à part) restent vives.
     const airDeckOpacity =
       this.legendHoverCategory == null
-        ? 1
-        : this.legendHoverCategory === 'trafficAir'
-          ? 1
-          : ['trafficRoad', 'trafficMaritime', 'trafficRail', 'health', 'healthApl', 'healthOscour', 'hospitals'].includes(this.legendHoverCategory)
-            ? 0.15
-            : 1;
+        ? (this.transportTabActive ? AIR_TRANSPORT_TAB_OPACITY : 1)
+        : focused
+          ? (this.generalFocusKeys.includes('trafficAir') ? 1 : 0.15)
+          : this.legendHoverCategory === 'trafficAir'
+            ? 1
+            : ['trafficRoad', 'trafficMaritime', 'trafficRail', 'health', 'healthApl', 'healthOscour', 'hospitals'].includes(this.legendHoverCategory)
+              ? 0.15
+              : 1;
 
     const getShipTypeNumber = (d: AisShipData): number => {
       const raw = (d.shipType ?? (d as { ShipType?: unknown }).ShipType ?? (d as { type?: unknown }).type);
@@ -3054,13 +3076,13 @@ export class DeckGLMap {
         opacity: airDeckOpacity,
         coordinateSystem: COORDINATE_SYSTEM.LNGLAT,
         getPosition: (d: AirTrafficFlight) => this.projectAirTrafficPosition(d),
-        // Couleur selon l'altitude (tranches de traffic-legend.ts, une icône mise en cache par couleur).
-        getIcon: (d: AirTrafficFlight) => this.getAirTrafficIconDef(airAltitudeHex(d.altitude)),
-        getColor: () => [255, 255, 255, 255],
-        getSize: (d: AirTrafficFlight) => (d.altitude > 30000 ? 20 : d.altitude > 15000 ? 18 : 16),
+        // Une seule teinte (bleu ciel, 25/10/2026) ; l'altitude se lit à la taille et à l'opacité (airAltitudeStyle, traffic-legend.ts).
+        getIcon: () => this.getAirTrafficIconDef(AIR_TRAFFIC_HEX),
+        getColor: (d: AirTrafficFlight) => [255, 255, 255, airAltitudeStyle(d.altitude).alpha],
+        getSize: (d: AirTrafficFlight) => airAltitudeStyle(d.altitude).size,
         getAngle: (d: AirTrafficFlight) => this.headingToDeckAngle(this.getTweenedHeading(d)),
         sizeUnits: 'pixels',
-        sizeMinPixels: 12,
+        sizeMinPixels: 14,
         sizeMaxPixels: 24,
         billboard: true,
         pickable: true,
@@ -3070,8 +3092,8 @@ export class DeckGLMap {
         updateTriggers: {
           getPosition: [this.civilAirTrafficFlights, this.civilAirTweenProgress],
           getSize: this.civilAirTrafficFlights,
+          getColor: this.civilAirTrafficFlights,
           getAngle: [this.civilAirTrafficFlights, this.civilAirTweenProgress],
-          getIcon: this.civilAirTrafficFlights,
         },
       }),
       new ScatterplotLayer<EventMapPoint>({
@@ -4419,9 +4441,9 @@ export class DeckGLMap {
 
   // ─── Generic plane (fallback) ───
   private svgPlane(color: string): string {
-    return `<g fill="${color}">
-      <polygon points="32,4 38,28 58,36 38,34 38,52 44,56 32,52 20,56 26,52 26,34 6,36 26,28" />
-    </g>`;
+    // Silhouette fine (fuselage étroit, ailes en flèche, liseré sombre) : lisible à 14 px, ne se lit plus comme un carré (25/10/2026).
+    return `<path fill="${color}" stroke="#0a0a0f" stroke-width="3" stroke-linejoin="round"
+      d="M32 3c2.2 0 3.4 2.6 3.4 6v13.5L60 37v5l-24.6-7.2v13.6l7.6 5.6v4.2L32 55.4 21 58.2V54l7.6-5.6V34.8L4 42v-5l24.6-14.5V9c0-3.4 1.2-6 3.4-6z"/>`;
   }
 
   // ─── Fighter jet (delta wings, aggressive) ───
@@ -4678,6 +4700,7 @@ export class DeckGLMap {
    */
   setGeneralFocus(keys: readonly string[]): void {
     this.generalFocusKeys = [...keys];
+    this.syncRailStationTier();
     this.envRevealed = new Set(keys);
     this.applyEnvContext();
     this.setLegendHover(null);
@@ -4883,7 +4906,8 @@ export class DeckGLMap {
       applyLegendDim(layerId, prop, orig);
     }
 
-    if (previousCategory !== categoryId) {
+    // Mise en avant des pastilles : la catégorie reste la même quand les pastilles changent, avions et navires doivent suivre.
+    if (previousCategory !== categoryId || categoryId === GENERAL_FOCUS_CATEGORY) {
       this.refreshAisLayers();
       this.map.triggerRepaint();
     }
@@ -6271,6 +6295,8 @@ export class DeckGLMap {
   updateRailTraffic(overview: RailOverviewResponse | null, now: number): void {
     this.railTrafficLate = railOverviewLate(overview, now);
     this.setTrafficSource(SRC_RAIL_STATIONS, railStationFeatures(overview, now));
+    this.railStationTier = -1;
+    this.syncRailStationTier();
     // Trajet tracé : retard relu dans la nouvelle donnée ; train qui n'y figure plus (arrivé, retiré) : trajet effacé.
     const fresh = (t: RailTrain | null): RailTrain | null => (t ? overview?.trains.find((x) => x.id === t.id) ?? null : null);
     this.chosenTrain = fresh(this.chosenTrain);
@@ -6755,6 +6781,7 @@ export class DeckGLMap {
   private registerEnvironmentIcons(): void {
     this.registerSdfIcons([...ENV_ICON_NAMES, 'flame'], envIconImage);
     this.registerSdfIcons(ENERGY_ICON_NAMES, energyIconImage);
+    this.registerSdfIcons([...ROAD_EVENT_ICONS, 'train-front'], trafficIconImage);
   }
 
   private registerSdfIcons(names: readonly IconName[], idOf: (name: IconName) => string): void {
@@ -8080,6 +8107,177 @@ export class DeckGLMap {
       this.envHoverPopup = popup;
       popup.setLngLat([lon, lat]).setHTML(html).addTo(map);
     });
+  }
+
+  // ─── Onglet Transports : points de vigilance numérotés (lots 1 et 2, 25/10/2026, deckgl/transport-callouts.ts) ───
+  // Ancres pulsantes sur les lieux, étiquettes rangées en colonnes et reliées par un trait courbe (layoutCallouts), reposées à
+  // chaque mouvement de la carte dans un calque HTML au-dessus du canevas.
+  private transportItems: Array<{ point: TransportVigilancePoint; anchor: HTMLElement; label: HTMLElement; line: SVGPathElement; w: number; h: number }> = [];
+  private transportLayer: HTMLElement | null = null;
+  private transportSvg: SVGSVGElement | null = null;
+  private transportCalloutsSig = '';
+  private transportFocus: string[] = [];
+  /** Onglet Transports affiché (App passe une liste, même vide, de points ; null hors de l'onglet). */
+  private transportTabActive = false;
+  private transportTip: HTMLElement | null = null;
+  private readonly onTransportMove = (): void => this.layoutTransportCallouts();
+
+  /** Étiquettes pulsantes au-dessus de tout ; null ou vide : retirées (hors de l'onglet Transports). */
+  setTransportVigilance(points: readonly TransportVigilancePoint[] | null): void {
+    const map = this.map;
+    const list = points ?? [];
+    if (this.transportTabActive !== (points !== null)) {
+      this.transportTabActive = points !== null;
+      this.refreshAisLayers();
+    }
+    const sig = calloutsSignature(list);
+    if (!map || sig === this.transportCalloutsSig) return;
+    this.transportCalloutsSig = sig;
+    this.transportTip = null;
+    this.setTransportRoutes(null);
+    this.transportLayer?.remove();
+    this.transportLayer = null;
+    this.transportSvg = null;
+    this.transportItems = [];
+    map.off('move', this.onTransportMove);
+    if (list.length === 0) return;
+    const layer = document.createElement('div');
+    layer.className = 'tv-layer';
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'tv-lines');
+    layer.appendChild(svg);
+    map.getCanvasContainer().appendChild(layer);
+    this.transportLayer = layer;
+    this.transportSvg = svg;
+    for (const point of list) {
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      line.setAttribute('class', `tv-line tv-line--${point.level}`);
+      svg.appendChild(line);
+      const anchor = document.createElement('div');
+      anchor.className = 'tv-pin';
+      anchor.innerHTML = calloutAnchorHtml(point);
+      const label = document.createElement('div');
+      label.className = 'tv-label';
+      label.innerHTML = calloutLabelHtml(point);
+      for (const el of [anchor, label]) {
+        // Le survol d'une étiquette ne doit réveiller aucune autre infobulle (avions, navires, gares) : la souris n'atteint pas la carte.
+        for (const type of ['mousemove', 'pointermove', 'mouseover', 'mouseout']) el.addEventListener(type, (e) => e.stopPropagation());
+        el.addEventListener('mouseenter', () => {
+          this.hideAisHoverTooltip();
+          this.envHoverPopup?.remove();
+          this.showTransportTip(point, label);
+          label.classList.add('is-hot');
+          line.classList.add('is-hot');
+          this.setTransportRoutes(point);
+        });
+        el.addEventListener('mouseleave', () => {
+          this.transportTip?.remove();
+          this.transportTip = null;
+          this.setTransportRoutes(null);
+          label.classList.remove('is-hot');
+          line.classList.remove('is-hot');
+        });
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.flyTo(point.lon, point.lat, Math.max(map.getZoom(), 9));
+        });
+      }
+      layer.append(anchor, label);
+      this.transportItems.push({ point, anchor, label, line, w: label.offsetWidth, h: label.offsetHeight });
+    }
+    map.on('move', this.onTransportMove);
+    this.layoutTransportCallouts();
+    this.applyTransportFocus();
+  }
+
+  /** Infobulle d'un point, à côté de son étiquette (à droite, à gauche faute de place), jamais sur les autres étiquettes de la colonne. */
+  private showTransportTip(point: TransportVigilancePoint, label: HTMLElement): void {
+    const layer = this.transportLayer;
+    if (!layer) return;
+    this.transportTip?.remove();
+    const tip = document.createElement('div');
+    tip.className = 'tv-tipbox';
+    tip.innerHTML = calloutTooltipHtml(point);
+    layer.appendChild(tip);
+    this.transportTip = tip;
+    const W = layer.clientWidth;
+    const H = layer.clientHeight;
+    const l = label.offsetLeft + (new DOMMatrixReadOnly(getComputedStyle(label).transform).m41 || 0);
+    const t = new DOMMatrixReadOnly(getComputedStyle(label).transform).m42 || 0;
+    const right = l + label.offsetWidth + 10;
+    const left = right + tip.offsetWidth <= W - 8 ? right : Math.max(8, l - 10 - tip.offsetWidth);
+    const top = Math.max(8, Math.min(t, H - 8 - tip.offsetHeight));
+    tip.style.transform = `translate(${left}px, ${top}px)`;
+  }
+
+  /** Survol d'un point rail : trajets de ses trains allumés (halo large et trait vif, couleur du niveau) ; null : éteints. */
+  private setTransportRoutes(point: TransportVigilancePoint | null): void {
+    const map = this.map;
+    if (!map) return;
+    if (!map.getSource(SRC_TV_ROUTES)) {
+      if (point === null) return;
+      map.addSource(SRC_TV_ROUTES, { type: 'geojson', data: calloutRoutesFeatures(null) });
+      const color: maplibregl.ExpressionSpecification = ['match', ['get', 'level'], 'rouge', levelHex('rouge'), levelHex('orange')];
+      map.addLayer({ id: LYR_TV_ROUTES_GLOW, type: 'line', source: SRC_TV_ROUTES, layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': color, 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 9, 10, 16], 'line-opacity': 0.28, 'line-blur': 4 } });
+      map.addLayer({ id: LYR_TV_ROUTES, type: 'line', source: SRC_TV_ROUTES, layout: { 'line-cap': 'round', 'line-join': 'round' },
+        paint: { 'line-color': color, 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 2.5, 10, 4], 'line-opacity': 1 } });
+    }
+    (map.getSource(SRC_TV_ROUTES) as maplibregl.GeoJSONSource | undefined)?.setData(calloutRoutesFeatures(point));
+    // La synchronisation des couches masque tout calque qu'elle ne connaît pas : visibilité reposée à chaque survol.
+    for (const id of [LYR_TV_ROUTES_GLOW, LYR_TV_ROUTES]) if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', point ? 'visible' : 'none');
+  }
+
+  /** Gares dessinées selon le zoom et la pastille Ferroviaire (railStationTierMax) ; reposé au zoom et à chaque mise en avant. */
+  private railStationTier = -1;
+  private syncRailStationTier(): void {
+    const map = this.map;
+    if (!map) return;
+    const max = railStationTierMax(map.getZoom(), this.generalFocusKeys.includes('trafficRail'));
+    if (max === this.railStationTier) return;
+    this.railStationTier = max;
+    for (const id of [LYR_RAIL_STATION, LYR_RAIL_STATION_ICON, LYR_RAIL_STATION_LABEL]) {
+      if (!map.getLayer(id)) continue;
+      const base: maplibregl.FilterSpecification | null = id === LYR_RAIL_STATION_ICON ? ['==', ['get', 'icon'], true] : null;
+      const tier: maplibregl.FilterSpecification = ['<=', ['coalesce', ['get', 'tier'], 0], max];
+      map.setFilter(id, base ? ['all', base, tier] : tier);
+    }
+  }
+
+  private layoutTransportCallouts(): void {
+    const map = this.map;
+    if (!map || this.transportItems.length === 0) return;
+    const { clientWidth: width, clientHeight: height } = map.getContainer();
+    this.transportSvg?.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    const boxes = this.transportItems.map((it) => {
+      const p = map.project([it.point.lon, it.point.lat]);
+      if (it.w === 0) { it.w = it.label.offsetWidth; it.h = it.label.offsetHeight; }
+      return { x: p.x, y: p.y, w: it.w, h: it.h };
+    });
+    const placed = layoutCallouts(boxes, width, height);
+    this.transportItems.forEach((it, i) => {
+      const b = boxes[i];
+      const pl = placed[i];
+      if (!b || !pl) return;
+      it.anchor.style.transform = `translate(${b.x}px, ${b.y}px)`;
+      it.label.style.transform = `translate(${pl.left}px, ${pl.top}px)`;
+      it.line.setAttribute('d', pl.path);
+    });
+  }
+
+  /** Pastilles Transports allumées ou survolées : les étiquettes des autres modes se tamisent comme leurs couches. */
+  setTransportFocus(keys: readonly string[]): void {
+    this.transportFocus = [...keys];
+    this.applyTransportFocus();
+  }
+
+  private applyTransportFocus(): void {
+    for (const it of this.transportItems) {
+      const dim = calloutDimmed(it.point.mode, this.transportFocus);
+      it.anchor.classList.toggle('is-dim', dim);
+      it.label.classList.toggle('is-dim', dim);
+      it.line.classList.toggle('is-dim', dim);
+    }
   }
 
   /** Enjeux exposés : croisement de l'onglet Environnement (null : vide la carte). */

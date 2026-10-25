@@ -9,7 +9,7 @@ import {
 } from './traffic.fixture.ts';
 import {
   AIR_TRAFFIC_LEGEND, CAT_AIRPORT_HEX, CAT_PORT_HEX, MARITIME_TRAFFIC_LEGEND, RAIL_TRAFFIC_LEGEND, ROAD_TRAFFIC_LEGEND, TRAFFIC_NEUTRAL_HEX,
-  AIR_ALTITUDE_BANDS, VESSEL_TYPE_HEX, airAltitudeHex, airLegend, maritimeLegend, railLegend, roadLegend, traficolorDrawnAt, vesselCategory, vesselHex,
+  AIR_ALTITUDE_BANDS, AIR_TRAFFIC_HEX, VESSEL_TYPE_HEX, airAltitudeStyle, airLegend, maritimeLegend, railLegend, roadLegend, traficolorDrawnAt, vesselCategory, vesselHex,
 } from './traffic-legend.ts';
 
 const css = readFileSync(new URL('../../styles/main.css', import.meta.url), 'utf8');
@@ -28,8 +28,11 @@ describe('légendes Trafics : sources, périmètres (T1), dates réelles (S1)', 
     const t = text(l);
     for (const part of ['routes nationales non concédées', `moins de 24${NBSP}h`, '12 agglomérations', 'zoom 10', 'Sections Traficolor',
       'DIR (DATEX II, Traficolor)']) expect(t).toContain(part);
-    expect([color(l, 'road-accident'), color(l, 'road-major'), color(l, 'road-minor'), color(l, 'road-jam-3'), color(l, 'road-section-congested'),
-      color(l, 'road-section-free')]).toEqual([levelHex('rouge'), levelHex('orange'), levelHex('jaune'), levelHex('rouge'), levelHex('rouge'), levelHex('vert')]);
+    // 25/10/2026 : L1 réservé aux perturbations ; une pastille ronde à pictogramme par nature, rose pour accidents, obstacles, voies fermées.
+    expect([color(l, 'road-weather'), color(l, 'road-closure'), color(l, 'road-accident'), color(l, 'road-obstruction'), color(l, 'road-lane'),
+      color(l, 'road-jam-3'), color(l, 'road-section-congested'), color(l, 'road-section-free')])
+      .toEqual([levelHex('orange'), levelHex('orange'), '#c026d3', '#c026d3', '#c026d3', levelHex('rouge'), levelHex('rouge'), levelHex('vert')]);
+    expect(l.items.filter((i) => i.id === 'road-accident' || i.id === 'road-obstruction').every((i) => i.icon?.includes('<circle') === true)).toBe(true);
   });
   it('en retard : « (en retard) » et couleurs retirées dites ; partie absente : « indisponible » ; autre jour : date', () => {
     expect(roadLegend(roadNationalFixture(), roadUrbanFixture(), TRAFFIC_NOW + 2 * H).notes?.slice(0, 2))
@@ -65,11 +68,11 @@ describe('légendes Trafics : sources, périmètres (T1), dates réelles (S1)', 
     expect(l.notes?.[0]).toBe('Données : OpenSky 15:09.');
     const t = text(l);
     expect(t).not.toMatch(/densité|zoom 7/i);
-    // Cinq tranches d'altitude (pieds, comme l'infobulle d'un avion), puis l'altitude non transmise en teinte neutre.
+    // Une seule teinte (bleu ciel, 25/10/2026) ; l'altitude se lit à la taille et à l'opacité ; altitude non transmise en teinte neutre.
     const bands = l.items.filter((i) => i.id.startsWith('air-alt-'));
     expect(bands.map((i) => [i.label, i.color])).toEqual([
-      [`Moins de 5\u202F000${NBSP}ft`, '#ff7832'], [`5\u202F000 à 15\u202F000${NBSP}ft`, '#ffd232'], [`15\u202F000 à 25\u202F000${NBSP}ft`, '#82e650'],
-      [`25\u202F000 à 35\u202F000${NBSP}ft`, '#32c8ff'], [`35\u202F000${NBSP}ft ou plus`, '#8264ff'], ['Altitude non transmise', TRAFFIC_NEUTRAL_HEX],
+      [`Bas (moins de 5${NBSP}000${NBSP}ft) : petit et plein`, AIR_TRAFFIC_HEX], ['En croisière : plus grand et plus discret', AIR_TRAFFIC_HEX],
+      ['Altitude non transmise : très estompé', TRAFFIC_NEUTRAL_HEX],
     ]);
     expect(bands.every((i) => typeof i.icon === 'string' && i.icon.includes('svg'))).toBe(true);
     for (const part of ['OpenSky', 'indicatif au survol', '7500\u00a0intervention\u00a0illicite, 7600\u00a0panne\u00a0radio, 7700\u00a0urgence', 'départs détectés', 'couche Défense',
@@ -82,20 +85,20 @@ describe('légendes Trafics : sources, périmètres (T1), dates réelles (S1)', 
     expect(color(l, 'air-airport')).toBe(CAT_AIRPORT_HEX);
     expect(airLegend(null, TRAFFIC_NOW).notes?.[0]).toBe('Données : OpenSky indisponible.');
   });
-  it('avions : teinte de chaque tranche d’altitude à ses bornes ; altitude non transmise neutre, jamais une tranche inventée', () => {
-    const cases: Array<[number, string]> = [
-      [1, '#ff7832'], [4_999, '#ff7832'], [5_000, '#ffd232'], [14_999, '#ffd232'], [15_000, '#82e650'], [24_999, '#82e650'],
-      [25_000, '#32c8ff'], [34_999, '#32c8ff'], [35_000, '#8264ff'], [45_000, '#8264ff'],
+  it('avions : taille et opacité de chaque tranche d’altitude à ses bornes ; altitude non transmise très estompée, jamais une tranche inventée', () => {
+    const cases: Array<[number, number, number]> = [
+      [1, 18, 255], [4_999, 18, 255], [5_000, 19, 235], [15_000, 20, 205], [25_000, 21, 180], [35_000, 22, 160], [45_000, 22, 160],
     ];
-    for (const [ft, hex] of cases) expect(airAltitudeHex(ft)).toBe(hex);
-    for (const missing of [0, -120, Number.NaN, null, undefined]) expect(airAltitudeHex(missing)).toBe(TRAFFIC_NEUTRAL_HEX);
+    for (const [ft, size, alpha] of cases) expect(airAltitudeStyle(ft)).toEqual({ size, alpha });
+    for (const missing of [0, -120, Number.NaN, null, undefined]) expect(airAltitudeStyle(missing)).toEqual({ size: 18, alpha: 110 });
     expect(AIR_ALTITUDE_BANDS.map((b) => b.below)).toEqual([5_000, 15_000, 25_000, 35_000, Number.POSITIVE_INFINITY]);
   });
   it('rail : SNCF et SIRI SX datés, seuils de retard des gares, situations hors carte dites', () => {
     const l = railLegend(railOverviewFixture(), railSituationsFixture(), TRAFFIC_NOW);
     expect(l.id).toBe('trafficRail');
     expect(l.notes?.[0]).toBe('Données : SNCF 15:10 · SIRI SX 15:10.');
-    expect(l.items.filter((i) => !i.isHeader).map((i) => i.color)).toEqual([levelHex('rouge'), levelHex('orange'), levelHex('jaune'), levelHex('vert')]);
+    // Gares colorées à partir d'orange (lot 2 Transports) ; en dessous, petit point neutre.
+    expect(l.items.filter((i) => !i.isHeader).map((i) => i.color)).toEqual([levelHex('rouge'), levelHex('orange'), levelHex('jaune')]);
     expect(text(l)).toContain(`90${NBSP}min`);
     expect(text(l)).toContain('ne sont pas placées sur la carte');
   });

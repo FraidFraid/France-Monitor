@@ -5,7 +5,7 @@ import type { AirTrafficFlight, MapViewState } from '../types/index.ts';
 import { DeckGLMap } from './DeckGLMap.ts';
 import { airFlightTooltipHtml } from './deckgl/traffic-map.ts';
 import { NBSP } from './layer-panel/format.ts';
-import { TRAFFIC_NEUTRAL_HEX } from './layer-panel/traffic-legend.ts';
+import { AIR_TRAFFIC_HEX } from './layer-panel/traffic-legend.ts';
 
 interface IconDef { url: string }
 interface DeckLayerLike { id: string; props: { visible?: boolean; getIcon?: (d: AirTrafficFlight) => IconDef } }
@@ -48,17 +48,17 @@ describe('avions civils : icônes à tous les zooms, animation seulement à part
     expect(airIconLayer(deckAt(5, false))?.props.visible).toBe(false);
   });
 
-  it('icône d’un avion colorée selon son altitude (tranches d’avant la tâche 15), une icône par couleur ; altitude dans l’infobulle', () => {
+  it('icône d’un avion bleu ciel, une seule icône ; altitude par la taille et l’opacité (25/10/2026) ; altitude dans l’infobulle', () => {
     const deckMap = deckAt(9);
     deckMap.updateAirTraffic([flight()]);
-    const getIcon = airIconLayer(deckMap)?.props.getIcon;
-    if (!getIcon) throw new Error('couche d’icônes des avions sans getIcon');
-    const fill = (altitude: number): string => decodeURIComponent(getIcon(flight({ altitude })).url);
-    const cases: Array<[number, string]> = [
-      [4_999, '#ff7832'], [5_000, '#ffd232'], [15_000, '#82e650'], [25_000, '#32c8ff'], [35_000, '#8264ff'], [0, TRAFFIC_NEUTRAL_HEX],
-    ];
-    for (const [altitude, hex] of cases) expect(fill(altitude)).toContain(`fill="${hex}"`);
-    expect(getIcon(flight({ altitude: 6_000 }))).toBe(getIcon(flight({ altitude: 14_000 })));
+    const props = airIconLayer(deckMap)?.props as {
+      getIcon?: (d: AirTrafficFlight) => { url: string }; getSize?: (d: AirTrafficFlight) => number; getColor?: (d: AirTrafficFlight) => number[];
+    } | undefined;
+    if (!props?.getIcon || !props.getSize || !props.getColor) throw new Error('couche d’icônes des avions incomplète');
+    expect(decodeURIComponent(props.getIcon(flight()).url)).toContain(`fill="${AIR_TRAFFIC_HEX}"`);
+    expect(props.getIcon(flight({ altitude: 1_000 }))).toBe(props.getIcon(flight({ altitude: 38_000 })));
+    expect([props.getSize(flight({ altitude: 1_000 })), props.getSize(flight({ altitude: 38_000 }))]).toEqual([18, 22]);
+    expect([props.getColor(flight({ altitude: 1_000 }))[3], props.getColor(flight({ altitude: 38_000 }))[3], props.getColor(flight({ altitude: 0 }))[3]]).toEqual([255, 160, 110]);
     expect(airFlightTooltipHtml(flight({ altitude: 32_000 }))).toContain(`32\u202F000${NBSP}ft`);
   });
 

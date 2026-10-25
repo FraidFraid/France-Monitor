@@ -105,13 +105,13 @@ describe('panneaux Trafics : un panneau par couche (spec 2026-10-03 trafics § 3
   it('chargeurs : services chargés à la demande, panneaux mis à jour, panneau des sources sur la date de la donnée, jamais new Date()', () => {
     const loaders: Array<[string, string, string[]]> = [
       ['loadRoadTraffic', "import('./services/traffic-road.ts')", ['this.trafficPanel?.update(state);', "roadStatus(state, 'national', now)", "roadStatus(state, 'urban', now)", 'clearLegacyTomTomStorage(',
-        "this.readTraffic('trafficRoad',", 'const state = mergeRoadTraffic(this.currentRoadTraffic, read);']],
+        "this.readTraffic('trafficRoad',", 'const state = mergeRoadTraffic(this.currentRoadTraffic, read, now);']],
       ['loadAirOverview', "import('./services/traffic-air.ts')", ['this.airTrafficPanel?.update(state);', "this.statusPanel?.updateSource('Trafic aérien', airStatus(state, now));",
-        "this.readTraffic('trafficAir',", 'const state = mergeAirOverview(this.currentAirOverview, read);']],
+        "this.readTraffic('trafficAir',", 'const state = mergeAirOverview(this.currentAirOverview, read, now);']],
       ['loadRailTraffic', "import('./services/traffic-rail.ts')", ['this.transportPanel?.update(state);', "railStatus(state, 'overview', now)", "railStatus(state, 'situations', now)",
-        "this.readTraffic('trafficRail',", 'const state = mergeRailTraffic(this.currentRailTraffic, read);']],
+        "this.readTraffic('trafficRail',", 'const state = mergeRailTraffic(this.currentRailTraffic, read, now);']],
       ['loadMaritimeSnapshot', "import('./services/traffic-maritime.ts')", ['this.maritimePanel?.update(state);', 'fetchMaritimeSnapshot(this.currentMaritimeSnapshot, AIS_RELAY_URL, now)', "maritimeStatus(state, now)",
-        "this.readTraffic('trafficMaritime',", 'const state = mergeMaritimeState(this.currentMaritimeSnapshot, read);']],
+        "this.readTraffic('trafficMaritime',", 'const state = mergeMaritimeState(this.currentMaritimeSnapshot, read, now);']],
     ];
     for (const [method, imp, parts] of loaders) {
       const body = methodBody(method);

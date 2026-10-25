@@ -294,26 +294,63 @@ describe('lectures concurrentes : fusion à l’écriture (S3)', () => {
     const failed = await fetchRoadTraffic(started, TRAFFIC_NOW + 1000);
     // Sans fusion, la seconde écriture remplaçait la bonne donnée par « aucune donnée ».
     expect(failed.national.data).toBeNull();
-    const current = mergeRoadTraffic(mergeRoadTraffic(null, ok), failed);
+    const current = mergeRoadTraffic(mergeRoadTraffic(null, ok, TRAFFIC_NOW), failed, TRAFFIC_NOW + 1000);
     expect(current.national.data).toEqual(roadNationalFixture());
     expect(current.national.fetchedAt).toBe(TRAFFIC_NOW);
     expect(current.national.error).not.toBeNull();
     expect(current.urban.data).toEqual(roadUrbanFixture());
     expect(roadStatus(current, 'national', TRAFFIC_NOW + 2000).status).toBe('stale');
     // Ordre inverse : la réussite écrite après l'échec remplace tout.
-    expect(mergeRoadTraffic(mergeRoadTraffic(null, failed), ok)).toEqual(ok);
+    expect(mergeRoadTraffic(mergeRoadTraffic(null, failed, TRAFFIC_NOW + 1000), ok, TRAFFIC_NOW + 1000)).toEqual(ok);
   });
   it('air, rail, maritime : un échec écrit après une réussite garde les données actuelles et leur date', () => {
     const fail = { data: null, error: 'HTTP 503', fetchedAt: null };
-    const air = mergeAirOverview(airStateFixture(), { overview: fail });
+    const air = mergeAirOverview(airStateFixture(), { overview: fail }, TRAFFIC_NOW);
     expect(air.overview.data).toEqual(airStateFixture().overview.data);
     expect(air.overview.error).toBe('HTTP 503');
-    const rail = mergeRailTraffic(railStateFixture(), { overview: fail, situations: railStateFixture().situations });
+    const rail = mergeRailTraffic(railStateFixture(), { overview: fail, situations: railStateFixture().situations }, TRAFFIC_NOW);
     expect(rail.overview.data).toEqual(railStateFixture().overview.data);
     expect(rail.overview.fetchedAt).toBe(railStateFixture().overview.fetchedAt);
     expect(rail.situations.error).toBeNull();
-    const sea = mergeMaritimeState(maritimeStateFixture(), { snapshot: fail });
+    const sea = mergeMaritimeState(maritimeStateFixture(), { snapshot: fail }, TRAFFIC_NOW);
     expect(sea.snapshot.data).toEqual(maritimeStateFixture().snapshot.data);
-    expect(mergeMaritimeState(null, { snapshot: fail }).snapshot).toEqual(fail);
+    expect(mergeMaritimeState(null, { snapshot: fail }, TRAFFIC_NOW).snapshot).toEqual(fail);
+  });
+});
+
+describe('données périmées : plus de 6 h après leur date, plus dessinées ni comptées (lot 3 Transports, 24/10/2026)', () => {
+  const H = 3_600_000;
+  it('TomTom figé depuis 9 jours (clé refusée, cache serveur servi) : la source passe indisponible et dit depuis quand', () => {
+    const later = TRAFFIC_NOW + 9 * 24 * H;
+    const merged = mergeRoadTraffic(null, roadStateFixture(), later);
+    expect(merged.urban.data).toBeNull();
+    expect(merged.urban.error).toBe('TomTom : aucune donnée récente depuis le 03/10\u00a015:00');
+    expect(roadStatus(merged, 'urban', later).status).toBe('error');
+    // Le réseau national, même âge : même règle.
+    expect(merged.national.data).toBeNull();
+  });
+  it('donnée en retard mais de moins de 6 h : gardée (le retard reste dit par « (en retard) », couleurs retirées)', () => {
+    const merged = mergeRoadTraffic(null, roadStateFixture(), TRAFFIC_NOW + 5 * H);
+    expect(merged.urban.data).toEqual(roadUrbanFixture());
+    expect(merged.national.data).toEqual(roadNationalFixture());
+  });
+  it('une session ouverte ne garde pas une donnée devenue périmée, même après un échec de lecture', () => {
+    const later = TRAFFIC_NOW + 7 * H;
+    const fail = { data: null, error: 'HTTP 503', fetchedAt: null };
+    const merged = mergeRoadTraffic(roadStateFixture(), { national: fail, urban: fail }, later);
+    expect(merged.urban.data).toBeNull();
+    expect(merged.urban.error).toBe('TomTom : aucune donnée récente depuis le 03/10\u00a015:00');
+  });
+  it('air, rail, maritime : même règle sur la date de leur donnée', () => {
+    const later = TRAFFIC_NOW + 24 * H;
+    expect(mergeAirOverview(null, airStateFixture(), later).overview.data).toBeNull();
+    const rail = mergeRailTraffic(null, railStateFixture(), later);
+    expect(rail.overview.data).toBeNull();
+    expect(rail.situations.data).toBeNull();
+    expect(rail.overview.error).toMatch(/^SNCF : aucune donnée récente depuis le /);
+    expect(mergeMaritimeState(null, maritimeStateFixture(), later).snapshot.data).toBeNull();
+    // Fraîches : intactes.
+    expect(mergeAirOverview(null, airStateFixture(), TRAFFIC_NOW).overview).toEqual(airStateFixture().overview);
+    expect(mergeMaritimeState(null, maritimeStateFixture(), TRAFFIC_NOW).snapshot).toEqual(maritimeStateFixture().snapshot);
   });
 });

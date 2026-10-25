@@ -2,6 +2,7 @@
 // (spec 2026-10-03 trafics § 1, § 3) ; pur, sans réseau ni DOM. Une valeur tient sur une ligne (R1) : espace insécable entre le
 // nombre et l'unité, « n.d. » pour une valeur absente, jamais 0. Couleurs sans règle dans la spec : maquette validée (arbitrage 7).
 import type { RailAxis, RailEffect, RailGroupStats, RoadEvent, RoadEventKind, Squawk } from '../../types/index.ts';
+import { RAIL_CANCELLED_ORANGE, RAIL_CANCELLED_RED } from '../../services/traffic-levels.ts';
 import { dataMs } from '../../services/traffic-source.ts';
 import type { VigilanceLevel } from '../../services/vigilance.ts';
 import { absoluteTime } from '../fiche/kit.ts';
@@ -133,7 +134,7 @@ export function glueUnits(text: string): string {
 
 /** Trajectoires inhabituelles : clés de la partie A (tâche 6), libellés en minuscules pour la ligne « indicatif · type ». */
 export const AIR_ANOMALY_LABEL: Readonly<Record<string, string>> = {
-  holding: 'circuit d’attente', 'go-around': 'approche interrompue', 'rapid-manoeuvre': 'manœuvre brusque', 'reroute-probable': 'déroutement probable',
+  holding: 'circuit d’attente', 'go-around': 'approche interrompue', 'reroute-probable': 'déroutement probable',
 };
 
 /** Clé inconnue : reprise telle quelle (échappée par la ligne qui l'affiche). */
@@ -190,12 +191,17 @@ export function squawkPair(code: Squawk): string {
 export const SQUAWK_CAVEAT = 'code affiché par le transpondeur, non confirmé par les autorités';
 /** Puce d'une urgence, comme la pastille (spec § 3.2) : 7500 rouge, 7700 orange, 7600 jaune. */
 export const SQUAWK_LEVEL: Readonly<Record<Squawk, VigilanceLevel>> = { '7500': 'rouge', '7700': 'orange', '7600': 'jaune' };
-/** Groupe ferroviaire (axe, région) : retard moyen jaune dès 20 min, orange dès 45, rouge dès 90 ou 10 trains supprimés. */
-export function railGroupLevel(g: Pick<RailGroupStats, 'avgDelayMin' | 'cancelled'>): VigilanceLevel | 'gris' {
-  if (g.cancelled >= 10) return 'rouge';
+/**
+ * Groupe ferroviaire (axe, région) : retard moyen jaune dès 20 min, orange dès 45, rouge dès 90 ; suppressions en proportion
+ * (seuils de la pastille, 25/10/2026) : rouge dès 10 % et 10 trains supprimés, orange dès 5 % et 5 trains.
+ */
+export function railGroupLevel(g: Pick<RailGroupStats, 'avgDelayMin' | 'cancelled' | 'trains'>): VigilanceLevel | 'gris' {
+  const share = g.trains > 0 ? g.cancelled / g.trains : 0;
+  if (g.cancelled >= RAIL_CANCELLED_RED.min && share >= RAIL_CANCELLED_RED.share) return 'rouge';
   const avg = g.avgDelayMin;
   if (avg === null || !Number.isFinite(avg)) return 'gris';
-  return avg >= 90 ? 'rouge' : avg >= 45 ? 'orange' : avg >= 20 ? 'jaune' : 'vert';
+  const delay: VigilanceLevel = avg >= 90 ? 'rouge' : avg >= 45 ? 'orange' : avg >= 20 ? 'jaune' : 'vert';
+  return delay === 'rouge' || !(g.cancelled >= RAIL_CANCELLED_ORANGE.min && share >= RAIL_CANCELLED_ORANGE.share) ? delay : 'orange';
 }
 /** Train ou gare : jaune dès 15 min (seuil des grandes lignes de la spec), orange dès 45, rouge dès 90 ; supprimé rouge. */
 export function railDelayLevel(delayMin: number | null, cancelled: boolean): VigilanceLevel | 'gris' {

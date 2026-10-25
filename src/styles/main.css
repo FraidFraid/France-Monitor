@@ -14,6 +14,8 @@
   /* Trafics (spec 2026-10-03 trafics § 3) : aéroports (jauges des départs, disques de la carte), ports (jauges, route récente d'un navire) */
   --cat-airport: #5ac8fa;
   --cat-port: #30b0c7;
+  /* Natures d'événements routiers hors palette L1 (lot 2 Transports, 25/10/2026), copiées dans traffic-legend.ts pour MapLibre. */
+  --road-accident: #c026d3;
   /* Environnement (spec 2026-10-04 environnement § 2) : stations hydrométriques, feux récurrents et hors de France ; classes de l'image
      radar et des sommets d'écho, reprises des palettes du worker radar (services/radar-worker/render.py) */
   --cat-station-hydro: #64d2ff; --cat-feu-recurrent: #8e8e93; --cat-feu-etranger: #d1d1d6;
@@ -4666,6 +4668,84 @@ button.header-quality-link {
 /* Onglet Environnement (20/10/2026) : légendes cumulées côte à côte, ligne d'état (niveau, âge de la donnée) sous chaque légende. */
 #general-focus-key { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px; max-width: min(960px, calc(100vw - 32px)); }
 .ef-status { margin-top: 6px; padding-top: 5px; border-top: 1px solid #262a33; color: #a9adb8; white-space: nowrap; }
+/* Formes de la mini-légende (onglet Transports, 25/10/2026) : la forme du picto de la carte, pas seulement un rond. */
+.ef-dot--triangle { border-radius: 0; box-shadow: none; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.ef-dot--diamond { border-radius: 0; box-shadow: none; clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+.ef-dot--square { border-radius: 2px; }
+.ef-dot--line { height: 4px; width: 14px; flex-basis: 14px; border-radius: 2px; box-shadow: none; }
+.ef-dot--ring { background: transparent !important; box-shadow: inset 0 0 0 2px var(--ef-c, #fff); }
+.ef-ico { display: inline-flex; width: 14px; height: 14px; flex: 0 0 14px; }
+.ef-ico svg { width: 14px; height: 14px; }
+
+/* Points de vigilance Transports sur la carte (lots 1 et 2, 25/10/2026) : ancre pulsante à l'icône du mode, numéro, étiquette. */
+/* Calque HTML au-dessus du canevas (DeckGLMap.layoutTransportCallouts) : ancres sur les lieux, étiquettes en colonnes, traits courbes. */
+.tv-layer { position: absolute; inset: 0; pointer-events: none; z-index: 4; overflow: hidden; }
+.tv-lines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.tv-line { fill: none; stroke: var(--tv-c); stroke-width: 1.6; stroke-linecap: round; opacity: 0.9; transition: opacity 150ms;
+  filter: drop-shadow(0 0 1.5px #0a0a0f) drop-shadow(0 0 1px #0a0a0f); }
+.tv-line--rouge { --tv-c: var(--sev-red); }
+.tv-line--orange { --tv-c: var(--sev-orange); }
+.tv-line.is-hot { stroke-width: 2.4; opacity: 1; }
+.tv-pin, .tv-label { position: absolute; left: 0; top: 0; pointer-events: auto; cursor: pointer; transition: opacity 150ms; will-change: transform; }
+.tv-pin { width: 0; height: 0; }
+.tv-label { width: max-content; }
+.tv-dot { position: absolute; left: -5px; top: -5px; width: 10px; height: 10px; border-radius: 50%; background: var(--tv-c); border: 1.5px solid #0a0a0f; }
+.tv-dot::after { content: ''; position: absolute; inset: -6px; border-radius: 50%; border: 2px solid var(--tv-c); animation: tv-pulse 1.6s ease-out infinite; }
+.tv-dot--orange::after { animation-duration: 2.2s; }
+.tv-dot--rouge, .tv-mode--rouge { --tv-c: var(--sev-red); }
+.tv-dot--orange { --tv-c: var(--sev-orange); }
+@media (prefers-reduced-motion: reduce) { .tv-dot::after { animation: none; opacity: 0.6; } }
+.tv-mode { flex: none; width: 28px; height: 28px; border-radius: 50%; background: #0a0a0f; border: 2px solid var(--tv-c); color: var(--tv-c); display: flex; align-items: center; justify-content: center; }
+.tv-mode svg { width: 17px; height: 17px; stroke-width: 2.4; }
+.tv-n { display: inline; color: var(--tv-c); font-weight: 800; margin-right: 4px; font-variant-numeric: tabular-nums; }
+.tv-pin.is-dim, .tv-label.is-dim, .tv-line.is-dim { opacity: 0.2; }
+.tv-anchor { position: absolute; left: -15px; top: 50%; width: 30px; height: 30px; margin-top: -15px; border-radius: 50%; display: flex; align-items: center;
+  justify-content: center; color: #111; border: 2px solid #0a0a0f; background: var(--tv-c); }
+.tv-anchor svg { width: 17px; height: 17px; }
+.tv-anchor::after { content: ''; position: absolute; inset: -8px; border-radius: 50%; border: 2px solid var(--tv-c); animation: tv-pulse 1.6s ease-out infinite; }
+.tv-anchor--orange::after { animation-duration: 2.2s; }
+.tv-anchor--rouge, .tv-callout--rouge, .tb-num--rouge { --tv-c: var(--sev-red); }
+.tv-anchor--orange, .tv-callout--orange, .tb-num--orange { --tv-c: var(--sev-orange); }
+@keyframes tv-pulse { from { transform: scale(0.5); opacity: 0.9; } to { transform: scale(1.7); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .tv-anchor::after { animation: none; opacity: 0.6; } }
+.tv-callout { display: flex; align-items: center; gap: 8px; background: rgba(12, 12, 18, 0.95); border: 1px solid #3a3a4e;
+  border-left: 4px solid var(--tv-c); border-radius: 8px; padding: 5px 10px 5px 6px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6); max-width: 280px; color: #e8e8ec; }
+.tv-label.is-hot .tv-callout { box-shadow: 0 0 0 2px var(--tv-c), 0 6px 18px rgba(0, 0, 0, 0.6); }
+.tv-num, .tb-num { flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--tv-c); color: #111; font-weight: 800; font-size: 12px;
+  display: flex; align-items: center; justify-content: center; }
+.tv-callout b { display: block; font-size: 12.5px; line-height: 1.25; white-space: nowrap; }
+.tv-callout span:not(.tv-num):not(.tv-n):not(.tv-mode) { display: block; font-size: 11.5px; color: #9898a8; white-space: nowrap; }
+
+/* Infobulle d'un point, à côté de son étiquette : fond opaque, cause en bloc. */
+.tv-tipbox { position: absolute; left: 0; top: 0; width: 320px; pointer-events: none; background: #12121a; border: 1px solid #3a3a4e;
+  border-radius: 8px; padding: 10px 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7); z-index: 2; }
+.tv-tip { font-size: 12px; line-height: 1.45; color: #e8e8ec; border-left: 3px solid var(--tv-c); padding-left: 9px; }
+.tv-tip--rouge { --tv-c: var(--sev-red); }
+.tv-tip--orange { --tv-c: var(--sev-orange); }
+.tv-tip b { display: block; font-size: 13px; }
+.tv-tip-sub { display: block; color: #9898a8; margin-bottom: 6px; }
+.tv-tip p { margin: 0 0 5px; }
+.tv-tip em { font-style: normal; color: #9898a8; margin-right: 4px; }
+.tv-tag { font-style: normal; font-size: 10.5px; padding: 0 5px; border-radius: 4px; border: 1px solid var(--sev-yellow); color: var(--sev-yellow); white-space: nowrap; }
+.tv-tag--ok { border-color: var(--sev-green); color: var(--sev-green); }
+.tv-tip-hint { color: #9898a8; font-size: 11px; }
+
+/* En bref Transports : points numérotés (même numéro que la carte), étiquette de cause, puce de niveau des sections. */
+.tb-point { display: flex; gap: 10px; padding: 8px; margin: 0 -8px; border-radius: 8px; cursor: pointer; line-height: 1.4; }
+.tb-point:hover, .tb-point:focus-visible { background: rgba(255, 255, 255, 0.05); }
+.tb-point b { font-weight: 650; }
+.tb-point small { display: block; color: var(--text-secondary, #9898a8); font-size: 11.8px; margin-top: 2px; }
+.tb-short { color: var(--text-secondary, #9898a8); }
+.tb-who { color: #b9c3ff !important; }
+.tb-tag { display: inline-block; font-size: 10.5px; border: 1px solid #3a3a4e; border-radius: 4px; padding: 0 5px; margin-left: 4px; white-space: nowrap; }
+.tb-tag--ok { border-color: #1f5f35; color: #7ee2a0; }
+.tb-tag--verif { border-color: #6b5a1e; color: #ffd98a; }
+.tb-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 0; }
+.tb-dot--vert { background: var(--sev-green); }
+.tb-dot--jaune { background: var(--sev-yellow); }
+.tb-dot--orange { background: var(--sev-orange); }
+.tb-dot--rouge { background: var(--sev-red); }
+.tb-reason { margin: 0 0 6px; font-weight: 600; }
 
 /* Bulle unique de la carte Énergie (spec 2026-10-16 § 6) : pastille de filière, état en mots, valeurs, source. */
 .et-card { min-width: 200px; max-width: 280px; font-size: 12px; color: #e8e8ec; }
@@ -8506,6 +8586,7 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 .mk-row--off { opacity: 0.4; }
 .mk-row--off .mk-lbl { text-decoration: line-through; }
 .mk-sym { display: flex; justify-content: center; }
+.mk-tv { width: 16px; height: 16px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: #111; }
 .mk-n { min-width: 2ch; text-align: right; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .mk-key { margin: 4px 0 2px; }
 .mk-icons { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; font-size: 12.5px; }

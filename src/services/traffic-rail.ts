@@ -3,7 +3,7 @@
 import type { RailOverviewResponse, RailSituationsResponse } from '../types/index.ts';
 import { isRecord, isStringArray } from './health-surveillance.ts';
 import {
-  isNum, isNumOrNull, isStr, isStrOrNull, listOf, loadSlot, mergeSlot, numbersIn, trafficSlotStatus, type SourceSlot, type TrafficStatus,
+  expireSlot, isNum, isNumOrNull, isStr, isStrOrNull, listOf, loadSlot, mergeSlot, numbersIn, trafficSlotStatus, type SourceSlot, type TrafficStatus,
 } from './traffic-source.ts';
 
 export const RAIL_OVERVIEW_URL = '/api/transport/rail-overview';
@@ -49,8 +49,13 @@ export async function fetchRailTraffic(previous: RailTrafficState | null, now: n
 }
 
 /** Écriture d'une lecture dans l'état courant (fusion à l'écriture, S3) : une route en échec garde ses données actuelles. */
-export function mergeRailTraffic(current: RailTrafficState | null, incoming: RailTrafficState): RailTrafficState {
-  return { overview: mergeSlot(current?.overview, incoming.overview), situations: mergeSlot(current?.situations, incoming.situations) };
+export function mergeRailTraffic(current: RailTrafficState | null, incoming: RailTrafficState, now: number): RailTrafficState {
+  const overview = mergeSlot(current?.overview, incoming.overview);
+  const situations = mergeSlot(current?.situations, incoming.situations);
+  return {
+    overview: expireSlot(overview, overview.data?.updatedAt, 'SNCF', now),
+    situations: expireSlot(situations, situations.data?.at, 'SIRI SX', now),
+  };
 }
 
 /** Panneau des sources : « SNCF » (dernière mise à jour des perturbations) ou « SIRI SX » (réponse du flux). */

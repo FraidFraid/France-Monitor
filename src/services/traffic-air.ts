@@ -4,7 +4,7 @@ import type { AirOverviewResponse } from '../types/index.ts';
 import { isRecord, isStringArray } from './health-surveillance.ts';
 import { isTrafficDataLate } from './traffic-levels.ts';
 import {
-  dataMs, isBool, isNum, isNumOrNull, isStr, isStrOrNull, listOf, loadSlot, mergeSlot, numbersIn, trafficSlotStatus, type SourceSlot, type TrafficStatus,
+  dataMs, expireSlot, isBool, isNum, isNumOrNull, isStr, isStrOrNull, listOf, loadSlot, mergeSlot, numbersIn, trafficSlotStatus, type SourceSlot, type TrafficStatus,
 } from './traffic-source.ts';
 
 export const AIR_OVERVIEW_URL = '/api/traffic/air-overview';
@@ -39,8 +39,9 @@ export async function fetchAirOverview(previous: AirOverviewState | null, now: n
 }
 
 /** Écriture d'une lecture dans l'état courant (fusion à l'écriture, S3) : un échec garde l'aperçu actuel et sa date. */
-export function mergeAirOverview(current: AirOverviewState | null, incoming: AirOverviewState): AirOverviewState {
-  return { overview: mergeSlot(current?.overview, incoming.overview) };
+export function mergeAirOverview(current: AirOverviewState | null, incoming: AirOverviewState, now: number): AirOverviewState {
+  const overview = mergeSlot(current?.overview, incoming.overview);
+  return { overview: expireSlot(overview, overview.data?.at, 'OpenSky', now) };
 }
 
 /** Panneau des sources (« Trafic aérien ») : date de l'état OpenSky. */

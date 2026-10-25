@@ -13,7 +13,7 @@ import {
   barRow, emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, valueHtml, type LayerHeadModel, type LayerView,
 } from './frame.ts';
 import {
-  CAT_AIRPORT, SQUAWK_LEVEL, SQUAWK_WORD, TRAFFIC_THEME, squawkPair, anomalyLabel, clockOf, coordText, dataMs, emptyOrDown, formatMeters, glueUnits, note,
+  CAT_AIRPORT, SQUAWK_LEVEL, SQUAWK_WORD, TRAFFIC_THEME, squawkPair, AIR_ANOMALY_LABEL, anomalyLabel, clockOf, coordText, dataMs, emptyOrDown, formatMeters, glueUnits, note,
   plural, readErrors, sourceDown, stamp,
 } from './traffic-format.ts';
 
@@ -249,14 +249,15 @@ function volumeSection(o: AirOverviewResponse | null, now: number, open: OpenFn)
 function anomaliesSection(o: AirOverviewResponse | null, now: number, open: OpenFn): FicheSection {
   const base = { id: 'anomalies', title: 'Trajectoires inhabituelles', collapsible: true, open: open('anomalies', false) };
   if (!o) return { ...base, summary: 'n.d.', html: sourceDown('OpenSky') };
-  const list = [...o.anomalies].sort((a, b) => (dataMs(b.at) ?? 0) - (dataMs(a.at) ?? 0));
+  // Types connus seulement : un ancien relevé peut encore porter « rapid-manoeuvre », retirée le 24/10/2026 (bruit).
+  const list = o.anomalies.filter((a) => a.kind in AIR_ANOMALY_LABEL).sort((a, b) => (dataMs(b.at) ?? 0) - (dataMs(a.at) ?? 0));
   const rows = list.slice(0, MAX_ANOMALIES).map((a) => listRow({
     text: `${a.callsign ?? 'indicatif inconnu'} · ${anomalyLabel(a.kind)}`, value: clockOf(a.at, now), level: 'gris', note: a.airport ? `près de ${a.airport}` : null,
   })).join('');
   const body = list.length === 0 ? emptyOrDown(o.errors, 'Aucune trajectoire inhabituelle détectée.', 'détection des trajectoires') : rows;
   return {
     ...base, summary: escapeHtml(list.length === 0 ? 'aucune' : plural(list.length, 'détection automatique', 'détections automatiques')),
-    html: body + note('Détection automatique (circuits d’attente, approches interrompues, manœuvres brusques, déroutements probables) : une information, jamais une alerte ; elle ne colore pas la pastille.'),
+    html: body + note('Détection automatique (circuits d’attente, approches interrompues, déroutements probables) : une information, jamais une alerte ; elle ne colore pas la pastille.'),
   };
 }
 
@@ -283,7 +284,7 @@ function methodSection(o: AirOverviewResponse | null, error: string | null, now:
       + 'un aéronef au sol n’est jamais compté.')
     + note(`Retard : états au-delà de 10${NBSP}min ; départs au-delà de 4${NBSP}h après la fin de leur fenêtre. Une donnée en retard perd ses couleurs.`)
     + note('Collecte du serveur toutes les 2 minutes, départs de 8 aéroports toutes les 4 heures ; si les crédits restants passent sous 500, les départs sont suspendus avant les états.')
-    + note('Carte : avions nets à tous les zooms, colorés selon l’altitude (cinq tranches, gris quand l’altitude n’est pas transmise), sans libellé d’indicatif (indicatif au survol) ; urgences aux couleurs de la pastille (7500 rouge, 7700 orange, 7600 jaune, au-dessus du territoire ou de ses approches et confirmées ; gris sinon) avec leur indicatif ; aéroports dimensionnés par leurs départs.')
+    + note('Carte : avions bleu ciel orientés selon le cap, nets à tous les zooms, plus grands et plus discrets en altitude (très estompés quand l’altitude n’est pas transmise), en retrait dans l’onglet Transports tant que la pastille Aérien n’est pas mise en avant, sans libellé d’indicatif (indicatif au survol) ; urgences aux couleurs de la pastille (7500 rouge, 7700 orange, 7600 jaune, au-dessus du territoire ou de ses approches et confirmées ; gris sinon) avec leur indicatif ; aéroports dimensionnés par leurs départs.')
     + (devNotice ? note('Serveur de développement : les départs ne sont pas lus (AIR_DEV_DEPARTURES=1 pour les lire).') : '')
     + readErrors(o ? realErrors(o) : []);
   return {

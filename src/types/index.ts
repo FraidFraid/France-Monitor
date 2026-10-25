@@ -835,7 +835,7 @@ export interface AirTrafficFlight {
 }
 
 export interface AirTrafficAnomaly {
-  type: 'holding' | 'go-around' | 'rapid-manoeuvre' | 'reroute-probable';
+  type: 'holding' | 'go-around' | 'reroute-probable';
   label: string;
   severity: ThreatLevel;
   details?: string;

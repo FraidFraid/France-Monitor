@@ -12,16 +12,17 @@ import type { TrafficFlowSegment } from '../../services/traffic-road.ts';
 import { LEVEL_RANK, levelHex, type VigilanceLevel } from '../../services/vigilance.ts';
 import { NBSP, frNumber } from '../layer-panel/format.ts';
 import {
-  RAIL_EFFECT_WORD, ROAD_EVENT_LEVEL, ROAD_KIND_ORDER, SQUAWK_LEVEL, SQUAWK_WORD, anomalyLabel, clockOf, coordText, fold, formatCount, formatKm, formatKmh, formatMeters,
+  RAIL_EFFECT_WORD, ROAD_KIND_ORDER, SQUAWK_LEVEL, SQUAWK_WORD, anomalyLabel, clockOf, coordText, fold, formatCount, formatKm, formatKmh, formatMeters,
   formatMinutes, jamLevel, plural, railDelayLevel,
 } from '../layer-panel/traffic-format.ts';
-import { CAT_AIRPORT_HEX, CAT_PORT_HEX, TRAFFIC_NEUTRAL_HEX, isDrawnTraficolorSection } from '../layer-panel/traffic-legend.ts';
+import { CAT_AIRPORT_HEX, CAT_PORT_HEX, ROAD_EVENT_STYLE, TRAFFIC_NEUTRAL_HEX, isDrawnTraficolorSection } from '../layer-panel/traffic-legend.ts';
 import {
   LYR_AIRPORTS, LYR_AIR_EMERGENCIES, LYR_AIR_EMERGENCY_LABEL, LYR_AIS_SIGNALS, LYR_ANCHORAGES, LYR_RAIL_STATION,
-  LYR_RAIL_STATION_LABEL, LYR_ROAD_EVENTS, LYR_ROAD_JAMS, LYR_ROAD_JAM_POINTS, LYR_ROAD_SECTIONS, LYR_TRAIN_STATIONS, SRC_AIRPORTS, SRC_AIR_EMERGENCIES,
+  LYR_RAIL_STATION_ICON, LYR_RAIL_STATION_LABEL, LYR_ROAD_EVENT_BADGES, LYR_ROAD_EVENTS, LYR_ROAD_JAMS, LYR_ROAD_JAM_POINTS, LYR_ROAD_SECTIONS, LYR_TRAIN_STATIONS, SRC_AIRPORTS, SRC_AIR_EMERGENCIES,
   SRC_AIS_SIGNALS, SRC_ANCHORAGES, SRC_RAIL_STATIONS, SRC_ROAD_EVENTS, SRC_ROAD_JAMS, SRC_ROAD_SECTIONS,
 } from './constants.ts';
 import { escapeHtml } from './format-utils.ts';
+import type { IconName } from '../shared/icons.ts';
 
 type Fc<G extends GeoJSON.Geometry = GeoJSON.Geometry> = GeoJSON.FeatureCollection<G>;
 type Section = RoadNationalResponse['sections'][number];
@@ -83,18 +84,28 @@ function roadEventBody(e: RoadEvent, late: boolean, now: number): string {
     + (late ? note('Données DIR en retard : couleur retirée.') : '');
 }
 
-/** Événements DIR en cours géolocalisés (les longues durées restent dans le panneau, T2). */
+/** Image SDF du pictogramme d'une pastille Trafics, route ou gare (enregistrée par DeckGLMap, teintée par `icon-color`). */
+export function trafficIconImage(icon: IconName): string {
+  return `traffic-road-${icon}`;
+}
+
+/**
+ * Événements DIR en cours géolocalisés (les longues durées restent dans le panneau, T2) : une pastille ronde à pictogramme par
+ * nature (ROAD_EVENT_STYLE), plus grande pour accidents, coupures et météo ; donnée en retard : teinte neutre.
+ */
 export function roadEventFeatures(national: RoadNationalResponse | null, now: number): Fc<GeoJSON.Point> {
   if (!national) return fc([]);
   const late = isTrafficDataLate('dir', national.publishedAt, now);
   return fc(national.events.flatMap((e): GeoJSON.Feature<GeoJSON.Point>[] => {
     if (e.lat === null || e.lon === null) return [];
-    const front = e.kind === 'accident' || e.kind === 'closure';
+    const style = ROAD_EVENT_STYLE[e.kind];
+    const front = e.kind === 'accident' || e.kind === 'closure' || e.kind === 'weather';
     return [{
       type: 'Feature', geometry: point(e.lon, e.lat),
       properties: {
-        id: e.id, color: trafficHex(ROAD_EVENT_LEVEL[e.kind], late), radius: front ? 7 : 5, sortKey: roadEventSortKey(e.kind),
-        body: roadEventBody(e, late, now),
+        id: e.id, color: late ? TRAFFIC_NEUTRAL_HEX : style.hex, glyph: late ? '#0a0a0f' : style.glyph, icon: trafficIconImage(style.icon),
+        front: front ? 1 : 0,
+        sortKey: roadEventSortKey(e.kind), body: roadEventBody(e, late, now),
       },
     }];
   }));
@@ -290,7 +301,11 @@ export function railOverviewLate(overview: RailOverviewResponse | null, now: num
   return overview !== null && isTrafficDataLate('sncf', overview.updatedAt, now);
 }
 
-/** Gares des trains perturbés en cours : couleur du plus fort retard à l'arrêt (supprimé rouge) ; retard inconnu non dessiné. */
+/**
+ * Gares des trains perturbés en cours : couleur du plus fort retard à l'arrêt (supprimé rouge) à partir d'orange ; en dessous, petit
+ * point neutre (l'anormal d'abord, lot 2 Transports du 25/10/2026 : le jaune dès 15 min coloriait toute la France) ; retard inconnu
+ * non dessiné.
+ */
 export function railStationFeatures(overview: RailOverviewResponse | null, now: number): Fc<GeoJSON.Point> {
   if (!overview) return fc([]);
   const late = railOverviewLate(overview, now);
@@ -311,10 +326,31 @@ export function railStationFeatures(overview: RailOverviewResponse | null, now: 
   return fc([...stations.entries()].map(([key, st]): GeoJSON.Feature<GeoJSON.Point> => ({
     type: 'Feature', geometry: point(st.lon, st.lat),
     properties: {
-      id: key, name: st.name, color: trafficHex(st.level, late), radius: 4 + LEVEL_RANK[st.level] * 2, sortKey: LEVEL_RANK[st.level],
+      // Pastille train (25/10/2026) : orange et rouge pleins à icône sombre ; jaune (15 à 44 min) en fond sombre, anneau et icône
+      // jaunes ; train à l'heure : petit point neutre, sans icône (ce n'est pas une perturbation).
+      id: key, name: st.name, color: st.level === 'vert' ? TRAFFIC_NEUTRAL_HEX : trafficHex(st.level, late),
+      fill: LEVEL_RANK[st.level] >= LEVEL_RANK.orange ? trafficHex(st.level, late) : st.level === 'vert' ? TRAFFIC_NEUTRAL_HEX : '#0a0a0f',
+      glyph: LEVEL_RANK[st.level] >= LEVEL_RANK.orange ? '#0a0a0f' : trafficHex(st.level, late),
+      icon: st.level !== 'vert',
+      radius: LEVEL_RANK[st.level] >= LEVEL_RANK.orange ? 4 + LEVEL_RANK[st.level] * 2 : st.level === 'vert' ? 2.5 : 6.5, sortKey: LEVEL_RANK[st.level],
+      major: LEVEL_RANK[st.level] >= LEVEL_RANK.orange,
+      tier: STATION_TIER[st.level],
       body: stationBody(st, late, overview.updatedAt, now),
     },
   })));
+}
+
+/** Palier d'affichage d'une gare (railStationTierMax) : 0 rouge, 1 orange, 2 jaune, 3 trains à l'heure. */
+const STATION_TIER: Readonly<Record<string, number>> = { rouge: 0, orange: 1, jaune: 2, vert: 3 };
+
+/**
+ * « Étiquettes d'abord » (25/10/2026) : palier le plus haut des gares dessinées. À l'échelle de la France, les gares rouges seules ;
+ * orange à partir d'un zoom régional (7,5) ; jaunes et trains à l'heure de près (zoom 9) ou quand la pastille Ferroviaire est
+ * mise en avant. Rien n'est retiré : tout reparaît en zoomant ou en allumant la pastille.
+ */
+export function railStationTierMax(zoom: number, railFocused: boolean): number {
+  if (railFocused || zoom >= 9) return 3;
+  return zoom >= 7.5 ? 1 : 0;
 }
 
 /** Trajet d'un train choisi dans le panneau : ligne par ses arrêts, départ et arrivée, couleur de son retard. */
@@ -418,8 +454,22 @@ export const TRAFFIC_LAYERS: readonly LayerSpecification[] = [
     paint: { 'circle-color': TRAFFIC_COLOR, 'circle-radius': 4, 'circle-stroke-width': 1, 'circle-stroke-color': '#111111' },
   },
   {
-    id: LYR_ROAD_EVENTS, type: 'circle', source: SRC_ROAD_EVENTS, layout: { 'circle-sort-key': TRAFFIC_SORT, visibility: 'none' },
-    paint: { 'circle-color': TRAFFIC_COLOR, 'circle-radius': TRAFFIC_RADIUS, 'circle-stroke-width': 1.5, 'circle-stroke-color': '#111111', 'circle-opacity': 0.95 },
+    // Pastille : 18 px de diamètre à l'échelle de la France, 22 px de près ; un peu plus petite pour les événements secondaires.
+    id: LYR_ROAD_EVENT_BADGES, type: 'circle', source: SRC_ROAD_EVENTS, layout: { visibility: 'none', 'circle-sort-key': TRAFFIC_SORT },
+    paint: {
+      'circle-color': TRAFFIC_COLOR,
+      'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, ['case', ['==', ['get', 'front'], 1], 9, 7.5], 10, ['case', ['==', ['get', 'front'], 1], 11, 9.5]],
+      'circle-stroke-width': 1.5, 'circle-stroke-color': '#0a0a0f',
+    },
+  },
+  {
+    id: LYR_ROAD_EVENTS, type: 'symbol', source: SRC_ROAD_EVENTS,
+    layout: {
+      'icon-image': ['get', 'icon'],
+      'icon-size': ['interpolate', ['linear'], ['zoom'], 5, ['case', ['==', ['get', 'front'], 1], 0.46, 0.38], 10, ['case', ['==', ['get', 'front'], 1], 0.56, 0.48]],
+      'icon-allow-overlap': true, 'icon-ignore-placement': true, 'symbol-sort-key': TRAFFIC_SORT, visibility: 'none',
+    },
+    paint: { 'icon-color': ['coalesce', ['get', 'glyph'], '#ffffff'], 'icon-opacity': 1 },
   },
   {
     id: LYR_AIRPORTS, type: 'circle', source: SRC_AIRPORTS, layout: { visibility: 'none' },
@@ -436,7 +486,19 @@ export const TRAFFIC_LAYERS: readonly LayerSpecification[] = [
   },
   {
     id: LYR_RAIL_STATION, type: 'circle', source: SRC_RAIL_STATIONS, layout: { 'circle-sort-key': TRAFFIC_SORT, visibility: 'none' },
-    paint: { 'circle-color': TRAFFIC_COLOR, 'circle-radius': TRAFFIC_RADIUS, 'circle-stroke-width': 1.5, 'circle-stroke-color': '#1a1a2e', 'circle-opacity': 0.95 },
+    paint: {
+      'circle-color': ['coalesce', ['get', 'fill'], TRAFFIC_COLOR], 'circle-radius': TRAFFIC_RADIUS, 'circle-opacity': 0.95,
+      'circle-stroke-width': ['case', ['get', 'major'], 1.5, ['get', 'icon'], 1.8, 0.8], 'circle-stroke-color': ['case', ['get', 'major'], '#1a1a2e', ['get', 'icon'], TRAFFIC_COLOR, '#1a1a2e'],
+    },
+  },
+  {
+    // Icône train dans chaque pastille de gare : se lit comme un incident ferroviaire, comme l'icône des étiquettes.
+    id: LYR_RAIL_STATION_ICON, type: 'symbol', source: SRC_RAIL_STATIONS, filter: ['==', ['get', 'icon'], true],
+    layout: {
+      'icon-image': trafficIconImage('train-front'), 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'symbol-sort-key': TRAFFIC_SORT, visibility: 'none',
+      'icon-size': ['interpolate', ['linear'], ['get', 'radius'], 6.5, 0.32, 8, 0.4, 10, 0.5],
+    },
+    paint: { 'icon-color': ['coalesce', ['get', 'glyph'], '#0a0a0f'] },
   },
   {
     id: LYR_RAIL_STATION_LABEL, type: 'symbol', source: SRC_RAIL_STATIONS, minzoom: 8,
@@ -455,9 +517,9 @@ export const TRAFFIC_LAYERS: readonly LayerSpecification[] = [
 
 /** Couches MapLibre de chaque couche Trafics (visibilité, survol de légende). */
 export const TRAFFIC_LAYER_KEYS: Readonly<Record<TrafficMapLayer, readonly string[]>> = {
-  trafficRoad: [LYR_ROAD_SECTIONS, LYR_ROAD_JAMS, LYR_ROAD_JAM_POINTS, LYR_ROAD_EVENTS],
+  trafficRoad: [LYR_ROAD_SECTIONS, LYR_ROAD_JAMS, LYR_ROAD_JAM_POINTS, LYR_ROAD_EVENT_BADGES, LYR_ROAD_EVENTS],
   trafficAir: [LYR_AIRPORTS, LYR_AIR_EMERGENCIES, LYR_AIR_EMERGENCY_LABEL],
-  trafficRail: [LYR_RAIL_STATION, LYR_RAIL_STATION_LABEL],
+  trafficRail: [LYR_RAIL_STATION, LYR_RAIL_STATION_ICON, LYR_RAIL_STATION_LABEL],
   trafficMaritime: [LYR_ANCHORAGES, LYR_AIS_SIGNALS],
 };
 
@@ -471,7 +533,7 @@ export const TRAFFIC_JAM_LAYERS: readonly string[] = [LYR_ROAD_JAMS, LYR_ROAD_JA
 export const TRAFFIC_STROKE_DIM_LAYERS: readonly string[] = [LYR_AIRPORTS, LYR_AIR_EMERGENCIES, LYR_ANCHORAGES, LYR_AIS_SIGNALS, LYR_TRAIN_STATIONS];
 
 const HOVERABLE: ReadonlySet<string> = new Set([
-  LYR_ROAD_SECTIONS, LYR_ROAD_JAMS, LYR_ROAD_JAM_POINTS, LYR_ROAD_EVENTS, LYR_AIRPORTS, LYR_AIR_EMERGENCIES, LYR_RAIL_STATION, LYR_ANCHORAGES,
+  LYR_ROAD_SECTIONS, LYR_ROAD_JAMS, LYR_ROAD_JAM_POINTS, LYR_ROAD_EVENT_BADGES, LYR_ROAD_EVENTS, LYR_AIRPORTS, LYR_AIR_EMERGENCIES, LYR_RAIL_STATION, LYR_ANCHORAGES,
   LYR_AIS_SIGNALS,
 ]);
 

@@ -162,8 +162,12 @@ describe('railLevel (§ 3.3)', () => {
     expect(railLevel(rail([group('Nord (Paris Nord)', 2, 120)])).level).toBe('vert');
     expect(railLevel(rail([], [group('Occitanie', 3, 90)])).level).toBe('rouge');
   });
-  it('10 trains supprimés en cours : rouge ; 15 trains grandes lignes à 15 min : jaune', () => {
-    expect(railLevel(rail([group('Province, transversales', 21, 23.6, 6)], [group('Grand Est', 8, 11.2, 4)]))).toEqual({ level: 'rouge', reason: '10 trains supprimés en cours' });
+  it('suppressions en proportion des trains suivis : 10 % et 10 trains rouge, 5 % et 5 trains orange ; 15 grandes lignes à 15 min : jaune', () => {
+    expect(railLevel(rail([group('Province, transversales', 21, 23.6, 6)], [group('Grand Est', 8, 11.2, 4)]))).toEqual({ level: 'rouge', reason: '10 trains supprimés en cours (34\u00a0% des trains suivis)' });
+    // 24/10/2026, samedi soir ordinaire : 11 supprimés sur 318 trains suivis (3 %), plus rouge.
+    expect(railLevel(rail([group('Province, transversales', 300, 12, 11)], [group('Grand Est', 18, 10)])).level).toBe('vert');
+    expect(railLevel(rail([group('Province, transversales', 90, 12, 5)])).level).toBe('orange');
+    expect(railLevel(rail([group('Province, transversales', 3, 12, 1)])).level).toBe('vert');
     expect(railLevel(rail([group('Province, transversales', 21, 23.6)], [], 15))).toEqual({ level: 'jaune', reason: '15 trains grandes lignes à 15 min ou plus' });
     expect(railLevel(rail([], [], 14)).level).toBe('vert');
   });

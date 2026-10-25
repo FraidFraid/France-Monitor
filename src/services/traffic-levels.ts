@@ -140,20 +140,37 @@ export function worstGroup(groups: readonly RailGroupStats[]): RailGroupStats | 
   return worst;
 }
 
+/** Part des trains supprimés (0 à 1) parmi les trains suivis en cours (axes et régions, disjoints) ; aucun train suivi : null. */
+export function railCancelledShare(groups: readonly Pick<RailGroupStats, 'trains' | 'cancelled'>[]): number | null {
+  const trains = groups.reduce((sum, g) => sum + g.trains, 0);
+  return trains > 0 ? groups.reduce((sum, g) => sum + g.cancelled, 0) / trains : null;
+}
+
+/**
+ * Trains supprimés, en proportion (lot 2 Transports, 25/10/2026 : 11 suppressions sur 318 trains suivis un samedi soir ordinaire
+ * passaient le rail au rouge avec l'ancien seuil absolu de 10) : rouge dès 10 % des trains suivis et au moins 10 trains, orange dès
+ * 5 % et au moins 5 trains. Le plancher en nombre évite qu'un relevé creux (3 trains suivis, 1 supprimé) colore.
+ */
+export const RAIL_CANCELLED_RED = { share: 0.1, min: 10 } as const;
+export const RAIL_CANCELLED_ORANGE = { share: 0.05, min: 5 } as const;
+
 /**
  * Pastille Réseau ferroviaire (§ 3.3) : rouge si un axe ou une région d'au moins 3 trains a 90 min de retard
- * moyen ou plus, ou si au moins 10 trains sont supprimés en cours ; orange dès 45 min ; jaune si au moins
- * 15 trains grandes lignes ont 15 min ou plus ; vert sinon ; n.d. sans données SNCF.
+ * moyen ou plus, ou si les suppressions atteignent le seuil rouge (RAIL_CANCELLED_RED) ; orange dès 45 min ou au seuil orange ;
+ * jaune si au moins 15 trains grandes lignes ont 15 min ou plus ; vert sinon ; n.d. sans données SNCF.
  */
 export function railLevel(r: RailOverviewResponse): LevelVerdict {
   if (r.updatedAt === null) return { level: 'nd', reason: 'API SNCF indisponible' };
   const groups = [...r.axes, ...r.regions];
   const cancelled = groups.reduce((sum, g) => sum + g.cancelled, 0);
+  const share = railCancelledShare(groups) ?? 0;
   const worst = worstGroup(groups);
   const worstText = worst ? `retard moyen de ${Math.round(worst.avgDelayMin ?? 0)} min : ${worst.label} (${worst.trains} trains)` : '';
+  const cancelledText = `${cancelled} trains supprimés en cours (${Math.round(share * 100)}\u00a0% des trains suivis)`;
   if (worst && (worst.avgDelayMin ?? 0) >= 90) return { level: 'rouge', reason: worstText };
-  if (cancelled >= 10) return { level: 'rouge', reason: `${cancelled} trains supprimés en cours` };
+  if (cancelled >= RAIL_CANCELLED_RED.min && share >= RAIL_CANCELLED_RED.share) return { level: 'rouge', reason: cancelledText };
   if (worst && (worst.avgDelayMin ?? 0) >= 45) return { level: 'orange', reason: worstText };
+  if (cancelled >= RAIL_CANCELLED_ORANGE.min && share >= RAIL_CANCELLED_ORANGE.share) return { level: 'orange', reason: cancelledText };
   if (r.longDistance.delayed15 >= 15) return { level: 'jaune', reason: `${r.longDistance.delayed15} trains grandes lignes à 15 min ou plus` };
   return { level: 'vert', reason: 'aucun axe ni région fortement retardé' };
 }

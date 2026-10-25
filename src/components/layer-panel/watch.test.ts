@@ -43,7 +43,26 @@ describe('Vue générale dynamique (12/10/2026)', () => {
     expect(WATCHED_LAYERS).toEqual([
       'environmental', 'floods', 'fires', 'earthquakes', 'airQuality', 'drought', 'outagesElec', 'outagesTelecom', 'outagesInternet',
       'outagesCloud', 'powerGrid', 'nuclearFleet', 'oilNetwork', 'cyber', 'military', 'health', 'disasters',
+      'trafficRail', 'trafficRoad', 'trafficAir', 'trafficMaritime',
     ]);
+  });
+
+  it('Trafics (lot 1 Transports, 25/10/2026) : niveau de la pastille de chaque panneau ; donnée absente ou périmée : n.d.', () => {
+    const none = { data: null, loaded: false };
+    const read = { data: null, loaded: true };
+    const rail = {
+      updatedAt: '2026-10-12T07:58:00Z', longDistance: { active: 60, delayed15: 2 }, topDelays: [], trains: [], errors: [],
+      axes: [{ key: 'atlantique', label: 'Atlantique', trains: 6, avgDelayMin: 95, maxDelayMin: 300, cancelled: 0, reduced: 0, detour: 0 }], regions: [],
+    };
+    const input: GeneralWatchInput = {
+      vigilance: none, floods: none, fires: none, earthquakes: none, airQuality: none, telecom: none, ecowatt: none, nuclear: none,
+      cyber: none, military: none, fuel: none, health: none, power: none, internet: none, cloud: none, drought: none,
+      traffic: { road: read, air: none, rail: { data: rail, loaded: true }, maritime: none },
+      gnss: null, now: NOW,
+    };
+    expect([...watchLevels(input)]).toEqual([['trafficRoad', 'nd'], ['trafficRail', 'rouge']]);
+    // Rouge : la couche entre dans la Vue générale ; n.d. : non.
+    expect(generalWatch(watchLevels(input)).map((e) => e.key)).toEqual(['trafficRail', 'environmental', 'floods']);
   });
 });
 

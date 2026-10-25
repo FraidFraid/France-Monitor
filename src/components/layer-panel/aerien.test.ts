@@ -110,6 +110,12 @@ describe('vue Trafic aérien (spec 2026-10-03 trafics § 3.2)', () => {
     expect(visibleText(h)).toContain('une information, jamais une alerte');
     expect(h).not.toMatch(/fmk-dot--/);
   });
+  it('« manœuvre brusque » retirée (24/10/2026, bruit) : un ancien relevé qui la porte encore ne l’affiche ni ne la compte', () => {
+    const old = withOverview((o) => { o.anomalies.push({ callsign: 'WZZ116', kind: 'rapid-manoeuvre', airport: null, at: paris('14:55') }); });
+    const s = view({ overview: old }).sections.find((x) => x.id === 'anomalies');
+    expect(s?.summary).toBe('3 détections automatiques');
+    expect(visibleText(s?.html ?? '')).not.toMatch(/WZZ116|rapid-manoeuvre|brusque/);
+  });
   it('méthode et sources : sources datées, zone suivie (T1), règle de la pastille, retards, crédits', () => {
     const t = visibleText(sectionOf('method')?.html ?? '');
     for (const part of ['états de 15:09', 'fenêtre de 13:09 à 15:09', 'Beauvais-Tillé 14:55', 'Bordeaux 15:00', '2\u202F140 restants',

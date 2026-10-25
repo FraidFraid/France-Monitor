@@ -11,6 +11,7 @@ import type { FicheSection } from '../fiche/parts.ts';
 import { emptyLine, listRow, valueHtml, type LayerHeadModel, type LayerView } from './frame.ts';
 import { formatAge } from './environment-format.ts';
 import type { WatchLevel } from './watch.ts';
+import { transportBriefSections, transportLead, transportNoteLines, type TransportBriefData } from './transport-brief.ts';
 
 export const THEME_BRIEF_TITLE = 'En bref';
 type OpenFn = (sectionId: string, byDefault: boolean) => boolean;
@@ -30,6 +31,8 @@ export interface ThemeBriefInput {
   /** Passages de niveau des pastilles de l'onglet pendant la session. */
   changes: readonly ThemeBriefChange[];
   eventsStatus: EventsStatus | null;
+  /** Onglet Transports (lots 1 et 2, 25/10/2026) : points de vigilance numérotés, sections par mode, écart à la normale. */
+  transport?: TransportBriefData;
   now: number;
   open: OpenFn;
 }
@@ -181,6 +184,22 @@ export function buildThemeBriefView(input: ThemeBriefInput): LayerView {
   const level = themeBriefLevel(input);
   const copy = '<div class="fiche-actions eb-actions"><button type="button" class="fiche-action" data-copy-note>Copier pour une note</button>'
     + '<span class="eb-copied" aria-live="polite"></span></div>';
+  const transport = input.transport;
+  if (transport) {
+    const points = transport.points;
+    return {
+      head: {
+        theme: input.themeName, kind: 'Synthèse', title: THEME_BRIEF_TITLE, level,
+        figure: points.length === 0 ? null : { value: String(points.length), caption: points.length > 1 ? 'points de vigilance' : 'point de vigilance', level: points[0].level },
+        status: [], lead: transportLead(transport),
+      },
+      sections: [
+        ...transportBriefSections(transport, input.now, input.open), attentionSection(input), pastillesSynthesisSection(input.pastilles, input.open),
+        itemsSection(input), changesSection(input),
+      ],
+      bodyHtml: copy,
+    };
+  }
   return {
     head: {
       theme: input.themeName, kind: 'Synthèse', title: THEME_BRIEF_TITLE, level,
@@ -199,6 +218,7 @@ export function themeBriefNoteText(input: ThemeBriefInput): string {
   const lines = [`${input.themeName}, point de situation du ${at}`];
   const level = themeBriefLevel(input);
   if (level && level !== 'nd') lines.push(`Niveau de l’onglet : ${levelLabel(level).toLowerCase()}.`);
+  if (input.transport) lines.push('', `L’essentiel : ${transportLead(input.transport)}`, '', ...transportNoteLines(input.transport));
   const rows = themeAttention(input);
   lines.push('', 'Ce qui demande attention :');
   if (rows.length === 0) lines.push('- rien en orange ni en rouge.');

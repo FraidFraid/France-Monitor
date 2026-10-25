@@ -43,6 +43,19 @@ export function mergeSlot<T>(current: SourceSlot<T> | null | undefined, incoming
   return { data: current.data, error: incoming.error, fetchedAt: current.fetchedAt };
 }
 
+/** Au-delà de 6 h après la date de sa donnée, une source Trafics est périmée (lot 3 Transports, 24/10/2026). */
+export const TRAFFIC_EXPIRED_AFTER_MS = 6 * 60 * 60_000;
+
+/**
+ * Donnée périmée : retirée (plus dessinée ni comptée), la source passe « indisponible » et dit depuis quand. Évite qu'un cache serveur
+ * figé (clé TomTom refusée le 15/10/2026, bouchons de 9 jours dessinés en gris) passe pour une donnée. Date absente : inchangée.
+ */
+export function expireSlot<T>(slot: SourceSlot<T>, dataDate: string | null | undefined, name: string, now: number): SourceSlot<T> {
+  const ms = dataMs(dataDate);
+  if (slot.data === null || ms === null || now - ms <= TRAFFIC_EXPIRED_AFTER_MS) return slot;
+  return { data: null, error: `${name} : aucune donnée récente depuis le ${absoluteTime(ms, now, 'fr', { withDate: true }).replace(' ', '\u00a0')}`, fetchedAt: slot.fetchedAt };
+}
+
 // ─── Petits prédicats de forme, partagés par les gardes des quatre services ───
 
 export const isStr = (v: unknown): v is string => typeof v === 'string';

@@ -158,7 +158,8 @@ describe('MaritimePanel', () => {
     p.show(null);
     expect(c.textContent).toContain('Chargement des données…');
     const read = await fetchMaritimeSnapshot(null, 'wss://www.francemonitor.com/relay', Date.now());
-    p.update(mergeMaritimeState(null, read));
+    // Fusion à l'heure de la donnée de la fixture (une donnée de plus de 6 h serait périmée : expireSlot).
+    p.update(mergeMaritimeState(null, read, Date.parse(maritimeSnapshotFixture().lastMessageAt ?? '')));
     expect(f).toHaveBeenCalledWith('https://www.francemonitor.com/relay/snapshot', expect.anything());
     expect(c.textContent).not.toContain('Chargement des données…');
     expect(c.querySelector('.lp-figure b')?.textContent).toBe('1\u202F196');

@@ -15,6 +15,7 @@ export class ThemeBriefPanel {
   private onClose?: () => void;
   private onOpenPastille?: (key: keyof MapLayers) => void;
   private onSelectWork?: (key: string) => void;
+  private onFocusPoint?: (lon: number, lat: number) => void;
   private data: ThemeBriefData | null = null;
   private clickCleanup: (() => void) | null = null;
   private readonly storage = safeStorage();
@@ -32,6 +33,14 @@ export class ThemeBriefPanel {
     const onClick = (e: Event): void => {
       const t = e.target as HTMLElement;
       if (t.closest('[data-copy-note]')) { void this.copyNote(); return; }
+      // Point de vigilance Transports : la carte se centre dessus.
+      const point = t.closest<HTMLElement>('.tb-point[data-lon]');
+      if (point) {
+        const lon = Number(point.dataset['lon']);
+        const lat = Number(point.dataset['lat']);
+        if (Number.isFinite(lon) && Number.isFinite(lat)) this.onFocusPoint?.(lon, lat);
+        return;
+      }
       const pastille = t.closest<HTMLElement>('.lp-row.is-link')?.dataset['pastille'];
       if (pastille) { this.onOpenPastille?.(pastille as keyof MapLayers); return; }
       const key = t.closest<HTMLElement>('.lp-row.is-link')?.dataset['work'];
@@ -45,6 +54,8 @@ export class ThemeBriefPanel {
   /** Ligne de la synthèse des pastilles : le panneau de la pastille s'ouvre. */
   setOnOpenPastille(handler: (key: keyof MapLayers) => void): void { this.onOpenPastille = handler; }
   setOnSelectWork(handler: (key: string) => void): void { this.onSelectWork = handler; }
+  /** Point de vigilance (onglet Transports) : centrer la carte. */
+  setOnFocusPoint(handler: (lon: number, lat: number) => void): void { this.onFocusPoint = handler; }
 
   show(data: ThemeBriefData | null): void {
     this.shell?.root.classList.add('is-open');

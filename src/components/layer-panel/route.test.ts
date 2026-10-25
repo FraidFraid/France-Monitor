@@ -50,11 +50,12 @@ describe('vue Trafic routier (spec 2026-10-03 trafics § 3.1)', () => {
     const at = order.map((t) => h.indexOf(t));
     expect(at.every((i) => i >= 0)).toBe(true);
     expect([...at].sort((a, b) => a - b)).toEqual(at);
-    expect(h).toContain('<div class="lp-row is-link" tabindex="0" role="button" data-road-event="acc-a55"><span class="fmk-dot fmk-dot--rouge" aria-hidden="true"></span>'
+    // Lot 2 Transports (25/10/2026) : accidents, obstacles, voies fermées en roses (jetons CSS), le L1 réservé aux perturbations.
+    expect(h).toContain('<div class="lp-row is-link" tabindex="0" role="button" data-road-event="acc-a55"><span class="lp-swatch" style="background:var(--road-accident)" aria-hidden="true"></span>'
       + '<span>Accident · A55, Les Pennes-Mirabeau</span><span class="lp-val fmk-num">14:44</span><small>vers Marseille · DIR Méditerranée</small></div>');
     expect(h).toContain('<small>bande d’arrêt et chaussée entière · vers Bordeaux · gravité élevée · DIR Atlantique</small>');
     expect(h).toMatch(/fmk-dot--orange[^]*Route coupée · A63, Cestas à Pessac[^]*<small>vers Bordeaux · sans fin déclarée · DIR Atlantique<\/small>/);
-    expect(h).toMatch(/fmk-dot--jaune[^]*Gravillons · Flumet \(Savoie\)[^]*14:15[^]*après trois accidents · DIR Centre-Est/);
+    expect(h).toMatch(/var\(--road-accident\)[^]*Gravillons · Flumet \(Savoie\)[^]*14:15[^]*après trois accidents · DIR Centre-Est/);
     expect(visibleText(h)).toContain('55 autres : véhicule en panne (37), obstacle (12), personnes sur la chaussée (3), objet sur la chaussée (2)….');
     expect(visibleText(h)).toContain(`démarré depuis moins de 24${NBSP}h`);
   });
@@ -159,6 +160,11 @@ describe('vue Trafic routier (spec 2026-10-03 trafics § 3.1)', () => {
     expect(h).toContain('Source indisponible : collecte TomTom des agglomérations.');
     expect(h).toContain(`<th scope="row">Marseille</th><td class="lp-faint">n.d.</td><td class="lp-faint">n.d.</td><td><span class="lp-val fmk-num lp-lvl lp-lvl--rouge">7${NBSP}%</span></td>`);
     expect(v.head.status[1]).toBe('DIR\u00A014:57 · TomTom injoignable');
+  });
+  it('TomTom périmé (lot 3 Transports) : l’en-tête dit depuis quand, la table reste en n.d.', () => {
+    const v = view({ urban: null, urbanError: 'TomTom : aucune donnée récente depuis le 15/10\u00A017:12' });
+    expect(v.head.status[1]).toBe('DIR\u00A014:57 · TomTom : aucune donnée récente depuis le 15/10\u00A017:12');
+    expect(v.sections.find((s) => s.id === 'agglos')?.html ?? '').toContain('Source indisponible : collecte TomTom des agglomérations.');
   });
   it('erreur sans donnée, erreur avec données, vide, chargement : jamais une liste vide silencieuse', () => {
     const failed = view({ national: null, nationalError: 'HTTP 500' });

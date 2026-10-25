@@ -46,8 +46,8 @@ describe('formats des trafics (R1)', () => {
     expect(glueUnits('2 coupures non planifiées de moins de 24 h')).toBe(`2${NBSP}coupures non planifiées de moins de 24${NBSP}h`);
     expect(trafficBreakable(glueUnits('15 trains grandes lignes à 15 min ou plus'))).toBeNull();
     expect(glueUnits('4 accidents et 1 coupure en cours')).toBe(`4${NBSP}accidents et 1${NBSP}coupure en cours`);
-    expect([anomalyLabel('holding'), anomalyLabel('go-around'), anomalyLabel('rapid-manoeuvre'), anomalyLabel('reroute-probable')])
-      .toEqual(['circuit d’attente', 'approche interrompue', 'manœuvre brusque', 'déroutement probable']);
+    expect([anomalyLabel('holding'), anomalyLabel('go-around'), anomalyLabel('reroute-probable')])
+      .toEqual(['circuit d’attente', 'approche interrompue', 'déroutement probable']);
     expect(anomalyLabel('autre')).toBe('autre');
   });
   it('heures et dates de Paris : heure le jour même, date sinon, année quand elle diffère', () => {
@@ -84,10 +84,13 @@ describe('formats des trafics (R1)', () => {
     expect([speedLevel(14), speedLevel(45), speedLevel(60), speedLevel(89)]).toEqual(['rouge', 'orange', 'jaune', 'vert']);
     expect([jamLevel(1), jamLevel(2), jamLevel(3)]).toEqual(['jaune', 'orange', 'rouge']);
     expect(SQUAWK_LEVEL).toEqual({ '7500': 'rouge', '7700': 'orange', '7600': 'jaune' });
-    expect([railGroupLevel({ avgDelayMin: 15, cancelled: 0 }), railGroupLevel({ avgDelayMin: 23.6, cancelled: 0 }),
-      railGroupLevel({ avgDelayMin: 56.7, cancelled: 0 }), railGroupLevel({ avgDelayMin: 90, cancelled: 0 }),
-      railGroupLevel({ avgDelayMin: 5, cancelled: 10 }), railGroupLevel({ avgDelayMin: null, cancelled: 0 })])
+    expect([railGroupLevel({ avgDelayMin: 15, cancelled: 0, trains: 20 }), railGroupLevel({ avgDelayMin: 23.6, cancelled: 0, trains: 20 }),
+      railGroupLevel({ avgDelayMin: 56.7, cancelled: 0, trains: 20 }), railGroupLevel({ avgDelayMin: 90, cancelled: 0, trains: 20 }),
+      railGroupLevel({ avgDelayMin: 5, cancelled: 10, trains: 40 }), railGroupLevel({ avgDelayMin: null, cancelled: 0, trains: 0 })])
       .toEqual(['vert', 'jaune', 'orange', 'rouge', 'rouge', 'gris']);
+    // Suppressions en proportion (25/10/2026) : 10 sur 300 trains (3 %) ne colorent plus ; 5 sur 60 (8 %) : orange.
+    expect([railGroupLevel({ avgDelayMin: 5, cancelled: 10, trains: 300 }), railGroupLevel({ avgDelayMin: 5, cancelled: 5, trains: 60 })])
+      .toEqual(['vert', 'orange']);
     expect([railDelayLevel(14, false), railDelayLevel(15, false), railDelayLevel(45, false), railDelayLevel(140, false),
       railDelayLevel(null, true), railDelayLevel(null, false)]).toEqual(['vert', 'jaune', 'orange', 'rouge', 'rouge', 'gris']);
     expect(RAIL_EFFECT_WORD.supprime).toBe('supprimé');
