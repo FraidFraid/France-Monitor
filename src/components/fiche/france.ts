@@ -134,7 +134,7 @@ function upcomingSection(input: FranceFicheInput, open: boolean): FicheSection |
     collapsible: true, open,
     html: rows
       ? `<ul class="fiche-list">${rows}</ul><p class="fmk-note">${escapeHtml(t(lang,
-        'Repris tels que publiés par chaque source (RTE, Météo-France, organisateurs) ; France Monitor ne fait pas de prévision.',
+        'Repris tels que publiés par chaque source (RTE, Météo-France, Vigicrues, organisateurs) ; France Monitor ne fait pas de prévision.',
         'As published by each source (RTE, Météo-France, organisers); France Monitor makes no forecast.'))}</p>`
       : `<p class="fmk-muted">${t(lang, 'Aucune échéance publiée par les sources lues.', 'No deadline published by the sources read.')}</p>`,
   };

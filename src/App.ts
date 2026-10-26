@@ -9729,7 +9729,7 @@ export class App {
       archivedNotes: this.archivedNotes,
       upcoming: upcomingFromSources({
         ecowatt: this.currentEcowattResponse, vigilance: this.currentVigilance?.vigilance.data ?? null,
-        protests: this.currentProtests?.data?.items ?? null, now,
+        protests: this.currentProtests?.data?.items ?? null, floods: this.currentFloods?.floods.data ?? null, now,
       }),
       infra: { result: this.currentNetworkBarometer, nuclear: this.currentNuclearState, eolien: this.currentEolienLive },
       health: this.healthNationalNow(now),

@@ -3,10 +3,12 @@
 // décision, jamais un outil de prédiction). Trois sources aujourd'hui :
 //   - Écowatt (RTE) : signal de J+1 à J+3 ;
 //   - vigilance Météo-France : carte de J+1, par département ;
+//   - prévisions Vigicrues : hausse annoncée sur un tronçon en vigilance (pic, date et fourchette publiés) ;
 //   - rassemblements annoncés (couche Manifestations : Démosphère, carte des gilets jaunes) sur 7 jours, jamais confirmés.
 // Une source qui n'annonce rien le dit aussi (« aucune alerte annoncée ») : une absence d'annonce est une information, à condition
 // d'être attribuée ; une source non lue n'écrit rien (jamais un calme inventé).
-import type { EcowattResponse, ProtestItem, VigilanceResponse } from '../types/index.ts';
+import type { EcowattResponse, FloodsResponse, ProtestItem, VigilanceResponse } from '../types/index.ts';
+import { readForecast } from './flood-forecast.ts';
 import { PHENOMENON_WORD } from './environment-levels.ts';
 import type { VigilanceLevel } from './vigilance.ts';
 
@@ -28,6 +30,8 @@ export interface UpcomingInput {
   ecowatt: EcowattResponse | null;
   vigilance: VigilanceResponse | null;
   protests: readonly ProtestItem[] | null;
+  /** Tronçons Vigicrues en vigilance et leurs stations (prévisions publiées) ; absent ou null : non lus. */
+  floods?: FloodsResponse | null;
   now: number;
 }
 
@@ -97,6 +101,33 @@ function vigilanceItems(vigilance: VigilanceResponse | null): UpcomingItem[] {
   return items;
 }
 
+const FLOOD_LEVEL: Readonly<Record<number, VigilanceLevel>> = { 2: 'jaune', 3: 'orange', 4: 'rouge' };
+const metres = (v: number): string => `${v.toFixed(2).replace('.', ',')}\u00a0m`;
+
+/** Une échéance par tronçon en vigilance dont Vigicrues prévoit une hausse : la station au plus haut pic prévu. */
+function floodItems(floods: FloodsResponse | null | undefined, now: number): UpcomingItem[] {
+  if (!floods) return [];
+  const items: UpcomingItem[] = [];
+  for (const section of floods.sections) {
+    const rising = section.stations
+      .map((st) => ({ st, r: readForecast(st, now) }))
+      .filter((x): x is { st: typeof x.st; r: NonNullable<typeof x.r> } => x.r !== null && x.r.trend === 'hausse')
+      .sort((a, b) => b.r.key.mean - a.r.key.mean);
+    const top = rising[0];
+    if (!top) continue;
+    const k = top.r.key;
+    const range = k.min !== k.max ? `fourchette ${metres(k.min).replace('\u00a0m', '')} à ${metres(k.max)}` : null;
+    items.push({
+      day: parisDay(Date.parse(k.at)),
+      level: FLOOD_LEVEL[section.level] ?? null,
+      title: `Hausse annoncée : ${section.name} à ${top.st.name}, jusqu'à ${metres(k.mean)}`,
+      detail: [range, rising.length > 1 ? `${rising.length} stations en hausse sur le tronçon` : null].filter(Boolean).join(' ; ') || null,
+      source: 'Vigicrues',
+    });
+  }
+  return items;
+}
+
 const PROTEST_SOURCE_LABEL: Readonly<Record<string, string>> = { demosphere: 'Démosphère', giletsjaunes: 'carte des gilets jaunes', prefecture: 'préfectures' };
 
 function protestItems(protests: readonly ProtestItem[] | null, now: number, today: string): UpcomingItem[] {
@@ -126,6 +157,6 @@ function protestItems(protests: readonly ProtestItem[] | null, now: number, toda
 export function upcomingFromSources(input: UpcomingInput): UpcomingItem[] {
   const today = parisDay(input.now);
   const rank = (l: VigilanceLevel | null): number => (l === 'rouge' ? 0 : l === 'orange' ? 1 : l === 'jaune' ? 2 : 3);
-  return [...ecowattItems(input.ecowatt, today), ...vigilanceItems(input.vigilance), ...protestItems(input.protests, input.now, today)]
+  return [...ecowattItems(input.ecowatt, today), ...vigilanceItems(input.vigilance), ...floodItems(input.floods, input.now), ...protestItems(input.protests, input.now, today)]
     .sort((a, b) => a.day.localeCompare(b.day) || rank(a.level) - rank(b.level));
 }

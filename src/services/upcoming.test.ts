@@ -64,3 +64,25 @@ describe('ordre et jour de Paris', () => {
     expect(items.map((i) => `${i.day} ${i.level ?? '-'}`)).toEqual(['2026-10-27 rouge', '2026-10-27 -', '2026-10-28 orange']);
   });
 });
+
+describe('prévisions Vigicrues', () => {
+  const st = (name: string, heightM: number, points: Array<[string, number, number, number]>) =>
+    ({ code: name, name, heightM, forecast: { producedAt: '2026-10-26T12:00:00Z', points: points.map(([at, min, mean, max]) => ({ at, min, mean, max })) } });
+  const floods = (sections: unknown[]) => ({ readAt: 'x', total: 337, counts: {}, sections, stationsReadAt: null, stationsOmitted: 0, errors: [] }) as unknown as import('../types/index.ts').FloodsResponse;
+  it('tronçon en hausse : une échéance au jour du pic, niveau du tronçon, plus haute station, fourchette ; baisse, stable ou passé : rien', () => {
+    const items = run({ floods: floods([
+      { id: 'A', name: 'Têt', level: 3, stations: [
+        st('Perpignan', 1.2, [['2026-10-27T06:00:00Z', 1.9, 2.1, 2.4]]),
+        st('Vinca', 0.8, [['2026-10-27T03:00:00Z', 1.0, 1.1, 1.2]]),
+      ] },
+      { id: 'B', name: 'Aude', level: 2, stations: [st('Carcassonne', 2.0, [['2026-10-26T20:00:00Z', 1.7, 1.8, 1.9]])] },
+      { id: 'C', name: 'Orb', level: 2, stations: [st('Béziers', 1.0, [['2026-10-26T10:00:00Z', 2.0, 2.5, 3.0]])] },
+    ]) });
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ day: '2026-10-27', level: 'orange', source: 'Vigicrues', title: 'Hausse annoncée : Têt à Perpignan, jusqu\'à 2,10 m' });
+    expect(items[0].detail).toBe('fourchette 1,90 à 2,40 m ; 2 stations en hausse sur le tronçon');
+  });
+  it('crues non lues : rien', () => {
+    expect(run({ floods: null })).toEqual([]);
+  });
+});
