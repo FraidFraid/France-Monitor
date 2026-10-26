@@ -8442,6 +8442,25 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 .under-map-market-band__col > .under-map-card { height: auto; }
 .fin-table { display: flex; flex-direction: column; }
 .fin-table__cause { font-size: 11px; color: var(--text-muted); padding: 6px 4px 8px; }
+/* Phrase d'explication sous le titre des blocs Stabilité financière et Matières premières (26/10/2026). */
+.fin-table__intro { margin: 0 0 6px; padding: 0 8px 0 10px; font-size: 11px; line-height: 1.4; color: var(--text-muted); }
+/* Carte étroite (bande à trois colonnes sous la carte) : le nom écrasé devenait illisible (« C a. »). Chaque ligne passe sur deux
+   niveaux : nom complet et unité en haut ; valeur, appréciation et courbe dessous. Carte large : grille inchangée. */
+.under-map-card--markets, .under-map-card--commodities { container: fincard / inline-size; }
+@container fincard (max-width: 380px) {
+  .under-map-card .fin-row { grid-template-columns: auto auto minmax(0, 1fr); grid-template-areas: "label label label" "value note curve"; row-gap: 2px; }
+  .under-map-card .fin-row__label { grid-area: label; }
+  .under-map-card .fin-row__name { white-space: normal; overflow: visible; }
+  .under-map-card .fin-row__value { grid-area: value; text-align: left; }
+  .under-map-card .fin-row__note { grid-area: note; }
+  .under-map-card .fin-row__curve { grid-area: curve; }
+}
+/* Carte très étroite : la courbe prend sa propre ligne, sous la valeur et l'appréciation. */
+@container fincard (max-width: 260px) {
+  .under-map-card .fin-row { grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "label label" "value note" "curve curve"; }
+  .under-map-card .fin-row__note { white-space: normal; }
+  .under-map-card .under-map-card__header { flex-wrap: wrap; row-gap: 2px; }
+}
 .fin-row {
   --fin-lvl: transparent;
   display: grid;

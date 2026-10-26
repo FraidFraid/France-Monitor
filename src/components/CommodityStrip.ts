@@ -62,6 +62,7 @@ export class CommodityStrip {
         <div class="under-map-card__meta" id="commodity-strip-stamp">Chargement...</div>
       </div>
       <div class="under-map-card__body">
+        <p class="fin-table__intro">Cours mondiaux de référence et variation sur la dernière séance (pointillé : clôture de la veille).</p>
         <div class="commodity-strip__section commodity-strip__section--energy">
           <div class="commodity-strip__section-label">${SECTION_LABELS.energy}</div>
           <div class="commodity-strip__list" id="commodity-list-energy"></div>

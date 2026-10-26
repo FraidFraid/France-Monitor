@@ -98,6 +98,10 @@ function isParisWeekend(iso: string): boolean {
 /** Courbe de l'écart pas encore tracée : un seul relevé enregistré (un point par jour de semaine). */
 const PENDING_CURVE = '<span class="fin-row__pending">en constitution</span>';
 
+/** Ce que mesure le bloc (26/10/2026) : sans elle, les sigles (CISS, €STR, OAT) ne disaient rien. */
+const FIN_INTRO = '<p class="fin-table__intro">Tensions sur les marchés : stress mesuré par la BCE (CISS, 0 calme, 1 crise), '
+  + 'écart de taux France-Allemagne, taux de la BCE, euro et CAC 40. Survoler une ligne pour le détail.</p>';
+
 function spreadRow(sp: OatBundSpread | undefined): FinTableRow {
   const base = { id: 'spread', name: 'Écart OAT-Bund' };
   const spreadFormat = (v: number): string => `${frNumber(v, 2)}${NBSP}pt`;
@@ -134,7 +138,7 @@ export function buildFinancialStabilityHTML(view: FinancialStabilityView): { lev
     seriesRow(byId(data?.series, 'eurusd'), 'eurusd'),
     cacRow(view.cac),
   ];
-  const table = `<div class="fin-table">${rows.map(finTableRowHTML).join('')}</div>`;
+  const table = `${FIN_INTRO}<div class="fin-table">${rows.map(finTableRowHTML).join('')}</div>`;
   if (!data) {
     const cause = view.error ? `<div class="fin-table__cause">Stabilité financière indisponible : ${esc(view.error)}</div>` : '';
     return { level: null, stamp: 'Source indisponible', html: `${cause}${table}` };
