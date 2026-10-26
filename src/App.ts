@@ -2217,9 +2217,10 @@ export class App {
    * with critical-layer network calls right after first paint.
    */
   private deferAfterFirstPaint(fn: () => void): void {
-    const ric = (window as Window & { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback;
+    const ric = (window as Window & { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback;
     if (typeof ric === 'function') {
-      ric(() => fn());
+      // Délai maximum : une page toujours occupée (carte dessinée sans carte graphique) ne repousse pas la finance du score sans fin.
+      ric(() => fn(), { timeout: 5000 });
     } else {
       setTimeout(fn, 3000);
     }
@@ -8757,9 +8758,10 @@ export class App {
       },
       // Échec d'un service Trafics : toutes les lignes de sa couche (« TomTom agglomérations », « SIRI SX » comprises) sont mises
       // en erreur par readTraffic, pour chaque appelant ; ici, seulement la trace.
-      ...(this.activeLayers.trafficRoad ? [{
+      {
+        // Score France : trafic routier lu au démarrage, couche éteinte et quel que soit l'onglet, comme la SNCF (26/10/2026).
         name: 'traffic', task: this.loadRoadTraffic().catch((err) => console.error('[App] Trafic routier indisponible', err))
-      }] : []),
+      },
       {
         // Score France et note de situation : perturbations SNCF lues au démarrage, même couche éteinte (comme avant).
         name: 'sncf', task: this.loadRailTraffic().catch((err) => console.error('[App] Réseau ferroviaire indisponible', err))

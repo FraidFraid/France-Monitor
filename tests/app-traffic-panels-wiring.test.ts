@@ -151,10 +151,13 @@ describe('panneaux Trafics : un panneau par couche (spec 2026-10-03 trafics § 3
     expect(ships).toContain('this.maritimePanel?.refreshLive();');
     expect(app).not.toContain('maritimeHasData');
   });
-  it('démarrage : rail et aperçu aérien lus même couche éteinte, route seulement avec sa couche ; erreurs sans heure inventée', () => {
+  it('démarrage : rail, route (score, 26/10/2026) et aperçu aérien lus même couche éteinte ; erreurs sans heure inventée', () => {
     const secondary = methodBody('loadSecondaryLayers');
     expect(secondary).toContain("name: 'sncf', task: this.loadRailTraffic()");
-    expect(secondary).toContain("...(this.activeLayers.trafficRoad ? [{\n        name: 'traffic', task: this.loadRoadTraffic()");
+    expect(secondary).toContain("name: 'traffic', task: this.loadRoadTraffic()");
+    expect(secondary).not.toContain('this.activeLayers.trafficRoad ?');
+    // Finance du score : le démarrage différé a un délai maximum, une page toujours occupée ne la repousse pas sans fin.
+    expect(methodBody('deferAfterFirstPaint')).toContain('ric(() => fn(), { timeout: 5000 });');
     expect(methodBody('loadOptionalLayers')).toContain("name: 'air-overview', task: this.loadAirOverview()");
     expect(secondary).not.toMatch(/updateSource\('(?:Trafic|SNCF)', \{ status: 'error', lastUpdate: new Date\(\)/);
   });
