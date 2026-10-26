@@ -66,15 +66,11 @@ describe('isTrafficDataLate (tableau S2)', () => {
     expect(isTrafficDataLate(source, new Date(now - minutes * 60_000).toISOString(), now)).toBe(false);
     expect(isTrafficDataLate(source, new Date(now - minutes * 60_000 - 1000).toISOString(), now)).toBe(true);
   });
-  it('TomTom : 45 min de jour, 75 min la nuit (heure de Paris)', () => {
-    const day = T('2026-10-03T12:00:00Z'); // 14 h à Paris
-    expect(isParisDaytime(day)).toBe(true);
-    expect(isTrafficDataLate('tomtom', new Date(day - 44 * 60_000).toISOString(), day)).toBe(false);
-    expect(isTrafficDataLate('tomtom', new Date(day - 46 * 60_000).toISOString(), day)).toBe(true);
-    const night = T('2026-10-03T21:30:00Z'); // 23 h 30 à Paris
-    expect(isParisDaytime(night)).toBe(false);
-    expect(isTrafficDataLate('tomtom', new Date(night - 74 * 60_000).toISOString(), night)).toBe(false);
-    expect(isTrafficDataLate('tomtom', new Date(night - 76 * 60_000).toISOString(), night)).toBe(true);
+  it('TomTom : 90 min de jour comme de nuit (collecte horaire, 26/10/2026)', () => {
+    for (const now of [T('2026-10-03T12:00:00Z'), T('2026-10-03T21:30:00Z')]) { // 14 h et 23 h 30 à Paris
+      expect(isTrafficDataLate('tomtom', new Date(now - 89 * 60_000).toISOString(), now)).toBe(false);
+      expect(isTrafficDataLate('tomtom', new Date(now - 91 * 60_000).toISOString(), now)).toBe(true);
+    }
   });
   it('bascule jour et nuit à 7 h et 21 h, heure d’été de Paris', () => {
     expect(isParisDaytime(T('2026-10-03T04:59:00Z'))).toBe(false); // 6 h 59

@@ -27,9 +27,8 @@ const LATE_AFTER_MIN: Record<Exclude<TrafficSource, 'tomtom'>, number> = {
   ais: 5,
 };
 
-/** TomTom : 45 min de 7 h à 21 h (heure de Paris), 75 min la nuit (collecte toutes les 15 ou 30 min). */
-const TOMTOM_DAY_MIN = 45;
-const TOMTOM_NIGHT_MIN = 75;
+/** TomTom : 90 min de jour comme de nuit (collecte toutes les heures depuis le 26/10/2026). */
+const TOMTOM_LATE_MIN = 90;
 
 const PARIS_HOUR = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', hourCycle: 'h23' });
 
@@ -49,9 +48,7 @@ export function isTrafficDataLate(source: TrafficSource, dataDate: string | null
   if (dataDate === null) return true;
   const t = Date.parse(dataDate);
   if (!Number.isFinite(t)) return true;
-  const minutes = source === 'tomtom'
-    ? (isParisDaytime(now) ? TOMTOM_DAY_MIN : TOMTOM_NIGHT_MIN)
-    : LATE_AFTER_MIN[source];
+  const minutes = source === 'tomtom' ? TOMTOM_LATE_MIN : LATE_AFTER_MIN[source];
   return t + minutes * MINUTE_MS < now;
 }
 

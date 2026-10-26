@@ -1,15 +1,15 @@
 // api/_lib/tomtom-urban.js : congestion urbaine par collecte serveur TomTom (spec 2026-10-03 panneaux trafic
 // § 2.2, T4). Une seule collecte pour tous les visiteurs : 14 appels `incidentDetails` par cycle (Paris et
-// Lyon en deux cadres, dix autres agglomérations en un), toutes les 15 min de 7 h à 21 h (heure de Paris),
-// toutes les 30 min la nuit, soit environ 1 130 appels par jour (45 % des 2 500 gratuits ; la relève d'une minute rend la cadence
-// effective de 14 min le jour et 29 min la nuit, mesurée par tests/tomtom-urban.test.ts). Seule la catégorie 6
+// Lyon en deux cadres, dix autres agglomérations en un), toutes les heures (choix du 26/10/2026 : suffisant pour la bêta ;
+// auparavant 15 min le jour et 30 min la nuit), soit 336 appels par jour (13 % des 2 500 gratuits ; la relève d'une minute rend
+// la cadence effective de 59 min, mesurée par tests/tomtom-urban.test.ts). Seule la catégorie 6
 // (embouteillage, magnitude 1 à 3) est demandée et gardée ; jamais la catégorie 8 (route fermée durable).
 // Clé côté serveur ; budget du jour compté dans le stockage clé-valeur (kv-history), jamais par navigateur.
 // Serveur de dev (même clé que la production, compteurs séparés par le préfixe « dev: ») : une collecte toutes les 60 min au
 // plus (24 cycles, 336 appels par jour au pire), pour tenir le palier gratuit partagé ; même discriminant que la collecte OpenSky.
 import { incrementCounter, isDevServer, kvGetJson, kvSetJson } from './kv-history.js';
 import { mapLimit } from './map-limit.js';
-import { parisDay, parisHour } from './paris-time.js';
+import { parisDay } from './paris-time.js';
 import { fetchStrictJson, sourceError } from './source-http.js';
 
 export const TOMTOM_INCIDENTS_URL = 'https://api.tomtom.com/traffic/services/5/incidentDetails';
@@ -62,11 +62,12 @@ export function incidentsUrl(bbox, key) {
   return `${TOMTOM_INCIDENTS_URL}?${params.toString()}`;
 }
 
-/** Cadence : 15 min de 7 h à 21 h (heure de Paris), 30 min la nuit ; 60 min sur le serveur de dev. */
-export function urbanCadenceMs(now) {
-  if (isDevServer()) return DEV_URBAN_INTERVAL_MS;
-  const h = parisHour(now);
-  return (h >= 7 && h < 21 ? 15 : 30) * MINUTE_MS;
+/** Production : une collecte par heure (26/10/2026). */
+export const URBAN_INTERVAL_MS = 60 * MINUTE_MS;
+
+/** Cadence : 60 min en production comme sur le serveur de dev. */
+export function urbanCadenceMs(_now) {
+  return isDevServer() ? DEV_URBAN_INTERVAL_MS : URBAN_INTERVAL_MS;
 }
 
 /**

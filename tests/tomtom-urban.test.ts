@@ -59,13 +59,13 @@ describe('fonctions pures', () => {
     expect(a).toMatchObject({ name: 'Lyon', jams: 10, jamKm: 7.2, delayMin: 44, collectedAt: '2026-10-03T12:00:00.000Z' });
     expect(a.longest).toMatchObject({ road: 'M6', lengthKm: 1.7 });
   });
-  it('cadence : 15 min de 7 h à 21 h, 30 min la nuit (heure de Paris) ; due après la cadence moins une minute', () => {
-    expect(urbanCadenceMs(DAY)).toBe(15 * 60_000);
-    expect(urbanCadenceMs(Date.parse('2026-10-03T21:00:00+02:00'))).toBe(30 * 60_000);
-    expect(urbanCadenceMs(Date.parse('2026-10-04T06:59:00+02:00'))).toBe(30 * 60_000);
+  it('cadence : 60 min de jour comme de nuit (26/10/2026) ; due après la cadence moins une minute', () => {
+    expect(urbanCadenceMs(DAY)).toBe(60 * 60_000);
+    expect(urbanCadenceMs(Date.parse('2026-10-03T21:00:00+02:00'))).toBe(60 * 60_000);
+    expect(urbanCadenceMs(Date.parse('2026-10-04T06:59:00+02:00'))).toBe(60 * 60_000);
     expect(isUrbanDue(null, DAY)).toBe(true);
-    expect(isUrbanDue(new Date(DAY - 13 * 60_000).toISOString(), DAY)).toBe(false);
-    expect(isUrbanDue(new Date(DAY - 14 * 60_000).toISOString(), DAY)).toBe(true);
+    expect(isUrbanDue(new Date(DAY - 58 * 60_000).toISOString(), DAY)).toBe(false);
+    expect(isUrbanDue(new Date(DAY - 59 * 60_000).toISOString(), DAY)).toBe(true);
   });
   it('14 cadres et 12 agglomérations', () => {
     expect(URBAN_FRAMES).toHaveLength(14);
@@ -92,12 +92,12 @@ describe('collecte serveur', () => {
     expect(r.agglos[2]).toMatchObject({ name: 'Marseille', jams: 0, jamKm: 0, delayMin: 0, longest: null });
     expect(r.jams).toHaveLength(16);
   });
-  it('dans les 15 min : aucune nouvelle requête ; après : un nouveau cycle', async () => {
+  it('dans l’heure : aucune nouvelle requête ; après : un nouveau cycle', async () => {
     const log = stubTomTom();
     await ensureUrbanFresh(DAY);
-    await ensureUrbanFresh(DAY + 5 * 60_000);
+    await ensureUrbanFresh(DAY + 30 * 60_000);
     expect(log.urls).toHaveLength(14);
-    await ensureUrbanFresh(DAY + 15 * 60_000);
+    await ensureUrbanFresh(DAY + 60 * 60_000);
     expect(log.urls).toHaveLength(28);
   });
   it('redémarrage du serveur : la dernière collecte est relue dans Redis, pas de cycle en plus (quota tenu)', async () => {
@@ -204,34 +204,30 @@ describe('cadence réelle de la relève (horloge simulée)', () => {
     expect(urbanCadenceMs(Date.parse('2026-10-03T23:00:00+02:00'))).toBe(60 * 60_000);
     expect(isUrbanDue(new Date(DAY - 59 * 60_000).toISOString(), DAY)).toBe(false);
     expect(isUrbanDue(new Date(DAY - 60 * 60_000).toISOString(), DAY)).toBe(true);
-    // Un jour de Paris (0 h à 23 h 59) : 24 cycles de 14 appels au plus, 336 appels, ajoutés aux 1 134 de la production,
+    // Un jour de Paris (0 h à 23 h 59) : 24 cycles de 14 appels au plus, 336 appels, ajoutés aux ~350 de la production,
     // sous les 2 500 de la clé partagée.
     const { calls, cycles } = await simulate(parisWallTime(2026, 10, 3, 0, 0, 0), 24 * 3_600_000 - 60_000);
     const gaps = cycles.slice(1).map((t, i) => (t - cycles[i]) / 60_000);
     expect(gaps.every((g) => g >= 60)).toBe(true);
     expect(calls).toBeLessThanOrEqual(24 * URBAN_FRAMES.length);
-    expect(calls + 1134).toBeLessThan(2500);
+    expect(calls + 350).toBeLessThan(2500);
   });
 
-  it('24 h ordinaires : environ 1 130 appels (cycle toutes les 14 min le jour, 29 min la nuit), sous les 2 500', async () => {
+  it('24 h ordinaires : environ 350 appels (cycle toutes les 59 min), sous les 2 500', async () => {
     const { calls } = await simulate(parisWallTime(2026, 10, 3, 0, 0, 0), 24 * 3_600_000);
-    // Le cycle est dû à cadence moins une minute (tolérance) et la relève passe chaque minute : 14 min de
-    // 7 h à 21 h (60 cycles) et 29 min la nuit (21 cycles), soit 81 cycles ; mesuré : 1 134 appels.
+    // Le cycle est dû à cadence moins une minute (tolérance) et la relève passe chaque minute : 59 min, soit 25 cycles en 24 h.
     expect(calls % URBAN_FRAMES.length).toBe(0);
-    expect(calls).toBeGreaterThanOrEqual(1120);
-    expect(calls).toBeLessThanOrEqual(1150);
+    expect(calls).toBeGreaterThanOrEqual(24 * URBAN_FRAMES.length);
+    expect(calls).toBeLessThanOrEqual(26 * URBAN_FRAMES.length);
     expect(calls).toBeLessThan(2500);
   });
   it('25/10/2026 (retour à l’heure d’hiver, 25 h) : cadence suivie sur l’heure murale de Paris, rien de sauté ni de doublé', async () => {
     const { calls, cycles } = await simulate(parisWallTime(2026, 10, 25, 0, 0, 0), 25 * 3_600_000);
-    const gaps = cycles.slice(1).map((t, i) => ({ gap: (t - cycles[i]) / 60_000, from: parisHour(cycles[i]), to: parisHour(t) }));
-    expect(gaps.every((g) => g.gap >= 14 && g.gap <= 30)).toBe(true);
-    // Jour (7 h à 21 h, heure murale) : 14 min exactement ; nuit, y compris les deux passages de 2 h : 29 min.
-    expect(gaps.filter((g) => g.from >= 7 && g.to < 21).every((g) => g.gap === 14)).toBe(true);
-    const night = (h: number) => h < 7 || h >= 21;
-    expect(gaps.filter((g) => night(g.from) && night(g.to)).every((g) => g.gap === 29)).toBe(true);
-    // 25 h = 14 h de jour (60 cycles) + 11 h de nuit (23 cycles) : 83 cycles mesurés (1 162 appels).
-    expect(calls).toBeGreaterThanOrEqual(82 * URBAN_FRAMES.length);
-    expect(calls).toBeLessThanOrEqual(84 * URBAN_FRAMES.length);
+    const gaps = cycles.slice(1).map((t, i) => (t - cycles[i]) / 60_000);
+    // 59 min exactement, y compris les deux passages de 2 h : le changement d'heure ne saute ni ne double aucun cycle.
+    expect(gaps.every((g) => g === 59)).toBe(true);
+    // 25 h de 59 min : 26 cycles.
+    expect(calls).toBeGreaterThanOrEqual(25 * URBAN_FRAMES.length);
+    expect(calls).toBeLessThanOrEqual(26 * URBAN_FRAMES.length);
   });
 });
