@@ -24,7 +24,7 @@ import type {
 } from '../types/index.ts';
 import { dayMonth, frNumber } from './layer-panel/format.ts';
 import { telecomLevel } from '../services/outages-levels.ts';
-import { eventLevel, isnrLevel, levelVigilanceWord, situationLevel } from '../services/vigilance.ts';
+import { eventLevel, isnrLevel, levelVigilanceWord, scoreLevel, situationLevel } from '../services/vigilance.ts';
 import { ecowattLevelLabel, ecowattToday } from '../services/ecowatt-official.ts';
 import {
   buildSituationReportHtml,
@@ -57,6 +57,8 @@ export interface SituationReportContext {
   newsItems: NewsItem[];
   sources: WatchdogSnapshot[];
   version: string | null;
+  /** Indice national de l'application (100 = calme) ; null avant le calcul. */
+  nationalScore?: number | null;
 }
 
 // ─── Constantes ───────────────────────────────────────────────────────────────
@@ -258,6 +260,7 @@ export function collectSituationReportData(ctx: SituationReportContext): Situati
     newsCacheAvailable: ctx.newsItems.length > 0,
     sources,
     version: ctx.version,
+    national: Number.isFinite(ctx.nationalScore) ? { score: ctx.nationalScore as number, level: scoreLevel(ctx.nationalScore as number) } : null,
   };
 }
 

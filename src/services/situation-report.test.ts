@@ -67,13 +67,14 @@ describe('buildSituationReportHtml — données complètes', () => {
     assert.ok(html.includes('Sources auditables'));
   });
 
-  it('rend la synthèse (situations + indice de stabilité)', () => {
+  it('rend la synthèse (situations + tension de la presse par département, jamais appelée « stabilité nationale »)', () => {
     assert.ok(html.includes('Tension énergétique nationale'));
     assert.ok(html.includes('constatée à 14:30'));
     assert.ok(html.includes('PACA'));
     assert.ok(html.includes('+ 2 situation(s) complémentaire(s)'));
     assert.ok(html.includes('47'));
-    assert.ok(html.includes('vigilance orange'));
+    assert.ok(html.includes('Tension relevée dans la presse par département (ISNR, 0 = calme, 100 = très tendu, indicateur distinct du niveau national) : 47/100 en moyenne.'));
+    assert.ok(!html.includes('Indice de stabilité nationale'));
     assert.ok(html.includes('Bouches-du-Rhône'));
   });
 
@@ -107,7 +108,7 @@ describe('buildSituationReportHtml — données vides/dégradées', () => {
   });
 
   it('affiche « non disponible » pour les sections sans donnée en cache', () => {
-    assert.ok(html.includes('Indice de stabilité nationale : non disponible au moment de la génération.'));
+    assert.ok(html.includes('Niveau national : non disponible au moment de la génération.'));
     assert.ok(html.includes('Flux de presse non disponible au moment de la génération.'));
   });
 
@@ -202,5 +203,13 @@ describe('buildSituationReportHtml — signaux par domaine sans mot en double (r
   it('les détails (départements, régions, risques) restent', () => {
     assert.ok(item('Vigilance météo').includes('1 dépt rouge, 0 orange : Var.'));
     assert.ok(item('Écowatt (tension électrique)').includes('Bretagne'));
+  });
+});
+
+describe('buildSituationReportHtml — niveau national en tête (26/10/2026)', () => {
+  it('grand chiffre = indice national de l’application, avec sa couleur ; l’ISNR en ligne secondaire', () => {
+    const html = buildSituationReportHtml({ ...baseData(), national: { score: 77, level: 'jaune' } });
+    assert.ok(html.includes('<span class="isnr-value">77</span>'));
+    assert.ok(html.includes('Niveau national : <strong>jaune</strong> (100 = situation calme)'));
   });
 });

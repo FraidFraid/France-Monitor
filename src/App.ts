@@ -9262,6 +9262,8 @@ export class App {
       generatedAt: new Date(),
       permalink: window.location.href,
       situations: snapshot.situations,
+      // Niveau national seulement une fois les couches critiques lues (jamais un vert par défaut).
+      nationalScore: this.v2IntelStarted || !this.uiV2 ? snapshot.score : null,
       stability: this.currentISNRData,
       meteoAlerts: env.meteoAlerts,
       floodSegments: env.floodSegments,

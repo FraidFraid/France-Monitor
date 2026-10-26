@@ -82,6 +82,8 @@ export interface SituationReportData {
   newsCacheAvailable: boolean;
   sources: ReportSource[];
   version: string | null;
+  /** Niveau national affiché par l'application (indice v3, seuils 85/70/55) ; absent ou null : pas encore calculé. */
+  national?: { score: number; level: VigilanceLevel } | null;
   /** Note relue depuis l'archive de la VM (26/10/2026) : « Note archivée du … », affichée dans l'en-tête ; absente : note du moment. */
   archiveLabel?: string;
 }
@@ -146,28 +148,30 @@ function renderSituations(data: SituationReportData): string {
   return `<ul class="sit-list">${rows}</ul>${more}`;
 }
 
-function renderStability(stability: ReportStability | null): string {
-  if (!stability) {
-    return `<p class="unavailable">Indice de stabilité nationale : non disponible au moment de la génération.</p>`;
-  }
-
-  const depts =
-    stability.topDepartments.length > 0
-      ? `<div class="isnr-depts">Départements en tête : ${stability.topDepartments
-          .map((d) => `${escapeHtml(d.name)} (${d.score})`)
-          .join(' · ')}</div>`
-      : '';
-
-  return `
+/**
+ * Niveau national (26/10/2026) : le grand chiffre de la note est celui de l'application (indice v3, 100 = calme) ; l'ISNR, indicateur
+ * de tension tiré de la presse par département (100 = tendu), n'est plus présenté comme un « indice de stabilité nationale » : deux
+ * chiffres de sens opposés côte à côte se lisaient comme une contradiction.
+ */
+function renderStability(national: SituationReportData['national'], stability: ReportStability | null): string {
+  const head = national
+    ? `
     <div class="isnr">
       <div class="isnr-score">
-        <span class="isnr-value">${stability.nationalScore}</span><span class="isnr-max">/100</span>
+        <span class="isnr-value">${national.score}</span><span class="isnr-max">/100</span>
       </div>
       <div class="isnr-body">
-        <div class="isnr-label">Indice de stabilité nationale : <strong>${escapeHtml(stability.statusLabel)}</strong></div>
-        ${depts}
+        <div class="isnr-label">Niveau national : <strong>${escapeHtml(levelLabel(national.level).toLowerCase())}</strong> (100 = situation calme)</div>
       </div>
-    </div>`;
+    </div>`
+    : `<p class="unavailable">Niveau national : non disponible au moment de la génération.</p>`;
+  const depts = stability && stability.topDepartments.length > 0
+    ? ` Départements en tête : ${stability.topDepartments.map((d) => `${escapeHtml(d.name)} (${d.score})`).join(' · ')}.`
+    : '';
+  const tension = stability
+    ? `<div class="isnr-depts">Tension relevée dans la presse par département (ISNR, 0 = calme, 100 = très tendu, indicateur distinct du niveau national) : ${stability.nationalScore}/100 en moyenne.${depts}</div>`
+    : '';
+  return head + tension;
 }
 
 function renderDomains(signals: ReportDomainSignal[]): string {
@@ -381,7 +385,7 @@ export function buildSituationReportHtml(data: SituationReportData): string {
     <section>
       <h2>Synthèse</h2>
       ${renderSituations(data)}
-      ${renderStability(data.stability)}
+      ${renderStability(data.national, data.stability)}
     </section>
 
     <section>
