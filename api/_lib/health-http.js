@@ -34,7 +34,8 @@ export class HealthFetchError extends Error {
 // Pages de défi vues le 03/10/2026 : Cegedim « Vérification de sécurité » (captcha, F5 /TSPD/),
 // « Request Rejected » ; plus les défis Cloudflare. Aucune page légitime lue ici ne contient ces marques.
 // Le mot « captcha » seul ne compte que dans un corps HTML : un JSON ou un flux qui le cite n'est pas un défi.
-const CHALLENGE_RE = /<title>\s*(?:v[ée]rification de s[ée]curit[ée]|request rejected|just a moment|attention required)|\/TSPD\/|cf-chl-|challenge-platform/i;
+// Gcore (« Browser Validation Page », page du SGDSN depuis le 13/10/2026) : défi servi en 200, titre « Gcore ».
+const CHALLENGE_RE = /<title>\s*(?:v[ée]rification de s[ée]curit[ée]|request rejected|just a moment|attention required|gcore\s*<)|\/TSPD\/|cf-chl-|challenge-platform|browser validation page/i;
 
 /**
  * Vrai si le texte est une page de contrôle anti-robot. `contentMarker` (facultatif) : repère du contenu attendu,

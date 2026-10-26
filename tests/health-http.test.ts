@@ -64,6 +64,8 @@ describe('lecture stricte', () => {
     expect(isChallengePage('{"value":[{"Summary":"A captcha-protected portal"}]}')).toBe(false);
     expect(isChallengePage('<?xml version="1.0"?><rss><channel><item><title>captcha</title></item></channel></rss>')).toBe(false);
     expect(isChallengePage('<!DOCTYPE html><html><body><div class="g-recaptcha"></div></body></html>')).toBe(true);
+    // Gcore, servi en 200 (page Vigipirate du SGDSN, 26/10/2026).
+    expect(isChallengePage('<!DOCTYPE html><html><head><title>Gcore</title></head><body>Browser Validation Page www.sgdsn.gouv.fr is using security service</body></html>')).toBe(true);
     stubFetch(() => respond('{"value":[{"Summary":"captcha"}]}'));
     expect(await fetchStrictJson(URL_ODISSE)).toEqual({ value: [{ Summary: 'captcha' }] });
   });
