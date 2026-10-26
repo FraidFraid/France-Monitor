@@ -84,6 +84,27 @@ function roadEventBody(e: RoadEvent, late: boolean, now: number): string {
     + (late ? note('Données DIR en retard : couleur retirée.') : '');
 }
 
+/** Fond triangulaire des incidents routiers (image SDF enregistrée par DeckGLMap, teintée par `icon-color`). */
+export const ROAD_BADGE_IMAGE = 'traffic-road-badge-triangle';
+
+/** Triangle plein (blanc), pointe en haut, coins arrondis, dans un carré de `size` pixels, marge comprise. */
+export function drawRoadBadge(g: CanvasRenderingContext2D, size: number, margin: number): void {
+  const a = margin;
+  const b = size - margin;
+  const m = size / 2;
+  g.fillStyle = '#ffffff';
+  g.strokeStyle = '#ffffff';
+  g.lineJoin = 'round';
+  g.lineWidth = size * 0.08;
+  g.beginPath();
+  g.moveTo(m, a + size * 0.04);
+  g.lineTo(b - size * 0.03, b - size * 0.06);
+  g.lineTo(a + size * 0.03, b - size * 0.06);
+  g.closePath();
+  g.fill();
+  g.stroke();
+}
+
 /** Image SDF du pictogramme d'une pastille Trafics, route ou gare (enregistrée par DeckGLMap, teintée par `icon-color`). */
 export function trafficIconImage(icon: IconName): string {
   return `traffic-road-${icon}`;
@@ -323,21 +344,28 @@ export function railStationFeatures(overview: RailOverviewResponse | null, now: 
       stations.set(key, station);
     }
   }
-  return fc([...stations.entries()].map(([key, st]): GeoJSON.Feature<GeoJSON.Point> => ({
-    type: 'Feature', geometry: point(st.lon, st.lat),
-    properties: {
-      // Pastille train (25/10/2026) : orange et rouge pleins à icône sombre ; jaune (15 à 44 min) en fond sombre, anneau et icône
-      // jaunes ; train à l'heure : petit point neutre, sans icône (ce n'est pas une perturbation).
-      id: key, name: st.name, color: st.level === 'vert' ? TRAFFIC_NEUTRAL_HEX : trafficHex(st.level, late),
-      fill: LEVEL_RANK[st.level] >= LEVEL_RANK.orange ? trafficHex(st.level, late) : st.level === 'vert' ? TRAFFIC_NEUTRAL_HEX : '#0a0a0f',
-      glyph: LEVEL_RANK[st.level] >= LEVEL_RANK.orange ? '#0a0a0f' : trafficHex(st.level, late),
-      icon: st.level !== 'vert',
-      radius: LEVEL_RANK[st.level] >= LEVEL_RANK.orange ? 4 + LEVEL_RANK[st.level] * 2 : st.level === 'vert' ? 2.5 : 6.5, sortKey: LEVEL_RANK[st.level],
-      major: LEVEL_RANK[st.level] >= LEVEL_RANK.orange,
-      tier: STATION_TIER[st.level],
-      body: stationBody(st, late, overview.updatedAt, now),
-    },
-  })));
+  return fc([...stations.entries()].map(([key, st]): GeoJSON.Feature<GeoJSON.Point> => {
+    // Gare rouge du seul fait de trains supprimés (aucun train en retard) : petit point rouge sans icône ; un train supprimé
+    // n'allume plus vingt pastilles le long de sa ligne (25/10/2026), son point de vigilance le dit.
+    const cancelledOnly = st.trains.every((x) => x.train.effect === 'supprime');
+    const pastille = st.level !== 'vert' && !cancelledOnly;
+    return {
+      type: 'Feature', geometry: point(st.lon, st.lat),
+      properties: {
+        // Pastille train (25/10/2026) : orange et rouge pleins à icône sombre ; jaune (15 à 44 min) en fond sombre, anneau et icône
+        // jaunes ; train à l'heure : petit point neutre, sans icône (ce n'est pas une perturbation).
+        id: key, name: st.name, color: st.level === 'vert' ? TRAFFIC_NEUTRAL_HEX : trafficHex(st.level, late),
+        fill: LEVEL_RANK[st.level] >= LEVEL_RANK.orange ? trafficHex(st.level, late) : st.level === 'vert' ? TRAFFIC_NEUTRAL_HEX : '#0a0a0f',
+        glyph: LEVEL_RANK[st.level] >= LEVEL_RANK.orange ? '#0a0a0f' : trafficHex(st.level, late),
+        icon: pastille,
+        radius: !pastille ? (cancelledOnly && st.level !== 'vert' ? 3.5 : 2.5) : LEVEL_RANK[st.level] >= LEVEL_RANK.orange ? 4 + LEVEL_RANK[st.level] * 2 : 6.5,
+        sortKey: LEVEL_RANK[st.level],
+        major: pastille && LEVEL_RANK[st.level] >= LEVEL_RANK.orange,
+        tier: STATION_TIER[st.level],
+        body: stationBody(st, late, overview.updatedAt, now),
+      },
+    };
+  }));
 }
 
 /** Palier d'affichage d'une gare (railStationTierMax) : 0 rouge, 1 orange, 2 jaune, 3 trains à l'heure. */
@@ -455,18 +483,21 @@ export const TRAFFIC_LAYERS: readonly LayerSpecification[] = [
   },
   {
     // Pastille : 18 px de diamètre à l'échelle de la France, 22 px de près ; un peu plus petite pour les événements secondaires.
-    id: LYR_ROAD_EVENT_BADGES, type: 'circle', source: SRC_ROAD_EVENTS, layout: { visibility: 'none', 'circle-sort-key': TRAFFIC_SORT },
-    paint: {
-      'circle-color': TRAFFIC_COLOR,
-      'circle-radius': ['interpolate', ['linear'], ['zoom'], 5, ['case', ['==', ['get', 'front'], 1], 9, 7.5], 10, ['case', ['==', ['get', 'front'], 1], 11, 9.5]],
-      'circle-stroke-width': 1.5, 'circle-stroke-color': '#0a0a0f',
+    // Triangle (25/10/2026) : la route se distingue au premier coup d'œil des gares, rondes ; liseré sombre par le halo SDF.
+    id: LYR_ROAD_EVENT_BADGES, type: 'symbol', source: SRC_ROAD_EVENTS,
+    layout: {
+      'icon-image': ROAD_BADGE_IMAGE, 'icon-allow-overlap': true, 'icon-ignore-placement': true, 'symbol-sort-key': TRAFFIC_SORT, visibility: 'none',
+      'icon-size': ['interpolate', ['linear'], ['zoom'], 5, ['case', ['==', ['get', 'front'], 1], 0.7, 0.58], 10, ['case', ['==', ['get', 'front'], 1], 0.86, 0.74]],
     },
+    paint: { 'icon-color': TRAFFIC_COLOR, 'icon-halo-color': '#0a0a0f', 'icon-halo-width': 1.4 },
   },
   {
     id: LYR_ROAD_EVENTS, type: 'symbol', source: SRC_ROAD_EVENTS,
     layout: {
       'icon-image': ['get', 'icon'],
-      'icon-size': ['interpolate', ['linear'], ['zoom'], 5, ['case', ['==', ['get', 'front'], 1], 0.46, 0.38], 10, ['case', ['==', ['get', 'front'], 1], 0.56, 0.48]],
+      'icon-size': ['interpolate', ['linear'], ['zoom'], 5, ['case', ['==', ['get', 'front'], 1], 0.34, 0.28], 10, ['case', ['==', ['get', 'front'], 1], 0.42, 0.36]],
+      // Pictogramme abaissé vers le centre de gravité du triangle (décalage en pixels d'image, mis à l'échelle par icon-size).
+      'icon-offset': [0, 9],
       'icon-allow-overlap': true, 'icon-ignore-placement': true, 'symbol-sort-key': TRAFFIC_SORT, visibility: 'none',
     },
     paint: { 'icon-color': ['coalesce', ['get', 'glyph'], '#ffffff'], 'icon-opacity': 1 },

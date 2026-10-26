@@ -115,6 +115,7 @@ export class MapContainer {
     if (this.onRadarPointPick) this.deckMap.setOnRadarPointPick(this.onRadarPointPick);
     if (this.radarPick) this.deckMap.setRadarPick(this.radarPick);
     if (this.transportPoints) this.deckMap.setTransportVigilance(this.transportPoints);
+    if (this.onTransportHover) this.deckMap.setOnTransportHover(this.onTransportHover);
     if (this.onSovereigntyFeatureClick) this.deckMap.setOnSovereigntyFeatureClick(this.onSovereigntyFeatureClick);
     if (this.onProtestClick) this.deckMap.setOnProtestClick(this.onProtestClick);
     if (this.onCrimeCityClick) this.deckMap.setOnCrimeCityClick(this.onCrimeCityClick);
@@ -443,10 +444,22 @@ export class MapContainer {
     this.deckMap?.setTransportVigilance(points);
   }
   private transportPoints: readonly TransportVigilancePoint[] | null = null;
+  private onTransportHover: ((n: number | null) => boolean) | null = null;
 
   /** Pastilles Transports mises en avant : étiquettes des autres modes tamisées. */
   setTransportFocus(keys: readonly string[]): void {
     this.deckMap?.setTransportFocus(keys);
+  }
+
+  /** Survol d'une étiquette Transports : le panneau En bref met le point en avant (true) ; sinon la carte ouvre son infobulle. */
+  setOnTransportHover(handler: (n: number | null) => boolean): void {
+    this.onTransportHover = handler;
+    this.deckMap?.setOnTransportHover(handler);
+  }
+
+  /** Survol d'un point dans le panneau En bref : étiquette et trajets allumés sur la carte. */
+  highlightTransportPoint(n: number | null): void {
+    this.deckMap?.highlightTransportPoint(n);
   }
 
   // ─── Events ───

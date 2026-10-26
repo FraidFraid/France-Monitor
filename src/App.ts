@@ -5076,6 +5076,9 @@ export class App {
       panel.setOnSelectWork((key) => this.poste?.select(key));
       panel.setOnOpenPastille((key) => this.showFloatingPanel(key));
       panel.setOnFocusPoint((lon, lat) => this.mapContainer?.focusPoint(lon, lat, 9));
+      // Points de vigilance Transports : survol croisé entre l'En bref et les étiquettes de la carte.
+      panel.setOnHoverPoint((n) => this.mapContainer?.highlightTransportPoint(n));
+      this.mapContainer?.setOnTransportHover((n) => this.themeBriefPanel?.highlightPoint(n) ?? false);
       panel.mount();
       this.themeBriefPanel = panel;
       if (this.activeLayers.brief && this.isFloatingPanelVisible('brief')) panel.show(this.themeBriefData());

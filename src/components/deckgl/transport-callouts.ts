@@ -19,7 +19,7 @@ export function calloutAnchorHtml(p: TransportVigilancePoint): string {
  * l'En bref), titre et ligne courte ; posée par layoutCallouts, reliée au point par un trait.
  */
 export function calloutLabelHtml(p: TransportVigilancePoint): string {
-  return `<div class="tv-callout tv-callout--${p.level}"><span class="tv-mode">${fmIcon(TRANSPORT_MODE_ICON[p.mode])}</span>`
+  return `<div class="tv-callout tv-callout--${p.level}" data-n="${p.n}"><span class="tv-mode">${fmIcon(TRANSPORT_MODE_ICON[p.mode])}</span>`
     + `<div><b><span class="tv-n">${p.n}.</span>${escapeHtml(p.title)}</b><span>${escapeHtml(p.short)}</span></div></div>`;
 }
 
@@ -69,69 +69,68 @@ const EDGE_PX = 8;
 /** Rayon du point d'extrémité : le trait part de son bord. */
 const ANCHOR_R_PX = 5;
 
+/** Lieux plus proches que ce rayon à l'écran (px) : leurs étiquettes forment une même colonne. */
+const CLUSTER_PX = 110;
+
 /**
- * Pose les étiquettes : à droite de leur ancre, à gauche quand la place manque. Sur chaque côté, triées par hauteur, elles sont
- * poussées vers le bas pour ne jamais se chevaucher puis remontées si elles sortent de la carte ; les étiquettes qui se touchent
- * forment une colonne alignée (même bord, à distance de l'ancre la plus avancée). Le trait est une courbe douce de l'ancre au
- * milieu du bord de l'étiquette. Pur : testé sans carte.
+ * Pose les étiquettes. Les lieux proches à l'écran (moins de CLUSTER_PX, de proche en proche) forment une grappe : ses étiquettes
+ * s'empilent en une colonne alignée à droite de la grappe (à gauche faute de place), dans l'ordre des numéros quand les lieux se
+ * confondent, centrée sur leur hauteur moyenne. Une colonne qui en chevauche une autre déjà posée descend sous elle (remonte si elle
+ * sort de la carte). Un lieu isolé garde son étiquette juste à côté de lui : jamais de trait qui traverse la carte. Trait : courbe
+ * douce du lieu au milieu du bord de l'étiquette. Pur : testé sans carte.
  */
 export function layoutCallouts(boxes: readonly CalloutBox[], width: number, height: number): CalloutPlacement[] {
   const out: CalloutPlacement[] = boxes.map(() => ({ left: 0, top: 0, side: 'right', path: '' }));
-  const sides: Record<'right' | 'left', number[]> = { right: [], left: [] };
-  boxes.forEach((b, i) => sides[b.x + LEADER_GAP_PX + b.w <= width - EDGE_PX || b.x - LEADER_GAP_PX - b.w < EDGE_PX ? 'right' : 'left'].push(i));
-  for (const side of ['right', 'left'] as const) {
+  // Grappes : liaison simple sous CLUSTER_PX.
+  const parent = boxes.map((_, i) => i);
+  const root = (i: number): number => (parent[i] === i ? i : (parent[i] = root(parent[i])));
+  for (let i = 0; i < boxes.length; i += 1) {
+    for (let j = 0; j < i; j += 1) if (Math.hypot(boxes[i].x - boxes[j].x, boxes[i].y - boxes[j].y) < CLUSTER_PX) parent[root(i)] = root(j);
+  }
+  const clusters = new Map<number, number[]>();
+  boxes.forEach((_, i) => clusters.set(root(i), [...(clusters.get(root(i)) ?? []), i]));
+  const placed: Array<{ l: number; t: number; r: number; b: number }> = [];
+  const ordered = [...clusters.values()].sort((a, b) => Math.min(...a.map((i) => boxes[i].y)) - Math.min(...b.map((i) => boxes[i].y)));
+  for (const members of ordered) {
     // Ancres quasi confondues (moins de 24 px) : ordre des numéros, pour une colonne qui se lit de haut en bas.
-    const idx = sides[side].sort((a, b) => (Math.abs(boxes[a].y - boxes[b].y) < 24 ? a - b : boxes[a].y - boxes[b].y));
-    const top = idx.map((i) => boxes[i].y - boxes[i].h / 2);
-    const h = (k: number): number => boxes[idx[k]].h;
-    const touches = (k: number): boolean => top[k] <= top[k - 1] + h(k - 1) + LABEL_GAP_PX + 0.5;
-    const sweep = (): void => {
-      for (let k = 1; k < idx.length; k += 1) top[k] = Math.max(top[k], top[k - 1] + h(k - 1) + LABEL_GAP_PX);
-      for (let k = idx.length - 1; k >= 0; k -= 1) {
-        const limit = k === idx.length - 1 ? height - EDGE_PX : top[k + 1] - LABEL_GAP_PX;
-        top[k] = Math.max(EDGE_PX, Math.min(top[k], limit - h(k)));
-      }
-    };
-    sweep();
-    // Une colonne poussée vers le bas est recentrée sur ses ancres, puis les colonnes sont de nouveau écartées.
-    for (let pass = 0; pass < 2; pass += 1) {
-      let s0 = 0;
-      for (let k = 1; k <= idx.length; k += 1) {
-        if (k < idx.length && touches(k)) continue;
-        const span = top[k - 1] + h(k - 1) - top[s0];
-        const mean = idx.slice(s0, k).reduce((acc, i) => acc + boxes[i].y, 0) / (k - s0);
-        const shift = mean - (top[s0] + span / 2);
-        for (let g = s0; g < k; g += 1) top[g] += shift;
-        s0 = k;
-      }
-      sweep();
+    const idx = [...members].sort((a, b) => (Math.abs(boxes[a].y - boxes[b].y) < 24 ? a - b : boxes[a].y - boxes[b].y));
+    const colW = Math.max(...idx.map((i) => boxes[i].w));
+    const colH = idx.reduce((acc, i) => acc + boxes[i].h, 0) + LABEL_GAP_PX * (idx.length - 1);
+    const maxX = Math.max(...idx.map((i) => boxes[i].x));
+    const minX = Math.min(...idx.map((i) => boxes[i].x));
+    const side: 'right' | 'left' = maxX + LEADER_GAP_PX + colW <= width - EDGE_PX || minX - LEADER_GAP_PX - colW < EDGE_PX ? 'right' : 'left';
+    const colL = side === 'right' ? Math.min(maxX + LEADER_GAP_PX, width - EDGE_PX - colW) : Math.max(EDGE_PX, minX - LEADER_GAP_PX - colW);
+    const meanY = idx.reduce((acc, i) => acc + boxes[i].y, 0) / idx.length;
+    let top = Math.max(EDGE_PX, Math.min(meanY - colH / 2, height - EDGE_PX - colH));
+    // Colonne qui chevauche une colonne déjà posée : elle descend sous elle, puis remonte si elle sort de la carte.
+    for (let guard = 0; guard < placed.length + 1; guard += 1) {
+      const hit = placed.find((p) => colL < p.r + LABEL_GAP_PX && colL + colW > p.l - LABEL_GAP_PX && top < p.b + LABEL_GAP_PX && top + colH > p.t - LABEL_GAP_PX);
+      if (!hit) break;
+      top = hit.b + LABEL_GAP_PX;
     }
-    // Colonnes : étiquettes consécutives qui se touchent.
-    let start = 0;
-    for (let k = 1; k <= idx.length; k += 1) {
-      if (k < idx.length && touches(k)) continue;
-      const group = idx.slice(start, k);
-      const edge = side === 'right'
-        ? Math.max(...group.map((i) => boxes[i].x)) + LEADER_GAP_PX
-        : Math.min(...group.map((i) => boxes[i].x)) - LEADER_GAP_PX;
-      group.forEach((i, g) => {
-        const b = boxes[i];
-        const t = top[start + g];
-        const left = side === 'right' ? Math.min(edge, width - EDGE_PX - b.w) : Math.max(EDGE_PX, edge - b.w);
-        const ex = side === 'right' ? left : left + b.w;
-        const ey = t + b.h / 2;
-        const dir = side === 'right' ? 1 : -1;
-        const dx = ex - b.x;
-        const dy = ey - b.y;
-        const len = Math.hypot(dx, dy) || 1;
-        const sx = b.x + (dx / len) * ANCHOR_R_PX;
-        const sy = b.y + (dy / len) * ANCHOR_R_PX;
-        const c = Math.max(12, Math.abs(ex - sx) * 0.55) * dir;
-        const r = (v: number): string => v.toFixed(1);
-        out[i] = { left, top: t, side, path: `M${r(sx)} ${r(sy)}C${r(sx + c)} ${r(sy)} ${r(ex - c)} ${r(ey)} ${r(ex)} ${r(ey)}` };
-      });
-      start = k;
+    if (top + colH > height - EDGE_PX) top = Math.max(EDGE_PX, height - EDGE_PX - colH);
+    placed.push({ l: colL, t: top, r: colL + colW, b: top + colH });
+    let y = top;
+    for (const i of idx) {
+      const b = boxes[i];
+      const left = side === 'right' ? colL : colL + colW - b.w;
+      out[i] = { left, top: y, side, path: leaderPath(b, left, y, side) };
+      y += b.h + LABEL_GAP_PX;
     }
   }
   return out;
+}
+
+/** Courbe douce du bord du point au milieu du bord de l'étiquette. */
+function leaderPath(b: CalloutBox, left: number, top: number, side: 'right' | 'left'): string {
+  const ex = side === 'right' ? left : left + b.w;
+  const ey = top + b.h / 2;
+  const dx = ex - b.x;
+  const dy = ey - b.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const sx = b.x + (dx / len) * ANCHOR_R_PX;
+  const sy = b.y + (dy / len) * ANCHOR_R_PX;
+  const c = Math.max(12, Math.abs(ex - sx) * 0.55) * (side === 'right' ? 1 : -1);
+  const r = (v: number): string => v.toFixed(1);
+  return `M${r(sx)} ${r(sy)}C${r(sx + c)} ${r(sy)} ${r(ex - c)} ${r(ey)} ${r(ex)} ${r(ey)}`;
 }

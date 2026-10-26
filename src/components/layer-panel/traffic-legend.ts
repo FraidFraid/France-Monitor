@@ -47,13 +47,15 @@ export const ROAD_EVENT_STYLE: Readonly<Record<RoadEventKind, {
 /** Pictogrammes des pastilles routières (images SDF de la carte, teintées par `icon-color`). */
 export const ROAD_EVENT_ICONS: readonly IconName[] = [...new Set(Object.values(ROAD_EVENT_STYLE).map((s) => s.icon))];
 
-/** Pastille d'une nature en SVG (légendes, mini-légende) : même fond, même liseré, même pictogramme que la carte. */
+/** Pastille d'une nature en SVG (légendes, mini-légende) : même triangle, même liseré, même pictogramme que la carte. */
 export function roadBadgeSvg(kind: RoadEventKind, size = 16): string {
   const { hex, icon, glyph } = ROAD_EVENT_STYLE[kind];
-  const g = Math.round(size * 0.6);
-  const off = (size - g) / 2;
-  const inner = fmIcon(icon, { size: g }).replace('<svg ', `<svg x="${off}" y="${off}" style="color:${glyph}" `).replace('stroke-width="2"', 'stroke-width="2.6"');
-  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true"><circle cx="${size / 2}" cy="${size / 2}" r="${size / 2 - 0.75}" fill="${hex}" stroke="#0a0a0f" stroke-width="1.5"/>${inner}</svg>`;
+  const g = Math.round(size * 0.46);
+  const x = (size - g) / 2;
+  const y = size * 0.42;
+  const inner = fmIcon(icon, { size: g }).replace('<svg ', `<svg x="${x}" y="${y.toFixed(1)}" style="color:${glyph}" `).replace('stroke-width="2"', 'stroke-width="2.8"');
+  const t = (v: number): string => v.toFixed(1);
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true"><path d="M${t(size / 2)} ${t(size * 0.06)}L${t(size * 0.96)} ${t(size * 0.92)}H${t(size * 0.04)}Z" fill="${hex}" stroke="#0a0a0f" stroke-width="1.3" stroke-linejoin="round"/>${inner}</svg>`;
 }
 
 // ─── Avions civils : une seule teinte, bleu ciel (25/10/2026 : les gris de l'altitude ne se distinguaient pas, hors palette L1 et

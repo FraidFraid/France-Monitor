@@ -61,7 +61,7 @@ import {
   AIR_TWEEN_MIN_ZOOM, TRAFFIC_COLOR, TRAFFIC_HOVER_LAYERS, TRAFFIC_JAM_LAYERS, TRAFFIC_LAYERS, TRAFFIC_LAYER_KEYS, TRAFFIC_SOURCE_IDS,
   TRAFFIC_STROKE_DIM_LAYERS, shouldTweenAirPositions,
   airEmergencyFeatures, airFlightTooltipHtml, airportFeatures, anchorageFeatures, jamPopupHtml, maritimeSignalFeatures, railOverviewLate,
-  railStationFeatures, railStationTierMax, roadEventFeatures, trafficIconImage, topTrafficHit, trafficSourceSpec, trafficTooltipHtml, traficolorFeatures, trainRouteFeatures,
+  ROAD_BADGE_IMAGE, drawRoadBadge, railStationFeatures, railStationTierMax, roadEventFeatures, trafficIconImage, topTrafficHit, trafficSourceSpec, trafficTooltipHtml, traficolorFeatures, trainRouteFeatures,
   urbanJamFeatures,
 } from './deckgl/traffic-map.ts';
 import {
@@ -455,6 +455,8 @@ const LYR_TV_ROUTES_GLOW = 'tv-routes-glow';
 const LYR_TV_ROUTES = 'tv-routes-line';
 /** Opacité des avions dans l'onglet Transports tant que la pastille Aérien n'est pas mise en avant (25/10/2026). */
 const AIR_TRANSPORT_TAB_OPACITY = 0.3;
+/** Zoom à partir duquel les étiquettes Transports se réduisent à leur icône et leur numéro (25/10/2026). */
+const TRANSPORT_COMPACT_ZOOM = 8.5;
 /** Navires dans l'onglet Transports, même règle (étiquettes d'abord). */
 const MARITIME_TRANSPORT_TAB_OPACITY = 0.55;
 /** Anneaux pulsants (pulse.ts) : calque de l'anneau et calque des points dont il suit le tamisage. */
@@ -6782,6 +6784,28 @@ export class DeckGLMap {
     this.registerSdfIcons([...ENV_ICON_NAMES, 'flame'], envIconImage);
     this.registerSdfIcons(ENERGY_ICON_NAMES, energyIconImage);
     this.registerSdfIcons([...ROAD_EVENT_ICONS, 'train-front'], trafficIconImage);
+    this.registerRoadBadge();
+  }
+
+  /** Fond triangulaire des incidents routiers : dessin plein, puis vrai champ de distance (alphaToSdf), halo possible. */
+  private registerRoadBadge(): void {
+    if (!this.map || this.map.hasImage(ROAD_BADGE_IMAGE)) return;
+    const SIZE = ENV_ICON_SIZE;
+    const canvas = document.createElement('canvas');
+    canvas.width = SIZE;
+    canvas.height = SIZE;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+    drawRoadBadge(ctx, SIZE, ENV_ICON_MARGIN / 2);
+    const pixels = ctx.getImageData(0, 0, SIZE, SIZE);
+    const sdf = alphaToSdf(pixels.data, SIZE);
+    for (let i = 0; i < sdf.length; i += 1) {
+      pixels.data[i * 4] = 255;
+      pixels.data[i * 4 + 1] = 255;
+      pixels.data[i * 4 + 2] = 255;
+      pixels.data[i * 4 + 3] = sdf[i] ?? 0;
+    }
+    this.map.addImage(ROAD_BADGE_IMAGE, pixels, { pixelRatio: 2, sdf: true });
   }
 
   private registerSdfIcons(names: readonly IconName[], idOf: (name: IconName) => string): void {
@@ -8165,17 +8189,15 @@ export class DeckGLMap {
         el.addEventListener('mouseenter', () => {
           this.hideAisHoverTooltip();
           this.envHoverPopup?.remove();
-          this.showTransportTip(point, label);
-          label.classList.add('is-hot');
-          line.classList.add('is-hot');
-          this.setTransportRoutes(point);
+          this.highlightTransportPoint(point.n);
+          // Détail dans le panneau En bref quand il est ouvert : la carte reste dégagée ; sinon infobulle à côté de l'étiquette.
+          if (!(this.onTransportHover?.(point.n) ?? false)) this.showTransportTip(point, label);
         });
         el.addEventListener('mouseleave', () => {
           this.transportTip?.remove();
           this.transportTip = null;
-          this.setTransportRoutes(null);
-          label.classList.remove('is-hot');
-          line.classList.remove('is-hot');
+          this.highlightTransportPoint(null);
+          this.onTransportHover?.(null);
         });
         el.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -8188,6 +8210,19 @@ export class DeckGLMap {
     map.on('move', this.onTransportMove);
     this.layoutTransportCallouts();
     this.applyTransportFocus();
+  }
+
+  private onTransportHover: ((n: number | null) => boolean) | null = null;
+  setOnTransportHover(handler: (n: number | null) => boolean): void { this.onTransportHover = handler; }
+
+  /** Point mis en avant (survol de son étiquette ou de sa ligne dans l'En bref) : étiquette et trait vifs, trajets allumés. */
+  highlightTransportPoint(n: number | null): void {
+    for (const it of this.transportItems) {
+      const hot = it.point.n === n;
+      it.label.classList.toggle('is-hot', hot);
+      it.line.classList.toggle('is-hot', hot);
+    }
+    this.setTransportRoutes(this.transportItems.find((it) => it.point.n === n)?.point ?? null);
   }
 
   /** Infobulle d'un point, à côté de son étiquette (à droite, à gauche faute de place), jamais sur les autres étiquettes de la colonne. */
@@ -8218,10 +8253,11 @@ export class DeckGLMap {
       if (point === null) return;
       map.addSource(SRC_TV_ROUTES, { type: 'geojson', data: calloutRoutesFeatures(null) });
       const color: maplibregl.ExpressionSpecification = ['match', ['get', 'level'], 'rouge', levelHex('rouge'), levelHex('orange')];
+      // Trajets en trait fin pointillé, liseré sombre dessous pour le détacher (25/10/2026 : le halo rouge large masquait la carte).
       map.addLayer({ id: LYR_TV_ROUTES_GLOW, type: 'line', source: SRC_TV_ROUTES, layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': color, 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 9, 10, 16], 'line-opacity': 0.28, 'line-blur': 4 } });
-      map.addLayer({ id: LYR_TV_ROUTES, type: 'line', source: SRC_TV_ROUTES, layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': color, 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 2.5, 10, 4], 'line-opacity': 1 } });
+        paint: { 'line-color': '#0a0a0f', 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 3.5, 10, 5], 'line-opacity': 0.7 } });
+      map.addLayer({ id: LYR_TV_ROUTES, type: 'line', source: SRC_TV_ROUTES, layout: { 'line-join': 'round' },
+        paint: { 'line-color': color, 'line-width': ['interpolate', ['linear'], ['zoom'], 5, 1.6, 10, 2.4], 'line-opacity': 0.95, 'line-dasharray': [2, 1.6] } });
     }
     (map.getSource(SRC_TV_ROUTES) as maplibregl.GeoJSONSource | undefined)?.setData(calloutRoutesFeatures(point));
     // La synchronisation des couches masque tout calque qu'elle ne connaît pas : visibilité reposée à chaque survol.
@@ -8249,6 +8285,11 @@ export class DeckGLMap {
     if (!map || this.transportItems.length === 0) return;
     const { clientWidth: width, clientHeight: height } = map.getContainer();
     this.transportSvg?.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    const compact = map.getZoom() >= TRANSPORT_COMPACT_ZOOM;
+    if (this.transportLayer && this.transportLayer.classList.contains('tv-layer--compact') !== compact) {
+      this.transportLayer.classList.toggle('tv-layer--compact', compact);
+      for (const it of this.transportItems) { it.w = it.label.offsetWidth; it.h = it.label.offsetHeight; }
+    }
     const boxes = this.transportItems.map((it) => {
       const p = map.project([it.point.lon, it.point.lat]);
       if (it.w === 0) { it.w = it.label.offsetWidth; it.h = it.label.offsetHeight; }

@@ -48,6 +48,31 @@ describe('points de vigilance Transports (lots 1 et 2, 25/10/2026)', () => {
     expect(transportVigilancePoints(input({ rail: rail([train('1', 300), train('2', 300)]) }))[0]).toMatchObject({ level: 'orange', short: '2 trains · jusqu’à 300\u00a0min' });
   });
 
+  it('rail : un axe grandes lignes se scinde en lignes sans gare commune (transversales Bordeaux–Marseille et Nantes–Paris Austerlitz)', () => {
+    const BDX = stop('Bordeaux Saint-Jean', -0.556, 44.826);
+    const TLS = stop('Toulouse Matabiau', 1.453, 43.611);
+    const MRS = stop('Marseille Saint-Charles', 5.38, 43.303);
+    const NTE = stop('Nantes', -1.542, 47.217);
+    const PAZ = stop('Paris Austerlitz', 2.366, 48.842);
+    const prov = (id: string, stops: RailTrain['stops'], delay: number | null): RailTrain => train(id, delay, { axis: 'province', stops, effect: delay === null ? 'supprime' : 'retard' });
+    const points = transportVigilancePoints(input({ rail: rail([
+      prov('4665', [BDX, TLS, MRS], null), prov('4766', [MRS, TLS], null), prov('4669', [BDX, TLS, MRS], null), prov('4082', [NTE, PAZ], 160), prov('4085', [PAZ, NTE], null),
+    ]) }));
+    expect(points.map((p) => [p.title, p.short, p.routes?.length])).toEqual([
+      ['Transversale Bordeaux–Marseille', '3 trains supprimés', 3],
+      ['Transversale Nantes–Paris Austerlitz', '2 trains · jusqu’à 160\u00a0min · 1 supprimé', 2],
+    ]);
+    // Axe Atlantique : branches reliées par Paris Montparnasse, un seul point.
+    expect(transportVigilancePoints(input({ rail: rail([train('1', 100), train('2', 100, { stops: [RENNES, MONTPARNASSE] })]) }))).toHaveLength(1);
+  });
+
+  it('rail : TER scindé par ligne ; un seul train supprimé qui prive au moins 8 gares fait son point, nommé par sa ligne', () => {
+    const line = Array.from({ length: 9 }, (_, i) => stop(i === 0 ? 'Hendaye' : i === 8 ? 'Lourdes' : `Gare ${i}`, -1.7 + i * 0.2, 43.35));
+    const ter = (id: string, stops: RailTrain['stops']): RailTrain => train(id, null, { kind: 'ter', axis: null, region: 'Nouvelle-Aquitaine', effect: 'supprime', stops });
+    const points = transportVigilancePoints(input({ rail: rail([ter('867032', line), ter('865889', [stop('Monsempron-Libos', 0.94, 44.49), stop('Agen', 0.62, 44.2)])]) }));
+    expect(points.map((p) => [p.title, p.short])).toEqual([['TER Hendaye–Lourdes', '1 train supprimé · 9 gares sans desserte']]);
+  });
+
   it('cause SIRI SX : même portée = « annoncée » ; gare citée seulement = « Possible », à vérifier ; travaux et situations anciennes ignorés', () => {
     const trains = [train('1', 100), train('2', 100), train('3', 100)];
     const same = transportVigilancePoints(input({ rail: rail(trains), situations: { at: null, errors: [], situations: [situation({})] } }));

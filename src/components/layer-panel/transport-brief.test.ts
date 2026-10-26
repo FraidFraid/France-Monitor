@@ -98,6 +98,9 @@ describe('grammaire commune dans l’onglet Transports', () => {
     expect(Math.abs((tops[0] + tops[2] + 36) / 2 - 200)).toBeLessThan(2);
     for (const p of placed) expect(p.path).toMatch(/^M[\d.]+ [\d.]+C/);
     expect(layoutCallouts([box(950, 300)], 1000, 600)[0].side).toBe('left');
+    // Lieux éloignés à la même hauteur : chacun garde son étiquette à côté de lui, pas de colonne commune qui traverse la carte.
+    const far = layoutCallouts([box(100, 200), box(600, 205)], 1000, 600);
+    expect([far[0].left, far[1].left]).toEqual([146, 646]);
   });
 
   it('étiquettes d’abord : gares rouges seules à l’échelle de la France, orange au zoom régional, tout de près ou pastille Ferroviaire allumée', () => {

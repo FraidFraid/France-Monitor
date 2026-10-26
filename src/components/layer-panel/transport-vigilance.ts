@@ -36,6 +36,8 @@ export interface TransportVigilancePoint {
   who: string;
   /** Trajets des trains concernés ([lon, lat] par arrêt), allumés sur la carte au survol du point ; absent hors rail. */
   routes?: ReadonlyArray<ReadonlyArray<readonly [number, number]>>;
+  /** Point fait d'un seul train supprimé (classé après les autres modes). */
+  lone?: boolean;
 }
 
 export interface TransportVigilanceInput {
@@ -52,6 +54,8 @@ export const HEAVY_DELAY_MIN = 90;
 /** Trains très retardés ou supprimés d'un même axe ou d'une même région pour faire un point : 2 (orange, 25/10/2026), 5 (rouge). */
 const RAIL_POINT_MIN = 2;
 const RAIL_POINT_RED = 5;
+/** Gares privées de desserte à partir desquelles un seul train supprimé fait un point (25/10/2026). */
+const LONE_TRAIN_MIN_STOPS = 8;
 /** Une situation SIRI SX vaut cause si elle a commencé il y a moins de 6 h. */
 const CAUSE_WINDOW_MS = 6 * 3_600_000;
 const MAX_ROAD_POINTS = 4;
@@ -79,6 +83,47 @@ function railGroupOf(t: RailTrain): { key: string; label: string; axis: RailAxis
   if (t.kind === 'grandes-lignes' && t.axis) return { key: `axe:${t.axis}`, label: `Axe ${RAIL_AXIS_LABEL[t.axis]}`, axis: t.axis };
   if (t.region) return { key: `region:${fold(t.region)}`, label: `TER ${t.region}`, axis: null };
   return null;
+}
+
+/**
+ * Lignes distinctes d'un axe grandes lignes : deux trains sont sur la même ligne s'ils ont une gare en commun (de proche en proche).
+ * L'axe « Province, transversales » réunit ainsi Bordeaux–Marseille et Nantes–Paris Austerlitz, sans gare commune : deux points,
+ * chacun avec ses trains et ses trajets (25/10/2026 : une étiquette à Toulouse allumait aussi Nantes–Paris).
+ */
+function railLines(trains: readonly RailTrain[]): RailTrain[][] {
+  const parent = trains.map((_, i) => i);
+  const root = (i: number): number => (parent[i] === i ? i : (parent[i] = root(parent[i])));
+  const seen = new Map<string, number>();
+  trains.forEach((t, i) => {
+    for (const st of t.stops) {
+      const key = fold(stationName(st.name));
+      const j = seen.get(key);
+      if (j === undefined) seen.set(key, i);
+      else parent[root(i)] = root(j);
+    }
+  });
+  const lines = new Map<number, RailTrain[]>();
+  trains.forEach((t, i) => lines.set(root(i), [...(lines.get(root(i)) ?? []), t]));
+  return [...lines.values()];
+}
+
+/** Ville d'une gare pour nommer une ligne : « Bordeaux Saint-Jean » devient « Bordeaux » ; gares parisiennes et « Le Mans » gardées. */
+function cityOf(station: string): string {
+  const words = station.split(' ');
+  if (words.length < 2 || words[0] === 'Paris' || /^(le|la|les|l’|saint|sainte)$/i.test(words[0] ?? '')) return station;
+  return words[0] ?? station;
+}
+
+/** « Bordeaux–Marseille » : les deux terminus les plus fréquents d'une ligne, dans l'ordre du premier train. */
+function lineName(trains: readonly RailTrain[]): string {
+  const counts = new Map<string, number>();
+  for (const t of trains) {
+    const ends = [t.stops[0], t.stops[t.stops.length - 1]].filter((s): s is RailTrain['stops'][number] => s !== undefined);
+    for (const s of ends) counts.set(stationName(s.name), (counts.get(stationName(s.name)) ?? 0) + 1);
+  }
+  const top = [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([n]) => n);
+  const order = trains[0]?.stops.map((s) => stationName(s.name)) ?? [];
+  return top.sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99)).map(cityOf).join('–');
 }
 
 /** Distance approchée en km (équirectangulaire, suffisante à l'échelle d'une agglomération). */
@@ -168,9 +213,24 @@ function railPoints(input: TransportVigilanceInput): TransportVigilancePoint[] {
     entry.trains.push(t);
     groups.set(g.key, entry);
   }
+  // Un axe grandes lignes comme une région TER se scinde en ses lignes distinctes (25/10/2026 : « TER Nouvelle-Aquitaine »
+  // réunissait Hendaye–Lourdes, Monsempron–Agen et Limoges–Saillat sous une étiquette posée à Agen).
+  const split: Array<[string, { label: string; axis: RailAxis | null; region: string | null; trains: RailTrain[] }]> = [];
+  for (const [key, g] of groups) {
+    const lines = railLines(g.trains);
+    if (lines.length === 1 && g.axis !== null && g.axis !== 'province') { split.push([key, g]); continue; }
+    for (const trains of lines) {
+      const name = lineName(trains);
+      const label = g.axis === 'province' ? `Transversale ${name}` : g.axis ? `${g.label} · ${name}` : `TER ${name}`;
+      split.push([`${key}:${fold(name)}`, { ...g, label, trains }]);
+    }
+  }
   const out: TransportVigilancePoint[] = [];
-  // Le groupe le plus touché choisit sa gare d'abord.
-  const ordered = [...groups].filter(([, g]) => g.trains.length >= RAIL_POINT_MIN).sort((a, b) => b[1].trains.length - a[1].trains.length);
+  // Le groupe le plus touché choisit sa gare d'abord. Un seul train supprimé fait un point quand il prive au moins
+  // LONE_TRAIN_MIN_STOPS gares de desserte (toute une ligne rouge sur la carte, sans étiquette sinon).
+  const qualifies = (trains: readonly RailTrain[]): boolean => trains.length >= RAIL_POINT_MIN
+    || (trains.length === 1 && trains[0]?.effect === 'supprime' && trains[0].stops.length >= LONE_TRAIN_MIN_STOPS);
+  const ordered = split.filter(([, g]) => qualifies(g.trains)).sort((a, b) => b[1].trains.length - a[1].trains.length);
   for (const [key, g] of ordered) {
     const at = anchorStation(g.trains, out);
     if (!at) continue;
@@ -178,7 +238,9 @@ function railPoints(input: TransportVigilanceInput): TransportVigilancePoint[] {
     const delays = g.trains.map((t) => t.delayMin ?? 0);
     const max = Math.max(...delays);
     const n = g.trains.length;
-    const short = cancelled === n ? `${n} trains supprimés`
+    const lone = n === 1 ? g.trains[0] : undefined;
+    const short = lone ? `1 train supprimé · ${lone.stops.length} gares sans desserte`
+      : cancelled === n ? `${n} trains supprimés`
       : `${n} trains · jusqu’à ${formatMinutes(max)}${cancelled > 0 ? ` · ${cancelled} supprimé${cancelled > 1 ? 's' : ''}` : ''}`;
     const worst = [...g.trains].sort((a, b) => (b.effect === 'supprime' ? 1 : 0) - (a.effect === 'supprime' ? 1 : 0) || (b.delayMin ?? 0) - (a.delayMin ?? 0)).slice(0, 3);
     const stations = [...new Set(g.trains.flatMap((t) => t.stops.map((s) => stationName(s.name))))];
@@ -186,11 +248,13 @@ function railPoints(input: TransportVigilanceInput): TransportVigilancePoint[] {
     out.push({
       n: 0, id: `rail-${key}`, mode: 'trafficRail', level: n >= RAIL_POINT_RED ? 'rouge' : 'orange', lon: at.lon, lat: at.lat,
       title: g.label, short,
-      detail: `${n} trains à ${formatMinutes(HEAVY_DELAY_MIN)} de retard ou plus, ou supprimés, autour de ${at.name} ; ${worst.map(trainWords).join(' ; ')}.`,
+      detail: lone ? `${capital(trainWords(lone))}, ${lone.stops.length} gares sans desserte.`
+        : `${n} trains à ${formatMinutes(HEAVY_DELAY_MIN)} de retard ou plus, ou supprimés, autour de ${at.name} ; ${worst.map(trainWords).join(' ; ')}.`,
       cause: cause ? `${cause.sameScope ? '' : 'Possible : '}${cause.sameScope ? capital(cause.situation.cause ?? '') : cause.situation.cause ?? ''} (SIRI SX, ${clockOf(cause.situation.start, input.now)})` : null,
       causeTag: cause?.sameScope ? 'annoncée' : 'à vérifier',
       who: g.axis === 'intercites-bercy' ? 'SNCF Voyageurs, Intercités (État autorité organisatrice)'
         : g.axis ? 'SNCF Voyageurs et SNCF Réseau' : `Région ${g.region ?? ''} (TER) et SNCF Réseau`.trim(),
+      ...(lone ? { lone: true } : {}),
       routes: g.trains.filter((t) => t.stops.length >= 2).map((t) => t.stops.map((st) => [st.lon, st.lat] as const)),
     });
   }
@@ -254,7 +318,8 @@ function maritimePoints(input: TransportVigilanceInput): TransportVigilancePoint
 /** Points de vigilance, numérotés : rouge d'abord, puis rail, route, aérien, maritime ; au plus 9. */
 export function transportVigilancePoints(input: TransportVigilanceInput): TransportVigilancePoint[] {
   const all = [...railPoints(input), ...roadPoints(input), ...airPoints(input), ...maritimePoints(input)];
-  const rank = (p: TransportVigilancePoint): number => (p.level === 'rouge' ? 0 : 1);
+  // Rouges d'abord ; un train supprimé seul passe après les autres modes (il ne doit pas évincer une coupure de route du plafond).
+  const rank = (p: TransportVigilancePoint): number => (p.level === 'rouge' ? 0 : p.lone ? 2 : 1);
   return all
     .map((p, i) => ({ p, i }))
     .sort((a, b) => rank(a.p) - rank(b.p) || MODE_ORDER[a.p.mode] - MODE_ORDER[b.p.mode] || a.i - b.i)

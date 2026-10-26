@@ -16,6 +16,7 @@ export class ThemeBriefPanel {
   private onOpenPastille?: (key: keyof MapLayers) => void;
   private onSelectWork?: (key: string) => void;
   private onFocusPoint?: (lon: number, lat: number) => void;
+  private onHoverPoint?: (n: number | null) => void;
   private data: ThemeBriefData | null = null;
   private clickCleanup: (() => void) | null = null;
   private readonly storage = safeStorage();
@@ -46,8 +47,20 @@ export class ThemeBriefPanel {
       const key = t.closest<HTMLElement>('.lp-row.is-link')?.dataset['work'];
       if (key) this.onSelectWork?.(key);
     };
+    // Survol d'un point de vigilance : son étiquette et ses trajets s'allument sur la carte.
+    const onOver = (e: Event): void => {
+      const n = Number((e.target as HTMLElement).closest<HTMLElement>('.tb-point[data-point]')?.dataset['point']);
+      this.onHoverPoint?.(Number.isFinite(n) && n > 0 ? n : null);
+    };
+    const onLeave = (): void => this.onHoverPoint?.(null);
     root.addEventListener('click', onClick);
-    this.clickCleanup = () => root.removeEventListener('click', onClick);
+    root.addEventListener('mouseover', onOver);
+    root.addEventListener('mouseleave', onLeave);
+    this.clickCleanup = () => {
+      root.removeEventListener('click', onClick);
+      root.removeEventListener('mouseover', onOver);
+      root.removeEventListener('mouseleave', onLeave);
+    };
   }
 
   setOnClose(handler: () => void): void { this.onClose = handler; }
@@ -56,6 +69,24 @@ export class ThemeBriefPanel {
   setOnSelectWork(handler: (key: string) => void): void { this.onSelectWork = handler; }
   /** Point de vigilance (onglet Transports) : centrer la carte. */
   setOnFocusPoint(handler: (lon: number, lat: number) => void): void { this.onFocusPoint = handler; }
+  setOnHoverPoint(handler: (n: number | null) => void): void { this.onHoverPoint = handler; }
+
+  /**
+   * Survol d'une étiquette de la carte : le point de vigilance est mis en avant ici et amené en vue (la carte reste dégagée, sans
+   * bulle). false : panneau fermé ou point absent, la carte montre alors sa propre infobulle.
+   */
+  highlightPoint(n: number | null): boolean {
+    const root = this.shell?.root;
+    if (!root || !this.isVisible()) return false;
+    for (const el of root.querySelectorAll('.tb-point.is-hot')) el.classList.remove('is-hot');
+    if (n === null) return true;
+    const el = root.querySelector<HTMLElement>(`.tb-point[data-point="${n}"]`);
+    // Section repliée : le point n'est pas visible, la carte montre son infobulle.
+    if (!el || el.offsetParent === null) return false;
+    el.classList.add('is-hot');
+    el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    return true;
+  }
 
   show(data: ThemeBriefData | null): void {
     this.shell?.root.classList.add('is-open');

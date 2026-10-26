@@ -32,7 +32,7 @@ describe('légendes Trafics : sources, périmètres (T1), dates réelles (S1)', 
     expect([color(l, 'road-weather'), color(l, 'road-closure'), color(l, 'road-accident'), color(l, 'road-obstruction'), color(l, 'road-lane'),
       color(l, 'road-jam-3'), color(l, 'road-section-congested'), color(l, 'road-section-free')])
       .toEqual([levelHex('orange'), levelHex('orange'), '#c026d3', '#c026d3', '#c026d3', levelHex('rouge'), levelHex('rouge'), levelHex('vert')]);
-    expect(l.items.filter((i) => i.id === 'road-accident' || i.id === 'road-obstruction').every((i) => i.icon?.includes('<circle') === true)).toBe(true);
+    expect(l.items.filter((i) => i.id === 'road-accident' || i.id === 'road-obstruction').every((i) => i.icon?.includes('<path d="M') === true)).toBe(true);
   });
   it('en retard : « (en retard) » et couleurs retirées dites ; partie absente : « indisponible » ; autre jour : date', () => {
     expect(roadLegend(roadNationalFixture(), roadUrbanFixture(), TRAFFIC_NOW + 2 * H).notes?.slice(0, 2))
