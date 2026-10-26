@@ -8439,6 +8439,10 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
    Stabilité financière et matières premières : une ligne par indicateur, mêmes colonnes (nom et unité, date dessous ; valeur
    alignée à droite en chiffres à chasse fixe ; note ; courbe de largeur fixe). Ligne en alerte : liseré et fond du niveau. */
 .under-map-market-band { height: auto; align-self: start; }
+/* Bande étroite (colonne de la carte réduite, écran large) : les deux blocs passent l'un sous l'autre dès qu'ils feraient moins de
+   260 px chacun, au lieu de deux colonnes illisibles (26/10/2026). */
+.under-map-market-band { flex-wrap: wrap; }
+.under-map-market-band__col { flex: 1 1 260px; }
 .under-map-market-band__col > .under-map-card { height: auto; }
 .fin-table { display: flex; flex-direction: column; }
 .fin-table__cause { font-size: 11px; color: var(--text-muted); padding: 6px 4px 8px; }
