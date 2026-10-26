@@ -248,6 +248,7 @@ import { fetchAirTrafficSnapshot } from './services/air-traffic.ts';
 import { fetchMarketData } from './services/finance.ts';
 import type { EventPressureResponse } from './types/index.ts';
 import type { ArchivedNoteSummary } from './services/situation-notes.ts';
+import { upcomingFromSources } from './services/upcoming.ts';
 import {
   BCE_SOURCE_NAME, SPREAD_SOURCE_NAME, bceStatus, fetchFinancialStability, mergeFinancialStability, spreadStatus, type FinancialStabilitySlot,
 } from './services/financial-stability.ts';
@@ -2167,7 +2168,16 @@ export class App {
     this.startAirTrafficPolling();
     this.startHealthPolling();
     this.startEventPressurePolling();
-    if (this.uiV2 && !this.recorderPage) this.startArchivedNotesPolling();
+    if (this.uiV2 && !this.recorderPage) {
+      this.startArchivedNotesPolling();
+      // Échéances : rassemblements annoncés lus même couche Manifestations éteinte, une fois par heure.
+      const loadAnnounced = (): void => {
+        if (this.protestsPollWanted()) return;
+        this.loadProtests().then(() => this.repaintPoste()).catch((err) => console.error('[App] Rassemblements annoncés', err));
+      };
+      loadAnnounced();
+      this.registerPausableInterval(loadAnnounced, 60 * 60_000);
+    }
     this.startHydraulicPolling();
     this.startEco2mixPolling();
     this.startMtgFrpPolling();
@@ -9649,6 +9659,10 @@ export class App {
       sources: this.statusPanel?.getSources() ?? [],
       coverage: this.scoreCoverage(env),
       archivedNotes: this.archivedNotes,
+      upcoming: upcomingFromSources({
+        ecowatt: this.currentEcowattResponse, vigilance: this.currentVigilance?.vigilance.data ?? null,
+        protests: this.currentProtests?.data?.items ?? null, now,
+      }),
       infra: { result: this.currentNetworkBarometer, nuclear: this.currentNuclearState, eolien: this.currentEolienLive },
       health: this.healthNationalNow(now),
       score: { delta24h: getDelta24h(), pillarDeltas: getPillarDeltas24h(), series: getSparklineSeries() },

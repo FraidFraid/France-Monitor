@@ -40,6 +40,7 @@ import { loadSectionState, saveSectionState, sectionsOf, sectionMemoryKey, type 
 import { buildFranceFiche, type FranceFicheSnapshot, type LayerLevelChange } from '../fiche/france.ts';
 import { buildDeptFiche } from '../fiche/dept.ts';
 import type { ArchivedNoteSummary } from '../../services/situation-notes.ts';
+import type { UpcomingItem } from '../../services/upcoming.ts';
 import { buildEventFiche, buildMarketFiche, buildOfficialFiche, buildSituationFiche, buildThemeFiche } from '../fiche/items.ts';
 import type { FicheModel, Lang } from '../fiche/parts.ts';
 import { StatusBar, freshnessCounts, freshnessText } from './StatusBar.ts';
@@ -76,6 +77,8 @@ export interface PosteData {
   sources: readonly DataSourceStatus[];
   /** Sources lues par l'indice (App.scoreCoverage) : ligne d'état de la fiche France. */
   coverage?: ScoreCoverage | null;
+  /** Échéances annoncées par les sources : section de la fiche France. */
+  upcoming?: readonly UpcomingItem[] | null;
   /** Notes de situation archivées par la VM : section « Notes archivées » de la fiche France ; absente : pas encore lues. */
   archivedNotes?: readonly ArchivedNoteSummary[] | null;
   score: { delta24h: number | null; pillarDeltas: StabilityPillarValues | null; series: number[] };
@@ -527,6 +530,7 @@ export class PosteSituation {
       freshness: this.freshness(data),
       coverage: data.coverage ?? null,
       archivedNotes: data.archivedNotes,
+      upcoming: data.upcoming,
       infra: data.infra ?? null,
       sectionOpen: sectionsOf(this.sectionOpen, 'france'),
       ready: data.ready,

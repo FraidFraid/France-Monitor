@@ -5,6 +5,7 @@
 
 import type { FranceCountrySnapshot, IntelEventsState, ScoreCoverage, StructuredBrief } from '../../types/index.ts';
 import type { ArchivedNoteSummary } from '../../services/situation-notes.ts';
+import type { UpcomingItem } from '../../services/upcoming.ts';
 import { absoluteTime } from './kit.ts';
 import type { StabilityPillarValues } from '../../utils/stability-history.ts';
 import type { BriefSourceSituation } from '../../services/situation-brief.ts';
@@ -69,6 +70,8 @@ export interface FranceFicheInput {
   freshness: string;
   /** Sources lues par l'indice (App.scoreCoverage) ; absente ou null : rien n'est dit de la couverture. */
   coverage?: ScoreCoverage | null;
+  /** Échéances annoncées par les sources (services/upcoming.ts) ; absente : section masquée. */
+  upcoming?: readonly UpcomingItem[] | null;
   /** Notes de situation archivées par la VM (/api/situation-notes) ; absente : pas encore lues, section masquée. */
   archivedNotes?: readonly ArchivedNoteSummary[] | null;
   /** Baromètre des infrastructures (null tant qu'App ne l'a pas reçu). */
@@ -106,6 +109,35 @@ export function coverageText(coverage: ScoreCoverage | null | undefined, ready: 
   }
   const base = `indice sur ${coverage.read}/${coverage.total}\u00a0sources`;
   return names.length === 0 ? base : `${base} (${names.length > 1 ? 'manquent' : 'manque'}\u00a0: ${names.join(', ')})`;
+}
+
+const UPCOMING_DAY = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', weekday: 'short', day: '2-digit', month: '2-digit' });
+
+/**
+ * Section « Échéances annoncées par les sources » (26/10/2026) : ce que RTE, Météo-France et les organisateurs publient pour les jours
+ * à venir, repris tel quel et attribué. Jamais une prévision de France Monitor.
+ */
+function upcomingSection(input: FranceFicheInput, open: boolean): FicheSection | null {
+  const items = input.upcoming;
+  if (items === undefined || items === null) return null;
+  const { lang } = input;
+  // Ligne simple de la liste (pas la grille d'une situation, qui coupe le titre) : pastille, jour et titre, puis source et détail.
+  const rows = items.map((u) => {
+    const day = UPCOMING_DAY.format(new Date(`${u.day}T12:00:00Z`));
+    const pill = u.level ? `${renderVigilancePill(u.level, lang)} ` : '';
+    const meta = [u.source, u.detail].filter(Boolean).join(' · ');
+    return `<li>${pill}${escapeHtml(`${day} · ${u.title}`)}<br><span class="fiche-meta">${escapeHtml(meta)}</span></li>`;
+  }).join('');
+  const announced = items.filter((u) => u.level !== null || /rassemblement/.test(u.title)).length;
+  return {
+    id: 'upcoming', title: t(lang, 'Échéances annoncées par les sources', 'Deadlines announced by sources'), summary: String(announced),
+    collapsible: true, open,
+    html: rows
+      ? `<ul class="fiche-list">${rows}</ul><p class="fmk-note">${escapeHtml(t(lang,
+        'Repris tels que publiés par chaque source (RTE, Météo-France, organisateurs) ; France Monitor ne fait pas de prévision.',
+        'As published by each source (RTE, Météo-France, organisers); France Monitor makes no forecast.'))}</p>`
+      : `<p class="fmk-muted">${t(lang, 'Aucune échéance publiée par les sources lues.', 'No deadline published by the sources read.')}</p>`,
+  };
 }
 
 const ARCHIVED_NOTES_SHOWN = 12;
@@ -383,7 +415,7 @@ export function buildFranceFiche(input: FranceFicheInput): FicheModel {
       html: changesHtml(input), collapsible: true, open: open('changes', false),
     },
     ...indicators.map((s) => ({ ...s, collapsible: true, open: open(s.id, false) })),
-    ...[archivedNotesSection(input, open('archives', false))].filter((s): s is FicheSection => s !== null),
+    ...[upcomingSection(input, open('upcoming', false)), archivedNotesSection(input, open('archives', false))].filter((s): s is FicheSection => s !== null),
     ...(sources.length > 0
       ? [{ id: 'sources', title: t(lang, 'Preuves et sources', 'Evidence and sources'), summary: sourcesSummary(sources, lang), html: renderSourceChips(sources), collapsible: true, open: open('sources', false) }]
       : []),

@@ -217,6 +217,18 @@ describe('onglet État de la France (spec 2026-09-29 § 7)', () => {
   it('en-tête : situations actives, heure de mise à jour, sources', () => {
     expect(buildFranceFiche(input()).freshness).toMatch(/^1 situation active · MAJ \d{2}:\d{2} · 33 sources sur 35 à jour$/);
   });
+  it('échéances annoncées : section repliée, jour, niveau publié, source ; mention « pas de prévision » ; masquée sans données', () => {
+    const upcoming = [
+      { day: '2026-10-27', level: 'orange' as const, title: 'Vigilance orange vent violent dans 2 départements', detail: 'Finistère (29), Morbihan (56)', source: 'Météo-France' },
+      { day: '2026-10-31', level: null, title: '410 rassemblements annoncés', detail: 'annonces publiques, non confirmées', source: 'carte des gilets jaunes' },
+    ];
+    const s = buildFranceFiche(input({ upcoming })).sections.find((x) => x.id === 'upcoming');
+    expect([s?.title, s?.summary, s?.open]).toEqual(['Échéances annoncées par les sources', '2', false]);
+    expect(s?.html).toContain('Vigilance orange vent violent dans 2 départements');
+    expect(s?.html).toContain('410 rassemblements annoncés');
+    expect(s?.html).toContain('France Monitor ne fait pas de prévision');
+    expect(buildFranceFiche(input()).sections.find((x) => x.id === 'upcoming')).toBeUndefined();
+  });
   it('notes archivées : section repliée par défaut, une ligne par note (couleur, date, indice) ; masquée avant lecture', () => {
     const notes = [{ id: '2026-10-17T18:17:00Z', capturedAt: '2026-10-17T18:17:00Z', score: 65, level: 'orange' as const, situations: 3, coverage: null }];
     const s = buildFranceFiche(input({ archivedNotes: notes })).sections.find((x) => x.id === 'archives');
