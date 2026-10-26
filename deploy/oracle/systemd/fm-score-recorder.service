@@ -1,0 +1,32 @@
+[Unit]
+Description=France Monitor - releve de la note nationale par un navigateur sans ecran (scripts/score-recorder.mjs), lu par /api/situation-history
+Documentation=https://github.com/FraidFraid/France-Monitor/blob/main/docs/deployment-oracle.md
+After=network-online.target fm-api.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=fm
+Group=fm
+WorkingDirectory=/srv/francemonitor/current
+# Playwright et son Chromium installes hors release par deploy/oracle/install-score-recorder.sh.
+Environment=PLAYWRIGHT_MODULE=/opt/fm-recorder/node_modules/playwright/index.mjs
+Environment=PLAYWRIGHT_BROWSERS_PATH=/opt/fm-recorder/browsers
+Environment=HOME=/var/lib/francemonitor/recorder
+# Trois a cinq minutes : la page lit ses sources comme un visiteur. Ecrit hors de la release : l'historique survit aux deploiements.
+ExecStart=/usr/bin/node scripts/score-recorder.mjs
+TimeoutStartSec=8min
+# VM de 3 Go : un Chromium qui s'emballerait est tue avant de gener l'API.
+MemoryMax=1200M
+# Pas de Restart= : un releve manque reste un creneau vide, le suivant repart de zero.
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/francemonitor/data /var/lib/francemonitor/recorder
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true

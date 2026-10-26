@@ -9,6 +9,7 @@ import type {
   FranceCountrySnapshot,
   HistoryResponse,
   HistoryResult,
+  ScoreCoverage,
   SituationSnapshot,
   SituationSeverity,
 } from '../types/index.ts';
@@ -26,7 +27,7 @@ function currentSlotKey(now = new Date()): string {
   return d.toISOString().slice(0, 16);
 }
 
-function buildSnapshotPayload(snapshot: FranceCountrySnapshot, slotKey: string): SituationSnapshot {
+function buildSnapshotPayload(snapshot: FranceCountrySnapshot, slotKey: string, coverage: ScoreCoverage): SituationSnapshot {
   const cyberScore  = snapshot.cyberScore ?? null;
   const socialScore = snapshot.stability?.nationalScore    ?? null;
 
@@ -68,6 +69,7 @@ function buildSnapshotPayload(snapshot: FranceCountrySnapshot, slotKey: string):
       maxSeverity:     maxSev,
       avgConfidence:   Math.round(avgConf * 100) / 100,
     },
+    coverage,
     dataStatus: {
       overall: (cyberScore === null || socialScore === null) ? 'degraded' : 'ok',
       sources: {
@@ -79,24 +81,63 @@ function buildSnapshotPayload(snapshot: FranceCountrySnapshot, slotKey: string):
   };
 }
 
-export async function pushHistorySnapshot(snapshot: FranceCountrySnapshot): Promise<void> {
+/**
+ * Délai après le chargement de la page au-delà duquel un relevé part même si des sources manquent (sa couverture le dit). Avant,
+ * seul un relevé complet part : le 25/10/2026, des relevés pris au premier calcul (moitié des sources) avaient fixé la note du
+ * créneau, le serveur gardant le premier reçu (73 puis 90 sans changement de situation).
+ */
+export const HISTORY_GRACE_MS = 3 * 60_000;
+
+/** Couverture d'un relevé : sources principales de la note lues (true) ou non. */
+export function scoreCoverageOf(sources: Readonly<Record<string, boolean>>): ScoreCoverage {
+  const entries = Object.entries(sources);
+  const missing = entries.filter(([, read]) => !read).map(([key]) => key);
+  return { read: entries.length - missing.length, total: entries.length, missing };
+}
+
+/** Un relevé part s'il est complet, ou, passé le délai de grâce, avec ce qui a été lu. */
+export function historySnapshotReady(coverage: ScoreCoverage, sinceLoadMs: number): boolean {
+  return coverage.read >= coverage.total || sinceLoadMs >= HISTORY_GRACE_MS;
+}
+
+/** Page ouverte par l'enregistreur de la VM (scripts/score-recorder.mjs) : le relevé lui est remis, pas envoyé au serveur. */
+export function isRecorderPage(search: string): boolean {
+  return new URLSearchParams(search).get('recorder') === '1';
+}
+
+declare global {
+  interface Window { __fmRecorderSnapshot?: SituationSnapshot }
+}
+
+export async function pushHistorySnapshot(
+  snapshot: FranceCountrySnapshot,
+  coverage: ScoreCoverage,
+  sinceLoadMs: number,
+): Promise<void> {
+  if (!historySnapshotReady(coverage, sinceLoadMs)) return;
+  if (isRecorderPage(window.location.search)) {
+    window.__fmRecorderSnapshot = buildSnapshotPayload(snapshot, currentSlotKey(), coverage);
+    return;
+  }
   const slotKey = currentSlotKey();
+  // Un relevé déjà envoyé pour ce créneau n'est renvoyé que s'il couvre plus de sources.
+  const flag = `${slotKey}|${coverage.read}`;
   try {
-    const lastPushed = localStorage.getItem(PUSH_FLAG_KEY);
-    if (lastPushed === slotKey) return;
+    const [lastSlot, lastRead] = (localStorage.getItem(PUSH_FLAG_KEY) ?? '').split('|');
+    if (lastSlot === slotKey && Number(lastRead) >= coverage.read) return;
   } catch {
     // localStorage unavailable — still try the push
   }
 
   try {
-    const payload = buildSnapshotPayload(snapshot, slotKey);
+    const payload = buildSnapshotPayload(snapshot, slotKey, coverage);
     const res = await fetch('/api/situation-history', {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload),
     });
     if (res.ok) {
-      localStorage.setItem(PUSH_FLAG_KEY, slotKey);
+      localStorage.setItem(PUSH_FLAG_KEY, flag);
     }
   } catch {
     // fire-and-forget: silently ignore network errors

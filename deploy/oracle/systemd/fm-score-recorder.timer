@@ -1,0 +1,11 @@
+[Unit]
+Description=France Monitor - releve de la note nationale toutes les 15 minutes
+Documentation=https://github.com/FraidFraid/France-Monitor/blob/main/docs/deployment-oracle.md
+
+[Timer]
+OnCalendar=*-*-* *:2/15:00
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

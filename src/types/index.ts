@@ -2021,6 +2021,8 @@ export interface SituationSnapshot {
     maxSeverity:     SituationSeverity | null;
     avgConfidence:   number;
   };
+  /** Sources principales de la note lues au moment du relevé (26/10/2026) ; absent sur les relevés plus anciens. */
+  coverage?: ScoreCoverage;
   dataStatus: {
     overall:  'ok' | 'degraded';
     // 'missing' = source absent at push time. No 'stale'/'error' needed — client-push model.
@@ -2030,6 +2032,13 @@ export interface SituationSnapshot {
       social:      'ok' | 'missing';
     };
   };
+}
+
+/** Couverture d'un relevé de la note : sources principales lues sur le total, et celles qui manquaient. */
+export interface ScoreCoverage {
+  read:    number;
+  total:   number;
+  missing: string[];
 }
 
 export type HistorySlot = SituationSnapshot | { slotKey: string; status: 'missing' };

@@ -277,10 +277,10 @@ import type { SituationBrief } from './components/SituationBrief.ts';
 import type { OutagesNowController } from './components/outages-room/outages-now-controller.ts';
 import { resolvedSituationsFromHistory } from './services/situation-brief.ts';
 import type { SituationHistoryPanel } from './components/SituationHistoryPanel.ts';
-import { getHistory, pushHistorySnapshot } from './services/situation-history.ts';
+import { getHistory, isRecorderPage, pushHistorySnapshot, scoreCoverageOf } from './services/situation-history.ts';
 import type { AlertMonitor } from './components/AlertMonitor.ts';
 import { UpdateNotification } from './components/UpdateNotification.ts';
-import type { NuclearState, NuclearUnavailability, InfrastructurePoint } from './types/index.ts';
+import type { NuclearState, NuclearUnavailability, InfrastructurePoint, ScoreCoverage } from './types/index.ts';
 import { fetchSpaceWeather } from './services/space-weather.ts';
 // Services et panneaux santé chargés à la demande (loadHealthSurveillance, loadHealthOffer, ensure*Panel) : hors du chunk critique.
 import type { HealthSurveillanceKey, HealthSurveillanceState } from './services/health-surveillance.ts';
@@ -1397,6 +1397,8 @@ export class App {
   private v2Roots: { status: HTMLElement; themes: HTMLElement; list: HTMLElement; fiche: HTMLElement; tabs: HTMLElement } | null = null;
   /** Brief, événements et ligne de base lancés pour la fiche France (équivalent v2 du tiroir ouvert). */
   private v2IntelStarted = false;
+  /** Page ouverte par l'enregistreur de la note sur la VM (?recorder=1) : relevé remis à la page, aucune note de synthèse demandée. */
+  private readonly recorderPage = isRecorderPage(window.location.search);
   /** Thème choisi dans la v2 : filtre les points d'événements (spec 2026-09-29 § 5). */
   private v2Theme: ThemeId = 'general';
   /** Niveaux masqués depuis la légende (clic sur une ligne de niveau, spec 2026-10-14). */
@@ -9104,6 +9106,27 @@ export class App {
     );
   }
 
+  /** Sources principales de la note lues à cet instant (couverture d'un relevé d'historique). */
+  private scoreCoverage(env: EnvironmentInputs): ScoreCoverage {
+    const sov = this.sovereigntyInputs();
+    return scoreCoverageOf({
+      presse: this.newsItems.length > 0,
+      isnr: this.currentISNRData !== null,
+      ecowatt: this.currentEcowattResponse !== null,
+      vigilance: env.environmentAvailable.vigilance,
+      crues: env.environmentAvailable.floods,
+      feux: env.environmentAvailable.fires,
+      trains: (this.currentRailTraffic?.overview.data ?? null) !== null,
+      routes: (this.currentRoadTraffic?.national.data ?? null) !== null,
+      telecom: this.telecomForScore() !== null,
+      cyber: sov.sovereigntyAvailable.cyber,
+      militaire: sov.sovereigntyAvailable.military,
+      finance: (this.currentFinancialStability?.data ?? null) !== null,
+      carburants: (this.currentFuelTensionData ?? null) !== null,
+      petrole: (this.currentOilData ?? null) !== null,
+    });
+  }
+
   private refreshFranceIntelPanel(): void {
     const lang = this.intelLang();
     // Entrées Environnement lues une fois : instantané, moniteur et poste v2 voient le même instant (revue m6).
@@ -9130,7 +9153,7 @@ export class App {
       this.situationMonitor?.update(snapshot.situations, lang);
       this.situationBrief?.update(snapshot.situations);
     }
-    if (canRecord) void pushHistorySnapshot(snapshot);
+    if (canRecord) void pushHistorySnapshot(snapshot, this.scoreCoverage(env), performance.now());
     if (!this.isIntelSurfaceVisible()) return;
     this.franceIntelPanel?.show(snapshot);
     const now = Date.now();
@@ -9297,6 +9320,8 @@ export class App {
     lang: 'fr' | 'en',
     options?: { showLoading?: boolean },
   ): void {
+    // L'enregistreur ne lit que la note : une page ouverte tous les quarts d'heure ne doit pas consommer le quota Groq.
+    if (this.recorderPage) return;
     const requestId = ++this.franceIntelBriefRequestId;
     // Un brief est demandé : plus rien à stabiliser (chaque demande de brief y compris via ce
     // minuteur repart de zéro), et la nouvelle couleur devient la référence pour la suite.

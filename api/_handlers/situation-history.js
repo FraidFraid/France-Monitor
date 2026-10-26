@@ -9,9 +9,14 @@
 // GET /api/situation-history?days=7|30
 //   Builds the canonical UTC slot grid, fetches all slots via MGET,
 //   returns missing slots explicitly as { slotKey, status: "missing" }.
+//   Relevés de l'enregistreur de la VM (api/_lib/score-history.js) d'abord, Redis (navigateurs) pour les créneaux qu'il n'a pas.
+// GET /api/situation-history?days=7|30&resolution=15m
+//   Relevés bruts de l'enregistreur de la VM, au quart d'heure : { records }.
 
-import { redisSetNX, redisMGet, redisRPush, redisLTrim } from '../_utils/redis.js';
+import { readFile } from 'node:fs/promises';
+import { redisGet, redisSet, redisMGet, redisRPush, redisLTrim } from '../_utils/redis.js';
 import { currentSlotKey, buildSlotGrid } from '../_utils/slots.js';
+import { SCORE_HISTORY_FILES, parseRecords, preferSnapshot, recentRecords, slotsFromRecords } from '../_lib/score-history.js';
 
 const SNAP_TTL    = 31 * 24 * 60 * 60; // 31 days in seconds
 const INDEX_KEY   = 'france:history:index';
@@ -45,13 +50,20 @@ async function handlePush(req, res) {
     return res.status(400).json({ error: 'payload_too_large' });
   }
 
+  // Le relevé le plus couvrant garde le créneau (26/10/2026) : avant, le premier reçu le figeait, souvent pris avant que la page ait
+  // lu ses sources.
   const key = snapKey(payload.slotKey);
-  const written = await redisSetNX(key, JSON.stringify(payload), SNAP_TTL);
+  const storedRaw = await redisGet(key);
+  let stored = null;
+  try { stored = storedRaw ? JSON.parse(storedRaw) : null; } catch { stored = null; }
+  const written = preferSnapshot(stored, payload)
+    ? await redisSet(key, JSON.stringify(payload), SNAP_TTL).then(() => true, () => false)
+    : false;
 
   // Maintain a trimmed index of the 120 most-recent slot keys.
   // Currently unused by GET (which uses buildSlotGrid instead).
   // Reserved for a future "latest populated slot" query.
-  if (written) {
+  if (written && !stored) {
     await redisRPush(INDEX_KEY, payload.slotKey);
     await redisLTrim(INDEX_KEY, 0, 119);
   }
@@ -67,14 +79,23 @@ async function handleRead(req, res) {
     return res.status(400).json({ error: 'days must be 7 or 30' });
   }
 
+  const records = await readRecords();
+  if (req.query.resolution === '15m') {
+    res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
+    return res.status(200).json({ records: recentRecords(records, daysParam) });
+  }
+
   const count   = daysParam * 4;
   const current = currentSlotKey();
   const grid    = buildSlotGrid(current, count);
+  const fromVm  = slotsFromRecords(grid, records);
   const keys    = grid.map(snapKey);
 
   const raw = await redisMGet(keys);
 
   const slots = grid.map((slotKey, i) => {
+    const vm = fromVm.get(slotKey);
+    if (vm) return vm;
     if (raw[i] === null) return { slotKey, status: 'missing' };
     try {
       return JSON.parse(raw[i]);
@@ -101,4 +122,16 @@ async function handleRead(req, res) {
     },
     slots,
   });
+}
+
+/** Relevés de l'enregistreur de la VM ; fichier absent (hors VM, enregistreur pas encore installé) : aucun. */
+async function readRecords() {
+  for (const file of SCORE_HISTORY_FILES) {
+    try {
+      return parseRecords(await readFile(file, 'utf8'));
+    } catch {
+      // fichier suivant
+    }
+  }
+  return [];
 }

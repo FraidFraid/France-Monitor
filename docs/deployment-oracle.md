@@ -436,3 +436,21 @@ rattrapage a lieu au redémarrage si la VM était éteinte à l'heure prévue) e
 par la boucle interne du worker radar (`RADAR_REFRESH_INTERVAL_SECONDS`,
 300s par défaut) — `radar-refresh.yml` reste un filet de sécurité externe,
 comme aujourd'hui sur Railway.
+
+---
+
+## Enregistreur de la note nationale (26/10/2026)
+
+`fm-score-recorder.timer` (toutes les 15 min) ouvre `https://www.francemonitor.com/?view=app&recorder=1` dans un Chromium sans écran
+(`scripts/score-recorder.mjs`) : la page calcule la note avec son propre code et la remet au script, qui l'ajoute à
+`/var/lib/francemonitor/data/score-history.jsonl` (35 jours). `/api/situation-history` lit ce fichier en premier, Redis (relevés des
+navigateurs) seulement pour les créneaux qu'il n'a pas ; `?resolution=15m` rend les relevés bruts. En mode enregistreur, la page ne
+demande pas de note de synthèse (quota Groq).
+
+Installation ou mise à jour (Playwright 1.49.1 et son Chromium dans `/opt/fm-recorder`, hors release) :
+
+```bash
+ssh -i ~/.ssh/francemonitor_oracle ubuntu@141.145.223.156 'sudo bash /srv/francemonitor/current/deploy/oracle/install-score-recorder.sh'
+```
+
+Mémoire : `MemoryMax=1200M` sur l'unité ; un passage dure 3 à 5 minutes. Suivi : `journalctl -u fm-score-recorder -n 20`.
