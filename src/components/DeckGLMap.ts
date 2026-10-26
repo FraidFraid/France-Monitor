@@ -766,6 +766,10 @@ export class DeckGLMap {
   private drawnEventIds: ReadonlySet<number> = new Set();
   private eventPointsVisible = false;
   private onEventPointClick: ((id: number, x: number, y: number) => void) | null = null;
+  /** Clic sur un département de la couche « Pression par département » : fiche du département (26/10/2026). */
+  private onDepartmentClick: ((code: string) => void) | null = null;
+  /** Heure du dernier clic sur un point d'événement : un clic sur un point n'ouvre pas en plus le département dessous. */
+  private lastEventPointClickAt = 0;
   private airTrafficVisible = false;
   private civilAirTrafficFlights: AirTrafficFlight[] = [];  // Filtered: excludes military callsigns
   private legendHoverCategory: string | null = null;
@@ -2781,6 +2785,22 @@ export class DeckGLMap {
     this.map.on('mouseleave', LYR_FLOODS, () => {
       if (this.map) this.map.getCanvas().style.cursor = '';
     });
+    // Pression par département : clic sur un département → sa fiche, après la main laissée aux points d'événement du même clic.
+    this.map.on('mouseenter', LYR_ISNR_FILL, () => {
+      if (this.map && this.onDepartmentClick) this.map.getCanvas().style.cursor = 'pointer';
+    });
+    this.map.on('mouseleave', LYR_ISNR_FILL, () => {
+      if (this.map) this.map.getCanvas().style.cursor = '';
+    });
+    this.map.on('click', LYR_ISNR_FILL, (e) => {
+      const code = e.features?.[0]?.properties?.code;
+      if (typeof code !== 'string' || !this.onDepartmentClick) return;
+      const handler = this.onDepartmentClick;
+      setTimeout(() => {
+        if (Date.now() - this.lastEventPointClickAt < 400) return;
+        handler(code);
+      }, 0);
+    });
     this.map.on('click', LYR_FLOODS, (e) => {
       if (!this.map || !e.features || e.features.length === 0) return;
       const feat = e.features[0];
@@ -3120,7 +3140,10 @@ export class DeckGLMap {
         },
         onClick: (info) => {
           const point = info.object as EventMapPoint | undefined;
-          if (point) this.onEventPointClick?.(point.id, info.x, info.y);
+          if (point) {
+            this.lastEventPointClickAt = Date.now();
+            this.onEventPointClick?.(point.id, info.x, info.y);
+          }
         },
         updateTriggers: {
           getFillColor: this.eventPoints,
@@ -7734,6 +7757,10 @@ export class DeckGLMap {
 
   setOnEventPointClick(handler: ((id: number, x: number, y: number) => void) | null): void {
     this.onEventPointClick = handler;
+  }
+
+  setOnDepartmentClick(handler: ((code: string) => void) | null): void {
+    this.onDepartmentClick = handler;
   }
 
   /** Largeur estimée d'une étiquette (11 px, gras) : sert seulement à éviter les chevauchements. */

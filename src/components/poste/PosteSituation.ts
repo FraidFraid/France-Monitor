@@ -38,6 +38,7 @@ import type { InfraInput } from '../../services/infra-continuity.ts';
 import type { NationalHealthSummary } from '../layer-panel/veille.ts';
 import { loadSectionState, saveSectionState, sectionsOf, sectionMemoryKey, type SectionStorage } from '../../services/fiche-sections-store.ts';
 import { buildFranceFiche, type FranceFicheSnapshot, type LayerLevelChange } from '../fiche/france.ts';
+import { buildDeptFiche } from '../fiche/dept.ts';
 import { buildEventFiche, buildMarketFiche, buildOfficialFiche, buildSituationFiche, buildThemeFiche } from '../fiche/items.ts';
 import type { FicheModel, Lang } from '../fiche/parts.ts';
 import { StatusBar, freshnessCounts, freshnessText } from './StatusBar.ts';
@@ -101,6 +102,8 @@ export interface PosteCallbacks {
   onOpenLayerPanel?: (key: string) => void;
   /** Pression par département recalculée avec le fil (panneau et couche « Pression par département », 12/10/2026). */
   onPressure?: (depts: DepartmentPressure[]) => void;
+  /** « Voir sur la carte » d'une fiche département : App allume la pression par département et met le département en évidence. */
+  onShowDepartment?: (code: string) => void;
   /** Liste « À traiter » recalculée (tous thèmes) : pastille « En bref » de chaque onglet (20/10/2026). */
   onQueue?: (queue: WorkQueue) => void;
   /** Fiche refermée (retour à la liste) : App rouvre l'En bref de l'onglet dans la colonne (20/10/2026). */
@@ -191,6 +194,8 @@ export class PosteSituation {
   private resolved: BriefSourceSituation[] = [];
   private baseline: VisitBaseline | null = null;
   private departements: DepartementIndex | null = null;
+  /** Dernière pression par département calculée (fiche département). */
+  private pressure: DepartmentPressure[] = [];
   private layerChanges: readonly LayerLevelChange[] = [];
   private warmupUntil: number | null = null;
   private readonly knownKeys = new Set<string>();
@@ -428,9 +433,10 @@ export class PosteSituation {
     // Après le rendu du fil : un calcul en échec ne doit jamais bloquer la liste.
     this.render();
     try {
-      this.callbacks.onPressure?.(departmentPressure({
+      this.pressure = departmentPressure({
         items: queue.items, meteo: data.meteo, floods: data.floods, departements: this.departements, now: data.now,
-      }));
+      });
+      this.callbacks.onPressure?.(this.pressure);
     } catch (err) {
       console.error('[Poste] pression par département', err);
     }
@@ -547,6 +553,15 @@ export class PosteSituation {
   private ficheFor(key: string, data: PosteData, queue: WorkQueue, drivers: readonly ThemeId[]): FicheModel | null {
     const { lang, now } = data;
     if (key === 'france') return this.franceFiche(data, queue, drivers);
+    if (key.startsWith('dept:')) {
+      const code = key.slice('dept:'.length);
+      const index = this.departements;
+      const events = (this.events?.events ?? []).filter((e) => e.lat !== null && e.lon !== null && index?.at(e.lon, e.lat)?.code === code);
+      return buildDeptFiche({
+        code, name: index?.nameOf(code) ?? null, pressure: this.pressure.find((p) => p.code === code) ?? null, meteo: data.meteo, events,
+        sectionOpen: sectionsOf(this.sectionOpen, 'dept'), lang, now,
+      });
+    }
     if (key.startsWith('theme:')) {
       // Fiche thème ouverte en volet (tablette, mobile : relecture finale I3).
       const theme = SPECIFIC_THEMES.find((th) => key === `theme:${th}`);
@@ -626,6 +641,11 @@ export class PosteSituation {
     }
     if (action === 'report') {
       this.callbacks.onOpenReport();
+      return;
+    }
+    if (action === 'show-dept' && ficheKey.startsWith('dept:')) {
+      this.revealMap();
+      this.callbacks.onShowDepartment?.(ficheKey.slice('dept:'.length));
       return;
     }
     // Toute action qui montre la carte ferme d'abord le volet (hors ordinateur), puis agit.

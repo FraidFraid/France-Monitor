@@ -278,6 +278,10 @@ export class MapContainer {
     this.deckMap?.setEventPoints(points);
   }
 
+  setOnDepartmentClick(handler: ((code: string) => void) | null): void {
+    this.deckMap?.setOnDepartmentClick(handler);
+  }
+
   setOnEventPointClick(handler: ((id: number, x: number, y: number) => void) | null): void {
     this.deckMap?.setOnEventPointClick(handler);
   }

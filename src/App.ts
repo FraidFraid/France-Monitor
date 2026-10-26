@@ -2857,8 +2857,11 @@ export class App {
     if (this.uiV2) {
       void import('./components/PressurePanel.ts').then(({ PressurePanel }) => {
         const panel = new PressurePanel(floatContainer);
-        // Département choisi : mis en évidence sur la carte ; élément choisi : sa fiche.
-        panel.setOnSelectDepartment((code) => this.mapContainer?.highlightISNRDepartment(code));
+        // Département choisi : mis en évidence sur la carte et sa fiche ouverte ; élément choisi : sa fiche.
+        panel.setOnSelectDepartment((code) => {
+          this.mapContainer?.highlightISNRDepartment(code);
+          this.poste?.select(`dept:${code}`);
+        });
         panel.setOnOpenElement((key) => this.poste?.select(key));
         panel.mount();
         this.pressurePanel = panel;
@@ -9493,6 +9496,11 @@ export class App {
           this.pressurePanel?.update(depts);
           void this.mapContainer?.updateDepartmentPressure(new Map(depts.map((d) => [d.code, d.level])));
         },
+        // Fiche département, « Voir sur la carte » : pression par département allumée, département mis en évidence.
+        onShowDepartment: (code) => {
+          this.activateLayersFromSituation(['stability']);
+          this.mapContainer?.highlightISNRDepartment(code);
+        },
         onOpenDossier: (situation) => this.openAlertDossier(situation),
         onOpenReport: () => {
           void this.openSituationReport();
@@ -9535,6 +9543,11 @@ export class App {
     this.v2BaselineSession = visit.startVisitBaseline(() => poste.currentLevels(), { document, window });
     poste.setBaseline(this.v2BaselineSession.baseline);
     this.mapContainer?.setOnEventPointClick((id, x, y) => { void this.openEventPreview(id, x, y); });
+    // Clic sur un département de la pression par département : sa fiche (26/10/2026).
+    this.mapContainer?.setOnDepartmentClick((code) => {
+      this.mapContainer?.highlightISNRDepartment(code);
+      this.poste?.select(`dept:${code}`);
+    });
     void loadDepartementIndex().then((index) => {
       if (index) poste.setDepartements(index);
     });
