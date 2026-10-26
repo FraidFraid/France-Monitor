@@ -13,10 +13,9 @@
 // GET /api/situation-history?days=7|30&resolution=15m
 //   Relevés bruts de l'enregistreur de la VM, au quart d'heure : { records }.
 
-import { readFile } from 'node:fs/promises';
 import { redisGet, redisSet, redisMGet, redisRPush, redisLTrim } from '../_utils/redis.js';
 import { currentSlotKey, buildSlotGrid } from '../_utils/slots.js';
-import { SCORE_HISTORY_FILES, parseRecords, preferSnapshot, recentRecords, slotsFromRecords } from '../_lib/score-history.js';
+import { preferSnapshot, readScoreRecords, recentRecords, slotsFromRecords } from '../_lib/score-history.js';
 
 const SNAP_TTL    = 31 * 24 * 60 * 60; // 31 days in seconds
 const INDEX_KEY   = 'france:history:index';
@@ -79,7 +78,7 @@ async function handleRead(req, res) {
     return res.status(400).json({ error: 'days must be 7 or 30' });
   }
 
-  const records = await readRecords();
+  const records = await readScoreRecords();
   if (req.query.resolution === '15m') {
     res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=600');
     return res.status(200).json({ records: recentRecords(records, daysParam) });
@@ -122,16 +121,4 @@ async function handleRead(req, res) {
     },
     slots,
   });
-}
-
-/** Relevés de l'enregistreur de la VM ; fichier absent (hors VM, enregistreur pas encore installé) : aucun. */
-async function readRecords() {
-  for (const file of SCORE_HISTORY_FILES) {
-    try {
-      return parseRecords(await readFile(file, 'utf8'));
-    } catch {
-      // fichier suivant
-    }
-  }
-  return [];
 }

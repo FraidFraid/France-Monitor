@@ -1,5 +1,7 @@
 // api/_lib/score-history.js : relevés de la note nationale pris par l'enregistreur de la VM (scripts/score-recorder.mjs, minuteur
-// fm-score-recorder toutes les 15 min), une ligne JSON par relevé. Fonctions pures, lues par api/_handlers/situation-history.js.
+// fm-score-recorder toutes les 15 min), une ligne JSON par relevé. Fonctions pures et lecture du fichier, pour
+// api/_handlers/situation-history.js et les flux d'alertes (api/_lib/alerts.js).
+import { readFile } from 'node:fs/promises';
 
 export const SCORE_HISTORY_FILES = Object.freeze([
   process.env.SCORE_HISTORY_FILE,
@@ -58,4 +60,16 @@ export function recentRecords(records, days, nowMs = Date.now()) {
   return records
     .filter((r) => Date.parse(r.capturedAt) >= from)
     .sort((a, b) => Date.parse(a.capturedAt) - Date.parse(b.capturedAt));
+}
+
+/** Relevés de l'enregistreur de la VM ; fichier absent (hors VM, enregistreur pas encore installé) : aucun. */
+export async function readScoreRecords() {
+  for (const file of SCORE_HISTORY_FILES) {
+    try {
+      return parseRecords(await readFile(file, 'utf8'));
+    } catch {
+      // fichier suivant
+    }
+  }
+  return [];
 }
