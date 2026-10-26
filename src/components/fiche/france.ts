@@ -3,7 +3,7 @@
 // kit fmk (situations, note de situation, changements depuis la visite, indicateurs, preuves et sources) ;
 // plus de volet « Pourquoi ce niveau ? » (spec 2026-10-01).
 
-import type { FranceCountrySnapshot, IntelEventsState, StructuredBrief } from '../../types/index.ts';
+import type { FranceCountrySnapshot, IntelEventsState, ScoreCoverage, StructuredBrief } from '../../types/index.ts';
 import type { StabilityPillarValues } from '../../utils/stability-history.ts';
 import type { BriefSourceSituation } from '../../services/situation-brief.ts';
 import { LEVEL_RANK, briefConfidenceLabel, confidenceLabel, eventLevel, levelLabel, scoreLevel, situationLevel, type VigilanceLevel } from '../../services/vigilance.ts';
@@ -65,6 +65,8 @@ export interface FranceFicheInput {
   /** Heure de réception et niveau national au moment de la note ; null tant qu'aucune note n'est arrivée. */
   briefMeta: { at: number; level: VigilanceLevel } | null;
   freshness: string;
+  /** Sources lues par l'indice (App.scoreCoverage) ; absente ou null : rien n'est dit de la couverture. */
+  coverage?: ScoreCoverage | null;
   /** Baromètre des infrastructures (null tant qu'App ne l'a pas reçu). */
   infra: InfraInput | null;
   /** Ouverture retenue par id de section (« note », « infra »…) ; absente → valeur par défaut. */
@@ -76,6 +78,30 @@ export interface FranceFicheInput {
   ready: boolean;
   lang: Lang;
   now: number;
+}
+
+/** Noms lisibles des 14 sources de l'indice (clés de scoreCoverageOf). */
+const COVERAGE_LABELS: Readonly<Record<string, readonly [string, string]>> = {
+  presse: ['presse', 'press'], isnr: ['indice ISNR', 'ISNR index'], ecowatt: ['Écowatt', 'Écowatt'],
+  vigilance: ['vigilance météo', 'weather warnings'], crues: ['crues', 'floods'], feux: ['feux', 'fires'],
+  trains: ['trains', 'trains'], routes: ['routes', 'roads'], telecom: ['télécoms', 'telecoms'], cyber: ['cyber', 'cyber'],
+  militaire: ['vols militaires', 'military flights'], finance: ['finance', 'finance'], carburants: ['carburants', 'fuel'],
+  petrole: ['pétrole', 'oil'],
+};
+
+/**
+ * Couverture de l'indice dans la ligne d'état (26/10/2026) : « indice sur 13/14 sources (manque : vols militaires) ».
+ * Rien avant les couches critiques (l'indice n'est pas affiché) ni sans couverture connue.
+ */
+export function coverageText(coverage: ScoreCoverage | null | undefined, ready: boolean, lang: Lang): string | null {
+  if (!ready || !coverage || coverage.total <= 0) return null;
+  const names = coverage.missing.map((k) => COVERAGE_LABELS[k]?.[lang === 'fr' ? 0 : 1] ?? k);
+  if (lang === 'en') {
+    const base = `index on ${coverage.read}/${coverage.total} sources`;
+    return names.length === 0 ? base : `${base} (missing: ${names.join(', ')})`;
+  }
+  const base = `indice sur ${coverage.read}/${coverage.total}\u00a0sources`;
+  return names.length === 0 ? base : `${base} (${names.length > 1 ? 'manquent' : 'manque'}\u00a0: ${names.join(', ')})`;
 }
 
 function evidenceKey(ref: string, input: FranceFicheInput): string | null {
@@ -338,7 +364,7 @@ export function buildFranceFiche(input: FranceFicheInput): FicheModel {
     name: 'France',
     level: scoreLevel(snapshot.score),
     driver: drivenByText(input.drivers, lang),
-    freshness: [count, `MAJ ${formatClock(input.now, lang)}`, input.freshness].filter(Boolean).join(' · '),
+    freshness: [count, `MAJ ${formatClock(input.now, lang)}`, coverageText(input.coverage, input.ready, lang), input.freshness].filter(Boolean).join(' · '),
     sections,
     score: input.ready ? franceScore(input) : 'pending',
     actions: [

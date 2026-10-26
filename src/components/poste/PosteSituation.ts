@@ -13,6 +13,7 @@ import type {
   IntelEventsState,
   MarketData,
   MeteoAlert,
+  ScoreCoverage,
   StructuredBrief,
 } from '../../types/index.ts';
 import type { StabilityPillarValues } from '../../utils/stability-history.ts';
@@ -71,6 +72,8 @@ export interface PosteData {
   /** Panne en cours la plus grave (/api/outages/now) : niveau de l'onglet Pannes ; absent ou null sans réponse. */
   outagesLevel?: VigilanceLevel | null;
   sources: readonly DataSourceStatus[];
+  /** Sources lues par l'indice (App.scoreCoverage) : ligne d'état de la fiche France. */
+  coverage?: ScoreCoverage | null;
   score: { delta24h: number | null; pillarDeltas: StabilityPillarValues | null; series: number[] };
   /**
    * Couches critiques chargées. Avant, l'indice national est calculé sur des données absentes :
@@ -511,6 +514,7 @@ export class PosteSituation {
       layerChanges: this.layerChanges,
       score: data.score,
       freshness: this.freshness(data),
+      coverage: data.coverage ?? null,
       infra: data.infra ?? null,
       sectionOpen: sectionsOf(this.sectionOpen, 'france'),
       ready: data.ready,

@@ -217,6 +217,16 @@ describe('onglet État de la France (spec 2026-09-29 § 7)', () => {
   it('en-tête : situations actives, heure de mise à jour, sources', () => {
     expect(buildFranceFiche(input()).freshness).toMatch(/^1 situation active · MAJ \d{2}:\d{2} · 33 sources sur 35 à jour$/);
   });
+  it('couverture de l’indice dans la ligne d’état : sources lues et manquantes nommées ; rien avant les couches critiques', () => {
+    const line = (coverage: { read: number; total: number; missing: string[] } | null, ready = true, lang: 'fr' | 'en' = 'fr') =>
+      buildFranceFiche(input({ coverage, ready, lang })).freshness;
+    expect(line({ read: 14, total: 14, missing: [] })).toContain(' · indice sur 14/14\u00a0sources · ');
+    expect(line({ read: 13, total: 14, missing: ['militaire'] })).toContain('indice sur 13/14\u00a0sources (manque\u00a0: vols militaires)');
+    expect(line({ read: 12, total: 14, missing: ['routes', 'finance'] })).toContain('(manquent\u00a0: routes, finance)');
+    expect(line({ read: 13, total: 14, missing: ['militaire'] }, true, 'en')).toContain('index on 13/14 sources (missing: military flights)');
+    expect(line({ read: 13, total: 14, missing: ['militaire'] }, false)).not.toContain('indice');
+    expect(line(null)).not.toContain('indice');
+  });
 
   it('depuis la visite : totaux, puis 5 changements orange ou rouges au plus, résolues comprises', () => {
     const events = Array.from({ length: 7 }, (_, i) => event({ id: 100 + i, title: `Événement ${i}`, severity: 'high' }));

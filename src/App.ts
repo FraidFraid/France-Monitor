@@ -9563,6 +9563,7 @@ export class App {
       commodities: this.currentCommodityData,
       outagesLevel: this.outagesNowLevel(),
       sources: this.statusPanel?.getSources() ?? [],
+      coverage: this.scoreCoverage(env),
       infra: { result: this.currentNetworkBarometer, nuclear: this.currentNuclearState, eolien: this.currentEolienLive },
       health: this.healthNationalNow(now),
       score: { delta24h: getDelta24h(), pillarDeltas: getPillarDeltas24h(), series: getSparklineSeries() },
