@@ -217,6 +217,15 @@ describe('onglet État de la France (spec 2026-09-29 § 7)', () => {
   it('en-tête : situations actives, heure de mise à jour, sources', () => {
     expect(buildFranceFiche(input()).freshness).toMatch(/^1 situation active · MAJ \d{2}:\d{2} · 33 sources sur 35 à jour$/);
   });
+  it('notes archivées : section repliée par défaut, une ligne par note (couleur, date, indice) ; masquée avant lecture', () => {
+    const notes = [{ id: '2026-10-17T18:17:00Z', capturedAt: '2026-10-17T18:17:00Z', score: 65, level: 'orange' as const, situations: 3, coverage: null }];
+    const s = buildFranceFiche(input({ archivedNotes: notes })).sections.find((x) => x.id === 'archives');
+    expect([s?.title, s?.summary, s?.open, s?.collapsible]).toEqual(['Notes archivées', '1', false, true]);
+    expect(s?.html).toContain('data-action="archived-note:2026-10-17T18:17:00Z"');
+    expect(s?.html).toContain('indice 65 · 3 situations');
+    expect(buildFranceFiche(input({ archivedNotes: [] })).sections.find((x) => x.id === 'archives')?.html).toContain('Aucune note archivée');
+    expect(buildFranceFiche(input()).sections.find((x) => x.id === 'archives')).toBeUndefined();
+  });
   it('couverture de l’indice dans la ligne d’état : sources lues et manquantes nommées ; rien avant les couches critiques', () => {
     const line = (coverage: { read: number; total: number; missing: string[] } | null, ready = true, lang: 'fr' | 'en' = 'fr') =>
       buildFranceFiche(input({ coverage, ready, lang })).freshness;

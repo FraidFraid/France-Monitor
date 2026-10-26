@@ -82,6 +82,8 @@ export interface SituationReportData {
   newsCacheAvailable: boolean;
   sources: ReportSource[];
   version: string | null;
+  /** Note relue depuis l'archive de la VM (26/10/2026) : « Note archivée du … », affichée dans l'en-tête ; absente : note du moment. */
+  archiveLabel?: string;
 }
 
 interface SourceStateStyle {
@@ -371,6 +373,7 @@ export function buildSituationReportHtml(data: SituationReportData): string {
       <div class="doc-meta">
         <span>Généré le ${escapeHtml(data.generatedAtLabel)}</span>
         <span>Période : ${escapeHtml(data.periodLabel)}</span>
+        ${data.archiveLabel ? `<span>${escapeHtml(data.archiveLabel)}</span>` : ''}
         <span class="permalink">Vue : <a href="${escapeHtml(data.permalink)}">${escapeHtml(data.permalink)}</a></span>
       </div>
     </header>

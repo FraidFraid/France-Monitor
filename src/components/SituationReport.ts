@@ -268,9 +268,20 @@ export function collectSituationReportData(ctx: SituationReportContext): Situati
  * La fenêtre reste consultable (bouton « Imprimer / PDF » présent).
  */
 export function openSituationReport(ctx: SituationReportContext): void {
-  const html = buildSituationReportHtml(collectSituationReportData(ctx));
+  openReportWindow(buildSituationReportHtml(collectSituationReportData(ctx)), true);
+}
 
-  const win = window.open('', '_blank');
+/**
+ * Note archivée (26/10/2026) : même document A4, avec « Note archivée du … » dans l'en-tête ; ouverte sans lancer l'impression (le
+ * bouton « Imprimer / PDF » du document reste là).
+ */
+export function openArchivedSituationReport(data: SituationReportData, archiveLabel: string, win: Window | null = null): void {
+  openReportWindow(buildSituationReportHtml({ ...data, archiveLabel }), false, win);
+}
+
+/** `win` : fenêtre déjà ouverte au clic (une fenêtre ouverte après une attente réseau serait bloquée par le navigateur). */
+function openReportWindow(html: string, print: boolean, opened: Window | null = null): void {
+  const win = opened ?? window.open('', '_blank');
   if (!win) {
     console.warn('[SituationReport] Ouverture de la fenêtre impossible (popup bloqué).');
     return;
@@ -279,6 +290,7 @@ export function openSituationReport(ctx: SituationReportContext): void {
   win.document.open();
   win.document.write(html);
   win.document.close();
+  if (!print) return;
 
   const triggerPrint = (): void => {
     win.focus();

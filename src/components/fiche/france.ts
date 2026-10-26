@@ -4,6 +4,8 @@
 // plus de volet « Pourquoi ce niveau ? » (spec 2026-10-01).
 
 import type { FranceCountrySnapshot, IntelEventsState, ScoreCoverage, StructuredBrief } from '../../types/index.ts';
+import type { ArchivedNoteSummary } from '../../services/situation-notes.ts';
+import { absoluteTime } from './kit.ts';
 import type { StabilityPillarValues } from '../../utils/stability-history.ts';
 import type { BriefSourceSituation } from '../../services/situation-brief.ts';
 import { LEVEL_RANK, briefConfidenceLabel, confidenceLabel, eventLevel, levelLabel, scoreLevel, situationLevel, type VigilanceLevel } from '../../services/vigilance.ts';
@@ -67,6 +69,8 @@ export interface FranceFicheInput {
   freshness: string;
   /** Sources lues par l'indice (App.scoreCoverage) ; absente ou null : rien n'est dit de la couverture. */
   coverage?: ScoreCoverage | null;
+  /** Notes de situation archivées par la VM (/api/situation-notes) ; absente : pas encore lues, section masquée. */
+  archivedNotes?: readonly ArchivedNoteSummary[] | null;
   /** Baromètre des infrastructures (null tant qu'App ne l'a pas reçu). */
   infra: InfraInput | null;
   /** Ouverture retenue par id de section (« note », « infra »…) ; absente → valeur par défaut. */
@@ -102,6 +106,31 @@ export function coverageText(coverage: ScoreCoverage | null | undefined, ready: 
   }
   const base = `indice sur ${coverage.read}/${coverage.total}\u00a0sources`;
   return names.length === 0 ? base : `${base} (${names.length > 1 ? 'manquent' : 'manque'}\u00a0: ${names.join(', ')})`;
+}
+
+const ARCHIVED_NOTES_SHOWN = 12;
+
+/** Section « Notes archivées » (26/10/2026) : une note par créneau de 6 h, les plus récentes d'abord ; null avant la première lecture. */
+function archivedNotesSection(input: FranceFicheInput, open: boolean): FicheSection | null {
+  const notes = input.archivedNotes;
+  if (notes === undefined || notes === null) return null;
+  const { lang, now } = input;
+  const rows = notes.slice(0, ARCHIVED_NOTES_SHOWN).map((n) => {
+    const when = absoluteTime(Date.parse(n.capturedAt), now, lang, { withDate: true });
+    const pill = n.level ? renderVigilancePill(n.level, lang) : '';
+    const meta = [
+      n.score !== null ? t(lang, `indice ${n.score}`, `index ${n.score}`) : null,
+      t(lang, `${n.situations} situation${n.situations > 1 ? 's' : ''}`, `${n.situations} situation${n.situations === 1 ? '' : 's'}`),
+    ].filter(Boolean).join(' · ');
+    return `<li class="fiche-situation"><button type="button" class="fiche-link" data-action="archived-note:${escapeHtml(n.id)}">`
+      + `${pill}<span class="fmk-sit-title">${escapeHtml(when)}</span></button> <span class="fiche-meta">${escapeHtml(meta)}</span></li>`;
+  }).join('');
+  return {
+    id: 'archives', title: t(lang, 'Notes archivées', 'Archived notes'), summary: String(notes.length), collapsible: true, open,
+    html: rows
+      ? `<ul class="fiche-list">${rows}</ul><p class="fmk-note">${escapeHtml(t(lang, 'Une note par tranche de 6 h, gardée 90 jours.', 'One note per 6-hour slot, kept 90 days.'))}</p>`
+      : `<p class="fmk-muted">${t(lang, 'Aucune note archivée pour l’instant.', 'No archived note yet.')}</p>`,
+  };
 }
 
 function evidenceKey(ref: string, input: FranceFicheInput): string | null {
@@ -354,6 +383,7 @@ export function buildFranceFiche(input: FranceFicheInput): FicheModel {
       html: changesHtml(input), collapsible: true, open: open('changes', false),
     },
     ...indicators.map((s) => ({ ...s, collapsible: true, open: open(s.id, false) })),
+    ...[archivedNotesSection(input, open('archives', false))].filter((s): s is FicheSection => s !== null),
     ...(sources.length > 0
       ? [{ id: 'sources', title: t(lang, 'Preuves et sources', 'Evidence and sources'), summary: sourcesSummary(sources, lang), html: renderSourceChips(sources), collapsible: true, open: open('sources', false) }]
       : []),

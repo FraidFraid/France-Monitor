@@ -39,6 +39,7 @@ import type { NationalHealthSummary } from '../layer-panel/veille.ts';
 import { loadSectionState, saveSectionState, sectionsOf, sectionMemoryKey, type SectionStorage } from '../../services/fiche-sections-store.ts';
 import { buildFranceFiche, type FranceFicheSnapshot, type LayerLevelChange } from '../fiche/france.ts';
 import { buildDeptFiche } from '../fiche/dept.ts';
+import type { ArchivedNoteSummary } from '../../services/situation-notes.ts';
 import { buildEventFiche, buildMarketFiche, buildOfficialFiche, buildSituationFiche, buildThemeFiche } from '../fiche/items.ts';
 import type { FicheModel, Lang } from '../fiche/parts.ts';
 import { StatusBar, freshnessCounts, freshnessText } from './StatusBar.ts';
@@ -75,6 +76,8 @@ export interface PosteData {
   sources: readonly DataSourceStatus[];
   /** Sources lues par l'indice (App.scoreCoverage) : ligne d'état de la fiche France. */
   coverage?: ScoreCoverage | null;
+  /** Notes de situation archivées par la VM : section « Notes archivées » de la fiche France ; absente : pas encore lues. */
+  archivedNotes?: readonly ArchivedNoteSummary[] | null;
   score: { delta24h: number | null; pillarDeltas: StabilityPillarValues | null; series: number[] };
   /**
    * Couches critiques chargées. Avant, l'indice national est calculé sur des données absentes :
@@ -104,6 +107,8 @@ export interface PosteCallbacks {
   onPressure?: (depts: DepartmentPressure[]) => void;
   /** « Voir sur la carte » d'une fiche département : App allume la pression par département et met le département en évidence. */
   onShowDepartment?: (code: string) => void;
+  /** Note archivée choisie dans la fiche France : App la relit et l'ouvre au format A4. */
+  onOpenArchivedNote?: (id: string) => void;
   /** Liste « À traiter » recalculée (tous thèmes) : pastille « En bref » de chaque onglet (20/10/2026). */
   onQueue?: (queue: WorkQueue) => void;
   /** Fiche refermée (retour à la liste) : App rouvre l'En bref de l'onglet dans la colonne (20/10/2026). */
@@ -521,6 +526,7 @@ export class PosteSituation {
       score: data.score,
       freshness: this.freshness(data),
       coverage: data.coverage ?? null,
+      archivedNotes: data.archivedNotes,
       infra: data.infra ?? null,
       sectionOpen: sectionsOf(this.sectionOpen, 'france'),
       ready: data.ready,
@@ -641,6 +647,10 @@ export class PosteSituation {
     }
     if (action === 'report') {
       this.callbacks.onOpenReport();
+      return;
+    }
+    if (action.startsWith('archived-note:')) {
+      this.callbacks.onOpenArchivedNote?.(action.slice('archived-note:'.length));
       return;
     }
     if (action === 'show-dept' && ficheKey.startsWith('dept:')) {

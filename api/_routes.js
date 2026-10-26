@@ -78,6 +78,7 @@ export const ROUTES = {
   '/api/rss': () => import('./_handlers/rss.js'),
   '/api/rte-iip': () => import('./_handlers/rte-iip.js'),
   '/api/situation-history': () => import('./_handlers/situation-history.js'),
+  '/api/situation-notes': () => import('./_handlers/situation-notes.js'),
   '/api/social/protests': () => import('./_handlers/social/protests.js'),
   '/api/sovereignty/cables-watch': () => import('./_handlers/sovereignty/cables-watch.js'),
   '/api/sovereignty/connectivity': () => import('./_handlers/sovereignty/connectivity.js'),

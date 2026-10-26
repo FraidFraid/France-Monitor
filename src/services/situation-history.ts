@@ -5,6 +5,7 @@
  * getHistory(): fetch or return cached HistoryResult.
  */
 
+import type { SituationReportData } from './situation-report.ts';
 import type {
   FranceCountrySnapshot,
   HistoryResponse,
@@ -106,7 +107,11 @@ export function isRecorderPage(search: string): boolean {
 }
 
 declare global {
-  interface Window { __fmRecorderSnapshot?: SituationSnapshot }
+  interface Window {
+    __fmRecorderSnapshot?: SituationSnapshot;
+    /** Note de situation du relevé, archivée par l'enregistreur (scripts/score-recorder.mjs, 26/10/2026). */
+    __fmRecorderReport?: SituationReportData;
+  }
 }
 
 export async function pushHistorySnapshot(

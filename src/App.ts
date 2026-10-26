@@ -247,6 +247,7 @@ import {
 import { fetchAirTrafficSnapshot } from './services/air-traffic.ts';
 import { fetchMarketData } from './services/finance.ts';
 import type { EventPressureResponse } from './types/index.ts';
+import type { ArchivedNoteSummary } from './services/situation-notes.ts';
 import {
   BCE_SOURCE_NAME, SPREAD_SOURCE_NAME, bceStatus, fetchFinancialStability, mergeFinancialStability, spreadStatus, type FinancialStabilitySlot,
 } from './services/financial-stability.ts';
@@ -1352,6 +1353,8 @@ export class App {
   private financialStrip: FinancialStabilityStrip | null = null;
   /** Bloc « Stabilité financière » (spec 2026-10-12) : BCE + écart OAT-Bund, dernier relevé gardé en cas de panne. */
   private currentFinancialStability: FinancialStabilitySlot | null = null;
+  /** Notes de situation archivées par la VM (/api/situation-notes) ; undefined : pas encore lues. */
+  private archivedNotes: ArchivedNoteSummary[] | undefined = undefined;
   /** Événements sociaux et de sécurité distincts sur 24 h (/api/news/event-pressure) : situations SOCIAL_MOBILISATION et SECURITY_UNREST. */
   private currentEventPressure: EventPressureResponse | null = null;
   private commodityStrip: CommodityStrip | null = null;
@@ -2164,6 +2167,7 @@ export class App {
     this.startAirTrafficPolling();
     this.startHealthPolling();
     this.startEventPressurePolling();
+    if (this.uiV2 && !this.recorderPage) this.startArchivedNotesPolling();
     this.startHydraulicPolling();
     this.startEco2mixPolling();
     this.startMtgFrpPolling();
@@ -8467,6 +8471,36 @@ export class App {
     this.registerPausableInterval(() => { void load(); }, POLL_EVENT_PRESSURE_MS);
   }
 
+  /** Notes archivées (26/10/2026) : liste lue au démarrage puis toutes les 30 min (une note nouvelle toutes les 6 h). */
+  private startArchivedNotesPolling(): void {
+    const load = async (): Promise<void> => {
+      const { fetchArchivedNotes } = await import('./services/situation-notes.ts');
+      this.archivedNotes = await fetchArchivedNotes();
+      this.repaintPoste();
+    };
+    void load();
+    this.registerPausableInterval(() => { void load(); }, 30 * 60_000);
+  }
+
+  /** Note archivée relue et ouverte au format A4, avec sa date dans l'en-tête. */
+  private async openArchivedNote(id: string): Promise<void> {
+    // Fenêtre ouverte au clic, avant toute attente : sinon le navigateur la bloque.
+    const win = window.open('', '_blank');
+    const [{ fetchArchivedNote }, { openArchivedSituationReport }] = await Promise.all([
+      import('./services/situation-notes.ts'), import('./components/SituationReport.ts'),
+    ]);
+    const note = await fetchArchivedNote(id);
+    if (!note) {
+      win?.close();
+      this.archivedNotes = this.archivedNotes?.filter((n) => n.id !== id);
+      this.repaintPoste();
+      return;
+    }
+    const when = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', dateStyle: 'long', timeStyle: 'short' }).format(new Date(note.capturedAt));
+    const score = note.score !== null ? `, indice ${note.score}/100` : '';
+    openArchivedSituationReport(note.report, `Note archivée du ${when}${score}`, win);
+  }
+
   private startHealthPolling(): void {
     if (this._intervalHealth !== null) return;
     let inFlight = false;
@@ -9182,6 +9216,7 @@ export class App {
       this.situationBrief?.update(snapshot.situations);
     }
     if (canRecord) void pushHistorySnapshot(snapshot, this.scoreCoverage(env), performance.now());
+    if (canRecord && this.recorderPage) void this.exposeRecorderReport();
     if (!this.isIntelSurfaceVisible()) return;
     this.franceIntelPanel?.show(snapshot);
     const now = Date.now();
@@ -9249,6 +9284,16 @@ export class App {
   }
 
   /** Ouvre la note de situation imprimable (module chargé à la demande). */
+  /**
+   * Page de l'enregistreur (?recorder=1) : la note de situation du moment est remise à scripts/score-recorder.mjs, qui l'archive
+   * (une par créneau de 6 h, 90 jours ; notes archivées de la fiche France, 26/10/2026). Lien de la note : l'application, jamais la
+   * page de l'enregistreur.
+   */
+  private async exposeRecorderReport(): Promise<void> {
+    const { collectSituationReportData } = await import('./components/SituationReport.ts');
+    window.__fmRecorderReport = { ...collectSituationReportData(this.buildSituationReportContext()), permalink: 'https://www.francemonitor.com/?view=app' };
+  }
+
   private async openSituationReport(): Promise<void> {
     const { openSituationReport } = await import('./components/SituationReport.ts');
     openSituationReport(this.buildSituationReportContext());
@@ -9496,6 +9541,7 @@ export class App {
           this.pressurePanel?.update(depts);
           void this.mapContainer?.updateDepartmentPressure(new Map(depts.map((d) => [d.code, d.level])));
         },
+        onOpenArchivedNote: (id) => { void this.openArchivedNote(id); },
         // Fiche département, « Voir sur la carte » : pression par département allumée, département mis en évidence.
         onShowDepartment: (code) => {
           this.activateLayersFromSituation(['stability']);
@@ -9600,6 +9646,7 @@ export class App {
       outagesLevel: this.outagesNowLevel(),
       sources: this.statusPanel?.getSources() ?? [],
       coverage: this.scoreCoverage(env),
+      archivedNotes: this.archivedNotes,
       infra: { result: this.currentNetworkBarometer, nuclear: this.currentNuclearState, eolien: this.currentEolienLive },
       health: this.healthNationalNow(now),
       score: { delta24h: getDelta24h(), pillarDeltas: getPillarDeltas24h(), series: getSparklineSeries() },
