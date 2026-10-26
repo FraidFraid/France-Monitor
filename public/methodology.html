@@ -147,11 +147,55 @@
           <li>Déduplication, géocodage et classification thématique.</li>
           <li>Affichage cartographique et panneaux de synthèse pour faciliter la lecture croisée.</li>
         </ul>
+        <h2 id="niveau-national">Le niveau national et son indice</h2>
+        <p>France Monitor résume l'état du pays en un niveau de vigilance à quatre couleurs, calculé à partir d'un indice de 0 à 100. L'indice part de 95 (aucune perturbation notable) et descend à mesure que les sources signalent des perturbations.</p>
+        <ul>
+          <li><strong>Vert</strong> à partir de 85 : pas de vigilance particulière.</li>
+          <li><strong>Jaune</strong> de 70 à 84 : perturbations à suivre.</li>
+          <li><strong>Orange</strong> de 55 à 69 : situation dégradée sur un ou plusieurs domaines.</li>
+          <li><strong>Rouge</strong> sous 55 : situation grave ou cumul de crises.</li>
+        </ul>
+        <p>Quand les données nécessaires manquent, le niveau affiché n'est jamais vert : une absence de données ne doit pas rassurer.</p>
+
+        <h2>Ce que le niveau n'est pas</h2>
+        <ul>
+          <li><strong>Ce n'est pas une prévision.</strong> Le niveau décrit ce que les sources publient à l'instant de la lecture. France Monitor ne calcule aucune projection ; les échéances à venir affichées sont celles qu'annoncent les producteurs (Météo-France, Vigicrues, RTE…), attribuées à leur source.</li>
+          <li><strong>Ce n'est pas une évaluation officielle.</strong> Les niveaux de vigilance officiels restent ceux des autorités compétentes (Météo-France, préfectures, RTE, ANSSI…). France Monitor les agrège et les croise, il ne s'y substitue pas.</li>
+          <li><strong>Ce n'est pas un jugement politique.</strong> L'indice mesure des perturbations observables (réseaux, sécurité, signaux publics), pas l'opinion ni la conjoncture politique.</li>
+        </ul>
+
+        <h2>Les quatre piliers</h2>
+        <p>Chaque pilier reçoit une pression de 0 à 100, moyenne pondérée de ses composantes. Les comptes d'événements sont ramenés sur une échelle logarithmique plafonnée : les premiers événements pèsent davantage que les suivants, et une avalanche ne sature pas l'indice d'un coup.</p>
+        <ul>
+          <li><strong>Continuité (35&nbsp;% de l'indice)</strong> : signal Écowatt du jour publié par RTE (poids 25), tension sur les carburants et stocks pétroliers (20), transports, trains supprimés ou très retardés et incidents routiers (25), pannes télécom imprévues de moins de 24&nbsp;h (15), vigilances météo et crues (15).</li>
+          <li><strong>Sécurité (30&nbsp;%)</strong> : pression cyber (45), pression défense (30), titres de presse classés critiques ou élevés (25).</li>
+          <li><strong>Signal (20&nbsp;%)</strong> : tension sociale relevée dans la presse régionale (30), pression informationnelle croisant presse, alertes et cyber (40), stabilité financière d'après la BCE (15), feux détectés par satellite (15).</li>
+          <li><strong>Défense (15&nbsp;%)</strong> : alertes défense, brouillage du positionnement satellite (GNSS) et aéronefs militaires visibles en ADS-B au-delà de l'activité habituelle.</li>
+        </ul>
+
+        <h2>Du pilier à l'indice</h2>
+        <ul>
+          <li><strong>Bruit ambiant atténué.</strong> Jusqu'à 15 points de pression, un pilier ne compte qu'au quart : la rumeur de fond d'un pays normal ne fait pas baisser l'indice.</li>
+          <li><strong>Aggravation renforcée.</strong> Entre 15 et 40 points, la pression compte plein ; au-delà de 40, elle compte 1,2 fois : une vraie crise se voit nettement.</li>
+          <li><strong>Choc soudain.</strong> Un pic brutal (vague d'alertes météo, Écowatt rouge, titres critiques) retire un supplément au-delà de 50 points.</li>
+          <li><strong>Lissage.</strong> Chaque nouvel indice est la moyenne du calcul du moment et de l'indice précédent, pour éviter les oscillations. Le lissage est désactivé dès que l'écart dépasse 15 points, pour ne jamais masquer une rupture.</li>
+          <li><strong>Plafonds de cohérence.</strong> L'indice ne peut pas afficher « calme » à côté d'une situation grave : une situation critique le plafonne à 55, deux situations élevées à 65, une situation élevée à 78.</li>
+          <li><strong>Situations hors indice.</strong> Les avis de sûreté nucléaire (ASNR) sont affichés comme situations mais n'entrent pas dans l'indice : leur gravité relève de l'échelle INES et de l'autorité de sûreté.</li>
+        </ul>
+        <p>Le détail du calcul (indice, piliers, plafond appliqué) est consultable dans l'application, sous « Pourquoi ce niveau ? ». La calibration est verrouillée par des scénarios de référence testés automatiquement : une modification de la formule qui changerait le niveau de ces scénarios est refusée.</p>
+
+        <h2>Situations</h2>
+        <p>Une situation naît quand plusieurs signaux convergent sur un même thème ou un même territoire (par exemple : vigilance orange, crues et coupures de routes dans un même département). Chacune porte une gravité (critique, élevée, moyenne, faible) et la liste des signaux qui la fondent.</p>
+
+        <h2>Note de synthèse</h2>
+        <p>La note de synthèse (l'essentiel, jugements, points de vigilance) est rédigée par un modèle de langue hébergé (Groq), à partir des seuls titres et données publics déjà affichés. Chaque jugement doit citer ses preuves (événements et situations numérotés) ; les sources affichées sont déduites de ces preuves par le serveur, jamais recopiées du modèle. Si le modèle est indisponible ou que sa réponse ne respecte pas ce contrat, une synthèse déterministe la remplace.</p>
         <h2>Limites</h2>
         <ul>
           <li>La fraîcheur et la qualité dépendent des fournisseurs de données.</li>
           <li>Certains signaux sont inférentiels ou agrégés et demandent une validation humaine avant toute conclusion.</li>
           <li>La présence d'un point, d'une alerte ou d'un article ne vaut pas confirmation indépendante d'un fait.</li>
+          <li>Une source muette ou indisponible ne pèse pas sur l'indice : un domaine non couvert à un instant donné peut donc faire paraître la situation plus calme qu'elle n'est. L'état de chaque source est visible dans l'application.</li>
+          <li>Les poids et seuils de l'indice sont des choix de conception documentés ci-dessus, pas des normes. Ils n'ont pas encore été confrontés à un historique de crises passées.</li>
         </ul>
         <h2>Principe d'usage</h2>
         <p>Les informations affichées doivent être recoupées avec les sources primaires, les communiqués officiels et les médias de référence lorsque l'enjeu est éditorial, opérationnel, financier ou juridique.</p>
