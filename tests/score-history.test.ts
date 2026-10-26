@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parseRecords, preferSnapshot, recentRecords, slotsFromRecords } from '../api/_lib/score-history.js';
 import { HISTORY_GRACE_MS, historySnapshotReady, isRecorderPage, scoreCoverageOf } from '../src/services/situation-history.ts';
@@ -61,5 +62,17 @@ describe('relevé côté navigateur (situation-history.ts)', () => {
     expect(isRecorderPage('?view=app&recorder=1')).toBe(true);
     expect(isRecorderPage('?recorder=0')).toBe(false);
     expect(isRecorderPage('')).toBe(false);
+  });
+});
+
+describe('sauvegarde nocturne hors de la VM (.github/workflows/backup-score-history.yml)', () => {
+  const wf = readFileSync(new URL('../.github/workflows/backup-score-history.yml', import.meta.url), 'utf8');
+  it('lit les relevés de 15 min sur 30 jours (seules valeurs acceptées par la route) et les fusionne sans doublon', () => {
+    expect(wf).toContain('/api/situation-history?days=30&resolution=15m');
+    expect(wf).toContain("unique_by(.capturedAt) | sort_by(.capturedAt)");
+  });
+  it('écrit sur sa branche, jamais sur main (ni CI ni déploiement déclenchés)', () => {
+    expect(wf).toContain('BRANCH: sauvegarde-historique');
+    expect(wf).not.toMatch(/git push origin main/);
   });
 });

@@ -1,0 +1,66 @@
+name: Sauvegarde de l'historique de la note
+
+# Copie hors de la VM des relevés de la note nationale (scripts/score-recorder.mjs, toutes les 15 min, 35 jours gardés sur la VM
+# seulement). Chaque nuit, les relevés des 30 derniers jours sont lus sur l'API publique (/api/situation-history, résolution 15 min)
+# et fusionnés, sans doublon (clé : capturedAt), dans historique/score-history.jsonl sur la branche « sauvegarde-historique ».
+# Rien n'est jamais effacé de la sauvegarde : elle garde l'historique au-delà des 35 jours de la VM. Aucun accès à la VM, aucun
+# secret : la CI et le déploiement ne tournent que sur main.
+
+on:
+  schedule:
+    - cron: '41 3 * * *'   # une fois par nuit ; minute décalée pour éviter les pics de cron GitHub
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: backup-score-history
+  cancel-in-progress: false
+
+env:
+  SITE: ${{ vars.SITE_URL || 'https://www.francemonitor.com' }}
+  BRANCH: sauvegarde-historique
+  FILE: historique/score-history.jsonl
+
+jobs:
+  backup:
+    name: Sauvegarde
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Lire les relevés et les fusionner dans la branche de sauvegarde
+        run: |
+          set -euo pipefail
+          curl -sf --max-time 60 "$SITE/api/situation-history?days=30&resolution=15m" -o "$RUNNER_TEMP/new.json"
+          count=$(jq '.records | length' "$RUNNER_TEMP/new.json")
+          if [ "$count" -eq 0 ]; then
+            echo "::error::aucun relevé servi par /api/situation-history : rien à sauvegarder"
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null; then
+            git switch "$BRANCH"
+          else
+            git switch --orphan "$BRANCH"
+          fi
+          mkdir -p "$(dirname "$FILE")"
+          touch "$FILE"
+          before=$(grep -c . "$FILE" || true)
+          { cat "$FILE"; jq -c '.records[]' "$RUNNER_TEMP/new.json"; } \
+            | jq -sc 'unique_by(.capturedAt) | sort_by(.capturedAt) | .[]' > "$RUNNER_TEMP/merged.jsonl"
+          mv "$RUNNER_TEMP/merged.jsonl" "$FILE"
+          after=$(grep -c . "$FILE" || true)
+          echo "### Historique de la note : $count relevés lus, $before avant, $after après" >> "$GITHUB_STEP_SUMMARY"
+          git add "$FILE"
+          if git diff --cached --quiet; then
+            echo "Aucun nouveau relevé."
+          else
+            git commit -q -m "sauvegarde : historique de la note au $(date -u +%F) ($after relevés)"
+            git push origin "$BRANCH"
+          fi
