@@ -1,17 +1,11 @@
 name: Smoke test production
 
-# Test de fumée quotidien de la production : vérifie que les endpoints /api/*
-# renvoient bien du JSON (pas le HTML de repli de la SPA — c'est exactement
-# comme ça que /api/ministers/* et /api/gie/* sont restés morts en prod sans
-# erreur visible pendant des semaines, voir docs/audit-2026-09-infrastructure.md
-# §1.1 constat n°3) et que les trois services de la topologie (Vercel, Railway,
-# Render) sont en ligne. Voir docs/deployment.md pour la topologie complète.
-#
-# NOTE : les routes /api/ministers/*, /api/gie/agsi|alsi et /api/opendata-proxy
-# n'existent en prod qu'une fois la branche d'audit 2026-09 fusionnée et déployée
-# (leurs handlers sont ajoutés dans cette même branche par un autre chantier).
-# Ce workflow échouera sur ces routes tant que ce déploiement n'a pas eu lieu —
-# c'est attendu, pas un bug de ce fichier.
+# Test de fumée quotidien de la production (VM Oracle derrière Cloudflare, voir docs/deployment-oracle.md) :
+# chaque route /api/* doit répondre en JSON (pas le HTML de repli de la SPA : c'est ainsi que /api/ministers/* et
+# /api/gie/* sont restés morts en prod sans erreur visible, docs/audit-2026-09-infrastructure.md § 1.1 constat 3),
+# les résumés IA ne doivent pas être dégradés, le worker radar et le relais AIS de la VM doivent répondre.
+# Un échec planifié ouvre (ou complète) un ticket « Test de fumée production en échec » : GitHub prévient le
+# propriétaire du dépôt par courriel. Le premier passage entièrement vert ferme le ticket.
 
 on:
   schedule:
@@ -20,12 +14,12 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 env:
-  # Variables de dépôt avec repli sur les valeurs actuelles (Railway/Render/Vercel)
-  # tant que la bascule vers la VM Oracle n'a pas eu lieu — voir docs/deployment-oracle.md.
+  # Variables de dépôt, avec repli sur les adresses de la VM.
   SITE: ${{ vars.SITE_URL || 'https://www.francemonitor.com' }}
-  RADAR_WORKER: ${{ vars.RADAR_WORKER_URL || 'https://radar-worker-production-0c93.up.railway.app' }}
+  RADAR_WORKER: ${{ vars.RADAR_WORKER_URL || 'https://www.francemonitor.com/radar' }}
   AIS_RELAY: ${{ vars.AIS_RELAY_URL || 'https://www.francemonitor.com/relay' }}
 
 jobs:
@@ -128,6 +122,7 @@ jobs:
           exit $fail
 
       - name: Vérifier que les résumés IA ne sont pas dégradés (Groq)
+        if: always()
         # Un modèle Groq retiré ne casse rien de visible : chaque appel retombe sur son repli et
         # répond 200. Constaté le 23/09/2026 (llama-3.3-70b-versatile retiré). On vérifie donc le
         # champ `degraded` d'un vrai résumé. Le texte change chaque jour pour éviter le cache Redis 24 h.
@@ -145,17 +140,17 @@ jobs:
             exit 1
           fi
 
-      - name: Vérifier Railway (radar-worker) /health
+      - name: Vérifier le worker radar (VM) /health
         if: always()
         run: |
           set -u
           code=$(curl -s -o /tmp/radar-health.json -w "%{http_code}" --max-time 30 "$RADAR_WORKER/health") || code="000"
-          echo "Railway /health -> HTTP $code"
+          echo "Worker radar /health -> HTTP $code"
           cat /tmp/radar-health.json 2>/dev/null || true
           echo ""
-          echo "### Railway radar-worker /health : HTTP $code" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+          echo "### Worker radar (VM) /health : HTTP $code" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
           if [ "$code" != "200" ]; then
-            echo "::error::Railway radar-worker /health a répondu HTTP $code"
+            echo "::error::worker radar (VM) /health a répondu HTTP $code"
             exit 1
           fi
 
@@ -184,3 +179,34 @@ jobs:
             echo "::error::instantané maritime absent ou illisible (HTTP $code)"
             exit 1
           fi
+
+      - name: Ouvrir ou compléter le ticket d'échec
+        if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -u
+          title="Test de fumée production en échec"
+          num=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$num" ]; then
+            gh issue comment "$num" --body "Toujours en échec le $(date -u +%d/%m/%Y) : $RUN_URL"
+          else
+            gh issue create --title "$title" --body "Le test de fumée quotidien a échoué le $(date -u +%d/%m/%Y). Détail des routes dans le résumé du passage : $RUN_URL
+
+          Ce ticket se ferme seul au premier passage entièrement vert."
+          fi
+
+      - name: Fermer le ticket d'échec
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -u
+          title="Test de fumée production en échec"
+          for num in $(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[].number'); do
+            gh issue close "$num" --comment "Test de fumée de nouveau vert le $(date -u +%d/%m/%Y) : $RUN_URL"
+          done
