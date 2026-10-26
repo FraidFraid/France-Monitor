@@ -90,13 +90,6 @@ export const FEEDS = [
     "tier": 2
   },
   {
-    "id": "marianne",
-    "name": "Marianne",
-    "url": "https://www.marianne.net/rss.xml",
-    "region": null,
-    "tier": 2
-  },
-  {
     "id": "slate-fr",
     "name": "Slate FR",
     "url": "https://www.slate.fr/rss.xml",
@@ -142,13 +135,6 @@ export const FEEDS = [
     "id": "ouest-france",
     "name": "Ouest-France",
     "url": "https://www.ouest-france.fr/rss/france",
-    "region": "Bretagne",
-    "tier": 3
-  },
-  {
-    "id": "le-telegramme",
-    "name": "Le Télégramme",
-    "url": "https://www.letelegramme.fr/rss.xml",
     "region": "Bretagne",
     "tier": 3
   },
@@ -213,13 +199,6 @@ export const FEEDS = [
     "name": "NC la 1ère",
     "url": "https://la1ere.francetvinfo.fr/nouvellecaledonie/rss",
     "region": "Nouvelle-Calédonie",
-    "tier": 3
-  },
-  {
-    "id": "guadeloupe-fr",
-    "name": "Guadeloupe.fr",
-    "url": "https://www.guadeloupe.fr/rss",
-    "region": "Guadeloupe",
     "tier": 3
   },
   {

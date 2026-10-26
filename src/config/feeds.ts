@@ -30,7 +30,7 @@ const TIER2: Feed[] = [
     { name: 'Courrier International', url: 'https://www.courrierinternational.com/feed/all/rss.xml', tier: 2 },
     { name: 'Mediapart', url: 'https://www.mediapart.fr/articles/feed', tier: 2 },
     { name: "L'Obs", url: 'https://www.nouvelobs.com/rss.xml', tier: 2 },
-    { name: 'Marianne', url: 'https://www.marianne.net/rss.xml', tier: 2 },
+    // Marianne retiré le 26/10/2026 : flux fermé aux lecteurs automatiques (HTTP 403).
     { name: 'Slate FR', url: 'https://www.slate.fr/rss.xml', tier: 2 },
 ];
 
@@ -58,7 +58,7 @@ const TIER2_TECH: Feed[] = [
 const TIER3: Feed[] = [
     // Ouest
     { name: 'Ouest-France', url: 'https://www.ouest-france.fr/rss/france', tier: 3, region: 'Bretagne' },
-    { name: 'Le Télégramme', url: 'https://www.letelegramme.fr/rss.xml', tier: 3, region: 'Bretagne' },
+    // Le Télégramme retiré le 26/10/2026 : flux fermé aux lecteurs automatiques (HTTP 403).
 
     // Sud-Ouest
     { name: 'Sud Ouest', url: 'https://www.sudouest.fr/rss.xml', tier: 3, region: 'Nouvelle-Aquitaine' },
@@ -80,8 +80,7 @@ const TIER3_DOMTOM: Feed[] = [
     // Nouvelle-Calédonie (seul flux la1ere fonctionnel)
     { name: 'NC la 1ère', url: 'https://la1ere.francetvinfo.fr/nouvellecaledonie/rss', tier: 3, region: 'Nouvelle-Calédonie' },
 
-    // Guadeloupe
-    { name: 'Guadeloupe.fr', url: 'https://www.guadeloupe.fr/rss', tier: 3, region: 'Guadeloupe' },
+    // Guadeloupe : guadeloupe.fr retiré le 26/10/2026 (flux supprimé, HTTP 404) ; aucun flux de remplacement trouvé (la1ere, RCI).
 
     // Réunion
     { name: 'Zinfos974', url: 'https://www.zinfos974.com/feed', tier: 3, region: 'La Réunion' },
