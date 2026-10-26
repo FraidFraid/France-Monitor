@@ -18,6 +18,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "replay:score": "vitest run --config vitest.replay.config.ts",
     "test:ingest": "vitest run tests/ingest.test.ts",
     "db:init": "node scripts/init-db.mjs",
     "sync:feeds": "node scripts/sync-feeds.mjs",

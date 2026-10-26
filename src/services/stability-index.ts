@@ -244,7 +244,7 @@ function computeTrend(code: string, currentScore: number): 'up' | 'down' | 'stab
 
 // ═══ Géolocalisation → Département ═══
 
-function findDepartmentByCoords(lon: number, lat: number): string | null {
+export function findDepartmentByCoords(lon: number, lat: number): string | null {
   // Vérifier les bboxes précises
   for (const [code, bbox] of Object.entries(DEPT_BBOXES)) {
     if (lon >= bbox.west && lon <= bbox.east && lat >= bbox.south && lat <= bbox.north) {

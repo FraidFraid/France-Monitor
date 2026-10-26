@@ -292,7 +292,7 @@ async function fetchViaJsonProxy(feed: Feed): Promise<{ items: NewsItem[]; sourc
 
 // ─── Ingestion API consolidée (/api/news) ───
 
-interface IngestApiItem {
+export interface IngestApiItem {
     eventId?: number | null;
     id?: number;
     feedId?: string;
