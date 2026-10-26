@@ -30,7 +30,7 @@ describe('isSovereigntyDataLate (tableau S2)', () => {
   it('cadences de la spec : vols 10 min, câbles 15 min (amendement 5), CERT-FR 6 h, KEV 26 h, ransomware.live 24 h, page Vigipirate 26 h, RIPEstat 10 h, gels 26 h', () => {
     expect(SOVEREIGNTY_LATE_AFTER_MIN).toEqual({
       'adsb-mil': 10, 'ais-cables': 15, certfr: 360, kev: 1560, ransomware: 1440, hibp: 1560, cybermalveillance: 360, vigipirate: 1560,
-      'adsb-gnss': 40, noaa: 180, ripestat: 600, gels: 1560,
+      'adsb-gnss': 150, noaa: 180, ripestat: 600, gels: 1560,
     });
   });
   it('date absente ou illisible : en retard', () => {

@@ -60,7 +60,7 @@ describe('moniteur d’alertes : une entrée GNSS sans lieu (O17)', () => {
   });
   it('Review Focus 3 : orage avec dégradation générale, grille en retard, jamais lue, absente ou sans maille sur 24 h : aucune entrée', () => {
     expect(gnssJammingSituations(GNSS_STORM_FIXTURE(), NOW)).toEqual([]);
-    expect(gnssJammingSituations({ ...GNSS_FIXTURE(), readAt: '2026-10-04T14:05:00.000Z' }, NOW)).toEqual([]);
+    expect(gnssJammingSituations({ ...GNSS_FIXTURE(), readAt: '2026-10-04T12:05:00.000Z' }, NOW)).toEqual([]);
     expect(gnssJammingSituations({ ...GNSS_FIXTURE(), readAt: null }, NOW)).toEqual([]);
     expect(gnssJammingSituations(null, NOW)).toEqual([]);
     expect(gnssJammingSituations(counts(0, [2, 2]), NOW)).toEqual([]);
@@ -82,7 +82,7 @@ describe('moniteur d’alertes : une entrée GNSS sans lieu (O17)', () => {
 describe('moniteur d’alertes : entrée GNSS retirée du cache dès qu’elle n’a plus lieu d’être (revue de B28, m1)', () => {
   const cache = (): Map<string, string> => new Map([[GNSS_MONITOR_ID, 'gnss'], ['military-emergency-3b7f21-7700', 'urgence'], ['news-alert-1', 'presse']]);
   it('grille en retard, en dégradation générale, jamais lue ou sans maille : l’entrée GNSS part tout de suite, les autres restent', () => {
-    for (const g of [{ ...GNSS_FIXTURE(), readAt: '2026-10-04T14:05:00.000Z' }, GNSS_STORM_FIXTURE(), null, counts(0, [2, 2])]) {
+    for (const g of [{ ...GNSS_FIXTURE(), readAt: '2026-10-04T12:05:00.000Z' }, GNSS_STORM_FIXTURE(), null, counts(0, [2, 2])]) {
       const c = cache();
       pruneStaleGnssAlert(c, gnssJammingSituations(g, NOW));
       expect([...c.keys()]).toEqual(['military-emergency-3b7f21-7700', 'news-alert-1']);

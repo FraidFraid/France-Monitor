@@ -423,7 +423,8 @@ describe('pannes adsb.lol (V1 : une panne n’est jamais un calme)', () => {
     vi.setSystemTime(T0 + MIL_INTERVAL_MS);
     const kept = await ensureMilitaryFresh(T0 + MIL_INTERVAL_MS);
     expect([kept.readAt, counted(kept)]).toEqual(['2026-10-04T14:48:30.000Z', { francais: 4, autres: 5 }]);
-    expect(kept.errors).toEqual(['adsb.lol : HTTP 429, nouvelle tentative après 17:00']);
+    // 429 à 16 h 53 (une cadence de 5 min après la lecture de 16 h 48) : recul de 10 min.
+    expect(kept.errors).toEqual(['adsb.lol : HTTP 429, nouvelle tentative après 17:03']);
     vi.setSystemTime(T0 + 2 * MIL_INTERVAL_MS);
     await ensureMilitaryFresh(T0 + 2 * MIL_INTERVAL_MS);
     expect(log.urls).toHaveLength(2);

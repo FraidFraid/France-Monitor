@@ -12,7 +12,7 @@ import { __resetSwrCacheForTests } from '../api/_utils/swr-cache.js';
 import { __resetKvForTests, __setKvClientForTests, kvSetJson } from '../api/_lib/kv-history.js';
 import { departementAt, departementsNear } from '../api/_lib/geo-fr.js';
 import { ADSB_LOL_BASE, __resetAdsbLolForTests } from '../api/_lib/adsb-lol.js';
-import { MIL_PENDING_NOTE, MIL_TOO_OLD_ERROR, __resetMilitaryForTests, ensureMilitaryFresh } from '../api/_lib/military-collect.js';
+import { MIL_INTERVAL_MS, MIL_PENDING_NOTE, MIL_TOO_OLD_ERROR, __resetMilitaryForTests, ensureMilitaryFresh } from '../api/_lib/military-collect.js';
 import { __resetCablesFileForTests, overpassToCables } from '../api/_lib/subsea-cables.js';
 import { osmComplement, shomToAnchorageZones, shomToCableZones, shomToCables } from '../api/_lib/shom-cables.js';
 import { cablesFile } from '../scripts/fetch-subsea-cables.mjs';
@@ -104,11 +104,11 @@ const GENEVE_7500: Ac = {
 const DRAGO_7700: Ac = { ...fixtureAc('3bf004'), squawk: '7700', emergency: 'general' };
 const GRIZZLY_PIA_7500: Ac = { ...fixtureAc('44f684'), dbFlags: 5, squawk: '7500', emergency: 'unlawful' };
 
-/** Deux lectures adsb.lol à 16 h 46 et 16 h 48, réponse de 16 h 48. */
+/** Deux lectures adsb.lol datées par la source 16 h 46 et 16 h 48, réponse de 16 h 48 ; la première lancée une cadence plus tôt. */
 async function twoReadings(first: Ac[], second: Ac[]): Promise<MilitaryResponse> {
   stubFetch(() => respond(reading(-120, first)));
-  vi.setSystemTime(NOW - 120_000);
-  await ensureMilitaryFresh(NOW - 120_000);
+  vi.setSystemTime(NOW - MIL_INTERVAL_MS);
+  await ensureMilitaryFresh(NOW - MIL_INTERVAL_MS);
   stubFetch(() => respond(reading(0, second)));
   vi.setSystemTime(NOW);
   return ensureMilitaryFresh(NOW);

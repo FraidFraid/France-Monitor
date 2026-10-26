@@ -112,10 +112,10 @@ describe('section GNSS : compte sans lieu et mailles du jour complet (O17)', () 
     // Relevé adsb.lol en retard : un 0 non couvert ne donne aucune couleur (n.d.).
     const lateMil = { ...MILITARY_FIXTURE(), readAt: new Date(NOW - 11 * 60_000).toISOString() };
     expect(buildDefenseView(input({ military: lateMil, gnss: at(5, 0) })).head.level).toBe('nd');
-    // 23 h 49 : encore n.d. ; 23 h 50 : couverte, le 0 est un vrai 0, vert.
-    const short = gnss({ readAt, windowStart: new Date(Date.parse(readAt) - (23 * H + 49 * 60_000)).toISOString(), degraded: { rolling24h: 0, previousUtcDays: [null, null] } });
-    expect(rollingHtml(short)).toBe(`<span class="lp-val fmk-num">n.d. (mesure de 23${NBSP}h sur 24)</span>`);
-    const full = { ...short, windowStart: new Date(Date.parse(readAt) - (23 * H + 50 * 60_000)).toISOString() };
+    // 22 h 59 : encore n.d. ; 23 h (fenêtre moins une collecte horaire) : couverte, le 0 est un vrai 0, vert.
+    const short = gnss({ readAt, windowStart: new Date(Date.parse(readAt) - (22 * H + 59 * 60_000)).toISOString(), degraded: { rolling24h: 0, previousUtcDays: [null, null] } });
+    expect(rollingHtml(short)).toBe(`<span class="lp-val fmk-num">n.d. (mesure de 22${NBSP}h sur 24)</span>`);
+    const full = { ...short, windowStart: new Date(Date.parse(readAt) - 23 * H).toISOString() };
     expect(rollingHtml(full)).toContain('lp-lvl--vert');
     expect(gnssDegradedCounts(full, NOW)).toEqual({ rolling24h: 0, previousUtcDays: [null, null] });
   });
@@ -140,7 +140,7 @@ describe('section GNSS : compte sans lieu et mailles du jour complet (O17)', () 
     expect(late.head.level).toBe('orange');
     expect(late.head.status[0]).toContain(`(mesure partielle de 5${NBSP}h) · relevé adsb.lol en retard`);
     // Grille en retard : couleurs retirées, comme pour une fenêtre couverte.
-    const lateGrid = gnss({ readAt: '2026-10-04T13:50:00.000Z', windowStart: '2026-10-04T08:50:00.000Z', degraded: { rolling24h: 3, previousUtcDays: [null, null] } });
+    const lateGrid = gnss({ readAt: '2026-10-04T12:10:00.000Z', windowStart: '2026-10-04T07:10:00.000Z', degraded: { rolling24h: 3, previousUtcDays: [null, null] } });
     expect(rollingHtml(lateGrid)).toBe(`<span class="lp-val fmk-num">3 (mesure partielle de 5${NBSP}h)</span>`);
   });
   it('lignes par maille seulement pour cellsDay, de la plus forte à la plus faible, cliquables ; jamais la maille anglaise ni « hier »', () => {
@@ -188,8 +188,8 @@ describe('section GNSS : compte sans lieu et mailles du jour complet (O17)', () 
     const grey = gnss({ days: { since: '2026-10-03', days: [{ date: '2026-10-03', jaune: 1, orange: 2, general: true }] } });
     expect(gridHtml(input({ gnss: grey }))).not.toMatch(/fmk-dot--(?:jaune|orange)/);
   });
-  it('grille de plus de 40 min : « (en retard) », couleurs retirées, pastille sans les mailles ; cumul de 3 h : référence en construction', () => {
-    const late = input({ gnss: gnss({ readAt: '2026-10-04T13:50:00.000Z', windowStart: '2026-10-03T13:50:00.000Z' }) });
+  it('grille de plus de 2 h 30 : « (en retard) », couleurs retirées, pastille sans les mailles ; cumul de 3 h : référence en construction', () => {
+    const late = input({ gnss: gnss({ readAt: '2026-10-04T12:10:00.000Z', windowStart: '2026-10-03T12:10:00.000Z' }) });
     expect(section(late, 'gnss')?.html).toContain('(en retard)');
     expect(gridHtml(late)).not.toMatch(/fmk-dot--(?:jaune|orange)/);
     expect(gridHtml(late)).not.toMatch(/lp-lvl--(?:jaune|orange|vert)/);
@@ -248,9 +248,9 @@ describe('pastille : fraîcheur croisée adsb.lol et GNSS (revue de B25, I1)', (
     expect(v.head.status[0]).toBe('niveau suspendu : relevé adsb.lol en retard · GNSS non évalué (dégradation générale)');
   });
   it('grille GNSS en retard, relevé militaire frais : la pastille vient du militaire seul, la grille muette est dite', () => {
-    const v = buildDefenseView(input({ gnss: gnss({ readAt: '2026-10-04T13:50:00.000Z', windowStart: '2026-10-03T13:50:00.000Z' }) }));
+    const v = buildDefenseView(input({ gnss: gnss({ readAt: '2026-10-04T12:10:00.000Z', windowStart: '2026-10-03T12:10:00.000Z' }) }));
     expect(v.head.level).toBe('vert');
-    expect(v.head.status[0]).toBe(`${glueSovUnits(defenseLevel(MILITARY_FIXTURE(), NOW).reason)} · GNSS non évalué · grille muette depuis 15:50`);
+    expect(v.head.status[0]).toBe(`${glueSovUnits(defenseLevel(MILITARY_FIXTURE(), NOW).reason)} · GNSS non évalué · grille muette depuis 14:10`);
   });
 });
 
@@ -278,7 +278,7 @@ describe('seuils et teintes (revue de B25, m1 et m2)', () => {
     const s = server as { GNSS_ORANGE_PCT: number; GNSS_YELLOW_PCT: number };
     expect([GNSS_YELLOW_PCT, GNSS_ORANGE_PCT]).toEqual([s.GNSS_YELLOW_PCT, s.GNSS_ORANGE_PCT]);
   });
-  it('couverture de la fenêtre (FX2) : 23 h 50, la règle du drapeau « référence en construction » du serveur', async () => {
+  it('couverture de la fenêtre (FX2) : 23 h, la règle du drapeau « référence en construction » du serveur', async () => {
     const grid = await import('../../../api/_lib/gnss-grid.js') as { GNSS_WINDOW_MS: number };
     const collect = await import('../../../api/_lib/gnss-collect.js') as { GNSS_INTERVAL_MS: number };
     expect(GNSS_WINDOW_MS).toBe(grid.GNSS_WINDOW_MS);
@@ -396,7 +396,7 @@ describe('méthode et règles du cadre', () => {
     for (const src of ['NOAA SWPC', 'DGAC / IGN, Géoplateforme', 'registre national des gels, DG Trésor', 'gpsjam.org']) expect(text).toContain(src);
   });
   it('R1, aucun tiret cadratin, aucune police à chasse fixe, jamais « temps réel »', () => {
-    const lateGrid = input({ gnss: gnss({ readAt: '2026-10-04T13:50:00.000Z' }) });
+    const lateGrid = input({ gnss: gnss({ readAt: '2026-10-04T12:10:00.000Z' }) });
     for (const i of [input(), input({ gnss: GNSS_STORM_FIXTURE() }), lateGrid, input({ gnss: null }), input({ sanctions: null })]) {
       const v = buildDefenseView(i);
       const h = renderLayerView('military', v);

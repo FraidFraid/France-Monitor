@@ -1,5 +1,5 @@
 // api/_lib/military-collect.js : collecte serveur des aéronefs militaires (spec 2026-10-04 souveraineté § 2.1, V1, V2 ; contrats
-// § 2.2). Une lecture adsb.lol /v2/mil toutes les 2 min (5 min sur le serveur de dev), par la file unique d'api/_lib/adsb-lol.js ;
+// § 2.2). Une lecture adsb.lol /v2/mil toutes les 5 min (10 min sur le serveur de dev), par la file unique d'api/_lib/adsb-lol.js ;
 // le drapeau militaire est celui de la source (base communautaire adsb.lol, arbitrage 23). Périmètre V2 : un aéronef est compté
 // s'il est au-dessus d'un département ou à moins de 22 km de la côte en mer française ; le reste de la zone d'affichage est « hors de
 // France », dessiné en gris, jamais compté. Pays par bloc OACI (api/_lib/icao-country.js), jamais une hypothèse « France ».
@@ -18,9 +18,14 @@ import { isDevServer, kvSetJson, readLog } from './kv-history.js';
 import { sourceError } from './source-http.js';
 import { inFranceV2, nearFrance } from './territory.js';
 
-export const MIL_INTERVAL_MS = 2 * 60_000;
-/** Serveur de dev : autre adresse IP que la VM, même prudence (cadence du Trafic aérien en dev). */
-export const DEV_MIL_INTERVAL_MS = 5 * 60_000;
+/**
+ * 5 min (26/10/2026, 2 min avant) : adsb.lol plafonne à 500 appels par jour et par adresse IP (en-tête x-ratelimit-limit
+ * « 500;w=86400 ») ; 2 min et la grille GNSS toutes les 10 min en faisaient ~1 440, d'où des HTTP 429 en continu. Budget
+ * journalier verrouillé par tests/adsb-lol-budget.test.ts.
+ */
+export const MIL_INTERVAL_MS = 5 * 60_000;
+/** Serveur de dev : autre adresse IP que la VM, même prudence. */
+export const DEV_MIL_INTERVAL_MS = 10 * 60_000;
 export const MIL_HOURLY_KEY = 'sov:mil:hourly';
 export const MIL_EMERGENCY_KEY = 'sov:mil:emergencies';
 /** Zone d'affichage : celle du Trafic aérien (déborde sur les voisins) ; hors de cette zone, rien n'est dessiné ni compté. */

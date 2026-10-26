@@ -141,10 +141,10 @@ describe('lectures', () => {
 });
 
 describe('panneau des sources (S1, S2) et notes d’avancement', () => {
-  it('« Grille GNSS » datée par la collecte complète, en retard après 40 min ; « NOAA SWPC » par l’heure des échelles', () => {
+  it('« Grille GNSS » datée par la collecte complète, en retard après 2 h 30 ; « NOAA SWPC » par l’heure des échelles', () => {
     const slot = gnssStateFixture();
     expect(gnssStatus(slot, 'adsb-gnss', NOW)).toMatchObject({ status: 'ok', lastUpdate: new Date('2026-10-04T14:45:24.000Z') });
-    const late = Date.parse('2026-10-04T15:26:00Z');
+    const late = Date.parse('2026-10-04T17:16:00Z');
     expect(gnssStatus(slot, 'adsb-gnss', late).status).toBe('stale');
     expect(gnssStatus(slot, 'adsb-gnss', late).period).toContain('(en retard)');
     expect(gnssStatus(slot, 'noaa', NOW)).toMatchObject({ status: 'ok', lastUpdate: new Date('2026-10-04T14:46:00.000Z') });

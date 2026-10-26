@@ -113,10 +113,10 @@ describe('mailles GNSS dégradées du score : comptes sans lieu, lus dans la ré
     expect(gnssDegradedCount(g, NOW)).toBe(2);
     expect(Object.keys(gnssDegradedCounts(g, NOW) ?? {}).sort()).toEqual(['previousUtcDays', 'rolling24h']);
   });
-  it('dégradation générale, grille jamais lue, grille de plus de 40 min : aucun compte (S2), jamais zéro lu comme calme', () => {
+  it('dégradation générale, grille jamais lue, grille de plus de 2 h 30 : aucun compte (S2), jamais zéro lu comme calme', () => {
     expect(gnssDegradedCounts(gnss(cells, { generalDegradation: true }), NOW)).toBeNull();
     expect(gnssDegradedCounts(gnss(cells, { readAt: null }), NOW)).toBeNull();
-    expect(gnssDegradedCounts(gnss(cells, { readAt: '2026-10-04T14:05:00.000Z' }), NOW)).toBeNull();
+    expect(gnssDegradedCounts(gnss(cells, { readAt: '2026-10-04T12:05:00.000Z' }), NOW)).toBeNull();
     expect(gnssDegradedCounts(null, NOW)).toBeNull();
     expect(gnssDegradedCount(gnss(cells, { generalDegradation: true }), NOW)).toBe(0);
     expect(gnssDegradedCount(null, NOW)).toBe(0);

@@ -79,8 +79,8 @@ describe('mailles GNSS (O15, O17)', () => {
     other.days.days = other.days.days.map((d) => ({ ...d, general: d.date !== other.cellsDay }));
     expect(gnssCellFeatures(other, NOW).features.every((f) => props(f)['lineWidth'] !== 1.6)).toBe(true);
   });
-  it('grille en retard (40 min) : tout en gris', () => {
-    const late = gnssCellFeatures(gnss({ readAt: '2026-10-04T13:50:00.000Z' }), NOW);
+  it('grille en retard (2 h 30) : tout en gris', () => {
+    const late = gnssCellFeatures(gnss({ readAt: '2026-10-04T12:10:00.000Z' }), NOW);
     expect(late.features.length).toBeGreaterThan(0);
     expect(late.features.every((f) => props(f)['color'] === SOV_ABROAD_HEX)).toBe(true);
   });
@@ -94,7 +94,7 @@ describe('mailles GNSS (O15, O17)', () => {
     expect(sovTooltipHtml(LYR_SOV_GNSS_FILL, props(fc.features[0]))).toContain('Hors de France : jamais comptée.');
     const storm = gnssCellFeatures(GNSS_STORM_FIXTURE(), NOW);
     expect(sovTooltipHtml(LYR_SOV_GNSS_FILL, props(storm.features[0]))).toContain('Dégradation générale ce jour-là, probablement météo spatiale : non comptée.');
-    const late = gnssCellFeatures(gnss({ readAt: '2026-10-04T13:50:00.000Z' }), NOW);
+    const late = gnssCellFeatures(gnss({ readAt: '2026-10-04T12:10:00.000Z' }), NOW);
     expect(sovTooltipHtml(LYR_SOV_GNSS_FILL, props(late.features[1]))).toContain('(en retard) : couleurs retirées');
   });
 });
@@ -153,7 +153,7 @@ describe('légende Défense de la phase B', () => {
       .toContain('Dégradation générale le 03/10, probablement météo spatiale : mailles françaises en contour seul, non comptées.');
     const rollingOnly = withDefensePhaseB(base(false), { gnss: gnss({ generalDegradation: true }), drones: null, dronesShown: false }, NOW);
     expect((rollingOnly.notes ?? []).some((n) => n.startsWith('Dégradation générale'))).toBe(false);
-    const late = withDefensePhaseB(base(false), { gnss: gnss({ readAt: '2026-10-04T13:50:00.000Z' }), drones: null, dronesShown: false }, NOW);
+    const late = withDefensePhaseB(base(false), { gnss: gnss({ readAt: '2026-10-04T12:10:00.000Z' }), drones: null, dronesShown: false }, NOW);
     expect(late.items.find((i) => i.id === 'sov-gnss-orange')?.color).toBe(SOV_ABROAD_HEX);
     expect((late.notes ?? []).join(' ')).toContain('Mailles du 03/10, jour UTC complet (en retard) : couleurs retirées');
     const unpublished = withDefensePhaseB(base(false), { gnss: gnss({ cellsDay: null, cells: [] }), drones: null, dronesShown: false }, NOW);

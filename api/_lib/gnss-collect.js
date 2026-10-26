@@ -1,9 +1,9 @@
 // api/_lib/gnss-collect.js : collecte serveur de la grille GNSS (spec 2026-10-04 souveraineté § 3.1 ; contrats § 2.5, arbitrages 2,
-// 17, 33, 34 ; amendement 7, O15 à O17). Toutes les 10 min (dev 30 min), cinq lectures adsb.lol /v2/point qui couvrent la métropole,
+// 17, 33, 34 ; amendement 7, O15 à O17). Toutes les heures (dev 2 h ; 10 min jusqu'au 26/10/2026, quota adsb.lol), cinq lectures adsb.lol /v2/point qui couvrent la métropole,
 // par la file unique du client adsb.lol (6 s d'écart garanti, recul de 10 min sur 429, d'une heure sur 401 ou 403).
 // Deux cumuls en mémoire du processus, nourris des mêmes lectures :
 // - 24 h glissantes : comptes sans lieu servis en direct (mailles orange françaises hors dégradation générale, `degraded.rolling24h`),
-//   dégradation générale décidée avec le Kp de la même fenêtre (arbitrage 34), « référence en construction » sous 23 h 50 ;
+//   dégradation générale décidée avec le Kp de la même fenêtre (arbitrage 34), « référence en construction » sous 23 h ;
 // - un cumul par jour UTC : à la première lecture du jour suivant, le jour se ferme ; ses mailles localisées ne sont servies que le
 //   lendemain (O17 : une maille qui se colore en direct peut signaler une protection en cours, et un brouillage peut être autorisé),
 //   et seulement si le jour est couvert (chacun des cinq points lu sans intervalle de plus de trois cycles : un point jamais lu, par
@@ -24,18 +24,19 @@ import { parisParts } from './paris-time.js';
 
 /** Centres et rayons (milles nautiques) des cinq lectures (faits § 5.1) : Ouest, Nord-Est, Sud-Ouest, Sud-Est, Corse. */
 export const GNSS_POINTS = [[48.8, -1.5, 200], [49.0, 4.5, 200], [44.8, -0.5, 200], [44.0, 4.5, 200], [42.2, 9.1, 80]];
-export const GNSS_INTERVAL_MS = 10 * 60_000;
+/** Une heure (26/10/2026, 10 min avant) : quota adsb.lol de 500 appels par jour et par IP (voir MIL_INTERVAL_MS). */
+export const GNSS_INTERVAL_MS = 60 * 60_000;
 /** Serveur de dev : autre adresse IP, cadence bridée (arbitrage 2). */
-export const DEV_GNSS_INTERVAL_MS = 30 * 60_000;
+export const DEV_GNSS_INTERVAL_MS = 2 * 60 * 60_000;
 export const GNSS_LAST_KEY = 'sov:gnss:last';
 export const GNSS_DAYS_KEY = 'sov:gnss:days';
 /** File adsb.lol occupée au-delà de l'échéance de la route : note d'avancement, jamais une panne (même phrase que les vols). */
 export const GNSS_PENDING_NOTE = 'adsb.lol : collecte en cours';
-/** Cumul de moins de 23 h 50 (redémarrage du serveur) : note d'avancement. */
+/** Cumul de moins de 23 h, soit la fenêtre moins un cycle (redémarrage du serveur) : note d'avancement. */
 export const GNSS_CONSTRUCTION_NOTE = 'Grille GNSS : référence en construction';
 export const GNSS_TOO_OLD_ERROR = 'Grille GNSS : dernière collecte complète de plus de 2 jours';
 /**
- * Jour UTC couvert : chacun des cinq points lu sans intervalle de plus de trois cycles (30 min ; 90 min sur le serveur de dev), de
+ * Jour UTC couvert : chacun des cinq points lu sans intervalle de plus de trois cycles (3 h ; 6 h sur le serveur de dev), de
  * 00:00 à sa première lecture, entre deux lectures et de sa dernière lecture à 24:00.
  */
 export const GNSS_DAY_MAX_GAP_CYCLES = 3;

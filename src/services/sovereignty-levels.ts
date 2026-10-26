@@ -18,7 +18,7 @@ export type SovereigntySource =
 
 /** Minutes après la date de référence de chaque source au-delà desquelles la donnée est « en retard » (tableau S2 de la spec). */
 export const SOVEREIGNTY_LATE_AFTER_MIN: Readonly<Record<SovereigntySource, number>> = {
-  'adsb-mil': 10,            // readAt + 10 min
+  'adsb-mil': 10,            // readAt + 10 min : deux collectes de 5 min (quota adsb.lol, 26/10/2026)
   'ais-cables': 15,          // aisLastMessageAt + 15 min (amendement 5 : la veille relève toutes les quelques minutes ; le flux muet reste dit par la garde T3 du serveur)
   certfr: 6 * 60,            // certfr.readAt + 6 h
   kev: 26 * 60,              // kev.readAt + 26 h
@@ -26,7 +26,7 @@ export const SOVEREIGNTY_LATE_AFTER_MIN: Readonly<Record<SovereigntySource, numb
   hibp: 26 * 60,             // hibp.readAt + 26 h
   cybermalveillance: 6 * 60, // readAt + 6 h (lecture horaire, même règle que le CERT-FR)
   vigipirate: 26 * 60,       // readAt + 26 h : relecture quotidienne de la page du SGDSN (O14), nouvel essai une heure après un échec ; la saisie n'est jamais en retard
-  'adsb-gnss': 40,           // readAt (dernière collecte complète) + 40 min
+  'adsb-gnss': 150,          // readAt (dernière collecte complète) + 2 h 30 : collecte horaire (quota adsb.lol, 26/10/2026)
   noaa: 3 * 60,              // scalesAt + 3 h
   ripestat: 10 * 60,         // snapshotAt (query_time) + 10 h
   gels: 26 * 60,             // dateCheckedAt + 26 h (une publication ancienne n'est jamais en retard)
@@ -491,10 +491,10 @@ export function connectivityLevel(c: CablesWatchResponse | null, n: Connectivity
 /** Fenêtre glissante de la grille GNSS (24 h, api/_lib/gnss-grid.js). */
 export const GNSS_WINDOW_MS = 24 * 3_600_000;
 /**
- * Couverture minimale de la fenêtre : 23 h 50, soit la fenêtre moins une collecte de 10 min (même règle que le drapeau « référence en
+ * Couverture minimale de la fenêtre : 23 h, soit la fenêtre moins une collecte horaire (même règle que le drapeau « référence en
  * construction » du serveur, api/_lib/gnss-collect.js ; identité testée). En deçà, le compte glissant n'est pas un compte de 24 h.
  */
-export const GNSS_COVERED_MS = GNSS_WINDOW_MS - 10 * 60_000;
+export const GNSS_COVERED_MS = GNSS_WINDOW_MS - 60 * 60_000;
 
 /** Durée mesurée de la fenêtre glissante (ms) : de `windowStart` à `readAt` (cumul repris au dernier redémarrage du serveur) ; 0 sans date. */
 export function gnssWindowSpanMs(g: Pick<GnssResponse, 'readAt' | 'windowStart'>): number {

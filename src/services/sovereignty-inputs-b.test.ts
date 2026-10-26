@@ -51,8 +51,8 @@ describe('entrées du score, phase B', () => {
     expect(b.defensePillLevel).toBe('vert');
     expect(b.defensePillFromGnss).toBeUndefined();
   });
-  it('grille en retard (40 min) ou jamais lue : non évalué ; adsb.lol indisponible : pastille de la phase A gardée (n.d.)', () => {
-    expect(withGnssInputs(base(), { ...GNSS_FIXTURE(), readAt: '2026-10-04T14:05:00.000Z' }, MILITARY_FIXTURE(), NOW).gnssDegraded).toBeNull();
+  it('grille en retard (2 h 30) ou jamais lue : non évalué ; adsb.lol indisponible : pastille de la phase A gardée (n.d.)', () => {
+    expect(withGnssInputs(base(), { ...GNSS_FIXTURE(), readAt: '2026-10-04T12:05:00.000Z' }, MILITARY_FIXTURE(), NOW).gnssDegraded).toBeNull();
     expect(withGnssInputs(base(), { ...GNSS_FIXTURE(), readAt: null }, MILITARY_FIXTURE(), NOW).gnssDegraded).toBeNull();
     expect(withGnssInputs(base(), null, MILITARY_FIXTURE(), NOW)).toEqual(base());
     const down = buildSovereigntyInputs(null, CABLES_WATCH_FIXTURE(), CYBER_FIXTURE(), NOW);

@@ -7,9 +7,9 @@ import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __resetSwrCacheForTests } from '../api/_utils/swr-cache.js';
 import { __resetKvForTests, __setKvClientForTests, kvGetJson, kvSetJson } from '../api/_lib/kv-history.js';
-import { __resetAdsbLolForTests, adsbLolBlockedUntil } from '../api/_lib/adsb-lol.js';
+import { __resetAdsbLolForTests, adsbLolBlockedUntil, adsbLolGet } from '../api/_lib/adsb-lol.js';
 import {
-  GNSS_CONSTRUCTION_NOTE, GNSS_DAYS_KEY, GNSS_LAST_KEY, GNSS_PENDING_NOTE, GNSS_POINTS, GNSS_TOO_OLD_ERROR, __resetGnssForTests,
+  GNSS_CONSTRUCTION_NOTE, GNSS_DAYS_KEY, GNSS_INTERVAL_MS, GNSS_LAST_KEY, GNSS_PENDING_NOTE, GNSS_POINTS, GNSS_TOO_OLD_ERROR, __resetGnssForTests,
   emptyGnssBody, ensureGnssFresh, isGnssDue, pointPath, storedGnss,
 } from '../api/_lib/gnss-collect.js';
 import { NOAA_ALERTS_URL, NOAA_KP_URL, NOAA_SCALES_URL } from '../api/_lib/noaa-swpc.js';
@@ -117,20 +117,21 @@ describe('cycle de collecte', () => {
     expect(body.days).toEqual({ days: [{ date: '2026-10-04', jaune: 0, orange: 0, general: false }], since: '2026-10-04' });
     expect(Object.keys(body).sort()).toEqual(RESPONSE_KEYS.filter((k) => k !== 'spaceWeather'));
   });
-  it('cycle pas encore dû (moins de 9 min) : aucune lecture, grille gardée servie', async () => {
+  it('cycle pas encore dû (moins d’un cycle moins une minute) : aucune lecture, grille gardée servie', async () => {
     sources();
     await settle(ensureGnssFresh(T0));
     const calls = sources();
-    vi.setSystemTime(T0 + 8 * MIN);
-    const body = await settle(ensureGnssFresh(T0 + 8 * MIN));
+    const early = T0 + GNSS_INTERVAL_MS - 2 * MIN;
+    vi.setSystemTime(early);
+    const body = await settle(ensureGnssFresh(early));
     expect([calls.adsb.length, body.readAt]).toEqual([0, '2026-10-04T14:50:00.000Z']);
-    expect([isGnssDue(null, T0), isGnssDue(new Date(T0).toISOString(), T0 + 9 * MIN), isGnssDue(new Date(T0).toISOString(), T0 + 8 * MIN)])
-      .toEqual([true, true, false]);
+    const at = new Date(T0).toISOString();
+    expect([isGnssDue(null, T0), isGnssDue(at, T0 + GNSS_INTERVAL_MS - MIN), isGnssDue(at, early)]).toEqual([true, true, false]);
   });
   it('429 au troisième appel : cycle arrêté, dernière grille complète servie avec sa date, aucun appel pendant le recul', async () => {
     sources();
     await settle(ensureGnssFresh(T0));
-    const T1 = T0 + 11 * MIN;
+    const T1 = T0 + GNSS_INTERVAL_MS + MIN;
     vi.setSystemTime(T1);
     const calls = sources((n) => (n === 3 ? respond('<html><body>429 Too Many Requests</body></html>', 429) : null));
     const body = await settle(ensureGnssFresh(T1));
@@ -143,12 +144,15 @@ describe('cycle de collecte', () => {
     expect(until ?? 0).toBeGreaterThan(T1 + 9 * MIN);
     const stored = await kvGetJson(GNSS_LAST_KEY, Date.now()) as { readAt: string; attemptedAt: string };
     expect([stored.readAt, stored.attemptedAt]).toEqual(['2026-10-04T14:50:00.000Z', new Date(T1).toISOString()]);
-    // Cycle de nouveau dû 9 min 50 s plus tard, mais adsb.lol est encore en recul : aucun appel, la panne dit jusqu'à quand.
-    const T2 = T1 + 9 * MIN + 50_000;
+    // Cycle de nouveau dû, mais adsb.lol vient de se remettre en recul (429 sur la collecte militaire, même file) : aucun appel,
+    // la panne dit jusqu'à quand.
+    const T2 = T1 + GNSS_INTERVAL_MS;
     vi.setSystemTime(T2);
+    sources(() => respond('Too Many Requests', 429));
+    await adsbLolGet('/v2/mil', T2).catch(() => undefined);
     const later = sources();
     const again = await settle(ensureGnssFresh(T2));
-    const clock = new Date(until ?? 0).toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' });
+    const clock = new Date(adsbLolBlockedUntil() ?? 0).toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' });
     expect(later.adsb).toHaveLength(0);
     expect(again.readAt).toBe('2026-10-04T14:50:00.000Z');
     expect(again.errors).toEqual([`Grille GNSS : adsb.lol en recul jusqu'à ${clock}, aucune lecture`]);
@@ -157,10 +161,11 @@ describe('cycle de collecte', () => {
     sources((n) => (n === 3 ? respond('erreur', 500) : null));
     const first = await settle(ensureGnssFresh(T0));
     expect([first.readAt, first.reads, first.errors]).toEqual([null, 0, ['Grille GNSS, lecture 3 sur 5 : adsb.lol : HTTP 500']]);
-    vi.setSystemTime(T0 + 11 * MIN);
+    const T1 = T0 + GNSS_INTERVAL_MS + MIN;
+    vi.setSystemTime(T1);
     sources();
-    const body = await settle(ensureGnssFresh(T0 + 11 * MIN));
-    expect([body.readAt, body.reads]).toEqual([new Date(T0 + 11 * MIN).toISOString(), 7]);
+    const body = await settle(ensureGnssFresh(T1));
+    expect([body.readAt, body.reads]).toEqual([new Date(T1).toISOString(), 7]);
   });
   it('dernière grille complète de plus de 2 jours : plus servie, panne nommée (la note de construction d’une grille non servie disparaît)', async () => {
     sources();
@@ -201,7 +206,7 @@ describe('jour UTC précédent : mailles localisées et comptes sans lieu (O17)'
     });
     // Redémarrage du processus : la fenêtre recommence, la veille reste servie depuis le stockage clé-valeur.
     __resetGnssForTests();
-    const restart = D + 24 * 60 * MIN + 10 * MIN;
+    const restart = D + 24 * 60 * MIN + GNSS_INTERVAL_MS;
     vi.setSystemTime(restart);
     const after = await settle(ensureGnssFresh(restart));
     expect([after.cellsDay, after.cells, after.degraded, after.reads, after.errors])
