@@ -8709,6 +8709,10 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 
 /* Flux piétons : avertissement ESTIMATIONS MODÉLISÉES toujours en tête du panneau. */
 #app .flux-panel-modal .flux-warning { font-weight: 600; letter-spacing: 0.02em; }
+/* Foule estimée (26/10/2026) : une valeur longue (lieu supposé, base du modèle) passe à la ligne sous sa colonne au lieu de recouvrir le
+   libellé ; la colonne du libellé ne descend plus sous 6,5 rem, les valeurs courtes restent alignées à droite. */
+#app .flux-panel-modal .fmk .fmk-kv { grid-template-columns: minmax(6.5rem, max-content) minmax(0, 1fr); }
+#app .flux-panel-modal .fmk .fmk-kv-v { overflow-wrap: anywhere; text-align: right; }
 /* Rejeu dans le temps du panneau Flux piétons : bouton lecture, ligne de l'instant, curseur, bornes. */
 #app .flux-panel-modal .flux-replay { display: flex; flex-direction: column; gap: 6px; margin: 2px 0 8px; }
 #app .flux-panel-modal .flux-replay-head { display: flex; align-items: center; gap: 8px; }
