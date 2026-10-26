@@ -1,0 +1,77 @@
+name: Archive de la couche Manifestations
+
+# Archive horaire de la couche Manifestations (/api/social/protests : Démosphère, GDELT, presse, préfectures, carte gilets jaunes),
+# qui ne garde elle-même aucun historique. But : pouvoir rejouer l'indice sur une journée de mobilisation (docs/rejeu/constats-2026-10-26.md)
+# avec l'étendue réelle des rassemblements, ce que la presse seule mesure mal.
+#
+# Un fichier par jour de relevé (UTC) : historique/manifestations/AAAA-MM-JJ.jsonl, une ligne par rassemblement (clé : id), avec son
+# dernier état et `firstSeenAt` / `lastSeenAt` (heures du premier et du dernier relevé qui l'ont servi). La liste des articles n'est pas
+# gardée (environ 280 Ko par relevé) : seulement leur nombre. Même branche que la sauvegarde de la note, jamais main.
+
+on:
+  schedule:
+    - cron: '23 * * * *'   # toutes les heures ; minute décalée pour éviter les pics de cron GitHub
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  # Même groupe que la sauvegarde de la note : une seule écriture à la fois sur la branche.
+  group: sauvegarde-historique
+  cancel-in-progress: false
+
+env:
+  SITE: ${{ vars.SITE_URL || 'https://www.francemonitor.com' }}
+  BRANCH: sauvegarde-historique
+
+jobs:
+  archive:
+    name: Archive
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Lire la couche et fusionner dans le fichier du jour
+        run: |
+          set -euo pipefail
+          curl -sf --max-time 90 "$SITE/api/social/protests" -o "$RUNNER_TEMP/p.json"
+          read_at=$(jq -r '.readAt // empty' "$RUNNER_TEMP/p.json")
+          if [ -z "$read_at" ]; then
+            echo "::error::couche Manifestations sans readAt : $(jq -c '.errors' "$RUNNER_TEMP/p.json")"
+            exit 1
+          fi
+          day=$(date -u +%F)
+          file="historique/manifestations/$day.jsonl"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null; then
+            git switch "$BRANCH"
+          else
+            git switch --orphan "$BRANCH"
+          fi
+          mkdir -p "$(dirname "$file")"
+          touch "$file"
+          jq -c --arg at "$read_at" '.items[] | {
+              id, source, status, title, startsAt, allDay, city, dept, lat, lon, precision, place, violent, participants, edition,
+              articleCount: (.articleCount // ((.articles // []) | length)), firstSeenAt: $at, lastSeenAt: $at
+            }' "$RUNNER_TEMP/p.json" > "$RUNNER_TEMP/new.jsonl"
+          # Fusion par id : premier relevé gardé, dernier état et dernier relevé du plus récent.
+          { cat "$file"; cat "$RUNNER_TEMP/new.jsonl"; } | jq -sc '
+            group_by(.id) | map(
+              (sort_by(.lastSeenAt)) as $v
+              | ($v[-1] + { firstSeenAt: ($v | map(.firstSeenAt) | min), lastSeenAt: ($v | map(.lastSeenAt) | max) })
+            ) | sort_by(.startsAt // "", .id) | .[]' > "$RUNNER_TEMP/merged.jsonl"
+          mv "$RUNNER_TEMP/merged.jsonl" "$file"
+          total=$(grep -c . "$file" || true)
+          echo "### Manifestations : $(jq '.items | length' "$RUNNER_TEMP/p.json") servis à $read_at, $total dans $file" >> "$GITHUB_STEP_SUMMARY"
+          git add "$file"
+          if git diff --cached --quiet; then
+            echo "Rien de nouveau."
+          else
+            git commit -q -m "archive : manifestations du $day ($total rassemblements, relevé $read_at)"
+            git push origin "$BRANCH"
+          fi

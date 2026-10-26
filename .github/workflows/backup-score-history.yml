@@ -15,7 +15,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: backup-score-history
+  group: sauvegarde-historique
   cancel-in-progress: false
 
 env:

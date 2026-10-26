@@ -76,3 +76,21 @@ describe('sauvegarde nocturne hors de la VM (.github/workflows/backup-score-hist
     expect(wf).not.toMatch(/git push origin main/);
   });
 });
+
+describe('archive horaire de la couche Manifestations (.github/workflows/archive-protests.yml)', () => {
+  const wf = readFileSync(new URL('../.github/workflows/archive-protests.yml', import.meta.url), 'utf8');
+  it('un fichier par jour, une ligne par rassemblement (fusion par id, premier et dernier relevé), sans la liste des articles', () => {
+    expect(wf).toContain('historique/manifestations/$day.jsonl');
+    expect(wf).toContain('group_by(.id)');
+    expect(wf).toContain('firstSeenAt: ($v | map(.firstSeenAt) | min), lastSeenAt: ($v | map(.lastSeenAt) | max)');
+    expect(wf).not.toMatch(/^\s+articles,/m);
+  });
+  it('même branche et même groupe que la sauvegarde de la note : une seule écriture à la fois, jamais sur main', () => {
+    const backup = readFileSync(new URL('../.github/workflows/backup-score-history.yml', import.meta.url), 'utf8');
+    for (const f of [wf, backup]) {
+      expect(f).toContain('group: sauvegarde-historique');
+      expect(f).toContain('BRANCH: sauvegarde-historique');
+      expect(f).not.toMatch(/git push origin main/);
+    }
+  });
+});
