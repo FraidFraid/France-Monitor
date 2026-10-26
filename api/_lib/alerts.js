@@ -45,11 +45,17 @@ export function usableRecord(r) {
     && c.total - c.read <= MIN_SOURCES_READ_MARGIN;
 }
 
+/**
+ * Types sans alerte : SOCIAL_ESCALATION est sans effet sur la note depuis le 26/10/2026 (SCORE_NEUTRAL_SITUATIONS,
+ * src/services/france-country-intel.ts) ; affichée à titre d'information, elle ne déclenche pas d'alerte.
+ */
+const NO_ALERT_TYPES = new Set(['SOCIAL_ESCALATION']);
+
 /** Situations élevées ou critiques d'un relevé, par id. */
 function graveSituations(r) {
   const map = new Map();
   for (const s of Array.isArray(r.situations) ? r.situations : []) {
-    if (s && typeof s.id === 'string' && ALERT_SEVERITIES.has(s.severity)) map.set(s.id, s);
+    if (s && typeof s.id === 'string' && ALERT_SEVERITIES.has(s.severity) && !NO_ALERT_TYPES.has(s.type)) map.set(s.id, s);
   }
   return map;
 }

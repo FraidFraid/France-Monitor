@@ -92,3 +92,11 @@ describe('formats', () => {
     expect(atom).not.toContain('<entry>');
   });
 });
+
+describe('situation sans effet sur la note (26/10/2026)', () => {
+  it('« Escalade sociale » élevée confirmée : aucune alerte', () => {
+    minute = 0;
+    const esc: Sit = { id: 'social-escalation', type: 'SOCIAL_ESCALATION', severity: 'high', title: 'Escalade sociale localisée' };
+    expect(run([rec(90), rec(90), rec(90, [esc]), rec(90, [esc]), rec(90, [esc])])).toEqual([]);
+  });
+});

@@ -64,3 +64,12 @@ describe('absence de comptage et effet sur la note', () => {
     expect(score(96, 76)).toBe(Math.min(calm, 55));
   });
 });
+
+describe('« Escalade sociale » sans effet sur la note (décision du 26/10/2026)', () => {
+  it('affichée mais jamais comptée dans le plafond', async () => {
+    const { SCORE_NEUTRAL_SITUATIONS, situationsForScore } = await import('./france-country-intel.ts');
+    expect(SCORE_NEUTRAL_SITUATIONS.has('SOCIAL_ESCALATION')).toBe(true);
+    const s = [{ type: 'SOCIAL_ESCALATION' as const, severity: 'high' }, { type: 'SOCIAL_MOBILISATION' as const, severity: 'high' }];
+    expect(situationsForScore(s).map((x) => x.type)).toEqual(['SOCIAL_MOBILISATION']);
+  });
+});

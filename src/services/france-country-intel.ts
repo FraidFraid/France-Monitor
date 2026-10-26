@@ -741,8 +741,13 @@ export function computeFranceScoreBreakdown(
   };
 }
 
-/** Situations sans effet sur le score (spec 2026-10-13 ASNR) : jamais comptées dans le plafond (une high plafonnerait sinon à 78). */
-export const SCORE_NEUTRAL_SITUATIONS: ReadonlySet<SituationType> = new Set<SituationType>(['ASNR_CRISIS', 'NUCLEAR_INCIDENT']);
+/**
+ * Situations sans effet sur le score : jamais comptées dans le plafond (une high plafonnerait sinon à 78). ASNR (spec 2026-10-13) ;
+ * SOCIAL_ESCALATION (décision du 26/10/2026, rejeu du 12 au 25/10) : fondée sur l'ISNR des 1 000 derniers articles, elle se
+ * déclenchait à tort un soir calme (12/10, plafond 78) et pas les jours de crise, que SOCIAL_MOBILISATION et SECURITY_UNREST captent ;
+ * elle reste affichée, à titre d'information.
+ */
+export const SCORE_NEUTRAL_SITUATIONS: ReadonlySet<SituationType> = new Set<SituationType>(['ASNR_CRISIS', 'NUCLEAR_INCIDENT', 'SOCIAL_ESCALATION']);
 
 /** Situations passées au score : les types neutres sont écartés. */
 export function situationsForScore<T extends { type: SituationType }>(situations: readonly T[]): T[] {
