@@ -59,6 +59,7 @@ export const ROUTES = {
   '/api/ministers/profile-meta': () => import('./_handlers/ministers/profile-meta.js'),
   '/api/ministers/wikidata-search': () => import('./_handlers/ministers/wikidata-search.js'),
   '/api/ministers/wikidata': () => import('./_handlers/ministers/wikidata.js'),
+  '/api/news/event-pressure': () => import('./_handlers/news/event-pressure.js'),
   '/api/news/history': () => import('./_handlers/news/history.js'),
   '/api/news': () => import('./_handlers/news.js'),
   '/api/nuclear/asnr': () => import('./_handlers/nuclear/asnr.js'),

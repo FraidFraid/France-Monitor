@@ -210,8 +210,10 @@ export default defineConfig(({ mode }) => {
           ],
           // Abaissé de 3 Mo à 1 Mo : les gros GeoJSON/JSON ci-dessus sont
           // exclus explicitement du precache : ce plafond n'a plus besoin de
-          // couvrir des fichiers multi-Mo au démarrage.
-          maximumFileSizeToCacheInBytes: 1 * 1024 * 1024,
+          // couvrir des fichiers multi-Mo au démarrage. Relevé à 1,25 Mo le 26/10/2026 : le fichier principal de
+          // l'application (App-*.js, 1 048 676 octets) touchait le plafond de 1 Mo et doit rester précaché ; les données
+          // restent exclues par la liste ci-dessus.
+          maximumFileSizeToCacheInBytes: 1.25 * 1024 * 1024,
           skipWaiting: true,
           runtimeCaching: [
             {

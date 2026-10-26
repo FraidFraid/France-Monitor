@@ -246,6 +246,7 @@ import {
 } from './components/layer-panel/traffic-legend.ts';
 import { fetchAirTrafficSnapshot } from './services/air-traffic.ts';
 import { fetchMarketData } from './services/finance.ts';
+import type { EventPressureResponse } from './types/index.ts';
 import {
   BCE_SOURCE_NAME, SPREAD_SOURCE_NAME, bceStatus, fetchFinancialStability, mergeFinancialStability, spreadStatus, type FinancialStabilitySlot,
 } from './services/financial-stability.ts';
@@ -322,6 +323,7 @@ const POLL_COMMODITIES_MS              = 15 * 60_000; // 15 min
 const POLL_AIR_TRAFFIC_MS              = 12_000;       // 12 s    (positions de la carte ; collecte OpenSky du serveur toutes les 2 min)
 const POLL_AIR_OVERVIEW_MS             =  2 * 60_000; //  2 min  (panneau aérien : aperçu du serveur ; cache client 90 s)
 const POLL_ROAD_MS                     =  5 * 60_000; //  5 min  (DIR et agglomérations TomTom collectés par le serveur ; cache client 4 min)
+const POLL_EVENT_PRESSURE_MS           = 10 * 60_000; // 10 min  (/api/news/event-pressure, cache serveur 10 min)
 const POLL_MARITIME_SNAPSHOT_MS        =  2 * 60_000; //  2 min  (instantané du relais AIS ; cache client 90 s)
 const POLL_HEALTH_MS                   = 30 * 60_000; // 30 min  (veille sanitaire et offre de soins, hebdomadaires ou annuelles ; caches clients 25 min)
 const POLL_HYDRAULIC_MS                = 10 * 60_000; // 10 min  (hydrometrics + barrage signals)
@@ -1350,6 +1352,8 @@ export class App {
   private financialStrip: FinancialStabilityStrip | null = null;
   /** Bloc « Stabilité financière » (spec 2026-10-12) : BCE + écart OAT-Bund, dernier relevé gardé en cas de panne. */
   private currentFinancialStability: FinancialStabilitySlot | null = null;
+  /** Événements sociaux et de sécurité distincts sur 24 h (/api/news/event-pressure) : situations SOCIAL_MOBILISATION et SECURITY_UNREST. */
+  private currentEventPressure: EventPressureResponse | null = null;
   private commodityStrip: CommodityStrip | null = null;
   private _intervalCommodities: ReturnType<typeof setInterval> | null = null;
   private isnrPanel: ISNRPanel | null = null;
@@ -2159,6 +2163,7 @@ export class App {
     this.startOilPolling();
     this.startAirTrafficPolling();
     this.startHealthPolling();
+    this.startEventPressurePolling();
     this.startHydraulicPolling();
     this.startEco2mixPolling();
     this.startMtgFrpPolling();
@@ -8442,6 +8447,23 @@ export class App {
    * Relève santé (spec 2026-10-03 § 3) : toutes les 30 min tant qu'une couche santé est active ; pausée onglet caché, relève
    * immédiate au retour (registerPausableInterval) ; les caches clients (25 min) sont plus courts que la relève.
    */
+  /**
+   * Étendue des mobilisations et des violences (26/10/2026) : lue au démarrage puis toutes les 10 min, quel que soit l'onglet (entrée
+   * de l'indice). Une lecture en échec garde la précédente 30 min au plus, puis plus rien : jamais une situation sur un vieux comptage.
+   */
+  private startEventPressurePolling(): void {
+    const load = async (): Promise<void> => {
+      // Chargé à la demande : hors du fichier principal de l'application (plafond de précache du service worker).
+      const { fetchEventPressure } = await import('./services/event-pressure.ts');
+      const read = await fetchEventPressure();
+      const keep = this.currentEventPressure !== null && Date.now() - Date.parse(this.currentEventPressure.readAt) < 30 * 60_000;
+      this.currentEventPressure = read ?? (keep ? this.currentEventPressure : null);
+      this.refreshFranceIntelPanel();
+    };
+    void load();
+    this.registerPausableInterval(() => { void load(); }, POLL_EVENT_PRESSURE_MS);
+  }
+
   private startHealthPolling(): void {
     if (this._intervalHealth !== null) return;
     let inFlight = false;
@@ -8915,6 +8937,7 @@ export class App {
     const raw: FranceRawData = {
       newsItems:            this.newsItems,
       isnrData:             this.currentISNRData,
+      eventPressure:        this.currentEventPressure,
       ...env,
       ...this.trafficInputs(),
       // Souveraineté : aéronefs, urgences, alertes câbles, mailles GNSS, réponse cyber, disponibilités et pastilles (contrats § 6).

@@ -10,6 +10,7 @@
 
 import type {
   AsnrEvent,
+  EventPressureResponse,
   SituationType,
   FinancialStabilityResponse,
   AisAnomaly,
@@ -71,6 +72,11 @@ import type { VigilanceLevel } from './vigilance.ts';
 export interface FranceRawData {
   newsItems: NewsItem[];
   isnrData: ISNRData | null;
+  /**
+   * Étendue des mobilisations et des violences sur 24 h complètes (/api/news/event-pressure, 26/10/2026) : situations
+   * SOCIAL_MOBILISATION et SECURITY_UNREST seulement. Absente ou null : ni l'une ni l'autre (jamais un comptage inventé).
+   */
+  eventPressure?: EventPressureResponse | null;
   /** Vigilance cyber (spec 2026-10-04 souveraineté § 2.3) : réponse de /api/sovereignty/cyber, CERT-FR lu et à l'heure ; null sinon. */
   cyber: CyberResponse | null;
   meteoAlerts: MeteoAlert[];

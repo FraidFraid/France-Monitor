@@ -39,6 +39,8 @@ const TYPE_ICON: Record<string, string> = {
   WILDFIRE_ESCALATION:     fmIcon('flame'),
   CYBER_PRESSURE:          fmIcon('shield'),
   SOCIAL_ESCALATION:       fmIcon('megaphone'),
+  SOCIAL_MOBILISATION:     fmIcon('megaphone'),
+  SECURITY_UNREST:         fmIcon('siren'),
   TELECOM_DISRUPTION:      fmIcon('satellite-dish'),
   MARITIME_ANOMALY:        fmIcon('anchor'),
   DEFENSE_SIGNAL_ELEVATED: fmIcon('plane'),

@@ -16,6 +16,7 @@ import type {
   DetectedSituation,
   DisasterType,
   EmsCategory,
+  EventPressureResponse,
   MilitaryEmergency,
   FuelTensionLevel,
   OilVigilanceStatus,
@@ -454,6 +455,70 @@ function detectSocialEscalation(raw: FranceRawData): DetectedSituation | null {
     ['ISNR (PQR + alertes)', 'Vigicrues', 'Vigilance météo'],
   );
 }
+
+// ─── Règles 6 bis et 6 ter : SOCIAL_MOBILISATION et SECURITY_UNREST (26/10/2026) ───
+// Rejeu du 17/10/2026 (docs/rejeu/constats-2026-10-26.md) : jusqu'à 800 000 manifestants, 1 200 interpellations, puis pillages et
+// couvre-feux, sans aucune situation levée. L'étendue d'un mouvement se mesure en événements distincts sur 24 h complètes, jamais en
+// articles (un crash repris par cent médias compte une fois). Seuils calés sur les soirs du 12 au 25/10/2026 : avant le mouvement,
+// 43 à 61 événements sociaux et 9 à 15 événements de sécurité élevés par jour. À revérifier avec `npm run replay:score`.
+
+/** Événements sociaux distincts (gravité moyenne ou plus) en 24 h : modérée, élevée, critique. */
+export const SOCIAL_MOBILISATION_THRESHOLDS = { medium: 90, high: 110, critical: 160 } as const;
+/** Événements de sécurité distincts de gravité élevée ou critique en 24 h : modérée, élevée, critique. */
+export const SECURITY_UNREST_THRESHOLDS = { medium: 25, high: 40, critical: 70 } as const;
+/** Repères d'avant le mouvement, cités dans le texte des situations. */
+const SOCIAL_BASELINE = '43 à 61';
+const SECURITY_BASELINE = '9 à 15';
+
+function levelFor(count: number, t: { medium: number; high: number; critical: number }): SituationSeverity | null {
+  return count >= t.critical ? 'critical' : count >= t.high ? 'high' : count >= t.medium ? 'medium' : null;
+}
+
+/** Les deux règles d'étendue : même forme, seuls le comptage, les mots et les actions changent. */
+const EXTENT_RULES = {
+  social: {
+    id: 'social-mobilisation', type: 'SOCIAL_MOBILISATION', title: 'Mobilisation sociale étendue', thresholds: SOCIAL_MOBILISATION_THRESHOLDS,
+    count: (p: EventPressureResponse) => p.socialEvents24h, what: 'événements sociaux distincts', baseline: SOCIAL_BASELINE,
+    detail: 'chacun compté une fois quel que soit le nombre d\u2019articles',
+    actions: [
+      action('Ouvrir la couche Manifestations pour situer les rassemblements', 'Analyste OSINT', 'monitor', true),
+      action('Croiser avec les arrêtés préfectoraux et les perturbations de transport', 'Analyste territorial', 'cross-check', true),
+    ],
+  },
+  security: {
+    id: 'security-unrest', type: 'SECURITY_UNREST', title: 'Violences et troubles étendus', thresholds: SECURITY_UNREST_THRESHOLDS,
+    count: (p: EventPressureResponse) => p.securityHighEvents24h, what: 'événements de sécurité distincts de gravité élevée', baseline: SECURITY_BASELINE,
+    detail: 'violences, pillages, attaques, chacun compté une fois',
+    actions: [
+      action('Lire les événements de sécurité de la liste « À traiter »', 'Analyste OSINT', 'investigate', true),
+      action('Croiser avec les communications des préfectures et du ministère de l\u2019Intérieur', 'Analyste territorial', 'cross-check', true),
+    ],
+  },
+} as const;
+
+function detectExtent(raw: FranceRawData, kind: keyof typeof EXTENT_RULES): DetectedSituation | null {
+  const r = EXTENT_RULES[kind];
+  const p = raw.eventPressure;
+  const count = p ? r.count(p) : 0;
+  const severity = p ? levelFor(count, r.thresholds) : null;
+  if (!severity) return null;
+  const n = count.toLocaleString('fr-FR');
+  const t = r.thresholds;
+  return {
+    ...situation(
+      r.id, r.type, severity, 0.7, r.title,
+      `${n} ${r.what} rapportés par la presse en 24${NBSP}h (avant le mouvement d'octobre 2026 : ${r.baseline} par jour).`,
+      ['France'],
+      [`${n} ${r.what} en 24${NBSP}h, ${r.detail}`, `Seuils : ${t.medium} (modérée), ${t.high} (élevée), ${t.critical} (critique)`],
+      [...r.actions],
+      ['Presse nationale et régionale (événements consolidés)'],
+    ),
+    activateLayers: ['protests'],
+  };
+}
+
+const detectSocialMobilisation = (raw: FranceRawData): DetectedSituation | null => detectExtent(raw, 'social');
+const detectSecurityUnrest = (raw: FranceRawData): DetectedSituation | null => detectExtent(raw, 'security');
 
 // ─── Règle 7 : TELECOM_DISRUPTION ────────────────────────────────────────────
 
@@ -1008,6 +1073,8 @@ const RULES: Array<(raw: FranceRawData, nowMs: number) => DetectedSituation | nu
   detectFloodCrisis,
   detectCyberPressure,
   detectSocialEscalation,
+  detectSocialMobilisation,
+  detectSecurityUnrest,
   detectTelecomDisruption,
   detectMaritimeAnomaly,
   detectDefenseSignal,

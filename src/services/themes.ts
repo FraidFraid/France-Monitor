@@ -78,6 +78,8 @@ const SITUATION_THEME: Record<SituationType, ThemeId> = {
   FUEL_SUPPLY_RISK: 'energy',
   CYBER_PRESSURE: 'security',
   SOCIAL_ESCALATION: 'security',
+  SOCIAL_MOBILISATION: 'security',
+  SECURITY_UNREST: 'security',
   MARITIME_ANOMALY: 'security',
   DEFENSE_SIGNAL_ELEVATED: 'security',
   MILITARY_SURGE_ALERT: 'security',

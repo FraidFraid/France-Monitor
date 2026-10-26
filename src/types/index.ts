@@ -1930,6 +1930,8 @@ export type SituationType =
   | 'WILDFIRE_ESCALATION'
   | 'CYBER_PRESSURE'
   | 'SOCIAL_ESCALATION'
+  | 'SOCIAL_MOBILISATION'
+  | 'SECURITY_UNREST'
   | 'TELECOM_DISRUPTION'
   | 'MARITIME_ANOMALY'
   | 'DEFENSE_SIGNAL_ELEVATED'
@@ -1948,6 +1950,19 @@ export type SituationType =
   | 'NUCLEAR_INCIDENT';
 
 export type SituationSeverity = 'critical' | 'high' | 'medium' | 'watch';
+
+/**
+ * Étendue des mobilisations et des violences sur 24 h complètes (/api/news/event-pressure, 26/10/2026) : événements consolidés
+ * distincts, jamais des articles.
+ */
+export interface EventPressureResponse {
+  readAt: string;
+  since: string;
+  /** Événements dont un article social est de gravité moyenne ou plus. */
+  socialEvents24h: number;
+  /** Événements dont un article de sécurité est de gravité élevée ou critique. */
+  securityHighEvents24h: number;
+}
 
 export type SituationActionType = 'investigate' | 'monitor' | 'cross-check' | 'escalate';
 

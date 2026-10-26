@@ -23,7 +23,7 @@ import { it } from 'vitest';
 import { buildFranceCountrySnapshot, type FranceRawData } from '../../src/services/france-country-intel.ts';
 import { computeISNR, findDepartmentByCoords } from '../../src/services/stability-index.ts';
 import { mapIngestItem, type IngestApiItem } from '../../src/services/rss.ts';
-import type { ISNRData, NewsItem } from '../../src/types/index.ts';
+import type { EventPressureResponse, ISNRData, NewsItem } from '../../src/types/index.ts';
 
 const SITE = process.env.REPLAY_SITE ?? 'https://www.francemonitor.com';
 const CACHE_DIR = path.resolve('node_modules/.cache/score-replay');
@@ -44,10 +44,20 @@ const DEFAULT_INSTANTS: ReadonlyArray<{ at: string; label: string }> = [
 
 type Mode = 'page' | 'complet' | 'evenements';
 
+/** Lecture JSON ; trois essais espacés (une page lourde de /api/news peut tomber en 502 passager). */
 async function fetchJson(url: string): Promise<unknown> {
-  const resp = await fetch(url, { signal: AbortSignal.timeout(60_000) });
-  if (!resp.ok) throw new Error(`${url} : HTTP ${resp.status}`);
-  return resp.json();
+  let last = '';
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 5_000 * attempt));
+    try {
+      const resp = await fetch(url, { signal: AbortSignal.timeout(60_000) });
+      if (resp.ok) return await resp.json();
+      last = `HTTP ${resp.status}`;
+    } catch (err) {
+      last = err instanceof Error ? err.message : String(err);
+    }
+  }
+  throw new Error(`${url} : ${last}`);
 }
 
 /** Articles archivés des 24 h avant `atMs` (mode page : les 1 000 plus récents ; complet : tous, par pages). */
@@ -94,9 +104,9 @@ function slotKeyOf(atMs: number): string {
   return `${d.toISOString().slice(0, 10)}T${String(h).padStart(2, '0')}:00`;
 }
 
-function rawFromPress(newsItems: NewsItem[], isnrData: ISNRData): FranceRawData {
+function rawFromPress(newsItems: NewsItem[], isnrData: ISNRData, eventPressure: EventPressureResponse): FranceRawData {
   return {
-    newsItems, isnrData, cyber: null, meteoAlerts: [], floodSegments: [], railTrains: [], roadEvents: [], urbanJamCount: 0,
+    newsItems, isnrData, eventPressure, cyber: null, meteoAlerts: [], floodSegments: [], railTrains: [], roadEvents: [], urbanJamCount: 0,
     telecomOutages: null, cableAlerts: [], gnssDegraded: null, militaryFlightsCount: 0, maritimeCount: 0, activeFires: [],
     marketData: [], ecowattResponse: null, gasState: null, nuclearState: null, eolienLive: null, aisAnomalies: [], timeline: { days: [], lanes: [] },
     briefLang: 'fr', oilDashboard: null, fuelTensionDashboard: null,
@@ -130,6 +140,19 @@ function socialBreadth(items: NewsItem[]): number {
   return depts.size;
 }
 
+/** Même comptage que /api/news/event-pressure (api/_handlers/news/event-pressure.js), refait sur les articles archivés. */
+function eventPressureOf(items: NewsItem[], atMs: number): EventPressureResponse {
+  const social = new Set<number>();
+  const security = new Set<number>();
+  for (const i of items) {
+    const level = i.threat?.level;
+    if (i.eventId === undefined || level === undefined) continue;
+    if (i.threat?.category === 'social' && (level === 'medium' || level === 'high' || level === 'critical')) social.add(i.eventId);
+    if (i.threat?.category === 'security' && (level === 'high' || level === 'critical')) security.add(i.eventId);
+  }
+  return { readAt: new Date(atMs).toISOString(), since: new Date(atMs - DAY_MS).toISOString(), socialEvents24h: social.size, securityHighEvents24h: security.size };
+}
+
 const avg = (xs: number[]): number => (xs.length === 0 ? 0 : Math.round(xs.reduce((a, b) => a + b, 0) / xs.length));
 
 interface Row {
@@ -144,7 +167,9 @@ async function replay(at: string, label: string, mode: Mode, slots: Awaited<Retu
   const items = mode === 'evenements' ? onePerEvent(mapped) : mapped;
   const oldest = items.reduce((m, i) => Math.min(m, i.pubDate.getTime()), atMs);
   const isnr = computeISNR(items, [], [], null, '24h', null, atMs);
-  const snap = buildFranceCountrySnapshot(rawFromPress(items, isnr), { now: atMs });
+  // Comptage d'événements du serveur (/api/news/event-pressure) : toujours sur les 24 h complètes, quel que soit le mode de presse.
+  const full = mode === 'page' ? (await archivedItems(atMs, 'complet')).map(mapIngestItem).filter((i): i is NewsItem => i !== null) : mapped;
+  const snap = buildFranceCountrySnapshot(rawFromPress(items, isnr, eventPressureOf(full, atMs)), { now: atMs });
   const rec = slots.get(slotKeyOf(atMs));
   return {
     label, at, mode,

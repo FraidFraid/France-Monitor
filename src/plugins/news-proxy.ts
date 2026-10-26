@@ -10,6 +10,7 @@ import type { Plugin } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { queryNews } from '../../api/_handlers/news.js';
 import { queryNewsHistory } from '../../api/_handlers/news/history.js';
+import { queryEventPressure } from '../../api/_handlers/news/event-pressure.js';
 
 interface NewsProxyOptions {
   /** Neon Postgres connection string (defaults to process.env.DATABASE_URL). */
@@ -63,6 +64,7 @@ export function newsProxyPlugin(options: NewsProxyOptions = {}): Plugin {
       // Register the more specific path first: connect's `use('/api/news')`
       // would otherwise also swallow /api/news/history.
       server.middlewares.use('/api/news/history', makeMiddleware(queryNewsHistory as QueryFn));
+      server.middlewares.use('/api/news/event-pressure', makeMiddleware(() => queryEventPressure(Date.now())));
       server.middlewares.use('/api/news', makeMiddleware(queryNews as QueryFn));
     },
   };
