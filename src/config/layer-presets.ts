@@ -129,7 +129,7 @@ export const LAYER_PRESETS: ReadonlyArray<LayerPreset> = [
     id: 'outages',
     label: 'Pannes',
     icon: 'plug-zap',
-    description: 'Toutes les pannes en cours : téléphone mobile, internet, électricité, cloud ; presse, mesures et pages d’état, au plus près du temps réel.',
+    description: 'Toutes les pannes en cours : téléphone mobile, internet, électricité, cloud ; presse, mesures et pages d’état, chacune avec l’heure de sa dernière lecture.',
     layers: OUTAGES_LAYER_KEYS,
     events: false,
   },

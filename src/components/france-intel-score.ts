@@ -139,7 +139,7 @@ export function renderWhyBody(input: WhyBodyInput): string {
     : '';
 
   return `
-    <div class="frintel-why-index">${t(lang, `Indice de stabilité ${bd.score}/100 (base ${bd.baseline}, moins la pression en temps réel)`, `Stability index ${bd.score}/100 (baseline ${bd.baseline}, minus live pressure)`)}</div>
+    <div class="frintel-why-index">${t(lang, `Indice de stabilité ${bd.score}/100 (base ${bd.baseline}, moins la pression actuelle)`, `Stability index ${bd.score}/100 (baseline ${bd.baseline}, minus current pressure)`)}</div>
     ${deltaLine}
     <div class="frintel-gauge" role="img" aria-label="${t(lang, `Indice ${bd.score} sur 100`, `Index ${bd.score} out of 100`)}">
       <span class="frintel-gauge-zone" style="width:55%;background:${levelColorVar('rouge')};"></span>

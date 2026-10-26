@@ -299,7 +299,7 @@ export class ISNRPanel extends Panel {
         </div>
         <!-- Caption -->
         <div style="margin-top:7px; font-size:9px; color:var(--text-muted); opacity:0.65; line-height:1.5; letter-spacing:0.01em;">
-          <b>Interprétation :</b> Score hybride 0-100 en temps réel. Il combine social, sécurité/cyber, infrastructure et vélocité, puis <u>bascule sur la dimension dominante</u> dès qu’un signal fort dépasse le seuil d’escalade. Pannes réseau (IODA/ARCEP) intégrées à l’infrastructure.
+          <b>Interprétation :</b> Score hybride 0-100, recalculé à chaque relève. Il combine social, sécurité/cyber, infrastructure et vélocité, puis <u>bascule sur la dimension dominante</u> dès qu’un signal fort dépasse le seuil d’escalade. Pannes réseau (IODA/ARCEP) intégrées à l’infrastructure.
         </div>
         <div style="margin-top:8px; padding:7px 8px; background:rgba(255,255,255,0.03); border-radius:6px; border-left:2px solid ${nationalColor};">
           ${nationalSummary.map((line) => `<div style="font-size:9px; color:var(--text-secondary); line-height:1.45;">${line}</div>`).join('')}

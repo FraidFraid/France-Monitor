@@ -43,7 +43,7 @@ describe('StatusPanel : sources hebdomadaires ou annuelles datées par leur pér
     panel.updateSource('Vigicrues', { status: 'ok', lastUpdate: new Date(Date.now() - 3 * 60_000) });
     const r = row(host, 'Vigicrues');
     expect(r.text).toContain('il y a 3min');
-    expect(r.title).toBe('TEMPS RÉEL');
+    expect(r.title).toBe('À JOUR');
   });
   it('source datée en retard : « EN RETARD », jamais « CACHE FIGÉ » ; panne partielle : lecture incomplète, partie nommée', () => {
     const host = document.createElement('div');

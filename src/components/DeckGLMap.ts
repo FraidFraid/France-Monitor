@@ -3940,7 +3940,7 @@ export class DeckGLMap {
         </div>
 
         <!-- Puissance -->
-        ${sectionLabel('Flux temps réel')}
+        ${sectionLabel('Dernier flux journalier')}
         ${row('Actuel', `${f.currentFlowGWhPerDay.toFixed(0)} GWh/j`, color)}
         ${row('Capacité NTC', `${f.capacityGWhPerDay.toFixed(0)} GWh/j`)}
         ${row('Utilisation', `${uPct.toFixed(0)} %`, uColor)}
@@ -5325,7 +5325,7 @@ export class DeckGLMap {
           <strong style="font-size:13px;color:#fff;">${f.label}</strong>
           <span style="font-size:11px;padding:2px 7px;border-radius:4px;font-weight:700;color:#000;background:${color};">${FLOW_LABELS[f.direction]}</span>
         </div>
-        ${sectionLabel('Puissance temps réel')}
+        ${sectionLabel('Puissance actuelle')}
         ${row('Actuelle', absMW >= 1000 ? `${(absMW / 1000).toFixed(2)} GW` : `${Math.round(absMW)} MW`, color)}
         ${row('Capacité NTC', f.capacityMW >= 1000 ? `${(f.capacityMW / 1000).toFixed(1)} GW` : `${f.capacityMW} MW`)}
         ${row('Utilisation', `${f.utilizationPct.toFixed(0)} %`)}

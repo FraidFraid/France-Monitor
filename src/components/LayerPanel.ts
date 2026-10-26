@@ -639,11 +639,11 @@ export class LayerPanel {
       this.helpSection(fmIcon('zap'), 'Énergie', [
         this.helpItem(fmIcon('zap'), 'Réseau électrique / Écowatt', 'Signal Écowatt officiel de RTE (national) : vert / orange / rouge, du jour à J+3. Couleur des régions : solde production/consommation éco2mix, indicatif, ce n’est pas une vigilance.', 'live'),
         this.helpItem(fmIcon('atom'), 'Parc nucléaire', 'Disponibilité des réacteurs (RTE) et signaux REMIT : arrêts planifiés et fortuits.', 'live'),
-        this.helpItem(fmIcon('flame'), 'Réseau gaz', 'Stockages gaz, terminaux GNL et flux PIR en temps réel.', 'live'),
+        this.helpItem(fmIcon('flame'), 'Réseau gaz', 'Stockages gaz, terminaux GNL et flux PIR journaliers (ENTSOG).', 'live'),
         this.helpItem(fmIcon('droplet'), 'Hydro – stress hydro-énergétique', 'Score de stress dérivé des mesures Hub’Eau. Indicateur de tension hydraulique.', 'derived'),
         this.helpItem(fmIcon('fuel'), 'Pétrole – réseau & stocks', 'Raffineries, dépôts, oléoducs + indicateurs SDES. Tension carburants quasi-live.', 'monthly'),
         this.helpItem(fmIcon('wind'), 'Veille éolienne', 'Production éolienne live France : parcs terrestres et offshore.', 'live'),
-        this.helpItem(fmIcon('building-2'), 'Charge métropolitaine', 'Consommation électrique temps réel des grandes métropoles françaises.', 'live'),
+        this.helpItem(fmIcon('building-2'), 'Charge métropolitaine', 'Consommation électrique récente des grandes métropoles françaises.', 'live'),
       ]),
       this.helpSection(fmIcon('stethoscope'), 'Santé', [
         this.helpItem(fmIcon('stethoscope'), 'Veille sanitaire', 'Niveau national de santé (alertes épidémiques, médecine générale, urgences, eaux usées), veille internationale, médicaments et rappels de produits ; données hebdomadaires datées.'),

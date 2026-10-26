@@ -97,7 +97,7 @@ export function renderFreshnessBadge(
     if (ageMs > FALLBACK_STALE_MS) {
       return renderTruthBadge(`DIFFÉRÉ · ${formatAge(ageMs)}`, COLOR_STALE);
     }
-    return renderTruthBadge('TEMPS RÉEL', COLOR_OK);
+    return renderTruthBadge('À JOUR', COLOR_OK);
   }
 
   // ── Pire état parmi les sources enregistrées ──
@@ -120,7 +120,7 @@ export function renderFreshnessBadge(
 
   switch (worstStatus) {
     case 'ok':
-      return renderTruthBadge('TEMPS RÉEL', COLOR_OK);
+      return renderTruthBadge('À JOUR', COLOR_OK);
     case 'stale':
       return renderTruthBadge(
         worstAgeMs !== null ? `DIFFÉRÉ · ${formatAge(worstAgeMs)}` : 'DIFFÉRÉ',

@@ -38,9 +38,9 @@ const fr = {
     },
   },
   landing: {
-    metaTitle: 'France Monitor - Cartographie OSINT en temps réel pour la France',
+    metaTitle: 'France Monitor - Cartographie OSINT de la situation en France',
     metaDescription:
-      'France Monitor cartographie en temps réel les signaux publics critiques en France : actualités géolocalisées, énergie, santé, défense, météo et réseaux.',
+      'France Monitor cartographie les signaux publics critiques en France, chacun daté et sourcé : actualités géolocalisées, énergie, santé, défense, météo et réseaux.',
     navAria: 'Navigation landing page',
     nav: {
       product: 'Produit',
@@ -50,7 +50,7 @@ const fr = {
     openMap: 'Ouvrir la carte',
     chips: {
       osint: 'Veille OSINT France',
-      realtime: 'Temps réel',
+      realtime: 'Sources datées',
       publicSources: 'Sources publiques',
     },
     heroTitle: 'Voir la France comme un système vivant, pas comme une liste de flux.',
@@ -117,7 +117,7 @@ const fr = {
   status: {
     title: 'Sources de données',
     loading: 'Chargement…',
-    realtime: 'TEMPS RÉEL',
+    realtime: 'À JOUR',
     upToDatePeriod: 'À JOUR · {{period}}',
     latePeriod: 'EN RETARD · {{period}}',
     incompletePeriod: 'LECTURE INCOMPLÈTE · {{period}}',
@@ -126,7 +126,7 @@ const fr = {
     justNow: "à l'instant",
     minutesAgo: 'il y a {{count}}min',
     hoursAgo: 'il y a {{count}}h',
-    summaryRealtime: '{{ok}}/{{total}} TEMPS RÉEL',
+    summaryRealtime: '{{ok}}/{{total}} À JOUR',
     summaryUnavailable: '{{count}} INDISPONIBLE',
     summaryUnavailable_plural: '{{count}} INDISPONIBLES',
     summaryStale: '{{count}} CACHE FIGÉ',

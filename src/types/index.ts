@@ -949,7 +949,7 @@ export type DataFreshness =
 
 /** Labels d'affichage correspondant à chaque DataFreshness */
 export const DATA_FRESHNESS_LABELS: Record<DataFreshness, string> = {
-  TEMPS_REEL:  'TEMPS RÉEL',
+  TEMPS_REEL:  'À JOUR',
   HISTORIQUE:  'HISTORIQUE',
   CACHE_FIGE:  'CACHE FIGÉ',
   RECONSTRUIT: 'RECONSTRUIT / ESTIMÉ',
