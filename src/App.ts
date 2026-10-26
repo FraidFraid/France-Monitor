@@ -120,7 +120,8 @@ import type { AirQualityPanel } from './components/AirQualityPanel.ts';
 import type { EarthquakesPanel } from './components/EarthquakesPanel.ts';
 import type { DisastersPanel } from './components/DisastersPanel.ts';
 import type { ProtestsPanel } from './components/ProtestsPanel.ts';
-import { PROTESTS_POLL_MS, fetchProtests, mergeProtests, type ProtestsState } from './services/protests.ts';
+import { PROTESTS_POLL_MS, fetchProtests, mergeProtests, readGiletsJaunesPref, withGiletsJaunes, type ProtestsState } from './services/protests.ts';
+import type { ProtestsResponse } from './types/index.ts';
 import { PROTESTS_LEGEND, protestsLegend } from './components/layer-panel/manifestations-legend.ts';
 import type { CriminalitePanel } from './components/CriminalitePanel.ts';
 import { fetchCrimeDataset } from './services/crime.ts';
@@ -4684,6 +4685,8 @@ export class App {
       const panel = new ProtestsPanel(container);
       panel.setOnClose(() => this.closeProtestsLayer());
       panel.setOnFluxEvent((id) => this.openFluxFromProtest(id));
+      // Case « carte des gilets jaunes » du panneau : la carte suit le choix (26/10/2026).
+      panel.setOnGiletsJaunes(() => this.mapContainer?.updateProtestsLayer(this.protestsForMap()));
       if (this.mapContainer?.canFocusMap()) panel.setOnFocusPlace((lat, lon) => this.mapContainer?.flyTo(lon, lat, 9));
       panel.mount();
       this.protestsPanel = panel;
@@ -4705,7 +4708,7 @@ export class App {
   /** Ouverture (case, restauration) : panneau sur les dernières données, carte repeinte, source lue, relève réglée. */
   private openProtestsPanel(): void {
     this.protestsPanel?.show(this.currentProtests);
-    if (this.currentProtests) this.mapContainer?.updateProtestsLayer(this.currentProtests.data);
+    if (this.currentProtests) this.mapContainer?.updateProtestsLayer(this.protestsForMap());
     this.loadProtests().catch((err) => console.error('[App] Lecture Manifestations en échec', err));
     this.syncProtestsPolling();
   }
@@ -4741,11 +4744,22 @@ export class App {
     }, PROTESTS_POLL_MS);
   }
 
+  /** Points de la couche Manifestations : sans les annonces de la carte des gilets jaunes tant que la case du panneau est décochée. */
+  private protestsForMap(): ProtestsResponse | null {
+    let show = false;
+    try {
+      show = readGiletsJaunesPref(typeof localStorage === 'undefined' ? null : localStorage);
+    } catch {
+      // stockage refusé : masquées
+    }
+    return withGiletsJaunes(this.currentProtests?.data ?? null, show);
+  }
+
   /** Lecture unique à la fois (un second appelant rejoint la lecture en cours) : panneau, carte et légende mis à jour. */
   private loadProtests(): Promise<void> {
     return dedupe('protests', async () => {
       this.currentProtests = mergeProtests(this.currentProtests, await fetchProtests(this.currentProtests));
-      this.mapContainer?.updateProtestsLayer(this.currentProtests.data);
+      this.mapContainer?.updateProtestsLayer(this.protestsForMap());
       this.protestsPanel?.update(this.currentProtests);
       this.syncProtestForecasts();
       this.refreshProtestsLegend();

@@ -220,6 +220,22 @@
   const setData = (id, data) => { const s = S.m.getSource(id); if (s) s.setData(data); else S.m.addSource(id, { type: 'geojson', data, ...(id === 'mqs-depts' ? { promoteId: 'code' } : {}) }); };
   const before = () => (S.m.getLayer('sov-emergencies') ? 'sov-emergencies' : undefined);
 
+  // Manifestations : annoncée (agenda), rapportée sans heurts, heurts ; taille = articles de presse sur 24 h. Les actions de la carte des
+  // gilets jaunes ne sont dessinées que si la case du panneau Manifestations est cochée (fm.protests.giletsjaunes, 26/10/2026).
+  const showGiletsJaunes = () => { try { return localStorage.getItem('fm.protests.giletsjaunes') === '1'; } catch (e) { return false; } };
+  const drawProtests = () => {
+    const gj = showGiletsJaunes();
+    S.prot = (S.data.protests?.items ?? []).filter((x) => x.lat != null && x.lon != null && (gj || x.source !== 'giletsjaunes'));
+    // Fusion avec Flux piétons : l'annonce dont flux_osint a tiré une prévision porte un anneau blanc et sa foule estimée.
+    const fluxEvents = S.data.flux?.evenements ?? [];
+    const fluxOf = (x) => fluxEvents.find((e) => e.evenement === x.id || e.evenement.startsWith(`${x.id}:`)) ?? null;
+    S.protFlux = new Map(S.prot.map((x) => [x.id, fluxOf(x)]).filter(([, e]) => e));
+    S.fluxMatched = [...new Set([...S.protFlux.values()].map((e) => e.id))];
+    setData('mqs-prot', fc(S.prot.map((x, i) => { const ev = S.protFlux.get(x.id);
+      return pt([x.lon, x.lat], { i, kind: x.status === 'annonce' ? 'annonce' : x.violent ? 'heurts' : 'signale', n: x.articleCount ?? (x.articles ?? []).length, fc: ev ? 1 : 0, gj: x.source === 'giletsjaunes' ? 1 : 0,
+        label: `${x.city ?? x.edition ?? ''}${x.participants ? ` · ${num(x.participants)}${NB}pers.` : ''}${ev ? ` · ≈${NB}${num(Math.round(ev.affluence.p50))} estimées` : ''}` }); })));
+  };
+  window.addEventListener('fm:giletsjaunes', () => { if (S.m && S.data) drawProtests(); });
   const draw = async () => {
     const m = S.m;
     aggregate();
@@ -254,16 +270,7 @@
       return pt(b.geometry.coordinates, { id: b.properties.id, name: b.properties.name, type: t, color: BASE_HEX[t], status: au?.status ?? 'seul', solid: au?.status === 'source' }); })));
     // Atterrages par commune, zones de protection des câbles et mouillages qui les recoupent (Shom)
     S.landings = landingsByPlace();
-    // Manifestations : annoncée (agenda), rapportée sans heurts, heurts ; taille = articles de presse sur 24 h.
-    S.prot = (S.data.protests?.items ?? []).filter((x) => x.lat != null && x.lon != null);
-    // Fusion avec Flux piétons : l'annonce dont flux_osint a tiré une prévision porte un anneau blanc et sa foule estimée.
-    const fluxEvents = S.data.flux?.evenements ?? [];
-    const fluxOf = (x) => fluxEvents.find((e) => e.evenement === x.id || e.evenement.startsWith(`${x.id}:`)) ?? null;
-    S.protFlux = new Map(S.prot.map((x) => [x.id, fluxOf(x)]).filter(([, e]) => e));
-    S.fluxMatched = [...new Set([...S.protFlux.values()].map((e) => e.id))];
-    setData('mqs-prot', fc(S.prot.map((x, i) => { const ev = S.protFlux.get(x.id);
-      return pt([x.lon, x.lat], { i, kind: x.status === 'annonce' ? 'annonce' : x.violent ? 'heurts' : 'signale', n: x.articleCount ?? (x.articles ?? []).length, fc: ev ? 1 : 0, gj: x.source === 'giletsjaunes' ? 1 : 0,
-        label: `${x.city ?? x.edition ?? ''}${x.participants ? ` · ${num(x.participants)}${NB}pers.` : ''}${ev ? ` · ≈${NB}${num(Math.round(ev.affluence.p50))} estimées` : ''}` }); })));
+    drawProtests();
     // Cibles françaises des hacktivistes pro-russes (NoName057(16)) : lieu sûr seulement (préfecture d'après gouv.fr, commune au nom exact) ;
     // une cible publiée n'est pas une attaque réussie. Anneau jaune : site présent dans une liste de moins de 24 h.
     S.ddos = ddosPlaces();

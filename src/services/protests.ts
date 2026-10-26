@@ -50,3 +50,32 @@ export function isProtestsLate(readAt: string | null, now: number): boolean {
 }
 
 export type { ProtestArticle, ProtestItem };
+
+/**
+ * Annonces de la carte des gilets jaunes (17octobregiletjaune.net), affichées à la demande (26/10/2026) : elles font l'essentiel des
+ * points et encombraient la carte. Choix gardé dans le navigateur ; décoché par défaut. Filtre d'affichage seulement : la pastille de
+ * la couche et les échéances comptent toujours toutes les annonces.
+ */
+export const GILETS_JAUNES_PREF_KEY = 'fm.protests.giletsjaunes';
+
+export function readGiletsJaunesPref(storage: Pick<Storage, 'getItem'> | null): boolean {
+  try {
+    return storage?.getItem(GILETS_JAUNES_PREF_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function writeGiletsJaunesPref(storage: Pick<Storage, 'setItem'> | null, show: boolean): void {
+  try {
+    storage?.setItem(GILETS_JAUNES_PREF_KEY, show ? '1' : '0');
+  } catch {
+    // stockage refusé : le choix vaut pour la session
+  }
+}
+
+/** Réponse sans les annonces de la carte des gilets jaunes quand elles sont masquées. */
+export function withGiletsJaunes(r: ProtestsResponse | null, show: boolean): ProtestsResponse | null {
+  if (r === null || show) return r;
+  return { ...r, items: r.items.filter((x) => x.source !== 'giletsjaunes') };
+}

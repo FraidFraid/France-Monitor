@@ -57,7 +57,7 @@ describe('câblage de la couche Manifestations', () => {
     const load = methodBody('loadProtests');
     expect(load).toContain("dedupe('protests'");
     expect(load).toContain('this.currentProtests = mergeProtests(this.currentProtests, await fetchProtests(this.currentProtests));');
-    expect(load).toContain('this.mapContainer?.updateProtestsLayer(this.currentProtests.data);');
+    expect(load).toContain('this.mapContainer?.updateProtestsLayer(this.protestsForMap());');
     expect(load).toContain('this.protestsPanel?.update(this.currentProtests);');
     expect(methodBody('protestsPollWanted')).toContain('this.activeLayers.protests');
     expect(methodBody('syncProtestsPolling')).toContain('PROTESTS_POLL_MS');

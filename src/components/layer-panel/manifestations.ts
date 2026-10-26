@@ -21,6 +21,8 @@ export interface ManifestationsViewInput {
   data: ProtestsResponse | null; error: string | null; canFocus: boolean; now: number; open: OpenFn;
   /** Prévisions Flux piétons par identifiant de rendez-vous (fluxForecastsByProtest) : affluence estimée, clic = rues et rejeu. */
   forecasts?: ReadonlyMap<string, FluxEvent>;
+  /** Annonces de la carte des gilets jaunes affichées (case du panneau, 26/10/2026) ; absent : affichées. */
+  showGiletsJaunes?: boolean;
 }
 
 const PARIS = 'Europe/Paris';
@@ -243,8 +245,21 @@ function methodSection(d: ProtestsResponse, now: number, open: OpenFn): FicheSec
   return { id: 'methode', title: 'Méthode et sources', collapsible: true, open: open('methode', false), tone: 'reference', summary: 'Démosphère · gilets jaunes · presse · GDELT', html };
 }
 
+/** Case « Afficher les annonces de la carte des gilets jaunes » (26/10/2026) : filtre d'affichage de la carte et des listes. */
+function giletsJaunesToggle(count: number, show: boolean): FicheSection {
+  return {
+    id: 'gilets-jaunes', title: 'Carte des gilets jaunes', collapsible: false, summary: plural(count, 'annonce'),
+    html: `<label class="fmk-note"><input type="checkbox" data-gj-toggle${show ? ' checked' : ''}> `
+      + `Afficher sur la carte et dans les listes les annonces de la carte des gilets jaunes</label>`,
+  };
+}
+
 export function buildManifestationsView(input: ManifestationsViewInput): LayerView {
-  const { data, error, canFocus, now, open } = input;
+  const { error, canFocus, now, open } = input;
+  const show = input.showGiletsJaunes ?? true;
+  const full = input.data;
+  const data = full === null || show ? full : { ...full, items: full.items.filter((x) => x.source !== 'giletsjaunes') };
+  const gjCount = full?.items.filter((x) => x.source === 'giletsjaunes').length ?? 0;
   FORECASTS = input.forecasts ?? new Map();
   if (data === null && error === null) {
     return { head: { theme: MANIFESTATIONS_THEME, title: MANIFESTATIONS_TITLE, status: ['chargement…'] }, sections: [], bodyHtml: loadingBody() };
@@ -260,16 +275,21 @@ export function buildManifestationsView(input: ManifestationsViewInput): LayerVi
     };
   }
   const b = bucketProtests(data.items, now);
-  const level = protestsHeadLevel(data, now);
+  // Pastille : toutes les annonces, masquées ou non (filtre d'affichage seulement).
+  const level = protestsHeadLevel(full ?? data, now);
   const late = isProtestsLate(data.readAt, now);
   const readMs = Date.parse(data.readAt);
   return {
     head: {
       theme: MANIFESTATIONS_THEME, title: MANIFESTATIONS_TITLE, level,
-      figure: { value: String(protestsTodayCount(data.items, now)), caption: 'aujourd’hui', level: level === 'nd' ? null : level },
+      figure: { value: String(protestsTodayCount((full ?? data).items, now)), caption: 'aujourd’hui', level: level === 'nd' ? null : level },
       status: [stamp('relevé', data.readAt, late, now)],
     },
-    sections: [pressSection(b, canFocus, open), worldSection(b, canFocus, open), todaySection(b, canFocus, open), upcomingSection(b, canFocus, open), unplacedSection(b, open), methodSection(data, now, open)],
+    sections: [
+      ...(gjCount > 0 ? [giletsJaunesToggle(gjCount, show)] : []),
+      pressSection(b, canFocus, open), worldSection(b, canFocus, open), todaySection(b, canFocus, open), upcomingSection(b, canFocus, open),
+      unplacedSection(b, open), methodSection(full ?? data, now, open),
+    ],
     bodyHtml: error !== null ? sourceErrorCallout(Number.isFinite(readMs) ? readMs : null, now) : undefined,
   };
 }

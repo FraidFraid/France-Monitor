@@ -192,3 +192,24 @@ describe('fusion avec Flux piétons', () => {
     expect(text(full())).not.toContain('Foule estimée');
   });
 });
+
+describe('case « carte des gilets jaunes » (26/10/2026)', () => {
+  const gj = (id: string, city: string) => ann({ id, source: 'giletsjaunes', city, title: 'Blocage annoncé', url: null, edition: null });
+  const data = body([ann(), gj('gj1', 'Lyon'), gj('gj2', 'Nantes')]);
+  const viewWith = (show: boolean) => buildManifestationsView({ data, error: null, canFocus: true, now: NOW, open: (_id, byDefault) => byDefault, showGiletsJaunes: show });
+  it('décochée : annonces gilets jaunes retirées des listes, case en tête avec leur nombre ; pastille inchangée', () => {
+    const hidden = viewWith(false);
+    const shown = viewWith(true);
+    expect(hidden.sections[0]).toMatchObject({ id: 'gilets-jaunes', summary: '2 annonces' });
+    expect(hidden.sections[0].html).toContain('data-gj-toggle>');
+    expect(shown.sections[0].html).toContain('data-gj-toggle checked>');
+    const html = (v: ReturnType<typeof viewWith>) => visibleText(renderLayerView('protests', v));
+    expect(html(hidden)).not.toContain('Nantes');
+    expect(html(shown)).toContain('Nantes');
+    expect(hidden.head.level).toBe(shown.head.level);
+    expect(hidden.head.figure?.value).toBe(shown.head.figure?.value);
+  });
+  it('aucune annonce gilets jaunes : pas de case', () => {
+    expect(view(body([ann()])).sections.map((s) => s.id)).not.toContain('gilets-jaunes');
+  });
+});
