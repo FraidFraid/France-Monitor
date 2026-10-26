@@ -2169,6 +2169,7 @@ export class App {
     this.startAirTrafficPolling();
     this.startHealthPolling();
     this.startEventPressurePolling();
+    this.startScoreSourcesKeeper();
     if (this.uiV2 && !this.recorderPage) {
       this.startArchivedNotesPolling();
       // Échéances : rassemblements annoncés lus même couche Manifestations éteinte, une fois par heure.
@@ -7310,7 +7311,7 @@ export class App {
       if (document.hidden) return; // skip tick while tab is hidden
       // Vue générale dynamique : la tension carburants y est suivie, couche éteinte comprise (12/10/2026).
       if (!this.activeLayers.oilNetwork && !(this.uiV2 && this.v2Theme === 'general')) return;
-      void this.loadOil();
+      void this.loadOilOnce();
     }, POLL_OIL_MS);
   }
 
@@ -8523,6 +8524,59 @@ export class App {
     const when = new Intl.DateTimeFormat('fr-FR', { timeZone: 'Europe/Paris', dateStyle: 'long', timeStyle: 'short' }).format(new Date(note.capturedAt));
     const score = note.score !== null ? `, indice ${note.score}/100` : '';
     openArchivedSituationReport(note.report, `Note archivée du ${when}${score}`, win);
+  }
+
+  /**
+   * Gardien des 14 sources de l'indice (26/10/2026) : une source qui n'a pas été lue (lecture ratée au démarrage, ou source lue
+   * seulement au premier tour de sa relève, comme le pétrole et les carburants) est relancée toutes les 30 s pendant 10 min, puis
+   * toutes les 2 min. Sans lui, la couverture des relevés de la VM variait de 11 à 14 sources selon l'ordre de chargement, et une
+   * alerte n'est jamais émise sur un relevé incomplet. Les lectures en cours ne sont pas doublées (dedupe, garde du pétrole).
+   */
+  private startScoreSourcesKeeper(): void {
+    const started = Date.now();
+    const relaunch: Partial<Record<string, () => unknown>> = {
+      isnr: () => this.updateISNR(),
+      ecowatt: () => this.loadEcowatt(),
+      vigilance: () => this.loadVigilance(),
+      crues: () => this.loadFloods(),
+      feux: () => this.loadFires(),
+      trains: () => this.loadRailTraffic(),
+      routes: () => this.loadRoadTraffic(),
+      telecom: () => this.loadOutagesSource('outagesTelecom'),
+      cyber: () => this.loadCyber(),
+      militaire: () => this.loadMilitary(),
+      finance: () => this.loadFinancialStability(),
+      carburants: () => this.loadOilOnce(),
+      petrole: () => this.loadOilOnce(),
+    };
+    const tick = (): void => {
+      if (!this.v2IntelStarted && this.uiV2) return;
+      const { missing } = this.scoreCoverage(this.environmentInputs());
+      for (const key of new Set(missing)) {
+        try {
+          const run = relaunch[key];
+          const p = run?.();
+          if (p instanceof Promise) p.catch((err: unknown) => console.warn(`[App] Source de l'indice « ${key} » encore indisponible`, err));
+        } catch (err) {
+          console.warn(`[App] Source de l'indice « ${key} » : relance impossible`, err);
+        }
+      }
+    };
+    const fast = setInterval(() => {
+      if (Date.now() - started > 10 * 60_000) {
+        clearInterval(fast);
+        return;
+      }
+      tick();
+    }, 30_000);
+    this.registerPausableInterval(tick, 2 * 60_000);
+  }
+
+  /** Lecture du pétrole et des carburants, jamais deux à la fois (le gardien et la relève peuvent se croiser). */
+  private oilLoading: Promise<void> | null = null;
+  private loadOilOnce(): Promise<void> {
+    this.oilLoading ??= this.loadOil().finally(() => { this.oilLoading = null; });
+    return this.oilLoading;
   }
 
   private startHealthPolling(): void {
