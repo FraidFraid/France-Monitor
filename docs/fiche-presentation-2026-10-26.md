@@ -15,7 +15,7 @@ Il s'adresse aux cabinets ministériels, aux préfectures et aux opérateurs qui
 - **Croise** ces sources par thème et par territoire, jusqu'à une fiche par département.
 - **Mesure l'étendue** d'un mouvement social ou de violences : le nombre d'événements distincts rapportés sur 24 heures, chacun compté une fois quel que soit le nombre d'articles.
 - **Explique** le niveau national. La méthode est publique, chaque contribution est détaillée, et chaque donnée porte son heure et sa source.
-- **Reprend les échéances annoncées** par les émetteurs eux-mêmes (signal Écowatt des jours suivants, vigilance du lendemain, rassemblements annoncés), toujours attribuées.
+- **Reprend les échéances annoncées** par les émetteurs eux-mêmes (signal Écowatt des jours suivants, vigilance du lendemain, hausses annoncées par Vigicrues, rassemblements annoncés), toujours attribuées.
 - **Publie ses alertes** au format CAP, la norme internationale des alertes de crise, et en flux Atom, reprenables par d'autres outils.
 - **Archive** une note de situation toutes les six heures, consultable pendant 90 jours.
 - **Signale ses propres lacunes** : une source en panne est affichée comme telle, une donnée périmée est écartée, une absence d'information n'est jamais présentée comme une situation calme.
@@ -38,7 +38,7 @@ Le niveau national a été **rejoué sur la mobilisation du 17 octobre 2026**. I
 | Statut | Bêta, sans utilisateur à ce jour |
 | Équipe | Une personne |
 | Hébergement | Offres gratuites (serveur Oracle Cloud, Cloudflare), en attente de financement |
-| Fiabilité technique | 5 880 tests automatisés, contrôle et déploiement automatiques à chaque modification |
+| Fiabilité technique | 5 897 tests automatisés, contrôle et déploiement automatiques à chaque modification |
 | Historique | Niveau national relevé toutes les 15 minutes depuis le 26 octobre 2026, sauvegardé chaque nuit |
 
 ## Limites connues, assumées

@@ -1,6 +1,6 @@
 # France Monitor : dossier de qualification et de démonstration
 
-Audit du 26 octobre 2026, réalisé entre 12 h et 13 h 15 UTC, puis **mis à jour le même jour à 16 h 20 UTC** après les corrections de la journée. Il a été fait en lecture seule sur le dépôt (`main` = e8397f45) et sur la production (https://www.francemonitor.com).
+Audit du 26 octobre 2026, réalisé entre 12 h et 13 h 15 UTC, mis à jour le même jour à 16 h 20 UTC, puis **le 27 octobre à 7 h UTC** après les corrections du soir. Relevés faits sur le dépôt (`main` = 791b438f) et sur la production (https://www.francemonitor.com).
 
 Légende de fiabilité :
 - **[V]** : vérifié pendant l'audit (commande, lecture de code, appel à la production) ;
@@ -19,8 +19,8 @@ Légende de fiabilité :
 Il publie aussi ses **alertes aux formats CAP et Atom**. [V]
 
 **Où il en est.** C'est une bêta v2, sans utilisateur, développée par une personne et hébergée sur des offres gratuites (VM Oracle Cloud, Cloudflare, Neon, Upstash, Groq). [V]
-- 1 341 commits depuis le 23 mars 2026, dont 24 le seul 26/10 ;
-- 527 fichiers de test et 5 880 tests, tous verts ;
+- 1 346 commits depuis le 23 mars 2026, dont 27 le seul 26/10 ;
+- 529 fichiers de test et 5 897 tests, tous verts ;
 - CI et déploiement automatiques.
 
 **Ce qui a changé le 26/10, et qui renforce la crédibilité :**
@@ -30,12 +30,12 @@ Il publie aussi ses **alertes aux formats CAP et Atom**. [V]
    - la couche Manifestations n'entrait pas dans l'indice.
 
    Deux situations nouvelles (« Mobilisation sociale étendue », « Violences et troubles étendus ») corrigent ce défaut. Mesuré par rejeu, le résultat est le suivant : 17/10 orange (65), 18/10 orange (55), journées calmes inchangées. Les tests de calibration n'ont pas été modifiés. [V]
-2. **Historique fiable.** La note est relevée toutes les 15 minutes par la VM, avec la liste des sources lues. Elle est sauvegardée chaque nuit hors de la VM. [V]
+2. **Historique fiable.** La note est relevée toutes les 15 minutes par la VM, avec la liste des sources lues. Elle est sauvegardée chaque nuit hors de la VM. La couche Manifestations est archivée toutes les heures par la VM et recopiée hors VM (27/10). [V]
 3. **Aide à la décision, sans prédiction :**
    - alertes CAP 1.2 et Atom ;
    - fiche par département ;
    - notes de situation archivées (une par tranche de 6 h, 90 jours) ;
-   - échéances annoncées par les sources (Écowatt J+3, vigilance J+1, rassemblements annoncés), toujours attribuées. [V]
+   - échéances annoncées par les sources (Écowatt J+3, vigilance J+1, hausses annoncées par Vigicrues, rassemblements annoncés), toujours attribuées. [V]
 4. **Interface assainie :**
    - plus de « temps réel » trompeur ;
    - couverture de l'indice affichée (« indice sur 14/14 sources ») ;
@@ -50,9 +50,10 @@ Il publie aussi ses **alertes aux formats CAP et Atom**. [V]
 - redondance et supervision avec astreinte ;
 - un **historique long** : le rejeu ne couvre que la presse, et les autres sources ne sont archivées que depuis le 26/10. [V]
 
-**Point technique ouvert (26/10, 16 h).** La couverture des relevés reste irrégulière. Sur les 12 derniers relevés, 4 lisent 14 sources sur 14, les autres 11 à 13, avec les trains, les carburants ou le pétrole tantôt présents, tantôt absents.
-- Les sources répondent bien ; c'est l'ordre de chargement dans la page qui varie, comme pour la finance et les routes, corrigés le matin même.
-- À corriger avant la démo : une alerte n'est pas émise sur un relevé où plus d'une source manque. [V]
+**Point technique ouvert (27/10, 7 h).** Un « gardien » relance depuis le 26/10 au soir les sources de l'indice qui manquent. Il a amélioré la couverture sans la stabiliser.
+- Depuis sa mise en ligne : 48 relevés sur 57 lisent 14 sources sur 14.
+- Entre 3 h 30 et 6 h 40 UTC le 27/10, la plupart des relevés n'en lisaient que 11 à 13 (militaire, carburants, pétrole). Les sources répondaient pourtant bien côté serveur : c'est la lecture dans la page qui varie encore.
+- Garde-fou en place : un relevé où plus d'une source manque ne déclenche jamais d'alerte. [V]
 
 **Verdict de crédibilité devant un expert sécurité et gestion de crise :**
 - **le 26/10 au matin : 6/10** ;
@@ -69,7 +70,7 @@ Il publie aussi ses **alertes aux formats CAP et Atom**. [V]
 | Domaine | Sources | Nature | Cadence | Alimente | État |
 |---|---|---|---|---|---|
 | Presse | 35 flux RSS nationaux et régionaux (3 retirés le 26/10 : Marianne et Le Télégramme, fermés aux robots ; guadeloupe.fr, supprimé) | Presse | 30 min (VM) | Événements, piliers Sécurité et Signal, situations d'étendue | OK : 35 flux lus, 0 erreur |
-| Étendue des mouvements | Comptage d'événements distincts sur 24 h (`/api/news/event-pressure`) | Calcul sur la presse | 10 min | Situations « Mobilisation sociale étendue » et « Violences et troubles étendus » | OK : 55 événements sociaux, 35 de sécurité élevés |
+| Étendue des mouvements | Comptage d'événements distincts sur 24 h (`/api/news/event-pressure`) | Calcul sur la presse | 10 min | Situations « Mobilisation sociale étendue » et « Violences et troubles étendus » | OK. Le 26/10 au soir : 57 événements sociaux, 45 de sécurité élevés, dont l'essentiel concerne l'attentat de Trappes et ses suites, d'où « Violences et troubles étendus » en élevée |
 | Météo | Vigilance Météo-France (J et J+1), radar | Officiel | 5 à 15 min | Pilier Continuité, échéances | OK |
 | Eau | Vigicrues, Hub'Eau, VigiEau, marégraphes | Officiel | VM | Continuité, couches | OK |
 | Feux | NASA FIRMS, EUMETSAT MTG-FRP (étiqueté démonstration) | Officiel | 10 à 15 min | Pilier Signal | OK |
@@ -83,7 +84,7 @@ Il publie aussi ses **alertes aux formats CAP et Atom**. [V]
 | Cyber | CERT-FR, CISA KEV, ENISA, EPSS, abuse.ch, ransomware.live, DDoSia | Officiel / communautaire | 1 à 6 h | Pilier Sécurité | OK |
 | Télécoms | ARCEP | Officiel | 30 min | Continuité | OK |
 | Pannes réseau | Cloudflare Radar, IODA, RIPE Atlas, pages d'état cloud, Bluesky et Mastodon (décomptes) | Mixte | 2 à 30 min | Salle des pannes | OK. Le référentiel DRIEAT est en panne côté État depuis le 09/10, géré proprement |
-| Société | Démosphère, GDELT, presse, arrêtés, carte des gilets jaunes | Mixte | VM, horaire | Couche Manifestations, échéances | OK. **Archive horaire** depuis le 26/10 (branche `sauvegarde-historique`) |
+| Société | Démosphère, GDELT, presse, arrêtés, carte des gilets jaunes | Mixte | VM, horaire | Couche Manifestations, échéances | OK. **Archive horaire tenue par la VM** depuis le 27/10 (`/api/social/protests-archive`), recopiée sur la branche `sauvegarde-historique`. 414 rassemblements annoncés pour le 31/10 |
 | Souveraineté | Vigipirate (SGDSN), gel des avoirs, RIPEstat, PeeringDB | Officiel | 1 à 24 h | Panneaux | Vigipirate : le site du SGDSN est désormais derrière un **contrôle anti-robot** (Gcore), affiché comme tel. Le niveau affiché reste la saisie datée du 04/10 |
 | Finance | BCE (CISS, taux, €STR), écart OAT-Bund, marchés | Officiel / API | 5 à 15 min | Pilier Signal | OK |
 | Santé | Santé publique France, ANSM, ECDC, OMS, Sentiweb, eaux usées | Officiel | 30 min à hebdomadaire | Panneaux (hors indice) | OK, sauf **DGS-Urgent** : PEPS injoignable et page officielle derrière un captcha, affiché « n.d. » avec un lien vers la source |
@@ -130,8 +131,8 @@ Sept onglets en v2. Éléments communs à tous [V] :
 | **Alertes** | **Présentes** : flux Atom `/api/alerts/atom` et alertes CAP 1.2 `/api/alerts/cap`. Deux déclencheurs (changement de couleur, situation élevée ou critique), confirmés sur deux relevés, avec une urgence CAP toujours « inconnue » puisque ce n'est pas une prévision. Pas encore d'envoi par courriel |
 | **Fiche département** | **Présente** : niveau, signaux cliquables, vigilance météo, presse des 24 h. S'ouvre depuis la pression par département ou d'un clic sur la carte |
 | **Notes archivées** | **Présentes** : une note par tranche de 6 h, 90 jours, écrites par la VM. Section « Notes archivées » de la fiche France, ouverture au format A4. Première note en production le 26/10 à 15 h 20 UTC |
-| **Échéances annoncées** | **Présentes** dans la fiche France : Écowatt J+1 à J+3 (RTE), vigilance de J+1 (Météo-France), rassemblements annoncés sur 7 jours. Toutes attribuées. Les prévisions Vigicrues ne sont pas encore reprises |
-| Historique | Note toutes les 15 min (35 j sur la VM), sauvegardée chaque nuit hors VM ; manifestations archivées toutes les heures |
+| **Échéances annoncées** | **Présentes** dans la fiche France : Écowatt J+1 à J+3 (RTE), vigilance de J+1 (Météo-France), hausses annoncées par Vigicrues sur les tronçons en vigilance, rassemblements annoncés sur 7 jours. Toutes attribuées |
+| Historique | Note toutes les 15 min (35 j sur la VM), sauvegardée chaque nuit hors VM ; manifestations archivées toutes les heures par la VM (90 j), recopiées hors VM |
 | Outil de rejeu | `npm run replay:score` : recalcule l'indice d'un instant passé sur la presse archivée, avec le moteur réel |
 | Supervision | `/api/health-check`. Le test de fumée quotidien ouvre un ticket GitHub (courriel) en cas d'échec et le referme au retour au vert |
 | Sauvegardes | Base Neon chaque nuit sur la VM ; historique de la note et archive des manifestations hors VM (GitHub) |
@@ -140,15 +141,16 @@ Sept onglets en v2. Éléments communs à tous [V] :
 
 ## 4. Santé technique
 
-Relevée le 26/10/2026 vers 16 h 15 UTC. [V]
+Relevée le 27/10/2026 vers 7 h UTC. [V]
 
 | Contrôle | Résultat |
 |---|---|
 | Typecheck, lint, build | OK |
-| Tests | 527 fichiers, **5 880 tests, tous verts** |
-| CI et déploiement VM (dernier commit e8397f45) | Succès |
+| Tests | 529 fichiers, **5 897 tests, tous verts** |
+| CI et déploiement VM | Succès jusqu'à e7db0fe4 ; 791b438f poussé le 27/10 |
 | `/api/health-check` | `ok`, 35 flux lus, 0 erreur |
-| Relevés de la note (26/10) | 26 relevés, dont 5 à 14/14 sources ; voir le point ouvert du § 1 |
+| Relevés de la note (depuis le gardien) | 57 relevés, dont 48 à 14/14 sources ; voir le point ouvert du § 1 |
+| Notes archivées | Une par tranche de 6 h, sans trou depuis le 26/10 à 15 h 20 UTC, toutes à 14/14 |
 
 ---
 
@@ -158,7 +160,7 @@ Relevée le 26/10/2026 vers 16 h 15 UTC. [V]
 |---|---|---|
 | Collecte | Bêta | Quotas adsb.lol respectés, flux morts retirés, TomTom en attente de crédits |
 | Classification | Bêta avancée | Inchangée |
-| Situations | Bêta | **+2 règles d'étendue**, mesurées par rejeu |
+| Situations | Bêta | **+2 règles d'étendue**, mesurées par rejeu ; « Escalade sociale » sans effet sur la note ni sur les alertes |
 | Indice national | Bêta | **Rejoué sur le 17/10** ; formule des piliers inchangée ; couverture affichée |
 | Note de synthèse | Bêta | Note A4 corrigée (niveau national en tête) |
 | Historique | **Bêta** (prototype le matin) | Relevé de 15 min, sauvegarde hors VM, notes archivées |
@@ -187,6 +189,7 @@ Relevée le 26/10/2026 vers 16 h 15 UTC. [V]
 
 **4. Comment traitez-vous le bruit ?**
 - **Réponse.** Un fait divers sans institution citée est déclassé, un niveau élevé exige deux groupes de presse indépendants, et **un sujet repris par cent médias compte une fois**, puisque l'étendue se mesure en événements. [D pour la mesure du 30/09]
+- **Limite, à dire nous-mêmes.** Une affaire qui dure plusieurs jours se découpe en plusieurs événements : l'enquête, les réactions, les rassemblements. Le 26/10, l'attentat de Trappes et les violences qui ont suivi pesaient pour l'essentiel des 45 événements de sécurité. Le signal était réel, mais son ampleur est grossie par ce découpage. Nous le mesurerons sur le rejeu du 31/10 avant de toucher à quoi que ce soit.
 
 **5. Et la désinformation ou la saturation d'une source ?**
 - **Réponse.** Atténuées par ces mêmes règles, mais pas détectées en tant que telles. C'est une piste ouverte.
@@ -199,7 +202,7 @@ Relevée le 26/10/2026 vers 16 h 15 UTC. [V]
 - **Réponse.** Non : chaque donnée porte son heure, et l'interface dit « À JOUR » ou « DIFFÉRÉ ». Les derniers libellés « temps réel » trompeurs ont été retirés le 26/10.
 
 **8. Vous prédisez ?**
-- **Réponse.** Non. La fiche France reprend les **échéances annoncées par les sources** (Écowatt J+3, vigilance J+1, rassemblements annoncés), attribuées. Les alertes CAP portent une urgence « inconnue » : elles décrivent, elles ne prévoient pas.
+- **Réponse.** Non. La fiche France reprend les **échéances annoncées par les sources** (Écowatt J+3, vigilance J+1, hausses annoncées par Vigicrues, rassemblements annoncés), attribuées. Les alertes CAP portent une urgence « inconnue » : elles décrivent, elles ne prévoient pas.
 
 **9. Que fait un préfet de votre niveau orange ?**
 - **Réponse.** Il ouvre la **fiche de son département** : niveau, signaux, vigilance, presse locale des 24 h. C'est un point d'entrée, pas une décision.
@@ -218,7 +221,7 @@ Relevée le 26/10/2026 vers 16 h 15 UTC. [V]
 - **Réponse.** Non démontré : une VM et pas de test de charge. Le 31/10 donnera une première indication sur la tenue des collectes.
 
 **14. Qui maintient ?**
-- **Réponse.** Une personne. 1 341 commits, 5 880 tests, CI, déploiement documenté.
+- **Réponse.** Une personne. 1 346 commits, 5 897 tests, CI, déploiement documenté.
 
 **15. Pourquoi pas les outils existants ?**
 - **Réponse.** France Monitor est ouvert, gratuit, explicable et publie en CAP, donc il peut alimenter d'autres outils. [NV pour une comparaison détaillée]
@@ -282,20 +285,27 @@ Relevée le 26/10/2026 vers 16 h 15 UTC. [V]
 - [x] Libellés « temps réel » revus
 - [x] Décision sur l'identité des aéronefs militaires : affichée (données publiques)
 - [x] Rejeu de l'indice sur un épisode passé (17/10)
-- [ ] **Couverture des relevés stabilisée** (trains, carburants, pétrole irréguliers)
-- [ ] Rejeu du 31/10 avec l'archive des manifestations
-- [ ] Prévisions Vigicrues ajoutées aux échéances
+- [x] Prévisions Vigicrues ajoutées aux échéances (26/10)
+- [x] « Escalade sociale » sans effet sur la note ni sur les alertes (décision A du 26/10), libellé corrigé (27/10)
+- [x] Résumé des alertes coupé à la fin d'un mot (27/10)
+- [x] Archive horaire des manifestations tenue par la VM (27/10 ; installation du minuteur sur la VM à confirmer)
+- [ ] **Couverture des relevés stabilisée** : gardien en place, mais relevés de nuit encore à 11 à 13 sources (militaire, carburants, pétrole)
+- [ ] Rejeu du 31/10 le 01/11, avec l'archive des manifestations ; décider ensuite des seuils, au vu des données
 
 **J-1**
-- [ ] Derniers relevés à 14/14 : `curl -s "https://www.francemonitor.com/api/situation-history?days=7&resolution=15m"`
+- [ ] Derniers relevés à 14/14, au plus un à 13/14 sur 12 h : `curl -s "https://www.francemonitor.com/api/situation-history?days=7&resolution=15m"`
 - [ ] `curl -s https://www.francemonitor.com/api/health-check` renvoie `ok`, sans flux en erreur
-- [ ] `curl -s https://www.francemonitor.com/api/alerts/atom` répond ; `curl -s https://www.francemonitor.com/api/situation-notes` liste des notes
+- [ ] `curl -s https://www.francemonitor.com/api/alerts/atom` répond, et le texte de chaque entrée se lit en entier
+- [ ] `curl -s https://www.francemonitor.com/api/situation-notes` : une note par tranche de 6 h, sans trou
+- [ ] `curl -s https://www.francemonitor.com/api/social/protests-archive` liste les jours ; branche `sauvegarde-historique` à jour (note et manifestations)
 - [ ] Quotas : adsb.lol, Groq, Neon
-- [ ] Captures de secours de chaque étape ; constat du rejeu imprimé
+- [ ] Constats du rejeu du 17/10 et du 31/10 imprimés ; captures de secours de chaque étape
+- [ ] Une phrase prête pour chaque situation levée (par exemple : « 45 événements de sécurité, dont l'essentiel concerne Trappes et ses suites »)
 - [ ] Pas de tiret cadratin visible, valeurs jamais coupées de leur unité
 
 **H-1**
-- [ ] Application ouverte depuis 3 minutes, niveau et sources lues vérifiés
+- [ ] Application ouverte depuis 3 minutes, « indice sur 14/14 sources » affiché ; sinon, nommer la source manquante plutôt que la cacher
+- [ ] Échéances : vérifier ce qui s'affiche ce jour-là (un jour passé n'y figure plus)
 - [ ] Département et situation du jour choisis pour la démo
 - [ ] Lecteur de flux prêt sur `/api/alerts/atom`
 - [ ] Partage de connexion testé, notifications coupées
@@ -308,10 +318,10 @@ Relevée le 26/10/2026 vers 16 h 15 UTC. [V]
 
 | Action | Gain | État |
 |---|---|---|
-| Stabiliser la couverture des relevés (chargement des trains, carburants, pétrole dans la page) | Fort : alertes et « 14/14 » fiables | À faire |
-| Rejouer le 31/10 et réajuster les seuils si besoin | Très fort : deuxième épisode réel | Après le 31/10 |
-| Ajouter les prévisions Vigicrues aux échéances | Moyen | À faire |
-| Revoir l'ancienne règle « Escalade sociale » (ISNR), qui se déclenche à tort certains soirs calmes | Moyen | À faire |
+| Stabiliser la couverture des relevés (militaire, carburants, pétrole, surtout la nuit) | Fort : alertes et « 14/14 » fiables | En cours : gardien en place le 26/10, à poursuivre |
+| Rejouer le 31/10 et réajuster les seuils si besoin | Très fort : deuxième épisode réel | Le 01/11 ; archive horaire de la VM en place |
+| Ajouter les prévisions Vigicrues aux échéances | Moyen | **Fait le 26/10** |
+| Revoir l'ancienne règle « Escalade sociale » (ISNR), qui se déclenche à tort certains soirs calmes | Moyen | **Fait** : décision A du 26/10, affichée mais sans effet sur la note ni sur les alertes ; libellé corrigé le 27/10 |
 | Toutes les autres actions « avant démo » du matin | | **Faites le 26/10** |
 
 **Avant un pilote** (semaines) :
