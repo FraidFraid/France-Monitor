@@ -9565,7 +9565,7 @@ export class App {
   private async openFranceIntelPanel(): Promise<void> {
     if (!this.currentSovCyber) void this.loadCyber();
     if (!this.currentISNRData) this.updateISNR();
-    if (!this.currentOilData) void this.loadOil();
+    if (!this.currentOilData) void this.loadOilOnce();
     void this.refreshNetworkBarometerWidget().catch((err) => {
       console.error('[App] Network barometer refresh on France Intel open failed', err);
     });
@@ -9681,7 +9681,7 @@ export class App {
     // Les couches critiques sont là : la v2 peut afficher le niveau national.
     this.refreshFranceIntelPanel();
     if (!this.currentSovCyber) void this.loadCyber();
-    if (!this.currentOilData) void this.loadOil();
+    if (!this.currentOilData) void this.loadOilOnce();
     void this.refreshNetworkBarometerWidget().catch((err) => {
       console.error('[App] Network barometer refresh on v2 start failed', err);
     });

@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { OIL_SNAPSHOT_MAX_AGE_MS, OIL_SNAPSHOT_URL, OIL_SNAPSHOT_VERSION, readOilSnapshot } from '../src/services/oil.ts';
 import { callHandler } from './helpers/traffic-fixtures.ts';
+import { VM_SNAPSHOT_TIMEOUT_MS } from '../src/services/vm-snapshot.ts';
 
 const NOW = Date.parse('2026-10-19T17:00:00Z');
 const DASHBOARD = { meta: { status: 'normal' }, stocks: { nationalStocksDays: 97 }, flows: {}, deliveries: [], sourceStatus: { sdes: 'ok' } };
@@ -50,6 +51,14 @@ describe('lecture du relevé par le navigateur', () => {
     expect(await readOilSnapshot(NOW)).toBeNull();
     vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('réseau'); }));
     expect(await readOilSnapshot(NOW)).toBeNull();
+  });
+  it('30 s pour lire le relevé : sur la page de l\'enregistreur (VM sans carte graphique), 10 s expiraient et lançaient le calcul de secours (27/10)', async () => {
+    serve(200, body());
+    const timeout = vi.spyOn(AbortSignal, 'timeout');
+    await readOilSnapshot(NOW);
+    expect(timeout).toHaveBeenCalledWith(VM_SNAPSHOT_TIMEOUT_MS);
+    expect(VM_SNAPSHOT_TIMEOUT_MS).toBe(30_000);
+    timeout.mockRestore();
   });
 });
 
