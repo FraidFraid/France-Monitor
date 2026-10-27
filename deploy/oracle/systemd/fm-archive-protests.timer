@@ -1,0 +1,11 @@
+[Unit]
+Description=France Monitor - archive de la couche Manifestations toutes les heures
+Documentation=https://github.com/FraidFraid/France-Monitor/blob/main/docs/deployment-oracle.md
+
+[Timer]
+OnCalendar=*-*-* *:23:00
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

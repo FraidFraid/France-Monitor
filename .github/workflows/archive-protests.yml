@@ -7,6 +7,9 @@ name: Archive de la couche Manifestations
 # Un fichier par jour de relevé (UTC) : historique/manifestations/AAAA-MM-JJ.jsonl, une ligne par rassemblement (clé : id), avec son
 # dernier état et `firstSeenAt` / `lastSeenAt` (heures du premier et du dernier relevé qui l'ont servi). La liste des articles n'est pas
 # gardée (environ 280 Ko par relevé) : seulement leur nombre. Même branche que la sauvegarde de la note, jamais main.
+#
+# Depuis le 27/10/2026, la VM relève aussi la couche toutes les heures (minuteur fm-archive-protests) : ce cron, qui ne passe en
+# pratique qu'environ toutes les 4 h, recopie en plus les fichiers de la VM d'hier et d'aujourd'hui (/api/social/protests-archive).
 
 on:
   schedule:
@@ -54,21 +57,32 @@ jobs:
             git switch --orphan "$BRANCH"
           fi
           mkdir -p "$(dirname "$file")"
-          touch "$file"
           jq -c --arg at "$read_at" '.items[] | {
               id, source, status, title, startsAt, allDay, city, dept, lat, lon, precision, place, violent, participants, edition,
               articleCount: (.articleCount // ((.articles // []) | length)), firstSeenAt: $at, lastSeenAt: $at
             }' "$RUNNER_TEMP/p.json" > "$RUNNER_TEMP/new.jsonl"
           # Fusion par id : premier relevé gardé, dernier état et dernier relevé du plus récent.
-          { cat "$file"; cat "$RUNNER_TEMP/new.jsonl"; } | jq -sc '
-            group_by(.id) | map(
-              (sort_by(.lastSeenAt)) as $v
-              | ($v[-1] + { firstSeenAt: ($v | map(.firstSeenAt) | min), lastSeenAt: ($v | map(.lastSeenAt) | max) })
-            ) | sort_by(.startsAt // "", .id) | .[]' > "$RUNNER_TEMP/merged.jsonl"
-          mv "$RUNNER_TEMP/merged.jsonl" "$file"
+          merge_into() {
+            touch "$1"
+            { cat "$1"; cat "$2"; } | jq -sc '
+              group_by(.id) | map(
+                (sort_by(.lastSeenAt)) as $v
+                | ($v[-1] + { firstSeenAt: ($v | map(.firstSeenAt) | min), lastSeenAt: ($v | map(.lastSeenAt) | max) })
+              ) | sort_by(.startsAt // "", .id) | .[]' > "$RUNNER_TEMP/merged.jsonl"
+            mv "$RUNNER_TEMP/merged.jsonl" "$1"
+            git add "$1"
+          }
+          merge_into "$file" "$RUNNER_TEMP/new.jsonl"
+          # Relevés horaires de la VM (minuteur fm-archive-protests, 27/10/2026) : ce cron ne passe qu'environ toutes les 4 h, la VM
+          # toutes les heures. Hier et aujourd'hui sont recopiés à chaque passage ; jour absent (VM pas encore installée) : ignoré.
+          for d in $(date -u -d yesterday +%F) "$day"; do
+            if curl -sf --max-time 60 "$SITE/api/social/protests-archive?day=$d" -o "$RUNNER_TEMP/vm.json"; then
+              jq -c '.items[]' "$RUNNER_TEMP/vm.json" > "$RUNNER_TEMP/vm.jsonl"
+              merge_into "historique/manifestations/$d.jsonl" "$RUNNER_TEMP/vm.jsonl"
+            fi
+          done
           total=$(grep -c . "$file" || true)
           echo "### Manifestations : $(jq '.items | length' "$RUNNER_TEMP/p.json") servis à $read_at, $total dans $file" >> "$GITHUB_STEP_SUMMARY"
-          git add "$file"
           if git diff --cached --quiet; then
             echo "Rien de nouveau."
           else

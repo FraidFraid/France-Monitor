@@ -76,8 +76,8 @@ jobs:
             dist dist-node api server services/radar-worker ais-relay.js package.json package-lock.json \
             src/config/government-data.js src/services/drom-energy/static-runtime.js src/services/french-warship.js \
             public/data/regions.geojson public/data/departements.geojson public/data/subsea-cables.json \
-            scripts/build-eau-potable.mjs scripts/build-deces.mjs scripts/build-arretes.mjs scripts/score-recorder.mjs \
-            deploy/oracle/systemd deploy/oracle/install-arretes.sh deploy/oracle/install-snapshots.sh deploy/oracle/install-score-recorder.sh
+            scripts/build-eau-potable.mjs scripts/build-deces.mjs scripts/build-arretes.mjs scripts/score-recorder.mjs scripts/archive-protests.mjs \
+            deploy/oracle/systemd deploy/oracle/install-arretes.sh deploy/oracle/install-snapshots.sh deploy/oracle/install-score-recorder.sh deploy/oracle/install-archive-protests.sh
 
       - name: Préparer la clé SSH et known_hosts
         env:

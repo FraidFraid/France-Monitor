@@ -1,0 +1,29 @@
+[Unit]
+Description=France Monitor - archive horaire de la couche Manifestations (scripts/archive-protests.mjs), lue par /api/social/protests-archive
+Documentation=https://github.com/FraidFraid/France-Monitor/blob/main/docs/deployment-oracle.md
+After=network-online.target fm-api.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=fm
+Group=fm
+WorkingDirectory=/srv/francemonitor/current
+# PORT de l'API locale (defaut 3000).
+EnvironmentFile=-/etc/francemonitor/francemonitor.env
+# Ecrit hors de la release : l'archive survit aux deploiements.
+ExecStart=/usr/bin/node scripts/archive-protests.mjs
+TimeoutStartSec=3min
+# Pas de Restart= : un releve manque est rattrape au suivant (la fusion garde le premier et le dernier releve de chaque rassemblement).
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/francemonitor/data
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+LockPersonality=true

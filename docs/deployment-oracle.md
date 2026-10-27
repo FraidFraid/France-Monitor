@@ -454,3 +454,21 @@ ssh -i ~/.ssh/francemonitor_oracle ubuntu@141.145.223.156 'sudo bash /srv/france
 ```
 
 Mémoire : `MemoryMax=1200M` sur l'unité ; un passage dure 3 à 5 minutes. Suivi : `journalctl -u fm-score-recorder -n 20`.
+
+---
+
+## Archive horaire de la couche Manifestations (27/10/2026)
+
+`fm-archive-protests.timer` (toutes les heures à :23) lance `scripts/archive-protests.mjs` : il lit `/api/social/protests` sur l'API
+locale et fusionne les rassemblements dans `/var/lib/francemonitor/data/manifestations/AAAA-MM-JJ.jsonl` (un fichier par jour UTC,
+une ligne par rassemblement avec son premier et son dernier relevé, 90 jours). `/api/social/protests-archive` liste les jours,
+`?day=AAAA-MM-JJ` rend un jour. Le workflow `archive-protests.yml` (GitHub, qui ne passe qu'environ toutes les 4 h) recopie hier et
+aujourd'hui sur la branche `sauvegarde-historique`. But : rejouer une journée de mobilisation avec l'étendue réelle des rassemblements.
+
+Installation ou mise à jour :
+
+```bash
+ssh -i ~/.ssh/francemonitor_oracle ubuntu@141.145.223.156 'sudo bash /srv/francemonitor/current/deploy/oracle/install-archive-protests.sh'
+```
+
+Suivi : `journalctl -u fm-archive-protests -n 20`.
