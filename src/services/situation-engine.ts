@@ -441,12 +441,14 @@ function detectSocialEscalation(raw: FranceRawData): DetectedSituation | null {
     severity,
     confidence,
     'Escalade sociale localisée',
-    `${highSocialDepts.length} département(s) avec tensions sociales ou sécuritaires élevées. Score national ISNR : ${isnr.nationalScore}/100.`,
+    `${criticalDepts.length} département(s) à 65 ou plus sur l'indice départemental, ${highSocialDepts.length} en tension sociale ou de sécurité. Score national ISNR : ${isnr.nationalScore}/100.`,
     topDepts,
+    // Premier signal = ce qui fixe la gravité (repris tel quel dans l'historique et les alertes) : les départements à 65 ou plus,
+    // pas ceux en tension sociale, qui pouvaient être 0 sur une situation « critique » (26/10/2026).
     [
-      `${highSocialDepts.length} dept(s) avec dimension sociale/sécurité ≥ 40`,
+      ...(criticalDepts.length > 0 ? [`${criticalDepts.length} département(s) à 65 ou plus sur l'indice départemental`] : []),
+      `${highSocialDepts.length} département(s) en tension sociale (40 ou plus) ou de sécurité (50 ou plus)`,
       `Score national ISNR : ${isnr.nationalScore}/100`,
-      ...(criticalDepts.length > 0 ? [`${criticalDepts.length} dept(s) en situation critique (score ≥ 65)`] : []),
     ],
     [
       action('Surveiller les flux RSS des PQR locales sur les départements actifs', 'Analyste OSINT', 'monitor', true),

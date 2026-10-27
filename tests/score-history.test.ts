@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { parseRecords, preferSnapshot, recentRecords, slotsFromRecords } from '../api/_lib/score-history.js';
-import { HISTORY_GRACE_MS, historySnapshotReady, isRecorderPage, scoreCoverageOf } from '../src/services/situation-history.ts';
+import { HISTORY_GRACE_MS, clipAtWord, historySnapshotReady, isRecorderPage, scoreCoverageOf } from '../src/services/situation-history.ts';
 
 interface Rec { capturedAt: string; score: number; slotKey?: string; coverage?: { read: number; total: number; missing: string[] } }
 const rec = (capturedAt: string, score: number, read?: number, total = 14): Rec => ({
@@ -57,6 +57,13 @@ describe('relevé côté navigateur (situation-history.ts)', () => {
     expect(historySnapshotReady(full, 1_000)).toBe(true);
   });
 
+  it('signal principal borné à 80 caractères, coupé à la fin d\'un mot (jamais « pillag » dans une alerte)', () => {
+    const t = '45 événements de sécurité distincts de gravité élevée en 24 h, violences, pillages, attaques, chacun compté une fois';
+    const c = clipAtWord(t, 80);
+    expect(c).toBe('45 événements de sécurité distincts de gravité élevée en 24 h, violences…');
+    expect(c.length).toBeLessThanOrEqual(80);
+    expect(clipAtWord('court', 80)).toBe('court');
+  });
   it('page de l\'enregistreur reconnue par ?recorder=1 seulement', () => {
     expect(isRecorderPage('?recorder=1')).toBe(true);
     expect(isRecorderPage('?view=app&recorder=1')).toBe(true);

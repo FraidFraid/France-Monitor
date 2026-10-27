@@ -274,6 +274,16 @@ describe('situation-engine · detectSituations', () => {
     assertHasSituation(socialFixture(), 'SOCIAL_ESCALATION');
   });
 
+  it('SOCIAL_ESCALATION : le premier signal est ce qui fixe la gravité, jamais « 0 dept(s) » sur une situation critique (26/10)', () => {
+    const scores = ['Nord', 'Rhône', 'Gironde'].map((name) => ({ score: 70, eventCount: 5, name, dimensions: { social: 10, security: 10, infra: 10, health: 10 } }));
+    const s = detectSituations(baseRawData({ isnrData: typed<FranceRawData['isnrData']>({ nationalScore: 40, timestamp: new Date(), scores }) }))
+      .find((x) => x.type === 'SOCIAL_ESCALATION');
+    assert.equal(s?.severity, 'critical');
+    assert.equal(s?.drivers[0], '3 département(s) à 65 ou plus sur l\'indice départemental');
+    assert.ok(s?.summary.startsWith('3 département(s) à 65 ou plus sur l\'indice départemental, 0 en tension sociale ou de sécurité.'));
+    assert.ok(s?.summary.endsWith('Score national ISNR : 40/100.'));
+  });
+
   it('telecom : seuils par département (20 medium, 50 high, 100 critical)', () => {
     const one = (count: number) => telecomSituation(telecomRaw(telecomResponse([['59', count]])));
     assert.equal(one(19), undefined);

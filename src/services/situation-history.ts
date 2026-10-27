@@ -28,6 +28,14 @@ function currentSlotKey(now = new Date()): string {
   return d.toISOString().slice(0, 16);
 }
 
+/** Texte borné à `max` caractères, coupé à la fin d'un mot avec « … » (jamais « pillag » dans une alerte). */
+export function clipAtWord(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const head = text.slice(0, max - 1);
+  const cut = head.lastIndexOf(' ');
+  return `${(cut > max / 2 ? head.slice(0, cut) : head).replace(/[\s,;:.]+$/, '')}…`;
+}
+
 function buildSnapshotPayload(snapshot: FranceCountrySnapshot, slotKey: string, coverage: ScoreCoverage): SituationSnapshot {
   const cyberScore  = snapshot.cyberScore ?? null;
   const socialScore = snapshot.stability?.nationalScore    ?? null;
@@ -61,7 +69,7 @@ function buildSnapshotPayload(snapshot: FranceCountrySnapshot, slotKey: string, 
       type:          s.type,
       severity:      s.severity,
       title:         s.title,
-      topDriver:     (s.drivers[0] ?? '').slice(0, 80),
+      topDriver:     clipAtWord(s.drivers[0] ?? '', 80),
       affectedZones: s.affectedZones.slice(0, 3),
       confidence:    s.confidence,
     })),
