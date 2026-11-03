@@ -58,20 +58,31 @@ export function roadBadgeSvg(kind: RoadEventKind, size = 16): string {
   return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" aria-hidden="true"><path d="M${t(size / 2)} ${t(size * 0.06)}L${t(size * 0.96)} ${t(size * 0.92)}H${t(size * 0.04)}Z" fill="${hex}" stroke="#0a0a0f" stroke-width="1.3" stroke-linejoin="round"/>${inner}</svg>`;
 }
 
-// ─── Avions civils : une seule teinte, bleu ciel (25/10/2026 : les gris de l'altitude ne se distinguaient pas, hors palette L1 et
-// hors roses de la route) ; l'altitude se lit à la taille et à l'opacité ───
+// ─── Avions civils : une teinte par tranche d'altitude (03/11/2026, demande utilisateur : « tout en bleu » illisible) ───
+// Le 25/10, des gris d'altitude ne se distinguaient pas : ici des teintes franches, hors palette L1 (vert, jaune, orange, rouge, gardés
+// pour l'anormal et les urgences) et hors roses de la route : sarcelle près du sol (décollages, approches), bleu ciel en montée, indigo
+// à mi-altitude, lavande pâle en croisière. La taille et l'opacité suivent toujours l'altitude.
 
-/** Teinte unique des avions civils sur la carte et dans la légende. */
+/** Teinte générique des avions civils (en-tête de légende). */
 export const AIR_TRAFFIC_HEX = '#38bdf8';
 
-/** Tranches d'altitude (pieds), de bas en haut : un avion bas est plus petit et plein, un avion en croisière plus grand et plus discret. */
-export const AIR_ALTITUDE_BANDS: ReadonlyArray<{ id: string; below: number; size: number; alpha: number }> = [
-  { id: 'air-alt-low', below: 5_000, size: 18, alpha: 255 },
-  { id: 'air-alt-climb', below: 15_000, size: 19, alpha: 235 },
-  { id: 'air-alt-mid', below: 25_000, size: 20, alpha: 205 },
-  { id: 'air-alt-cruise', below: 35_000, size: 21, alpha: 180 },
-  { id: 'air-alt-high', below: Number.POSITIVE_INFINITY, size: 22, alpha: 160 },
+/** Tranches d'altitude (pieds), de bas en haut : un avion bas est plus petit, plein et vif ; en croisière plus grand, pâle et discret. */
+export const AIR_ALTITUDE_BANDS: ReadonlyArray<{ id: string; below: number; size: number; alpha: number; hex: string }> = [
+  { id: 'air-alt-low', below: 5_000, size: 18, alpha: 255, hex: '#2dd4bf' },
+  { id: 'air-alt-climb', below: 15_000, size: 19, alpha: 235, hex: '#38bdf8' },
+  { id: 'air-alt-mid', below: 25_000, size: 20, alpha: 215, hex: '#818cf8' },
+  { id: 'air-alt-cruise', below: 35_000, size: 21, alpha: 200, hex: '#c7d2fe' },
+  { id: 'air-alt-high', below: Number.POSITIVE_INFINITY, size: 22, alpha: 185, hex: '#c7d2fe' },
 ];
+
+/** Teinte d'un avion sans altitude transmise : gris ardoise, jamais la teinte d'une tranche inventée (S5). */
+export const AIR_ALTITUDE_UNKNOWN_HEX = '#64748b';
+
+/** Teinte de l'icône d'un avion selon son altitude (pieds). */
+export function airAltitudeHex(altitudeFt: number | null | undefined): string {
+  if (typeof altitudeFt !== 'number' || !(altitudeFt > 0)) return AIR_ALTITUDE_UNKNOWN_HEX;
+  return (AIR_ALTITUDE_BANDS.find((b) => altitudeFt < b.below) ?? AIR_ALTITUDE_BANDS[AIR_ALTITUDE_BANDS.length - 1]).hex;
+}
 
 /** Altitude non transmise (absente, nulle ou négative) : taille moyenne, très estompé, jamais une tranche inventée (S5). */
 const AIR_ALTITUDE_UNKNOWN = { size: 18, alpha: 110 } as const;
@@ -179,13 +190,14 @@ export const AIR_TRAFFIC_LEGEND: LegendCategory = {
   id: 'trafficAir',
   title: 'Trafic aérien',
   columns: 2,
-  splitIndex: 5,
+  splitIndex: 6,
   items: [
     { id: 'air-plane-header', label: 'Avions civils : orientés selon le cap, indicatif au survol', color: HEADER_HEX, isHeader: true },
-    { id: 'air-plane', label: 'Avion civil', color: AIR_TRAFFIC_HEX, icon: fmIcon('plane') },
-    { id: 'air-alt-low', label: `Bas (moins de 5${NBSP}000${NBSP}ft) : petit et plein`, color: AIR_TRAFFIC_HEX, icon: fmIcon('plane', { size: 11 }) },
-    { id: 'air-alt-high', label: 'En croisière : plus grand et plus discret', color: AIR_TRAFFIC_HEX, icon: fmIcon('plane', { size: 15 }) },
-    { id: 'air-alt-unknown', label: 'Altitude non transmise : très estompé', color: TRAFFIC_NEUTRAL_HEX, icon: fmIcon('plane') },
+    { id: 'air-alt-low', label: `Près du sol (moins de 5${NBSP}000${NBSP}ft) : décollage, approche`, color: '#2dd4bf', icon: fmIcon('plane', { size: 11 }) },
+    { id: 'air-alt-climb', label: `Montée ou descente (5${NBSP}000 à 15${NBSP}000${NBSP}ft)`, color: '#38bdf8', icon: fmIcon('plane', { size: 12 }) },
+    { id: 'air-alt-mid', label: `Mi-altitude (15${NBSP}000 à 25${NBSP}000${NBSP}ft)`, color: '#818cf8', icon: fmIcon('plane', { size: 13 }) },
+    { id: 'air-alt-cruise', label: `Croisière (25${NBSP}000${NBSP}ft et plus)`, color: '#c7d2fe', icon: fmIcon('plane', { size: 15 }) },
+    { id: 'air-alt-unknown', label: 'Altitude non transmise : estompé', color: AIR_ALTITUDE_UNKNOWN_HEX, icon: fmIcon('plane') },
     { id: 'air-emergency-header', label: 'Urgences et aéroports', color: HEADER_HEX, isHeader: true },
     { id: 'air-emergency-7500', label: squawkPair('7500'), color: levelHex('rouge'), shape: 'circle' },
     { id: 'air-emergency-7700', label: squawkPair('7700'), color: levelHex('orange'), shape: 'circle' },

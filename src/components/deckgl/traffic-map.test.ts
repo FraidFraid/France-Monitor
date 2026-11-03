@@ -149,7 +149,7 @@ describe('aérien (§ 3.2)', () => {
     const flight: AirTrafficFlight = { id: 'f1', callsign: '<i>EZY1</i>', longitude: 2, latitude: 48, altitude: 35000, speed: 450, heading: 271.6, source: 'opensky' };
     const html = airFlightTooltipHtml(flight);
     expect(html).toContain('&lt;i&gt;EZY1&lt;/i&gt;');
-    for (const part of [`35\u202F000${NBSP}ft`, `450${NBSP}nœuds`, '272°', 'Source : OpenSky (ADS-B).']) expect(html).toContain(part);
+    for (const part of [`35\u202F000${NBSP}ft`, `450${NBSP}nœuds`, '272°', 'Source : OpenSky (ADS-B)', 'adresse OACI F1']) expect(html).toContain(part);
     expect(airFlightTooltipHtml({ ...flight, callsign: ' ', altitude: 0, speed: 0 })).toContain('Indicatif inconnu');
     expect(html).not.toMatch(/Immatriculation|Provenance|Destination|Trajectoire/);
   });
@@ -163,6 +163,20 @@ describe('aérien (§ 3.2)', () => {
     for (const part of ['Immatriculation', 'G-EZAB', 'Provenance', '&lt;b&gt;Genève&lt;/b&gt;', 'Destination', 'Paris-Orly', 'Trajectoire',
       'circuit d’attente, approche interrompue']) expect(html).toContain(part);
     expect(html).not.toContain('<b>Genève');
+  });
+  it('avion (03/11/2026) : numéro de vol, compagnie, catégorie, montée ou descente, km/h, pays en français, transpondeur, dernier contact', () => {
+    const now = Date.parse('2026-11-03T10:00:00Z');
+    const flight: AirTrafficFlight = {
+      id: '3944ef', callsign: 'AFR1234', longitude: 2.4, latitude: 48.7, altitude: 12_000, speed: 300, heading: 180, source: 'opensky',
+      flightNumber: 'AF 1234', operator: 'Air France', category: '4', originCountry: 'France', verticalRateFtMin: -1_850, squawk: '1000', lastSeen: now - 8_000,
+    };
+    const html = airFlightTooltipHtml(flight, now);
+    for (const part of ['AFR1234 · vol AF 1234', 'Gros porteur', 'Compagnie', 'Air France', `en descente · 1\u202F900${NBSP}ft/min`, `556${NBSP}km/h`,
+      'Immatriculé', '>France<', 'Transpondeur', '1000', `dernier contact il y a 8${NBSP}s`, 'adresse OACI 3944EF']) expect(html).toContain(part);
+    expect(airFlightTooltipHtml({ ...flight, verticalRateFtMin: 120 }, now)).toContain('en palier');
+    expect(airFlightTooltipHtml({ ...flight, onGround: true }, now)).toContain('au sol');
+    expect(airFlightTooltipHtml({ ...flight, originCountry: 'Ireland', operator: undefined }, now)).toContain('Irlande');
+    expect(airFlightTooltipHtml({ ...flight, operator: undefined }, now)).not.toContain('Compagnie');
   });
 });
 

@@ -88,7 +88,7 @@ import type {
   SubseaCablesFile, TelecomOutagesResponse,
 } from '../types/index.ts';
 import {
-  VESSEL_TYPE_HEX, type VesselCategory, AIR_TRAFFIC_HEX, ROAD_EVENT_ICONS, airAltitudeStyle, vesselCategory, vesselHex, vesselTypeLabel,
+  VESSEL_TYPE_HEX, type VesselCategory, ROAD_EVENT_ICONS, airAltitudeHex, airAltitudeStyle, vesselCategory, vesselHex, vesselTypeLabel,
 } from './layer-panel/traffic-legend.ts';
 import { identifyFrenchCallsign, identifyAlliedCallsign } from '../config/military.ts';
 import { getAllLiveTraffic, type MilitaryShip } from '../services/military-ships.ts';
@@ -451,8 +451,8 @@ const GENERAL_FOCUS_CATEGORY = 'general-focus';
 const SRC_TV_ROUTES = 'tv-routes';
 const LYR_TV_ROUTES_GLOW = 'tv-routes-glow';
 const LYR_TV_ROUTES = 'tv-routes-line';
-/** Opacité des avions dans l'onglet Transports tant que la pastille Aérien n'est pas mise en avant (25/10/2026). */
-const AIR_TRANSPORT_TAB_OPACITY = 0.3;
+/** Opacité des avions dans l'onglet Transports tant que la pastille Aérien n'est pas mise en avant (25/10/2026 ; 0,3 → 0,6 le 03/11 : teintes d'altitude lisibles). */
+const AIR_TRANSPORT_TAB_OPACITY = 0.6;
 /** Navires dans l'onglet Transports, même règle (étiquettes d'abord). */
 const MARITIME_TRANSPORT_TAB_OPACITY = 0.55;
 /** Anneaux pulsants (pulse.ts) : calque de l'anneau et calque des points dont il suit le tamisage. */
@@ -3094,9 +3094,13 @@ export class DeckGLMap {
         opacity: airDeckOpacity,
         coordinateSystem: COORDINATE_SYSTEM.LNGLAT,
         getPosition: (d: AirTrafficFlight) => this.projectAirTrafficPosition(d),
-        // Une seule teinte (bleu ciel, 25/10/2026) ; l'altitude se lit à la taille et à l'opacité (airAltitudeStyle, traffic-legend.ts).
-        getIcon: () => this.getAirTrafficIconDef(AIR_TRAFFIC_HEX),
-        getColor: (d: AirTrafficFlight) => [255, 255, 255, airAltitudeStyle(d.altitude).alpha],
+        // Teinte par tranche d'altitude (03/11/2026) sur une icône blanche en masque ; taille et opacité suivent aussi l'altitude
+        // (airAltitudeHex, airAltitudeStyle, traffic-legend.ts).
+        getIcon: () => this.getAirTrafficIconDef('#ffffff', true),
+        getColor: (d: AirTrafficFlight) => {
+          const hex = airAltitudeHex(d.altitude);
+          return [parseInt(hex.slice(1, 3), 16), parseInt(hex.slice(3, 5), 16), parseInt(hex.slice(5, 7), 16), airAltitudeStyle(d.altitude).alpha];
+        },
         getSize: (d: AirTrafficFlight) => airAltitudeStyle(d.altitude).size,
         getAngle: (d: AirTrafficFlight) => this.headingToDeckAngle(this.getTweenedHeading(d)),
         sizeUnits: 'pixels',
@@ -4441,8 +4445,8 @@ export class DeckGLMap {
     return this.aisIconDefs[key];
   }
 
-  private getAirTrafficIconDef(colorHex: string): { url: string; width: number; height: number; anchorX: number; anchorY: number; mask: boolean } {
-    const key = `__air-traffic-${colorHex}`;
+  private getAirTrafficIconDef(colorHex: string, mask = false): { url: string; width: number; height: number; anchorX: number; anchorY: number; mask: boolean } {
+    const key = `__air-traffic-${colorHex}${mask ? '-mask' : ''}`;
     if (!this.aisIconDefs[key]) {
       const SIZE = 64;
       // Inject the hex color directly into the SVG
@@ -4454,7 +4458,7 @@ export class DeckGLMap {
         height: SIZE,
         anchorX: SIZE / 2,
         anchorY: SIZE / 2,
-        mask: false,
+        mask,
       };
     }
     return this.aisIconDefs[key];

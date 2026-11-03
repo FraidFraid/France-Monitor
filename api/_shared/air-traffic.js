@@ -66,16 +66,56 @@ const OFFICIAL_AIRPORT_PROVIDERS = {
   },
 };
 
+// Préfixe OACI de l'indicatif → compagnie et code IATA (numéro de vol commercial dans l'infobulle). Compagnies les plus vues dans le
+// ciel français (03/11/2026) ; un préfixe absent laisse l'exploitant inconnu, jamais deviné.
 const CALLSIGN_OPERATOR_HINTS = {
   AFR: { commercialCode: 'AF', operator: 'Air France' },
-  RYR: { commercialCode: 'FR', operator: 'Ryanair' },
+  HOP: { commercialCode: 'A5', operator: 'Air France Hop' },
   TVF: { commercialCode: 'TO', operator: 'Transavia France' },
+  TRA: { commercialCode: 'HV', operator: 'Transavia' },
+  CRL: { commercialCode: 'SS', operator: 'Corsair' },
+  FBU: { commercialCode: 'BF', operator: 'French Bee' },
+  CCM: { commercialCode: 'XK', operator: 'Air Corsica' },
+  FWI: { commercialCode: 'TX', operator: 'Air Caraïbes' },
+  ASL: { commercialCode: '5O', operator: 'ASL Airlines France' },
+  RYR: { commercialCode: 'FR', operator: 'Ryanair' },
+  EZY: { commercialCode: 'U2', operator: 'easyJet' },
+  EJU: { commercialCode: 'EC', operator: 'easyJet Europe' },
+  EZS: { commercialCode: 'DS', operator: 'easyJet Switzerland' },
   VLG: { commercialCode: 'VY', operator: 'Vueling' },
   VOE: { commercialCode: 'V7', operator: 'Volotea' },
-  EZY: { commercialCode: 'U2', operator: 'easyJet' },
-  EJU: { commercialCode: 'EJU', operator: 'easyJet' },
+  WZZ: { commercialCode: 'W6', operator: 'Wizz Air' },
   IBE: { commercialCode: 'IB', operator: 'Iberia' },
   KLM: { commercialCode: 'KL', operator: 'KLM' },
+  BAW: { commercialCode: 'BA', operator: 'British Airways' },
+  DLH: { commercialCode: 'LH', operator: 'Lufthansa' },
+  SWR: { commercialCode: 'LX', operator: 'Swiss' },
+  AUA: { commercialCode: 'OS', operator: 'Austrian Airlines' },
+  BEL: { commercialCode: 'SN', operator: 'Brussels Airlines' },
+  TAP: { commercialCode: 'TP', operator: 'TAP Air Portugal' },
+  ITY: { commercialCode: 'AZ', operator: 'ITA Airways' },
+  EIN: { commercialCode: 'EI', operator: 'Aer Lingus' },
+  SAS: { commercialCode: 'SK', operator: 'SAS' },
+  FIN: { commercialCode: 'AY', operator: 'Finnair' },
+  LOT: { commercialCode: 'LO', operator: 'LOT' },
+  AEE: { commercialCode: 'A3', operator: 'Aegean' },
+  THY: { commercialCode: 'TK', operator: 'Turkish Airlines' },
+  PGT: { commercialCode: 'PC', operator: 'Pegasus' },
+  UAE: { commercialCode: 'EK', operator: 'Emirates' },
+  QTR: { commercialCode: 'QR', operator: 'Qatar Airways' },
+  ETD: { commercialCode: 'EY', operator: 'Etihad' },
+  RAM: { commercialCode: 'AT', operator: 'Royal Air Maroc' },
+  DAH: { commercialCode: 'AH', operator: 'Air Algérie' },
+  TAR: { commercialCode: 'TU', operator: 'Tunisair' },
+  ACA: { commercialCode: 'AC', operator: 'Air Canada' },
+  DAL: { commercialCode: 'DL', operator: 'Delta' },
+  UAL: { commercialCode: 'UA', operator: 'United' },
+  AAL: { commercialCode: 'AA', operator: 'American Airlines' },
+  EXS: { commercialCode: 'LS', operator: 'Jet2' },
+  NOZ: { commercialCode: 'DY', operator: 'Norwegian' },
+  FDX: { commercialCode: 'FX', operator: 'FedEx' },
+  UPS: { commercialCode: '5X', operator: 'UPS' },
+  BCS: { commercialCode: 'QY', operator: 'DHL (European Air Transport)' },
 };
 
 // ── État du processus ──
@@ -191,6 +231,14 @@ function getCallsignOperatorHint(value) {
   return n.length < 3 ? null : CALLSIGN_OPERATOR_HINTS[n.slice(0, 3)] ?? null;
 }
 
+/** « AFR1234 » → « AF 1234 » (code IATA de la compagnie et numéro) ; null sans compagnie connue, ou indicatif radio avec lettres (« EZY45HD »). */
+export function commercialFlightNumber(callsign) {
+  const n = normalizeFlightDesignator(callsign ?? '');
+  const hint = getCallsignOperatorHint(n);
+  const number = /^[A-Z]{3}(\d+)$/.exec(n)?.[1];
+  return hint && number ? `${hint.commercialCode} ${number.replace(/^0+(?=\d)/, '')}` : null;
+}
+
 /** Vol pour la carte (forme historique de /api/traffic/air ; altitude en pieds, vitesse en nœuds). */
 export function toMapFlight(state) {
   const altitudeM = state.baroAltitudeM ?? state.geoAltitudeM ?? 0;
@@ -202,7 +250,12 @@ export function toMapFlight(state) {
     altitude: Math.round(altitudeM * 3.28084),
     speed: Math.round((state.velocityMs ?? 0) * 1.94384),
     heading: Math.round(state.heading ?? 0),
-    operator: getCallsignOperatorHint(state.callsign)?.operator ?? state.originCountry ?? undefined,
+    // Exploitant : la compagnie reconnue par l'indicatif seulement ; le pays d'immatriculation est un champ à part (03/11/2026).
+    operator: getCallsignOperatorHint(state.callsign)?.operator ?? undefined,
+    flightNumber: commercialFlightNumber(state.callsign) ?? undefined,
+    originCountry: state.originCountry ?? undefined,
+    // Taux vertical en pieds par minute (OpenSky : m/s), absent si non transmis.
+    verticalRateFtMin: state.verticalRate === null || state.verticalRate === undefined ? undefined : Math.round(state.verticalRate * 196.85),
     category: state.category === null ? undefined : String(state.category),
     squawk: state.squawk ?? undefined,
     lastSeen: (state.lastContact ?? 0) * 1000,

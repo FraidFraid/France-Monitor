@@ -273,24 +273,64 @@ export function airportFeatures(overview: AirOverviewResponse | null, now: numbe
   })));
 }
 
+/** Catégories d'émetteur ADS-B publiées par OpenSky (extended=1) ; 0 et 1 : non renseignée. */
+const AIR_CATEGORY_LABEL: Readonly<Record<string, string>> = {
+  2: 'avion léger', 3: 'avion moyen', 4: 'gros porteur', 5: 'gros porteur à forte turbulence de sillage', 6: 'très gros porteur',
+  7: 'avion très rapide', 8: 'hélicoptère', 9: 'planeur', 10: 'ballon ou dirigeable', 11: 'parachutiste', 12: 'ULM', 14: 'drone',
+  15: 'engin spatial', 16: 'véhicule d’urgence au sol', 17: 'véhicule de service au sol',
+};
+
+/** Pays d'immatriculation les plus vus, en français ; les autres gardent le nom anglais d'OpenSky. */
+const COUNTRY_FR: Readonly<Record<string, string>> = {
+  France: 'France', Ireland: 'Irlande', 'United Kingdom': 'Royaume-Uni', Germany: 'Allemagne', Spain: 'Espagne', Italy: 'Italie',
+  Switzerland: 'Suisse', Belgium: 'Belgique', Netherlands: 'Pays-Bas', 'Kingdom of the Netherlands': 'Pays-Bas', Portugal: 'Portugal',
+  Austria: 'Autriche', Malta: 'Malte', Hungary: 'Hongrie', Poland: 'Pologne', Luxembourg: 'Luxembourg', Denmark: 'Danemark',
+  Sweden: 'Suède', Norway: 'Norvège', Finland: 'Finlande', Greece: 'Grèce', Turkey: 'Turquie', Türkiye: 'Turquie', Morocco: 'Maroc',
+  Algeria: 'Algérie', Tunisia: 'Tunisie', 'United States': 'États-Unis', Canada: 'Canada', 'United Arab Emirates': 'Émirats arabes unis',
+  Qatar: 'Qatar', 'Czech Republic': 'Tchéquie', Czechia: 'Tchéquie', Romania: 'Roumanie', Lithuania: 'Lituanie', Latvia: 'Lettonie',
+};
+
+/** « en montée · 1 800 ft/min » ; palier sous 200 ft/min ; null si non transmis. */
+export function airVerticalLabel(ftMin: number | undefined): string | null {
+  if (typeof ftMin !== 'number' || !Number.isFinite(ftMin)) return null;
+  if (Math.abs(ftMin) < 200) return 'en palier';
+  return `${ftMin > 0 ? 'en montée' : 'en descente'} · ${frNumber(Math.round(Math.abs(ftMin) / 100) * 100, 0)}${NBSP}ft/min`;
+}
+
+/** « il y a 8 s », « il y a 3 min » ; null sans date. */
+function seenAgo(lastSeen: number | undefined, now: number): string | null {
+  if (typeof lastSeen !== 'number' || !(lastSeen > 0)) return null;
+  const s = Math.max(0, Math.round((now - lastSeen) / 1000));
+  return s < 90 ? `il y a ${s}${NBSP}s` : `il y a ${Math.round(s / 60)}${NBSP}min`;
+}
+
 /**
- * Survol d'un avion (couche Deck.gl) : indicatif, appareil, altitude, vitesse, cap ; immatriculation, provenance et destination
- * quand la source ou un annuaire officiel les donne ; trajectoire inhabituelle détectée par le serveur (gardée, spec § 2.6).
- * Plus aucun libellé permanent.
+ * Survol d'un avion (couche Deck.gl) : indicatif et numéro de vol, compagnie, appareil, phase de vol (altitude, montée ou descente),
+ * vitesse, cap ; pays d'immatriculation, transpondeur, adresse OACI et dernier contact (03/11/2026 : tout ce qu'OpenSky donne déjà) ;
+ * provenance et destination quand un tableau d'aéroport officiel les donne ; trajectoire inhabituelle détectée par le serveur.
  */
-export function airFlightTooltipHtml(f: AirTrafficFlight): string {
+export function airFlightTooltipHtml(f: AirTrafficFlight, now: number = Date.now()): string {
   const callsign = String(f.callsign ?? '').trim();
   const anomalies = (f.anomalies ?? []).map((a) => anomalyLabel(a.type));
-  return tip(head(callsign === '' ? 'Indicatif inconnu' : callsign, f.aircraftModel ?? f.aircraftType ?? 'Vol civil')
-    + (f.operator ? row('Exploitant', f.operator) : '')
-    + (f.registration ? row('Immatriculation', f.registration) : '')
+  const category = f.category ? AIR_CATEGORY_LABEL[f.category] : undefined;
+  const kind = f.aircraftModel ?? f.aircraftType ?? (category ? category.charAt(0).toUpperCase() + category.slice(1) : 'Vol civil');
+  const title = callsign === '' ? 'Indicatif inconnu' : f.flightNumber ? `${callsign} · vol ${f.flightNumber}` : callsign;
+  const vertical = f.onGround ? 'au sol' : airVerticalLabel(f.verticalRateFtMin);
+  const altitude = f.altitude > 0 ? `${frNumber(f.altitude, 0)}${NBSP}ft` : 'n.d.';
+  const country = f.originCountry ? COUNTRY_FR[f.originCountry] ?? f.originCountry : null;
+  const ago = seenAgo(f.lastSeen, now);
+  return tip(head(title, kind)
+    + (f.operator ? row('Compagnie', f.operator) : '')
     + (f.originAirport ? row('Provenance', f.originAirport) : '')
     + (f.destinationAirport ? row('Destination', f.destinationAirport) : '')
-    + row('Altitude', f.altitude > 0 ? `${frNumber(f.altitude, 0)}${NBSP}ft` : 'n.d.')
-    + row('Vitesse', f.speed > 0 ? `${frNumber(f.speed, 0)}${NBSP}nœuds` : 'n.d.')
+    + row('Altitude', vertical ? `${altitude} · ${vertical}` : altitude)
+    + row('Vitesse', f.speed > 0 ? `${frNumber(f.speed, 0)}${NBSP}nœuds (${frNumber(Math.round(f.speed * 1.852), 0)}${NBSP}km/h)` : 'n.d.')
     + row('Cap', `${Math.round((((f.heading || 0) % 360) + 360) % 360)}°`)
+    + (country ? row('Immatriculé', country) : '')
+    + (f.registration ? row('Immatriculation', f.registration) : '')
+    + (f.squawk ? row('Transpondeur', f.squawk) : '')
     + (anomalies.length > 0 ? row('Trajectoire', anomalies.join(', ')) : '')
-    + note('Source : OpenSky (ADS-B).'));
+    + note(`Source : OpenSky (ADS-B)${ago ? `, dernier contact ${ago}` : ''} · adresse OACI ${String(f.id).toUpperCase()}.`));
 }
 
 // ─── Rail (§ 3.3) ───

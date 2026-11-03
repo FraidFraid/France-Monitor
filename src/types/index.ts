@@ -827,6 +827,12 @@ export interface AirTrafficFlight {
   onGround?: boolean;
   /** Code transpondeur (squawk) tel qu'OpenSky le publie ; 7500, 7600 et 7700 sont des urgences. */
   squawk?: string;
+  /** Numéro de vol commercial (« AF 1234 ») déduit de l'indicatif d'une compagnie connue (03/11/2026). */
+  flightNumber?: string;
+  /** Pays d'immatriculation de l'appareil (OpenSky, en anglais : « France », « Ireland »). */
+  originCountry?: string;
+  /** Taux vertical en pieds par minute (positif : montée), absent si non transmis. */
+  verticalRateFtMin?: number;
   source: string;
   anomalies?: AirTrafficAnomaly[];
   nearbyAirportIata?: string;

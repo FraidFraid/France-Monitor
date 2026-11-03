@@ -59,7 +59,8 @@ describe('DeckGLMap : couches Trafics réécrites', () => {
   });
   it('avions : icônes nettes à tous les zooms (retour utilisateur), couleur selon l’altitude, infobulle échappée ; plus de densité ni de source MapLibre', () => {
     expect(deck).toContain('visible: this.airTrafficVisible,');
-    expect(deck).toContain('getIcon: () => this.getAirTrafficIconDef(AIR_TRAFFIC_HEX),');
+    expect(deck).toContain("getIcon: () => this.getAirTrafficIconDef('#ffffff', true),");
+    expect(deck).toContain('const hex = airAltitudeHex(d.altitude);');
     expect(deck).toContain('getSize: (d: AirTrafficFlight) => airAltitudeStyle(d.altitude).size,');
     expect(deck).not.toMatch(/AIR_ICON_HEX|getAirTrafficColorHex/);
     expect(deck).toContain('this.showMilitaryTooltip(lngLat, airFlightTooltipHtml(flight));');

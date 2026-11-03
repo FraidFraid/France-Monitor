@@ -3,7 +3,7 @@ import { __resetKvForTests, __setKvClientForTests, readLog, readSeries } from '.
 import {
   CREDIT_FLOOR, DEPARTURES_KEY, DEPARTURE_AIRPORTS, DEV_STATES_INTERVAL_MS, EMERGENCY_EPISODE_GAP_MS, EMERGENCY_LOG_KEY, VOLUME_KEY, __airJobsForTests, __resetAirStateForTests,
   boardCounts, departuresUrl, emergenciesFrom, ensureAirFresh, fetchAirTrafficSnapshot, normalizeOpenSkyState, parseBeauvaisDirectory, parseBordeauxDirectory,
-  recordEmergencies, statesUrl, toMapFlight, volumeSample,
+  commercialFlightNumber, recordEmergencies, statesUrl, toMapFlight, volumeSample,
 } from '../api/_shared/air-traffic.js';
 import { type FakeResponse, fixtureJson, fixtureText, respond, sentHeader, stubFetch } from './helpers/traffic-fixtures.ts';
 
@@ -91,6 +91,19 @@ describe('états OpenSky (réponse réelle de 15 h 09, extended=1)', () => {
   it('vol pour la carte : pieds, nœuds, squawk', () => {
     const state = normalizeOpenSkyState(STATES.states[0], STATES.time);
     expect(state && toMapFlight(state)).toMatchObject({ id: '51117e', altitude: 8625, speed: 110, heading: 87, squawk: '7021', category: '0', source: 'opensky' });
+  });
+  it('vol pour la carte (03/11/2026) : pays à part de l’exploitant, taux vertical en ft/min, numéro de vol des compagnies connues', () => {
+    const state = normalizeOpenSkyState(STATES.states[0], STATES.time);
+    if (!state) throw new Error('état illisible');
+    const estonian = toMapFlight(state);
+    expect(estonian).toMatchObject({ originCountry: 'Estonia', verticalRateFtMin: 0 });
+    expect(estonian.operator).toBeUndefined();
+    expect(estonian.flightNumber).toBeUndefined();
+    const afr = toMapFlight({ ...state, callsign: 'AFR1234', originCountry: 'France', verticalRate: 5 });
+    expect(afr).toMatchObject({ operator: 'Air France', flightNumber: 'AF 1234', originCountry: 'France', verticalRateFtMin: 984 });
+    expect(toMapFlight({ ...state, verticalRate: null }).verticalRateFtMin).toBeUndefined();
+    expect(['EZY45HD', 'TVF381V', 'RYR0123', 'BAW12', 'XYZ123', 'AFR', ''].map(commercialFlightNumber)).toEqual([null, null, 'FR 123', 'BA 12', null, null, null]);
+    // « EZY45HD », « TVF381V » : indicatifs radio alphanumériques, pas un numéro de vol ; jamais deviné.
   });
   it('volume : en vol dans la zone suivie et au-dessus du territoire', () => {
     const states = STATES.states.map((s) => normalizeOpenSkyState(s, STATES.time)).filter((s): s is NonNullable<typeof s> => s !== null);

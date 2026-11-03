@@ -9,7 +9,7 @@ import {
 } from './traffic.fixture.ts';
 import {
   AIR_TRAFFIC_LEGEND, CAT_AIRPORT_HEX, CAT_PORT_HEX, MARITIME_TRAFFIC_LEGEND, RAIL_TRAFFIC_LEGEND, ROAD_TRAFFIC_LEGEND, TRAFFIC_NEUTRAL_HEX,
-  AIR_ALTITUDE_BANDS, AIR_TRAFFIC_HEX, VESSEL_TYPE_HEX, airAltitudeStyle, airLegend, maritimeLegend, railLegend, roadLegend, traficolorDrawnAt, vesselCategory, vesselHex,
+  AIR_ALTITUDE_BANDS, AIR_ALTITUDE_UNKNOWN_HEX, VESSEL_TYPE_HEX, airAltitudeStyle, airLegend, maritimeLegend, railLegend, roadLegend, traficolorDrawnAt, vesselCategory, vesselHex,
 } from './traffic-legend.ts';
 
 const css = readFileSync(new URL('../../styles/main.css', import.meta.url), 'utf8');
@@ -68,12 +68,11 @@ describe('légendes Trafics : sources, périmètres (T1), dates réelles (S1)', 
     expect(l.notes?.[0]).toBe('Données : OpenSky 15:09.');
     const t = text(l);
     expect(t).not.toMatch(/densité|zoom 7/i);
-    // Une seule teinte (bleu ciel, 25/10/2026) ; l'altitude se lit à la taille et à l'opacité ; altitude non transmise en teinte neutre.
+    // Une teinte par tranche d'altitude (03/11/2026), hors palette L1 ; altitude non transmise en gris ardoise.
     const bands = l.items.filter((i) => i.id.startsWith('air-alt-'));
-    expect(bands.map((i) => [i.label, i.color])).toEqual([
-      [`Bas (moins de 5${NBSP}000${NBSP}ft) : petit et plein`, AIR_TRAFFIC_HEX], ['En croisière : plus grand et plus discret', AIR_TRAFFIC_HEX],
-      ['Altitude non transmise : très estompé', TRAFFIC_NEUTRAL_HEX],
-    ]);
+    expect(bands.map((i) => i.color)).toEqual(['#2dd4bf', '#38bdf8', '#818cf8', '#c7d2fe', AIR_ALTITUDE_UNKNOWN_HEX]);
+    expect(new Set(bands.map((i) => i.color)).size).toBe(5);
+    for (const lvl of ['vert', 'jaune', 'orange', 'rouge'] as const) expect(bands.map((i) => i.color)).not.toContain(levelHex(lvl));
     expect(bands.every((i) => typeof i.icon === 'string' && i.icon.includes('svg'))).toBe(true);
     for (const part of ['OpenSky', 'indicatif au survol', '7500\u00a0intervention\u00a0illicite, 7600\u00a0panne\u00a0radio, 7700\u00a0urgence', 'départs détectés', 'couche Défense',
       `toutes les 4${NBSP}h`]) expect(t).toContain(part);
@@ -87,7 +86,7 @@ describe('légendes Trafics : sources, périmètres (T1), dates réelles (S1)', 
   });
   it('avions : taille et opacité de chaque tranche d’altitude à ses bornes ; altitude non transmise très estompée, jamais une tranche inventée', () => {
     const cases: Array<[number, number, number]> = [
-      [1, 18, 255], [4_999, 18, 255], [5_000, 19, 235], [15_000, 20, 205], [25_000, 21, 180], [35_000, 22, 160], [45_000, 22, 160],
+      [1, 18, 255], [4_999, 18, 255], [5_000, 19, 235], [15_000, 20, 215], [25_000, 21, 200], [35_000, 22, 185], [45_000, 22, 185],
     ];
     for (const [ft, size, alpha] of cases) expect(airAltitudeStyle(ft)).toEqual({ size, alpha });
     for (const missing of [0, -120, Number.NaN, null, undefined]) expect(airAltitudeStyle(missing)).toEqual({ size: 18, alpha: 110 });
