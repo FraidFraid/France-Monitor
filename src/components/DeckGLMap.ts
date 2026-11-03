@@ -9,9 +9,7 @@ import { levelHex } from '../services/vigilance.ts';
 import { LYR_ROOM_DEPT_FILL, LYR_ROOM_SERVICES, LYR_ROOM_SERVICES_LETTER, SRC_ROOM_DEPTS, SRC_ROOM_SERVICES } from './deckgl/outages-room-map.ts';
 import maplibregl from 'maplibre-gl';
 import type { TransportVigilancePoint } from './layer-panel/transport-vigilance.ts';
-import {
-  calloutAnchorHtml, calloutDimmed, calloutLabelHtml, calloutRoutesFeatures, calloutTooltipHtml, calloutsSignature, layoutCallouts,
-} from './deckgl/transport-callouts.ts';
+import { calloutRoutesFeatures } from './deckgl/transport-callouts.ts';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { MapboxOverlay } from '@deck.gl/mapbox';
 import { IconLayer, PathLayer, ScatterplotLayer, TextLayer } from '@deck.gl/layers';
@@ -455,8 +453,6 @@ const LYR_TV_ROUTES_GLOW = 'tv-routes-glow';
 const LYR_TV_ROUTES = 'tv-routes-line';
 /** Opacité des avions dans l'onglet Transports tant que la pastille Aérien n'est pas mise en avant (25/10/2026). */
 const AIR_TRANSPORT_TAB_OPACITY = 0.3;
-/** Zoom à partir duquel les étiquettes Transports se réduisent à leur icône et leur numéro (25/10/2026). */
-const TRANSPORT_COMPACT_ZOOM = 8.5;
 /** Navires dans l'onglet Transports, même règle (étiquettes d'abord). */
 const MARITIME_TRANSPORT_TAB_OPACITY = 0.55;
 /** Anneaux pulsants (pulse.ts) : calque de l'anneau et calque des points dont il suit le tamisage. */
@@ -8160,116 +8156,36 @@ export class DeckGLMap {
     });
   }
 
-  // ─── Onglet Transports : points de vigilance numérotés (lots 1 et 2, 25/10/2026, deckgl/transport-callouts.ts) ───
-  // Ancres pulsantes sur les lieux, étiquettes rangées en colonnes et reliées par un trait courbe (layoutCallouts), reposées à
-  // chaque mouvement de la carte dans un calque HTML au-dessus du canevas.
-  private transportItems: Array<{ point: TransportVigilancePoint; anchor: HTMLElement; label: HTMLElement; line: SVGPathElement; w: number; h: number }> = [];
-  private transportLayer: HTMLElement | null = null;
-  private transportSvg: SVGSVGElement | null = null;
-  private transportCalloutsSig = '';
-  private transportFocus: string[] = [];
+  // Onglet Transports (03/11/2026) : plus aucune étiquette sur la carte (trop chargée) ; les points de vigilance se lisent dans
+  // le panneau En bref. Survol d'une ligne : trajets allumés le temps du survol ; clic : point retenu, trajets allumés jusqu'au
+  // clic suivant (sélection par identifiant, le numéro change avec le classement).
+  private transportPointsList: readonly TransportVigilancePoint[] = [];
+  private transportSelected: string | null = null;
   /** Onglet Transports affiché (App passe une liste, même vide, de points ; null hors de l'onglet). */
   private transportTabActive = false;
-  private transportTip: HTMLElement | null = null;
-  private readonly onTransportMove = (): void => this.layoutTransportCallouts();
 
-  /** Étiquettes pulsantes au-dessus de tout ; null ou vide : retirées (hors de l'onglet Transports). */
+  /** Points de l'onglet Transports (null : hors de l'onglet, trajets éteints, sélection gardée pour le retour). */
   setTransportVigilance(points: readonly TransportVigilancePoint[] | null): void {
-    const map = this.map;
-    const list = points ?? [];
     if (this.transportTabActive !== (points !== null)) {
       this.transportTabActive = points !== null;
       this.refreshAisLayers();
     }
-    const sig = calloutsSignature(list);
-    if (!map || sig === this.transportCalloutsSig) return;
-    this.transportCalloutsSig = sig;
-    this.transportTip = null;
-    this.setTransportRoutes(null);
-    this.transportLayer?.remove();
-    this.transportLayer = null;
-    this.transportSvg = null;
-    this.transportItems = [];
-    map.off('move', this.onTransportMove);
-    if (list.length === 0) return;
-    const layer = document.createElement('div');
-    layer.className = 'tv-layer';
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('class', 'tv-lines');
-    layer.appendChild(svg);
-    map.getCanvasContainer().appendChild(layer);
-    this.transportLayer = layer;
-    this.transportSvg = svg;
-    for (const point of list) {
-      const line = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-      line.setAttribute('class', `tv-line tv-line--${point.level}`);
-      svg.appendChild(line);
-      const anchor = document.createElement('div');
-      anchor.className = 'tv-pin';
-      anchor.innerHTML = calloutAnchorHtml(point);
-      const label = document.createElement('div');
-      label.className = 'tv-label';
-      label.innerHTML = calloutLabelHtml(point);
-      for (const el of [anchor, label]) {
-        // Le survol d'une étiquette ne doit réveiller aucune autre infobulle (avions, navires, gares) : la souris n'atteint pas la carte.
-        for (const type of ['mousemove', 'pointermove', 'mouseover', 'mouseout']) el.addEventListener(type, (e) => e.stopPropagation());
-        el.addEventListener('mouseenter', () => {
-          this.hideAisHoverTooltip();
-          this.envHoverPopup?.remove();
-          this.highlightTransportPoint(point.n);
-          // Détail dans le panneau En bref quand il est ouvert : la carte reste dégagée ; sinon infobulle à côté de l'étiquette.
-          if (!(this.onTransportHover?.(point.n) ?? false)) this.showTransportTip(point, label);
-        });
-        el.addEventListener('mouseleave', () => {
-          this.transportTip?.remove();
-          this.transportTip = null;
-          this.highlightTransportPoint(null);
-          this.onTransportHover?.(null);
-        });
-        el.addEventListener('click', (e) => {
-          e.stopPropagation();
-          this.flyTo(point.lon, point.lat, Math.max(map.getZoom(), 9));
-        });
-      }
-      layer.append(anchor, label);
-      this.transportItems.push({ point, anchor, label, line, w: label.offsetWidth, h: label.offsetHeight });
-    }
-    map.on('move', this.onTransportMove);
-    this.layoutTransportCallouts();
-    this.applyTransportFocus();
+    this.transportPointsList = points ?? [];
+    if (points !== null && this.transportSelected !== null && !points.some((p) => p.id === this.transportSelected)) this.transportSelected = null;
+    this.highlightTransportPoint(null);
   }
 
-  private onTransportHover: ((n: number | null) => boolean) | null = null;
-  setOnTransportHover(handler: (n: number | null) => boolean): void { this.onTransportHover = handler; }
-
-  /** Point mis en avant (survol de son étiquette ou de sa ligne dans l'En bref) : étiquette et trait vifs, trajets allumés. */
+  /** Point survolé dans l'En bref (n) : ses trajets ; null : retour aux trajets du point retenu, sinon éteints. */
   highlightTransportPoint(n: number | null): void {
-    for (const it of this.transportItems) {
-      const hot = it.point.n === n;
-      it.label.classList.toggle('is-hot', hot);
-      it.line.classList.toggle('is-hot', hot);
-    }
-    this.setTransportRoutes(this.transportItems.find((it) => it.point.n === n)?.point ?? null);
+    const list = this.transportPointsList;
+    const point = n !== null ? list.find((p) => p.n === n) : list.find((p) => p.id === this.transportSelected);
+    this.setTransportRoutes(point ?? null);
   }
 
-  /** Infobulle d'un point, à côté de son étiquette (à droite, à gauche faute de place), jamais sur les autres étiquettes de la colonne. */
-  private showTransportTip(point: TransportVigilancePoint, label: HTMLElement): void {
-    const layer = this.transportLayer;
-    if (!layer) return;
-    this.transportTip?.remove();
-    const tip = document.createElement('div');
-    tip.className = 'tv-tipbox';
-    tip.innerHTML = calloutTooltipHtml(point);
-    layer.appendChild(tip);
-    this.transportTip = tip;
-    const W = layer.clientWidth;
-    const H = layer.clientHeight;
-    const l = label.offsetLeft + (new DOMMatrixReadOnly(getComputedStyle(label).transform).m41 || 0);
-    const t = new DOMMatrixReadOnly(getComputedStyle(label).transform).m42 || 0;
-    const right = l + label.offsetWidth + 10;
-    const left = right + tip.offsetWidth <= W - 8 ? right : Math.max(8, l - 10 - tip.offsetWidth);
-    const top = Math.max(8, Math.min(t, H - 8 - tip.offsetHeight));
-    tip.style.transform = `translate(${left}px, ${top}px)`;
+  /** Point retenu au clic dans l'En bref (identifiant ; null : aucun) : ses trajets restent allumés. */
+  selectTransportPoint(id: string | null): void {
+    this.transportSelected = id;
+    this.highlightTransportPoint(null);
   }
 
   /** Survol d'un point rail : trajets de ses trains allumés (halo large et trait vif, couleur du niveau) ; null : éteints. */
@@ -8304,47 +8220,6 @@ export class DeckGLMap {
       const base: maplibregl.FilterSpecification | null = id === LYR_RAIL_STATION_ICON ? ['==', ['get', 'icon'], true] : null;
       const tier: maplibregl.FilterSpecification = ['<=', ['coalesce', ['get', 'tier'], 0], max];
       map.setFilter(id, base ? ['all', base, tier] : tier);
-    }
-  }
-
-  private layoutTransportCallouts(): void {
-    const map = this.map;
-    if (!map || this.transportItems.length === 0) return;
-    const { clientWidth: width, clientHeight: height } = map.getContainer();
-    this.transportSvg?.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    const compact = map.getZoom() >= TRANSPORT_COMPACT_ZOOM;
-    if (this.transportLayer && this.transportLayer.classList.contains('tv-layer--compact') !== compact) {
-      this.transportLayer.classList.toggle('tv-layer--compact', compact);
-      for (const it of this.transportItems) { it.w = it.label.offsetWidth; it.h = it.label.offsetHeight; }
-    }
-    const boxes = this.transportItems.map((it) => {
-      const p = map.project([it.point.lon, it.point.lat]);
-      if (it.w === 0) { it.w = it.label.offsetWidth; it.h = it.label.offsetHeight; }
-      return { x: p.x, y: p.y, w: it.w, h: it.h };
-    });
-    const placed = layoutCallouts(boxes, width, height);
-    this.transportItems.forEach((it, i) => {
-      const b = boxes[i];
-      const pl = placed[i];
-      if (!b || !pl) return;
-      it.anchor.style.transform = `translate(${b.x}px, ${b.y}px)`;
-      it.label.style.transform = `translate(${pl.left}px, ${pl.top}px)`;
-      it.line.setAttribute('d', pl.path);
-    });
-  }
-
-  /** Pastilles Transports allumées ou survolées : les étiquettes des autres modes se tamisent comme leurs couches. */
-  setTransportFocus(keys: readonly string[]): void {
-    this.transportFocus = [...keys];
-    this.applyTransportFocus();
-  }
-
-  private applyTransportFocus(): void {
-    for (const it of this.transportItems) {
-      const dim = calloutDimmed(it.point.mode, this.transportFocus);
-      it.anchor.classList.toggle('is-dim', dim);
-      it.label.classList.toggle('is-dim', dim);
-      it.line.classList.toggle('is-dim', dim);
     }
   }
 

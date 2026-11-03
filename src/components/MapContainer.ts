@@ -115,7 +115,6 @@ export class MapContainer {
     if (this.onRadarPointPick) this.deckMap.setOnRadarPointPick(this.onRadarPointPick);
     if (this.radarPick) this.deckMap.setRadarPick(this.radarPick);
     if (this.transportPoints) this.deckMap.setTransportVigilance(this.transportPoints);
-    if (this.onTransportHover) this.deckMap.setOnTransportHover(this.onTransportHover);
     if (this.onSovereigntyFeatureClick) this.deckMap.setOnSovereigntyFeatureClick(this.onSovereigntyFeatureClick);
     if (this.onProtestClick) this.deckMap.setOnProtestClick(this.onProtestClick);
     if (this.onCrimeCityClick) this.deckMap.setOnCrimeCityClick(this.onCrimeCityClick);
@@ -442,28 +441,21 @@ export class MapContainer {
     this.deckMap?.setGeneralFocus(keys);
   }
 
-  /** Onglet Transports : points de vigilance numérotés (null : retirés) ; gardés pour une carte créée après. */
+  /** Onglet Transports : points de vigilance (null : hors de l'onglet) ; gardés pour une carte créée après. Aucune étiquette sur la carte. */
   setTransportVigilance(points: readonly TransportVigilancePoint[] | null): void {
     this.transportPoints = points;
     this.deckMap?.setTransportVigilance(points);
   }
   private transportPoints: readonly TransportVigilancePoint[] | null = null;
-  private onTransportHover: ((n: number | null) => boolean) | null = null;
 
-  /** Pastilles Transports mises en avant : étiquettes des autres modes tamisées. */
-  setTransportFocus(keys: readonly string[]): void {
-    this.deckMap?.setTransportFocus(keys);
-  }
-
-  /** Survol d'une étiquette Transports : le panneau En bref met le point en avant (true) ; sinon la carte ouvre son infobulle. */
-  setOnTransportHover(handler: (n: number | null) => boolean): void {
-    this.onTransportHover = handler;
-    this.deckMap?.setOnTransportHover(handler);
-  }
-
-  /** Survol d'un point dans le panneau En bref : étiquette et trajets allumés sur la carte. */
+  /** Survol d'un point dans le panneau En bref : ses trajets allumés sur la carte (null : ceux du point retenu). */
   highlightTransportPoint(n: number | null): void {
     this.deckMap?.highlightTransportPoint(n);
+  }
+
+  /** Point retenu au clic dans le panneau En bref (identifiant ; null : aucun) : ses trajets restent allumés. */
+  selectTransportPoint(id: string | null): void {
+    this.deckMap?.selectTransportPoint(id);
   }
 
   // ─── Events ───

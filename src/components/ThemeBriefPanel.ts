@@ -15,7 +15,9 @@ export class ThemeBriefPanel {
   private onClose?: () => void;
   private onOpenPastille?: (key: keyof MapLayers) => void;
   private onSelectWork?: (key: string) => void;
-  private onFocusPoint?: (lon: number, lat: number) => void;
+  private onSelectPoint?: (sel: { id: string; lon: number; lat: number } | null) => void;
+  /** Point de vigilance Transports retenu au clic (identifiant), remis en avant à chaque rendu. */
+  private selectedPoint: string | null = null;
   private onHoverPoint?: (n: number | null) => void;
   private data: ThemeBriefData | null = null;
   private clickCleanup: (() => void) | null = null;
@@ -34,12 +36,15 @@ export class ThemeBriefPanel {
     const onClick = (e: Event): void => {
       const t = e.target as HTMLElement;
       if (t.closest('[data-copy-note]')) { void this.copyNote(); return; }
-      // Point de vigilance Transports : la carte se centre dessus.
-      const point = t.closest<HTMLElement>('.tb-point[data-lon]');
+      // Point de vigilance Transports : clic = la carte se centre et garde ses trajets ; second clic = trajets éteints.
+      const point = t.closest<HTMLElement>('.tb-point[data-id]');
       if (point) {
+        const id = point.dataset['id'] ?? '';
         const lon = Number(point.dataset['lon']);
         const lat = Number(point.dataset['lat']);
-        if (Number.isFinite(lon) && Number.isFinite(lat)) this.onFocusPoint?.(lon, lat);
+        this.selectedPoint = this.selectedPoint === id ? null : id;
+        this.applySelectedPoint();
+        this.onSelectPoint?.(this.selectedPoint !== null && Number.isFinite(lon) && Number.isFinite(lat) ? { id, lon, lat } : null);
         return;
       }
       const pastille = t.closest<HTMLElement>('.lp-row.is-link')?.dataset['pastille'];
@@ -67,8 +72,8 @@ export class ThemeBriefPanel {
   /** Ligne de la synthèse des pastilles : le panneau de la pastille s'ouvre. */
   setOnOpenPastille(handler: (key: keyof MapLayers) => void): void { this.onOpenPastille = handler; }
   setOnSelectWork(handler: (key: string) => void): void { this.onSelectWork = handler; }
-  /** Point de vigilance (onglet Transports) : centrer la carte. */
-  setOnFocusPoint(handler: (lon: number, lat: number) => void): void { this.onFocusPoint = handler; }
+  /** Point de vigilance (onglet Transports) retenu ou relâché au clic (null : relâché). */
+  setOnSelectPoint(handler: (sel: { id: string; lon: number; lat: number } | null) => void): void { this.onSelectPoint = handler; }
   setOnHoverPoint(handler: (n: number | null) => void): void { this.onHoverPoint = handler; }
 
   /**
@@ -133,5 +138,20 @@ export class ThemeBriefPanel {
     }
     const open = sectionOpenOf(loadSectionState(this.storage), PANEL_ID);
     this.shell.render(buildThemeBriefView({ ...this.data, open }));
+    this.applySelectedPoint();
+  }
+
+  /** Ligne du point retenu marquée (is-selected) ; point disparu de la liste : sélection oubliée. */
+  private applySelectedPoint(): void {
+    const root = this.shell?.root;
+    if (!root) return;
+    let found = false;
+    for (const el of root.querySelectorAll<HTMLElement>('.tb-point[data-id]')) {
+      const on = el.dataset['id'] === this.selectedPoint;
+      el.classList.toggle('is-selected', on);
+      el.setAttribute('aria-pressed', String(on));
+      found ||= on;
+    }
+    if (!found && this.selectedPoint !== null && root.querySelector('.tb-point') !== null) this.selectedPoint = null;
   }
 }

@@ -75,7 +75,7 @@ export function transportLead(d: Pick<TransportBriefData, 'points' | 'levels'>):
 
 function pointRow(p: TransportVigilancePoint): string {
   const tag = `<span class="tb-tag tb-tag--${p.causeTag === 'annoncée' ? 'ok' : 'verif'}">${p.causeTag === 'annoncée' ? 'cause annoncée' : 'à vérifier'}</span>`;
-  return `<div class="tb-point is-link" role="button" tabindex="0" data-lon="${p.lon}" data-lat="${p.lat}" data-point="${p.n}">`
+  return `<div class="tb-point is-link" role="button" tabindex="0" aria-pressed="false" data-id="${escapeHtml(p.id)}" data-lon="${p.lon}" data-lat="${p.lat}" data-point="${p.n}">`
     + `<span class="tb-num tb-num--${p.level}">${p.n}</span><div class="tb-body">`
     + `<b>${escapeHtml(p.title)}</b> <span class="tb-short">${escapeHtml(p.short)}</span>`
     + `<small>${escapeHtml(p.detail)}</small>`
@@ -86,7 +86,7 @@ function pointRow(p: TransportVigilancePoint): string {
 export function pointsSection(points: readonly TransportVigilancePoint[], open: OpenFn): FicheSection {
   const html = points.length === 0
     ? emptyLine('Aucun point de vigilance : pas d’axe ferroviaire très perturbé, ni d’événement météo ou de coupure sur le réseau national, ni d’urgence en vol ou en mer.')
-    : points.map(pointRow).join('') + note('Même numéro sur la carte ; clic : la carte se centre sur le point.');
+    : points.map(pointRow).join('') + note('Clic : la carte se centre sur le point et garde ses trajets allumés ; second clic : trajets éteints. Survol : trajets le temps du survol.');
   return { id: 'tb-points', title: 'Points de vigilance', collapsible: true, open: open('tb-points', true), summary: String(points.length), html };
 }
 

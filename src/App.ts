@@ -5115,10 +5115,13 @@ export class App {
       });
       panel.setOnSelectWork((key) => this.poste?.select(key));
       panel.setOnOpenPastille((key) => this.showFloatingPanel(key));
-      panel.setOnFocusPoint((lon, lat) => this.mapContainer?.focusPoint(lon, lat, 9));
-      // Points de vigilance Transports : survol croisé entre l'En bref et les étiquettes de la carte.
+      // Points de vigilance Transports (03/11/2026 : plus d'étiquettes sur la carte) : clic = carte centrée et trajets retenus,
+      // second clic = trajets éteints ; survol = trajets allumés le temps du survol.
+      panel.setOnSelectPoint((sel) => {
+        if (sel) this.mapContainer?.focusPoint(sel.lon, sel.lat, 9);
+        this.mapContainer?.selectTransportPoint(sel?.id ?? null);
+      });
       panel.setOnHoverPoint((n) => this.mapContainer?.highlightTransportPoint(n));
-      this.mapContainer?.setOnTransportHover((n) => this.themeBriefPanel?.highlightPoint(n) ?? false);
       panel.mount();
       this.themeBriefPanel = panel;
       if (this.activeLayers.brief && this.isFloatingPanelVisible('brief')) panel.show(this.themeBriefData());
@@ -5170,7 +5173,7 @@ export class App {
 
   private transportPoints: TransportVigilancePoint[] = [];
 
-  /** Points recalculés à chaque lecture d'une source Trafics ; numéros pulsants sur la carte dans l'onglet Transports seulement. */
+  /** Points recalculés à chaque lecture d'une source Trafics ; listés dans l'En bref de l'onglet Transports, trajets sur la carte au survol ou au clic. */
   private refreshTransportVigilance(): void {
     this.transportPoints = transportVigilancePoints({
       rail: this.currentRailTraffic?.overview.data ?? null,
@@ -6445,7 +6448,6 @@ export class App {
     // Onglet Environnement : toutes les couches visibles à l'ouverture, comme Santé (20/10/2026, décision utilisateur). Le mode
     // « l'anormal d'abord » (deckgl/env-context.ts, setEnvContext) reste disponible mais n'est plus activé.
     const inScope = this.uiV2 && (this.v2Theme === 'general' || inEnv || this.v2Theme === 'outages');
-    this.mapContainer?.setTransportFocus(inScope && this.v2Theme === 'transport' ? [...this.generalFocusActive, ...(this.generalFocusPreview ? [this.generalFocusPreview] : [])] : []);
     const keys: Array<keyof MapLayers> = [];
     if (inScope) {
       // Les En bref sont des synthèses : ouverts ou survolés, ils ne tamisent rien (20/10/2026).
