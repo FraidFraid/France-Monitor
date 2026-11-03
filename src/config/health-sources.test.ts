@@ -6,9 +6,9 @@ import { HEALTH_NATIONAL_KEYS, HEALTH_SOURCE_NAMES, healthReportSources } from '
 const st = (name: string, period?: string): DataSourceStatus => ({ name, status: 'ok', lastUpdate: null, period });
 
 describe('sources santé du panneau des sources (spec 2026-10-03 S1)', () => {
-  it('dix sources : veille sanitaire et offre de soins', () => {
+  it('neuf sources : veille sanitaire et offre de soins (DGS-Urgent retiré du compte le 03/11/2026, lien seulement)', () => {
     expect(HEALTH_SOURCE_NAMES).toEqual([
-      'Santé publique France', 'Odissé alertes', 'Sentinelles', 'SUM’eau', 'OMS / ECDC', 'DGS-Urgent (PEPS)', 'ANSM Médicaments', 'RappelConso',
+      'Santé publique France', 'Odissé alertes', 'Sentinelles', 'SUM’eau', 'OMS / ECDC', 'ANSM Médicaments', 'RappelConso',
       'DREES APL', 'DREES SAE / FINESS',
     ]);
   });

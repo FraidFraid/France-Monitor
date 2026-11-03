@@ -123,6 +123,18 @@ describe('vue Veille sanitaire, onglet France (spec 2026-10-03 § 3.1)', () => {
     expect(h).toContain('Messages relayés par le portail PEPS du ministère ; un message peut manquer');
     expect(h).toContain('href="https://sante.gouv.fr/ministere/informations-pratiques/site/dgs-urgent"');
   });
+  it('PEPS hors service (03/11/2026) : une ligne et le lien officiel, ni « source indisponible » ni panne comptée', () => {
+    const state = withState((st) => { st.ministry = { ...st.ministry, data: null, error: 'PEPS, messages DGS-Urgent et MARS : réseau : fetch failed' }; });
+    const s = sectionOf('ministry', { state });
+    expect(s?.summary).toBe('lien officiel');
+    expect(s?.html).toContain('Messages DGS-Urgent et MARS aux professionnels de santé');
+    expect(s?.html).toContain('href="https://sante.gouv.fr/ministere/informations-pratiques/site/dgs-urgent"');
+    expect(s?.html).not.toContain('indisponible');
+    const m = sectionOf('method', { state });
+    expect(m?.summary).toBe('8 sources');
+    expect(m?.html).toContain('lien seulement, lecture automatique suspendue (portail PEPS hors service)');
+    expect(m?.html).not.toContain('fetch failed');
+  });
   it('méthode et sources : huit sources datées, règles de retard, hors saison n’est pas un retard', () => {
     const s = sectionOf('method');
     expect(s?.summary).toBe('8 sources');

@@ -514,14 +514,21 @@ function wastewaterSection(state: HealthSurveillanceState, now: number, open: Op
   return { ...base, html, summary: escapeHtml(`${ratio === null ? 'n.d.' : `${ratioText(ratio)} en 2 semaines`} · ${weekShort(last.week)}${late ? ' (en retard)' : ''}`) };
 }
 
+/**
+ * Messages du ministère (03/11/2026) : le portail PEPS qui les relayait ne répond plus et la page officielle est derrière une
+ * vérification anti-robot. Sans liste lisible, la section n'est plus une source « indisponible » : une ligne et le lien vers la page
+ * officielle. Les messages reviennent ici d'eux-mêmes si PEPS répond de nouveau.
+ */
 function ministrySection(state: HealthSurveillanceState, open: OpenFn): FicheSection {
   const base = { id: 'ministry', title: 'Messages du ministère', collapsible: true, open: open('ministry', true) };
   const d = state.ministry.data;
-  const caveat = `<p class="fmk-note">Messages relayés par le portail PEPS du ministère ; un message peut manquer : ${sourceLinkHtml('page officielle DGS-Urgent', d?.officialUrl ?? DGS_OFFICIAL_URL)}.</p>`;
-  if (!d) return { ...base, summary: 'n.d.', html: sourceUnavailable('portail PEPS (messages DGS-Urgent et MARS)') + caveat };
-  const sorted = [...d.messages].sort((a, b) => b.date.localeCompare(a.date));
+  const official = sourceLinkHtml('page officielle DGS-Urgent', d?.officialUrl ?? DGS_OFFICIAL_URL);
+  const sorted = [...(d?.messages ?? [])].sort((a, b) => b.date.localeCompare(a.date));
   const first = sorted[0];
-  if (!first) return { ...base, summary: 'aucun message', html: emptyLine('Aucun message DGS-Urgent ni MARS depuis 12 mois.') + caveat };
+  if (!first) {
+    return { ...base, summary: 'lien officiel', html: `<p class="fmk-note">Messages DGS-Urgent et MARS aux professionnels de santé : ${official}.</p>` };
+  }
+  const caveat = `<p class="fmk-note">Messages relayés par le portail PEPS du ministère ; un message peut manquer : ${official}.</p>`;
   const rows = sorted.slice(0, 4).map((m) => {
     const title = `${m.title}${m.reply ? ' (version mise à jour)' : ''}`;
     return listRow({ text: `${m.kind} ${m.number}`, value: parisDay(m.date), noteHtml: m.url ? sourceLinkHtml(title, m.url) : escapeHtml(title) });
@@ -530,6 +537,10 @@ function ministrySection(state: HealthSurveillanceState, open: OpenFn): FicheSec
   const moreHtml = more > 0 ? note(`${more} autre${more > 1 ? 's' : ''} message${more > 1 ? 's' : ''} depuis 12 mois.`) : '';
   return { ...base, summary: escapeHtml(`${first.kind} ${first.number} du ${parisDay(first.date)}`), html: rows + moreHtml + caveat };
 }
+
+/** Messages du ministère sans liste lisible (PEPS hors service) : lien seulement, ni « indisponible » ni panne comptée. */
+const LINK_ONLY = 'lien seulement, lecture automatique suspendue (portail PEPS hors service)';
+const linkOnly = (state: HealthSurveillanceState, key: HealthSurveillanceKey): boolean => key === 'ministry' && (state.ministry.data?.messages.length ?? 0) === 0;
 
 interface SourceLine { label: string; html: string; key: HealthSurveillanceKey; text: (s: HealthSurveillanceState, now: number) => string }
 
@@ -562,8 +573,8 @@ const SOURCE_LINES: readonly SourceLine[] = [
   { label: 'Veille internationale',
     html: `${sourceLinkHtml('OMS', 'https://www.who.int/emergencies/disease-outbreak-news')}, ${sourceLinkHtml('ECDC', 'https://www.ecdc.europa.eu/en/threats-and-outbreaks/reports-and-data/weekly-threats')}`,
     key: 'international', text: (s) => `dernier message le ${parisDay(surveillanceDataDate(s, 'international'))}` },
-  { label: 'Messages du ministère', html: sourceLinkHtml('portail PEPS', 'https://peps.sante.gouv.fr/actu/actualites.html'), key: 'ministry',
-    text: (s) => `dernier message le ${parisDay(surveillanceDataDate(s, 'ministry'))}` },
+  { label: 'Messages du ministère', html: sourceLinkHtml('page officielle DGS-Urgent', DGS_OFFICIAL_URL), key: 'ministry',
+    text: (s) => ((s.ministry.data?.messages.length ?? 0) > 0 ? `dernier message le ${parisDay(surveillanceDataDate(s, 'ministry'))}` : LINK_ONLY) },
   { label: 'Médicaments', html: sourceLinkHtml('ANSM', 'https://ansm.sante.fr/disponibilites-des-produits-de-sante/medicaments'), key: 'drugs',
     text: (s, now) => `liste mise à jour le ${parisDay(s.drugs.data?.latestUpdate)}${lateTag(s, 'drugs', now)}` },
   { label: 'Rappels de produits', html: sourceLinkHtml('RappelConso', 'https://rappel.conso.gouv.fr'), key: 'recalls',
@@ -574,12 +585,13 @@ const SOURCE_LINES: readonly SourceLine[] = [
 export function methodSection(state: HealthSurveillanceState, now: number, open: OpenFn): FicheSection {
   const rows = SOURCE_LINES.map((line) => {
     const slot = state[line.key];
-    const status = slot.data === null ? (slot.error !== null ? 'source indisponible' : 'chargement…') : line.text(state, now);
-    const failed = slot.data !== null && slot.error !== null ? ' ; source injoignable au dernier essai' : '';
+    const status = linkOnly(state, line.key) ? LINK_ONLY
+      : slot.data === null ? (slot.error !== null ? 'source indisponible' : 'chargement…') : line.text(state, now);
+    const failed = !linkOnly(state, line.key) && slot.data !== null && slot.error !== null ? ' ; source injoignable au dernier essai' : '';
     return kvRow(line.label, `${line.html} · ${escapeHtml(`${status}${failed}`)}`);
   }).join('');
-  const incidents = SOURCE_LINES.flatMap((line) => state[line.key].data?.errors ?? []);
-  const down = SOURCE_LINES.filter((line) => state[line.key].data === null && state[line.key].error !== null).length;
+  const incidents = SOURCE_LINES.filter((line) => !linkOnly(state, line.key)).flatMap((line) => state[line.key].data?.errors ?? []);
+  const down = SOURCE_LINES.filter((line) => !linkOnly(state, line.key) && state[line.key].data === null && state[line.key].error !== null).length;
   const html = rows
     + note('Retard : urgences et SOS Médecins au-delà de 17 jours après la fin de la semaine ; Sentinelles au-delà de 13 jours ; '
       + 'eaux usées au-delà de 28 jours après le début de la semaine ; médicaments au-delà de 7 jours sans mise à jour ; '

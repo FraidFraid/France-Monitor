@@ -7,7 +7,9 @@ import type { HealthSurveillanceKey } from '../services/health-surveillance.ts';
 /** Veille sanitaire : source et nom dans le panneau des sources. */
 export const HEALTH_STATUS_SOURCES: ReadonlyArray<readonly [HealthSurveillanceKey, string]> = [
   ['syndromic', 'Santé publique France'], ['alerts', 'Odissé alertes'], ['sentinelles', 'Sentinelles'], ['wastewater', 'SUM’eau'],
-  ['international', 'OMS / ECDC'], ['ministry', 'DGS-Urgent (PEPS)'], ['drugs', 'ANSM Médicaments'], ['recalls', 'RappelConso'],
+  // DGS-Urgent retiré du compte des sources (03/11/2026) : le portail PEPS ne répond plus et la page officielle est derrière une
+  // vérification anti-robot ; le panneau Veille sanitaire n'en garde qu'un lien vers la page officielle.
+  ['international', 'OMS / ECDC'], ['drugs', 'ANSM Médicaments'], ['recalls', 'RappelConso'],
 ];
 
 /** Offre de soins (fichiers annuels) : source et nom dans le panneau des sources. */
@@ -16,7 +18,7 @@ export const HEALTH_OFFER_SOURCES: ReadonlyArray<readonly ['apl' | 'hospitals', 
 /** Sources des quatre entrées du niveau national de santé (fiche thème Santé de la v2, spec 2026-10-03 § 3.5). */
 export const HEALTH_NATIONAL_KEYS: readonly HealthSurveillanceKey[] = ['syndromic', 'alerts', 'sentinelles', 'wastewater'];
 
-/** Les dix sources santé, dans l'ordre du panneau. */
+/** Les neuf sources santé suivies, dans l'ordre du panneau. */
 export const HEALTH_SOURCE_NAMES: readonly string[] = [...HEALTH_STATUS_SOURCES, ...HEALTH_OFFER_SOURCES].map(([, name]) => name);
 
 /** Lignes santé de la note de situation : statuts du panneau des sources (période comprise), identifiés « health:<source> ». */
