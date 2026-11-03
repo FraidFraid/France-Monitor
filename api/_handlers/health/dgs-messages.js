@@ -2,7 +2,7 @@
 // (spec 2026-10-03 panneaux santé § 2.5). Le site du ministère bloque toute lecture automatique (captcha
 // Cegedim) : aucun contournement. Les messages sont lus sur la page publique du portail PEPS
 // (https://peps.sante.gouv.fr/actu/actualites.html, sans captcha), qui les relaie ; un message peut manquer.
-import { HealthFetchError, cachedSource, cleanText, fetchStrictHtml, handlePreflight, sendHealthJson, sourceError } from '../../_lib/health-http.js';
+import { HealthFetchError, cachedSourceReport, cleanText, fetchStrictHtml, handlePreflight, sendHealthJson, sourceError } from '../../_lib/health-http.js';
 
 export const PEPS_URL = 'https://peps.sante.gouv.fr/actu/actualites.html';
 const PEPS_BASE = 'https://peps.sante.gouv.fr/actu/';
@@ -66,13 +66,15 @@ export function parseMinistryMessages(html, now) {
 export async function loadMinistryMessages(now = Date.now()) {
   const base = { sourceUrl: PEPS_URL, officialUrl: DGS_URGENT_OFFICIAL_URL };
   try {
-    const read = await cachedSource('dgs:peps:messages', { ttlSec: 6 * 3600 }, async () => {
+    // Derniers messages gardés 400 jours (03/11/2026, 7 jours avant) : PEPS ne répond plus depuis plusieurs jours et la liste s'était
+    // vidée ; une liste de messages datés reste vraie. La panne est nommée tant que la relecture échoue (« en retard »).
+    const { value: read, error } = await cachedSourceReport('dgs:peps:messages', { ttlSec: 6 * 3600, staleSec: 400 * 86_400 }, 'PEPS, messages DGS-Urgent et MARS', async () => {
       const parsed = parseMinistryMessages(await fetchStrictHtml(PEPS_URL, { timeoutMs: 20_000 }), now);
       if (parsed.length === 0) throw new HealthFetchError('aucun message DGS-Urgent ni MARS reconnu', { kind: 'parse' });
       return parsed;
     });
     const since = new Date(now - WINDOW_DAYS * 86_400_000).toISOString().slice(0, 10);
-    return { messages: read.filter((m) => m.date >= since), ...base, errors: [] };
+    return { messages: read.filter((m) => m.date >= since), ...base, errors: error ? [error] : [] };
   } catch (err) {
     return { messages: [], ...base, errors: [sourceError('PEPS, messages DGS-Urgent et MARS', err)] };
   }

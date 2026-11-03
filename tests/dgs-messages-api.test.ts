@@ -77,7 +77,8 @@ describe('/api/health/dgs-messages', () => {
     vi.setSystemTime(NOW + 7 * 3600_000);
     stubFetch(() => respond(EMPTY));
     const later = await loadMinistryMessages(NOW + 7 * 3600_000) as Body;
-    expect([later.messages.length, later.errors]).toEqual([18, []]);
+    // 03/11/2026 : la liste gardée est servie, la relecture en échec est nommée (« en retard » dans le panneau).
+    expect([later.messages.length, later.errors]).toEqual([18, ['PEPS, messages DGS-Urgent et MARS : aucun message DGS-Urgent ni MARS reconnu']]);
     vi.useRealTimers();
   });
   it('page lue mais aucun message reconnu (format changé) : erreur, pas de liste vide silencieuse', async () => {
