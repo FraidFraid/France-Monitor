@@ -468,8 +468,30 @@ export function evaluateBriefLevel(
   return {
     refresh: false,
     mark: { ...mark, divergentLevel: level, divergedSince },
-    settleAt: stable ? null : divergedSince + BRIEF_LEVEL_SETTLE_MS,
+    // Stable mais freiné par l'anti-rafale : revérifier quand il le permet (03/11/2026 : sans minuteur, la note restait sur
+    // l'ancienne couleur jusqu'à l'arrivée d'une nouvelle donnée, parfois bien plus tard).
+    settleAt: stable
+      ? (mark.lastLevelRefreshAt === null ? null : mark.lastLevelRefreshAt + BRIEF_LEVEL_REFRESH_MIN_MS)
+      : divergedSince + BRIEF_LEVEL_SETTLE_MS,
   };
+}
+
+/** Attente maximale du premier brief : au-delà, il part même si l'indice n'a pas lu toutes ses sources. */
+export const FIRST_BRIEF_MAX_WAIT_MS = 45 * 1000;
+
+/**
+ * Premier brief de la session (03/11/2026) : demandé seulement quand l'indice a lu toutes ses sources, ou au bout de
+ * FIRST_BRIEF_MAX_WAIT_MS. Demandé trop tôt, il était écrit sur un score encore haut (sources pas toutes lues, donc « vert »)
+ * et la fiche affichait « note au niveau vert » sous un score jaune.
+ */
+export function firstBriefDue(
+  coverage: { read: number; total: number },
+  waitingSince: number,
+  now: number,
+): { due: boolean; checkAt: number | null } {
+  if (coverage.total > 0 && coverage.read >= coverage.total) return { due: true, checkAt: null };
+  const deadline = waitingSince + FIRST_BRIEF_MAX_WAIT_MS;
+  return now >= deadline ? { due: true, checkAt: null } : { due: false, checkAt: deadline };
 }
 
 export function compactSituations(situations: DetectedSituation[]): CompactSituation[] {

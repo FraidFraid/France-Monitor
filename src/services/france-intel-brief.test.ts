@@ -9,6 +9,8 @@ import {
   compactSituations,
   evaluateBriefLevel,
   fetchFranceIntelBrief,
+  FIRST_BRIEF_MAX_WAIT_MS,
+  firstBriefDue,
   parseStructuredBrief,
   type BriefLevelMark,
 } from './france-intel-brief.ts';
@@ -244,6 +246,13 @@ describe('evaluateBriefLevel (bug brief 81 / indice 43 — relecture finale F1)'
     assert.equal(evaluateBriefLevel(stableMark(T - BRIEF_LEVEL_REFRESH_MIN_MS), 54, T).refresh, true);
   });
 
+  it('stable mais freiné par l’anti-rafale : revérification armée à la fin des 10 min (03/11/2026, avant : aucun minuteur)', () => {
+    const mark: BriefLevelMark = { level: 'vert', lastLevelRefreshAt: T - 60_000, divergentLevel: 'jaune', divergedSince: T - 100_000 };
+    const r = evaluateBriefLevel(mark, 74, T);
+    assert.equal(r.refresh, false);
+    assert.equal(r.settleAt, T - 60_000 + BRIEF_LEVEL_REFRESH_MIN_MS);
+  });
+
   it('cascade 81 → 64 → 50 → 43 en 12 s puis stable : aucun rafraîchissement pendant la cascade, un seul une fois 45 s de stabilité atteintes', () => {
     // Brief initial déjà demandé au score 81 (vert)... en réalité 81 est jaune (70–84).
     let mark: BriefLevelMark = { level: 'jaune', lastLevelRefreshAt: null, divergentLevel: null, divergedSince: null };
@@ -339,5 +348,18 @@ describe('fetchFranceIntelBrief — heure de rédaction (spec 2026-09-29 § 8)',
     assert.equal(fetchMock.mock.calls.length, 1);
     assert.equal(again.freshness, 'cached');
     assert.equal(again.generatedAt, Date.parse(iso));
+  });
+});
+
+describe('firstBriefDue : premier brief sur l’indice complet (03/11/2026, note « au niveau vert » sous un score jaune)', () => {
+  const T = 5_000_000;
+  it('indice incomplet : on attend, revérification à l’échéance', () => {
+    assert.deepEqual(firstBriefDue({ read: 9, total: 14 }, T, T + 10_000), { due: false, checkAt: T + FIRST_BRIEF_MAX_WAIT_MS });
+  });
+  it('indice complet : tout de suite', () => {
+    assert.deepEqual(firstBriefDue({ read: 14, total: 14 }, T, T + 1_000), { due: true, checkAt: null });
+  });
+  it('échéance passée : il part même incomplet (une source en panne ne bloque pas la note)', () => {
+    assert.equal(firstBriefDue({ read: 12, total: 14 }, T, T + FIRST_BRIEF_MAX_WAIT_MS).due, true);
   });
 });

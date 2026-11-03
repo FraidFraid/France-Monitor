@@ -143,7 +143,7 @@ describe('onglet État de la France (spec 2026-09-29 § 7)', () => {
     expect(note?.html).toContain('6 h');
     expect(note?.html).not.toContain('Rédigée à');
     expect(note?.html).not.toContain('Brief : IA');
-    expect(note?.summary).toMatch(/^IA · rédigée \d{2}:\d{2} · au niveau orange$/);
+    expect(note?.summary).toMatch(/^IA · rédigée \d{2}:\d{2} · écrite au niveau orange, avant le passage au rouge$/);
   });
 
   it('note : en cache, synthèse automatique, même niveau, en préparation', () => {

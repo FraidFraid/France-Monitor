@@ -321,8 +321,13 @@ function noteSummary(input: FranceFicheInput): string {
   const parts = [origin];
   const meta = input.briefMeta;
   if (meta) parts.push(t(lang, `rédigée ${formatClock(meta.at, lang)}`, `written ${formatClock(meta.at, lang)}`));
-  if (meta && input.ready && meta.level !== scoreLevel(input.snapshot.score)) {
-    parts.push(t(lang, `au niveau ${levelLabel(meta.level, lang).toLowerCase()}`, `at ${levelLabel(meta.level, lang).toLowerCase()} level`));
+  const nowLevel = scoreLevel(input.snapshot.score);
+  if (meta && input.ready && meta.level !== nowLevel) {
+    // 03/11/2026 : « au niveau vert » sous un score jaune se lisait comme une contradiction ; la phrase dit qu'il y a eu un passage.
+    const was = levelLabel(meta.level, lang).toLowerCase();
+    const is = levelLabel(nowLevel, lang).toLowerCase();
+    const toFr = is === 'orange' ? 'à l’orange' : `au ${is}`;
+    parts.push(t(lang, `écrite au niveau ${was}, avant le passage ${toFr}`, `written at ${was} level, before the move to ${is}`));
   }
   const text = escapeHtml(parts.join(' · '));
   return freshnessOf(meta?.at ?? null, 'brief', input.now) === 'fresh' ? text : `<span class="fmk-stale">${text}</span>`;

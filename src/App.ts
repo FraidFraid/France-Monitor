@@ -32,7 +32,7 @@ import type { CyberPanel } from './components/CyberPanel.ts';
 import type { FranceIntelPanel } from './components/FranceIntelPanel.ts';
 import type { PosteSituation } from './components/poste/PosteSituation.ts';
 import type { VisitBaselineSession } from './services/intel-last-visit.ts';
-import { briefSituationIds, evaluateBriefLevel, fetchFranceIntelBrief, type BriefLevelMark } from './services/france-intel-brief.ts';
+import { briefSituationIds, evaluateBriefLevel, fetchFranceIntelBrief, firstBriefDue, type BriefLevelMark } from './services/france-intel-brief.ts';
 import { LEVEL_RANK, levelHex, scoreLevel, type VigilanceLevel } from './services/vigilance.ts';
 import { eventMapPoints } from './services/v2-map.ts';
 import { inTheme, themeLabel, type ThemeId } from './services/themes.ts';
@@ -1395,6 +1395,8 @@ export class App {
   private franceIntelBriefRefreshTimer: ReturnType<typeof setInterval> | null = null;
   /** Couleur nationale du dernier brief demandé : un changement de couleur redemande le brief. */
   private franceIntelBriefMark: BriefLevelMark | null = null;
+  /** v2 : premier brief pas encore demandé (attente de l'indice complet), depuis cet instant ; null une fois demandé. */
+  private firstBriefWaitingSince: number | null = null;
   /** Revérifie à l'échéance de stabilisation (BRIEF_LEVEL_SETTLE_MS) avec un instantané frais ; un seul à la fois. */
   private franceIntelBriefSettleTimer: ReturnType<typeof setTimeout> | null = null;
   // ── Disposition A1, interface par défaut (refonte UI, étape 3) ──────────────
@@ -9304,6 +9306,10 @@ export class App {
     if (canRecord && this.recorderPage) void this.exposeRecorderReport();
     if (!this.isIntelSurfaceVisible()) return;
     this.franceIntelPanel?.show(snapshot);
+    if (this.firstBriefWaitingSince !== null) {
+      this.maybeRequestFirstBrief();
+      return;
+    }
     const now = Date.now();
     const evaluation = evaluateBriefLevel(this.franceIntelBriefMark, snapshot.score, now);
     this.franceIntelBriefMark = evaluation.mark;
@@ -9312,6 +9318,20 @@ export class App {
     } else {
       this.armFranceIntelBriefSettleTimer(evaluation.settleAt);
     }
+  }
+
+  /** Premier brief en attente de l'indice complet : demandé dès que toutes ses sources sont lues, ou à l'échéance. */
+  private maybeRequestFirstBrief(): void {
+    if (this.firstBriefWaitingSince === null) return;
+    const lang = this.intelLang();
+    const env = this.environmentInputs();
+    const { due, checkAt } = firstBriefDue(this.scoreCoverage(env), this.firstBriefWaitingSince, Date.now());
+    if (!due) {
+      this.armFranceIntelBriefSettleTimer(checkAt);
+      return;
+    }
+    this.firstBriefWaitingSince = null;
+    this.requestFranceIntelBrief(this.buildFranceSnapshot(lang, undefined, env), lang, { showLoading: false });
   }
 
   private clearFranceIntelBriefSettleTimer(): void {
@@ -9483,6 +9503,8 @@ export class App {
     // L'enregistreur ne lit que la note : une page ouverte tous les quarts d'heure ne doit pas consommer le quota Groq.
     if (this.recorderPage) return;
     const requestId = ++this.franceIntelBriefRequestId;
+    // Toute demande (langue changée, ouverture…) tient lieu de premier brief.
+    this.firstBriefWaitingSince = null;
     // Un brief est demandé : plus rien à stabiliser (chaque demande de brief y compris via ce
     // minuteur repart de zéro), et la nouvelle couleur devient la référence pour la suite.
     this.clearFranceIntelBriefSettleTimer();
@@ -9692,8 +9714,10 @@ export class App {
     void this.refreshNetworkBarometerWidget().catch((err) => {
       console.error('[App] Network barometer refresh on v2 start failed', err);
     });
-    const lang = this.intelLang();
-    this.requestFranceIntelBrief(this.buildFranceSnapshot(lang), lang);
+    // Premier brief : quand l'indice a lu toutes ses sources (au plus 45 s), pas sur un score encore incomplet (03/11/2026).
+    this.firstBriefWaitingSince = Date.now();
+    this.poste?.setBriefPending();
+    this.maybeRequestFirstBrief();
     this.scheduleFranceIntelBriefRefresh();
     this.v2EventsTimer = setInterval(() => {
       if (document.hidden) return; // skip tick while tab is hidden
