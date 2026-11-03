@@ -45,8 +45,26 @@ export function blockLevel(data: FinancialStabilityResponse | null): VigilanceLe
   for (const s of data.series) {
     if ((s.id === 'cissFr' || s.id === 'cissEa') && Number.isFinite(s.value) && s.value !== null && s.status !== 'unavailable') levels.push(bandOf(s.value, CISS_BANDS).level);
   }
-  if (data.spread.value !== null && Number.isFinite(data.spread.value) && data.spread.status !== 'unavailable') levels.push(bandOf(data.spread.value, SPREAD_BANDS).level);
+  if (data.spread.value !== null && Number.isFinite(data.spread.value) && data.spread.status !== 'unavailable') levels.push(spreadLevel(data));
   return levels.length > 0 ? maxLevel(levels) : null;
+}
+
+/**
+ * Niveau retenu pour l'écart OAT-Bund (03/11/2026, règle de corroboration) : c'est un prix de marché relevé sur TradingView, source
+ * non officielle. Quand le repère officiel de la BCE (moyenne mensuelle des taux à 10 ans) est connu et le contredit (pas dans la
+ * zone rouge), le rouge de marché est retenu à orange. Sans repère officiel, le niveau de marché reste tel quel (calibration du
+ * score inchangée). Le CISS de la BCE, officiel, n'est jamais plafonné.
+ */
+export function spreadLevel(data: Pick<FinancialStabilityResponse, 'spread' | 'officialSpread'>): VigilanceLevel {
+  const market = bandOf(data.spread.value as number, SPREAD_BANDS).level;
+  if (market !== 'rouge' || !data.officialSpread) return market;
+  return bandOf(data.officialSpread.value, SPREAD_BANDS).level === 'rouge' ? 'rouge' : 'orange';
+}
+
+/** Vrai quand l'écart de marché est dans la zone rouge mais retenu à orange faute de corroboration officielle. */
+export function spreadCapped(data: Pick<FinancialStabilityResponse, 'spread' | 'officialSpread'> | null): boolean {
+  if (!data || data.spread.value === null || data.spread.status === 'unavailable') return false;
+  return bandOf(data.spread.value, SPREAD_BANDS).level === 'rouge' && spreadLevel(data) === 'orange';
 }
 
 const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
@@ -73,16 +91,21 @@ export function levelDriverText(data: FinancialStabilityResponse | null): { shor
   const level = blockLevel(data);
   const sp = data.spread;
   if (level === null || sp.value === null || sp.status === 'unavailable') return null;
-  const spreadBand = bandOf(sp.value, SPREAD_BANDS);
+  const marketBand = bandOf(sp.value, SPREAD_BANDS);
+  const retained = spreadLevel(data);
   const ciss = data.series.filter((x) => (x.id === 'cissFr' || x.id === 'cissEa') && x.value !== null && x.status !== 'unavailable');
   const cissLevels = ciss.map((x) => bandOf(x.value as number, CISS_BANDS).level);
   const cissTop = cissLevels.length > 0 ? maxLevel(cissLevels) : null;
-  if (spreadBand.level !== level || (cissTop !== null && LEVEL_RANK[cissTop] >= LEVEL_RANK[level])) return null;
+  if (retained !== level || (cissTop !== null && LEVEL_RANK[cissTop] >= LEVEL_RANK[level])) return null;
   const cissWord = cissTop === null ? null : bandOf(Math.max(...ciss.map((x) => x.value as number)), CISS_BANDS).word;
   // Trois décimales, comme les lignes CISS du tableau (0,085 et non 0,09).
   const cissValues = ciss.map((x) => `${x.id === 'cissFr' ? 'France' : 'zone euro'} ${frNumber(x.value as number, 3)}`).join(' ; ');
+  const market = `${frNumber(sp.value, 2)}\u00a0pt, ${marketBand.word}`;
+  const first = spreadCapped(data)
+    ? `Niveau tiré par l’écart OAT-Bund : ${market} sur le marché (TradingView, source non officielle), retenu à orange car le repère officiel de la BCE ne le confirme pas.`
+    : `Niveau tiré par l’écart OAT-Bund (${market}) : un prix de marché relevé sur TradingView, pas une publication officielle.`;
   const parts = [
-    `Niveau tiré par l’écart OAT-Bund (${frNumber(sp.value, 2)}\u00a0pt, ${spreadBand.word}) : un prix de marché relevé sur TradingView, pas une publication officielle.`,
+    first,
     cissWord ? `Le stress mesuré par la BCE reste ${cissWord} (CISS ${cissValues}).` : null,
     'Les deux ne mesurent pas la même chose : le CISS suit les tensions du système financier, l’écart la prime de risque demandée à l’État français.',
     officialSpreadText(data.officialSpread),

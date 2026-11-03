@@ -54,4 +54,10 @@ describe('carte des gilets jaunes (17octobregiletjaune.net, 20/10/2026)', () => 
       gdelt: { readAt: null, files: 0, missingFiles: 0 }, presse: { readAt: null, scanned: 0, matched: 0, unplaced: 0 }, errors: [] };
     expect(isProtestsResponse(body)).toBe(true);
   });
+
+  it('sit-in et concert de casseroles nommés (03/11/2026, tombaient en « Action »)', () => {
+    const more = { actions: { '500000001': [['sitting', '12:00', '2026-10-22', 0], ['casserolade', '19:00', '2026-10-22', 0]] } };
+    const titles = giletsJaunesItems(more, places, NOW).items.map((x) => x.title);
+    expect(titles).toEqual(['Sit-in (gilets jaunes)', 'Concert de casseroles (gilets jaunes)']);
+  });
 });

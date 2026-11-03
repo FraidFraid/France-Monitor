@@ -30,6 +30,9 @@ export const GJ_ACTION_LABEL = Object.freeze({
   manifestation: 'Manifestation',
   piquet_de_greve: 'Piquet de grève',
   rond_point: 'Rassemblement sur un rond-point',
+  // 03/11/2026 : types présents dans la source (287 sit-in, 9 casserolades) qui tombaient en « Action ».
+  sitting: 'Sit-in',
+  casserolade: 'Concert de casseroles',
   autre: 'Action',
 });
 

@@ -2,7 +2,7 @@
 // bornes exactes (borne basse = palier du dessus), texte des seuils, niveau du bloc.
 import { describe, expect, it } from 'vitest';
 import type { EcbSeries, FinancialStabilityResponse, OatBundSpread } from '../types/index.ts';
-import { CISS_BANDS, SPREAD_BANDS, bandOf, blockLevel, frMonth, levelDriverText, officialSpreadText, thresholdsText } from './financial-stability-levels.ts';
+import { CISS_BANDS, SPREAD_BANDS, bandOf, blockLevel, frMonth, levelDriverText, officialSpreadText, spreadCapped, thresholdsText } from './financial-stability-levels.ts';
 
 const ciss = (id: 'cissFr' | 'cissEa', value: number | null, status: EcbSeries['status'] = 'ok'): EcbSeries =>
   ({ id, value, date: value === null ? null : '2026-10-09', history: [], status, error: null });
@@ -47,13 +47,21 @@ describe('niveau du bloc', () => {
 });
 
 describe('ce qui fait le niveau (03/11/2026 : « ROUGE » à côté d’un CISS « calme »)', () => {
-  it('rouge tiré par l’écart de marché, CISS calme : explication complète, repère officiel BCE', () => {
+  it('rouge de marché contredit par le repère officiel BCE : retenu à orange, dit et expliqué (règle de corroboration)', () => {
     const d = { ...data(0.08, 0.01, 1.6), officialSpread: { month: '2026-09', fr10y: 4.44, de10y: 3.473, value: 0.97 } };
+    expect(blockLevel(d)).toBe('orange');
+    expect(spreadCapped(d)).toBe(true);
     const r = levelDriverText(d);
     expect(r?.short).toBe('écart OAT-Bund');
-    expect(r?.text).toContain('Niveau tiré par l’écart OAT-Bund (1,60\u00a0pt, critique) : un prix de marché relevé sur TradingView, pas une publication officielle.');
+    expect(r?.text).toContain('Niveau tiré par l’écart OAT-Bund : 1,60\u00a0pt, critique sur le marché (TradingView, source non officielle), retenu à orange car le repère officiel de la BCE ne le confirme pas.');
     expect(r?.text).toContain('Le stress mesuré par la BCE reste calme (CISS France 0,080 ; zone euro 0,010).');
     expect(r?.text).toContain('Repère officiel BCE (moyenne de septembre 2026) : 0,97\u00a0pt, élevé.');
+  });
+  it('repère officiel lui aussi rouge : le rouge est confirmé ; sans repère : niveau de marché inchangé (calibration du score)', () => {
+    expect(blockLevel({ ...data(0.08, 0.01, 1.6), officialSpread: { month: '2026-09', fr10y: 5, de10y: 3.4, value: 1.6 } })).toBe('rouge');
+    expect(blockLevel(data(0.08, 0.01, 1.6))).toBe('rouge');
+    expect(spreadCapped(data(0.08, 0.01, 1.6))).toBe(false);
+    expect(levelDriverText(data(0.08, 0.01, 1.6))?.text).toContain('Niveau tiré par l’écart OAT-Bund (1,60\u00a0pt, critique) : un prix de marché');
   });
   it('CISS au même niveau ou plus haut que l’écart : rien à expliquer', () => {
     expect(levelDriverText(data(0.6, 0.1, 1.6))).toBeNull();
