@@ -82,6 +82,23 @@ const appVersionPlugin = (): Plugin => {
   };
 };
 
+/**
+ * Pages statiques du pied de page (/about, /methodology, /legal, /contact, /docs) : en production Caddy réécrit {path} en
+ * {path}.html (deploy/oracle/Caddyfile, @staticPages) ; le serveur de dev renvoyait l'application, d'où des liens « morts » en local
+ * (03/11/2026). Même réécriture ici.
+ */
+const STATIC_PAGES = new Set(['/about', '/methodology', '/legal', '/contact', '/docs']);
+const staticPagesPlugin = (): Plugin => ({
+  name: 'static-pages',
+  configureServer(server) {
+    server.middlewares.use((req, _res, next) => {
+      const [path, query] = (req.url ?? '').split('?');
+      if (STATIC_PAGES.has(path)) req.url = `${path}.html${query ? `?${query}` : ''}`;
+      next();
+    });
+  },
+});
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -108,6 +125,7 @@ export default defineConfig(({ mode }) => {
       __BUILD_ID__: JSON.stringify(Date.now().toString(36)),
     },
     plugins: [
+      staticPagesPlugin(),
       rssProxyPlugin(),
       rssJsonProxyPlugin(),
       biogasProxyPlugin(),
