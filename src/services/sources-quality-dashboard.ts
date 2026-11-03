@@ -597,8 +597,8 @@ function buildSummary(
     : 'N/D';
 
   return {
-    sourcesTracked: metric('sourcesTracked', 'Sources suivies', String(sources.length), 'Sources réellement présentes dans le projet.', 'neutral'),
-    sourcesActive: metric('sourcesActive', 'Sources actives', String(active), 'Sources avec statut live actif dans cette session.', active > 0 ? 'good' : 'neutral'),
+    sourcesTracked: metric('sourcesTracked', 'Sources documentées', String(sources.length), 'Origine, méthode et fiabilité décrites sur cette page.', 'neutral'),
+    sourcesActive: metric('sourcesActive', 'Sources actives', String(active), 'Sources à jour au dernier relevé de la carte.', active > 0 ? 'good' : 'neutral'),
     sourcesDegraded: metric(
       'sourcesDegraded',
       'Sources en erreur ou dégradées',

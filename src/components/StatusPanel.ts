@@ -8,6 +8,7 @@ import type { DataSourceStatus } from '../types/index.ts';
 import { sovereigntySourceDetail } from '../config/sovereignty-sources.ts';
 import { outagesSourceDetail } from '../config/outages-sources.ts';
 import { t } from '../services/i18n.ts';
+import { saveSourcesSnapshot } from '../services/sources-snapshot.ts';
 import { fmIcon, fmStatusDot } from './shared/icons.ts';
 import type { IconName } from './shared/icons.ts';
 
@@ -280,6 +281,7 @@ export class StatusPanel {
         this.sources = sources;
         this.updateTriggerSummary();
         this.renderList();
+        this.scheduleSnapshot();
     }
 
     refreshTranslations(): void {
@@ -308,6 +310,22 @@ export class StatusPanel {
         }
         this.updateTriggerSummary();
         this.renderList();
+        this.scheduleSnapshot();
+    }
+
+    /**
+     * Relevé de l'état des sources gardé dans le navigateur (03/11/2026) pour la page Sources & qualité, qui ne charge aucune
+     * donnée : écrit au plus toutes les 5 s, les mises à jour d'une rafale de chargement regroupées.
+     */
+    private snapshotTimer: ReturnType<typeof setTimeout> | null = null;
+    private scheduleSnapshot(): void {
+        if (this.snapshotTimer !== null) return;
+        this.snapshotTimer = setTimeout(() => {
+            this.snapshotTimer = null;
+            let storage: Storage | null = null;
+            try { storage = typeof localStorage === 'undefined' ? null : localStorage; } catch { storage = null; }
+            saveSourcesSnapshot(storage, this.sources, Date.now());
+        }, 5_000);
     }
 
     private setOpen(open: boolean): void {
