@@ -128,7 +128,7 @@ function floodItems(floods: FloodsResponse | null | undefined, now: number): Upc
   return items;
 }
 
-const PROTEST_SOURCE_LABEL: Readonly<Record<string, string>> = { demosphere: 'Démosphère', giletsjaunes: 'carte des gilets jaunes', prefecture: 'préfectures' };
+const PROTEST_SOURCE_LABEL: Readonly<Record<string, string>> = { demosphere: 'Démosphère', giletsjaunes: 'carte des gilets jaunes', cgt: 'cartes de la CGT', prefecture: 'préfectures' };
 
 function protestItems(protests: readonly ProtestItem[] | null, now: number, today: string): UpcomingItem[] {
   if (!protests) return [];

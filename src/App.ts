@@ -120,7 +120,7 @@ import type { AirQualityPanel } from './components/AirQualityPanel.ts';
 import type { EarthquakesPanel } from './components/EarthquakesPanel.ts';
 import type { DisastersPanel } from './components/DisastersPanel.ts';
 import type { ProtestsPanel } from './components/ProtestsPanel.ts';
-import { PROTESTS_POLL_MS, fetchProtests, mergeProtests, readGiletsJaunesPref, withGiletsJaunes, type ProtestsState } from './services/protests.ts';
+import { PROTESTS_POLL_MS, fetchProtests, mergeProtests, readSourceChoice, withSources, type ProtestsState } from './services/protests.ts';
 import type { ProtestsResponse } from './types/index.ts';
 import { PROTESTS_LEGEND, protestsLegend } from './components/layer-panel/manifestations-legend.ts';
 import type { CriminalitePanel } from './components/CriminalitePanel.ts';
@@ -4687,7 +4687,7 @@ export class App {
       panel.setOnClose(() => this.closeProtestsLayer());
       panel.setOnFluxEvent((id) => this.openFluxFromProtest(id));
       // Case « carte des gilets jaunes » du panneau : la carte suit le choix (26/10/2026).
-      panel.setOnGiletsJaunes(() => this.mapContainer?.updateProtestsLayer(this.protestsForMap()));
+      panel.setOnSourcesChange(() => this.mapContainer?.updateProtestsLayer(this.protestsForMap()));
       if (this.mapContainer?.canFocusMap()) panel.setOnFocusPlace((lat, lon) => this.mapContainer?.flyTo(lon, lat, 9));
       panel.mount();
       this.protestsPanel = panel;
@@ -4745,15 +4745,15 @@ export class App {
     }, PROTESTS_POLL_MS);
   }
 
-  /** Points de la couche Manifestations : sans les annonces de la carte des gilets jaunes tant que la case du panneau est décochée. */
+  /** Points de la couche Manifestations : sans les annonces des cartes des gilets jaunes ni de la CGT tant que leur case est décochée. */
   private protestsForMap(): ProtestsResponse | null {
-    let show = false;
+    let choice = { giletsjaunes: false, cgt: false };
     try {
-      show = readGiletsJaunesPref(typeof localStorage === 'undefined' ? null : localStorage);
+      choice = readSourceChoice(typeof localStorage === 'undefined' ? null : localStorage);
     } catch {
       // stockage refusé : masquées
     }
-    return withGiletsJaunes(this.currentProtests?.data ?? null, show);
+    return withSources(this.currentProtests?.data ?? null, choice);
   }
 
   /** Lecture unique à la fois (un second appelant rejoint la lecture en cours) : panneau, carte et légende mis à jour. */

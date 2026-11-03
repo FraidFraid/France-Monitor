@@ -12,7 +12,7 @@ export const PROTESTS_POLL_MS = 10 * 60_000;
 
 export type ProtestsState = SourceSlot<ProtestsResponse>;
 
-const SOURCES: ReadonlySet<string> = new Set(['demosphere', 'presse', 'gdelt', 'prefecture', 'giletsjaunes']);
+const SOURCES: ReadonlySet<string> = new Set(['demosphere', 'presse', 'gdelt', 'prefecture', 'giletsjaunes', 'cgt']);
 const STATUSES: ReadonlySet<string> = new Set(['annonce', 'signale']);
 
 const PRECISIONS: ReadonlySet<string> = new Set(['commune', 'departement']);
@@ -57,25 +57,51 @@ export type { ProtestArticle, ProtestItem };
  * la couche et les échéances comptent toujours toutes les annonces.
  */
 export const GILETS_JAUNES_PREF_KEY = 'fm.protests.giletsjaunes';
+/** Cartes de mobilisation de la CGT (carte.cgt.fr, 03/11/2026) : même règle, case à part (deux sources distinctes). */
+export const CGT_PREF_KEY = 'fm.protests.cgt';
 
-export function readGiletsJaunesPref(storage: Pick<Storage, 'getItem'> | null): boolean {
+/** Sources affichées à la demande et leur clé de préférence ; décochées par défaut. */
+export const OPTIONAL_PROTEST_SOURCES = { giletsjaunes: GILETS_JAUNES_PREF_KEY, cgt: CGT_PREF_KEY } as const;
+export type OptionalProtestSource = keyof typeof OPTIONAL_PROTEST_SOURCES;
+export type ProtestSourceChoice = Readonly<Record<OptionalProtestSource, boolean>>;
+
+export function readSourcePref(storage: Pick<Storage, 'getItem'> | null, source: OptionalProtestSource): boolean {
   try {
-    return storage?.getItem(GILETS_JAUNES_PREF_KEY) === '1';
+    return storage?.getItem(OPTIONAL_PROTEST_SOURCES[source]) === '1';
   } catch {
     return false;
   }
 }
 
-export function writeGiletsJaunesPref(storage: Pick<Storage, 'setItem'> | null, show: boolean): void {
+export function writeSourcePref(storage: Pick<Storage, 'setItem'> | null, source: OptionalProtestSource, show: boolean): void {
   try {
-    storage?.setItem(GILETS_JAUNES_PREF_KEY, show ? '1' : '0');
+    storage?.setItem(OPTIONAL_PROTEST_SOURCES[source], show ? '1' : '0');
   } catch {
     // stockage refusé : le choix vaut pour la session
   }
 }
 
-/** Réponse sans les annonces de la carte des gilets jaunes quand elles sont masquées. */
+/** Choix des deux cases, lus dans le navigateur. */
+export function readSourceChoice(storage: Pick<Storage, 'getItem'> | null): ProtestSourceChoice {
+  return { giletsjaunes: readSourcePref(storage, 'giletsjaunes'), cgt: readSourcePref(storage, 'cgt') };
+}
+
+export function readGiletsJaunesPref(storage: Pick<Storage, 'getItem'> | null): boolean {
+  return readSourcePref(storage, 'giletsjaunes');
+}
+
+export function writeGiletsJaunesPref(storage: Pick<Storage, 'setItem'> | null, show: boolean): void {
+  writeSourcePref(storage, 'giletsjaunes', show);
+}
+
+/** Réponse sans les annonces des sources décochées. */
+export function withSources(r: ProtestsResponse | null, choice: ProtestSourceChoice): ProtestsResponse | null {
+  if (r === null || (choice.giletsjaunes && choice.cgt)) return r;
+  const hidden = (src: string): boolean => (src === 'giletsjaunes' && !choice.giletsjaunes) || (src === 'cgt' && !choice.cgt);
+  return { ...r, items: r.items.filter((x) => !hidden(x.source)) };
+}
+
+/** Réponse sans les annonces de la carte des gilets jaunes quand elles sont masquées (CGT laissée telle quelle). */
 export function withGiletsJaunes(r: ProtestsResponse | null, show: boolean): ProtestsResponse | null {
-  if (r === null || show) return r;
-  return { ...r, items: r.items.filter((x) => x.source !== 'giletsjaunes') };
+  return withSources(r, { giletsjaunes: show, cgt: true });
 }

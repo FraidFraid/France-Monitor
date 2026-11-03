@@ -222,10 +222,12 @@
 
   // Manifestations : annoncée (agenda), rapportée sans heurts, heurts ; taille = articles de presse sur 24 h. Les actions de la carte des
   // gilets jaunes ne sont dessinées que si la case du panneau Manifestations est cochée (fm.protests.giletsjaunes, 26/10/2026).
-  const showGiletsJaunes = () => { try { return localStorage.getItem('fm.protests.giletsjaunes') === '1'; } catch (e) { return false; } };
+  // Idem pour les cartes de la CGT (fm.protests.cgt, 03/11/2026), case à part.
+  const showSource = (key) => { try { return localStorage.getItem(key) === '1'; } catch (e) { return false; } };
   const drawProtests = () => {
-    const gj = showGiletsJaunes();
-    S.prot = (S.data.protests?.items ?? []).filter((x) => x.lat != null && x.lon != null && (gj || x.source !== 'giletsjaunes'));
+    const gj = showSource('fm.protests.giletsjaunes');
+    const cgt = showSource('fm.protests.cgt');
+    S.prot = (S.data.protests?.items ?? []).filter((x) => x.lat != null && x.lon != null && (gj || x.source !== 'giletsjaunes') && (cgt || x.source !== 'cgt'));
     // Fusion avec Flux piétons : l'annonce dont flux_osint a tiré une prévision porte un anneau blanc et sa foule estimée.
     const fluxEvents = S.data.flux?.evenements ?? [];
     const fluxOf = (x) => fluxEvents.find((e) => e.evenement === x.id || e.evenement.startsWith(`${x.id}:`)) ?? null;
@@ -754,6 +756,7 @@
   const protCard = (x) => {
     const kind = x.status === 'annonce' ? 'annonce' : x.violent ? 'heurts' : 'signale';
     const gj = x.source === 'giletsjaunes';
+    const cgt = x.source === 'cgt';
     const arts = [...(x.articles ?? [])].sort((a, b) => String(b.seenAt).localeCompare(String(a.seenAt)));
     const rows = [[x.status === 'annonce' ? 'Prévue' : 'Dernier article', x.status === 'annonce' ? (x.allDay ? `le ${day(x.startsAt)}, toute la journée` : when(x.startsAt)) : when(arts[0]?.seenAt ?? x.startsAt)],
       x.participants ? ['Plus haut chiffre cité', `${num(x.participants)} personnes (titre de presse)`] : null,
@@ -763,13 +766,14 @@
       x.arrete?.hours ? ['Heures de l’arrêté', x.arrete.hours.join(' à ')] : null,
       x.arrete?.excerpt ? ['Motif (arrêté)', x.arrete.excerpt] : null,
       ['Lieu', x.precision === 'departement' ? `${x.city ?? x.dept} : département seulement, point au chef-lieu` : `${x.city ?? 'n.d.'}${x.dept ? ` (${x.dept})` : ''}`],
-      gj && x.place ? ['Point de rendez-vous', x.place] : null].filter(Boolean);
+      (gj || cgt) && x.place ? ['Point de rendez-vous', x.place] : null].filter(Boolean);
     return { dot: gj ? '#f2e600' : kind === 'heurts' ? L1.rouge : PROT[kind] ?? PROT.signale, title: x.city ?? x.edition ?? 'Manifestation',
-      state: gj ? 'Annoncée sur la carte des gilets jaunes, pas constatée' : PROT_WORD[kind], stateHex: kind === 'heurts' ? L1.rouge : '#c7c7cc', rows, url: x.url,
+      state: gj ? 'Annoncée sur la carte des gilets jaunes, pas constatée' : cgt ? 'Annoncée par la CGT, pas constatée' : PROT_WORD[kind], stateHex: kind === 'heurts' ? L1.rouge : '#c7c7cc', rows, url: x.url,
       hint: `${x.status === 'annonce' ? 'Un rendez-vous annoncé n’est pas une manifestation constatée' : 'Classement d’après les titres de presse, à confirmer'} · clic : ouvrir ${x.status === 'annonce' ? 'l’annonce' : 'l’article'}`,
       source: x.source === 'demosphere' ? `Démosphère, édition ${x.edition ?? 'n.d.'}` : x.source === 'gdelt' ? 'GDELT (presse internationale)'
         : x.source === 'prefecture' ? `${x.edition ?? 'Préfecture'}, recueil des actes administratifs`
-        : x.source === 'giletsjaunes' ? 'carte participative des gilets jaunes (17octobregiletjaune.net)' : `presse française ingérée, relevé ${when(S.data.protests?.readAt)}` };
+        : x.source === 'giletsjaunes' ? 'carte participative des gilets jaunes (17octobregiletjaune.net)'
+        : x.source === 'cgt' ? `cartes de mobilisation de la CGT (carte.cgt.fr)${x.edition ? `, ${x.edition}` : ''}` : `presse française ingérée, relevé ${when(S.data.protests?.readAt)}` };
   };
   // Flux piétons : ce que le modèle dit du rassemblement, et l'annonce de la couche Manifestations dont il vient.
   const MOMENT = { encours: ['En cours', '#ffffff'], avenir: ['À venir', '#e8e8ec'], passe: ['Passé', '#8a8f98'] };
@@ -790,7 +794,7 @@
       ev.cortege ? ['Cortège', `oui${r?.goulots ? `, ${num(r.goulots)} goulot${r.goulots > 1 ? 's' : ''}` : ''}`] : null,
       t ? ['Rythme supposé', `arrivées sur ${t.arriveeMin}${NB}min, sur place ${t.dureeMin}${NB}min, dispersion sur ${t.departMin}${NB}min`] : null,
       ev.meteo ? ['Météo prévue', ev.meteo.replace(/_/g, ' ')] : null,
-      src ? ['Annonce', `${src.title ?? 'rendez-vous'}${src.source === 'presse' ? ' (presse)' : src.source === 'prefecture' ? ' (préfecture)' : src.source === 'giletsjaunes' ? ' (gilets jaunes)' : src.source === 'demosphere' ? ' (Démosphère)' : ''}`] : null].filter(Boolean);
+      src ? ['Annonce', `${src.title ?? 'rendez-vous'}${src.source === 'presse' ? ' (presse)' : src.source === 'prefecture' ? ' (préfecture)' : src.source === 'giletsjaunes' ? ' (gilets jaunes)' : src.source === 'cgt' ? ' (CGT)' : src.source === 'demosphere' ? ' (Démosphère)' : ''}`] : null].filter(Boolean);
     return { dot: hex, title: ev.ville, state: `${word} · estimation modélisée`, stateHex: hex, rows, url: null,
       hint: selected ? 'Rassemblement affiché : rues, phases et rejeu dans le panneau' : 'Clic : afficher ses rues et le rejeu',
       source: `flux_osint, calcul du ${when(ev.calculeLe)} · ${a.base}` };

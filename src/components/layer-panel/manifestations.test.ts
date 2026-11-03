@@ -213,3 +213,26 @@ describe('case « carte des gilets jaunes » (26/10/2026)', () => {
     expect(view(body([ann()])).sections.map((s) => s.id)).not.toContain('gilets-jaunes');
   });
 });
+
+describe('case « cartes de la CGT », indépendante de celle des gilets jaunes (03/11/2026)', () => {
+  const gj = ann({ id: 'gj1', source: 'giletsjaunes', city: 'Lyon', title: 'Blocage annoncé', url: null, edition: null });
+  const cgt = ann({ id: 'cgt1', source: 'cgt', city: 'Melun', title: 'Mobilisation (CGT)', place: 'Parking Conforama', edition: 'Carte du 5 novembre 2026' });
+  const data = body([ann(), gj, cgt]);
+  const viewWith = (g: boolean, c: boolean) => buildManifestationsView({ data, error: null, canFocus: true, now: NOW, open: (_id, byDefault) => byDefault, showGiletsJaunes: g, showCgt: c });
+  const html = (v: ReturnType<typeof viewWith>) => visibleText(renderLayerView('protests', v));
+  it('deux cases, chacune avec son nombre', () => {
+    const v = viewWith(false, false);
+    expect(v.sections.slice(0, 2).map((s) => [s.id, s.summary])).toEqual([['gilets-jaunes', '1 annonce'], ['cgt', '1 rendez-vous']]);
+    expect(v.sections[1].html).toContain('data-cgt-toggle>');
+    expect(viewWith(false, true).sections[1].html).toContain('data-cgt-toggle checked>');
+  });
+  it('CGT cochée seule : Melun affiché, Lyon masqué ; et l’inverse', () => {
+    expect(html(viewWith(false, true))).toContain('Melun');
+    expect(html(viewWith(false, true))).not.toContain('Lyon');
+    expect(html(viewWith(true, false))).toContain('Lyon');
+    expect(html(viewWith(true, false))).not.toContain('Melun');
+  });
+  it('ligne CGT : carte et lieu annoncé', () => {
+    expect(html(viewWith(false, true))).toContain('Carte du 5 novembre 2026, Parking Conforama');
+  });
+});

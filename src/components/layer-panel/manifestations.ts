@@ -23,11 +23,14 @@ export interface ManifestationsViewInput {
   forecasts?: ReadonlyMap<string, FluxEvent>;
   /** Annonces de la carte des gilets jaunes affichées (case du panneau, 26/10/2026) ; absent : affichées. */
   showGiletsJaunes?: boolean;
+  /** Annonces des cartes de la CGT affichées (case du panneau, 03/11/2026) ; absent : affichées. */
+  showCgt?: boolean;
 }
 
 const PARIS = 'Europe/Paris';
 const DEMOSPHERE_URL = 'https://demosphere.net/';
 const GILETS_JAUNES_URL = 'https://www.17octobregiletjaune.net/carte/';
+const CGT_URL = 'https://carte.cgt.fr/';
 const GDELT_URL = 'https://www.gdeltproject.org/';
 const NO_PLACE = 'France, sans lieu précis';
 
@@ -139,10 +142,11 @@ function announcedRow(x: ProtestItem, canFocus: boolean): string {
   const clock = x.allDay ? null : parisClock(x.startsAt);
   const when = clock ?? 'journée';
   const key = protestPlaceKey(x);
-  const link = x.url ? ` · ${sourceLinkHtml(x.source === 'presse' ? 'Article' : x.source === 'prefecture' ? 'Recueil officiel' : x.source === 'giletsjaunes' ? 'Carte des gilets jaunes' : 'Fiche Démosphère', x.url)}` : '';
+  const link = x.url ? ` · ${sourceLinkHtml(x.source === 'presse' ? 'Article' : x.source === 'prefecture' ? 'Recueil officiel' : x.source === 'giletsjaunes' ? 'Carte des gilets jaunes' : x.source === 'cgt' ? 'Fiche CGT' : 'Fiche Démosphère', x.url)}` : '';
   const from = x.source === 'presse' ? ` · presse${x.articles[0]?.outlet ? ` (${escapeHtml(x.articles[0].outlet)})` : ''}`
     : x.source === 'prefecture' ? ` · ${escapeHtml(x.edition ?? 'préfecture')}${x.arrete?.hours ? `, ${escapeHtml(x.arrete.hours.join(' à '))}` : ''}`
       : x.source === 'giletsjaunes' ? ` · carte des gilets jaunes${x.place ? `, ${escapeHtml(x.place)}` : ''}`
+      : x.source === 'cgt' ? ` · ${escapeHtml(x.edition ?? 'carte de la CGT')}${x.place ? `, ${escapeHtml(x.place)}` : ''}`
       : x.edition ? ` · édition ${escapeHtml(x.edition)}` : '';
   return listRow({
     text: x.title, value: when, color: x.source === 'giletsjaunes' ? '#f2e600' : '#ec4899',
@@ -236,13 +240,15 @@ function methodSection(d: ProtestsResponse, now: number, open: OpenFn): FicheSec
     + failed
     + kvRow('Gilets jaunes', `${sourceLinkHtml('17octobregiletjaune.net', GILETS_JAUNES_URL)} · ${plural(d.items.filter((x) => x.source === 'giletsjaunes').length, 'action')}`)
     + note(`Annonces : carte participative des gilets jaunes, relue toutes les 30${NBSP}min ; chaque action est posée par un visiteur sur un lieu précis (place, rond-point, gare, péage, station-service). Assemblées et messages libres non repris. Annonce non confirmée.`)
+    + kvRow('CGT', `${sourceLinkHtml('carte.cgt.fr', CGT_URL)} · ${plural(d.items.filter((x) => x.source === 'cgt').length, 'rendez-vous', 'rendez-vous')}`)
+    + note(`Annonces : cartes de mobilisation publiées par la CGT, relues toutes les 30${NBSP}min ; seules les cartes datées (journées d’action) donnent des rendez-vous, point à la commune, lieu tel qu’annoncé. Annonce du syndicat, non confirmée.`)
     + kvRow('Presse française', escapeHtml(presseState))
     + note(`Presse : titres des journaux nationaux et régionaux déjà suivis par France${NBSP}Monitor, lus toutes les 5${NBSP}min. Lieu = ville ou département nommé dans le titre ; une dépêche reprise par plusieurs journaux compte une fois ; « heurts » dès que le titre parle de tensions, d’affrontements ou d’interpellations. ${d.presse.matched}${NBSP}titres retenus, dont ${d.presse.unplaced}${NBSP}sans lieu (articles nationaux).`)
     + kvRow('GDELT', `${sourceLinkHtml('GDELT', GDELT_URL)} · ${escapeHtml(gdeltState)}`)
     + note(`Presse : GDELT (presse mondiale), mise à jour toutes les 15${NBSP}min ; le lieu n’est que rarement plus précis que la ville, souvent absent.`)
     + note('Cette couche n’a aucun effet sur l’indice de stabilité, les situations ni la synthèse.')
     + readErrors(d.errors);
-  return { id: 'methode', title: 'Méthode et sources', collapsible: true, open: open('methode', false), tone: 'reference', summary: 'Démosphère · gilets jaunes · presse · GDELT', html };
+  return { id: 'methode', title: 'Méthode et sources', collapsible: true, open: open('methode', false), tone: 'reference', summary: 'Démosphère · gilets jaunes · CGT · presse · GDELT', html };
 }
 
 /** Case « Afficher les annonces de la carte des gilets jaunes » (26/10/2026) : filtre d'affichage de la carte et des listes. */
@@ -254,12 +260,24 @@ function giletsJaunesToggle(count: number, show: boolean): FicheSection {
   };
 }
 
+/** Case « Afficher les annonces des cartes de la CGT » (03/11/2026) : même filtre, indépendant de celui des gilets jaunes. */
+function cgtToggle(count: number, show: boolean): FicheSection {
+  return {
+    id: 'cgt', title: 'Cartes de la CGT', collapsible: false, summary: plural(count, 'rendez-vous', 'rendez-vous'),
+    html: `<label class="fmk-note"><input type="checkbox" data-cgt-toggle${show ? ' checked' : ''}> `
+      + `Afficher sur la carte et dans les listes les rendez-vous des cartes de mobilisation de la CGT</label>`,
+  };
+}
+
 export function buildManifestationsView(input: ManifestationsViewInput): LayerView {
   const { error, canFocus, now, open } = input;
   const show = input.showGiletsJaunes ?? true;
+  const showCgt = input.showCgt ?? true;
   const full = input.data;
-  const data = full === null || show ? full : { ...full, items: full.items.filter((x) => x.source !== 'giletsjaunes') };
+  const hidden = (src: string): boolean => (src === 'giletsjaunes' && !show) || (src === 'cgt' && !showCgt);
+  const data = full === null || (show && showCgt) ? full : { ...full, items: full.items.filter((x) => !hidden(x.source)) };
   const gjCount = full?.items.filter((x) => x.source === 'giletsjaunes').length ?? 0;
+  const cgtCount = full?.items.filter((x) => x.source === 'cgt').length ?? 0;
   FORECASTS = input.forecasts ?? new Map();
   if (data === null && error === null) {
     return { head: { theme: MANIFESTATIONS_THEME, title: MANIFESTATIONS_TITLE, status: ['chargement…'] }, sections: [], bodyHtml: loadingBody() };
@@ -287,6 +305,7 @@ export function buildManifestationsView(input: ManifestationsViewInput): LayerVi
     },
     sections: [
       ...(gjCount > 0 ? [giletsJaunesToggle(gjCount, show)] : []),
+      ...(cgtCount > 0 ? [cgtToggle(cgtCount, showCgt)] : []),
       pressSection(b, canFocus, open), worldSection(b, canFocus, open), todaySection(b, canFocus, open), upcomingSection(b, canFocus, open),
       unplacedSection(b, open), methodSection(full ?? data, now, open),
     ],

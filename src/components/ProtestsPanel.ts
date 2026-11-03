@@ -1,7 +1,7 @@
 // src/components/ProtestsPanel.ts : panneau de couche « Manifestations » (spec 2026-10-17 manifestations). Coquille DOM : contenu de
 // buildManifestationsView (pur), cadre de createLayerPanelShell ; une ligne placée cliquée (ou Entrée) recentre la carte ; un point de
 // la carte cliqué met en avant les lignes de sa commune (focusPlace).
-import { readGiletsJaunesPref, writeGiletsJaunesPref, type ProtestsState } from '../services/protests.ts';
+import { readSourceChoice, writeSourcePref, type OptionalProtestSource, type ProtestSourceChoice, type ProtestsState } from '../services/protests.ts';
 import type { FluxEvent } from '../types/index.ts';
 import { loadSectionState } from '../services/fiche-sections-store.ts';
 import { createLayerPanelShell, isLayerPanelOpen, safeStorage, sectionOpenOf, type LayerPanelShell } from './layer-panel/frame.ts';
@@ -19,9 +19,9 @@ export class ProtestsPanel {
   private pendingFocus: string | null = null;
   private readonly storage = safeStorage();
   private readonly container: HTMLElement;
-  /** Annonces de la carte des gilets jaunes affichées (case du panneau) ; décoché par défaut. */
-  private showGiletsJaunes = readGiletsJaunesPref(safeStorage());
-  private onGiletsJaunes?: (show: boolean) => void;
+  /** Annonces des cartes des gilets jaunes et de la CGT affichées (une case chacune) ; décochées par défaut. */
+  private sources: ProtestSourceChoice = readSourceChoice(safeStorage());
+  private onSourcesChange?: (choice: ProtestSourceChoice) => void;
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -42,20 +42,21 @@ export class ProtestsPanel {
       if (key && Number.isFinite(lat) && Number.isFinite(lon)) this.onFocusPlace?.(lat, lon);
     });
     shell.root.addEventListener('change', (e) => {
-      const box = (e.target as HTMLElement).closest<HTMLInputElement>('input[data-gj-toggle]');
+      const box = (e.target as HTMLElement).closest<HTMLInputElement>('input[data-gj-toggle], input[data-cgt-toggle]');
       if (!box) return;
-      this.showGiletsJaunes = box.checked;
-      writeGiletsJaunesPref(safeStorage(), box.checked);
-      this.onGiletsJaunes?.(box.checked);
-      // Carte Sécurité autonome (public/maquette-securite.js) : elle relit le choix et redessine ses manifestations.
-      window.dispatchEvent(new CustomEvent('fm:giletsjaunes', { detail: { show: box.checked } }));
+      const source: OptionalProtestSource = box.hasAttribute('data-cgt-toggle') ? 'cgt' : 'giletsjaunes';
+      this.sources = { ...this.sources, [source]: box.checked };
+      writeSourcePref(safeStorage(), source, box.checked);
+      this.onSourcesChange?.(this.sources);
+      // Carte Sécurité autonome (public/maquette-securite.js) : elle relit les choix et redessine ses manifestations.
+      window.dispatchEvent(new CustomEvent('fm:giletsjaunes', { detail: { source, show: box.checked } }));
       this.render();
     });
     this.shell = shell;
   }
 
-  /** Case « carte des gilets jaunes » changée (posé par App.ts : la carte suit). */
-  setOnGiletsJaunes(handler: (show: boolean) => void): void { this.onGiletsJaunes = handler; }
+  /** Case « carte des gilets jaunes » ou « cartes de la CGT » changée (posé par App.ts : la carte suit). */
+  setOnSourcesChange(handler: (choice: ProtestSourceChoice) => void): void { this.onSourcesChange = handler; }
 
   setOnClose(handler: () => void): void { this.onClose = handler; }
   /** Lignes cliquables seulement avec ce gestionnaire (carte WebGL, posé par App.ts). */
@@ -106,7 +107,7 @@ export class ProtestsPanel {
     const open = sectionOpenOf(loadSectionState(this.storage), PANEL_ID);
     this.shell.render(buildManifestationsView({
       data: s?.data ?? null, error: s?.error ?? null, canFocus: this.onFocusPlace !== undefined, now: Date.now(), open, forecasts: this.forecasts,
-      showGiletsJaunes: this.showGiletsJaunes,
+      showGiletsJaunes: this.sources.giletsjaunes, showCgt: this.sources.cgt,
     }));
     if (this.pendingFocus !== null) this.applyFocus();
   }
