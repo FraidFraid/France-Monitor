@@ -7,13 +7,34 @@ import { DEPARTEMENT_CENTERS } from '../../config/departement-centers.ts';
 import { loadDepartementsGeojson } from '../../services/departements-geojson.ts';
 import { fetchOutagesJournal, fetchOutagesNow, OUTAGES_NOW_POLL_MS } from '../../services/outages-now.ts';
 import type { VigilanceLevel } from '../../services/vigilance.ts';
-import { OutagesNowBanner } from '../OutagesNowBanner.ts';
+import { OutagesNowBanner, outageSince, outageTitle } from '../OutagesNowBanner.ts';
 import { roomDeptFeatures, roomServiceFeatures } from '../deckgl/outages-room-map.ts';
 import { OutagesRoom } from './OutagesRoom.ts';
 import { activeAt, TIMELINE_WINDOW_MS, timelineBars } from './timeline.ts';
 
 /** Relève dans l'onglet Pannes. */
 export const ROOM_POLL_MS = 60_000;
+
+/**
+ * Réseaux montrés par le bandeau « Panne en cours » selon l'onglet (03/11/2026) : il couvrait le bas de la carte dans tous les
+ * onglets, y compris Santé ou Environnement. Vue générale : toutes ; onglet sans réseau concerné : aucun bandeau (l'onglet Pannes a
+ * sa salle de contrôle, le voyant de son onglet reste visible partout).
+ */
+const BANNER_NETWORKS: Readonly<Record<string, readonly OutageNetwork[] | 'all'>> = {
+  general: 'all',
+  energy: ['electricite', 'gaz'],
+  security: ['mobile', 'internet', 'cloud', 'urgence', 'paiement', 'tv'],
+  health: ['eau', 'urgence'],
+};
+
+export function bannerOutages(data: OutagesNowResponse | null, theme: string): OutagesNowResponse | null {
+  if (!data) return null;
+  const nets = BANNER_NETWORKS[theme];
+  if (nets === undefined) return null;
+  if (nets === 'all') return data;
+  const outages = data.outages.filter((o) => nets.includes(o.network));
+  return outages.length === 0 ? null : { ...data, outages };
+}
 const RANK: Readonly<Record<VigilanceLevel, number>> = { vert: 0, jaune: 1, orange: 2, rouge: 3 };
 
 export interface RoomMap {
@@ -44,6 +65,7 @@ export class OutagesNowController<T = unknown> {
   private slot: SourceSlot<OutagesNowResponse> | undefined;
   private timer: T | null = null;
   private filter: OutageNetwork | null = null;
+  private theme = 'general';
   private depts: GeoJSON.FeatureCollection | null = null;
   private journal24: OutageJournalEntry[] = [];
   /** Rejeu : instant choisi sur la frise ; null : direct. */
@@ -71,6 +93,20 @@ export class OutagesNowController<T = unknown> {
   level(): VigilanceLevel | null {
     if (!this.data) return null;
     return this.data.outages.reduce<VigilanceLevel>((m, o) => (RANK[o.level] > RANK[m] ? o.level : m), 'vert');
+  }
+
+  /** Pannes orange ou rouges en cours : elles font le niveau de l'onglet Pannes, l'En bref les nomme. */
+  hotOutages(): Array<{ text: string; where: string | null; level: VigilanceLevel }> {
+    return (this.data?.outages ?? [])
+      .filter((o) => o.level === 'orange' || o.level === 'rouge')
+      .map((o) => ({ text: `Panne en cours : ${outageTitle(o)}`, where: outageSince(o.since, Date.now()), level: o.level }));
+  }
+
+  /** Onglet affiché : réseaux montrés par le bandeau. */
+  setTheme(theme: string): void {
+    if (theme === this.theme) return;
+    this.theme = theme;
+    this.render();
   }
 
   /** Entrée ou sortie de l'onglet Pannes. */
@@ -132,7 +168,7 @@ export class OutagesNowController<T = unknown> {
   }
 
   private render(): void {
-    this.banner.update(this.room ? null : this.data);
+    this.banner.update(this.room ? null : bannerOutages(this.data, this.theme));
     this.room?.update(this.data);
     if (this.room) this.paintMap();
   }

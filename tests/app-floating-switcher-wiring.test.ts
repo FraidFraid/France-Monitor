@@ -77,7 +77,7 @@ describe('barre « Panneaux ouverts » de la carte', () => {
     const chip = [...outside.matchAll(/#app\.ui-v2 \.floating-panel-switcher__chip \{([^}]*)\}/g)].map((m) => m[1]).join('\n');
     expect(chip).toContain('border: 1px solid rgba(var(--v2-brand-rgb), 0.5);');
     expect(chip).toContain('box-shadow: 0 0 0 1px rgba(var(--v2-brand-rgb), 0.14)');
-    expect(chip).toContain('height: 36px;');
+    expect(chip).toContain('height: 30px;');
     const active = /#app\.ui-v2 \.floating-panel-switcher__chip\.is-active,\s*#app\.ui-v2 \.floating-panel-switcher__chip\.is-active:hover \{([^}]*)\}/.exec(outside)?.[1] ?? '';
     expect(active).toContain('background: var(--v2-brand);');
     expect(active).toContain('color: #04220f;');

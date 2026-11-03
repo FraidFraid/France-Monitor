@@ -1332,7 +1332,7 @@
   .mqs-src { align-items: flex-start; } .mqs-src i { margin-top: 4px; } .mqs-src span { color: #9898a8; flex: 0 0 auto; white-space: nowrap; } .mqs-src b { font-weight: 500; margin-left: auto; text-align: right; flex: 1; }
   [class^="mqs-src-"] { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; margin-right: 4px; }
   .mqs-src-ok { background: #6e7585; } .mqs-src-part { background: transparent; border: 1.5px solid #9aa1ae; } .mqs-src-ko { background: repeating-linear-gradient(45deg, #9aa1ae 0 2px, transparent 2px 4px); border: 1px solid #9aa1ae; }
-  .mqs-cyber { position: absolute; right: 12px; top: 110px; z-index: 29; width: 270px; background: rgba(18,20,26,.96); border: 1px solid #2a2e37; border-radius: 10px; padding: 8px 12px; color: #d9dde5; font-size: 11.5px; }
+  .mqs-cyber { position: absolute; right: 12px; top: 110px; z-index: 29; width: 290px; max-height: calc(100% - 180px); overflow-y: auto; background: rgba(18,20,26,.96); border: 1px solid #2a2e37; border-radius: 10px; padding: 8px 12px; color: #d9dde5; font-size: 11.5px; }
   .mqs-cy-h { display: flex; align-items: center; gap: 6px; } .mqs-cy-h span { color: #aab0bc; }
   .mqs-cy-l a { display: block; color: #d9dde5; text-decoration: none; margin: 4px 0 0 24px; line-height: 1.3; } .mqs-cy-l a:hover { text-decoration: underline; }
   .mqs-cy-s { color: #6e6e80; font-size: 10.5px; margin-top: 4px; }
@@ -1381,6 +1381,20 @@
     const style = document.createElement('style'); style.textContent = css; document.head.appendChild(style);
     const host = S.m.getContainer();
     host.append(pop, panel, legend, cyber);
+    // Encadré sous la barre des puces, à droite (03/11/2026, même place que l'autre encadré de carte) ; suit la hauteur de la barre.
+    const placeCard = () => {
+      const bar = document.querySelector('.floating-panel-switcher');
+      if (!bar || !cyber.parentElement) return;
+      const top = Math.round(bar.getBoundingClientRect().bottom - cyber.parentElement.getBoundingClientRect().top + 8);
+      if (top > 0) { cyber.style.top = `${top}px`; cyber.style.maxHeight = `calc(100% - ${top + 72}px)`; }
+    };
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(placeCard);
+      ro.observe(host);
+      const bar = document.querySelector('.floating-panel-switcher');
+      if (bar) ro.observe(bar);
+    }
+    placeCard();
     wireChips();
     // Sites de défense : liste interne complète, fermés compris (affichés en gris), avec source et date de vérification.
     const ALL_MILITARY_INSTALLATIONS = lib.ALL_MILITARY_INSTALLATIONS ?? (await import('/src/config/military-bases-db.ts')).ALL_MILITARY_INSTALLATIONS;

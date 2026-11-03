@@ -466,8 +466,12 @@ button.header-quality-link {
      le bandeau « Convergences » et la liste des situations (08/10/2026). */
   .floating-panel-switcher {
     top: auto;
-    bottom: 44px;
+    /* 03/11/2026 : 44 → 64 px, la rangée (élargie par les voyants de niveau) recouvrait le bouton Légende ; trop de puces : défilement. */
+    bottom: 64px;
     max-width: calc(100% - 24px);
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding: 4px 2px;
   }
 
   .floating-panel-switcher__label {
@@ -1796,11 +1800,12 @@ button.header-quality-link {
 /* Bandeau « Pannes en cours » (téléphone et internet, 21/10/2026) : bas de carte, tous onglets, liseré pulsant à la couleur du niveau */
 .outages-now-banner {
   position: absolute;
-  bottom: 56px;
+  bottom: 64px;
   left: 50%;
   transform: translateX(-50%);
   width: max-content;
-  max-width: min(640px, calc(100% - 32px));
+  /* 03/11/2026 : dégage les boutons de zoom (à droite) et « Voir les modules » (à gauche) ; il touchait la légende. */
+  max-width: min(640px, calc(100% - 140px));
   z-index: calc(var(--z-map-overlay) + 1); /* au-dessus des étiquettes d'événements de la carte (22/10/2026) */
   background: rgba(10, 12, 20, 0.92);
   backdrop-filter: blur(8px);
@@ -1837,8 +1842,9 @@ button.header-quality-link {
 .outages-now-banner ul { margin: 4px 0 0; padding-left: 16px; font-size: 12px; color: var(--text-secondary, var(--text-muted)); }
 .outages-now-banner ul a { color: inherit; }
 .outages-now-banner .onb-foot { margin: 8px 0 0; font-size: 11px; color: var(--text-muted); }
-@media (max-width: 640px) {
-  .outages-now-banner { bottom: 72px; max-width: calc(100% - 32px); }
+/* Mobile : au-dessus de la rangée de puces (64 px + 36 px, 03/11/2026 ; elle la recouvrait), toute la largeur. */
+@media (max-width: 768px) {
+  .outages-now-banner { bottom: 104px; max-width: calc(100% - 32px); }
 }
 
 /* Control room des pannes (onglet Pannes, 21/10/2026) : barre des réseaux sous les pastilles, encart national à gauche, fil ou détail
@@ -7396,6 +7402,9 @@ button.header-quality-link {
 /* Badge neutre : la couleur est réservée à la gravité (spec §2). */
 .wl-badge { padding: 0 4px; border: 1px solid var(--text-secondary); border-radius: 3px; font-size: 10px; font-weight: 700; color: var(--text-primary); white-space: nowrap; }
 .wl-note, .wl-empty { margin: 0; padding: 8px 12px; list-style: none; font-size: 12px; color: var(--text-secondary); }
+/* Onglet sans rien à traiter (03/11/2026) : ce qui est orange ou rouge ailleurs, un clic ouvre son onglet. */
+.wl-elsewhere { margin-top: 10px; border-top: 1px solid var(--border-color); }
+.wl-elsewhere-title { margin: 0; padding: 12px 12px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); }
 .wl-more {
   align-self: flex-start; margin: 6px 12px; padding: 4px 8px; border: 1px solid var(--border-color); border-radius: 6px;
   background: transparent; color: var(--text-accent); font: inherit; font-size: 12px; cursor: pointer;
@@ -7750,7 +7759,7 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 #app.ui-v2 { --v2-brand: #4bfc94; --v2-brand-rgb: 75, 252, 148; --v2-drawer-w: 300px; }
 #app.ui-v2 .floating-panel-switcher {
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 /* Mesure de la largeur naturelle d'une rangée (App.layoutFloatingPanelSwitcher). */
 #app.ui-v2 .floating-panel-switcher.is-measuring { max-width: none !important; flex-wrap: nowrap !important; }
@@ -7759,15 +7768,16 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 #app.ui-v2 .floating-panel-switcher__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* Place trop juste : icône seule, le nom reste en infobulle. */
 #app.ui-v2 .floating-panel-switcher.is-icon-only .floating-panel-switcher__chip {
-  width: 36px; padding: 0; justify-content: center;
+  width: 30px; padding: 0; justify-content: center;
 }
 #app.ui-v2 .floating-panel-switcher.is-icon-only .floating-panel-switcher__label { display: none; }
+/* 03/11/2026 : puces resserrées (36 → 30 px) pour que les onglets à 10-12 pastilles tiennent sur deux rangées au lieu de trois. */
 #app.ui-v2 .floating-panel-switcher__chip {
-  height: 36px;
-  padding: 0 14px 0 12px;
-  gap: 8px;
-  border-radius: 18px;
-  font-size: 12.5px;
+  height: 30px;
+  padding: 0 11px 0 9px;
+  gap: 6px;
+  border-radius: 15px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.01em;
   color: var(--text-primary);
@@ -7778,7 +7788,7 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
     box-shadow 180ms cubic-bezier(0.25, 1, 0.5, 1);
 }
 #app.ui-v2 .floating-panel-switcher__icon { color: var(--v2-brand); }
-#app.ui-v2 .floating-panel-switcher__icon svg { width: 16px; height: 16px; }
+#app.ui-v2 .floating-panel-switcher__icon svg { width: 14px; height: 14px; }
 #app.ui-v2 .floating-panel-switcher__chip:hover {
   background: rgba(var(--v2-brand-rgb), 0.16);
   border-color: var(--v2-brand);
@@ -7860,10 +7870,11 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 @media (min-width: 769px) {
   #app.ui-v2 .floating-panel-switcher.is-below-controls { display: block; top: 12px; }
   #app.ui-v2 .floating-panel-switcher.is-below-controls::before {
-    content: ''; float: right; width: 172px; height: 44px;
+    /* Une rangée de puces (30 px + 8 px d'écart, 03/11/2026) : à 44 px il bloquait aussi la deuxième rangée. */
+    content: ''; float: right; width: 172px; height: 37px;
   }
   #app.ui-v2 .floating-panel-switcher.is-below-controls .floating-panel-switcher__chip {
-    vertical-align: top; margin: 0 8px 8px 0;
+    vertical-align: top; margin: 0 6px 8px 0;
   }
 }
 

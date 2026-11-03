@@ -159,7 +159,7 @@ describe('câblage', () => {
     expect(read('../src/utils/urlState.ts')).toContain("'pedestrianFlows'");
     // Fusion avec Manifestations : pas de case ni de puce, la couche suit Manifestations.
     expect(read('../src/components/LayerPanel.ts')).not.toContain("key: 'pedestrianFlows'");
-    expect(app).toMatch(/if \(key === 'protests'\) \{[^]*?this\.onLayerToggle\('pedestrianFlows', enabled\)/);
+    expect(app).toMatch(/if \(key === 'protests'\) \{[^]*?this\.onLayerToggle\('pedestrianFlows', enabled, \{ suppressPanel: true \}\)/);
     expect(app).toContain("def.id !== 'pedestrianFlows' && this.floatingPanelIsEligible(def.id)");
     expect(ALL_PRESETABLE_LAYER_KEYS).toContain('pedestrianFlows');
     const themes = Object.entries(THEME_LAYERS).filter(([, keys]) => keys.includes('pedestrianFlows')).map(([t]) => t);

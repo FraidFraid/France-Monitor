@@ -12,7 +12,7 @@ import type { FicheSection } from '../fiche/parts.ts';
 import { emptyLine, listRow, loadingBody, type LayerView } from './frame.ts';
 import { NBSP, frNumber } from './format.ts';
 import { readForecast } from '../../services/flood-forecast.ts';
-import { pastillesSynthesisSection, type ThemeBriefPastille } from './theme-brief.ts';
+import { attentionFigure, pastillesSynthesisSection, type ThemeBriefPastille } from './theme-brief.ts';
 import { populationText, type HazardPopulation } from '../../services/exposure-population.ts';
 import { ENVIRONMENT_THEME, formatAge, note } from './environment-format.ts';
 import { departementName } from './health-format.ts';
@@ -350,12 +350,12 @@ export function buildEnvBriefView(input: EnvBriefInput): LayerView {
   return {
     head: {
       theme: ENVIRONMENT_THEME, kind: 'Synthèse', title: ENV_BRIEF_TITLE, level,
-      // Pas de gros « 0 » (lu comme un score) : sans enjeu exposé, la section « Enjeux exposés » le dit.
-      figure: exposedCount === null || exposedCount === 0 ? null : {
+      // Enjeux exposés s'il y en a ; sinon le chiffre commun des En bref (03/11/2026) : signaux orange ou rouges, ou « RAS ».
+      figure: exposedCount !== null && exposedCount > 0 ? {
         value: frNumber(exposedCount, 0),
         caption: exposedCount > 1 ? 'enjeux à portée d’un phénomène orange ou rouge' : 'enjeu à portée d’un phénomène orange ou rouge',
-        level: exposedCount > 0 ? (ex?.nearby[0]?.hazard.level ?? null) : null,
-      },
+        level: ex?.nearby[0]?.hazard.level ?? null,
+      } : attentionFigure(envAttention(input).filter((h) => h.level === 'orange' || h.level === 'rouge')),
       status: [],
       lead: lead(input),
     },

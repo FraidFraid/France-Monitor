@@ -63,9 +63,9 @@ describe('En bref des onglets', () => {
   it('attention : élément rouge d’abord, puis pastille orange ; jaune absent', () => {
     expect(themeAttention(input()).map((r) => [r.text, r.level])).toEqual([['Arrêt de 3 réacteurs', 'rouge'], ['Parc nucléaire orange', 'orange']]);
   });
-  it('en-tête : chiffre = éléments orange ou rouges, phrase des plus graves', () => {
+  it('en-tête : chiffre = lignes de « Ce qui demande attention » (03/11/2026), phrase des plus graves', () => {
     const v = buildThemeBriefView(input());
-    expect(v.head.figure).toMatchObject({ value: '1', level: 'rouge' });
+    expect(v.head.figure).toMatchObject({ value: '2', caption: 'signaux orange ou rouges', level: 'rouge' });
     expect(v.head.lead).toBe('Arrêt de 3 réacteurs (Vallée du Rhône).');
     expect(v.sections.map((s) => s.id)).toEqual(['attention', 'pastilles', 'items', 'changes']);
   });
@@ -108,12 +108,20 @@ describe('zéros lisibles (20/10/2026)', () => {
     expect(t).toContain('Aucun code d’urgence en vol.');
     expect(t).not.toContain('aéronef en urgence');
   });
-  it('rien d’orange ni de rouge : pas de gros chiffre ; phrase de l’état des pastilles', () => {
+  it('rien d’orange ni de rouge : « RAS » au vert (jamais un gros 0) ; phrase de l’état des pastilles', () => {
     const v = buildThemeBriefView(input({ items: [], pastilles: [
       { key: 'oilNetwork', label: 'Pétrole', level: 'jaune' }, { key: 'powerGrid', label: 'Réseau électrique', level: 'vert' },
       { key: 'gasNetwork', label: 'Réseau gaz', level: 'vert' }, { key: 'nuclearFleet', label: 'Parc nucléaire', level: 'nd' },
     ] }));
-    expect(v.head.figure).toBeNull();
+    expect(v.head.figure).toMatchObject({ value: 'RAS', level: 'vert' });
     expect(v.head.lead).toBe('Aucun signal orange ou rouge · en jaune : Pétrole · 2 pastilles au vert · indisponible : Parc nucléaire.');
+  });
+  it('panne en cours qui fait l’onglet orange : nommée dans la phrase et la liste, plus de « Aucun signal orange » (03/11/2026)', () => {
+    const v = buildThemeBriefView(input({ items: [], themeLevel: 'orange', pastilles: [{ key: 'powerGrid', label: 'Réseau électrique', level: 'jaune' }],
+      levelSignals: [{ text: 'Panne en cours : Électricité · L 400kV', where: 'depuis le 01/11 à 11 h 00', level: 'orange' }] }));
+    expect(v.head.level).toBe('orange');
+    expect(v.head.figure).toMatchObject({ value: '1', level: 'orange' });
+    expect(v.head.lead).toBe('Panne en cours : Électricité · L 400kV (depuis le 01/11 à 11 h 00).');
+    expect(visibleText(renderLayerView('brief', v))).toContain('Panne en cours : Électricité · L 400kV');
   });
 });

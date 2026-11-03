@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { describe, expect, it } from 'vitest';
 import type { OutagesNowResponse } from '../../types/index.ts';
-import { OutagesNowController, ROOM_POLL_MS } from './outages-now-controller.ts';
+import { bannerOutages, OutagesNowController, ROOM_POLL_MS } from './outages-now-controller.ts';
 import { OUTAGES_NOW_POLL_MS } from '../../services/outages-now.ts';
 
 const body: OutagesNowResponse = {
@@ -111,3 +111,15 @@ describe('pilote des pannes en cours', () => {
   });
 });
 
+
+describe('bandeau « Panne en cours » selon l’onglet (03/11/2026)', () => {
+  it('Vue générale : tout ; Sécurité : réseaux télécoms ; Énergie sans panne électrique, Santé, Environnement, Transports : rien', () => {
+    expect(bannerOutages(body, 'general')?.outages).toHaveLength(2);
+    expect(bannerOutages(body, 'security')?.outages).toHaveLength(2);
+    expect(bannerOutages(body, 'energy')).toBeNull();
+    for (const th of ['health', 'environment', 'transport', 'outages']) expect(bannerOutages(body, th)).toBeNull();
+    const elec = { ...body, outages: [{ ...body.outages[0], id: 'e', network: 'electricite' as const }] };
+    expect(bannerOutages(elec, 'energy')?.outages).toHaveLength(1);
+    expect(bannerOutages(null, 'general')).toBeNull();
+  });
+});

@@ -1105,7 +1105,7 @@
   .mqh-src { align-items: flex-start; flex-wrap: nowrap; } .mqh-src i { margin-top: 4px; } .mqh-src span { color: #9898a8; flex: 0 0 auto; } .mqh-src b { font-weight: 500; margin-left: auto; text-align: right; flex: 1; }
   [class^="mqh-src-"] { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; margin-right: 4px; }
   .mqh-src-ok { background: #6e7585; } .mqh-src-part { background: transparent; border: 1.5px solid #9aa1ae; } .mqh-src-ko { background: repeating-linear-gradient(45deg, #9aa1ae 0 2px, transparent 2px 4px); border: 1px solid #9aa1ae; }
-  .mqh-watch { position: absolute; left: 12px; bottom: 64px; z-index: 29; width: 290px; background: rgba(18,20,26,.96); border: 1px solid #2a2e37; border-radius: 10px; padding: 8px 12px; color: #d9dde5; font-size: 11.5px; }
+  .mqh-watch { position: absolute; right: 12px; top: 110px; z-index: 29; width: 290px; max-height: calc(100% - 180px); overflow-y: auto; background: rgba(18,20,26,.96); border: 1px solid #2a2e37; border-radius: 10px; padding: 8px 12px; color: #d9dde5; font-size: 11.5px; }
   .mqh-w-h { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
   .mqh-w-r { display: flex; gap: 7px; align-items: flex-start; margin: 3px 0; line-height: 1.35; } .mqh-w-r i { flex: 0 0 8px; height: 8px; border-radius: 50%; margin-top: 4px; }
   .mqh-w-s { color: #6e6e80; font-size: 10.5px; margin-top: 4px; }
@@ -1145,6 +1145,20 @@
     const style = document.createElement('style'); style.textContent = css; document.head.appendChild(style);
     const host = S.m.getContainer();
     host.append(pop, panel, legend, watch);
+    // Encadré sous la barre des puces, à droite (03/11/2026, même place que l'autre encadré de carte) ; suit la hauteur de la barre.
+    const placeCard = () => {
+      const bar = document.querySelector('.floating-panel-switcher');
+      if (!bar || !watch.parentElement) return;
+      const top = Math.round(bar.getBoundingClientRect().bottom - watch.parentElement.getBoundingClientRect().top + 8);
+      if (top > 0) { watch.style.top = `${top}px`; watch.style.maxHeight = `calc(100% - ${top + 72}px)`; }
+    };
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(placeCard);
+      ro.observe(host);
+      const bar = document.querySelector('.floating-panel-switcher');
+      if (bar) ro.observe(bar);
+    }
+    placeCard();
     wireChips();
     const load = async () => {
       const [syn, alerts, senti, ww, drugs, recalls, dgs, apl, hosp] = await Promise.all(['/api/health/syndromic', '/api/health/alert-levels', '/api/health/sentinelles-national',

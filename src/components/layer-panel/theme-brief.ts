@@ -33,6 +33,11 @@ export interface ThemeBriefInput {
   eventsStatus: EventsStatus | null;
   /** Onglet Transports (lots 1 et 2, 25/10/2026) : points de vigilance numérotés, sections par mode, écart à la normale. */
   transport?: TransportBriefData;
+  /**
+   * Signaux qui font le niveau de l'onglet sans être ni une pastille ni un élément « À traiter » (03/11/2026 : panne en cours de
+   * l'onglet Pannes, qui le passait orange alors que la phrase disait « Aucun signal orange ou rouge »).
+   */
+  levelSignals?: ReadonlyArray<{ text: string; where: string | null; level: VigilanceLevel }>;
   now: number;
   open: OpenFn;
 }
@@ -71,6 +76,9 @@ export function themeAttention(input: ThemeBriefInput): AttentionRow[] {
   }
   for (const it of input.items) {
     if (isHot(it.level)) rows.push({ text: it.title, where: it.place, level: it.level, workKey: it.key });
+  }
+  for (const sig of input.levelSignals ?? []) {
+    if (isHot(sig.level)) rows.push({ text: sig.text, where: sig.where, level: sig.level, workKey: null });
   }
   return rows.map((r, i) => ({ r, i })).sort((a, b) => LEVEL_RANK[b.r.level] - LEVEL_RANK[a.r.level] || a.i - b.i).map(({ r }) => r);
 }
@@ -174,13 +182,21 @@ function lead(input: ThemeBriefInput): string | null {
   if (rows.length === 0) return calmLead(input.pastilles, input.items);
   const top = rows[0].level;
   const same = rows.filter((r) => r.level === top);
-  const words = same.slice(0, 3).map((r) => (r.where && r.workKey ? `${r.text} (${r.where})` : r.text));
+  const words = same.slice(0, 3).map((r) => (r.where && (r.workKey || !r.where.startsWith('niveau')) ? `${r.text} (${r.where})` : r.text));
   const rest = same.length - 3;
   return `${words.join(' · ')}${rest > 0 ? ` et ${rest > 1 ? `${rest} autres` : 'un autre'}` : ''}.`;
 }
 
+/**
+ * Chiffre de tête commun à tous les En bref (03/11/2026) : le nombre de lignes de « Ce qui demande attention » ; à zéro, « RAS »
+ * au vert (jamais un gros « 0 », lu comme un score).
+ */
+export function attentionFigure(rows: ReadonlyArray<{ level: VigilanceLevel }>): NonNullable<LayerHeadModel['figure']> {
+  if (rows.length === 0) return { value: 'RAS', caption: 'rien en orange ni en rouge', level: 'vert' };
+  return { value: String(rows.length), caption: rows.length > 1 ? 'signaux orange ou rouges' : 'signal orange ou rouge', level: rows[0].level };
+}
+
 export function buildThemeBriefView(input: ThemeBriefInput): LayerView {
-  const hot = input.items.filter((it) => isHot(it.level)).length;
   const level = themeBriefLevel(input);
   const copy = '<div class="fiche-actions eb-actions"><button type="button" class="fiche-action" data-copy-note>Copier pour une note</button>'
     + '<span class="eb-copied" aria-live="polite"></span></div>';
@@ -203,8 +219,7 @@ export function buildThemeBriefView(input: ThemeBriefInput): LayerView {
   return {
     head: {
       theme: input.themeName, kind: 'Synthèse', title: THEME_BRIEF_TITLE, level,
-      // Pas de gros « 0 » (lu comme un score) : sans élément orange ou rouge, la phrase de tête dit l'état des pastilles.
-      figure: hot === 0 ? null : { value: String(hot), caption: hot > 1 ? 'éléments orange ou rouges à traiter' : 'élément orange ou rouge à traiter', level: input.items.find((it) => isHot(it.level))?.level ?? null },
+      figure: attentionFigure(themeAttention(input)),
       status: [], lead: lead(input),
     },
     sections: [attentionSection(input), pastillesSynthesisSection(input.pastilles, input.open), itemsSection(input), changesSection(input)],

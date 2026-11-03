@@ -3427,7 +3427,8 @@ export class App {
     // silencieux et relève arrêtée (rien n'est relevé couche éteinte : aucun effet sur le score).
     if (key === 'protests') {
       // Foule estimée (Flux piétons) fusionnée dans Manifestations : sa couche suit, sans case ni puce à elle.
-      if (this.activeLayers.pedestrianFlows !== enabled) this.onLayerToggle('pedestrianFlows', enabled);
+      // Toujours en silence (03/11/2026) : sinon son panneau s'ouvrait par-dessus l'En bref à l'entrée dans l'onglet Sécurité.
+      if (this.activeLayers.pedestrianFlows !== enabled) this.onLayerToggle('pedestrianFlows', enabled, { suppressPanel: true });
       if (enabled) {
         this.openProtestsPanel();
       } else {
@@ -4655,6 +4656,7 @@ export class App {
 
   /** Control room montée seulement dans l'onglet Pannes (v2). */
   private syncOutagesRoom(): void {
+    this.outagesNow?.setTheme(this.uiV2 ? this.v2Theme : 'general');
     void this.outagesNow?.setRoomActive(this.uiV2 && this.v2Theme === 'outages');
   }
 
@@ -5159,6 +5161,8 @@ export class App {
       changes: this.watchLog.filter((t) => theme === 'general' || keys.has(t.key)).map((t) => ({ label: label(t.key), from: t.from, to: t.to, at: t.at })),
       eventsStatus: q?.eventsStatus ?? null,
       ...(theme === 'transport' ? { transport: this.transportBriefData() } : {}),
+      // Pannes en cours : elles font le niveau de l'onglet Pannes (et de la Vue générale), l'En bref doit les nommer.
+      ...(theme === 'outages' || theme === 'general' ? { levelSignals: this.outagesNow?.hotOutages() ?? [] } : {}),
       now: Date.now(),
     };
   }
@@ -6290,7 +6294,8 @@ export class App {
     // Vue générale dynamique : puces dans l'ordre des niveaux (rouge d'abord), voyant de niveau ; « n.d. » en gris (12/10/2026).
     // Onglet Environnement (20/10/2026) : même voyant, niveau de la pastille du panneau ; rouge d'abord.
     // Onglet Transports (lot 1, 25/10/2026) : voyants et ordre par niveau comme l'Environnement.
-    const inEnv = this.uiV2 && (this.v2Theme === 'environment' || this.v2Theme === 'transport');
+    // 03/11/2026 : voyant et ordre par niveau dans tous les onglets thématiques (Énergie, Sécurité, Pannes, Santé n'en avaient pas).
+    const inEnv = this.uiV2 && this.v2Theme !== 'general';
     // Pastilles cumulables avec mise en avant : Environnement et Pannes (21/10/2026), Transports (25/10/2026), comme Santé et Énergie.
     const theme = this.uiV2 ? this.v2Theme : 'general';
     const cumul = this.uiV2 && (theme === 'environment' || theme === 'outages' || theme === 'transport');
@@ -6595,7 +6600,7 @@ export class App {
         el.classList.remove('is-icon-only');
         el.classList.add('is-measuring');
         const chips = Array.from(el.children) as HTMLElement[];
-        const oneRow = chips.reduce((w, chip) => w + chip.offsetWidth, 0) + 8 * Math.max(0, chips.length - 1);
+        const oneRow = chips.reduce((w, chip) => w + chip.offsetWidth, 0) + 6 * Math.max(0, chips.length - 1);
         el.classList.remove('is-measuring');
         const drawerOpen = !this.container.classList.contains('sidebar-collapsed');
         const layout = v2SwitcherLayout(window.innerWidth, mapWidth, drawerOpen, oneRow);

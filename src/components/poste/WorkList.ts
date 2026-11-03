@@ -80,6 +80,14 @@ export function renderWorkList(model: WorkListModel): string {
   }
   const emptyText = model.ready ? nothingToHandleText(view.greenTracked, lang) : (fr ? 'Chargement des données…' : 'Loading data…');
   const empty = view.total === 0 ? `<p class="wl-empty">${escapeHtml(emptyText)}</p>` : '';
+  // Onglet vide : ce qui est orange ou rouge ailleurs, un clic ouvre l'onglet de l'élément.
+  const elsewhere = view.total === 0 && model.ready && (view.elsewhere?.length ?? 0) > 0
+    ? `<div class="wl-elsewhere"><h3 class="wl-elsewhere-title">${fr ? 'Ailleurs, à traiter' : 'Elsewhere, to handle'}</h3><ul class="wl-list">${(view.elsewhere ?? []).map((item) =>
+      `<li class="wl-row"><button type="button" class="wl-item" data-guard="${escapeHtml(item.theme)}">`
+      + `<span class="wl-bar wl-bar--${item.level}" aria-hidden="true"></span>`
+      + `<span class="wl-body"><span class="wl-item-title">${escapeHtml(item.title)}</span>`
+      + `<span class="wl-meta"><span class="visually-hidden">${levelLabel(item.level, lang)} · </span>${escapeHtml([themeLabel(item.theme, lang), rowMeta(item, lang, model.now)].filter(Boolean).join(' · '))}</span></span></button></li>`).join('')}</ul></div>`
+    : '';
   const moreLabel = fr
     ? (view.hiddenCount > 1 ? `Voir les ${view.hiddenCount} autres` : 'Voir l’autre élément')
     : `Show ${view.hiddenCount} more`;
@@ -99,7 +107,7 @@ export function renderWorkList(model: WorkListModel): string {
       + `<ul class="wl-list">${view.foreign.map((item) => rowHtml(item, model)).join('')}</ul></details>`
     : '';
   return `<div class="wl-head"><h2 class="wl-title" tabindex="-1">${escapeHtml(title)}</h2></div>`
-    + `<ul class="wl-list">${rows}${notes.join('')}</ul>${empty}${more}${guard}${foreign}`;
+    + `<ul class="wl-list">${rows}${notes.join('')}</ul>${empty}${elsewhere}${more}${guard}${foreign}`;
 }
 
 /**

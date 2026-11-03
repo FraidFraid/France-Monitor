@@ -496,7 +496,15 @@ export interface WorkQueueView {
   greenTracked: number;
   eventsStatus: EventsStatus;
   foreign: WorkItem[];
+  /**
+   * Onglet sans rien à traiter : les éléments orange ou rouges des autres onglets, cinq au plus (03/11/2026), pour que la colonne
+   * ne reste pas vide sur toute la hauteur. Vide dès que l'onglet a ses propres éléments.
+   */
+  elsewhere: WorkItem[];
 }
+
+/** Nombre d'éléments « ailleurs » montrés dans un onglet vide. */
+export const ELSEWHERE_CAP = 5;
 
 export function viewWorkQueue(queue: WorkQueue, theme: ThemeId, showAll: boolean): WorkQueueView {
   const inside = queue.items.filter((i) => inTheme(i.theme, theme));
@@ -520,6 +528,9 @@ export function viewWorkQueue(queue: WorkQueue, theme: ThemeId, showAll: boolean
     greenTracked: queue.greenTracked[theme],
     eventsStatus: queue.eventsStatus,
     foreign: queue.foreign.filter((i) => inTheme(i.theme, theme)),
+    elsewhere: inside.length > 0 ? [] : queue.items
+      .filter((i) => (i.level === 'rouge' || i.level === 'orange') && !inTheme(i.theme, theme))
+      .slice(0, ELSEWHERE_CAP),
   };
 }
 

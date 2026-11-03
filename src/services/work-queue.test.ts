@@ -345,6 +345,20 @@ describe('viewWorkQueue (spec §7.2, §7.3)', () => {
     expect(viewWorkQueue(q, 'general', false).guard).toBeNull();
   });
 
+  it('onglet vide : les orange et rouges des autres onglets, cinq au plus ; rien dès que l’onglet a ses éléments (03/11/2026)', () => {
+    const q = buildWorkQueue(input({
+      situations: [
+        situation({ id: 'e', severity: 'critical' }),
+        ...Array.from({ length: 6 }, (_, i) => situation({ id: `c${i}`, type: 'CYBER_PRESSURE', severity: 'high' })),
+      ],
+    }));
+    const health = viewWorkQueue(q, 'health', false);
+    expect(health.total).toBe(0);
+    expect(health.elsewhere).toHaveLength(5);
+    expect(health.elsewhere[0].key).toBe('situation:e');
+    expect(viewWorkQueue(q, 'energy', false).elsewhere).toEqual([]);
+  });
+
   it('un rouge rattaché à « Vue générale » seulement déclenche la garde et y bascule (revue)', () => {
     const q = buildWorkQueue(input({
       alerts: [situation({ id: 'n', type: 'NEWS_ALERT', severity: 'critical', title: 'Fait divers national', category: 'general' })],
