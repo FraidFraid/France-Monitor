@@ -33,19 +33,33 @@ const clock = (iso: string): string => {
   return Number.isFinite(t) ? parisClock(t) : 'n.d.';
 };
 
-/** Neuf cases : les réseaux mesurés, puis ceux que seule la presse signale. */
+/**
+ * Bandeau d'état des réseaux (03/11/2026, brouillon validé) : un seul bloc découpé en cases, distinct des onglets du dessus ; dans
+ * chaque case le nombre de pannes en tête, le nom, puis les sources ; la couleur est un filet à gauche (orm-dot). Ordre fixe. Les
+ * réseaux suivis par la presse seule et sans panne sont regroupés en une case grise non cliquable ; en panne (ou filtré), un réseau
+ * a sa propre case.
+ */
 export function networkStrip(r: OutagesNowResponse | null, filter: OutageNetwork | null, now: number): string {
   void now;
-  const cells = NETWORKS.map((n) => {
+  const count = (n: OutageNetwork): number => (r?.outages ?? []).filter((o) => o.network === n).length;
+  const grouped = (n: OutageNetwork): boolean => r !== null && n !== 'mobile' && NETWORK_SOURCES[n].length === 0 && count(n) === 0 && filter !== n;
+  const cells = NETWORKS.filter((n) => !grouped(n)).map((n) => {
     const outs = (r?.outages ?? []).filter((o) => o.network === n);
     const worst = outs.reduce<OutageNow['level'] | null>((m, o) => (m === null || RANK[o.level] > RANK[m] ? o.level : m), null);
     const fresh = (r?.sources ?? []).filter((s) => NETWORK_SOURCES[n].includes(s.source) && s.ok);
     const cls = worst ?? (fresh.length > 0 ? 'vert' : 'nd');
     const state = r === null ? 'chargement…' : NETWORK_SOURCES[n].length === 0 ? (n === 'mobile' ? 'presse et usagers' : 'presse seule')
       : fresh.length > 0 ? fresh.map((s) => SOURCE_LABEL[s.source]).join(', ') : 'sources n.d.';
-    return `<button type="button" class="orm-net" data-net="${n}" aria-pressed="${filter === n}">${dot(cls)}<span class="orm-net-name">${NETWORK_LABEL[n]}</span>`
-      + `<b class="orm-net-n">${r === null ? 'n.d.' : outs.length}</b><small>${escapeHtml(state)}</small></button>`;
+    return `<button type="button" class="orm-net orm-net--${cls}" data-net="${n}" aria-pressed="${filter === n}">${dot(cls)}`
+      + `<b class="orm-net-n">${r === null ? 'n.d.' : outs.length}</b><span class="orm-net-name">${NETWORK_LABEL[n]}</span>`
+      + `<small>${escapeHtml(state)}</small></button>`;
   });
+  const rest = NETWORKS.filter(grouped);
+  if (rest.length > 0) {
+    const names = rest.map((n, i) => (i === 0 ? NETWORK_LABEL[n] : NETWORK_LABEL[n].charAt(0).toLowerCase() + NETWORK_LABEL[n].slice(1))).join(', ');
+    cells.push(`<div class="orm-net orm-net--rest" title="Aucune mesure ouverte : seule la presse signale ces réseaux">${dot('nd')}`
+      + `<b class="orm-net-n">0</b><span class="orm-net-name">${escapeHtml(names)}</span><small>presse seule</small></div>`);
+  }
   return cells.join('');
 }
 

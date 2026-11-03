@@ -21,6 +21,9 @@ export class OutagesRoom {
   private picked: string | null = null;
   private onFocus: ((o: OutageNow) => void) | null = null;
   private onFilter: ((n: OutageNetwork | null) => void) | null = null;
+  /** Suit la barre des pastilles et la carte : la barre passe sur deux lignes quand la carte rétrécit (03/11/2026, chevauchement). */
+  private readonly resize: ResizeObserver | null = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => this.placeBelowPills());
+  private observedPills: Element | null = null;
 
   constructor(host: HTMLElement) {
     this.el = document.createElement('div');
@@ -60,17 +63,25 @@ export class OutagesRoom {
   }
 
   destroy(): void {
+    this.resize?.disconnect();
     this.el.remove();
   }
 
   /**
-   * Sous la barre des pastilles posée sur la carte (sa hauteur dépend de la largeur) ; sinon 108 px. La mini-légende des pastilles ne
+   * Sous la barre des pastilles posée sur la carte (sa hauteur dépend de la largeur) ; sinon 108 px. Recalculé à chaque changement de
+   * taille de la barre ou de la carte, pas seulement au rendu : sinon la barre passée sur deux lignes recouvrait les tuiles des réseaux. La mini-légende des pastilles ne
    * décale plus la salle (22/10/2026) : dans cet onglet, App la pose en bas à gauche de la carte, au-dessus de la frise.
    */
   private placeBelowPills(): void {
     const host = this.el.parentElement;
     const pills = host?.parentElement?.querySelector('.floating-panel-switcher');
     if (!host || !pills) return;
+    if (this.resize && pills !== this.observedPills) {
+      this.resize.disconnect();
+      this.resize.observe(pills);
+      this.resize.observe(host);
+      this.observedPills = pills;
+    }
     const top = pills.getBoundingClientRect().bottom - host.getBoundingClientRect().top;
     if (top > 0) this.el.style.setProperty('--orm-top', `${Math.round(top + 8)}px`);
   }

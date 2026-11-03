@@ -32,19 +32,32 @@ const cell = (html: string, net: string): string => html.match(new RegExp(`<butt
 const text = (html: string): string => html.replace(/<[^>]+>/g, ' ').replace(/[ \t\n]+/g, ' ');
 
 describe('salle des pannes : barre des réseaux', () => {
-  it('neuf cases dans l’ordre ; les réseaux suivis par la seule presse le disent et ne sont jamais verts', () => {
+  it('cases dans l’ordre fixe ; réseaux suivis par la presse seule et sans panne regroupés en une case grise non cliquable (03/11/2026)', () => {
     const html = networkStrip(body({ sources: [...body().sources, { source: 'presse', readAt: null, ok: true }] }), null, NOW);
     const t = text(html);
-    const order = ['Téléphone mobile', 'Internet', 'Électricité', 'Cloud', 'Gaz', 'Eau', 'Numéros d’urgence', 'Paiement', 'Télévision'].map((n) => t.indexOf(n));
+    const order = ['Téléphone mobile', 'Internet', 'Électricité', 'Cloud', 'Gaz, eau, numéros d’urgence, paiement, télévision'].map((n) => t.indexOf(n));
     expect(order.every((i, k) => i >= 0 && (k === 0 || i > (order[k - 1] ?? -1)))).toBe(true);
-    expect(t.match(/presse seule/g)).toHaveLength(5);
-    for (const n of ['gaz', 'eau', 'urgence', 'paiement', 'tv']) expect(cell(html, n)).toContain('orm-dot--nd');
+    expect(t.match(/presse seule/g)).toHaveLength(1);
+    for (const n of ['gaz', 'eau', 'urgence', 'paiement', 'tv']) expect(html).not.toContain(`data-net="${n}"`);
+    const rest = html.match(/<div class="orm-net orm-net--rest"[\s\S]*?<\/div>/)?.[0] ?? '';
+    expect(rest).toContain('orm-dot--nd');
+    expect(text(rest)).toContain(' 0 ');
   });
-  it('panne de gaz signalée par la presse : la case Gaz compte 1, au niveau du signalement', () => {
-    const gaz = { ...body().outages[0], id: 'gaz|op:GRDF', network: 'gaz' as const, operator: 'GRDF', label: 'GRDF', level: 'jaune' as const };
+  it('nombre en tête, puis le nom, puis les sources', () => {
+    const c = text(cell(networkStrip(body(), null, NOW), 'internet'));
+    expect(c.indexOf(' 1 ')).toBeLessThan(c.indexOf('Internet'));
+    expect(c.indexOf('Internet')).toBeLessThan(c.indexOf('IODA'));
+  });
+  it('un réseau de presse seule en panne sort du groupe avec sa case ; le groupe garde les autres', () => {
+    const gaz = outage({ id: 'gaz|x', network: 'gaz', level: 'jaune' });
     const html = networkStrip(body({ outages: [gaz] }), null, NOW);
     expect(cell(html, 'gaz')).toContain('orm-dot--jaune');
     expect(text(cell(html, 'gaz'))).toContain(' 1 ');
+    expect(text(html)).toContain('Eau, numéros d’urgence, paiement, télévision');
+  });
+  it('tous les réseaux de presse seule en panne : plus de case grise', () => {
+    const all = (['gaz', 'eau', 'urgence', 'paiement', 'tv'] as const).map((n) => outage({ id: `${n}|x`, network: n, level: 'jaune' }));
+    expect(networkStrip(body({ outages: all }), null, NOW)).not.toContain('orm-net--rest');
   });
   it('voyant : niveau de la panne la plus grave ; sans panne, vert seulement avec une source fraîche, sinon n.d.', () => {
     const html = networkStrip(body(), null, NOW);
