@@ -193,46 +193,43 @@ describe('fusion avec Flux piétons', () => {
   });
 });
 
-describe('case « carte des gilets jaunes » (26/10/2026)', () => {
+describe('interrupteurs « Cartes militantes » : gilets jaunes et CGT, indépendants (26/10 et 03/11/2026)', () => {
   const gj = (id: string, city: string) => ann({ id, source: 'giletsjaunes', city, title: 'Blocage annoncé', url: null, edition: null });
-  const data = body([ann(), gj('gj1', 'Lyon'), gj('gj2', 'Nantes')]);
-  const viewWith = (show: boolean) => buildManifestationsView({ data, error: null, canFocus: true, now: NOW, open: (_id, byDefault) => byDefault, showGiletsJaunes: show });
-  it('décochée : annonces gilets jaunes retirées des listes, case en tête avec leur nombre ; pastille inchangée', () => {
-    const hidden = viewWith(false);
-    const shown = viewWith(true);
-    expect(hidden.sections[0]).toMatchObject({ id: 'gilets-jaunes', summary: '2 annonces' });
-    expect(hidden.sections[0].html).toContain('data-gj-toggle>');
-    expect(shown.sections[0].html).toContain('data-gj-toggle checked>');
-    const html = (v: ReturnType<typeof viewWith>) => visibleText(renderLayerView('protests', v));
-    expect(html(hidden)).not.toContain('Nantes');
-    expect(html(shown)).toContain('Nantes');
-    expect(hidden.head.level).toBe(shown.head.level);
-    expect(hidden.head.figure?.value).toBe(shown.head.figure?.value);
-  });
-  it('aucune annonce gilets jaunes : pas de case', () => {
-    expect(view(body([ann()])).sections.map((s) => s.id)).not.toContain('gilets-jaunes');
-  });
-});
-
-describe('case « cartes de la CGT », indépendante de celle des gilets jaunes (03/11/2026)', () => {
-  const gj = ann({ id: 'gj1', source: 'giletsjaunes', city: 'Lyon', title: 'Blocage annoncé', url: null, edition: null });
   const cgt = ann({ id: 'cgt1', source: 'cgt', city: 'Melun', title: 'Mobilisation (CGT)', place: 'Parking Conforama', edition: 'Carte du 5 novembre 2026' });
-  const data = body([ann(), gj, cgt]);
+  const data = body([ann(), gj('gj1', 'Lyon'), gj('gj2', 'Nantes'), cgt]);
   const viewWith = (g: boolean, c: boolean) => buildManifestationsView({ data, error: null, canFocus: true, now: NOW, open: (_id, byDefault) => byDefault, showGiletsJaunes: g, showCgt: c });
   const html = (v: ReturnType<typeof viewWith>) => visibleText(renderLayerView('protests', v));
-  it('deux cases, chacune avec son nombre', () => {
-    const v = viewWith(false, false);
-    expect(v.sections.slice(0, 2).map((s) => [s.id, s.summary])).toEqual([['gilets-jaunes', '1 annonce'], ['cgt', '1 rendez-vous']]);
-    expect(v.sections[1].html).toContain('data-cgt-toggle>');
-    expect(viewWith(false, true).sections[1].html).toContain('data-cgt-toggle checked>');
+  it('une section en tête, deux interrupteurs avec leur nombre ; pastille inchangée', () => {
+    const off = viewWith(false, false);
+    expect(off.sections[0]).toMatchObject({ id: 'cartes-militantes', summary: 'masquées' });
+    expect(off.sections[0].html).toContain('role="switch" data-gj-toggle>');
+    expect(off.sections[0].html).toContain('role="switch" data-cgt-toggle>');
+    expect(visibleText(off.sections[0].html)).toContain('2 annonces · 17octobregiletjaune.net');
+    expect(visibleText(off.sections[0].html)).toContain('1 rendez-vous · carte.cgt.fr');
+    const on = viewWith(true, true);
+    expect(on.sections[0].summary).toBe('3 annonces affichées');
+    expect(on.sections[0].html).toContain('data-gj-toggle checked>');
+    expect(on.sections[0].html).toContain('data-cgt-toggle checked>');
+    expect(off.head.level).toBe(on.head.level);
+    expect(off.head.figure?.value).toBe(on.head.figure?.value);
   });
-  it('CGT cochée seule : Melun affiché, Lyon masqué ; et l’inverse', () => {
-    expect(html(viewWith(false, true))).toContain('Melun');
-    expect(html(viewWith(false, true))).not.toContain('Lyon');
-    expect(html(viewWith(true, false))).toContain('Lyon');
+  it('chaque interrupteur agit seul sur les listes', () => {
+    expect(html(viewWith(false, false))).not.toMatch(/Nantes|Melun/);
+    expect(html(viewWith(true, false))).toContain('Nantes');
     expect(html(viewWith(true, false))).not.toContain('Melun');
+    expect(html(viewWith(false, true))).toContain('Melun');
+    expect(html(viewWith(false, true))).not.toContain('Nantes');
   });
   it('ligne CGT : carte et lieu annoncé', () => {
     expect(html(viewWith(false, true))).toContain('Carte du 5 novembre 2026, Parking Conforama');
+  });
+  it('une seule des deux cartes a des annonces : les deux interrupteurs restent, l’autre dit « aucune annonce »', () => {
+    const v = view(body([ann(), gj('gj1', 'Lyon')]));
+    expect(v.sections[0].id).toBe('cartes-militantes');
+    expect(v.sections[0].html).toContain('data-cgt-toggle');
+    expect(visibleText(v.sections[0].html)).toContain('aucune annonce · carte.cgt.fr');
+  });
+  it('aucune annonce sur aucune des deux cartes : pas de section', () => {
+    expect(view(body([ann()])).sections.map((s) => s.id)).not.toContain('cartes-militantes');
   });
 });

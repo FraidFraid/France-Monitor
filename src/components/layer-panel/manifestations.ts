@@ -251,21 +251,24 @@ function methodSection(d: ProtestsResponse, now: number, open: OpenFn): FicheSec
   return { id: 'methode', title: 'Méthode et sources', collapsible: true, open: open('methode', false), tone: 'reference', summary: 'Démosphère · gilets jaunes · CGT · presse · GDELT', html };
 }
 
-/** Case « Afficher les annonces de la carte des gilets jaunes » (26/10/2026) : filtre d'affichage de la carte et des listes. */
-function giletsJaunesToggle(count: number, show: boolean): FicheSection {
-  return {
-    id: 'gilets-jaunes', title: 'Carte des gilets jaunes', collapsible: false, summary: plural(count, 'annonce'),
-    html: `<label class="fmk-note"><input type="checkbox" data-gj-toggle${show ? ' checked' : ''}> `
-      + `Afficher sur la carte et dans les listes les annonces de la carte des gilets jaunes</label>`,
-  };
+/** Interrupteur d'une source affichée à la demande : nom, nombre d'annonces et site à gauche, bascule à droite. */
+function sourceSwitch(attr: string, name: string, site: string, count: number, unit: [string, string], show: boolean): string {
+  const figure = count > 0 ? plural(count, unit[0], unit[1]) : 'aucune annonce';
+  return `<label class="lp-switch"><span class="lp-switch__text"><b>${escapeHtml(name)}</b><small>${escapeHtml(figure)} · ${escapeHtml(site)}</small></span>`
+    + `<input type="checkbox" role="switch" ${attr}${show ? ' checked' : ''}><span class="lp-switch__track" aria-hidden="true"></span></label>`;
 }
 
-/** Case « Afficher les annonces des cartes de la CGT » (03/11/2026) : même filtre, indépendant de celui des gilets jaunes. */
-function cgtToggle(count: number, show: boolean): FicheSection {
+/**
+ * « Cartes militantes » : un interrupteur pour la carte des gilets jaunes (26/10/2026) et un pour les cartes de la CGT (03/11/2026),
+ * deux sources distinctes, chacune affichée ou masquée seule sur la carte et dans les listes.
+ */
+function sourcesSection(gjCount: number, cgtCount: number, showGj: boolean, showCgt: boolean): FicheSection {
+  const shown = (showGj ? gjCount : 0) + (showCgt ? cgtCount : 0);
   return {
-    id: 'cgt', title: 'Cartes de la CGT', collapsible: false, summary: plural(count, 'rendez-vous', 'rendez-vous'),
-    html: `<label class="fmk-note"><input type="checkbox" data-cgt-toggle${show ? ' checked' : ''}> `
-      + `Afficher sur la carte et dans les listes les rendez-vous des cartes de mobilisation de la CGT</label>`,
+    id: 'cartes-militantes', title: 'Cartes militantes', collapsible: false,
+    summary: shown > 0 ? `${plural(shown, 'annonce')} affichée${shown > 1 ? 's' : ''}` : 'masquées',
+    html: sourceSwitch('data-gj-toggle', 'Gilets jaunes', '17octobregiletjaune.net', gjCount, ['annonce', 'annonces'], showGj)
+      + sourceSwitch('data-cgt-toggle', 'CGT', 'carte.cgt.fr', cgtCount, ['rendez-vous', 'rendez-vous'], showCgt),
   };
 }
 
@@ -304,8 +307,8 @@ export function buildManifestationsView(input: ManifestationsViewInput): LayerVi
       status: [stamp('relevé', data.readAt, late, now)],
     },
     sections: [
-      ...(gjCount > 0 ? [giletsJaunesToggle(gjCount, show)] : []),
-      ...(cgtCount > 0 ? [cgtToggle(cgtCount, showCgt)] : []),
+      // Aucune annonce de l'une ni de l'autre carte : rien à basculer ; sinon les deux interrupteurs, même à zéro.
+      ...(gjCount + cgtCount > 0 ? [sourcesSection(gjCount, cgtCount, show, showCgt)] : []),
       pressSection(b, canFocus, open), worldSection(b, canFocus, open), todaySection(b, canFocus, open), upcomingSection(b, canFocus, open),
       unplacedSection(b, open), methodSection(full ?? data, now, open),
     ],
