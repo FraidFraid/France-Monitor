@@ -56,7 +56,7 @@ const en = {
     heroTitle: 'See France as a living system, not a list of feeds.',
     heroLead:
       'France Monitor aggregates heterogeneous public signals and projects them onto a single map: geolocated news, energy, health, weather, transport, defense, and networks.',
-    enterDashboard: 'Open dashboard',
+    enterDashboard: 'Open the live map',
     seeCaptures: 'View screens',
     metricsAria: 'Product principles',
     metrics: {

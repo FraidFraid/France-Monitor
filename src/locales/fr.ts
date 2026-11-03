@@ -56,7 +56,7 @@ const fr = {
     heroTitle: 'Voir la France comme un système vivant, pas comme une liste de flux.',
     heroLead:
       'France Monitor agrège des signaux publics hétérogènes et les projette sur une même carte: actualités géolocalisées, énergie, santé, météo, transports, défense et réseaux.',
-    enterDashboard: 'Entrer dans le dashboard',
+    enterDashboard: 'Ouvrir la carte en direct',
     seeCaptures: 'Voir les captures',
     metricsAria: 'Principes produit',
     metrics: {

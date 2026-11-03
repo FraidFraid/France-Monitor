@@ -80,6 +80,10 @@ function setLandingMeta(): void {
 
 let isLandingSubscribed = false;
 
+/** Flèche des boutons « carte » (03/11/2026) : SVG au trait, même épaisseur que les icônes de l'application. */
+const ARROW = '<svg class="landing-button__arrow" viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" focusable="false">'
+  + '<path d="M4 10h11M11 5.5 15.5 10 11 14.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
 export function renderLandingPage(container: HTMLElement): void {
   document.documentElement.classList.add('fm-landing-mode');
   document.body.classList.add('fm-landing-mode');
@@ -107,7 +111,7 @@ export function renderLandingPage(container: HTMLElement): void {
             <button class="header-language-toggle__btn ${language === 'fr' ? 'is-active' : ''}" type="button" data-language="fr">FR</button>
             <button class="header-language-toggle__btn ${language === 'en' ? 'is-active' : ''}" type="button" data-language="en">EN</button>
           </div>
-          <a class="landing-button landing-button--ghost" href="/?view=app#live">${t('landing.openMap')}</a>
+          <a class="landing-button landing-button--primary landing-button--compact" href="/?view=app#live">${t('landing.openMap')}${ARROW}</a>
         </div>
       </header>
 
@@ -124,7 +128,7 @@ export function renderLandingPage(container: HTMLElement): void {
               ${t('landing.heroLead')}
             </p>
             <div class="landing-actions">
-              <a class="landing-button" href="/?view=app#live">${t('landing.enterDashboard')}</a>
+              <a class="landing-button landing-button--primary landing-button--hero" href="/?view=app#live">${t('landing.enterDashboard')}${ARROW}</a>
               <a class="landing-button landing-button--ghost" href="#captures">${t('landing.seeCaptures')}</a>
             </div>
             <ul class="landing-metrics" aria-label="${t('landing.metricsAria')}">
@@ -134,15 +138,16 @@ export function renderLandingPage(container: HTMLElement): void {
             </ul>
           </div>
           <div class="landing-hero__visual">
-            <div class="landing-hero-card">
+            <a class="landing-hero-card landing-hero-card--link" href="/?view=app#live" aria-label="${t('landing.enterDashboard')}">
+              <span class="landing-hero-card__go" aria-hidden="true">${t('landing.enterDashboard')}${ARROW}</span>
               ${landingPicture({
                 name: 'hero-overview',
-                alt: 'Vue générale de France Monitor avec carte nationale et panneau nucléaire.',
+                alt: 'Vue générale de France Monitor : liste « À traiter », carte nationale et synthèse « En bref » des signaux orange ou rouges.',
                 sizes: '(max-width: 1120px) 100vw, 720px',
                 dims: LANDING_HERO_DIMS,
                 priority: true,
               })}
-            </div>
+            </a>
             <div class="landing-floating-note landing-floating-note--top">
               <span class="landing-note-label">${t('landing.overviewLabel')}</span>
               <strong>${t('landing.overviewTitle')}</strong>
@@ -191,7 +196,7 @@ export function renderLandingPage(container: HTMLElement): void {
               <div class="landing-feature-card__media">
                 ${landingPicture({
                   name: 'news-map',
-                  alt: 'Carte des actualités géolocalisées de France Monitor avec clusters de couleur.',
+                  alt: 'Actualités géolocalisées : un événement recoupé ouvert dans sa fiche (sources, gravité, lieu), les autres sur la carte.',
                   sizes: '(max-width: 1120px) 100vw, 1380px',
                   dims: LANDING_MAP_DIMS,
                 })}
@@ -207,7 +212,7 @@ export function renderLandingPage(container: HTMLElement): void {
               <div class="landing-feature-card__media">
                 ${landingPicture({
                   name: 'ecowatt-map',
-                  alt: 'Vue Ecowatt du réseau électrique français avec régions colorées et flux frontaliers.',
+                  alt: 'Onglet Énergie : panneau Réseau électrique avec consommation, Écowatt heure par heure et courbe de la journée.',
                   sizes: '(max-width: 1120px) 100vw, 681px',
                   dims: LANDING_MAP_DIMS,
                 })}
@@ -223,7 +228,7 @@ export function renderLandingPage(container: HTMLElement): void {
               <div class="landing-feature-card__media">
                 ${landingPicture({
                   name: 'health-map',
-                  alt: 'Vue santé nationale avec stress hospitalier et indicateurs de vigilance.',
+                  alt: 'Onglet Santé : baromètre national des urgences, veille outre-mer et synthèse des pastilles sanitaires.',
                   sizes: '(max-width: 1120px) 100vw, 681px',
                   dims: LANDING_MAP_DIMS,
                 })}
@@ -239,7 +244,7 @@ export function renderLandingPage(container: HTMLElement): void {
               <div class="landing-feature-card__media">
                 ${landingPicture({
                   name: 'defense-map',
-                  alt: 'Vue défense avec activité militaire, brouillage GPS et proximité des câbles sous-marins.',
+                  alt: 'Onglet Sécurité et défense : sites militaires et aéronefs sur la carte, posture Vigipirate dans le panneau Défense.',
                   sizes: '(max-width: 1120px) 100vw, 681px',
                   dims: LANDING_MAP_DIMS,
                 })}
@@ -255,7 +260,7 @@ export function renderLandingPage(container: HTMLElement): void {
               <div class="landing-feature-card__media">
                 ${landingPicture({
                   name: 'cloud-map',
-                  alt: "Vue cloud et IXP centrée sur Paris avec statut des datacenters et points d'échange.",
+                  alt: 'Cloud et hébergement autour de Paris : centres de données sur la carte, incidents en cours dans le panneau.',
                   sizes: '(max-width: 1120px) 100vw, 681px',
                   dims: LANDING_MAP_DIMS,
                 })}
@@ -335,11 +340,19 @@ export function renderLandingPage(container: HTMLElement): void {
             <h2>${t('landing.ctaTitle')}</h2>
             <p>${t('landing.ctaBody')}</p>
           </div>
-          <a class="landing-button" href="/?view=app#live">${t('landing.openApp')}</a>
+          <a class="landing-button landing-button--primary landing-button--hero" href="/?view=app#live">${t('landing.openApp')}${ARROW}</a>
         </section>
       </main>
+      <a class="landing-sticky-cta landing-button landing-button--primary" href="/?view=app#live">${t('landing.enterDashboard')}${ARROW}</a>
     </div>
   `;
+
+  // Mobile : la barre « Ouvrir la carte » n'apparaît qu'une fois le bouton du haut sorti de l'écran (sinon, deux boutons l'un sur l'autre).
+  const heroCta = container.querySelector<HTMLElement>('.landing-actions .landing-button--primary');
+  const sticky = container.querySelector<HTMLElement>('.landing-sticky-cta');
+  if (heroCta && sticky && typeof IntersectionObserver !== 'undefined') {
+    new IntersectionObserver(([entry]) => sticky.classList.toggle('is-visible', entry ? !entry.isIntersecting : false)).observe(heroCta);
+  }
 
   container.querySelectorAll<HTMLButtonElement>('[data-language]').forEach((button) => {
     button.addEventListener('click', () => {
