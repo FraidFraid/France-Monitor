@@ -110,7 +110,7 @@ const fr = {
     capturesBody:
       "Les visuels viennent directement de l'application. La landing ne réinvente pas l'UI: elle la cadre mieux, hiérarchise les messages et met en avant les écrans les plus expressifs.",
     ctaEyebrow: 'Accès direct',
-    ctaTitle: 'La V1 est en ligne, directement accessible.',
+    ctaTitle: 'La V2 est en ligne, directement accessible.',
     ctaBody: "Entrez dans l'interface complète et explorez France Monitor en conditions réelles.",
     openApp: 'Ouvrir France Monitor',
   },

@@ -109,7 +109,7 @@ const en = {
     capturesBody:
       "The visuals come directly from the application. The landing page does not reinvent the UI: it frames it better, clarifies the message hierarchy, and highlights the most expressive screens.",
     ctaEyebrow: 'Direct access',
-    ctaTitle: 'V1 is live and directly accessible.',
+    ctaTitle: 'V2 is live and directly accessible.',
     ctaBody: 'Enter the full interface and explore France Monitor in real conditions.',
     openApp: 'Open France Monitor',
   },
