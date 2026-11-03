@@ -3,7 +3,7 @@
 // au-delà de 4 jours calendaires, séries indépendantes, cache servi en retard, taux directeurs (date et précédent).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __resetSwrCacheForTests } from '../api/_utils/swr-cache.js';
-import { ECB_BASE, ecbUrl, isEcbLate, loadEcbRates, loadEcbSeries, parseEcbCsv } from '../api/_lib/ecb.js';
+import { ECB_BASE, ecbUrl, isEcbLate, loadEcbRates, loadEcbSeries, officialSpreadOf, parseEcbCsv, parseEcbMonthlyCsv } from '../api/_lib/ecb.js';
 import type { EcbSeries, PolicyRate } from '../src/types/index.ts';
 import { respond, stubFetch } from './helpers/traffic-fixtures.ts';
 
@@ -97,5 +97,15 @@ describe('taux directeurs', () => {
     stubFetch(() => respond(DFR));
     const [depot] = await loadEcbRates();
     expect(depot?.status).toBe('ok');
+  });
+});
+
+describe('repère officiel de l’écart OAT-Bund (BCE IRS mensuel, 03/11/2026)', () => {
+  it('lit les mois AAAA-MM et calcule l’écart du dernier mois commun', () => {
+    const fr = parseEcbMonthlyCsv('KEY,TIME_PERIOD,OBS_VALUE\nA,2026-08,4\nA,2026-09,4.44\n');
+    const de = parseEcbMonthlyCsv('KEY,TIME_PERIOD,OBS_VALUE\nA,2026-08,3.185\n');
+    expect(fr).toEqual([{ month: '2026-08', value: 4 }, { month: '2026-09', value: 4.44 }]);
+    expect(officialSpreadOf(fr, de)).toEqual({ month: '2026-08', fr10y: 4, de10y: 3.185, value: 0.82 });
+    expect(officialSpreadOf(fr, [])).toBeNull();
   });
 });

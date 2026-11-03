@@ -1,8 +1,8 @@
 // src/services/financial-stability-levels.ts : niveaux du bloc « Stabilité financière » (spec 2026-10-12 § 2). Seuils France
 // Monitor (ni BCE ni AFT) sur l'échelle L1 ; la borne basse d'un palier appartient à ce palier. Module pur.
-import type { FinancialStabilityResponse } from '../types/index.ts';
+import type { FinancialStabilityResponse, OfficialSpread } from '../types/index.ts';
 import { frNumber } from '../components/layer-panel/format.ts';
-import { maxLevel, type VigilanceLevel } from './vigilance.ts';
+import { LEVEL_RANK, maxLevel, type VigilanceLevel } from './vigilance.ts';
 
 export interface LevelBand { from: number; level: VigilanceLevel; word: string }
 
@@ -47,4 +47,45 @@ export function blockLevel(data: FinancialStabilityResponse | null): VigilanceLe
   }
   if (data.spread.value !== null && Number.isFinite(data.spread.value) && data.spread.status !== 'unavailable') levels.push(bandOf(data.spread.value, SPREAD_BANDS).level);
   return levels.length > 0 ? maxLevel(levels) : null;
+}
+
+const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+
+/** « septembre 2026 » pour « 2026-09 ». */
+export function frMonth(month: string): string {
+  const [y, m] = month.split('-');
+  return `${MONTHS[Number(m) - 1] ?? m} ${y}`;
+}
+
+/** « Repère officiel BCE (septembre 2026) : 0,97 pt, élevé. » ; null sans repère. */
+export function officialSpreadText(o: OfficialSpread | null | undefined): string | null {
+  if (!o) return null;
+  return `Repère officiel BCE (moyenne de ${frMonth(o.month)}) : ${frNumber(o.value, 2)}\u00a0pt, ${bandOf(o.value, SPREAD_BANDS).word}.`;
+}
+
+/**
+ * Pourquoi le titre a ce niveau (03/11/2026, « Stabilité financière : ROUGE » à côté d'un CISS « calme ») : quand l'écart OAT-Bund
+ * (prix de marché, non officiel) place le bloc au-dessus du stress mesuré par la BCE, la phrase le dit et explique la différence.
+ * null quand le CISS fait lui-même le niveau, ou sans données.
+ */
+export function levelDriverText(data: FinancialStabilityResponse | null): { short: string; text: string } | null {
+  if (!data) return null;
+  const level = blockLevel(data);
+  const sp = data.spread;
+  if (level === null || sp.value === null || sp.status === 'unavailable') return null;
+  const spreadBand = bandOf(sp.value, SPREAD_BANDS);
+  const ciss = data.series.filter((x) => (x.id === 'cissFr' || x.id === 'cissEa') && x.value !== null && x.status !== 'unavailable');
+  const cissLevels = ciss.map((x) => bandOf(x.value as number, CISS_BANDS).level);
+  const cissTop = cissLevels.length > 0 ? maxLevel(cissLevels) : null;
+  if (spreadBand.level !== level || (cissTop !== null && LEVEL_RANK[cissTop] >= LEVEL_RANK[level])) return null;
+  const cissWord = cissTop === null ? null : bandOf(Math.max(...ciss.map((x) => x.value as number)), CISS_BANDS).word;
+  // Trois décimales, comme les lignes CISS du tableau (0,085 et non 0,09).
+  const cissValues = ciss.map((x) => `${x.id === 'cissFr' ? 'France' : 'zone euro'} ${frNumber(x.value as number, 3)}`).join(' ; ');
+  const parts = [
+    `Niveau tiré par l’écart OAT-Bund (${frNumber(sp.value, 2)}\u00a0pt, ${spreadBand.word}) : un prix de marché relevé sur TradingView, pas une publication officielle.`,
+    cissWord ? `Le stress mesuré par la BCE reste ${cissWord} (CISS ${cissValues}).` : null,
+    'Les deux ne mesurent pas la même chose : le CISS suit les tensions du système financier, l’écart la prime de risque demandée à l’État français.',
+    officialSpreadText(data.officialSpread),
+  ].filter((x): x is string => x !== null);
+  return { short: 'écart OAT-Bund', text: parts.join(' ') };
 }

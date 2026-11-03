@@ -9,7 +9,7 @@ import { fmLoaderHTML } from './shared/loader.ts';
 import { finTableRowHTML, type FinTableRow } from './shared/fin-table.ts';
 import { levelColorVar, levelLabel, type VigilanceLevel } from '../services/vigilance.ts';
 import {
-  CISS_BANDS, CISS_HELP, SPREAD_BANDS, SPREAD_HELP, bandOf, blockLevel, thresholdsText, type LevelBand,
+  CISS_BANDS, CISS_HELP, SPREAD_BANDS, SPREAD_HELP, bandOf, blockLevel, levelDriverText, officialSpreadText, thresholdsText, type LevelBand,
 } from '../services/financial-stability-levels.ts';
 
 export interface FinancialStabilityView {
@@ -102,12 +102,12 @@ const PENDING_CURVE = '<span class="fin-row__pending">en constitution</span>';
 const FIN_INTRO = '<p class="fin-table__intro">Tensions sur les marchés : stress mesuré par la BCE (CISS, 0 calme, 1 crise), '
   + 'écart de taux France-Allemagne, taux de la BCE, euro et CAC 40. Survoler une ligne pour le détail.</p>';
 
-function spreadRow(sp: OatBundSpread | undefined): FinTableRow {
+function spreadRow(sp: OatBundSpread | undefined, official: string | null): FinTableRow {
   const base = { id: 'spread', name: 'Écart OAT-Bund' };
   const spreadFormat = (v: number): string => `${frNumber(v, 2)}${NBSP}pt`;
   const first = sp?.history[0];
   const label = first ? `depuis le ${frDate(first.date)}` : 'relevés quotidiens';
-  const help = `${SPREAD_HELP} ${thresholdsText(SPREAD_BANDS, 1, `${NBSP}pt`)} Source : marché (TradingView), courbe relevée un point par jour.`;
+  const help = `${SPREAD_HELP} ${thresholdsText(SPREAD_BANDS, 1, `${NBSP}pt`)} Source : marché (TradingView, non officielle), courbe relevée un point par jour.${official ? ` ${official}` : ''}`;
   if (!sp || sp.value === null) return { ...base, value: ND, meta: 'TradingView indisponible', curve: curveHTML(sp?.history, label, spreadFormat), help };
   const band = bandOf(sp.value, SPREAD_BANDS);
   const when = sp.status === 'stale' ? 'en retard' : sp.readAt !== null && isParisWeekend(sp.readAt) ? 'clôture du vendredi' : 'en direct';
@@ -125,26 +125,29 @@ function cacRow(cac: MarketData | null): FinTableRow {
   return { ...base, value: frNumber(cac.price, 0), meta: 'en direct', note: { text: `${frNumber(cac.changePercent, 2, true)}${NBSP}%`, tone } };
 }
 
-export function buildFinancialStabilityHTML(view: FinancialStabilityView): { level: VigilanceLevel | null; stamp: string; html: string } {
+export function buildFinancialStabilityHTML(view: FinancialStabilityView): { level: VigilanceLevel | null; stamp: string; html: string; driver: string | null } {
   const { data } = view;
   // Rien lu (502 sans relevé gardé) : mêmes lignes en « n.d. », le CAC 40 (source indépendante) reste (revue finale I3).
   const byId = <T extends { id: string }>(list: T[] | undefined, id: string): T | undefined => list?.find((x) => x.id === id);
   const rows: FinTableRow[] = [
     seriesRow(byId(data?.series, 'cissFr'), 'cissFr'),
     seriesRow(byId(data?.series, 'cissEa'), 'cissEa'),
-    spreadRow(data?.spread),
+    spreadRow(data?.spread, officialSpreadText(data?.officialSpread)),
     ratesRow(byId(data?.rates, 'depot'), byId(data?.rates, 'refi')),
     seriesRow(byId(data?.series, 'estr'), 'estr'),
     seriesRow(byId(data?.series, 'eurusd'), 'eurusd'),
     cacRow(view.cac),
   ];
-  const table = `${FIN_INTRO}<div class="fin-table">${rows.map(finTableRowHTML).join('')}</div>`;
+  // Niveau tiré par l'écart de marché et non par le CISS : l'explication est visible, pas en infobulle (03/11/2026).
+  const driver = levelDriverText(data ?? null);
+  const why = driver ? `<p class="fin-table__why">${esc(driver.text)}</p>` : '';
+  const table = `${FIN_INTRO}${why}<div class="fin-table">${rows.map(finTableRowHTML).join('')}</div>`;
   if (!data) {
     const cause = view.error ? `<div class="fin-table__cause">Stabilité financière indisponible : ${esc(view.error)}</div>` : '';
-    return { level: null, stamp: 'Source indisponible', html: `${cause}${table}` };
+    return { level: null, stamp: 'Source indisponible', html: `${cause}${table}`, driver: null };
   }
   const time = new Date(data.readAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' });
-  return { level: blockLevel(data), stamp: `MàJ ${time}`, html: table };
+  return { level: blockLevel(data), stamp: `MàJ ${time}`, html: table, driver: driver?.short ?? null };
 }
 
 export class FinancialStabilityStrip {

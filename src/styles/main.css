@@ -8098,6 +8098,9 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
   font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
   padding: 2px 8px; border-radius: 12px; border: 1px solid var(--fin-lvl); color: var(--fin-lvl); white-space: nowrap;
 }
+/* Ce qui fait le niveau quand ce n'est pas le CISS de la BCE (03/11/2026) : encadré sous l'introduction. */
+.fin-table__why { margin: 0 0 8px; padding: 6px 8px 6px 10px; font-size: 11.5px; line-height: 1.45; color: var(--text-secondary);
+  background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 6px; }
 
 /* Courbes des marchés (refonte du 12/10/2026) : bleu-gris neutre, trait net, aire en dégradé (market-sparkline.ts). */
 :root { --spark-neutral: #7f98b8; }

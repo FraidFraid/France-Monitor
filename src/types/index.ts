@@ -924,8 +924,13 @@ export interface FinancialStabilityResponse {
   series: EcbSeries[];
   rates: PolicyRate[];
   spread: OatBundSpread;
+  /** Repère officiel (BCE, taux à 10 ans mensuels France et Allemagne) ; absent ou null s'il n'est pas lisible. */
+  officialSpread?: OfficialSpread | null;
   errors: string[];
 }
+
+/** Écart OAT-Bund officiel d'un mois (BCE, moyenne mensuelle des taux à 10 ans « pour la convergence »). */
+export interface OfficialSpread { month: string; fr10y: number; de10y: number; value: number }
 
 // ═══ Finance (Matières premières) ═══
 

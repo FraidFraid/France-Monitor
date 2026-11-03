@@ -2,7 +2,7 @@
 // bornes exactes (borne basse = palier du dessus), texte des seuils, niveau du bloc.
 import { describe, expect, it } from 'vitest';
 import type { EcbSeries, FinancialStabilityResponse, OatBundSpread } from '../types/index.ts';
-import { CISS_BANDS, SPREAD_BANDS, bandOf, blockLevel, thresholdsText } from './financial-stability-levels.ts';
+import { CISS_BANDS, SPREAD_BANDS, bandOf, blockLevel, frMonth, levelDriverText, officialSpreadText, thresholdsText } from './financial-stability-levels.ts';
 
 const ciss = (id: 'cissFr' | 'cissEa', value: number | null, status: EcbSeries['status'] = 'ok'): EcbSeries =>
   ({ id, value, date: value === null ? null : '2026-10-09', history: [], status, error: null });
@@ -43,5 +43,26 @@ describe('niveau du bloc', () => {
     expect(blockLevel(data(null, 0.35, null))).toBe('orange');
     expect(blockLevel(data(null, null, null))).toBeNull();
     expect(blockLevel(null)).toBeNull();
+  });
+});
+
+describe('ce qui fait le niveau (03/11/2026 : « ROUGE » à côté d’un CISS « calme »)', () => {
+  it('rouge tiré par l’écart de marché, CISS calme : explication complète, repère officiel BCE', () => {
+    const d = { ...data(0.08, 0.01, 1.6), officialSpread: { month: '2026-09', fr10y: 4.44, de10y: 3.473, value: 0.97 } };
+    const r = levelDriverText(d);
+    expect(r?.short).toBe('écart OAT-Bund');
+    expect(r?.text).toContain('Niveau tiré par l’écart OAT-Bund (1,60\u00a0pt, critique) : un prix de marché relevé sur TradingView, pas une publication officielle.');
+    expect(r?.text).toContain('Le stress mesuré par la BCE reste calme (CISS France 0,080 ; zone euro 0,010).');
+    expect(r?.text).toContain('Repère officiel BCE (moyenne de septembre 2026) : 0,97\u00a0pt, élevé.');
+  });
+  it('CISS au même niveau ou plus haut que l’écart : rien à expliquer', () => {
+    expect(levelDriverText(data(0.6, 0.1, 1.6))).toBeNull();
+    expect(levelDriverText(data(0.08, 0.01, 0.4))).toBeNull();
+    expect(levelDriverText(null)).toBeNull();
+  });
+  it('sans repère officiel : la phrase s’en passe', () => {
+    expect(levelDriverText(data(0.08, null, 1.0))?.text).not.toContain('Repère officiel');
+    expect(officialSpreadText(null)).toBeNull();
+    expect(frMonth('2026-11')).toBe('novembre 2026');
   });
 });

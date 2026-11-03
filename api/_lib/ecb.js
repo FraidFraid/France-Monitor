@@ -92,3 +92,61 @@ export async function loadEcbRates() {
     return { id: def.id, value: last.value, since: last.date, previous, status: error ? 'stale' : 'ok', error };
   }));
 }
+
+/**
+ * Repère officiel de l'écart OAT-Bund (03/11/2026) : taux à 10 ans « pour la convergence » publiés chaque mois par la BCE pour la
+ * France et l'Allemagne (IRS, moyenne mensuelle, environ un mois de décalage). L'écart du bloc vient d'un prix de marché
+ * (TradingView, non officiel) : ce repère permet à un lecteur de le recouper. Dernier mois commun aux deux séries ; null sinon.
+ */
+export const ECB_LONG_RATES = Object.freeze([
+  { id: 'irsFr', path: 'IRS/M.FR.L.L40.CI.0000.EUR.N.Z', label: 'BCE taux à 10 ans France' },
+  { id: 'irsDe', path: 'IRS/M.DE.L.L40.CI.0000.EUR.N.Z', label: 'BCE taux à 10 ans Allemagne' },
+]);
+/** Publication mensuelle : relue toutes les 12 h, gardée 60 jours en cas de panne. */
+const MONTHLY_CACHE = { ttlSec: 12 * 3_600, staleSec: 60 * 86_400, shared: true, waitMs: FETCH_TIMEOUT_MS + 3_000 };
+
+/** Observations mensuelles (AAAA-MM) d'un CSV BCE, ordre chronologique. */
+export function parseEcbMonthlyCsv(text) {
+  const lines = String(text ?? '').split(/\r?\n/).filter((l) => l.trim() !== '');
+  if (lines.length === 0) return [];
+  const header = lines[0].split(',').map((h) => h.trim());
+  const t = header.indexOf('TIME_PERIOD');
+  const v = header.indexOf('OBS_VALUE');
+  if (t < 0 || v < 0) throw new Error('CSV BCE sans colonnes TIME_PERIOD / OBS_VALUE');
+  const points = [];
+  for (const line of lines.slice(1)) {
+    const cells = line.split(',');
+    const month = (cells[t] ?? '').trim();
+    const raw = (cells[v] ?? '').trim();
+    const value = raw === '' ? Number.NaN : Number(raw);
+    if (!/^\d{4}-\d{2}$/.test(month) || !Number.isFinite(value)) continue;
+    points.push({ month, value });
+  }
+  return points.sort((a, b) => a.month.localeCompare(b.month));
+}
+
+/** Écart officiel du dernier mois commun (points, au centième) ; null si l'un des deux taux manque. */
+export function officialSpreadOf(fr, de) {
+  for (let i = fr.length - 1; i >= 0; i -= 1) {
+    const d = de.find((p) => p.month === fr[i].month);
+    if (d) return { month: fr[i].month, fr10y: fr[i].value, de10y: d.value, value: Math.round((fr[i].value - d.value) * 100) / 100 };
+  }
+  return null;
+}
+
+export async function loadEcbOfficialSpread() {
+  try {
+    const [fr, de] = await Promise.all(ECB_LONG_RATES.map(async (def) => {
+      const { value } = await cachedSourceReport(`fin:ecb:${def.id}`, MONTHLY_CACHE, def.label, async () => {
+        const { text } = await fetchStrictResponse(ecbUrl(def.path, 3), { expect: 'text', timeoutMs: FETCH_TIMEOUT_MS, headers: { Accept: 'text/csv' } });
+        const points = parseEcbMonthlyCsv(text);
+        if (points.length === 0) throw new Error('aucune observation');
+        return points;
+      });
+      return value ?? [];
+    }));
+    return officialSpreadOf(fr, de);
+  } catch {
+    return null;
+  }
+}
