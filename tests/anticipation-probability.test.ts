@@ -13,9 +13,9 @@ describe('échelle', () => {
     expect(V1_WORDS).toEqual(['peu_probable', 'possibilite_reelle', 'probable', 'tres_probable']);
     expect(WORD_LABEL.chance_infime).toBe('chance infime');
     expect(WORD_LABEL.quasi_certain).toBe('quasi certain');
-    expect(WORD_RANGE.probable).toBe('55 à 75 %');
-    expect(WORD_RANGE.chance_infime).toBe('≤ 5 %');
-    expect(WORD_RANGE.quasi_certain).toBe('≥ 95 %');
+    expect(WORD_RANGE.probable).toBe('55\u00a0à\u00a075\u00a0%');
+    expect(WORD_RANGE.chance_infime).toBe('≤\u00a05\u00a0%');
+    expect(WORD_RANGE.quasi_certain).toBe('≥\u00a095\u00a0%');
   });
 });
 
@@ -66,6 +66,7 @@ describe('wordWhy', () => {
   });
   it('accorde le singulier et nomme échéance et bascule', () => {
     expect(wordWhy({ ...none, origins: 1 })).toBe('1 source');
+    expect(wordWhy(none)).toBe('aucune source indépendante');
     expect(wordWhy({ ...none, origins: 2, hasPublishedDeadline: true, officialLevel: 'orange', basculeHit: true }))
       .toBe('2 sources indépendantes, échéance publiée, niveau officiel orange, bascule atteinte');
   });

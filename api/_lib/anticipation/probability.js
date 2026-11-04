@@ -49,13 +49,13 @@ export const WORD_LABEL = Object.freeze({
 
 /** @type {Readonly<Record<Word, string>>} Espaces insécables : une valeur et son unité tiennent sur une ligne. */
 export const WORD_RANGE = Object.freeze({
-  chance_infime: '≤ 5 %',
-  tres_peu_probable: '10 à 20 %',
-  peu_probable: '25 à 35 %',
-  possibilite_reelle: '40 à 50 %',
-  probable: '55 à 75 %',
-  tres_probable: '80 à 90 %',
-  quasi_certain: '≥ 95 %',
+  chance_infime: '≤\u00a05\u00a0%',
+  tres_peu_probable: '10\u00a0à\u00a020\u00a0%',
+  peu_probable: '25\u00a0à\u00a035\u00a0%',
+  possibilite_reelle: '40\u00a0à\u00a050\u00a0%',
+  probable: '55\u00a0à\u00a075\u00a0%',
+  tres_probable: '80\u00a0à\u00a090\u00a0%',
+  quasi_certain: '≥\u00a095\u00a0%',
 });
 
 const rank = (/** @type {Word} */ w) => WORDS.indexOf(w);
@@ -111,7 +111,7 @@ export function applyFloor(word, ev) {
  */
 export function wordWhy(ev) {
   const n = ev.origins;
-  const parts = [n <= 1 ? `${n} source` : `${n} sources indépendantes`];
+  const parts = [n <= 0 ? 'aucune source indépendante' : n === 1 ? '1 source' : `${n} sources indépendantes`];
   if (ev.hasPublishedDeadline) parts.push('échéance publiée');
   if (ev.officialLevel === 'orange' || ev.officialLevel === 'rouge') parts.push(`niveau officiel ${ev.officialLevel}`);
   if (ev.basculeHit) parts.push('bascule atteinte');
