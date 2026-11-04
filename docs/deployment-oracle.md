@@ -478,7 +478,7 @@ Suivi : `journalctl -u fm-archive-protests -n 20`.
 ## Registre d'anticipation (04/11/2026)
 
 `fm-api` calcule chaque minute les scénarios d'anticipation (bêta) et les écrit dans `/var/lib/francemonitor/data/anticipation/`
-(`journal/AAAA-MM.jsonl` : un événement par ligne ; `signals/AAAA-MM-JJ.jsonl` : archive des signaux, 13 mois puis résumé). Sans ce
+(`journal/AAAA-MM.jsonl` : un événement par ligne ; `signals/AAAA-MM-JJ.jsonl` : archive des signaux, un instantané toutes les 3 h et les changements entre deux, 3 mois puis résumé). Sans ce
 dossier inscriptible, le moteur tourne en mémoire et le dit dans le champ `errors` de `/api/anticipation/now`. Le tick ne passe pas par
 un minuteur : il est dans la relève d'une minute de `fm-api` (`server/prod/anticipation-collectors.mjs`).
 

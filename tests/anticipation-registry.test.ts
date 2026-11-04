@@ -43,18 +43,59 @@ describe('registry', () => {
     expect(again.state().has('b')).toBe(true);
   });
 
-  it('archive skips unchanged signals within 15 min', async () => {
+  it('archive: snapshot first, then only changes, a new snapshot after 3 h', async () => {
     const reg = await openRegistry({ dir, now: NOW });
     const list = [sig('a'), sig('b')];
     await reg.archiveSignals(list, NOW);
-    await reg.archiveSignals(list, NOW + 5 * MIN);
+    await reg.archiveSignals(list.map((s) => ({ ...s, checkedAt: '2026-11-04T10:05:00Z' })), NOW + 5 * MIN);
     const file = path.join(dir, 'signals', '2026-11-04.jsonl');
-    expect((await readFile(file, 'utf8')).trim().split('\n')).toHaveLength(1);
-    await reg.archiveSignals([sig('a'), sig('b', 'rouge')], NOW + 6 * MIN);
-    expect((await readFile(file, 'utf8')).trim().split('\n')).toHaveLength(2);
-    await reg.archiveSignals([sig('a'), sig('b', 'rouge')], NOW + 22 * MIN);
-    expect((await readFile(file, 'utf8')).trim().split('\n')).toHaveLength(3);
+    const rows = async () => (await readFile(file, 'utf8')).trim().split('\n').map((l) => JSON.parse(l));
+    expect(await rows()).toHaveLength(1);
+    await reg.archiveSignals([sig('b', 'rouge'), sig('c')], NOW + 6 * MIN);
+    const [first, second] = await rows();
+    expect(first.signals.map((x: { id: string }) => x.id)).toEqual(['a', 'b']);
+    expect(second.signals).toBeUndefined();
+    expect(second.add.map((x: { id: string; level: string }) => `${x.id}:${x.level}`)).toEqual(['b:rouge', 'c:jaune']);
+    expect(second.drop).toEqual(['a']);
+    await reg.archiveSignals([sig('b', 'rouge'), sig('c')], NOW + 22 * MIN);
+    expect(await rows()).toHaveLength(2);
+    await reg.archiveSignals([sig('b', 'rouge'), sig('c')], NOW + 3 * 60 * MIN);
+    const third = (await rows())[2];
+    expect(third.signals.map((x: { id: string }) => x.id)).toEqual(['b', 'c']);
   });
+
+  it('signalsBetween rebuilds the state at the window start from snapshots and changes', async () => {
+    const reg = await openRegistry({ dir, now: NOW });
+    await reg.archiveSignals([sig('a'), sig('b')], NOW - 60 * MIN);
+    await reg.archiveSignals([sig('b'), sig('c', 'orange')], NOW - 30 * MIN); // a disparaît avant la fenêtre
+    await reg.archiveSignals([sig('b'), sig('c', 'rouge')], NOW + 30 * MIN);
+    await reg.archiveSignals([sig('d')], NOW + 2 * 60 * MIN); // après la fenêtre
+    const got = await reg.signalsBetween(new Date(NOW).toISOString(), new Date(NOW + 60 * MIN).toISOString());
+    expect(got.map((s: { id: string; level: string }) => `${s.id}:${s.level}`)).toEqual(['b:jaune', 'c:orange', 'c:rouge']);
+    // Aucune ligne dans la fenêtre : l'état de la dernière ligne (récente) est encore présent.
+    const quiet = await reg.signalsBetween(new Date(NOW + 40 * MIN).toISOString(), new Date(NOW + 50 * MIN).toISOString());
+    expect(quiet.map((s: { id: string }) => s.id)).toEqual(['b', 'c']);
+  });
+
+  it('signalsBetween does not carry a state older than 3 h 15 (service stopped)', async () => {
+    const reg = await openRegistry({ dir, now: NOW });
+    await reg.archiveSignals([sig('a')], Date.parse('2026-11-04T06:00:00Z'));
+    const got = await reg.signalsBetween('2026-11-04T10:00:00Z', '2026-11-04T11:00:00Z');
+    expect(got).toEqual([]);
+  });
+
+  it('a busy day of 1 000 announced gatherings stays far under the daily cap', async () => {
+    const reg = await openRegistry({ dir, now: NOW });
+    const base = Array.from({ length: 1000 }, (_, i) => sig(`r${i}`, 'jaune', 'rassemblement_annonce', String(10 + (i % 80))));
+    for (let m = 0; m < 240; m++) {
+      // Une annonce change de niveau chaque minute, les autres ne bougent que d'horodatage.
+      const list = base.map((s, i) => (i === m % 1000 ? { ...s, level: m % 2 ? 'orange' : 'jaune' } : { ...s, checkedAt: new Date(NOW + m * MIN).toISOString() }));
+      await reg.archiveSignals(list, NOW + m * MIN);
+    }
+    const size = (await readFile(path.join(dir, 'signals', '2026-11-04.jsonl'), 'utf8')).length;
+    // Ancien format (un instantané par changement) : 240 lignes d'environ 150 Ko, soit plus de 30 Mo.
+    expect(size).toBeLessThan(1024 * 1024);
+  }, 30_000);
 
   it('unwritable dir → writable false, record still updates memory, errors names the dir', async () => {
     const blocker = path.join(dir, 'fichier');
@@ -68,7 +109,7 @@ describe('registry', () => {
     expect(reg.errors.some((e: string) => e.includes(bad))).toBe(true);
   });
 
-  it('compact replaces files older than 13 months by a summary', async () => {
+  it('compact replaces files older than 3 months by a summary', async () => {
     const reg = await openRegistry({ dir, now: NOW });
     const old = Date.parse('2025-08-01T10:00:00Z');
     await reg.archiveSignals([sig('a'), sig('b'), sig('c', 'jaune', 'panne', '69')], old);
@@ -203,7 +244,8 @@ describe('archive des signaux bornée (revue finale)', () => {
     const again = await openRegistry({ dir, now: NOW });
     await again.archiveSignals([sig('c', 'rouge')], NOW + 60 * MIN);
     const inWindow = await again.signalsBetween(new Date(NOW - MIN).toISOString(), new Date(NOW + 61 * MIN).toISOString());
-    expect(inWindow.map((s: { id: string; level: string }) => `${s.id}:${s.level}`)).toEqual(['a:orange', 'b:jaune', 'c:rouge']);
+    // a:jaune est l'état au début de la fenêtre ; le redémarrage écrit un instantané (c seul).
+    expect(inWindow.map((s: { id: string; level: string }) => `${s.id}:${s.level}`)).toEqual(['a:jaune', 'a:orange', 'b:jaune', 'c:rouge']);
     const all = await again.signalsBetween(new Date(NOW - 2 * 60 * MIN).toISOString(), new Date(NOW + 2 * 60 * MIN).toISOString());
     expect(all.map((s: { id: string }) => s.id)).toEqual(['a', 'a', 'b', 'c']);
     // La ligne coupée a été close par un saut de ligne avant l'ajout suivant : quatre lignes, dont une illisible.

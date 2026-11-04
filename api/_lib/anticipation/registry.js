@@ -1,6 +1,6 @@
 // api/_lib/anticipation/registry.js : registre sur disque de l'anticipation (04/11/2026). Journal des scénarios (JSONL par mois de
-// Paris), archive des signaux (JSONL par jour de Paris, réécrite seulement quand l'ensemble change ou après 15 min) et compaction
-// au-delà de 13 mois. L'état est rebâti au démarrage en rejouant le journal du mois en cours et du précédent (même id : pas de doublon).
+// Paris), archive des signaux (JSONL par jour de Paris : un instantané complet en début de jour puis toutes les 3 h, et entre deux
+// seulement les signaux ajoutés, changés ou disparus) et compaction au-delà de 3 mois. L'état est rebâti au démarrage en rejouant le journal du mois en cours et du précédent (même id : pas de doublon).
 // Une écriture ne lève jamais : sur échec, `writable` passe à false, l'erreur nomme le dossier et la mémoire reste à jour.
 // Archive bornée (revue finale du 04/11/2026) : copies allégées (ni titre ni adresse), presse limitée à ce que relisent les tests
 // d'arrivée, lecture ligne à ligne, plafond de 50 Mo par jour.
@@ -44,8 +44,12 @@ const VOTES = new Set(['utile', 'deja_su', 'faux']);
 const withVote = (/** @type {Scenario} */ s, /** @type {Vote} */ vote) => ({ ...s, feedback: { utile: 0, deja_su: 0, faux: 0, ...s.feedback, [vote]: (s.feedback?.[vote] ?? 0) + 1 } });
 
 const DEFAULT_DIR = '/var/lib/francemonitor/data/anticipation';
-const ARCHIVE_EVERY_MS = 15 * 60_000;
-const KEEP_MONTHS = 13;
+/** Intervalle des instantanés complets de l'archive ; entre deux, des lignes de différences (mise en prod du 04/11 : 412 Ko par
+ * instantané, un par minute aurait atteint le plafond du jour en 2 h). */
+export const ARCHIVE_FULL_EVERY_MS = 3 * 3_600_000;
+/** Au-delà de ce délai sans ligne, l'état reconstitué n'est plus supposé présent (service arrêté). */
+const ARCHIVE_STALE_MS = ARCHIVE_FULL_EVERY_MS + 15 * 60_000;
+const KEEP_MONTHS = 3;
 /** Plafond d'un fichier d'archive du jour : au-delà, plus d'ajout ce jour-là (une erreur le dit). */
 export const ARCHIVE_DAY_MAX_BYTES = 50 * 1024 * 1024;
 /** Plafond de signaux de presse par ligne d'archive, les plus utiles aux tests d'arrivée d'abord. */
@@ -93,6 +97,9 @@ export function archivedCopy(signals) {
     return out;
   });
 }
+
+/** Clé de changement d'un signal archivé : un relevé qui ne change que d'horodatage n'est pas réécrit entre deux instantanés. */
+const changeKey = (/** @type {Record<string, unknown>} */ s) => JSON.stringify([s.level ?? null, s.value ?? null, s.window ?? null, s.dept ?? null, s.meta ?? null]);
 
 /** Appelle `fn` pour chaque ligne non vide d'un fichier, lu en flux (jamais en entier en mémoire). Fichier absent : ENOENT levée. */
 async function forEachLine(/** @type {string} */ file, /** @type {(line: string) => void} */ fn) {
@@ -152,8 +159,11 @@ export async function openRegistry({ dir, now, archiveMaxBytes = ARCHIVE_DAY_MAX
   const scenarios = new Map();
   /** @type {string[]} */
   const errors = [];
-  let lastFingerprint = null;
-  let lastArchiveAt = -Infinity;
+  // Dernier état écrit dans l'archive (id → clé de changement) ; vide après un démarrage : la première ligne est un instantané.
+  /** @type {Map<string, string>} */
+  let lastWritten = new Map();
+  let lastFullAt = -Infinity;
+  let lastWrittenDay = '';
 
   const registry = {
     writable: true,
@@ -309,9 +319,20 @@ export async function openRegistry({ dir, now, archiveMaxBytes = ARCHIVE_DAY_MAX
 
   async function archiveNow(/** @type {Signal[]} */ signals, /** @type {number} */ at) {
     const kept = archivedCopy(signals);
-    const fingerprint = kept.map((s) => `${s.id}|${s.level}|${s.value}`).sort().join('\n');
-    if (fingerprint === lastFingerprint && at - lastArchiveAt < ARCHIVE_EVERY_MS) return;
+    /** @type {Map<string, Record<string, unknown>>} */
+    const byId = new Map();
+    for (const s of kept) byId.set(/** @type {string} */ (s.id), s);
     const day = parisDay(at);
+    const full = day !== lastWrittenDay || at - lastFullAt >= ARCHIVE_FULL_EVERY_MS;
+    /** @type {Array<Record<string, unknown>>} */
+    const add = [];
+    /** @type {string[]} */
+    const drop = [];
+    if (!full) {
+      for (const [id, s] of byId) if (lastWritten.get(id) !== changeKey(s)) add.push(s);
+      for (const id of lastWritten.keys()) if (!byId.has(id)) drop.push(id);
+      if (!add.length && !drop.length) return;
+    }
     if (cappedDays.has(day)) return;
     const file = path.join(signalsDir, `${day}.jsonl`);
     try {
@@ -323,15 +344,21 @@ export async function openRegistry({ dir, now, archiveMaxBytes = ARCHIVE_DAY_MAX
     } catch {
       // fichier absent : premier ajout du jour
     }
-    lastFingerprint = fingerprint;
-    lastArchiveAt = at;
-    const line = JSON.stringify({ at: new Date(at).toISOString(), signals: kept });
+    const iso = new Date(at).toISOString();
+    const line = full
+      ? JSON.stringify({ at: iso, signals: [...byId.values()] })
+      : JSON.stringify({ at: iso, add, ...(drop.length ? { drop } : {}) });
+    lastWritten = new Map([...byId].map(([id, s]) => [id, changeKey(s)]));
+    lastWrittenDay = day;
+    if (full) lastFullAt = at;
     await append(file, `${line}\n`);
   }
 
   /**
-   * Signaux archivés dont le relevé tombe dans [from, to] (ISO). Lit les fichiers des jours de Paris qui couvrent la fenêtre ;
-   * fichier absent ou ligne illisible : ignorés. Attend les écritures en cours pour voir ce qui vient d'être archivé.
+   * Signaux archivés présents pendant [from, to] (ISO) : l'état reconstitué au début de la fenêtre (s'il date de moins de 3 h 15),
+   * puis chaque signal ajouté ou changé dans la fenêtre. Lit les fichiers des jours de Paris qui couvrent la fenêtre, ligne à ligne,
+   * en rejouant instantanés (`signals`) et différences (`add`, `drop`) ; fichier absent ou ligne illisible : ignorés. Attend les
+   * écritures en cours pour voir ce qui vient d'être archivé.
    * @param {string} from
    * @param {string} to
    * @returns {Promise<Signal[]>}
@@ -342,26 +369,48 @@ export async function openRegistry({ dir, now, archiveMaxBytes = ARCHIVE_DAY_MAX
     await queue;
     /** @type {Signal[]} */
     const out = [];
-    // Jours de Paris couverts, chacun lu une seule fois (le pas de 12 h peut retomber sur le même jour).
+    // Jours de Paris couverts, chacun lu une seule fois (le pas de 6 h peut retomber sur le même jour).
     /** @type {Set<string>} */
     const days = new Set();
     for (let t = a; t <= b; t += 6 * 3_600_000) days.add(parisDay(t));
     days.add(parisDay(b));
     for (const day of [...days].sort()) {
+      /** @type {Map<string, Signal>} */
+      const state = new Map();
+      let lastAt = -Infinity;
+      let opened = false;
+      let done = false;
+      const openWindow = () => {
+        opened = true;
+        if (state.size && a - lastAt <= ARCHIVE_STALE_MS) out.push(...state.values());
+      };
       try {
-        // Lecture ligne à ligne : l'horodatage de la ligne est lu avant de tout analyser, une ligne hors fenêtre n'est pas décodée.
         await forEachLine(path.join(signalsDir, `${day}.jsonl`), (line) => {
+          if (done) return;
           const head = /^\{"at":"([^"]+)"/.exec(line);
           const t = head ? Date.parse(head[1]) : NaN;
-          if (head && (!Number.isFinite(t) || t < a || t > b)) return;
-          try {
-            const row = JSON.parse(line);
-            const at = Date.parse(row?.at);
-            if (Number.isFinite(at) && at >= a && at <= b && Array.isArray(row.signals)) for (const sg of row.signals) out.push(sg);
-          } catch {
-            // ligne coupée : ignorée
+          if (!Number.isFinite(t)) return;
+          // Après la fenêtre : l'état du début (s'il n'a pas encore été rendu) suffit, la suite n'est pas décodée.
+          if (t > b) { if (!opened) openWindow(); done = true; return; }
+          if (t >= a && !opened) openWindow();
+          let row;
+          try { row = JSON.parse(line); } catch { return; } // ligne coupée : ignorée
+          const inWindow = t >= a;
+          if (Array.isArray(row?.signals)) {
+            state.clear();
+            for (const sg of row.signals) if (sg && typeof sg.id === 'string') state.set(sg.id, sg);
+            if (inWindow) out.push(...row.signals.filter((sg) => sg && typeof sg.id === 'string'));
+          } else {
+            for (const id of Array.isArray(row?.drop) ? row.drop : []) state.delete(id);
+            for (const sg of Array.isArray(row?.add) ? row.add : []) {
+              if (!sg || typeof sg.id !== 'string') continue;
+              state.set(sg.id, sg);
+              if (inWindow) out.push(sg);
+            }
           }
+          lastAt = t;
         });
+        if (!opened) openWindow(); // toutes les lignes avant la fenêtre : état encore présent au début, s'il est récent
       } catch {
         continue; // jour absent ou compacté : rien à relire
       }
@@ -393,7 +442,7 @@ export async function openRegistry({ dir, now, archiveMaxBytes = ARCHIVE_DAY_MAX
         await forEachLine(path.join(signalsDir, name), (line) => {
           let row;
           try { row = JSON.parse(line); } catch { return; }
-          for (const s of Array.isArray(row?.signals) ? row.signals : []) {
+          for (const s of [...(Array.isArray(row?.signals) ? row.signals : []), ...(Array.isArray(row?.add) ? row.add : [])]) {
             if (seen.has(s.id)) continue; // un signal vu dans plusieurs relevés du jour compte une fois
             seen.add(s.id);
             for (const d of Array.isArray(s.dept) && s.dept.length ? s.dept : ['n.d.']) {
