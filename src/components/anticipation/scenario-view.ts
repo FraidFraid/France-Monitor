@@ -1,6 +1,7 @@
 // src/components/anticipation/scenario-view.ts : vue pure de la fiche d'un scénario (onglet Anticipation, 04/11/2026, maquette écran 1).
 // Échelle des sept mots (le mot actif à la couleur de son jeton --sev-*), chaîne de preuves avec source et heure de Paris, inconnues,
 // bascules, ce qui l'infirmerait, vérifications, retours. Aucun accès réseau ni DOM ; tout texte venu du serveur est échappé.
+import { arretesPageOf } from '../../services/prefecture-arretes-pages.ts';
 import type { AnticipationChainLink, AnticipationDoc, AnticipationScenario, AnticipationSignal } from '../../types/index.ts';
 import { ALL_WORDS, isKnownWord, WORD_COLOR_VAR, WORD_LABEL, WORD_RANGE, wordLabel } from '../../services/anticipation-words.ts';
 import { parisDay } from '../../services/paris-day.js';
@@ -140,6 +141,14 @@ export function docHtml(doc: AnticipationDoc | undefined): string {
     + '</div>';
 }
 
+/** Lien vers la page officielle où paraîtra l'arrêté (bascule surveillée, ou atteinte sans document) ; rien si la préfecture n'est pas connue. */
+export function arretesLinkHtml(depts: readonly string[]): string {
+  const page = arretesPageOf(depts);
+  const url = safeDocUrl(page?.url);
+  if (!page || !url) return '';
+  return `<p class="anr-doc-where">Pas encore d'arrêté relevé. <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(page.label)}</a></p>`;
+}
+
 /** Fiche complète ; null : aucun scénario pour le jour choisi. */
 export function scenarioHtml(s: AnticipationScenario | null, signals: Readonly<Record<string, AnticipationSignal>>, opts: ScenarioViewOptions): string {
   if (!s) {
@@ -159,7 +168,8 @@ export function scenarioHtml(s: AnticipationScenario | null, signals: Readonly<R
     const hit = b.state === 'atteint';
     const at = hit ? clock(b.at) : null;
     const st = hit ? `Atteint${at ? ` ${at}` : ''}` : 'surveillé';
-    return `<div class="anr-trig${hit ? ' is-hit' : ''}"><span>${escapeHtml(b.label)}</span><span class="anr-st">${st}</span></div>${hit ? docHtml(b.doc) : ''}`;
+    const doc = hit ? docHtml(b.doc) : '';
+    return `<div class="anr-trig${hit ? ' is-hit' : ''}"><span>${escapeHtml(b.label)}</span><span class="anr-st">${st}</span></div>${doc || (b.id === 'arrete' ? arretesLinkHtml(s.zone.dept) : '')}`;
   }).join('');
   return '<div class="anr-card">'
     + `<p class="anr-meta">${escapeHtml(meta)}</p>`

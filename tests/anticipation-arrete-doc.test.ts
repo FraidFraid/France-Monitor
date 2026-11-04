@@ -5,7 +5,8 @@ import { toSignals } from '../api/_lib/anticipation/signals.js';
 import { splitActs } from '../api/_lib/arretes-prefectoraux.js';
 // @ts-expect-error module JS sans déclaration
 import { arreteBascule, officialDocUrl } from '../api/_lib/anticipation/rules/common.js';
-import { docHtml, safeDocUrl, scenarioHtml } from '../src/components/anticipation/scenario-view.ts';
+import { arretesLinkHtml, docHtml, safeDocUrl, scenarioHtml } from '../src/components/anticipation/scenario-view.ts';
+import { PREFECTURE_ARRETES_PAGES } from '../src/services/prefecture-arretes-pages.ts';
 import type { AnticipationScenario } from '../src/types/index.ts';
 
 type Inputs = Parameters<typeof toSignals>[0];
@@ -65,6 +66,16 @@ describe('arrêté préfectoral : document officiel', () => {
     const hit = scenarioHtml({ ...base, bascules: [{ id: 'arrete', label: 'Arrêté préfectoral publié', state: 'atteint', at: '2026-11-04T09:00:00Z', doc }] } as unknown as AnticipationScenario, {}, { today: '2026-11-04', feedback: 'idle' } as never);
     expect(hit).toContain("Voir l'arrêté (PDF officiel)");
     const watched = scenarioHtml({ ...base, bascules: [{ id: 'arrete', label: 'Arrêté préfectoral publié', state: 'surveille', at: null, doc }] } as unknown as AnticipationScenario, {}, { today: '2026-11-04', feedback: 'idle' } as never);
-    expect(watched).not.toContain('anr-doc');
+    expect(watched).not.toContain('class="anr-doc"');
+    // Bascule surveillée : lien vers les recueils de la préfecture du Loiret, où paraîtra l'arrêté.
+    expect(watched).toContain('href="https://www.loiret.gouv.fr/Publications/Recueil-des-actes-administratifs/Recueil-des-actes-administratifs-departementaux"');
+    expect(hit).not.toContain('anr-doc-where');
+  });
+
+  it('watched bascule links to the official decree page: Préfecture de police for Paris, nothing for an unknown prefecture', () => {
+    expect(arretesLinkHtml(['75'])).toContain('href="https://www.prefecturedepolice.interieur.gouv.fr/actualites-et-presse/arretes/accueil-arretes"');
+    expect(arretesLinkHtml(['93'])).toContain('Arrêtés de la Préfecture de police');
+    expect(arretesLinkHtml(['23'])).toBe('');
+    for (const page of Object.values(PREFECTURE_ARRETES_PAGES)) expect(safeDocUrl(page.url)).toBe(page.url);
   });
 });
