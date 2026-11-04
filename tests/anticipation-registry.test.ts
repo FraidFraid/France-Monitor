@@ -143,3 +143,99 @@ describe('registry', () => {
     }
   });
 });
+
+describe('archive des signaux bornée (revue finale)', () => {
+  const NEWS_NOW = Date.parse('2026-11-04T12:00:00Z');
+  const cats = ['security', 'social', 'energy', 'weather', 'transport', 'finance', 'health'];
+  const sevs = ['info', 'low', 'medium', 'high', 'critical'];
+  const newsItems = (worst: boolean) => Array.from({ length: 1000 }, (_, i) => ({
+    id: `n${i}`, eventId: 100000 + i,
+    title: `Titre assez long de l'article numéro ${i} sur une grève SNCF à Lyon, avec des détails et encore des détails`,
+    link: `https://www.example-presse.fr/actualite/2026/11/04/article-${i}-avec-un-chemin-long`,
+    publishedAt: new Date(NEWS_NOW - (i % 20) * 3_600_000).toISOString(),
+    severity: worst ? 'critical' : sevs[i % 5], category: worst ? 'security' : cats[i % 7], feedName: 'Le Progrès', lat: 45.76, lon: 4.83,
+  }));
+
+  it('1000 news items → archived line under 64 KB, without title nor link', async () => {
+    // @ts-expect-error module JS sans déclaration
+    const { toSignals } = await import('../api/_lib/anticipation/signals.js');
+    for (const worst of [false, true]) {
+      const sub = await mkdtemp(path.join(tmpdir(), 'antic-size-'));
+      try {
+        const reg = await openRegistry({ dir: sub, now: NEWS_NOW });
+        const { signals } = toSignals({ news: newsItems(worst) }, NEWS_NOW);
+        expect(signals.length).toBeGreaterThanOrEqual(1000);
+        await reg.archiveSignals(signals, NEWS_NOW);
+        const line = (await readFile(path.join(sub, 'signals', '2026-11-04.jsonl'), 'utf8')).trim();
+        expect(Buffer.byteLength(line)).toBeLessThan(64 * 1024);
+        expect(line).not.toContain('Titre assez long');
+        expect(line).not.toContain('example-presse');
+        const kept = JSON.parse(line).signals as Array<{ kind: string; meta?: { category?: string; severity?: string } }>;
+        // Les plus utiles aux tests d'arrivée d'abord : aucun signal de presse gardé hors du filtre.
+        expect(kept.every((s) => s.kind === 'mouvement_social_transport' || ['security', 'social'].includes(String(s.meta?.category)) || ['high', 'critical'].includes(String(s.meta?.severity)))).toBe(true);
+      } finally { await rm(sub, { recursive: true, force: true }); }
+    }
+  });
+
+  it('archivedCopy keeps non-press signals, drops unlocated or minor press, strips long fields', async () => {
+    // @ts-expect-error module JS sans déclaration
+    const { archivedCopy } = await import('../api/_lib/anticipation/registry.js');
+    const press = (id: string, dept: string[], category: string, severity: string) => ({
+      id, domain: 'press', kind: 'presse', source: 'Flux', origin: `presse:event:${id}`, official: false, dept, communes: [], level: null, value: null, window: null,
+      publishedAt: '2026-11-04T09:00:00.000Z', observedAt: '2026-11-04T10:00:00.000Z', checkedAt: '2026-11-04T10:00:00.000Z', ref: 'https://x.fr/a',
+      meta: { eventId: 1, category, severity, title: 'Un titre' },
+    });
+    const out = archivedCopy([
+      sig('v1'), press('p1', ['69'], 'security', 'low'), press('p2', [], 'security', 'critical'), press('p3', ['69'], 'energy', 'medium'),
+      press('p4', ['13'], 'energy', 'high'), { ...sig('fuel', 'jaune', 'tension_carburant'), meta: { national: true, previousValue: 12 } },
+    ]);
+    expect(out.map((s: { id: string }) => s.id)).toEqual(['v1', 'p1', 'p4', 'fuel']);
+    expect(out.every((s: Record<string, unknown>) => !('ref' in s) && !('source' in s) && !('communes' in s))).toBe(true);
+    expect(out[1].meta).toEqual({ eventId: 1, category: 'security', severity: 'low' });
+    expect(out[3].meta).toEqual({ national: true, previousValue: 12 });
+  });
+
+  it('streaming read returns the same records as before (window filter, cut line ignored)', async () => {
+    const reg = await openRegistry({ dir, now: NOW });
+    await reg.archiveSignals([sig('a')], NOW - 60 * MIN);
+    await reg.archiveSignals([sig('a', 'orange'), sig('b')], NOW);
+    await appendFile(path.join(dir, 'signals', '2026-11-04.jsonl'), '{"at":"2026-11-04T10:30:00.000Z","signals":[{"id":"cou');
+    const again = await openRegistry({ dir, now: NOW });
+    await again.archiveSignals([sig('c', 'rouge')], NOW + 60 * MIN);
+    const inWindow = await again.signalsBetween(new Date(NOW - MIN).toISOString(), new Date(NOW + 61 * MIN).toISOString());
+    expect(inWindow.map((s: { id: string; level: string }) => `${s.id}:${s.level}`)).toEqual(['a:orange', 'b:jaune', 'c:rouge']);
+    const all = await again.signalsBetween(new Date(NOW - 2 * 60 * MIN).toISOString(), new Date(NOW + 2 * 60 * MIN).toISOString());
+    expect(all.map((s: { id: string }) => s.id)).toEqual(['a', 'a', 'b', 'c']);
+    // La ligne coupée a été close par un saut de ligne avant l'ajout suivant : quatre lignes, dont une illisible.
+    const lines = (await readFile(path.join(dir, 'signals', '2026-11-04.jsonl'), 'utf8')).split('\n').filter(Boolean);
+    expect(lines).toHaveLength(4);
+  });
+
+  it('last-byte check: only the trailing byte decides the newline', async () => {
+    // @ts-expect-error module JS sans déclaration
+    const { endsWithNewline } = await import('../api/_lib/anticipation/registry.js');
+    const f = path.join(dir, 'f.jsonl');
+    expect(await endsWithNewline(f)).toBe(true); // absent
+    await writeFile(f, '');
+    expect(await endsWithNewline(f)).toBe(true); // vide
+    await writeFile(f, `${'x'.repeat(100_000)}\n`);
+    expect(await endsWithNewline(f)).toBe(true);
+    await appendFile(f, '{"coupé');
+    expect(await endsWithNewline(f)).toBe(false);
+  });
+
+  it('size guard: a day file over the cap stops appending that day and names it once', async () => {
+    const reg = await openRegistry({ dir, now: NOW, archiveMaxBytes: 200 });
+    await reg.archiveSignals([sig('a')], NOW);
+    await reg.archiveSignals([sig('a'), sig('b')], NOW + MIN);
+    const file = path.join(dir, 'signals', '2026-11-04.jsonl');
+    const before = (await readFile(file, 'utf8')).split('\n').filter(Boolean).length;
+    await reg.archiveSignals([sig('a'), sig('b'), sig('c')], NOW + 2 * MIN);
+    await reg.archiveSignals([sig('a'), sig('d')], NOW + 3 * MIN);
+    expect((await readFile(file, 'utf8')).split('\n').filter(Boolean).length).toBe(before);
+    expect(reg.errors.filter((e: string) => e === 'archive des signaux du 2026-11-04 : plafond de 50 Mo atteint')).toHaveLength(1);
+    // Jour suivant : nouveau fichier, ajouts repris.
+    await reg.archiveSignals([sig('e')], NOW + 24 * 60 * MIN);
+    expect((await readFile(path.join(dir, 'signals', '2026-11-05.jsonl'), 'utf8')).trim().split('\n')).toHaveLength(1);
+  });
+});
