@@ -31,13 +31,13 @@ export const WORD_LABEL: Readonly<Record<AnticipationWord, string>> = {
 
 /** Fourchettes en espaces insécables (échappés) : une valeur et son unité tiennent sur une ligne. */
 export const WORD_RANGE: Readonly<Record<AnticipationWord, string>> = {
-  chance_infime: '≤ 5 %',
-  tres_peu_probable: '10 à 20 %',
-  peu_probable: '25 à 35 %',
-  possibilite_reelle: '40 à 50 %',
-  probable: '55 à 75 %',
-  tres_probable: '80 à 90 %',
-  quasi_certain: '≥ 95 %',
+  chance_infime: '≤\u00a05\u00a0%',
+  tres_peu_probable: '10\u00a0à\u00a020\u00a0%',
+  peu_probable: '25\u00a0à\u00a035\u00a0%',
+  possibilite_reelle: '40\u00a0à\u00a050\u00a0%',
+  probable: '55\u00a0à\u00a075\u00a0%',
+  tres_probable: '80\u00a0à\u00a090\u00a0%',
+  quasi_certain: '≥\u00a095\u00a0%',
 };
 
 /** Variable CSS de couleur par mot attribuable en v1 (les trois mots hors v1 n'ont pas de couleur propre). */

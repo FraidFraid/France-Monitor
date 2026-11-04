@@ -70,6 +70,13 @@ describe('fetch', () => {
     expect(f.mock.calls.length).toBe(calls);
   });
 
+  it('un 5xx sur now sert la réponse mémorisée', async () => {
+    const f = vi.fn().mockResolvedValueOnce(json(NOW)).mockResolvedValue(new Response('boom', { status: 503 }));
+    vi.stubGlobal('fetch', f);
+    await fetchAnticipationNow();
+    expect((await fetchAnticipationNow()).generatedAt).toBe(NOW.generatedAt);
+  });
+
   it('lève sans réponse mémorisée', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('réseau')));
     await expect(fetchAnticipationNow()).rejects.toThrow();
@@ -100,6 +107,21 @@ describe('feedback', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 429 })));
     expect(await sendAnticipationFeedback('s2', 'deja_su')).toBe('deja');
     expect(readAnticipationVote('s2')).toBe('deja_su');
+  });
+
+  it('trois 429 de suite puis 204 : le dernier vote passe', async () => {
+    const f = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 429 }))
+      .mockResolvedValueOnce(new Response(null, { status: 429 }))
+      .mockResolvedValueOnce(new Response(null, { status: 429 }))
+      .mockResolvedValue(new Response(null, { status: 204 }));
+    vi.stubGlobal('fetch', f);
+    expect(await sendAnticipationFeedback('a', 'utile')).toBe('deja');
+    expect(await sendAnticipationFeedback('b', 'utile')).toBe('deja');
+    expect(await sendAnticipationFeedback('c', 'utile')).toBe('deja');
+    expect(await sendAnticipationFeedback('d', 'utile')).toBe('ok');
+    expect(f).toHaveBeenCalledTimes(4);
   });
 
   it('400 et panne réseau donnent erreur sans mémoriser', async () => {

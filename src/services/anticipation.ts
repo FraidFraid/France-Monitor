@@ -52,7 +52,7 @@ export async function fetchAnticipationNow(): Promise<AnticipationNowResponse> {
 /** Note de 7 h (jour AAAA-MM-JJ, sinon la plus récente) ; null si aucune n'existe. */
 export async function fetchAnticipationNote(day?: string): Promise<AnticipationNote | null> {
   const path = day ? `note?day=${encodeURIComponent(day)}` : 'note';
-  return getJson<AnticipationNote>(path, 'anticipation', true);
+  return getJson<AnticipationNote>(path, 'anticipation-note', true);
 }
 
 /** Bilan mensuel (mois AAAA-MM, sinon le mois de Paris courant). */
@@ -104,17 +104,18 @@ export async function sendAnticipationFeedback(
 ): Promise<'ok' | 'deja' | 'erreur'> {
   if (readAnticipationVote(scenarioId)) return 'deja';
   try {
-    const res = await fetchWithBreaker(`${BASE}/feedback`, {
-      breakerKey: 'anticipation-feedback',
-      retries: 0,
-      timeoutMs: TIMEOUT_MS,
-      init: { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ scenarioId, vote }) },
+    // Sans disjoncteur : un 429 est une réponse normale (déjà voté) et ne doit pas bloquer les votes suivants.
+    const res = await fetch(`${BASE}/feedback`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ scenarioId, vote }),
+      signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     if (res.status === 429) {
       rememberVote(scenarioId, vote);
       return 'deja';
     }
-    if (res.status === 204 || res.ok) {
+    if (res.ok) {
       rememberVote(scenarioId, vote);
       return 'ok';
     }
