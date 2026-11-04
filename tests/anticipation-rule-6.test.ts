@@ -52,6 +52,15 @@ describe('rule 6 evenement-mobilisation', () => {
     expect(out[0].zone.communes).toEqual(['Villeurbanne']);
   });
 
+  it('same signals in reversed order give the same candidate (stable named match and label)', () => {
+    const b = game({ id: 'evenement_sportif:football-data:69:2', meta: { home: 'Autre Club', away: 'Visiteur' } });
+    const r2 = sig({ id: 'r2', origin: 'cgt', window: { from: '2026-11-04T15:00:00Z', to: '2026-11-04T18:00:00Z' } });
+    const one = rule.evaluate([game(), b, rally, r2, social], ctx);
+    const two = rule.evaluate([social, r2, rally, b, game()], ctx);
+    const strip = (c: { evidence?: unknown }) => { const { evidence, ...rest } = c; void evidence; return rest; };
+    expect(two.map(strip)).toEqual(one.map(strip));
+  });
+
   it('a match outside the half-day is not named', () => {
     const night = game({ id: 'evenement_sportif:football-data:69:3', meta: { home: 'Match du soir', away: 'X' }, window: { from: '2026-11-04T22:30:00Z', to: '2026-11-05T02:00:00Z' } });
     const out = rule.evaluate([night, game(), rally], ctx);

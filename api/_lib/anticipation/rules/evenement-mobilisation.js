@@ -50,9 +50,11 @@ const rule = {
       if (!slot || slot.to <= ctx.now) continue;
       const key = `${dept}:${slot.from}`;
       if (seen.has(key)) continue;
-      const sm = matches.filter((s) => inDept(s, dept) && meets(span(s), slot.from, slot.to));
-      const sr = rallies.filter((s) => inDept(s, dept) && meets(span(s), slot.from, slot.to));
-      const ss = socials.filter((s) => inDept(s, dept) && meets(socialSpan(s, ctx.now), slot.from, slot.to));
+      // Triés par id : le match nommé et le libellé ne dépendent pas de l'ordre d'arrivée des signaux.
+      const byId = (/** @type {Signal} */ a, /** @type {Signal} */ b) => a.id.localeCompare(b.id);
+      const sm = matches.filter((s) => inDept(s, dept) && meets(span(s), slot.from, slot.to)).sort(byId);
+      const sr = rallies.filter((s) => inDept(s, dept) && meets(span(s), slot.from, slot.to)).sort(byId);
+      const ss = socials.filter((s) => inDept(s, dept) && meets(socialSpan(s, ctx.now), slot.from, slot.to)).sort(byId);
       if (!sr.length && !ss.length) continue;
       seen.add(key);
       const cited = [...sm, ...sr, ...ss];

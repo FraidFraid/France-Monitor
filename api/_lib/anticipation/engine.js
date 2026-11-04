@@ -55,6 +55,20 @@ function keepLowestLevels(previous, next) {
     return { ...step, levels };
   });
 }
+/**
+ * Chaîne normalisée : identifiants triés, clés de `levels` triées. L'ordre d'arrivée des signaux ne fait donc jamais réviser un scénario.
+ * @param {Scenario['chain']} chain
+ * @returns {Scenario['chain']}
+ */
+export function normalizeChain(chain) {
+  return (Array.isArray(chain) ? chain : []).map((step) => {
+    if (!step || typeof step !== 'object') return step;
+    const ids = Array.isArray(step.signalIds) ? [...step.signalIds].sort() : step.signalIds;
+    const out = { ...step, signalIds: ids };
+    if (step.levels && typeof step.levels === 'object') out.levels = Object.fromEntries(Object.entries(step.levels).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+    return out;
+  });
+}
 const WATCHED = /** @type {const} */ (['word', 'why', 'title', 'chain', 'bascules', 'window', 'unknowns', 'verify', 'disconfirmers']);
 
 /**
@@ -112,9 +126,11 @@ export function evaluate(signals, registry, now, rules = RULES, unknown = []) {
           });
           const { evidence: _evidence, ...fields } = c;
           void _evidence;
-          const next = { ...existing, ...fields, chain: keepLowestLevels(existing.chain, fields.chain), bascules, word, peakWord: peakWordOf({ word, peakWord: peakWordOf(existing) }), why, id: existing.id, openedAt: existing.openedAt, status: existing.status, closedAt: existing.closedAt,
+          const next = { ...existing, ...fields, chain: normalizeChain(keepLowestLevels(existing.chain, normalizeChain(fields.chain))), bascules, word, peakWord: peakWordOf({ word, peakWord: peakWordOf(existing) }), why, id: existing.id, openedAt: existing.openedAt, status: existing.status, closedAt: existing.closedAt,
             outcomeNote: existing.outcomeNote, feedback: existing.feedback, revisedAt: nowIso };
-          const changed = WATCHED.some((k) => !sameJson(/** @type {Record<string, unknown>} */ (next)[k], /** @type {Record<string, unknown>} */ (existing)[k]));
+          // Comparaison à la chaîne enregistrée normalisée : un scénario écrit avant la normalisation ne révise pas pour l'ordre seul.
+          const was = { ...existing, chain: normalizeChain(existing.chain) };
+          const changed = WATCHED.some((k) => !sameJson(/** @type {Record<string, unknown>} */ (next)[k], /** @type {Record<string, unknown>} */ (was)[k]));
           if (changed) {
             pool.set(existing.id, next);
             revisedIds.add(existing.id);
@@ -123,7 +139,7 @@ export function evaluate(signals, registry, now, rules = RULES, unknown = []) {
           const { evidence: _evidence, ...fields } = c;
           void _evidence;
           if (pool.has(id)) continue; // même candidat deux fois dans le tick
-          pool.set(id, { ...fields, id, word, peakWord: word, why, openedAt: nowIso, revisedAt: nowIso, status: 'ouvert', closedAt: null, outcomeNote: null, feedback: { utile: 0, deja_su: 0, faux: 0 } });
+          pool.set(id, { ...fields, chain: normalizeChain(fields.chain), id, word, peakWord: word, why, openedAt: nowIso, revisedAt: nowIso, status: 'ouvert', closedAt: null, outcomeNote: null, feedback: { utile: 0, deja_su: 0, faux: 0 } });
           openedIds.add(id);
         }
       } catch (e) {

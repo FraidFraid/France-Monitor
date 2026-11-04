@@ -264,4 +264,28 @@ describe('baseline des niveaux cités (clôture)', () => {
       expect(out.revised[0].chain[0].levels.s1).toBe('orange');
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
+  it('same signals in reversed order → no revision (chain ids and levels keys normalised)', async () => {
+    const { dir, registry } = await reg();
+    try {
+      let reversed = false;
+      const chain = () => {
+        const ids = reversed ? ['s3', 's2', 's1'] : ['s1', 's2', 's3'];
+        const levels = Object.fromEntries((reversed ? ['s3', 's2', 's1'] : ['s1', 's2', 's3']).map((id) => [id, 'jaune']));
+        return [{ text: 'a', signalIds: ids, levels }, { text: 'b', signalIds: [...ids].reverse() }];
+      };
+      const r = rule('r1', () => [cand({ chain: chain() })]);
+      const first = evaluate([], registry, NOW, [r]);
+      expect(first.opened[0].chain[0].signalIds).toEqual(['s1', 's2', 's3']);
+      expect(first.opened[0].chain[1].signalIds).toEqual(['s1', 's2', 's3']);
+      await registry.record({ at: new Date(NOW).toISOString(), type: 'ouverture', scenario: first.opened[0] });
+      reversed = true;
+      const out = evaluate([], registry, NOW + 60_000, [r]);
+      expect(out.revised).toEqual([]);
+      expect(out.opened).toEqual([]);
+      // Scénario écrit avant la normalisation (ids dans le désordre) : pas de révision pour l'ordre seul.
+      const old = { ...first.opened[0], chain: chain() };
+      await registry.record({ at: new Date(NOW).toISOString(), type: 'revision', scenario: old });
+      expect(evaluate([], registry, NOW + 120_000, [r]).revised).toEqual([]);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
 });
