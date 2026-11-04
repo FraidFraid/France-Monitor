@@ -11,30 +11,27 @@ const H = 3_600_000;
 const CLOSE_AFTER_MS = 2 * H; // la fenêtre doit être terminée depuis 2 h
 const EXPIRE_AFTER_MS = 48 * H;
 const MISSED_LOOKBACK_MS = 24 * H;
-const LEVEL_RANK = /** @type {Record<string, number>} */ ({ jaune: 1, orange: 2, rouge: 3 });
-const rank = (/** @type {unknown} */ l) => LEVEL_RANK[String(l)] ?? 0;
 const errMsg = (/** @type {unknown} */ e) => (e instanceof Error ? e.message : String(e));
 
 /**
- * Réunit des listes de signaux sans doublon d'id : on garde, par id, le niveau le plus haut vu et l'observation la plus récente.
+ * Réunit des listes de signaux sans écraser aucune observation : on garde chaque couple (id, observedAt) distinct, les doublons exacts
+ * seuls sont retirés. Un signal encore présent à la clôture (carburants, Écowatt, panne) ne remplace donc pas sa copie datée de la
+ * fenêtre ; les règles, qui testent chaque enregistrement (observedAt, publishedAt, valeur, niveau), voient les deux.
  * @param {...Signal[]} lists
  * @returns {Signal[]}
  */
 function mergeSignals(...lists) {
   /** @type {Map<string, Signal>} */
-  const byId = new Map();
+  const seen = new Map();
   for (const s of lists.flatMap((l) => cleanSignals(l))) {
-    const prev = byId.get(s.id);
-    if (!prev) { byId.set(s.id, s); continue; }
-    const topLevel = rank(s.level) > rank(prev.level) ? s : prev;
-    const latest = Date.parse(s.observedAt ?? '') > Date.parse(prev.observedAt ?? '') ? s : prev;
-    byId.set(s.id, { ...latest, level: topLevel.level, observedAt: latest.observedAt });
+    const key = `${s.id}|${s.observedAt}`;
+    if (!seen.has(key)) seen.set(key, s);
   }
-  return [...byId.values()];
+  return [...seen.values()];
 }
 
 /**
- * Signaux à juger pour un scénario : archive de sa fenêtre + signaux courants, dédoublonnés par id.
+ * Signaux à juger pour un scénario : archive de sa fenêtre + signaux courants (doublons exacts retirés, voir mergeSignals).
  * Sans registre (ou lecture impossible) : les signaux courants seuls.
  * @param {{ signalsBetween?: (from: string, to: string) => Promise<Signal[]> }|null|undefined} registry
  * @param {Scenario} scenario
@@ -97,7 +94,10 @@ export async function closeDue(open, signals, rules, now, opts = {}) {
   return out;
 }
 
-/** Signal qui aurait dû ouvrir un scénario : presse sécurité ou social grave, ou panne rouge. */
+/**
+ * Signal qui aurait dû ouvrir un scénario. Dans ce moteur, une « crise » est une panne rouge ou un événement de presse consolidé
+ * critique ou élevé en sécurité ou social : le moteur de situations du client n'est pas disponible côté serveur.
+ */
 function isCrisis(/** @type {Signal} */ s) {
   if (s.kind === 'presse') {
     const sev = s.meta?.severity;
@@ -120,21 +120,30 @@ const crisisRank = (/** @type {Signal} */ s) => (s.level === 'rouge' || s.meta?.
 export function missedCrises(signals, open, recent, now) {
   const known = [...(Array.isArray(open) ? open : []), ...(Array.isArray(recent) ? recent : [])].filter((s) => s && typeof s === 'object');
   const knownIds = new Set(known.map((s) => s.id));
-  const covered = new Set();
-  for (const s of known) {
-    const t = Date.parse(s.openedAt ?? '');
-    if (!Number.isFinite(t) || t < now - MISSED_LOOKBACK_MS || t > now) continue;
-    for (const d of Array.isArray(s.zone?.dept) ? s.zone.dept : []) covered.add(d);
-  }
+  /**
+   * Un scénario couvre la crise s'il a été ouvert strictement avant elle (un scénario ouvert en réaction ne compte pas) et s'il était
+   * encore ouvert à un moment de [t - 24 h, t) : un scénario de longue durée toujours ouvert couvre son département.
+   */
+  const covers = (/** @type {Scenario} */ sc, /** @type {string} */ dept, /** @type {number} */ t) => {
+    if (!(Array.isArray(sc.zone?.dept) && sc.zone.dept.includes(dept))) return false;
+    const opened = Date.parse(sc.openedAt ?? '');
+    if (!Number.isFinite(opened) || !(opened < t)) return false;
+    if (sc.closedAt == null) return true;
+    const closed = Date.parse(sc.closedAt);
+    return Number.isFinite(closed) && closed >= t - MISSED_LOOKBACK_MS;
+  };
+  /** @type {Set<string>} */
+  const handled = new Set(); // départements déjà consignés pendant cet appel
   const nowIso = new Date(now).toISOString();
   /** @type {Scenario[]} */
   const out = [];
   for (const s of cleanSignals(signals).filter(isCrisis).sort((a, b) => crisisRank(a) - crisisRank(b))) {
     const dept = firstDept(s);
     const id = `manque:${s.id}`;
-    if (!dept || covered.has(dept) || knownIds.has(id)) continue;
-    covered.add(dept); // un seul par département et par appel
     const at = Date.parse(s.publishedAt ?? s.observedAt ?? '');
+    if (!dept || handled.has(dept) || knownIds.has(id)) continue;
+    if (Number.isFinite(at) && known.some((sc) => covers(sc, dept, at))) continue;
+    handled.add(dept); // un seul par département et par appel
     const when = Number.isFinite(at) ? new Date(at).toISOString() : nowIso;
     out.push({
       id,

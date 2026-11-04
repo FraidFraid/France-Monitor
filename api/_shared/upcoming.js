@@ -10,6 +10,11 @@ const DAY_MS = 24 * 3_600_000;
 export const PROTESTS_HORIZON_DAYS = 7;
 
 /**
+ * @typedef {import('../../src/types/index.ts').EcowattResponse} EcowattResponse
+ * @typedef {import('../../src/types/index.ts').VigilanceResponse} VigilanceResponse
+ * @typedef {import('../../src/types/index.ts').FloodsResponse} FloodsResponse
+ * @typedef {import('../../src/types/index.ts').FloodStation} FloodStation
+ * @typedef {import('../../src/types/index.ts').ProtestItem} ProtestItem
  * @typedef {'vert'|'jaune'|'orange'|'rouge'} VigilanceLevel
  * @typedef {object} UpcomingItem
  * @property {string} day Jour concerné, heure de Paris, « AAAA-MM-JJ ».
@@ -19,7 +24,7 @@ export const PROTESTS_HORIZON_DAYS = 7;
  * @property {string} source
  * @typedef {object} UpcomingDeps
  * @property {Record<string, string>} phenomenonWord Libellé par identifiant de phénomène de vigilance.
- * @property {(station: any, now: number) => ({ trend: string, key: { at: string, mean: number, min: number, max: number } }|null)} readForecast
+ * @property {(station: FloodStation, now: number) => ({ trend: string, key: { at: string, mean: number, min: number, max: number } }|null)} readForecast
  */
 
 function dayMonth(/** @type {string} */ day) {
@@ -34,18 +39,18 @@ function names(/** @type {readonly string[]} */ list, max = 4) {
 }
 
 /** @returns {UpcomingItem[]} */
-function ecowattItems(/** @type {any} */ ecowatt, /** @type {string} */ today) {
+function ecowattItems(/** @type {EcowattResponse|null} */ ecowatt, /** @type {string} */ today) {
   const official = ecowatt?.official;
   // Repli ODRÉ : jours passés seulement, jamais une annonce.
   if (!official || official.source !== 'rte') return [];
-  const future = official.days.filter((/** @type {any} */ d) => d.date > today);
+  const future = official.days.filter((d) => d.date > today);
   if (future.length === 0) return [];
-  const alerts = future.filter((/** @type {any} */ d) => d.level !== 'green');
+  const alerts = future.filter((d) => d.level !== 'green');
   if (alerts.length === 0) {
     const last = future[future.length - 1].date;
     return [{ day: future[0].date, level: null, title: `Écowatt : aucune alerte annoncée jusqu'au ${dayMonth(last)}`, detail: null, source: 'RTE' }];
   }
-  return alerts.map((/** @type {any} */ d) => ({
+  return alerts.map((d) => ({
     day: d.date,
     level: d.level === 'red' ? 'rouge' : 'orange',
     title: d.level === 'red' ? 'Écowatt rouge : coupures possibles si la consommation ne baisse pas' : 'Écowatt orange : système électrique tendu',
@@ -58,23 +63,23 @@ function ecowattItems(/** @type {any} */ ecowatt, /** @type {string} */ today) {
 const COLOR_LEVEL = { 1: 'vert', 2: 'jaune', 3: 'orange', 4: 'rouge' };
 
 /** @returns {UpcomingItem[]} */
-function vigilanceItems(/** @type {any} */ vigilance, /** @type {Record<string, string>} */ phenomenonWord) {
-  const period = vigilance?.periods.find((/** @type {any} */ p) => p.echeance === 'J1');
+function vigilanceItems(/** @type {VigilanceResponse|null} */ vigilance, /** @type {Record<string, string>} */ phenomenonWord) {
+  const period = vigilance?.periods.find((p) => p.echeance === 'J1');
   if (!period) return [];
   const day = parisDay(Date.parse(period.begin) + 12 * 3_600_000);
-  const strong = period.departments.filter((/** @type {any} */ d) => d.color >= 3);
-  const yellow = period.departments.filter((/** @type {any} */ d) => d.color === 2);
+  const strong = period.departments.filter((d) => d.color >= 3);
+  const yellow = period.departments.filter((d) => d.color === 2);
   /** @type {UpcomingItem[]} */
   const items = [];
   for (const color of [4, 3]) {
-    const depts = strong.filter((/** @type {any} */ d) => d.color === color);
+    const depts = strong.filter((d) => d.color === color);
     if (depts.length === 0) continue;
-    const phenomena = [...new Set(depts.flatMap((/** @type {any} */ d) => d.phenomena.filter((/** @type {any} */ p) => p.color === color).map((/** @type {any} */ p) => phenomenonWord[p.id])))];
+    const phenomena = [...new Set(depts.flatMap((d) => d.phenomena.filter((p) => p.color === color).map((p) => phenomenonWord[p.id])))];
     items.push({
       day,
       level: COLOR_LEVEL[color],
       title: `Vigilance ${COLOR_LEVEL[color]} ${phenomena.join(', ')} dans ${depts.length} département${depts.length > 1 ? 's' : ''}`,
-      detail: names(depts.map((/** @type {any} */ d) => `${d.name} (${d.code})`)),
+      detail: names(depts.map((d) => `${d.name} (${d.code})`)),
       source: 'Météo-France',
     });
   }
@@ -95,15 +100,15 @@ const metres = (/** @type {number} */ v) => `${v.toFixed(2).replace('.', ',')}\u
  * Une échéance par tronçon en vigilance dont Vigicrues prévoit une hausse : la station au plus haut pic prévu.
  * @returns {UpcomingItem[]}
  */
-function floodItems(/** @type {any} */ floods, /** @type {number} */ now, /** @type {UpcomingDeps['readForecast']} */ readForecast) {
+function floodItems(/** @type {FloodsResponse|null|undefined} */ floods, /** @type {number} */ now, /** @type {UpcomingDeps['readForecast']} */ readForecast) {
   if (!floods) return [];
   /** @type {UpcomingItem[]} */
   const items = [];
   for (const section of floods.sections) {
     const rising = section.stations
-      .map((/** @type {any} */ st) => ({ st, r: readForecast(st, now) }))
-      .filter((/** @type {any} */ x) => x.r !== null && x.r.trend === 'hausse')
-      .sort((/** @type {any} */ a, /** @type {any} */ b) => b.r.key.mean - a.r.key.mean);
+      .map((st) => ({ st, r: readForecast(st, now) }))
+      .filter((x) => x.r !== null && x.r.trend === 'hausse')
+      .sort((a, b) => b.r.key.mean - a.r.key.mean);
     const top = rising[0];
     if (!top) continue;
     const k = top.r.key;
@@ -123,10 +128,10 @@ function floodItems(/** @type {any} */ floods, /** @type {number} */ now, /** @t
 const PROTEST_SOURCE_LABEL = { demosphere: 'Démosphère', giletsjaunes: 'carte des gilets jaunes', cgt: 'cartes de la CGT', prefecture: 'préfectures' };
 
 /** @returns {UpcomingItem[]} */
-function protestItems(/** @type {readonly any[]|null} */ protests, /** @type {number} */ now, /** @type {string} */ today) {
+function protestItems(/** @type {readonly ProtestItem[]|null} */ protests, /** @type {number} */ now, /** @type {string} */ today) {
   if (!protests) return [];
   const horizon = parisDay(now + PROTESTS_HORIZON_DAYS * DAY_MS);
-  /** @type {Map<string, any[]>} */
+  /** @type {Map<string, ProtestItem[]>} */
   const byDay = new Map();
   for (const p of protests) {
     if (p.status !== 'annonce' || !p.startsAt) continue;
@@ -149,7 +154,7 @@ function protestItems(/** @type {readonly any[]|null} */ protests, /** @type {nu
 
 /**
  * Échéances des jours à venir, par jour puis par gravité publiée.
- * @param {{ ecowatt: any, vigilance: any, protests: readonly any[]|null, floods?: any, now: number }} input
+ * @param {{ ecowatt: EcowattResponse|null, vigilance: VigilanceResponse|null, protests: readonly ProtestItem[]|null, floods?: FloodsResponse|null, now: number }} input
  * @param {UpcomingDeps} deps
  * @returns {UpcomingItem[]}
  */

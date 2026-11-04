@@ -184,8 +184,12 @@ export async function openRegistry({ dir, now }) {
     await queue;
     /** @type {Signal[]} */
     const out = [];
-    const last = parisDay(b);
-    for (let t = a, day = parisDay(a); day <= last; t += 12 * 3_600_000, day = parisDay(t)) {
+    // Jours de Paris couverts, chacun lu une seule fois (le pas de 12 h peut retomber sur le même jour).
+    /** @type {Set<string>} */
+    const days = new Set();
+    for (let t = a; t <= b; t += 6 * 3_600_000) days.add(parisDay(t));
+    days.add(parisDay(b));
+    for (const day of [...days].sort()) {
       let text;
       try {
         text = await readFile(path.join(signalsDir, `${day}.jsonl`), 'utf8');

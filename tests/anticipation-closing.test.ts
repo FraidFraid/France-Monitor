@@ -85,16 +85,53 @@ describe('closeDue', () => {
 });
 
 describe('collectWindowSignals', () => {
-  it('deduplicates by id keeping the highest level and latest observedAt', async () => {
+  it('keeps every distinct (id, observedAt) observation and drops exact duplicates only', async () => {
     const registry = await openRegistry({ dir, now: NOW });
     const s = (level: string | null, at: string) => carb(1, at, { id: 'v', level });
     await registry.archiveSignals([s('orange', '2026-11-02T08:00:00.000Z')], Date.parse('2026-11-02T08:00:00Z'));
     await registry.archiveSignals([s('rouge', '2026-11-02T09:00:00.000Z')], Date.parse('2026-11-02T09:00:00Z'));
-    const out = await collectWindowSignals(registry, scenario(), [s('jaune', '2026-11-04T11:00:00.000Z')]);
+    const out = await collectWindowSignals(registry, scenario(), [s('jaune', '2026-11-04T11:00:00.000Z'), s('rouge', '2026-11-02T09:00:00.000Z')]);
     const v = out.filter((x: { id: string }) => x.id === 'v');
-    expect(v).toHaveLength(1);
-    expect(v[0].level).toBe('rouge');
-    expect(v[0].observedAt).toBe('2026-11-04T11:00:00.000Z');
+    expect(v.map((x: { level: string; observedAt: string }) => `${x.level}@${x.observedAt}`).sort()).toEqual([
+      'jaune@2026-11-04T11:00:00.000Z', 'orange@2026-11-02T08:00:00.000Z', 'rouge@2026-11-02T09:00:00.000Z',
+    ]);
+  });
+
+  it('reads each day file once when the window spans several hours of one day', async () => {
+    const registry = await openRegistry({ dir, now: NOW });
+    await registry.archiveSignals([carb(20, '2026-11-02T10:00:00.000Z')], Date.parse('2026-11-02T10:00:00Z'));
+    const out = await registry.signalsBetween('2026-11-02T00:00:00.000Z', '2026-11-02T20:00:00.000Z');
+    expect(out).toHaveLength(1);
+  });
+});
+
+describe('closeDue regressions: a persistent signal does not erase its in-window copy', () => {
+  it('archive value 20 in the window + current value 5 now -> arrive', async () => {
+    const registry = await openRegistry({ dir, now: NOW });
+    await registry.archiveSignals([carb(20, '2026-11-02T10:00:00.000Z')], Date.parse('2026-11-02T10:00:00Z'));
+    const out = await closeDue([scenario()], [carb(5, '2026-11-04T11:30:00.000Z')], [greve], NOW, { registry, unknown: [] });
+    expect(out[0].status).toBe('arrive');
+  });
+
+  it('a persistent Ecowatt rouge or electricity panne observed in the window still counts when its current copy is weaker', async () => {
+    // @ts-expect-error module JS sans déclaration
+    const chaleur = (await import('../api/_lib/anticipation/rules/chaleur-sante.js')).default;
+    const registry = await openRegistry({ dir, now: NOW });
+    const w = { from: '2026-11-02T00:00:00.000Z', to: '2026-11-03T00:00:00.000Z' };
+    const base = { domain: 'energy', source: 's', origin: 'rte', official: true, dept: ['69'], communes: [], value: null, window: w, ref: 'r', checkedAt: '2026-11-02T10:00:00.000Z' };
+    const eco = (level: string, at: string) => ({ ...base, id: 'eco', kind: 'ecowatt', level, publishedAt: at, observedAt: at });
+    const panne = (level: string, at: string) => ({ ...base, id: 'pa', kind: 'panne', level, publishedAt: at, observedAt: at, meta: { network: 'electricite' } });
+    const sc = scenario({ ruleId: 'chaleur-sante', id: 'c', window: w, zone: { dept: ['69'], communes: [] }, openedAt: '2026-11-01T10:00:00.000Z' });
+    await registry.archiveSignals([eco('rouge', '2026-11-02T10:00:00.000Z')], Date.parse('2026-11-02T10:00:00Z'));
+    const a = await closeDue([sc], [eco('orange', '2026-11-04T11:00:00.000Z')], [chaleur], NOW, { registry, unknown: [] });
+    expect(a[0].status).toBe('arrive');
+    const dir2 = await mkdtemp(path.join(tmpdir(), 'antic-close2-'));
+    try {
+      const registry2 = await openRegistry({ dir: dir2, now: NOW });
+      await registry2.archiveSignals([panne('rouge', '2026-11-02T10:00:00.000Z')], Date.parse('2026-11-02T10:00:00Z'));
+      const b = await closeDue([sc], [panne('jaune', '2026-11-04T11:00:00.000Z')], [chaleur], NOW, { registry: registry2, unknown: [] });
+      expect(b[0].status).toBe('arrive');
+    } finally { await rm(dir2, { recursive: true, force: true }); }
   });
 });
 
@@ -123,14 +160,22 @@ describe('missedCrises', () => {
     expect(missedCrises([press({ id: 'po', kind: 'panne', level: 'orange', meta: {} })], [], [], NOW)).toEqual([]);
   });
 
-  it('no missed crisis when a scenario existed in that département within 24 h (open or recent, closed included)', () => {
+  // La crise `press()` est publiée à 10:00 UTC ; couverture : ouvert strictement avant, et ouvert à un moment de [t - 24 h, t).
+  it('no missed crisis when a scenario opened before it covers the département (open, or closed within the 24 h before)', () => {
     const sc = (over: Record<string, unknown>) => scenario({ zone: { dept: ['69'], communes: [] }, ...over });
-    expect(missedCrises([press()], [sc({ openedAt: new Date(NOW - 5 * H).toISOString() })], [], NOW)).toEqual([]);
-    expect(missedCrises([press()], [], [sc({ status: 'pas_arrive', openedAt: new Date(NOW - 20 * H).toISOString() })], NOW)).toEqual([]);
-    // ouvert il y a plus de 24 h : ne compte pas
-    expect(missedCrises([press()], [], [sc({ openedAt: new Date(NOW - 30 * H).toISOString() })], NOW)).toHaveLength(1);
-    // autre département : ne compte pas
-    expect(missedCrises([press()], [sc({ zone: { dept: ['13'], communes: [] }, openedAt: new Date(NOW - 5 * H).toISOString() })], [], NOW)).toHaveLength(1);
+    expect(missedCrises([press()], [sc({ openedAt: '2026-11-04T07:00:00.000Z' })], [], NOW)).toEqual([]);
+    expect(missedCrises([press()], [], [sc({ status: 'pas_arrive', openedAt: '2026-11-03T20:00:00.000Z', closedAt: '2026-11-04T11:00:00.000Z' })], NOW)).toEqual([]);
+    // longue durée, toujours ouvert depuis plus de 24 h : couvre encore
+    expect(missedCrises([press()], [sc({ openedAt: new Date(NOW - 30 * H).toISOString() })], [], NOW)).toEqual([]);
+    // clos plus de 24 h avant la crise : ne couvre pas
+    expect(missedCrises([press()], [], [sc({ status: 'arrive', openedAt: '2026-11-02T00:00:00.000Z', closedAt: '2026-11-03T09:00:00.000Z' })], NOW)).toHaveLength(1);
+    // autre département : ne couvre pas
+    expect(missedCrises([press()], [sc({ zone: { dept: ['13'], communes: [] }, openedAt: '2026-11-04T07:00:00.000Z' })], [], NOW)).toHaveLength(1);
+  });
+
+  it('a scenario opened after the crisis (in reaction) does not cover it', () => {
+    const late = scenario({ zone: { dept: ['69'], communes: [] }, openedAt: '2026-11-04T11:00:00.000Z' });
+    expect(missedCrises([press()], [late], [], NOW)).toHaveLength(1);
   });
 
   it('is stable across ticks: an already recorded crisis is not recorded twice', () => {

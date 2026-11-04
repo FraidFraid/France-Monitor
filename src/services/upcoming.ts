@@ -41,5 +41,5 @@ export function parisDay(ms: number): string {
 
 /** Échéances des jours à venir, par jour puis par gravité publiée (implémentation partagée : api/_shared/upcoming.js). */
 export function upcomingFromSources(input: UpcomingInput): UpcomingItem[] {
-  return sharedUpcoming(input, { phenomenonWord: PHENOMENON_WORD, readForecast }) as UpcomingItem[];
+  return sharedUpcoming(input, { phenomenonWord: PHENOMENON_WORD, readForecast });
 }

@@ -46,6 +46,16 @@ describe('buildAgenda', () => {
     expect(days[1].halves).toBeUndefined();
   });
 
+  it('uses the paris-time slots: a 02:00 Paris scenario is in the soir (22 h to 6 h), not the matin', () => {
+    // 02:00 à 04:00 Paris le 04/11 = 01:00 à 03:00 UTC
+    const days = buildAgenda([sc('n', '2026-11-04T01:00:00.000Z', '2026-11-04T03:00:00.000Z')], [], NOW);
+    const by = Object.fromEntries(days[0].halves.map((h: { half: string, scenarioIds: string[] }) => [h.half, h.scenarioIds]));
+    expect(by.soir).toEqual(['n']);
+    expect(by.matin).toEqual([]);
+    expect(by['apres-midi']).toEqual([]);
+    expect(days[0].scenarioIds).toEqual(['n']);
+  });
+
   it('a day without crossing lists deadlines only', () => {
     const days = buildAgenda([], [item('2026-11-06', 'Écowatt orange')], NOW);
     expect(days[2].scenarioIds).toEqual([]);
