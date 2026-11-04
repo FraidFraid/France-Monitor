@@ -16,7 +16,7 @@ import { snapshotItems } from '../../_handlers/news.js';
 import { roomSnapshot as outagesSnapshot } from '../outages-room.js';
 import { toSignals } from './signals.js';
 import { capOpen, evaluate } from './engine.js';
-import { openRegistry } from './registry.js';
+import { openRegistry, previousMonth } from './registry.js';
 import { closeDue, missedCrises } from './closing.js';
 import { buildAgenda } from './agenda.js';
 import { buildNote, latestNote, noteExists, parisHour, readNote, writeNote } from './note.js';
@@ -165,7 +165,7 @@ async function run(/** @type {number} */ now, /** @type {any} */ readers) {
   if (compactDay !== parisDay(now)) { compactDay = parisDay(now); await registry.compact(now); }
 
   // Règle d'arrêt (spec § 11) : les scénarios d'une règle en revue ne sont plus servis.
-  const served = capOpen([...registry.state().values()].filter((/** @type {any} */ s) => s.status === 'ouvert'), now, rulesInReview([...registry.state().values()]));
+  const served = capOpen([...registry.state().values()].filter((/** @type {any} */ s) => s.status === 'ouvert'), now, rulesInReview([...registry.state().values()], rules));
   const upcoming = upcomingFromSources({
     ecowatt: inputs.ecowatt ? { official: inputs.ecowatt } : null, vigilance: inputs.vigilance,
     protests: Array.isArray(inputs.protests?.items) ? inputs.protests.items : null, floods: null, now,
@@ -176,12 +176,13 @@ async function run(/** @type {number} */ now, /** @type {any} */ readers) {
   let frozenDay = state?.frozenDay ?? '';
   const today = parisDay(now);
   if (frozenDay !== today && parisHour(now) >= 7) {
+    let failure = null;
     if (!(await noteExists(registry.root, today))) {
       const closedSince = [...registry.state().values()].filter((/** @type {any} */ s) => s.closedAt && s.status !== 'ouvert' && s.status !== 'manque' && Date.parse(s.closedAt) >= now - 24 * HOUR);
-      const failure = await writeNote(registry.root, buildNote(served, agenda, closedSince, now));
+      failure = await writeNote(registry.root, buildNote(served, agenda, closedSince, now, [...readErrors, ...unknown]));
       if (failure && !registry.errors.includes(failure)) registry.errors.push(failure);
     }
-    frozenDay = today;
+    if (failure === null) frozenDay = today; // erreur passagère : nouvel essai au tick suivant
   }
   state = {
     registry, tickAt: now, signals, scenarios: served, agenda, unknown,
@@ -236,7 +237,7 @@ export async function recordFeedback(scenarioId, vote, now = Date.now(), readers
 }
 
 /**
- * Note de 7 h : celle du jour demandé, ou (sans jour) celle d'aujourd'hui si elle est figée, sinon la plus récente d'avant. Null si absente.
+ * Note de 7 h : celle du jour demandé, ou (sans jour) celle d'aujourd'hui si elle est figée, sinon celle de la veille. Null si absente.
  * @param {string|null} [day] AAAA-MM-JJ
  * @param {number} [now]
  */
@@ -244,7 +245,7 @@ export async function anticipationNote(day = null, now = Date.now(), readers = D
   await ensureState(now, readers);
   const root = state?.registry?.root;
   if (!root) return null;
-  return day ? readNote(root, day) : latestNote(root, parisDay(now));
+  return day ? readNote(root, day) : latestNote(root, [parisDay(now), parisDay(Date.parse(`${parisDay(now)}T12:00:00Z`) - 86_400_000)]);
 }
 
 /**
@@ -259,8 +260,9 @@ export async function anticipationBilan(month = null, now = Date.now(), readers 
   const registry = state?.registry;
   if (!registry) return buildBilan(key, [], RULES);
   const current = parisDay(now).slice(0, 7);
-  const recent = key === current || key === (current.endsWith('-01') ? `${Number(current.slice(0, 4)) - 1}-12` : `${current.slice(0, 5)}${String(Number(current.slice(5)) - 1).padStart(2, '0')}`);
+  const recent = key === current || key === previousMonth(current);
   const source = recent ? registry.state() : await registry.scenariosOfMonth(key);
   const mine = [...source.values()].filter((/** @type {any} */ s) => parisDay(Date.parse(s.openedAt)).slice(0, 7) === key);
-  return buildBilan(key, mine, RULES);
+  // Le drapeau « en revue » décrit l'état courant de la règle (même calcul que le filtre des scénarios servis), pas le mois demandé.
+  return buildBilan(key, mine, RULES, rulesInReview([...registry.state().values()], RULES));
 }

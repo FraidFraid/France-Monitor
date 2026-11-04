@@ -45,6 +45,20 @@ describe('evaluate', () => {
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 
+  it('peakWord is set at opening, raised by a revision and never lowered', async () => {
+    const { dir, registry } = await reg();
+    try {
+      const first = evaluate([], registry, NOW, [rule('r1', () => [cand({ word: 'probable' })])]);
+      expect(first.opened[0].peakWord).toBe('probable');
+      await registry.record({ at: new Date(NOW).toISOString(), type: 'ouverture', scenario: first.opened[0] });
+      const up = evaluate([], registry, NOW + 60_000, [rule('r1', () => [cand({ word: 'tres_probable' })])]);
+      expect(up.revised[0]).toMatchObject({ word: 'tres_probable', peakWord: 'tres_probable' });
+      await registry.record({ at: new Date(NOW).toISOString(), type: 'revision', scenario: up.revised[0] });
+      const down = evaluate([], registry, NOW + 120_000, [rule('r1', () => [cand({ word: 'probable' })])]);
+      expect(down.revised[0]).toMatchObject({ word: 'probable', peakWord: 'tres_probable' });
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
   it('revises instead of duplicating', async () => {
     const { dir, registry } = await reg();
     try {

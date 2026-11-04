@@ -34,6 +34,16 @@
 /** @type {readonly Word[]} Du moins au plus probable. */
 export const WORDS = Object.freeze(['chance_infime', 'tres_peu_probable', 'peu_probable', 'possibilite_reelle', 'probable', 'tres_probable', 'quasi_certain']);
 
+/**
+ * Mot le plus haut atteint par un scénario (règle d'arrêt et bilan par mot) : `peakWord`, ou `word` pour un scénario plus ancien.
+ * @param {{ word?: string, peakWord?: string }} s
+ * @returns {string}
+ */
+export function peakWordOf(s) {
+  const a = WORDS.indexOf(/** @type {Word} */ (s?.word)), b = WORDS.indexOf(/** @type {Word} */ (s?.peakWord));
+  return b > a ? /** @type {string} */ (s.peakWord) : (s?.word ?? '');
+}
+
 /** @type {readonly Word[]} Seuls mots attribuables en v1, tant que le bilan n'a pas d'effectifs. */
 export const V1_WORDS = Object.freeze(['peu_probable', 'possibilite_reelle', 'probable', 'tres_probable']);
 

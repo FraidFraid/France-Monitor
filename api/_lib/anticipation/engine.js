@@ -1,7 +1,7 @@
 // api/_lib/anticipation/engine.js : moteur de règles de l'anticipation (04/11/2026).
 // Évalue les règles sur les signaux, applique le plancher des grilles, ouvre ou révise les scénarios (jamais de doublon : même règle,
 // même premier département, fenêtres qui se chevauchent). N'écrit rien : l'appelant enregistre `opened` et `revised` dans le registre.
-import { applyFloor, WORDS, wordWhy } from './probability.js';
+import { applyFloor, peakWordOf, WORDS, wordWhy } from './probability.js';
 import { parisDay } from '../../../src/services/paris-day.js';
 import { RULES } from './rules/index.js';
 
@@ -112,7 +112,7 @@ export function evaluate(signals, registry, now, rules = RULES, unknown = []) {
           });
           const { evidence: _evidence, ...fields } = c;
           void _evidence;
-          const next = { ...existing, ...fields, chain: keepLowestLevels(existing.chain, fields.chain), bascules, word, why, id: existing.id, openedAt: existing.openedAt, status: existing.status, closedAt: existing.closedAt,
+          const next = { ...existing, ...fields, chain: keepLowestLevels(existing.chain, fields.chain), bascules, word, peakWord: peakWordOf({ word, peakWord: peakWordOf(existing) }), why, id: existing.id, openedAt: existing.openedAt, status: existing.status, closedAt: existing.closedAt,
             outcomeNote: existing.outcomeNote, feedback: existing.feedback, revisedAt: nowIso };
           const changed = WATCHED.some((k) => !sameJson(/** @type {Record<string, unknown>} */ (next)[k], /** @type {Record<string, unknown>} */ (existing)[k]));
           if (changed) {
@@ -123,7 +123,7 @@ export function evaluate(signals, registry, now, rules = RULES, unknown = []) {
           const { evidence: _evidence, ...fields } = c;
           void _evidence;
           if (pool.has(id)) continue; // même candidat deux fois dans le tick
-          pool.set(id, { ...fields, id, word, why, openedAt: nowIso, revisedAt: nowIso, status: 'ouvert', closedAt: null, outcomeNote: null, feedback: { utile: 0, deja_su: 0, faux: 0 } });
+          pool.set(id, { ...fields, id, word, peakWord: word, why, openedAt: nowIso, revisedAt: nowIso, status: 'ouvert', closedAt: null, outcomeNote: null, feedback: { utile: 0, deja_su: 0, faux: 0 } });
           openedIds.add(id);
         }
       } catch (e) {

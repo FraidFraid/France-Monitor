@@ -1,7 +1,8 @@
 // api/_lib/anticipation/note.js : note de 7 h de l'anticipation (04/11/2026, spec § 8). Figée une fois par jour de Paris au premier
 // tick à partir de 07:00, écrite dans notes/AAAA-MM-JJ.json. Phrase de synthèse déterministe : aucun texte produit par une IA.
-import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
+import { link, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import process from 'node:process';
 import { parisDay } from '../../../src/services/paris-day.js';
 import { WORDS, WORD_LABEL } from './probability.js';
 
@@ -12,6 +13,7 @@ import { WORDS, WORD_LABEL } from './probability.js';
  * @property {string} day
  * @property {string} generatedAt
  * @property {string} bluf
+ * @property {string[]} degraded Relevés absents, périmés ou en erreur au tick qui a figé la note.
  * @property {Scenario[]} today
  * @property {Array<{ day: string, scenario: Scenario }>} week Le scénario le plus fort de chaque jour de J+1 à J+6.
  * @property {{ opened: Scenario[], closed: Scenario[] }} sinceYesterday
@@ -28,9 +30,10 @@ const sentence = (/** @type {Scenario} */ s) => `${s.title.replace(/[.\s]+$/, ''
  * @param {AgendaDay[]} agenda Agenda de 7 jours (le premier est aujourd'hui).
  * @param {Scenario[]} closedYesterday Scénarios clos depuis la veille.
  * @param {number} now
+ * @param {string[]} [degraded]
  * @returns {AnticipationNote}
  */
-export function buildNote(open, agenda, closedYesterday, now) {
+export function buildNote(open, agenda, closedYesterday, now, degraded = []) {
   const list = (Array.isArray(open) ? open : []).filter((s) => s && s.status === 'ouvert');
   const byId = new Map(list.map((s) => [s.id, s]));
   const pick = (/** @type {string[]} */ ids) => ids.map((id) => byId.get(id)).filter((s) => s !== undefined).sort(byStrength);
@@ -49,6 +52,7 @@ export function buildNote(open, agenda, closedYesterday, now) {
   const since = now - DAY_MS;
   return {
     day: parisDay(now), generatedAt: new Date(now).toISOString(),
+    degraded: [...new Set((Array.isArray(degraded) ? degraded : []).filter((d) => typeof d === 'string'))],
     bluf: parts.length ? parts.join(' ') : 'Aucun croisement détecté aujourd\'hui.',
     today, week,
     sinceYesterday: {
@@ -71,17 +75,23 @@ export async function noteExists(/** @type {string} */ root, /** @type {string} 
 }
 
 /**
- * Écrit la note du jour sans jamais écraser une note déjà figée. Ne lève jamais : renvoie un message d'erreur ou null.
+ * Écrit la note du jour de façon atomique et sans jamais écraser une note déjà figée : fichier temporaire dans le même dossier, puis
+ * `link` vers le nom final (EEXIST = déjà figée), puis suppression du temporaire. Ne lève jamais : renvoie un message d'erreur ou null
+ * (null = la note du jour est figée, par cet appel ou avant).
  * @returns {Promise<string|null>}
  */
 export async function writeNote(/** @type {string} */ root, /** @type {AnticipationNote} */ note) {
+  const tmp = path.join(notesDir(root), `.${note.day}.${process.pid}.${Date.now()}.tmp`);
   try {
     await mkdir(notesDir(root), { recursive: true });
-    await writeFile(path.join(notesDir(root), `${note.day}.json`), `${JSON.stringify(note)}\n`, { encoding: 'utf8', flag: 'wx' });
+    await writeFile(tmp, `${JSON.stringify(note)}\n`, 'utf8');
+    await link(tmp, path.join(notesDir(root), `${note.day}.json`));
     return null;
   } catch (e) {
     if (/** @type {NodeJS.ErrnoException} */ (e).code === 'EEXIST') return null; // déjà figée
     return `Note de 7 h non écrite dans ${notesDir(root)} : ${errMsg(e)}`;
+  } finally {
+    await unlink(tmp).catch(() => {});
   }
 }
 
@@ -90,13 +100,10 @@ export async function readNote(/** @type {string} */ root, /** @type {string} */
   try { return JSON.parse(await readFile(path.join(notesDir(root), `${day}.json`), 'utf8')); } catch { return null; }
 }
 
-/** Note la plus récente à la date donnée ou avant (aujourd'hui figée, sinon celle de la veille ou plus ancienne), ou null. */
-export async function latestNote(/** @type {string} */ root, /** @type {string} */ upToDay) {
-  let names = [];
-  try { names = await readdir(notesDir(root)); } catch { return null; }
-  const days = names.map((n) => /^(\d{4}-\d{2}-\d{2})\.json$/.exec(n)?.[1]).filter((d) => typeof d === 'string' && d <= upToDay).sort();
-  for (const d of days.reverse()) {
-    const note = await readNote(root, /** @type {string} */ (d));
+/** Première note existante parmi les jours donnés (aujourd'hui puis hier), ou null. */
+export async function latestNote(/** @type {string} */ root, /** @type {string[]} */ days) {
+  for (const d of days) {
+    const note = await readNote(root, d);
     if (note) return note;
   }
   return null;

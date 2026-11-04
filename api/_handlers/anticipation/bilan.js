@@ -8,7 +8,7 @@ export const CACHE_CONTROL = 's-maxage=300, stale-while-revalidate=600';
 export default async function handler(req, res) {
   if (handlePreflight(req, res)) return;
   const month = queryParam(req, 'month');
-  if (month && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+  if (month !== null && month !== undefined && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
     res.setHeader('Cache-Control', 'no-store');
     res.status(400).json({ error: 'mois invalide (AAAA-MM attendu)' });
     return;

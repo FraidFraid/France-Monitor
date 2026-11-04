@@ -18,6 +18,7 @@ import { parisDay } from '../../../src/services/paris-day.js';
  * @property {string} title
  * @property {Array<{ text: string, signalIds: string[], levels?: Record<string, string|null> }>} chain
  * @property {string} word
+ * @property {string} [peakWord] Mot le plus haut atteint (posé à l'ouverture, relevé par une révision, jamais abaissé) ; absent des anciens scénarios : `word`.
  * @property {string} why
  * @property {string[]} unknowns
  * @property {Array<{ id: string, label: string, state: 'surveille'|'atteint', at: string|null }>} bascules
@@ -39,7 +40,7 @@ const KEEP_MONTHS = 13;
 /** Mois de Paris AAAA-MM. */
 const parisMonth = (/** @type {number} */ ms) => parisDay(ms).slice(0, 7);
 /** Mois précédent d'une clé AAAA-MM. */
-function previousMonth(/** @type {string} */ key) {
+export function previousMonth(/** @type {string} */ key) {
   const [y, m] = key.split('-').map(Number);
   return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
 }
