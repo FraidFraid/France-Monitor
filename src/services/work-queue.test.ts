@@ -307,7 +307,7 @@ describe('buildWorkQueue — états (spec §7.4)', () => {
       events: eventsState({ events: [event({ id: 1, severity: 'low', category: 'health' }), event({ id: 2, severity: 'info', category: 'finance' })] }),
       markets: [market()],
     }));
-    expect(q.greenTracked).toEqual({ general: 4, energy: 1, security: 0, outages: 0, health: 1, environment: 0, transport: 0 });
+    expect(q.greenTracked).toEqual({ general: 4, energy: 1, security: 0, outages: 0, health: 1, environment: 0, transport: 0, anticipation: 0 });
   });
 
   it('ligne de base à enregistrer : niveaux des éléments, sans les événements', () => {

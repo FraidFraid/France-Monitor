@@ -4,7 +4,8 @@
 // sessionStorage fige l'ancre pour l'onglet courant (un rechargement ne la perd pas, et les
 // rafraîchissements successifs comparent toujours au même point de départ).
 
-import type { IntelVisitAnchor } from '../types/index.ts';
+import type { AnticipationWord, IntelVisitAnchor } from '../types/index.ts';
+import { ALL_WORDS } from './anticipation-words.ts';
 import type { VigilanceLevel } from './vigilance.ts';
 
 const LAST_SEEN_KEY = 'fm:intel:last-seen';
@@ -172,4 +173,54 @@ export function startVisitBaseline(
   });
   lifecycle.window.addEventListener('pagehide', record);
   return { baseline, record };
+}
+
+// ─── Onglet Anticipation : « depuis ta dernière visite » (04/11/2026) ───────────────────────
+// Même principe que l'ancre de l'Intelligence France : localStorage garde l'heure de la dernière visite et le mot de chaque scénario
+// vu ; sessionStorage fige cette visite pour l'onglet du navigateur (les relèves successives comparent toujours au même point).
+
+const ANTICIPATION_SEEN_KEY = 'fm:anticipation:last-seen';
+const ANTICIPATION_ANCHOR_KEY = 'fm:anticipation:visit-anchor';
+const ANTICIPATION_MAX_KEYS = 300;
+
+/** Visite précédente de l'onglet Anticipation : son heure et le mot de chaque scénario affiché alors. */
+export interface AnticipationVisit {
+  since: number;
+  words: Readonly<Record<string, AnticipationWord>>;
+}
+
+/** Pur : relit une visite stockée ; toute valeur illisible donne null (aucune marque plutôt qu'une fausse). */
+export function parseAnticipationVisit(raw: string | null): AnticipationVisit | null {
+  if (raw === null) return null;
+  try {
+    const value: unknown = JSON.parse(raw);
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+    const { at, words } = value as { at?: unknown; words?: unknown };
+    if (typeof at !== 'number' || !Number.isFinite(at) || at <= 0) return null;
+    const out: Record<string, AnticipationWord> = {};
+    if (typeof words === 'object' && words !== null && !Array.isArray(words)) {
+      for (const [id, word] of Object.entries(words)) {
+        const known = ALL_WORDS.find((w) => w === word);
+        if (known) out[id] = known;
+      }
+    }
+    return { since: at, words: out };
+  } catch {
+    return null;
+  }
+}
+
+/** Visite précédente, figée pour l'onglet du navigateur à la première lecture ; null à la toute première visite. */
+export function beginAnticipationVisit(stores: VisitStores = browserStores()): AnticipationVisit | null {
+  const frozen = read(stores.session, ANTICIPATION_ANCHOR_KEY);
+  if (frozen !== null) return parseAnticipationVisit(frozen);
+  const stored = read(stores.local, ANTICIPATION_SEEN_KEY);
+  write(stores.session, ANTICIPATION_ANCHOR_KEY, stored ?? 'null');
+  return parseAnticipationVisit(stored);
+}
+
+/** Note la visite : heure et mots des scénarios affichés (300 au plus). */
+export function recordAnticipationVisit(words: Readonly<Record<string, AnticipationWord>>, now = Date.now(), stores: VisitStores = browserStores()): void {
+  const kept = Object.fromEntries(Object.entries(words).slice(0, ANTICIPATION_MAX_KEYS));
+  write(stores.local, ANTICIPATION_SEEN_KEY, JSON.stringify({ at: now, words: kept }));
 }

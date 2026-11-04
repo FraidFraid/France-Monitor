@@ -17,7 +17,7 @@ import { OUTAGES_LAYER_KEYS } from './outages-sources.ts';
 import type { MapLayers } from '../types/index.ts';
 import type { IconName } from '../components/shared/icons.ts';
 
-export type LayerPresetId = 'general' | 'energy' | 'security' | 'outages' | 'health' | 'environment' | 'transport';
+export type LayerPresetId = 'general' | 'energy' | 'security' | 'outages' | 'health' | 'environment' | 'transport' | 'anticipation';
 
 export interface LayerPreset {
   id: LayerPresetId;
@@ -84,7 +84,7 @@ export const ALL_PRESETABLE_LAYER_KEYS: ReadonlyArray<keyof MapLayers> = [
  * exactement un thème (vérifié par test). La vue d'un thème les coche toutes, sauf `news`.
  */
 /** Partition des couches par thème. « Pannes » n'y figure pas : c'est une vue transversale (ses couches restent à Sécurité et Énergie). */
-export const THEME_LAYERS: Readonly<Record<Exclude<LayerPresetId, 'general' | 'outages'>, ReadonlyArray<keyof MapLayers>>> = {
+export const THEME_LAYERS: Readonly<Record<Exclude<LayerPresetId, 'general' | 'outages' | 'anticipation'>, ReadonlyArray<keyof MapLayers>>> = {
   energy: ['powerGrid', 'nuclearFleet', 'gasNetwork', 'oilNetwork', 'outagesElec', 'hydroBackbone', 'windMonitor', 'dromEnergy', 'metroLoad'],
   security: ['military', 'cyber', 'outagesTelecom', 'outagesInternet', 'outagesCloud', 'subseaCables', 'protests', 'pedestrianFlows', 'crime', 'news', 'stability'],
   health: ['health', 'healthOscour', 'hospitals', 'healthApl'],
@@ -157,6 +157,15 @@ export const LAYER_PRESETS: ReadonlyArray<LayerPreset> = [
     layers: THEME_LAYERS.transport,
     events: false,
   },
+  {
+    // Anticipation (04/11/2026) : salle montée sur la carte, sans couche propre ; elle colore les départements de ses scénarios.
+    id: 'anticipation',
+    label: 'Anticipation',
+    icon: 'target',
+    description: 'Scénarios croisés entre domaines, à vérifier : agenda à 7 jours, preuves, inconnues, bascules.',
+    layers: [],
+    events: false,
+  },
 ];
 
 export const DEFAULT_PRESET_ID: LayerPresetId = 'general';
@@ -193,7 +202,8 @@ export function v2StartupLayers(): Partial<MapLayers> {
 export function themeLayers(uiV2: boolean, id: LayerPresetId): Partial<MapLayers> {
   const layers = layersForPreset(id);
   if (!uiV2) return layers;
-  return { ...layers, events: LAYER_PRESETS.find((p) => p.id === id)?.events ?? false, brief: id !== 'environment' };
+  // Anticipation (04/11/2026) : sa salle tient la colonne de droite (fiche du scénario), pas d'En bref.
+  return { ...layers, events: LAYER_PRESETS.find((p) => p.id === id)?.events ?? false, brief: id !== 'environment' && id !== 'anticipation' };
 }
 
 /**

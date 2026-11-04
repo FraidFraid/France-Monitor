@@ -14,7 +14,7 @@ export interface ThemeBarModel {
   /** Fiche État de la France affichée : le bouton « Intelligence France » est pressé. */
   franceOn?: boolean;
   /** null tant que le niveau national n'est pas calculé : aucun voyant plutôt qu'un vert par défaut. */
-  levels: Record<ThemeId, VigilanceLevel> | null;
+  levels: Partial<Record<ThemeId, VigilanceLevel>> | null;
   lang: Lang;
 }
 

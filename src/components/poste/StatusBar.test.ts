@@ -61,14 +61,15 @@ describe('StatusBar (spec §5.2)', () => {
 });
 
 describe('ThemeBar (spec §5.3)', () => {
-  it('Intelligence France puis sept thèmes (Pannes depuis le 21/10/2026) ; un même voyant de niveau sur chaque thème ; le thème choisi est pressé', () => {
+  it('Intelligence France puis huit thèmes (Pannes depuis le 21/10/2026, Anticipation depuis le 04/11/2026, sans voyant) ; un même voyant de niveau sur chaque autre thème ; le thème choisi est pressé', () => {
     const html = renderThemeBar({
       selected: 'energy',
       levels: { general: 'rouge', energy: 'rouge', security: 'orange', outages: 'vert', health: 'vert', environment: 'jaune', transport: 'vert' },
       lang: 'fr',
     });
     expect(html.indexOf('data-france')).toBeLessThan(html.indexOf('data-theme='));
-    expect(html.match(/data-theme=/g)).toHaveLength(7);
+    expect(html.match(/data-theme=/g)).toHaveLength(8);
+    expect(html).toContain('data-theme="anticipation" aria-pressed="false"');
     expect(html).toContain('data-theme="energy" aria-pressed="true"');
     // Décision du 12/10/2026 : voyant sur les six thèmes (Vue générale comprise), plus de pastille avec le mot.
     expect(html.match(/class="tb-dot /g)).toHaveLength(7);

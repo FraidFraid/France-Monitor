@@ -25,8 +25,8 @@ const GROUP_KEYS = new Set([
 ]);
 
 describe('layer-presets', () => {
-  it('expose exactement 7 vues nommées, dans l’ordre de la barre des thèmes', () => {
-    assert.deepEqual(LAYER_PRESETS.map((p) => p.id), ['general', 'energy', 'security', 'outages', 'health', 'environment', 'transport']);
+  it('expose exactement 8 vues nommées, dans l’ordre de la barre des thèmes (Anticipation en dernier, 04/11/2026)', () => {
+    assert.deepEqual(LAYER_PRESETS.map((p) => p.id), ['general', 'energy', 'security', 'outages', 'health', 'environment', 'transport', 'anticipation']);
   });
 
   it('« Pannes » : vue transversale des quatre couches Pannes, qui restent dans Sécurité et Énergie (21/10/2026)', () => {
@@ -57,7 +57,7 @@ describe('layer-presets', () => {
 
   it('une vue thématique coche toutes les couches de son thème, sauf les actualités brutes (décision du 12/10/2026)', () => {
     for (const preset of LAYER_PRESETS) {
-      if (preset.id === 'general' || preset.id === 'outages') continue;
+      if (preset.id === 'general' || preset.id === 'outages' || preset.id === 'anticipation') continue;
       assert.deepEqual([...preset.layers].sort(), THEME_LAYERS[preset.id].filter((key) => key !== 'news').sort(), preset.id);
     }
   });
@@ -108,6 +108,7 @@ describe('couches v2 (spec 2026-09-29 § 5)', () => {
   it('v2 : pastille « En bref » dans chaque onglet, sauf Environnement qui a la sienne (envBrief)', () => {
     for (const id of ['general', 'energy', 'security', 'health', 'transport'] as const) assert.equal(themeLayers(true, id).brief, true, id);
     assert.equal(themeLayers(true, 'environment').brief, false);
+    assert.equal(themeLayers(true, 'anticipation').brief, false);
     assert.equal(themeLayers(true, 'environment').envBrief, true);
     assert.equal(themeLayers(false, 'energy').brief, undefined);
   });

@@ -6,7 +6,8 @@ import type { SituationType } from '../types/index.ts';
 import type { LayerPresetId } from '../config/layer-presets.ts';
 
 export type ThemeId = LayerPresetId;
-export type SpecificThemeId = Exclude<ThemeId, 'general'>;
+/** Thèmes à éléments « À traiter » et à voyant ; l'Anticipation (04/11/2026) n'en a pas : ses scénarios vivent dans sa salle. */
+export type SpecificThemeId = Exclude<ThemeId, 'general' | 'anticipation'>;
 type Lang = 'fr' | 'en';
 
 interface ThemeDef {
@@ -26,6 +27,7 @@ export const THEMES: ReadonlyArray<ThemeDef> = [
   { id: 'health', fr: 'Santé', en: 'Health', driverFr: 'la santé', driverEn: 'health' },
   { id: 'environment', fr: 'Environnement', en: 'Environment', driverFr: 'l’environnement', driverEn: 'environment' },
   { id: 'transport', fr: 'Transports', en: 'Transport', driverFr: 'les transports', driverEn: 'transport' },
+  { id: 'anticipation', fr: 'Anticipation', en: 'Anticipation', driverFr: 'l’anticipation', driverEn: 'anticipation' },
 ];
 
 /** Thèmes proprement dits : « Vue générale » les montre tous. */

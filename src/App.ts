@@ -279,6 +279,7 @@ import type { NuclearPanel } from './components/NuclearPanel.ts';
 import type { SituationMonitor } from './components/SituationMonitor.ts';
 import type { SituationBrief } from './components/SituationBrief.ts';
 import type { OutagesNowController } from './components/outages-room/outages-now-controller.ts';
+import type { AnticipationController } from './components/anticipation/anticipation-controller.ts';
 import { resolvedSituationsFromHistory } from './services/situation-brief.ts';
 import type { SituationHistoryPanel } from './components/SituationHistoryPanel.ts';
 import { getHistory, isRecorderPage, pushHistorySnapshot, scoreCoverageOf } from './services/situation-history.ts';
@@ -1386,6 +1387,10 @@ export class App {
   private situationBrief: SituationBrief | null = null;
   /** Pannes en cours (bandeau hors de l'onglet Pannes, control room dedans), chargé à la demande. */
   private outagesNow: OutagesNowController<PausableTimer> | null = null;
+  /** Onglet Anticipation (04/11/2026) : pilote chargé à la première entrée dans l'onglet, relève de 60 s dans l'onglet seulement. */
+  private anticipation: AnticipationController<PausableTimer> | null = null;
+  private anticipationLoading = false;
+  private anticipationMapEl: HTMLElement | null = null;
   private situationHistoryPanel: SituationHistoryPanel | null = null;
   private alertMonitor: AlertMonitor | null = null;
   private updateNotification: UpdateNotification | null = null;
@@ -1656,6 +1661,8 @@ export class App {
     this.updateNotification = null;
     this.networkBarometerWidget?.destroy();
     this.networkBarometerWidget = null;
+    this.anticipation?.destroy();
+    this.anticipation = null;
   }
 
   // ─── Background tab suspension & global listener bookkeeping ───────────────
@@ -4653,7 +4660,41 @@ export class App {
       });
       await this.outagesNow.start();
       this.syncOutagesRoom();
+      this.syncAnticipationRoom();
     }).catch((err) => console.error('[App] Pannes en cours indisponibles', err));
+  }
+
+  /** Onglet Anticipation : carte connue, salle montée si l'onglet est déjà le thème affiché. */
+  private mountAnticipation(mapEl: HTMLElement): void {
+    this.anticipationMapEl = mapEl;
+    this.syncAnticipationRoom();
+  }
+
+  /** Salle d'anticipation montée seulement dans l'onglet Anticipation (v2) ; pilote chargé à part (chunk App < 1 Mio). */
+  private syncAnticipationRoom(): void {
+    const active = this.uiV2 && this.v2Theme === 'anticipation';
+    if (this.anticipation) {
+      void this.anticipation.setActive(active);
+      return;
+    }
+    const mapEl = this.anticipationMapEl;
+    if (!active || !mapEl || this.anticipationLoading) return;
+    this.anticipationLoading = true;
+    void import('./components/anticipation/anticipation-controller.ts').then(({ AnticipationController }) => {
+      const map = this.mapContainer;
+      this.anticipation = new AnticipationController<PausableTimer>({
+        mapEl,
+        map: {
+          setOutagesRoom: (state) => map?.setOutagesRoom(state),
+          flyTo: (lon, lat, zoom) => map?.flyTo(lon, lat, zoom),
+          refitFrance: () => map?.refitFrance(),
+        },
+        schedule: (fn, ms) => this.registerPausableInterval(fn, ms),
+        unschedule: (timer) => this.removePausableInterval(timer),
+      });
+      this.syncAnticipationRoom();
+    }).catch((err) => console.error('[App] Anticipation indisponible', err))
+      .finally(() => { this.anticipationLoading = false; });
   }
 
   /** Control room montée seulement dans l'onglet Pannes (v2). */
@@ -5139,7 +5180,7 @@ export class App {
     const theme = this.v2Theme;
     const keys: Array<keyof MapLayers> = theme === 'general'
       ? this.watchEntries.map((e) => e.key)
-      : theme === 'environment' ? [] : theme === 'outages' ? [...OUTAGES_LAYER_KEYS]
+      : theme === 'environment' || theme === 'anticipation' ? [] : theme === 'outages' ? [...OUTAGES_LAYER_KEYS]
         : THEME_LAYERS[theme].filter((k) => k !== 'news' && k !== 'pedestrianFlows');
     // En-tête du panneau de chaque pastille (dernière vue retenue par le cadre ; « Pression par département » = panneau « pressure »).
     return keys.map((key) => ({ key, label: label(key), level: this.watchLevelMap.get(key) ?? null, head: lastLayerHead(key === 'stability' ? 'pressure' : key) }));
@@ -5154,7 +5195,7 @@ export class App {
     const label = (key: keyof MapLayers): string => FLOATING_PANEL_DEFS.find((d) => d.id === key)?.label ?? key;
     const themeLevel = !q ? null : theme === 'general'
       ? (Object.values(q.themeLevels) as VigilanceLevel[]).reduce<VigilanceLevel | null>((m, l) => (m === null || LEVEL_RANK[l] > LEVEL_RANK[m] ? l : m), null)
-      : theme === 'environment' ? null : q.themeLevels[theme];
+      : theme === 'environment' || theme === 'anticipation' ? null : q.themeLevels[theme];
     return {
       themeName: themeLabel(theme),
       pastilles,
@@ -6657,6 +6698,8 @@ export class App {
   private applyLayerPreset(id: LayerPresetId): void {
     // Une vue choisie reprend la main sur toutes les couches : plus aucune n'est « allumée par la Vue générale ».
     this.generalAuto.clear();
+    // Les deux salles partagent le calque des départements : celle qu'on quitte le retire d'abord.
+    this.syncAnticipationRoom();
     this.syncOutagesRoom();
     const target = themeLayers(this.uiV2, id);
     // v2 : la vue décide aussi de « Événements en cours » (décision du 12/10/2026).
@@ -6968,6 +7011,7 @@ export class App {
     // Pannes réseau : les sources de la carte n'existaient pas quand le premier relevé (Télécoms, au démarrage) a répondu ; repeinture (R35).
     for (const key of OUTAGES_LAYER_KEYS) this.repaintOutagesMap(key);
     this.mountOutagesNow(mapEl);
+    this.mountAnticipation(mapEl);
     // v2 (?ui=v2) : alertes, convergences et situations passent dans la liste « À traiter » et
     // leurs fiches ; les trois panneaux flottants ne sont créés que pour l'interface par défaut.
     if (!this.uiV2) {

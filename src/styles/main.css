@@ -8466,3 +8466,87 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 .orm-side { max-height: 62%; }
 .orm-frise { margin-right: 56px; }
 @container (max-width: 640px) { .orm-side { max-height: 38%; } .orm-frise { margin-right: 48px; } }
+
+/* Onglet Anticipation (04/11/2026, maquette écran 1) : salle posée sur la carte comme celle des pannes. Bandeau BÊTA et titre en haut,
+   agenda à gauche, fiche à droite, légende et curseur des 7 jours en bas ; empilés quand la carte est étroite (requête de conteneur). */
+.anr { position: absolute; inset: 0; z-index: calc(var(--z-map-overlay) + 1); container-type: size; pointer-events: none; display: flex;
+  flex-direction: column; gap: 8px; padding: var(--anr-top, 108px) 12px 56px; font-size: 12.5px; color: var(--text-primary); }
+.anr-top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; flex: none; }
+.anr-maptitle, .anr-beta, .anr-col, .anr-legend, .anr-slider { pointer-events: auto; background: rgba(10, 12, 20, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.22); border-radius: 8px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.45); }
+.anr-maptitle { padding: 5px 10px; font-size: 11.5px; white-space: nowrap; }
+.anr-maptitle b { color: var(--v2-brand, #4bfc94); }
+.anr-beta { padding: 4px 8px; font-size: 11px; color: var(--sev-yellow); border-color: color-mix(in srgb, var(--sev-yellow) 45%, transparent); white-space: nowrap; }
+.anr-body { flex: 1; min-height: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.anr-col { overflow: auto; max-height: 100%; }
+.anr-agenda { width: min(320px, 38%); padding-bottom: 6px; }
+.anr-side { width: min(380px, 50%); }
+.anr h2 { margin: 0; padding: 10px 12px 4px; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary); }
+.anr-hint { margin: 0; padding: 0 12px 8px; color: var(--text-muted); font-size: 11.5px; }
+.anr-day h3 { margin: 0; padding: 6px 12px 2px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--v2-brand, #4bfc94); }
+.anr-day .anr-hint { padding-top: 2px; }
+.anr-half h4 { margin: 4px 12px 0; font-size: 10.5px; font-weight: 600; color: var(--text-secondary); }
+.anr-empty { margin: 2px 12px 4px; color: var(--text-muted); font-size: 11px; }
+.anr-item { display: block; width: calc(100% - 20px); margin: 4px 10px; padding: 8px 10px; text-align: left; font: inherit; color: inherit; cursor: pointer;
+  background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 8px; }
+.anr-item:hover { border-color: var(--border-color-light); }
+.anr-item.is-sel { border-color: var(--v2-brand, #4bfc94); box-shadow: 0 0 0 1px var(--v2-brand, #4bfc94) inset; }
+.anr-item:focus-visible { outline: 2px solid var(--v2-brand, #4bfc94); outline-offset: 1px; }
+.anr-row { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.anr-where { font-weight: 600; }
+.anr-what { display: block; margin-top: 3px; color: var(--text-secondary); font-size: 12px; }
+.anr-chips, .anr-marks { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.anr-chip { font-size: 10.5px; padding: 1px 7px; border-radius: 9px; border: 1px solid var(--border-color-light); color: var(--text-secondary); white-space: nowrap; }
+.anr-mark { font-size: 10px; font-weight: 700; padding: 0 6px; border-radius: 6px; background: var(--v2-brand, #4bfc94); color: #04130a; white-space: nowrap; }
+.anr-lvl { --c: var(--text-muted); flex: none; font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 9px; white-space: nowrap; color: var(--c);
+  background: color-mix(in srgb, var(--c) 15%, transparent); border: 1px solid color-mix(in srgb, var(--c) 45%, transparent); }
+/* Fiche */
+.anr-card { padding: 10px 12px 12px; }
+.anr-card h3 { margin: 4px 0 2px; font-size: 15px; line-height: 1.3; }
+.anr-meta { margin: 0; color: var(--text-muted); font-size: 11.5px; }
+.anr-scale { display: flex; margin: 10px 0 4px; border-radius: 6px; overflow: hidden; border: 1px solid var(--border-color); }
+.anr-scale > span { flex: 1; min-width: 0; text-align: center; font-size: 9.5px; line-height: 1.2; padding: 5px 1px; color: var(--text-muted); background: var(--bg-secondary);
+  hyphens: auto; overflow-wrap: anywhere;
+  border-right: 1px solid var(--border-color); }
+.anr-scale > span:last-child { border-right: 0; }
+.anr-scale > span.is-on { color: var(--c); font-weight: 700; background: color-mix(in srgb, var(--c) 18%, transparent); }
+.anr-scalenote { margin: 0; font-size: 11px; color: var(--text-muted); }
+.anr-sec { margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 8px; }
+.anr-sec h4 { margin: 0 0 6px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary); }
+.anr-sec ul { margin: 0; padding-left: 16px; } .anr-sec li { margin: 3px 0; }
+.anr-chain { display: flex; flex-direction: column; gap: 4px; }
+.anr-step { display: flex; gap: 8px; align-items: flex-start; }
+.anr-step i { font-style: normal; width: 18px; height: 18px; flex: none; margin-top: 1px; border-radius: 50%; background: var(--bg-surface-hover); display: flex;
+  align-items: center; justify-content: center; font-size: 10px; color: var(--v2-brand, #4bfc94); }
+.anr-src { color: var(--text-muted); font-size: 11px; white-space: nowrap; }
+.anr-unk { color: var(--sev-yellow); }
+.anr-trig { display: flex; justify-content: space-between; gap: 8px; padding: 6px 8px; margin: 4px 0; border: 1px dashed var(--border-color-light); border-radius: 6px; }
+.anr-st { flex: none; font-size: 10.5px; white-space: nowrap; color: var(--text-muted); }
+.anr-trig.is-hit { border: 1px solid var(--sev-orange); }
+.anr-trig.is-hit .anr-st { color: var(--sev-orange); font-weight: 700; text-transform: uppercase; }
+.anr-actions { display: flex; gap: 6px; margin-top: 8px; }
+.anr-actions button { font: inherit; font-size: 12px; cursor: pointer; color: var(--v2-brand, #4bfc94); background: none; border-radius: 6px; padding: 4px 9px;
+  border: 1px solid color-mix(in srgb, var(--v2-brand, #4bfc94) 40%, transparent); }
+.anr-fb { display: flex; gap: 6px; margin-top: 6px; }
+.anr-fb button { flex: 1; font: inherit; font-size: 12px; cursor: pointer; padding: 7px 4px; color: var(--text-primary); background: var(--bg-surface);
+  border: 1px solid var(--border-color); border-radius: 6px; }
+.anr-fb button:hover:not(:disabled) { border-color: var(--border-color-light); }
+.anr-fb button:disabled { cursor: default; opacity: 0.5; }
+.anr-fb-state { margin: 6px 0 0; font-size: 11.5px; color: var(--text-secondary); }
+.anr-warn { margin: 10px 0 0; padding-left: 8px; font-size: 11px; color: var(--text-muted); border-left: 2px solid var(--sev-yellow); }
+/* Bas de la carte : légende des mots et curseur des jours (arrêtés avant les boutons de la carte, sur le bord droit). */
+.anr-bottom { flex: none; display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 8px; margin-right: 56px; }
+.anr-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; padding: 6px 10px; font-size: 11px; color: var(--text-secondary); }
+.anr-legend span { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.anr-dot { --c: var(--text-muted); width: 10px; height: 10px; border-radius: 50%; background: var(--c); display: inline-block; }
+.anr-slider { display: flex; gap: 2px; padding: 4px; margin: 0 auto; }
+.anr-slider button { font: inherit; font-size: 11px; padding: 4px 9px; border-radius: 5px; border: 0; background: none; color: var(--text-secondary); cursor: pointer; }
+.anr-slider button.has-sc { color: var(--text-primary); font-weight: 600; }
+.anr-slider button[aria-pressed="true"] { background: var(--v2-brand, #4bfc94); color: #04130a; font-weight: 700; }
+@container (max-width: 640px) {
+  .anr-body { flex-direction: column; justify-content: flex-start; align-items: stretch; overflow: auto; pointer-events: auto; }
+  .anr-agenda, .anr-side { width: auto; max-height: none; overflow: visible; flex: none; }
+  .anr-bottom { margin-right: 48px; }
+  .anr-legend { display: none; }
+  .anr-slider { margin: 0; overflow-x: auto; max-width: 100%; }
+}

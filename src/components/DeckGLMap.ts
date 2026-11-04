@@ -6542,7 +6542,7 @@ export class DeckGLMap {
   // ─── Control room des pannes (onglet Pannes, 21/10/2026) : départements touchés ───
   /** Salle des pannes ouverte : seule à faire pulser les antennes coupées (pulseAllowed). */
   private outagesRoomActive = false;
-  /** Départements touchés (propriété `level`) ; `null` : calque retiré (sortie de l'onglet). */
+  /** Départements touchés (propriété `level`, ou `color` déjà résolue pour l'Anticipation) ; `null` : calque retiré (sortie de l'onglet). */
   setOutagesRoom(state: { depts: GeoJSON.FeatureCollection; services?: GeoJSON.FeatureCollection } | null): void {
     this.outagesRoomActive = state !== null;
     this.syncPulses();
@@ -6578,7 +6578,12 @@ export class DeckGLMap {
     if (!map.getLayer(LYR_ROOM_DEPT_FILL)) {
       map.addLayer({
         id: LYR_ROOM_DEPT_FILL, type: 'fill', source: SRC_ROOM_DEPTS,
-        paint: { 'fill-color': ['match', ['get', 'level'], 'jaune', levelHex('jaune'), 'orange', levelHex('orange'), levelHex('rouge')], 'fill-opacity': 0.3 },
+        // `color` (teinte déjà résolue) : départements de la salle d'anticipation, colorés par mot de probabilité (04/11/2026).
+        paint: {
+          'fill-color': ['case', ['has', 'color'], ['get', 'color'],
+            ['match', ['get', 'level'], 'jaune', levelHex('jaune'), 'orange', levelHex('orange'), levelHex('rouge')]],
+          'fill-opacity': 0.3,
+        },
       }, map.getLayer(LYR_ROOM_SERVICES) ? LYR_ROOM_SERVICES : undefined);
     }
     // L'anti-flash (addLayer patché à l'init) masque toute couche ajoutée : la salle montre les siennes tant qu'elle est montée.
