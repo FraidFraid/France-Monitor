@@ -163,6 +163,7 @@ export async function openRegistry({ dir, now, archiveMaxBytes = ARCHIVE_DAY_MAX
     scenariosOfMonth,
     record,
     recordVote,
+    prune,
     archiveSignals,
     signalsBetween,
     compact,
@@ -237,6 +238,24 @@ export async function openRegistry({ dir, now, archiveMaxBytes = ARCHIVE_DAY_MAX
   // Relecture au démarrage : mois précédent puis mois en cours.
   const month = parisMonth(now);
   for (const key of [previousMonth(month), month]) await replayMonth(key, scenarios);
+
+  /**
+   * Oublie en mémoire les scénarios clos (ou crises manquées) d'avant le mois de Paris précédent (date de clôture, sinon d'ouverture).
+   * Appelé à l'ouverture et à la compaction du jour : la mémoire couvre la même période qu'après un redémarrage. Le journal est intact.
+   * @param {number} at
+   * @returns {number} Nombre de scénarios oubliés.
+   */
+  function prune(at) {
+    const oldest = previousMonth(parisMonth(at));
+    let n = 0;
+    for (const [id, s] of scenarios) {
+      if (s.status === 'ouvert') continue;
+      const t = Date.parse(s.closedAt ?? s.openedAt ?? '');
+      if (Number.isFinite(t) && parisMonth(t) < oldest) { scenarios.delete(id); n += 1; }
+    }
+    return n;
+  }
+  prune(now);
 
   /** Scénarios d'un mois (AAAA-MM) tels que le journal de ce mois les a laissés (bilan d'un mois ancien). */
   async function scenariosOfMonth(/** @type {string} */ key) {

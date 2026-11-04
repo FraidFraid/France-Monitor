@@ -1,7 +1,9 @@
 // api/_lib/anticipation/room.js : tick serveur de l'anticipation (04/11/2026). Chaque minute (collecteur server/prod/anticipation-collectors.mjs) :
 // relevés déjà tenus par le site (aucune source de plus), signaux, moteur de règles, clôtures, crises manquées, journal et archive sur disque.
 // L'instantané servi par /api/anticipation/now est recalculé à la demande quand le dernier tick a plus de 3 min (serveur de dev).
-// Un relevé en échec devient une entrée nulle (« inconnu ») : le tick ne lève jamais.
+// Un relevé en échec devient une entrée nulle (« inconnu ») : le tick ne lève jamais. Revue finale : le registre est ouvert une fois par
+// processus (indépendant de l'état) ; après un tick en échec, le recalcul à la demande attend une minute (dernier état servi entre-temps) ;
+// les erreurs publiées sont des libellés sans chemin, le détail part une fois dans le journal du service.
 import { readFile } from 'node:fs/promises';
 import { parisDay } from '../../../src/services/paris-day.js';
 import { upcomingFromSources } from '../../../src/services/upcoming-core.js';
@@ -23,12 +25,15 @@ import { buildAgenda } from './agenda.js';
 import { buildNote, latestNote, noteExists, parisHour, readNote, writeNote } from './note.js';
 import { buildBilan, rulesInReview } from './bilan.js';
 import { RULES } from './rules/index.js';
+import { publicErrors, TICK_FAILED_LABEL } from './public-errors.js';
 
 /** Écart minimal entre deux ticks (la boucle de collecte tourne toutes les 60 s). */
 export const TICK_MIN_MS = 55_000;
 /** Au-delà, l'instantané est recalculé à la demande (aucun collecteur ne tourne). */
 export const SNAPSHOT_STALE_MS = 3 * 60_000;
 const HOUR = 3_600_000;
+/** Après un tick en échec, pas de nouveau calcul à la demande avant ce délai. */
+export const RETRY_AFTER_FAILURE_MS = 60_000;
 
 /** Premier fichier carburants lisible (relevé de la VM), ou null. */
 async function readFuel() {
@@ -57,15 +62,36 @@ const DEFAULT_READERS = {
  * @property {{ national: number|null, depts: Record<string, number> }} previous Parts du relevé précédent (tendance de la règle 5).
  */
 
-/** @type {{ registry: any, tickAt: number, signals: any[], scenarios: any[], agenda: any[], unknown: string[], errors: string[], fuel: FuelMemo | null, compactDay: string, frozenDay: string } | null} */
+/** @type {{ tickAt: number, signals: any[], scenarios: any[], agenda: any[], unknown: string[], errors: string[], fuel: FuelMemo | null, compactDay: string, frozenDay: string } | null} */
 let state = null;
 /** @type {Promise<void> | null} */
 let running = null;
+/** Registre ouvert une fois par processus, gardé même si un tick échoue ensuite. */
+/** @type {any} */
+let registry = null;
+/** Heure du dernier tick en échec (null : le dernier a réussi). */
+/** @type {number | null} */
+let failedAt = null;
+/** Erreurs internes déjà écrites dans le journal du service (une fois chacune). */
+const logged = new Set();
 
 /** Réservé aux tests : oublie l'état du processus (simule un redémarrage). */
 export function __resetAnticipationForTests() {
   state = null;
   running = null;
+  registry = null;
+  failedAt = null;
+  logged.clear();
+}
+
+/** Écrit chaque erreur interne une seule fois dans le journal du service (détail complet, chemins compris). */
+function logOnce(/** @type {string[]} */ errors) {
+  for (const e of errors) {
+    if (logged.has(e)) continue;
+    if (logged.size >= 500) logged.clear(); // mémoire bornée : au pire une erreur est réécrite
+    logged.add(e);
+    console.error('[anticipation]', e);
+  }
 }
 
 const errMsg = (/** @type {unknown} */ e) => (e instanceof Error ? e.message : String(e));
@@ -136,7 +162,7 @@ function footballUnknown(/** @type {any} */ football) {
 
 async function run(/** @type {number} */ now, /** @type {any} */ readers) {
   const nowIso = new Date(now).toISOString();
-  const registry = state?.registry ?? await (readers.openRegistry ?? ((/** @type {number} */ at) => openRegistry({ now: at })))(now);
+  registry ??= await (readers.openRegistry ?? ((/** @type {number} */ at) => openRegistry({ now: at })))(now);
   let fuelMemo = state?.fuel ?? null;
   if (fuelMemo === null) {
     // Après un redémarrage : parts du dernier relevé archivé (2 h), pour garder la tendance.
@@ -173,7 +199,11 @@ async function run(/** @type {number} */ now, /** @type {any} */ readers) {
   for (const m of missedCrises(signals, stillOpen, [...registry.state().values()], now)) await registry.record({ at: nowIso, type: 'manque', scenario: m });
   await registry.archiveSignals(signals, now);
   let compactDay = state?.compactDay ?? '';
-  if (compactDay !== parisDay(now)) { compactDay = parisDay(now); await registry.compact(now); }
+  if (compactDay !== parisDay(now)) {
+    compactDay = parisDay(now);
+    await registry.compact(now);
+    registry.prune?.(now); // mémoire : clos d'avant le mois précédent oubliés (même période qu'après un redémarrage)
+  }
 
   // Règle d'arrêt (spec § 11) : les scénarios d'une règle en revue ne sont plus servis.
   const served = capOpen([...registry.state().values()].filter((/** @type {any} */ s) => s.status === 'ouvert'), now, rulesInReview([...registry.state().values()], rules));
@@ -190,29 +220,36 @@ async function run(/** @type {number} */ now, /** @type {any} */ readers) {
     let failure = null;
     if (!(await noteExists(registry.root, today))) {
       const closedSince = [...registry.state().values()].filter((/** @type {any} */ s) => s.closedAt && s.status !== 'ouvert' && s.status !== 'manque' && Date.parse(s.closedAt) >= now - 24 * HOUR);
-      failure = await writeNote(registry.root, buildNote(served, agenda, closedSince, now, [...readErrors, ...unknown]));
+      failure = await writeNote(registry.root, buildNote(served, agenda, closedSince, now, [...publicErrors(readErrors), ...unknown]));
       if (failure && !registry.errors.includes(failure)) registry.errors.push(failure);
     }
     if (failure === null) frozenDay = today; // erreur passagère : nouvel essai au tick suivant
   }
   state = {
-    registry, tickAt: now, signals, scenarios: served, agenda,
+    tickAt: now, signals, scenarios: served, agenda,
     // Calendrier sportif sans clé : nommé dans l'instantané seulement (ni dans la note ni dans les relevés de la règle).
     unknown: [...unknown, ...footballUnknown(inputs.football)],
     errors: [...readErrors, ...signalErrors, ...engineErrors, ...registry.errors], fuel: fuelMemo, compactDay, frozenDay,
   };
+  failedAt = null;
+  logOnce(state.errors);
 }
 
 /** Tick de l'anticipation : au plus un toutes les 55 s, un seul à la fois. Ne lève jamais. */
 export async function tickAnticipation(now = Date.now(), readers = DEFAULT_READERS) {
   if (state !== null && state.tickAt > 0 && now - state.tickAt < TICK_MIN_MS) return;
-  running ??= run(now, { ...DEFAULT_READERS, ...readers }).catch((err) => console.warn('[anticipation] tick en échec :', errMsg(err)))
-    .finally(() => { running = null; });
+  running ??= run(now, { ...DEFAULT_READERS, ...readers }).catch((err) => {
+    failedAt = now;
+    logOnce([`tick en échec : ${errMsg(err)}`]);
+  }).finally(() => { running = null; });
   await running;
 }
 
 async function ensureState(/** @type {number} */ now, /** @type {any} */ readers) {
-  if (state === null || state.tickAt === 0 || now - state.tickAt > SNAPSHOT_STALE_MS) await tickAnticipation(now, readers);
+  if (state !== null && state.tickAt > 0 && now - state.tickAt <= SNAPSHOT_STALE_MS) return;
+  // Tick en échec il y a moins d'une minute : on sert le dernier état (ou un instantané vide) sans tout recalculer à chaque requête.
+  if (failedAt !== null && now - failedAt < RETRY_AFTER_FAILURE_MS) return;
+  await tickAnticipation(now, readers);
 }
 
 /**
@@ -228,7 +265,9 @@ export async function anticipationSnapshot(now = Date.now(), readers = DEFAULT_R
   for (const s of state?.signals ?? []) if (cited.has(s.id)) signals[s.id] = s;
   return {
     generatedAt: new Date(state?.tickAt || now).toISOString(), beta: true, scenarios, agenda: state?.agenda ?? [], signals,
-    unknown: state?.unknown ?? [], errors: state?.errors ?? [],
+    unknown: state?.unknown ?? [],
+    // Libellés publics seulement (aucun chemin du serveur) ; l'échec du dernier tick est nommé tant qu'il n'est pas réessayé avec succès.
+    errors: publicErrors([...(state?.errors ?? []), ...(failedAt !== null ? [TICK_FAILED_LABEL] : [])]),
   };
 }
 
@@ -240,7 +279,6 @@ export async function anticipationSnapshot(now = Date.now(), readers = DEFAULT_R
  */
 export async function recordFeedback(scenarioId, vote, now = Date.now(), readers = DEFAULT_READERS) {
   await ensureState(now, readers);
-  const registry = state?.registry;
   const current = registry?.state().get(scenarioId);
   if (!registry || !current) return false;
   // Ligne compacte (id + vote) : le journal ne recopie plus le scénario entier à chaque retour.
@@ -257,7 +295,7 @@ export async function recordFeedback(scenarioId, vote, now = Date.now(), readers
  */
 export async function anticipationNote(day = null, now = Date.now(), readers = DEFAULT_READERS) {
   await ensureState(now, readers);
-  const root = state?.registry?.root;
+  const root = registry?.root;
   if (!root) return null;
   return day ? readNote(root, day) : latestNote(root, [parisDay(now), parisDay(Date.parse(`${parisDay(now)}T12:00:00Z`) - 86_400_000)]);
 }
@@ -271,7 +309,6 @@ export async function anticipationNote(day = null, now = Date.now(), readers = D
 export async function anticipationBilan(month = null, now = Date.now(), readers = DEFAULT_READERS) {
   await ensureState(now, readers);
   const key = month || parisDay(now).slice(0, 7);
-  const registry = state?.registry;
   if (!registry) return buildBilan(key, [], RULES);
   const current = parisDay(now).slice(0, 7);
   const recent = key === current || key === previousMonth(current);

@@ -1,11 +1,13 @@
 // tests/anticipation-room.test.ts : tick d'une minute de l'anticipation (api/_lib/anticipation/room.js, 04/11/2026) : lecteurs injectés,
 // journal sur disque, tendance carburants (règle 5), instantané recalculé quand le tick est périmé, table des phénomènes miroir du client.
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 // @ts-expect-error module JS sans déclaration
-import { __resetAnticipationForTests, anticipationSnapshot, tickAnticipation } from '../api/_lib/anticipation/room.js';
+import { __resetAnticipationForTests, anticipationSnapshot, recordFeedback, tickAnticipation } from '../api/_lib/anticipation/room.js';
+// @ts-expect-error module JS sans déclaration
+import { openRegistry } from '../api/_lib/anticipation/registry.js';
 // @ts-expect-error module JS sans déclaration
 import { PHENOMENON_WORD as SERVER_WORDS } from '../api/_shared/phenomenon-word.js';
 import { PHENOMENON_WORD as CLIENT_WORDS } from '../src/services/environment-levels.ts';
@@ -170,5 +172,102 @@ describe('tick de l’anticipation', () => {
 
   it('server phenomenon words mirror src/services/environment-levels.ts', () => {
     expect(SERVER_WORDS).toEqual(CLIENT_WORDS);
+  });
+  it('a failing tick: registry opened once, on-demand recompute at most once per minute, last state or empty beta snapshot served', async () => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      let opens = 0;
+      let broken = true;
+      const open = async (at: number) => {
+        opens += 1;
+        const reg = await openRegistry({ dir, now: at });
+        return { ...reg, archiveSignals: async (...args: unknown[]) => { if (broken) throw new Error('disque en panne'); return reg.archiveSignals(...args); } };
+      };
+      const r = { ...readers(), openRegistry: open };
+      const a = await anticipationSnapshot(T0, r);
+      expect(a.beta).toBe(true);
+      expect(a.scenarios).toEqual([]);
+      expect(a.errors).toContain('Anticipation momentanément indisponible : nouvel essai dans une minute');
+      expect(opens).toBe(1);
+      // Requêtes suivantes dans la minute : aucun nouveau tick (le compteur de lectures ne bouge pas).
+      let reads = 0;
+      const counted = { ...r, readProtests: async () => { reads += 1; return { readAt: iso(T0), items: [] }; } };
+      await anticipationSnapshot(T0 + 10_000, counted);
+      await anticipationSnapshot(T0 + 59_000, counted);
+      expect(reads).toBe(0);
+      // Une minute après l'échec : un nouvel essai, toujours en échec, sans rouvrir le registre.
+      await anticipationSnapshot(T0 + 61_000, counted);
+      expect(reads).toBe(1);
+      expect(opens).toBe(1);
+      // Réparé : l'essai suivant réussit, l'erreur d'échec disparaît.
+      broken = false;
+      const ok = await anticipationSnapshot(T0 + 125_000, counted);
+      expect(reads).toBe(2);
+      expect(opens).toBe(1);
+      expect(ok.errors).not.toContain('Anticipation momentanément indisponible : nouvel essai dans une minute');
+      expect(ok.generatedAt).toBe(iso(T0 + 125_000));
+      // Le détail interne part une fois dans le journal du service.
+      expect(quiet.mock.calls.filter((c) => String(c[1]).includes('disque en panne'))).toHaveLength(1);
+    } finally { quiet.mockRestore(); }
+  });
+
+  it('public errors carry no server path; the detail is logged once', async () => {
+    const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const { writeFile } = await import('node:fs/promises');
+      const blocker = path.join(dir, 'bloque');
+      await writeFile(blocker, 'x');
+      const bad = path.join(blocker, 'sous');
+      const r = { ...readers(), openRegistry: (at: number) => openRegistry({ dir: bad, now: at }) };
+      await tickAnticipation(T0, r);
+      const snap = await anticipationSnapshot(T0 + 1_000, r);
+      expect(snap.errors).toContain('Registre en mémoire seulement (dossier non inscriptible)');
+      expect(JSON.stringify(snap.errors)).not.toContain(dir);
+      expect(JSON.stringify(snap.errors)).not.toMatch(/\/(var|tmp|private|Users)\//);
+      expect(quiet.mock.calls.some((c) => String(c[1]).includes(bad))).toBe(true);
+      const before = quiet.mock.calls.length;
+      await tickAnticipation(T0 + 60_000, r);
+      expect(quiet.mock.calls.length).toBe(before); // même message : pas réécrit
+    } finally { quiet.mockRestore(); }
+  });
+
+  it('daily compact prunes closed scenarios older than the previous Paris month from memory, like a restart', async () => {
+    const reg = await openRegistry({ dir, now: T0 });
+    const base = { ruleId: 'r', ruleVersion: 1, zone: { dept: ['75'], communes: [] }, title: 't', chain: [], word: 'probable', why: '', unknowns: [], bascules: [], disconfirmers: [], verify: [], revisedAt: iso(T0), outcomeNote: null, feedback: { utile: 0, deja_su: 0, faux: 0 } };
+    const sc = (id: string, openedAt: string, status: string, closedAt: string | null) => ({ ...base, id, window: { from: openedAt, to: openedAt }, openedAt, status, closedAt });
+    await reg.record({ at: iso(T0), type: 'cloture', scenario: sc('ancien', '2026-09-10T10:00:00.000Z', 'pas_arrive', '2026-09-12T10:00:00.000Z') });
+    await reg.record({ at: iso(T0), type: 'manque', scenario: sc('manque-ancien', '2026-09-20T10:00:00.000Z', 'manque', '2026-09-20T10:00:00.000Z') });
+    await reg.record({ at: iso(T0), type: 'cloture', scenario: sc('octobre', '2026-10-02T10:00:00.000Z', 'arrive', '2026-10-03T10:00:00.000Z') });
+    await reg.record({ at: iso(T0), type: 'ouverture', scenario: sc('ouvert-ancien', '2026-09-01T10:00:00.000Z', 'ouvert', null) });
+    expect(reg.state().size).toBe(4); // écrits dans le journal de novembre : relus tant que le processus vit
+    expect(reg.prune(T0)).toBe(2);
+    expect([...reg.state().keys()].sort()).toEqual(['octobre', 'ouvert-ancien']);
+    // Redémarrage : même mémoire (l'élagage tourne aussi à l'ouverture).
+    const again = await openRegistry({ dir, now: T0 });
+    expect([...again.state().keys()].sort()).toEqual(['octobre', 'ouvert-ancien']);
+    // Le tick élague à la compaction du jour.
+    let seen: string[] = [];
+    const spy = async (at: number) => {
+      const r = await openRegistry({ dir, now: at });
+      await r.record({ at: iso(at), type: 'cloture', scenario: sc('tard', '2026-08-01T10:00:00.000Z', 'pas_arrive', '2026-08-02T10:00:00.000Z') });
+      return { ...r, compact: async (t: number) => { await r.compact(t); seen = [...r.state().keys()]; } };
+    };
+    __resetAnticipationForTests();
+    await tickAnticipation(T0, { ...readers(), openRegistry: spy });
+    expect(seen).toContain('tard'); // avant l'élagage
+    const after = await recordFeedback('tard', 'utile', T0 + 1_000, readers());
+    expect(after).toBe(false); // oublié en mémoire après la compaction du jour
+  });
+  it('publicError maps known errors to French labels and strips absolute paths from others', async () => {
+    // @ts-expect-error module JS sans déclaration
+    const { publicError, publicErrors } = await import('../api/_lib/anticipation/public-errors.js');
+    expect(publicError("Registre d'anticipation non inscriptible dans /var/lib/francemonitor/data/anticipation : EACCES")).toBe('Registre en mémoire seulement (dossier non inscriptible)');
+    expect(publicError('journal/2026-11.jsonl : lecture impossible dans /srv/x : EISDIR')).toBe('Journal des scénarios illisible');
+    expect(publicError('signals/2020-01-01.jsonl : compaction impossible dans /srv/x : EISDIR')).toBe("Compaction de l'archive des signaux impossible");
+    expect(publicError('Note de 7 h non écrite dans /srv/x/notes : EROFS')).toBe('Note de 7 h non écrite (dossier non inscriptible)');
+    expect(publicError("Règle r1 : ENOENT: no such file or directory, open '/etc/secret/file.json'")).toBe("Règle r1 : ENOENT: no such file or directory, open '(dossier du serveur)'");
+    expect(publicError('journal/2026-11.jsonl : 1 ligne illisible ignorée')).toBe('journal/2026-11.jsonl : 1 ligne illisible ignorée');
+    expect(publicError('Presse : délai dépassé')).toBe('Presse : délai dépassé');
+    expect(publicErrors(['a', 'a', null, 'b'])).toEqual(['a', 'b']);
   });
 });
