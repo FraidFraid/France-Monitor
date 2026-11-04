@@ -4,6 +4,7 @@ import tempeteReseaux from './tempete-reseaux.js';
 import chaleurSante from './chaleur-sante.js';
 import socialCyber from './social-cyber.js';
 import greveCarburant from './greve-carburant.js';
+import evenementMobilisation from './evenement-mobilisation.js';
 
 /** @typedef {import('../probability.js').Signal} Signal */
 /** @typedef {import('../probability.js').Evidence} Evidence */
@@ -21,4 +22,4 @@ import greveCarburant from './greve-carburant.js';
  */
 
 /** @type {CrossRule[]} */
-export const RULES = [mobilisationTransports, tempeteReseaux, chaleurSante, socialCyber, greveCarburant];
+export const RULES = [mobilisationTransports, tempeteReseaux, chaleurSante, socialCyber, greveCarburant, evenementMobilisation];

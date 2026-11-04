@@ -29,8 +29,8 @@ const panne = (over: Sig = {}) => sig({ id: 'pe', domain: 'energy', kind: 'panne
   window: { from: '2026-11-05T10:00:00Z', to: '2026-11-05T12:00:00Z' }, publishedAt: '2026-11-05T10:00:00Z', meta: { network: 'electricite' }, ...over });
 
 describe('registry', () => {
-  it('lists the five rules in order, each with a public arrival test', () => {
-    expect(RULES.map((r: { id: string }) => r.id)).toEqual(['mobilisation-transports', 'tempete-reseaux', 'chaleur-sante', 'social-cyber', 'greve-carburant']);
+  it('lists the six rules in order, each with a public arrival test', () => {
+    expect(RULES.map((r: { id: string }) => r.id)).toEqual(['mobilisation-transports', 'tempete-reseaux', 'chaleur-sante', 'social-cyber', 'greve-carburant', 'evenement-mobilisation']);
     for (const r of RULES) expect(r.arrivalTest.length).toBeGreaterThan(20);
   });
 });

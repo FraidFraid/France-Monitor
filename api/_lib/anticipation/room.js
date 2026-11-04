@@ -14,6 +14,7 @@ import { loadEcowattOfficial } from '../../_handlers/energy/ecowatt-signal.js';
 import { FUEL_SNAPSHOT_FILES } from '../../_handlers/energy/fuel-tension.js';
 import { snapshotItems } from '../../_handlers/news.js';
 import { roomSnapshot as outagesSnapshot } from '../outages-room.js';
+import { footballSnapshot } from '../football-data.js';
 import { toSignals } from './signals.js';
 import { capOpen, evaluate } from './engine.js';
 import { openRegistry, previousMonth } from './registry.js';
@@ -46,6 +47,7 @@ const DEFAULT_READERS = {
   readEcowatt: loadEcowattOfficial,
   readFuel,
   readNews: snapshotItems,
+  readFootball: footballSnapshot,
 };
 
 /**
@@ -134,11 +136,11 @@ async function run(/** @type {number} */ now, /** @type {any} */ readers) {
     try { archived = await registry.signalsBetween(new Date(now - 2 * HOUR).toISOString(), nowIso); } catch { /* archive illisible : pas de tendance */ }
     fuelMemo = memoOfSignals(archived);
   }
-  const names = ['protests', 'vigilance', 'rail', 'room', 'cyber', 'ecowatt', 'fuel', 'news'];
+  const names = ['protests', 'vigilance', 'rail', 'room', 'cyber', 'ecowatt', 'fuel', 'news', 'football'];
   /** @type {string[]} */
   const readErrors = [];
   const budget = typeof readers.budgetMs === 'number' ? readers.budgetMs : READ_BUDGET_MS;
-  const labels = { protests: 'Manifestations', vigilance: 'Météo-France', rail: 'SNCF', room: 'Pannes', cyber: 'Veille cyber', ecowatt: 'Écowatt', fuel: 'Carburants', news: 'Presse' };
+  const labels = { protests: 'Manifestations', vigilance: 'Météo-France', rail: 'SNCF', room: 'Pannes', cyber: 'Veille cyber', ecowatt: 'Écowatt', fuel: 'Carburants', news: 'Presse', football: 'Calendrier sportif' };
   const values = await Promise.all(names.map((n) => settle(/** @type {Record<string, string>} */ (labels)[n], readers[`read${n[0].toUpperCase()}${n.slice(1)}`], now, budget, readErrors)));
   /** @type {Record<string, any>} */
   const inputs = {};
@@ -185,7 +187,9 @@ async function run(/** @type {number} */ now, /** @type {any} */ readers) {
     if (failure === null) frozenDay = today; // erreur passagère : nouvel essai au tick suivant
   }
   state = {
-    registry, tickAt: now, signals, scenarios: served, agenda, unknown,
+    registry, tickAt: now, signals, scenarios: served, agenda,
+    // Calendrier sportif sans clé : nommé dans l'instantané seulement (ni dans la note ni dans les relevés de la règle).
+    unknown: inputs.football && inputs.football.configured === false ? [...unknown, 'Calendrier sportif non configuré'] : unknown,
     errors: [...readErrors, ...signalErrors, ...engineErrors, ...registry.errors], fuel: fuelMemo, compactDay, frozenDay,
   };
 }

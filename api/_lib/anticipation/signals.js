@@ -244,6 +244,26 @@ function fromFuel(/** @type {any} */ fuel) {
   return out;
 }
 
+// ─── Calendrier sportif ───
+
+/** Signal de match : de 2 h avant le coup d'envoi à 3 h après. Un stade non reconnu n'a pas de département. */
+function fromFootball(/** @type {any} */ football, /** @type {number} */ now, /** @type {string[]} */ errors) {
+  /** @type {Signal[]} */
+  const out = [];
+  if (!football?.configured) return out;
+  for (const m of Array.isArray(football.matches) ? football.matches : []) {
+    try {
+      const kick = ms(m.kickoff);
+      if (!Number.isFinite(kick) || kick + 3 * H < now) continue;
+      const code = normalizeDepartmentCode(m.dept);
+      out.push(mk({ kind: 'evenement_sportif', domain: 'event', source: 'football-data', origin: 'football-data', official: false, dept: code ? [code] : [],
+        window: { from: iso(kick - 2 * H), to: iso(kick + 3 * H) }, publishedAt: iso(kick), readAt: football.readAt, key: String(m.id), ref: String(m.id),
+        meta: { competition: m.competition ?? null, home: m.home ?? null, away: m.away ?? null, venue: m.venue ?? null } }));
+    } catch (e) { errors.push(`Calendrier sportif: ${m?.id}: ${errMsg(e)}`); }
+  }
+  return out;
+}
+
 // ─── Presse ───
 
 const SEVERITY_RANK = Object.freeze({ info: 0, low: 1, medium: 2, high: 3, critical: 4 });
@@ -310,6 +330,8 @@ export function toSignals(inputs, now) {
     if (!input || !fresh(readAt, max, now)) { unknown.push(label); continue; }
     try { signals.push(...map()); } catch (e) { unknown.push(label); errors.push(`${label}: ${errMsg(e)}`); }
   }
+  // Calendrier sportif : facultatif, jamais compté dans `unknown` (la room nomme « non configuré » dans l'instantané seulement).
+  try { signals.push(...fromFootball(inputs.football, now, errors)); } catch (e) { errors.push(`Calendrier sportif: ${errMsg(e)}`); }
   // Presse : un tableau sans date de lecture, chaque article est daté et filtré à 24 h.
   if (Array.isArray(inputs.news)) {
     try { signals.push(...fromNews(inputs.news, now, errors)); } catch (e) { unknown.push('Presse non lue'); errors.push(`Presse: ${errMsg(e)}`); }
