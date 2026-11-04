@@ -169,7 +169,7 @@ function fromRoom(/** @type {any} */ room, /** @type {number} */ now, /** @type 
     out.push(mk({ kind: 'panne', domain: o.network === 'electricite' ? 'energy' : 'telecom', source: src, origin: src,
       official: OFFICIAL_OUTAGE_SOURCES.has(src), dept: code ? [code] : [], level: o.level ?? null,
       window: Number.isFinite(from) ? { from: iso(from), to: iso(Math.max(from, to)) } : null, publishedAt: Number.isFinite(from) ? iso(from) : null,
-      readAt: room.generatedAt, key: String(o.id), ref: String(o.id), meta: { network: o.network } }));
+      readAt: room.generatedAt, key: String(o.id), ref: String(o.id), meta: { network: o.network, exposed: Boolean(o.exposed) } }));
     } catch (e) { errors.push(`Pannes: ${o?.id}: ${errMsg(e)}`); }
   }
   return out;
@@ -230,8 +230,15 @@ function fromFuel(/** @type {any} */ fuel) {
     const share = s.anomalyShare;
     const code = normalizeDepartmentCode(s.departmentCode);
     if (!code || typeof share !== 'number' || share < 15) continue; // seuils du 08/10/2026 : 15, 25, 40 %
+    // Tendance : seulement si le relevé porte une valeur précédente ; sinon inconnue (aucun historique n'est inventé).
+    const previous = typeof s.previousAnomalyShare === 'number' ? s.previousAnomalyShare : null;
     out.push(mk({ kind: 'tension_carburant', domain: 'fuel', source: 'prix-carburants', origin: 'prix-carburants', official: true, dept: [code],
-      level: share >= 40 ? 'rouge' : share >= 25 ? 'orange' : 'jaune', value: share, readAt: fuel.generatedAt, key: code, ref: code }));
+      level: share >= 40 ? 'rouge' : share >= 25 ? 'orange' : 'jaune', value: share, readAt: fuel.generatedAt, key: code, ref: code, ...(previous !== null ? { meta: { previousValue: previous } } : {}) }));
+  }
+  // Part nationale des stations en rupture (sans département), lue par l'arrivée de la règle grève × carburant.
+  const national = fuel.national?.anomalyShare;
+  if (typeof national === 'number') {
+    out.push(mk({ kind: 'tension_carburant', domain: 'fuel', source: 'prix-carburants', origin: 'prix-carburants', official: true, dept: [], value: national, readAt: fuel.generatedAt, key: 'national', ref: 'national', meta: { national: true } }));
   }
   return out;
 }
@@ -264,7 +271,7 @@ function fromNews(/** @type {any[]} */ news, /** @type {number} */ now, /** @typ
     try {
       const n = e.first;
       const t = ms(n.publishedAt);
-      const meta = { eventId: n.eventId ?? null, category: e.best.category ?? null, severity: e.best.severity ?? null };
+      const meta = { eventId: n.eventId ?? null, category: e.best.category ?? null, severity: e.best.severity ?? null, title: String(n.title ?? '') };
       // Point : le premier article localisé de l'événement.
       const located = [e.first, e.best, e.social].find((x) => x && typeof x.lat === 'number' && typeof x.lon === 'number') ?? n;
       const common = { domain: /** @type {const} */ ('press'), source: String(n.feedName ?? 'presse'), origin: e.origin, dept: deptOfPoint(located.lat, located.lon), publishedAt: iso(t), readAt: iso(now), ref: String(n.link ?? e.origin), key: e.origin, meta };

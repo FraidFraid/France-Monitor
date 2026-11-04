@@ -1,6 +1,9 @@
 // api/_lib/anticipation/rules/index.js : registre des règles de croisement actives.
 import mobilisationTransports from './mobilisation-transports.js';
 import tempeteReseaux from './tempete-reseaux.js';
+import chaleurSante from './chaleur-sante.js';
+import socialCyber from './social-cyber.js';
+import greveCarburant from './greve-carburant.js';
 
 /** @typedef {import('../probability.js').Signal} Signal */
 /** @typedef {import('../probability.js').Evidence} Evidence */
@@ -18,4 +21,4 @@ import tempeteReseaux from './tempete-reseaux.js';
  */
 
 /** @type {CrossRule[]} */
-export const RULES = [mobilisationTransports, tempeteReseaux];
+export const RULES = [mobilisationTransports, tempeteReseaux, chaleurSante, socialCyber, greveCarburant];
