@@ -5,6 +5,7 @@
 import { appendFile, mkdir, readdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
+import { parisDay } from '../../_shared/paris-day.js';
 
 /** @typedef {import('./probability.js').Signal} Signal */
 /**
@@ -35,9 +36,6 @@ const DEFAULT_DIR = '/var/lib/francemonitor/data/anticipation';
 const ARCHIVE_EVERY_MS = 15 * 60_000;
 const KEEP_MONTHS = 13;
 
-const dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' });
-/** Jour de Paris AAAA-MM-JJ. */
-const parisDay = (/** @type {number} */ ms) => dayFmt.format(new Date(ms));
 /** Mois de Paris AAAA-MM. */
 const parisMonth = (/** @type {number} */ ms) => parisDay(ms).slice(0, 7);
 /** Mois précédent d'une clé AAAA-MM. */
@@ -67,6 +65,7 @@ export async function openRegistry({ dir, now }) {
     state: () => scenarios,
     record,
     archiveSignals,
+    signalsBetween,
     compact,
   };
 
@@ -170,6 +169,41 @@ export async function openRegistry({ dir, now }) {
     lastArchiveAt = at;
     const line = JSON.stringify({ at: new Date(at).toISOString(), signals });
     await append(path.join(signalsDir, `${parisDay(at)}.jsonl`), `${line}\n`);
+  }
+
+  /**
+   * Signaux archivés dont le relevé tombe dans [from, to] (ISO). Lit les fichiers des jours de Paris qui couvrent la fenêtre ;
+   * fichier absent ou ligne illisible : ignorés. Attend les écritures en cours pour voir ce qui vient d'être archivé.
+   * @param {string} from
+   * @param {string} to
+   * @returns {Promise<Signal[]>}
+   */
+  async function signalsBetween(from, to) {
+    const a = Date.parse(from), b = Date.parse(to);
+    if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return [];
+    await queue;
+    /** @type {Signal[]} */
+    const out = [];
+    const last = parisDay(b);
+    for (let t = a, day = parisDay(a); day <= last; t += 12 * 3_600_000, day = parisDay(t)) {
+      let text;
+      try {
+        text = await readFile(path.join(signalsDir, `${day}.jsonl`), 'utf8');
+      } catch {
+        continue; // jour absent ou compacté : rien à relire
+      }
+      for (const line of text.split('\n')) {
+        if (!line.trim()) continue;
+        try {
+          const row = JSON.parse(line);
+          const at = Date.parse(row?.at);
+          if (Number.isFinite(at) && at >= a && at <= b && Array.isArray(row.signals)) out.push(...row.signals);
+        } catch {
+          // ligne coupée : ignorée
+        }
+      }
+    }
+    return out;
   }
 
   /** @param {number} at */

@@ -2,6 +2,7 @@
 // Évalue les règles sur les signaux, applique le plancher des grilles, ouvre ou révise les scénarios (jamais de doublon : même règle,
 // même premier département, fenêtres qui se chevauchent). N'écrit rien : l'appelant enregistre `opened` et `revised` dans le registre.
 import { applyFloor, WORDS, wordWhy } from './probability.js';
+import { parisDay } from '../../_shared/paris-day.js';
 import { RULES } from './rules/index.js';
 
 /** @typedef {import('./probability.js').Signal} Signal */
@@ -11,7 +12,6 @@ const MAX_NATIONAL = 5;
 const MAX_PER_DEPT = 3;
 const errMsg = (/** @type {unknown} */ e) => (e instanceof Error ? e.message : String(e));
 
-const dayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' });
 
 /** Dernier jour (Paris) d'un scénario arrivé de cette règle dans ce département, ou null. */
 function precedentIn(/** @type {Map<string, Scenario>} */ state, /** @type {string} */ ruleId, /** @type {string} */ dept) {
@@ -21,7 +21,7 @@ function precedentIn(/** @type {Map<string, Scenario>} */ state, /** @type {stri
     const t = Date.parse(s.closedAt ?? '');
     if (Number.isFinite(t) && (best === null || t > best)) best = t;
   }
-  return best === null ? null : dayFmt.format(new Date(best));
+  return best === null ? null : parisDay(best);
 }
 
 const deptKey = (/** @type {{ zone: { dept: string[] } }} */ s) => s.zone?.dept?.[0] ?? 'national';
@@ -31,6 +31,30 @@ const overlap = (/** @type {{from: string, to: string}} */ a, /** @type {{from: 
   return af < bt && bf < at;
 };
 const sameJson = (/** @type {unknown} */ a, /** @type {unknown} */ b) => JSON.stringify(a) === JSON.stringify(b);
+const LEVEL_RANK = /** @type {Record<string, number>} */ ({ jaune: 1, orange: 2, rouge: 3 });
+const levelRank = (/** @type {unknown} */ l) => LEVEL_RANK[String(l)] ?? 0;
+
+/**
+ * Baseline de citation (clôture) : pour chaque id déjà cité, le niveau le plus bas jamais écrit, de sorte qu'une montée ultérieure
+ * reste détectable par `arrived` même après plusieurs révisions. Un niveau qui baisse abaisse la baseline.
+ * @param {Scenario['chain']} previous Chaîne déjà enregistrée.
+ * @param {Scenario['chain']} next Chaîne du candidat.
+ * @returns {Scenario['chain']}
+ */
+function keepLowestLevels(previous, next) {
+  /** @type {Map<string, string|null>} */
+  const lowest = new Map();
+  for (const step of Array.isArray(previous) ? previous : []) {
+    for (const [id, level] of Object.entries(step?.levels ?? {})) {
+      if (!lowest.has(id) || levelRank(level) < levelRank(lowest.get(id))) lowest.set(id, level);
+    }
+  }
+  return next.map((step) => {
+    if (!step.levels) return step;
+    const levels = Object.fromEntries(Object.entries(step.levels).map(([id, level]) => [id, lowest.has(id) && levelRank(lowest.get(id)) < levelRank(level) ? /** @type {string|null} */ (lowest.get(id)) : level]));
+    return { ...step, levels };
+  });
+}
 const WATCHED = /** @type {const} */ (['word', 'why', 'title', 'chain', 'bascules', 'window', 'unknowns', 'verify', 'disconfirmers']);
 
 /**
@@ -88,7 +112,7 @@ export function evaluate(signals, registry, now, rules = RULES, unknown = []) {
           });
           const { evidence: _evidence, ...fields } = c;
           void _evidence;
-          const next = { ...existing, ...fields, bascules, word, why, id: existing.id, openedAt: existing.openedAt, status: existing.status, closedAt: existing.closedAt,
+          const next = { ...existing, ...fields, chain: keepLowestLevels(existing.chain, fields.chain), bascules, word, why, id: existing.id, openedAt: existing.openedAt, status: existing.status, closedAt: existing.closedAt,
             outcomeNote: existing.outcomeNote, feedback: existing.feedback, revisedAt: nowIso };
           const changed = WATCHED.some((k) => !sameJson(/** @type {Record<string, unknown>} */ (next)[k], /** @type {Record<string, unknown>} */ (existing)[k]));
           if (changed) {
@@ -113,7 +137,7 @@ export function evaluate(signals, registry, now, rules = RULES, unknown = []) {
   return { opened, revised, open: [...pool.values()], errors };
 }
 
-const dayOf = (/** @type {number} */ ms) => dayFmt.format(new Date(ms));
+const dayOf = parisDay;
 
 /**
  * Plafonds d'affichage : 5 scénarios nationaux dont la fenêtre recoupe aujourd'hui (jour de Paris), 3 par département et par jour de Paris

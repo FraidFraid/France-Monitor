@@ -1,6 +1,8 @@
 // api/_lib/anticipation/rules/paris-time.js : demi-journées à l'heure de Paris (matin 06 h à 14 h, après-midi 14 h à 22 h, soir 22 h à 06 h le lendemain).
 // Passage à l'heure d'été ou d'hiver géré par Intl (Europe/Paris), aucun décalage fixe.
 
+import { parisDay } from '../../../_shared/paris-day.js';
+
 const partsFmt = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Europe/Paris', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
 });
@@ -21,12 +23,10 @@ export function parisInstant(/** @type {number} */ y, /** @type {number} */ m, /
   return t;
 }
 
-/** Jour de Paris (y, m, d) d'un instant. */
+/** Jour de Paris (y, m, d) d'un instant, dérivé de l'implémentation partagée parisDay. */
 function parisYmd(/** @type {number} */ ms) {
-  /** @type {Record<string, number>} */
-  const p = {};
-  for (const x of partsFmt.formatToParts(new Date(ms))) if (x.type !== 'literal') p[x.type] = Number(x.value);
-  return { y: p.year, m: p.month, d: p.day };
+  const [y, m, d] = parisDay(ms).split('-').map(Number);
+  return { y, m, d };
 }
 
 /** Bornes [début, fin) du jour de Paris de l'instant donné. */

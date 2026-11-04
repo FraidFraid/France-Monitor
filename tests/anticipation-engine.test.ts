@@ -209,3 +209,45 @@ describe('engine fixes', () => {
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });
+
+describe('baseline des niveaux cités (clôture)', () => {
+  // @ts-expect-error module JS sans déclaration
+  const chaleurP = import('../api/_lib/anticipation/rules/chaleur-sante.js');
+  const step = (level: string | null) => ({ text: 'a', signalIds: ['s1'], levels: { s1: level } });
+
+  it('keeps the lowest level ever recorded on revision, without revising every tick, so a later escalation still counts', async () => {
+    const { dir, registry } = await reg();
+    try {
+      let tick = 0;
+      const r = rule('r1', () => [cand({ chain: [step(tick === 0 ? 'orange' : 'rouge')], unknowns: [tick === 2 ? 'changé' : 'u'] })]);
+      const first = evaluate([], registry, NOW, [r]);
+      await registry.record({ at: new Date(NOW).toISOString(), type: 'ouverture', scenario: first.opened[0] });
+      tick = 1; // le signal cité est maintenant rouge : rien d'autre ne change, pas de révision, niveau stocké inchangé
+      const second = evaluate([], registry, NOW + 60_000, [r]);
+      expect(second.revised).toHaveLength(0);
+      expect(registry.state().get(first.opened[0].id).chain[0].levels.s1).toBe('orange');
+      tick = 2; // un autre champ change : révision, mais la baseline reste orange
+      const third = evaluate([], registry, NOW + 120_000, [r]);
+      expect(third.revised).toHaveLength(1);
+      expect(third.revised[0].chain[0].levels.s1).toBe('orange');
+      // règle 3 : le signal cité, rouge maintenant, est une montée par rapport à la baseline
+      const chaleur = (await chaleurP).default;
+      const stored = third.revised[0];
+      const eco = { id: 's1', kind: 'ecowatt', level: 'rouge', dept: [], origin: 'rte', official: true, window: win, observedAt: '2026-11-04T10:00:00Z', publishedAt: '2026-11-04T10:00:00Z' };
+      expect(chaleur.arrived({ ...stored, zone: { dept: ['69'], communes: [] } }, [eco], { now: NOW, unknown: [] })).toBe('arrive');
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it('lowers the baseline when a cited level goes down', async () => {
+    const { dir, registry } = await reg();
+    try {
+      let lv: string | null = 'rouge';
+      const r = rule('r1', () => [cand({ chain: [step(lv)] })]);
+      const first = evaluate([], registry, NOW, [r]);
+      await registry.record({ at: new Date(NOW).toISOString(), type: 'ouverture', scenario: first.opened[0] });
+      lv = 'orange';
+      const out = evaluate([], registry, NOW + 60_000, [r]);
+      expect(out.revised[0].chain[0].levels.s1).toBe('orange');
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+});
