@@ -96,7 +96,6 @@ const rule = {
           bascules: [
             { id: 'arrete', label: 'Arrêté préfectoral publié', state: arrete ? 'atteint' : 'surveille', at: arrete ? (arrete.publishedAt ?? arrete.observedAt) : null },
             { id: 'affluence', label: 'Plus de 15\u00a0000 participants signalés', state: affluence ? 'atteint' : 'surveille', at: affluence ? (sr.find((s) => participants(s) >= AFFLUENCE)?.observedAt ?? null) : null },
-            { id: 'preavis_leve', label: 'Préavis levé', state: 'surveille', at: null },
           ],
           disconfirmers: ['Préavis de grève levé', 'Rassemblement annulé ou interdit par arrêté préfectoral', 'Plan de transport finalement maintenu'],
           verify: [`Effectifs auprès de la DDSP du ${name}`, 'Plan de transport auprès de SNCF Voyageurs'],

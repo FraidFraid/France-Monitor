@@ -54,7 +54,7 @@ describe('rule 1 mobilisation-transports', () => {
     expect(c.chain[1].signalIds).toEqual(['mouvement_social_transport:sncf:69:1']);
     expect(c.evidence.origins).toBe(4);
     expect(c.evidence.hasOfficial).toBe(true);
-    expect(c.bascules.map((b: { id: string; state: string }) => [b.id, b.state])).toEqual([['arrete', 'surveille'], ['affluence', 'surveille'], ['preavis_leve', 'surveille']]);
+    expect(c.bascules.map((b: { id: string; state: string }) => [b.id, b.state])).toEqual([['arrete', 'surveille'], ['affluence', 'surveille']]);
     expect(c.unknowns).toContain('Effectifs réels engagés : aucune donnée publique');
     expect(c.verify).toContain('Effectifs auprès de la DDSP du Rhône');
     expect(c.verify).toContain('Plan de transport auprès de SNCF Voyageurs');

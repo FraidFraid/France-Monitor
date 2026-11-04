@@ -40,6 +40,8 @@ describe('ensureFootballFresh', () => {
     expect(r.configured).toBe(true);
     expect(r.matches.map((m: { home: string; dept: string | null }) => [m.home, m.dept])).toEqual([['Olympique Lyonnais', '69'], ['AS Monaco FC', null], ['Inconnu United', null]]);
     expect(r.matches[0]).toMatchObject({ id: '1', competition: 'FL1', kickoff: '2026-11-07T19:45:00.000Z', venue: null });
+    // Monaco : stade connu hors de France (marqué), club absent de la table : sans marque.
+    expect(r.matches.map((m: { abroad?: boolean }) => m.abroad === true)).toEqual([false, true, false]);
   });
 
   it('403 on a competition is a permanent skip: reported once, no retry, others untouched', async () => {

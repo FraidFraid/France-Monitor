@@ -61,6 +61,11 @@ describe('rule 6 evenement-mobilisation', () => {
     expect(two.map(strip)).toEqual(one.map(strip));
   });
 
+  it('no bascule without a source: only the prefectoral order is watched', () => {
+    const out = rule.evaluate([game(), rally], ctx);
+    expect(out[0].bascules.map((b: { id: string }) => b.id)).toEqual(['arrete']);
+  });
+
   it('a match outside the half-day is not named', () => {
     const night = game({ id: 'evenement_sportif:football-data:69:3', meta: { home: 'Match du soir', away: 'X' }, window: { from: '2026-11-04T22:30:00Z', to: '2026-11-05T02:00:00Z' } });
     const out = rule.evaluate([night, game(), rally], ctx);

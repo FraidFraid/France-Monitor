@@ -152,12 +152,13 @@ function newlyReached(/** @type {any} */ before, /** @type {any} */ after) {
     && !(Array.isArray(before?.bascules) ? before.bascules : []).some((/** @type {any} */ p) => p.id === b.id && p.state === 'atteint'));
 }
 
-/** Lignes d'inconnu propres à l'instantané : calendrier non configuré, stades non reconnus (club français sans département). */
+/** Lignes d'inconnu propres à l'instantané : calendrier non configuré, stades non reconnus (club sans département), stades hors de France. */
 function footballUnknown(/** @type {any} */ football) {
   if (!football) return [];
   if (football.configured === false) return ['Calendrier sportif non configuré'];
-  const clubs = [...new Set((Array.isArray(football.matches) ? football.matches : []).filter((/** @type {any} */ m) => !m?.dept).map((/** @type {any} */ m) => String(m?.home ?? 'n.d.')))];
-  return clubs.map((c) => `Stade non reconnu : ${c}`);
+  const lines = (Array.isArray(football.matches) ? football.matches : []).filter((/** @type {any} */ m) => !m?.dept)
+    .map((/** @type {any} */ m) => `${m?.abroad === true ? 'Stade hors de France' : 'Stade non reconnu'} : ${String(m?.home ?? 'n.d.')}`);
+  return [...new Set(lines)];
 }
 
 async function run(/** @type {number} */ now, /** @type {any} */ readers) {

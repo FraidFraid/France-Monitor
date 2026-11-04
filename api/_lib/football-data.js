@@ -21,7 +21,8 @@ const DAY_MS = 86_400_000;
  * @property {string} kickoff Instant ISO du coup d'envoi.
  * @property {string|null} venue
  * @property {string|null} commune Commune du stade, null si le stade n'est pas reconnu.
- * @property {string|null} dept Département du stade, null si le stade n'est pas reconnu.
+ * @property {string|null} dept Département du stade, null si le stade n'est pas reconnu ou hors de France.
+ * @property {true} [abroad] Stade connu de la table mais hors de France (Monaco) : nommé « Stade hors de France », pas « non reconnu ».
  */
 /** @typedef {{ configured: boolean, readAt: string, matches: FootballMatch[], errors: string[] }} FootballState */
 
@@ -62,7 +63,7 @@ export function parseMatch(m, competition) {
   return {
     id: String(m.id), competition, home: String(m.homeTeam?.name ?? stadium?.names[0] ?? 'n.d.'), away: String(m.awayTeam?.name ?? 'n.d.'),
     kickoff: new Date(kick).toISOString(), venue: typeof m.venue === 'string' && m.venue.trim() ? m.venue.trim() : null,
-    commune: stadium?.dept ? stadium.commune : null, dept: stadium?.dept ?? null,
+    commune: stadium?.dept ? stadium.commune : null, dept: stadium?.dept ?? null, ...(stadium && !stadium.dept ? { abroad: /** @type {const} */ (true) } : {}),
   };
 }
 

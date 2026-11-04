@@ -1,6 +1,7 @@
 // api/_lib/stadiums.js : stades des clubs français suivis par le calendrier sportif (04/11/2026).
 // Clés : nom normalisé du club et code à trois lettres (TLA) de football-data.org, jamais l'identifiant numérique (invérifiable hors ligne).
-// Un club absent de la table, ou hors de France (Monaco), n'a pas de département : la règle le nomme « Stade non reconnu », elle ne devine pas.
+// Un club absent de la table, ou hors de France (Monaco), n'a pas de département : l'instantané le nomme « Stade non reconnu » ou
+// « Stade hors de France » (marque `abroad` du match), la règle ne devine pas.
 
 /** @typedef {{ names: string[], tla?: string, commune: string, dept: string|null }} Stadium */
 

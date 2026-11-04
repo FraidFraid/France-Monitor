@@ -87,7 +87,6 @@ const rule = {
         unknowns: ["Affluence réelle au stade et en ville : aucune donnée publique", 'Dispositif de sécurité et plan de transport du jour'],
         bascules: [
           { id: 'arrete', label: 'Arrêté préfectoral publié', state: arrete ? 'atteint' : 'surveille', at: arrete ? (arrete.publishedAt ?? arrete.observedAt) : null },
-          { id: 'preavis_leve', label: 'Préavis levé', state: 'surveille', at: null },
         ],
         disconfirmers: ['Match reporté ou joué à huis clos', 'Rassemblement annulé ou interdit par arrêté préfectoral', 'Plan de transport finalement maintenu'],
         verify: [`Dispositif de sécurité auprès de la préfecture du ${name}`, "Plan de transport auprès de l'exploitant local"],
