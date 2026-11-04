@@ -1,7 +1,7 @@
 // api/_lib/anticipation/rules/mobilisation-transports.js : règle 1 (v1), rassemblements × transports, même département et même demi-journée.
 // Texte fixé par gabarit, aucun mot ni chiffre produit par une IA. Les seuils sont ceux écrits dans la méthode.
 import { DEPT_NAMES } from '../../../_shared/departments.js';
-import { cleanSignals, evidenceOf, firstDept, inDept, inPlace, span } from './common.js';
+import { arreteBascule, cleanSignals, evidenceOf, firstDept, inDept, inPlace, span } from './common.js';
 import { halfDaysOverlapping, parisDayBounds, parisDayLabel } from './paris-time.js';
 
 /** @typedef {import('../probability.js').Signal} Signal */
@@ -94,7 +94,7 @@ const rule = {
           why: '',
           unknowns: ['Effectifs réels engagés : aucune donnée publique', 'Itinéraire exact du cortège et horaires de dispersion', ...(Array.isArray(ctx.unknown) ? ctx.unknown.filter((u) => RELEVES.includes(u)) : [])],
           bascules: [
-            { id: 'arrete', label: 'Arrêté préfectoral publié', state: arrete ? 'atteint' : 'surveille', at: arrete ? (arrete.publishedAt ?? arrete.observedAt) : null },
+            arreteBascule(arrete),
             { id: 'affluence', label: 'Plus de 15\u00a0000 participants signalés', state: affluence ? 'atteint' : 'surveille', at: affluence ? (sr.find((s) => participants(s) >= AFFLUENCE)?.observedAt ?? null) : null },
           ],
           disconfirmers: ['Préavis de grève levé', 'Rassemblement annulé ou interdit par arrêté préfectoral', 'Plan de transport finalement maintenu'],

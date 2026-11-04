@@ -68,7 +68,7 @@ export async function prefectureItems(releve, now, index) {
             place: c && a.place ? `${a.place}, ${c.name}` : null,
             violent: false, participants: null, precision: c ? 'commune' : null,
             articles: [], articleCount: 0,
-            arrete: { kind: a.kind, act: a.act, hours: a.hours ?? null, excerpt: a.excerpt ?? null, publishedOn: r.publishedOn ?? null },
+            arrete: { kind: a.kind, act: a.act, hours: a.hours ?? null, excerpt: a.excerpt ?? null, publishedOn: r.publishedOn ?? null, title: a.title ?? null, page: Number.isInteger(a.page) ? a.page : null },
           });
         }
       }

@@ -3744,11 +3744,23 @@ export interface AnticipationChainLink {
   levels?: Record<string, string | null>;
 }
 
+/** Document officiel qui a levé une bascule (arrêté préfectoral : PDF du recueil ouvert à la page de l'arrêté). */
+export interface AnticipationDoc {
+  url: string;
+  act: string | null;
+  title: string | null;
+  excerpt: string | null;
+  issuer: string | null;
+  publishedOn: string | null;
+  hours: string[] | null;
+}
+
 export interface AnticipationBascule {
   id: string;
   label: string;
   state: 'surveille' | 'atteint';
   at: string | null;
+  doc?: AnticipationDoc;
 }
 
 export type AnticipationVote = 'utile' | 'deja_su' | 'faux';

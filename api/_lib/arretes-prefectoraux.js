@@ -67,17 +67,22 @@ export function nextPages(html, site, now = Date.now()) {
 
 const ACT_ID = /\b(\d{2,3}-\d{4}-\d{2}-\d{2}-\d{5})\b/;
 
-/** Pages d'un recueil regroupées par arrêté (identifiant « 45-2026-10-14-00001 » du pied de page, sinon de l'en-tête) ; sommaire écarté. */
+/**
+ * Pages d'un recueil regroupées par arrêté (identifiant « 45-2026-10-14-00001 » du pied de page, sinon de l'en-tête) ; sommaire écarté.
+ * `page` : numéro (à partir de 1) de la première page de l'arrêté dans le PDF, pour l'ouvrir au bon endroit (`#page=N`).
+ */
 export function splitActs(pages) {
+  /** @type {Map<string, { text: string, page: number }>} */
   const acts = new Map();
-  for (const page of pages) {
+  pages.forEach((page, i) => {
     const p = String(page);
-    if (/\bsommaire\b/i.test(p.slice(0, 200))) continue;
+    if (/\bsommaire\b/i.test(p.slice(0, 200))) return;
     const id = ACT_ID.exec(p.slice(-400))?.[1] ?? ACT_ID.exec(p.slice(0, 400))?.[1];
-    if (!id) continue;
-    acts.set(id, `${acts.get(id) ?? ''}\n${page}`);
-  }
-  return [...acts.entries()].map(([id, text]) => ({ id, text }));
+    if (!id) return;
+    const prev = acts.get(id);
+    acts.set(id, { text: `${prev?.text ?? ''}\n${page}`, page: prev?.page ?? i + 1 });
+  });
+  return [...acts.entries()].map(([id, { text, page }]) => ({ id, text, page }));
 }
 
 // Arrêtés pertinents : drones pour la sécurité des rassemblements, interdiction ou encadrement d'une manifestation.
@@ -192,13 +197,13 @@ function actTitle(text) {
 }
 
 /**
- * Arrêtés utiles d'un recueil : `pages` = texte de chaque page. Rend `[{ act, kind, title, days, hours, communes, excerpt, place }]`,
+ * Arrêtés utiles d'un recueil : `pages` = texte de chaque page. Rend `[{ act, kind, title, days, hours, communes, excerpt, place, page }]`,
  * jours à partir de la publication seulement (un arrêté rappelle souvent les journées passées dans ses considérants).
  */
 export function analyseRecueil(pages, publishedOn) {
   const year = Number(String(publishedOn ?? '').slice(0, 4)) || new Date().getUTCFullYear();
   const out = [];
-  for (const { id, text } of splitActs(pages)) {
+  for (const { id, text, page } of splitActs(pages)) {
     const kind = actKind(text);
     if (!kind) continue;
     // Date de l'arrêté lui-même (« Arrêté préfectoral du 14 octobre 2026 », répétée en pied de page) : jamais un jour de rassemblement.
@@ -206,7 +211,7 @@ export function analyseRecueil(pages, publishedOn) {
     const days = actDays(body, year).filter((d) => !publishedOn || d >= publishedOn);
     if (days.length === 0) continue;
     const excerpt = actExcerpt(text);
-    out.push({ act: id, kind, title: actTitle(text), days, hours: actHours(body), communes: actCommunes(text), excerpt, place: actPlace(excerpt) });
+    out.push({ act: id, kind, title: actTitle(text), days, hours: actHours(body), communes: actCommunes(text), excerpt, place: actPlace(excerpt), page });
   }
   return out;
 }

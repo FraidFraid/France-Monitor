@@ -3,7 +3,7 @@
 // Un stade non reconnu (sans département) est nommé dans l'instantané, pas ici.
 // Sans clé football-data, aucun signal sportif n'existe : la règle ne renvoie rien (le snapshot nomme « Calendrier sportif non configuré »).
 import { DEPT_NAMES } from '../../../_shared/departments.js';
-import { cleanSignals, evidenceOf, inDept, inPlace, span } from './common.js';
+import { arreteBascule, cleanSignals, evidenceOf, inDept, inPlace, span } from './common.js';
 import { halfDaysOverlapping, parisDayBounds, parisDayLabel } from './paris-time.js';
 import mobilisationTransports from './mobilisation-transports.js';
 
@@ -86,7 +86,7 @@ const rule = {
         why: '',
         unknowns: ["Affluence réelle au stade et en ville : aucune donnée publique", 'Dispositif de sécurité et plan de transport du jour'],
         bascules: [
-          { id: 'arrete', label: 'Arrêté préfectoral publié', state: arrete ? 'atteint' : 'surveille', at: arrete ? (arrete.publishedAt ?? arrete.observedAt) : null },
+          arreteBascule(arrete),
         ],
         disconfirmers: ['Match reporté ou joué à huis clos', 'Rassemblement annulé ou interdit par arrêté préfectoral', 'Plan de transport finalement maintenu'],
         verify: [`Dispositif de sécurité auprès de la préfecture du ${name}`, "Plan de transport auprès de l'exploitant local"],

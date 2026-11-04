@@ -1,7 +1,7 @@
 // src/components/anticipation/scenario-view.ts : vue pure de la fiche d'un scénario (onglet Anticipation, 04/11/2026, maquette écran 1).
 // Échelle des sept mots (le mot actif à la couleur de son jeton --sev-*), chaîne de preuves avec source et heure de Paris, inconnues,
 // bascules, ce qui l'infirmerait, vérifications, retours. Aucun accès réseau ni DOM ; tout texte venu du serveur est échappé.
-import type { AnticipationChainLink, AnticipationScenario, AnticipationSignal } from '../../types/index.ts';
+import type { AnticipationChainLink, AnticipationDoc, AnticipationScenario, AnticipationSignal } from '../../types/index.ts';
 import { ALL_WORDS, isKnownWord, WORD_COLOR_VAR, WORD_LABEL, WORD_RANGE, wordLabel } from '../../services/anticipation-words.ts';
 import { parisDay } from '../../services/paris-day.js';
 import { escapeHtml } from '../france-intel-events.ts';
@@ -113,6 +113,33 @@ function feedbackHtml(state: FeedbackState): string {
   return `<div class="anr-fb">${buttons}</div><p class="anr-fb-state" role="status" aria-live="polite">${msg}</p>`;
 }
 
+/** Adresse d'un document affichable : https sur un site en .gouv.fr seulement (même garde que le serveur), sinon null. */
+export function safeDocUrl(url: unknown): string | null {
+  if (typeof url !== 'string' || !url) return null;
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' && (u.hostname === 'gouv.fr' || u.hostname.endsWith('.gouv.fr')) ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Aperçu du document officiel d'une bascule atteinte (numéro, préfecture, date, horaires, extrait) et lien d'ouverture en un clic. */
+export function docHtml(doc: AnticipationDoc | undefined): string {
+  const url = safeDocUrl(doc?.url);
+  if (!doc || !url) return '';
+  const published = doc.publishedOn && /^\d{4}-\d{2}-\d{2}$/.test(doc.publishedOn)
+    ? `publié le ${doc.publishedOn.slice(8, 10)}/${doc.publishedOn.slice(5, 7)}/${doc.publishedOn.slice(0, 4)}` : null;
+  const hours = doc.hours && doc.hours.length === 2 ? `de ${doc.hours[0]} à ${doc.hours[1]}` : null;
+  const head = [doc.act ? `n\u00b0\u00a0${doc.act}` : null, doc.issuer, published, hours].filter((x): x is string => Boolean(x)).join(' · ');
+  return '<div class="anr-doc">'
+    + `<p class="anr-doc-head">${escapeHtml(doc.title ?? 'Arrêté préfectoral')}</p>`
+    + (head ? `<p class="anr-doc-meta">${escapeHtml(head)}</p>` : '')
+    + (doc.excerpt ? `<blockquote>${escapeHtml(doc.excerpt)}</blockquote>` : '')
+    + `<a class="anr-doc-open" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Voir l'arrêté (PDF officiel)</a>`
+    + '</div>';
+}
+
 /** Fiche complète ; null : aucun scénario pour le jour choisi. */
 export function scenarioHtml(s: AnticipationScenario | null, signals: Readonly<Record<string, AnticipationSignal>>, opts: ScenarioViewOptions): string {
   if (!s) {
@@ -132,7 +159,7 @@ export function scenarioHtml(s: AnticipationScenario | null, signals: Readonly<R
     const hit = b.state === 'atteint';
     const at = hit ? clock(b.at) : null;
     const st = hit ? `Atteint${at ? ` ${at}` : ''}` : 'surveillé';
-    return `<div class="anr-trig${hit ? ' is-hit' : ''}"><span>${escapeHtml(b.label)}</span><span class="anr-st">${st}</span></div>`;
+    return `<div class="anr-trig${hit ? ' is-hit' : ''}"><span>${escapeHtml(b.label)}</span><span class="anr-st">${st}</span></div>${hit ? docHtml(b.doc) : ''}`;
   }).join('');
   return '<div class="anr-card">'
     + `<p class="anr-meta">${escapeHtml(meta)}</p>`

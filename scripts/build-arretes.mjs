@@ -72,7 +72,8 @@ async function main() {
       let fresh = 0;
       for (const l of links) {
         const old = known.get(l.href);
-        if (old) { recueils.push(old); continue; }
+        // Recueil déjà lu, sauf s'il date d'avant le numéro de page des arrêtés (04/11/2026) : relu une fois, dans le budget du site.
+        if (old && (old.acts ?? []).every((a) => Number.isInteger(a.page))) { recueils.push(old); continue; }
         if (fresh >= MAX_NEW_PER_SITE) continue;
         fresh += 1;
         try {

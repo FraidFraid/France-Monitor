@@ -87,7 +87,16 @@ function fromProtests(/** @type {any} */ protests, /** @type {number} */ now, /*
     const dept = code ? [code] : deptOfPoint(it.lat, it.lon);
     const base = { domain: /** @type {const} */ ('social'), readAt, dept, window: { from: iso(start), to: iso(end) }, ref: it.url || String(it.id), key: String(it.id) };
     if (it.arrete) {
-      out.push(mk({ ...base, kind: 'arrete_prefectoral', source: 'prefecture', origin: `prefecture:${dept[0] ?? 'n.d.'}`, official: true, publishedAt: parisDayToIso(it.arrete.publishedOn) }));
+      // Document officiel : PDF du recueil ouvert à la page de l'arrêté, et de quoi l'apercevoir dans la fiche (bascule « arrêté publié »).
+      const a = it.arrete;
+      const page = Number.isInteger(a.page) && a.page > 0 ? a.page : null;
+      const url = typeof it.url === 'string' && it.url ? `${it.url.split('#')[0]}${page ? `#page=${page}` : ''}` : '';
+      const doc = {
+        act: typeof a.act === 'string' ? a.act : null, title: typeof a.title === 'string' ? a.title : null,
+        excerpt: typeof a.excerpt === 'string' ? a.excerpt : null, hours: Array.isArray(a.hours) ? a.hours : null,
+        publishedOn: typeof a.publishedOn === 'string' ? a.publishedOn : null, issuer: typeof it.edition === 'string' ? it.edition : null, page,
+      };
+      out.push(mk({ ...base, ref: url || base.ref, kind: 'arrete_prefectoral', source: 'prefecture', origin: `prefecture:${dept[0] ?? 'n.d.'}`, official: true, publishedAt: parisDayToIso(a.publishedOn), meta: { doc } }));
     } else if (it.source === 'prefecture') {
       out.push(mk({ ...base, kind: 'rassemblement_annonce', source: 'prefecture', origin: `prefecture:${dept[0] ?? 'n.d.'}`, official: true }));
     } else if (signale) {

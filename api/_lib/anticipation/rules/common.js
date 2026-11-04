@@ -20,6 +20,35 @@ export function span(/** @type {Signal} */ s) {
 export const firstDept = (/** @type {Signal} */ s) => (Array.isArray(s.dept) && typeof s.dept[0] === 'string' ? s.dept[0] : null);
 export const inDept = (/** @type {Signal} */ s, /** @type {string} */ dept) => Array.isArray(s.dept) && s.dept.includes(dept);
 
+/** Adresse d'un document officiel affichable : https sur un site en .gouv.fr seulement, sinon null. */
+export function officialDocUrl(/** @type {unknown} */ ref) {
+  if (typeof ref !== 'string' || !ref) return null;
+  try {
+    const u = new URL(ref);
+    return u.protocol === 'https:' && (u.hostname === 'gouv.fr' || u.hostname.endsWith('.gouv.fr')) ? u.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Bascule « Arrêté préfectoral publié » : atteinte si un arrêté couvre la demi-journée, avec le document (PDF du recueil ouvert à la
+ * page de l'arrêté, numéro, titre, extrait, préfecture) pour l'ouvrir en un clic depuis la fiche.
+ * @param {Signal|undefined} arrete
+ */
+export function arreteBascule(arrete) {
+  const base = { id: 'arrete', label: 'Arrêté préfectoral publié' };
+  if (!arrete) return { ...base, state: /** @type {const} */ ('surveille'), at: null };
+  const url = officialDocUrl(arrete.ref);
+  const d = /** @type {Record<string, unknown>} */ ((arrete.meta && typeof arrete.meta === 'object' && /** @type {any} */ (arrete.meta).doc) || {});
+  const str = (/** @type {unknown} */ v) => (typeof v === 'string' && v ? v : null);
+  const doc = url ? {
+    url, act: str(d.act), title: str(d.title), excerpt: str(d.excerpt), issuer: str(d.issuer), publishedOn: str(d.publishedOn),
+    hours: Array.isArray(d.hours) ? d.hours.filter((h) => typeof h === 'string').slice(0, 2) : null,
+  } : null;
+  return { ...base, state: /** @type {const} */ ('atteint'), at: arrete.publishedAt ?? arrete.observedAt, ...(doc ? { doc } : {}) };
+}
+
 const LEVEL_RANK = { jaune: 1, orange: 2, rouge: 3 };
 
 /**
