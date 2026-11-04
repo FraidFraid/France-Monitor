@@ -3680,3 +3680,144 @@ export interface FloodZonesResponse {
   covered: boolean;
   errors: string[];
 }
+
+// ── Anticipation (04/11/2026) ──
+// Miroir des réponses de /api/anticipation/* (api/_lib/anticipation/*.js). Mêmes noms de champs que le serveur.
+
+/** Échelle de probabilité à sept mots (PHIA / OTAN), du moins au plus probable. */
+export type AnticipationWord =
+  | 'chance_infime'
+  | 'tres_peu_probable'
+  | 'peu_probable'
+  | 'possibilite_reelle'
+  | 'probable'
+  | 'tres_probable'
+  | 'quasi_certain';
+
+export type AnticipationSignalDomain =
+  | 'social'
+  | 'transport'
+  | 'energy'
+  | 'telecom'
+  | 'weather'
+  | 'cyber'
+  | 'health'
+  | 'fuel'
+  | 'press'
+  | 'event';
+
+/** Relevé normalisé cité par un scénario. */
+export interface AnticipationSignal {
+  id: string;
+  domain: AnticipationSignalDomain;
+  kind: string;
+  source: string;
+  origin: string;
+  official: boolean;
+  dept: string[];
+  communes: string[];
+  level: string | null;
+  value: number | null;
+  window: { from: string; to: string } | null;
+  publishedAt: string | null;
+  observedAt: string;
+  checkedAt: string;
+  ref: string;
+  meta?: {
+    phenomenon?: string;
+    echeance?: 'J' | 'J1';
+    network?: string;
+    eventId?: number | null;
+    category?: string | null;
+    severity?: string | null;
+    participants?: number | null;
+    /** JSDoc serveur ouvert : d'autres champs propres à chaque nature de signal (previousValue, national...). */
+    [key: string]: unknown;
+  };
+}
+
+export type AnticipationStatus = 'ouvert' | 'arrive' | 'pas_arrive' | 'indecidable' | 'expire' | 'manque';
+
+export interface AnticipationChainLink {
+  text: string;
+  signalIds: string[];
+  levels?: Record<string, string | null>;
+}
+
+export interface AnticipationBascule {
+  id: string;
+  label: string;
+  state: 'surveille' | 'atteint';
+  at: string | null;
+}
+
+export type AnticipationVote = 'utile' | 'deja_su' | 'faux';
+
+export interface AnticipationScenario {
+  id: string;
+  ruleId: string;
+  ruleVersion: number;
+  zone: { dept: string[]; communes: string[] };
+  window: { from: string; to: string };
+  title: string;
+  chain: AnticipationChainLink[];
+  /** Mot de probabilité ; chaîne vide pour une crise manquée (`status: 'manque'`). */
+  word: AnticipationWord | '';
+  peakWord?: AnticipationWord;
+  why: string;
+  unknowns: string[];
+  bascules: AnticipationBascule[];
+  disconfirmers: string[];
+  verify: string[];
+  openedAt: string;
+  revisedAt: string;
+  status: AnticipationStatus;
+  closedAt: string | null;
+  outcomeNote: string | null;
+  feedback: Record<AnticipationVote, number>;
+}
+
+export type AnticipationHalf = 'matin' | 'apres-midi' | 'soir';
+
+export interface AnticipationAgendaDay {
+  /** Jour de Paris AAAA-MM-JJ. */
+  day: string;
+  /** Aujourd'hui seulement. */
+  halves?: Array<{ half: AnticipationHalf; scenarioIds: string[] }>;
+  scenarioIds: string[];
+  deadlines: Array<{ day: string; level: string | null; title: string; detail: string | null; source: string }>;
+}
+
+export interface AnticipationNowResponse {
+  generatedAt: string;
+  beta: boolean;
+  scenarios: AnticipationScenario[];
+  agenda: AnticipationAgendaDay[];
+  /** Seuls les signaux cités par les scénarios servis, par identifiant. */
+  signals: Record<string, AnticipationSignal>;
+  unknown: string[];
+  errors: string[];
+}
+
+export interface AnticipationNote {
+  day: string;
+  generatedAt: string;
+  bluf: string;
+  /** Relevés absents, périmés ou en erreur au tick qui a figé la note. */
+  degraded: string[];
+  today: AnticipationScenario[];
+  week: Array<{ day: string; scenario: AnticipationScenario }>;
+  sinceYesterday: { opened: AnticipationScenario[]; closed: AnticipationScenario[] };
+}
+
+export interface AnticipationBilan {
+  /** AAAA-MM. */
+  month: string;
+  emitted: number;
+  arrived: number;
+  notArrived: number;
+  undecided: number;
+  missed: number;
+  byWord: Array<{ word: string; closed: number; arrived: number; percent: number | null }>;
+  byRule: Array<{ ruleId: string; title: string; emitted: number; arrived: number; useful: number; inReview: boolean; arrivalTest: string }>;
+}
