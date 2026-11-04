@@ -7,7 +7,7 @@ import { DEPARTEMENT_CENTERS } from '../../config/departement-centers.ts';
 import { fetchAnticipationNow } from '../../services/anticipation.ts';
 import { ALL_WORDS, WORD_COLOR_VAR } from '../../services/anticipation-words.ts';
 import { loadDepartementsGeojson } from '../../services/departements-geojson.ts';
-import { AnticipationRoom } from './AnticipationRoom.ts';
+import { AnticipationRoom, type AnticipationColumns, type AnticipationReveal } from './AnticipationRoom.ts';
 
 /** Relève dans l'onglet Anticipation. */
 export const ANTICIPATION_POLL_MS = 60_000;
@@ -37,6 +37,10 @@ export interface AnticipationMap {
 export interface AnticipationControllerOptions<T> {
   mapEl: HTMLElement;
   map: AnticipationMap;
+  /** Colonnes v2 (liste à gauche, État à droite) où l'agenda et la fiche prennent place ; absentes : tout sur la carte. */
+  columns?: AnticipationColumns | null;
+  /** Mobile : onglet à montrer après le choix d'un scénario (fiche) ou « Voir sur la carte » (carte). */
+  onReveal?: (where: AnticipationReveal) => void;
   /** Lecture de /api/anticipation/now (défaut : fetchAnticipationNow, la précédente resservie en cas d'échec). */
   read?: () => Promise<AnticipationNowResponse>;
   /** Géométrie des départements (défaut : loadDepartementsGeojson, mémorisée). */
@@ -96,10 +100,12 @@ export class AnticipationController<T = unknown> {
   async setActive(active: boolean): Promise<void> {
     if (active === (this.room !== null)) return;
     if (active) {
-      const room = new AnticipationRoom(this.opts.mapEl);
+      const room = new AnticipationRoom(this.opts.mapEl, this.opts.columns ?? undefined);
       this.room = room;
       room.onFocus((s) => this.focus(s));
       room.onDay(() => this.paintMap());
+      const reveal = this.opts.onReveal;
+      if (reveal) room.onReveal(reveal);
       this.depts ??= await (this.opts.loadDepts ?? loadDepartementsGeojson)();
       // Onglet quitté pendant le chargement : la sortie a déjà tout remis en place.
       if (this.room !== room) return;

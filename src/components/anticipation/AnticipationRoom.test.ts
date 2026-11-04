@@ -105,6 +105,55 @@ describe('AnticipationRoom', () => {
     room.destroy();
   });
 
+  it('colonnes v2 : agenda à la place de la liste, fiche à la place de l’État, carte dégagée ; sortie : colonnes rendues', () => {
+    const main = document.createElement('div');
+    main.className = 'main-container';
+    const list = document.createElement('aside');
+    list.className = 'fm-v2-list';
+    const mapEl = document.createElement('div');
+    const fiche = document.createElement('aside');
+    fiche.className = 'fm-v2-fiche';
+    main.append(list, mapEl, fiche);
+    const room = new AnticipationRoom(mapEl, { list, fiche });
+    const reveals: string[] = [];
+    room.onReveal((w) => reveals.push(w));
+    room.setData(FIXTURE);
+    expect(main.classList.contains('anr-active')).toBe(true);
+    expect(list.nextElementSibling?.classList.contains('anr-agenda')).toBe(true);
+    expect(list.nextElementSibling?.classList.contains('fm-v2-list')).toBe(true);
+    expect(fiche.nextElementSibling?.classList.contains('anr-side')).toBe(true);
+    expect(fiche.nextElementSibling?.classList.contains('fm-v2-fiche')).toBe(true);
+    // Sur la carte : titre, BÊTA, légende, curseur ; ni agenda ni fiche.
+    expect(mapEl.querySelector('.anr-agenda, .anr-side')).toBeNull();
+    expect(mapEl.querySelector('.anr-maptitle')).not.toBeNull();
+    expect(mapEl.querySelector('.anr-legend')).not.toBeNull();
+    (main.querySelector('.anr-agenda [data-scenario="sc-lyon"]') as HTMLElement).click();
+    (main.querySelector('.anr-side [data-fly]') as HTMLElement).click();
+    expect(reveals).toEqual(['card', 'map']);
+    room.destroy();
+    expect(main.classList.contains('anr-active')).toBe(false);
+    expect([...main.children]).toEqual([list, mapEl, fiche]);
+  });
+
+  it('relève sans changement : rien n’est redessiné (le focus reste), visite non réécrite', () => {
+    const host = document.createElement('div');
+    document.body.append(host);
+    const room = new AnticipationRoom(host);
+    room.setData(FIXTURE);
+    const item = host.querySelector<HTMLElement>('.anr-agenda [data-scenario="sc-lyon"]');
+    item?.focus();
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+    room.setData({ ...FIXTURE, generatedAt: '2026-11-04T12:31:00Z' });
+    expect(host.querySelector('.anr-agenda [data-scenario="sc-lyon"]')).toBe(item);
+    expect(document.activeElement).toBe(item);
+    expect(setItem).not.toHaveBeenCalled();
+    room.setData({ ...FIXTURE, scenarios: [{ ...FIXTURE.scenarios[0], revisedAt: '2026-11-04T12:40:00Z' }, FIXTURE.scenarios[1]] });
+    expect(host.querySelector('.anr-agenda [data-scenario="sc-lyon"]')).not.toBe(item);
+    setItem.mockRestore();
+    room.destroy();
+    host.remove();
+  });
+
   it('no em dash in rendered HTML', () => {
     const host = document.createElement('div');
     const room = new AnticipationRoom(host);

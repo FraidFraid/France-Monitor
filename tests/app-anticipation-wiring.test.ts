@@ -61,10 +61,20 @@ describe('câblage App.ts de l\u2019onglet Anticipation', () => {
     // Même calque des départements que la salle des pannes.
     expect(mount).toContain('setOutagesRoom: (state) => map?.setOutagesRoom(state)');
     expect(methodBody('destroy')).toContain('this.anticipation?.destroy();');
+    // Agenda et fiche dans les colonnes v2 ; mobile : choisir un scénario montre l'onglet État, « Voir sur la carte » la Carte.
+    expect(mount).toContain('columns: roots ? { list: roots.list, fiche: roots.fiche } : null');
+    expect(mount).toContain("if (layoutFor(window.innerWidth) === 'mobile') this.poste?.setTab(where === 'card' ? 'fiche' : 'map');");
+    // Les deux salles partagent le calque des départements : celle qu'on quitte le retire avant que l'autre peigne.
+    const preset = methodBody('applyLayerPreset');
+    expect(preset.indexOf('this.syncAnticipationRoom();')).toBeLessThan(preset.indexOf('this.syncOutagesRoom();'));
   });
 
   it('bloc CSS .anr- ; empilé sur mobile', () => {
     expect(css).toContain('.anr {');
+    // Colonnes d'origine masquées tant que la salle est montée ; aucune largeur propre à l'agenda ou à la fiche en colonne.
+    expect(css).toContain('.main-container.anr-active > .fm-v2-list:not(.anr-col),');
+    expect(css).not.toMatch(/(^|\n)\.anr-agenda \{[^}]*width/);
+    expect(css).not.toMatch(/(^|\n)\.anr-side \{[^}]*width/);
     expect(css).toMatch(/@container \(max-width: 640px\) \{[^}]*\.anr-/);
   });
 });

@@ -76,9 +76,23 @@ function scaleHtml(s: AnticipationScenario): string {
   const note = s.word === ''
     ? '<p class="anr-scalenote">Crise relevée sans scénario émis : aucun mot attribué.</p>'
     : `<p class="anr-scalenote"><b style="color: var(${WORD_COLOR_VAR[s.word] ?? '--text-muted'})">${escapeHtml(WORD_LABEL[s.word].charAt(0).toUpperCase() + WORD_LABEL[s.word].slice(1))}</b>`
-      + ` (${WORD_RANGE[s.word]})${s.why ? ` : ${escapeHtml(s.why)}` : ''}. Mot attribué par règle écrite, pas par l'IA.</p>`;
+      + ` (${WORD_RANGE[s.word]})${ruleText(s.ruleId)}${s.why ? ` : ${escapeHtml(s.why)}` : ''}. Mot attribué par règle écrite, pas par l'IA.</p>`;
   return `<div class="anr-scale" role="img" aria-label="Échelle de probabilité">${cells}</div>${note}`;
 }
+
+/** Nom court des règles de croisement (api/_lib/anticipation/rules/*.js) ; règle inconnue : non nommée. */
+export const RULE_LABEL: Readonly<Record<string, string>> = {
+  'mobilisation-transports': 'mobilisation × transports',
+  'evenement-mobilisation': 'événement × mobilisation × transports',
+  'social-cyber': 'crise sociale × cyber',
+  'tempete-reseaux': 'tempête × électricité × télécoms',
+  'chaleur-sante': 'chaleur × électricité × santé',
+  'greve-carburant': 'grève × carburant',
+};
+const ruleText = (ruleId: string): string => {
+  const label = RULE_LABEL[ruleId];
+  return label ? ` d'après la règle \u00ab\u00a0${escapeHtml(label)}\u00a0\u00bb` : '';
+};
 
 const list = (items: readonly string[], cls = ''): string =>
   items.length === 0 ? '<p class="anr-empty">n.d.</p>'
@@ -91,7 +105,8 @@ function feedbackHtml(state: FeedbackState): string {
   const buttons = ([['utile', 'Utile'], ['deja_su', 'Déjà su'], ['faux', 'Faux']] as const)
     .map(([vote, label]) => `<button type="button" data-vote="${vote}"${disabled}>${label}</button>`).join('');
   const msg = state === 'ok' ? 'Merci' : state === 'deja' ? 'Déjà noté' : state === 'erreur' ? 'Envoi impossible, réessayez plus tard' : '';
-  return `<div class="anr-fb">${buttons}</div>${msg ? `<p class="anr-fb-state" role="status">${msg}</p>` : ''}`;
+  // Zone annoncée toujours présente (vide avant le vote) : un lecteur d'écran entend « Merci » ou « Déjà noté ».
+  return `<div class="anr-fb">${buttons}</div><p class="anr-fb-state" role="status" aria-live="polite">${msg}</p>`;
 }
 
 /** Fiche complète ; null : aucun scénario pour le jour choisi. */

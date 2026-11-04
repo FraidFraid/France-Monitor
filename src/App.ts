@@ -37,7 +37,7 @@ import { LEVEL_RANK, levelHex, scoreLevel, type VigilanceLevel } from './service
 import { eventMapPoints } from './services/v2-map.ts';
 import { inTheme, themeLabel, type ThemeId } from './services/themes.ts';
 import { innerLayerOpen } from './services/escape-layers.ts';
-import { isUiV2, layerActivationOptions, layerStateStorage, moduleInColumn, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
+import { isUiV2, layerActivationOptions, layerStateStorage, layoutFor, moduleInColumn, reopensLayerPanelsOnLoad, shouldRecordIntelSnapshot } from './services/ui-mode.ts';
 import { restorePanelPlan, showsSwitcher, switcherPanelOffsetPx, v2ColumnVars, v2SwitcherLayout, v2TabletPanelOffsetPx } from './services/floating-panel-switcher.ts';
 import { settleWithin } from './utils/settle-within.ts';
 import {
@@ -4682,8 +4682,15 @@ export class App {
     this.anticipationLoading = true;
     void import('./components/anticipation/anticipation-controller.ts').then(({ AnticipationController }) => {
       const map = this.mapContainer;
+      const roots = this.v2Roots;
       this.anticipation = new AnticipationController<PausableTimer>({
         mapEl,
+        // Agenda à la place de la liste « À traiter », fiche à la place de l'État : mêmes colonnes, mêmes largeurs (maquette).
+        columns: roots ? { list: roots.list, fiche: roots.fiche } : null,
+        // Mobile : choisir un scénario montre l'onglet État (sa fiche), « Voir sur la carte » l'onglet Carte.
+        onReveal: (where) => {
+          if (layoutFor(window.innerWidth) === 'mobile') this.poste?.setTab(where === 'card' ? 'fiche' : 'map');
+        },
         map: {
           setOutagesRoom: (state) => map?.setOutagesRoom(state),
           flyTo: (lon, lat, zoom) => map?.flyTo(lon, lat, zoom),

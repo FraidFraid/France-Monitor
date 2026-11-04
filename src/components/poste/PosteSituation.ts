@@ -336,12 +336,14 @@ export class PosteSituation {
   private chooseTheme(theme: ThemeId): void {
     // Second clic sur le thème actif : sa fiche (spec 2026-09-29 § 7). Hors ordinateur, choisir un
     // thème ouvre aussi sa fiche (la fiche n'y est visible qu'en volet).
-    if (theme === this.theme && theme !== 'general') {
+    // Anticipation (04/11/2026) : pas de fiche thème, sa salle tient la colonne de droite (l'onglet État sur mobile).
+    const hasFiche = theme !== 'general' && theme !== 'anticipation';
+    if (theme === this.theme && hasFiche) {
       this.select(`theme:${theme}`);
       return;
     }
     this.setTheme(theme);
-    if (theme !== 'general' && this.layout() !== 'desktop') this.select(`theme:${theme}`);
+    if (hasFiche && this.layout() !== 'desktop') this.select(`theme:${theme}`);
   }
 
   /** Clé de la fiche ouverte (« theme:health », « event:42 »…) ; null : fiche par défaut. */

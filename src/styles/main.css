@@ -8467,21 +8467,29 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 .orm-frise { margin-right: 56px; }
 @container (max-width: 640px) { .orm-side { max-height: 38%; } .orm-frise { margin-right: 48px; } }
 
-/* Onglet Anticipation (04/11/2026, maquette écran 1) : salle posée sur la carte comme celle des pannes. Bandeau BÊTA et titre en haut,
-   agenda à gauche, fiche à droite, légende et curseur des 7 jours en bas ; empilés quand la carte est étroite (requête de conteneur). */
+/* Onglet Anticipation (04/11/2026, maquette écran 1 ; fix round 1) : sur la carte, seulement le titre, la mention BÊTA, la légende des
+   mots et le curseur des 7 jours. L'agenda prend la place de la liste « À traiter » et la fiche celle de l'État : les deux éléments
+   portent la classe de la colonne remplacée (.fm-v2-list, .fm-v2-fiche), donc ses largeurs et ses règles d'onglets mobiles, et les
+   colonnes d'origine sont masquées tant que la salle est montée (.anr-active sur le conteneur). */
+.main-container.anr-active > .fm-v2-list:not(.anr-col),
+.main-container.anr-active > .fm-v2-fiche:not(.anr-col) { display: none !important; }
+#app.ui-v2 .fm-v2-fiche.anr-side { overflow-y: auto; }
+.anr-col { font-size: 12.5px; color: var(--text-primary); }
 .anr { position: absolute; inset: 0; z-index: calc(var(--z-map-overlay) + 1); container-type: size; pointer-events: none; display: flex;
-  flex-direction: column; gap: 8px; padding: var(--anr-top, 108px) 12px 56px; font-size: 12.5px; color: var(--text-primary); }
+  flex-direction: column; justify-content: space-between; gap: 8px; padding: var(--anr-top, 12px) 12px 56px; font-size: 12.5px; color: var(--text-primary); }
 .anr-top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; flex: none; }
-.anr-maptitle, .anr-beta, .anr-col, .anr-legend, .anr-slider { pointer-events: auto; background: rgba(10, 12, 20, 0.92);
+.anr-maptitle, .anr-beta, .anr-legend, .anr-slider { pointer-events: auto; background: rgba(10, 12, 20, 0.92);
   border: 1px solid rgba(255, 255, 255, 0.22); border-radius: 8px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.45); }
 .anr-maptitle { padding: 5px 10px; font-size: 11.5px; white-space: nowrap; }
 .anr-maptitle b { color: var(--v2-brand, #4bfc94); }
 .anr-beta { padding: 4px 8px; font-size: 11px; color: var(--sev-yellow); border-color: color-mix(in srgb, var(--sev-yellow) 45%, transparent); white-space: nowrap; }
+.anr-agenda { padding-bottom: 6px; }
+/* Sans colonnes v2 (repli) : agenda et fiche restent posés sur la carte. */
 .anr-body { flex: 1; min-height: 0; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
-.anr-col { overflow: auto; max-height: 100%; }
-.anr-agenda { width: min(320px, 38%); padding-bottom: 6px; }
-.anr-side { width: min(380px, 50%); }
-.anr h2 { margin: 0; padding: 10px 12px 4px; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary); }
+.anr-body .anr-col { pointer-events: auto; overflow: auto; max-height: 100%; background: rgba(10, 12, 20, 0.92); border-radius: 8px; }
+.anr-body .anr-agenda { width: min(320px, 38%); }
+.anr-body .anr-side { width: min(380px, 50%); }
+.anr-col h2 { margin: 0; padding: 10px 12px 4px; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary); }
 .anr-hint { margin: 0; padding: 0 12px 8px; color: var(--text-muted); font-size: 11.5px; }
 .anr-day h3 { margin: 0; padding: 6px 12px 2px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--v2-brand, #4bfc94); }
 .anr-day .anr-hint { padding-top: 2px; }
@@ -8545,8 +8553,13 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 .anr-slider button[aria-pressed="true"] { background: var(--v2-brand, #4bfc94); color: #04130a; font-weight: 700; }
 @container (max-width: 640px) {
   .anr-body { flex-direction: column; justify-content: flex-start; align-items: stretch; overflow: auto; pointer-events: auto; }
-  .anr-agenda, .anr-side { width: auto; max-height: none; overflow: visible; flex: none; }
+  .anr { padding-top: var(--anr-top, 44px); }
+  .anr-body .anr-agenda, .anr-body .anr-side { width: auto; max-height: none; overflow: visible; flex: none; }
   .anr-bottom { margin-right: 48px; }
-  .anr-legend { display: none; }
+  .anr-legend { font-size: 10.5px; gap: 2px 8px; }
   .anr-slider { margin: 0; overflow-x: auto; max-width: 100%; }
+}
+/* Tablette : la fiche du scénario reste ouverte en volet à droite de la carte (la colonne État n'y est qu'un volet). */
+@media (min-width: 700px) and (max-width: 1100px) {
+  #app.ui-v2:not([data-v2-fiche="open"]) .fm-v2-fiche.anr-side { display: flex; }
 }

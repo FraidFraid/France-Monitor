@@ -55,6 +55,16 @@ describe('agenda des risques croisés', () => {
     expect(render(null).textContent).toContain('Chargement');
     const empty = render({ ...FIXTURE, scenarios: [], agenda: FIXTURE.agenda.map((d) => ({ ...d, scenarioIds: [], halves: d.halves?.map((h) => ({ ...h, scenarioIds: [] })) })) });
     expect(empty.textContent).toContain('Aucun croisement détecté.');
+    // Aujourd'hui garde ses trois demi-journées, chacune « Aucun croisement. ».
+    const halves = [...empty.querySelectorAll('[data-agenda-day="2026-11-04"] [data-half]')];
+    expect(halves.map((h) => h.getAttribute('data-half'))).toEqual(['matin', 'apres-midi', 'soir']);
+    expect(halves.every((h) => h.textContent?.includes('Aucun croisement.'))).toBe(true);
+  });
+
+  it('demi-journée inconnue : ignorée, jamais recopiée dans le HTML', () => {
+    const bad = { ...FIXTURE, agenda: [{ ...FIXTURE.agenda[0], halves: [{ half: '"><img src=x>' as unknown as 'matin', scenarioIds: ['sc-lyon'] }] }] };
+    const html = agendaHtml(bad, { selectedId: null, marks: new Map() });
+    expect(html).not.toContain('<img');
   });
 
   it('libellé des jours à l\u2019heure de Paris', () => {

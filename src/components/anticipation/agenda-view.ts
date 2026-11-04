@@ -161,10 +161,11 @@ export function agendaHtml(data: AnticipationNowResponse | null, opts: AgendaOpt
     }
     flushEmpties();
     let body: string;
-    if (isToday && day.halves && scenarios.length > 0) {
-      body = day.halves.map((h) => {
+    if (isToday && day.halves) {
+      // Aujourd'hui : toujours les trois demi-journées, chacune « Aucun croisement. » si elle est vide. Demi-journée inconnue : ignorée.
+      body = day.halves.filter((h) => Object.hasOwn(HALF_LABEL, h.half)).map((h) => {
         const list = pick(h.scenarioIds);
-        return `<div class="anr-half" data-half="${h.half}"><h4>${HALF_LABEL[h.half]}</h4>`
+        return `<div class="anr-half" data-half="${escapeHtml(h.half)}"><h4>${escapeHtml(HALF_LABEL[h.half])}</h4>`
           + (list.length === 0 ? '<p class="anr-empty">Aucun croisement.</p>' : list.map((s) => itemHtml(s, data, opts)).join(''))
           + '</div>';
       }).join('');

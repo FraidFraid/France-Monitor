@@ -1,6 +1,8 @@
-// src/components/anticipation/AnticipationRoom.ts : salle de l'onglet Anticipation (04/11/2026, maquette écran 1), montée sur la carte
-// quand l'onglet est actif, comme la salle des pannes. Bandeau BÊTA et titre en haut, agenda à gauche, fiche à droite, légende et
-// curseur des 7 jours en bas. La carte (départements colorés par mot) est pilotée par le pilote à partir des rappels onFocus et onDay.
+// src/components/anticipation/AnticipationRoom.ts : salle de l'onglet Anticipation (04/11/2026, maquette écran 1). Sur la carte, seulement
+// le titre, la mention BÊTA, la légende des mots et le curseur des 7 jours ; l'agenda prend la place de la liste « À traiter » (colonne de
+// gauche) et la fiche celle de l'État (colonne de droite), aux largeurs de ces colonnes (fix round 1, maquette exacte). Sur mobile, les
+// onglets À traiter / Carte / État montrent l'agenda, la carte, la fiche. La carte (départements colorés par mot) est pilotée par le
+// pilote à partir des rappels onFocus et onDay.
 import type { AnticipationNowResponse, AnticipationScenario, AnticipationVote, AnticipationWord } from '../../types/index.ts';
 import { readAnticipationVote, sendAnticipationFeedback } from '../../services/anticipation.ts';
 import { V1_WORDS, WORD_COLOR_VAR, WORD_LABEL } from '../../services/anticipation-words.ts';
@@ -12,9 +14,29 @@ import { BETA_TEXT, scenarioHtml, type FeedbackState } from './scenario-view.ts'
 
 const VOTES: readonly AnticipationVote[] = ['utile', 'deja_su', 'faux'];
 const isVote = (v: string | undefined): v is AnticipationVote => VOTES.some((x) => x === v);
+const hasWord = (s: AnticipationScenario): s is AnticipationScenario & { word: AnticipationWord } => s.word !== '';
+
+/** Colonnes de la disposition v2 où l'agenda et la fiche prennent place (absentes : tout reste sur la carte). */
+export interface AnticipationColumns {
+  list: HTMLElement;
+  fiche: HTMLElement;
+}
+
+/** Ce qu'il faut montrer après une action, sur mobile : la fiche (scénario choisi) ou la carte (« Voir sur la carte »). */
+export type AnticipationReveal = 'card' | 'map';
+
+/** Signature de ce qui s'affiche : une relève sans changement ne redessine rien (le focus clavier reste en place). */
+function dataSignature(d: AnticipationNowResponse): string {
+  return JSON.stringify({
+    s: d.scenarios.map((s) => [s.id, s.revisedAt, s.word, s.status]),
+    a: d.agenda.map((a) => [a.day, a.scenarioIds, a.halves ?? null, a.deadlines]),
+  });
+}
 
 export class AnticipationRoom {
   private readonly el: HTMLElement;
+  /** Conteneur des colonnes, marqué `anr-active` tant que la salle est montée (les colonnes d'origine y sont masquées). */
+  private readonly columnsParent: HTMLElement | null;
   private readonly title: HTMLElement;
   private readonly agenda: HTMLElement;
   private readonly card: HTMLElement;
@@ -26,11 +48,14 @@ export class AnticipationRoom {
   private readonly visit: AnticipationVisit | null = beginAnticipationVisit();
   private focusCb: ((s: AnticipationScenario) => void) | null = null;
   private dayCb: ((day: string) => void) | null = null;
+  private revealCb: ((where: AnticipationReveal) => void) | null = null;
+  private signature = '';
+  private recordedWords: string | null = null;
   /** Sous la barre des pastilles posée sur la carte, comme la salle des pannes (sa hauteur dépend de la largeur). */
   private readonly resize: ResizeObserver | null = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => this.placeBelowPills());
   private observedPills: Element | null = null;
 
-  constructor(host: HTMLElement) {
+  constructor(host: HTMLElement, columns?: AnticipationColumns) {
     this.el = document.createElement('div');
     this.el.className = 'anr';
     const top = document.createElement('div');
@@ -41,14 +66,13 @@ export class AnticipationRoom {
     beta.className = 'anr-beta';
     beta.textContent = BETA_TEXT;
     top.append(this.title, beta);
-    this.agenda = document.createElement('div');
-    this.agenda.className = 'anr-col anr-agenda';
-    this.card = document.createElement('div');
-    this.card.className = 'anr-col anr-side';
-    this.card.setAttribute('aria-live', 'polite');
-    const body = document.createElement('div');
-    body.className = 'anr-body';
-    body.append(this.agenda, this.card);
+    // Dans une colonne v2, l'élément porte la classe de la colonne qu'il remplace : mêmes largeurs, mêmes règles des onglets mobiles.
+    this.agenda = document.createElement('aside');
+    this.agenda.className = columns ? 'fm-v2-list anr-col anr-agenda' : 'anr-col anr-agenda';
+    this.agenda.setAttribute('aria-label', 'Agenda des risques croisés');
+    this.card = document.createElement('aside');
+    this.card.className = columns ? 'fm-v2-fiche anr-col anr-side' : 'anr-col anr-side';
+    this.card.setAttribute('aria-label', 'Fiche du scénario');
     const bottom = document.createElement('div');
     bottom.className = 'anr-bottom';
     const legend = document.createElement('div');
@@ -60,23 +84,46 @@ export class AnticipationRoom {
     this.slider.setAttribute('role', 'group');
     this.slider.setAttribute('aria-label', 'Jour affiché sur la carte');
     bottom.append(legend, this.slider);
-    this.el.append(top, body, bottom);
-    this.el.addEventListener('click', (ev) => this.onClick(ev));
+    this.el.append(top, bottom);
+    // Un écouteur par arbre : en colonnes, l'agenda et la fiche ne sont plus dans la salle posée sur la carte.
+    for (const node of columns ? [this.el, this.agenda, this.card] : [this.el]) node.addEventListener('click', (ev) => this.onClick(ev));
     host.appendChild(this.el);
+    this.columnsParent = columns?.list.parentElement ?? null;
+    if (columns) {
+      columns.list.after(this.agenda);
+      columns.fiche.after(this.card);
+      this.columnsParent?.classList.add('anr-active');
+    } else {
+      const body = document.createElement('div');
+      body.className = 'anr-body';
+      body.append(this.agenda, this.card);
+      top.after(body);
+    }
     this.render();
   }
 
   onFocus(cb: (s: AnticipationScenario) => void): void { this.focusCb = cb; }
   onDay(cb: (day: string) => void): void { this.dayCb = cb; }
+  /** Mobile : la fiche après le choix d'un scénario, la carte après « Voir sur la carte ». */
+  onReveal(cb: (where: AnticipationReveal) => void): void { this.revealCb = cb; }
 
   setData(d: AnticipationNowResponse): void {
+    const signature = dataSignature(d);
+    if (this.data !== null && signature === this.signature) return;
+    this.signature = signature;
     this.data = d;
     const days = d.agenda.map((a) => a.day);
     if (this.day === null || !days.includes(this.day)) this.day = days[0] ?? null;
     if (this.picked !== null && !d.scenarios.some((s) => s.id === this.picked)) this.picked = null;
     this.render();
-    // Visite notée à chaque affichage : la prochaine session comparera à ce qui a été vu (la visite de cette session reste figée).
-    recordAnticipationVisit(Object.fromEntries(d.scenarios.filter((s) => s.word !== '').map((s) => [s.id, s.word as AnticipationWord])));
+    // Visite notée au premier affichage puis quand les mots changent : la prochaine session comparera à ce qui a été vu (la visite
+    // de cette session reste figée).
+    const words = Object.fromEntries(d.scenarios.filter(hasWord).map((s) => [s.id, s.word]));
+    const key = JSON.stringify(words);
+    if (key !== this.recordedWords) {
+      this.recordedWords = key;
+      recordAnticipationVisit(words);
+    }
   }
 
   setDay(day: string): void {
@@ -98,6 +145,9 @@ export class AnticipationRoom {
   destroy(): void {
     this.resize?.disconnect();
     this.el.remove();
+    this.agenda.remove();
+    this.card.remove();
+    this.columnsParent?.classList.remove('anr-active');
   }
 
   private dayIds(): string[] {
@@ -131,13 +181,19 @@ export class AnticipationRoom {
     return readAnticipationVote(id) ? 'deja' : 'idle';
   }
 
+  private renderCard(): void {
+    const d = this.data;
+    const s = this.current();
+    this.card.innerHTML = d ? scenarioHtml(s, d.signals, { today: d.agenda[0]?.day ?? '', feedback: s ? this.feedbackOf(s.id) : 'idle' }) : '';
+  }
+
   private render(): void {
     this.placeBelowPills();
     const d = this.data;
     const today = d?.agenda[0]?.day ?? '';
     const s = this.current();
     this.agenda.innerHTML = agendaHtml(d, { selectedId: s?.id ?? null, marks: visitMarks(d?.scenarios ?? [], this.visit) });
-    this.card.innerHTML = d ? scenarioHtml(s, d.signals, { today, feedback: s ? this.feedbackOf(s.id) : 'idle' }) : '';
+    this.renderCard();
     const n = this.dayIds().length;
     const hits = (d?.scenarios ?? []).filter((x) => this.dayIds().includes(x.id) && x.bascules.some((b) => b.state === 'atteint')).length;
     this.title.innerHTML = !d || this.day === null ? 'Anticipation'
@@ -153,10 +209,11 @@ export class AnticipationRoom {
   private vote(s: AnticipationScenario, vote: AnticipationVote): void {
     if (this.feedbackOf(s.id) !== 'idle' && this.feedbackOf(s.id) !== 'erreur') return;
     this.feedback.set(s.id, 'sending');
-    this.render();
+    this.renderCard();
     void sendAnticipationFeedback(s.id, vote).then((r) => {
       this.feedback.set(s.id, r);
-      this.render();
+      // La fiche seulement : l'agenda garde son focus clavier ; le message part dans la zone annoncée (.anr-fb-state).
+      this.renderCard();
     });
   }
 
@@ -176,7 +233,10 @@ export class AnticipationRoom {
       return;
     }
     if (target.closest('[data-fly]')) {
-      if (s) this.focusCb?.(s);
+      if (s) {
+        this.revealCb?.('map');
+        this.focusCb?.(s);
+      }
       return;
     }
     const id = target.closest<HTMLElement>('[data-scenario]')?.dataset.scenario;
@@ -190,6 +250,7 @@ export class AnticipationRoom {
       this.render();
       if (moved) this.dayCb?.(own);
       this.focusCb?.(picked);
+      this.revealCb?.('card');
     }
   }
 }

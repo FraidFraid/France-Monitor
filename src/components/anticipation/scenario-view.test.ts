@@ -27,6 +27,7 @@ describe('fiche d\u2019un scénario', () => {
     expect(note).toContain('Probable');
     expect(note).toContain('55\u00a0à\u00a075\u00a0%');
     expect(note).toContain('3 sources indépendantes, précédent du 12/10');
+    expect(note).toContain('d\'après la règle \u00ab\u00a0mobilisation × transports\u00a0\u00bb');
     expect(el.querySelector('h3')?.textContent).toBe(LYON.title);
     // Lieu, fenêtre et heures à Paris (UTC+1 en novembre).
     expect(el.querySelector('.anr-meta')?.textContent).toContain('Rhône');
@@ -72,6 +73,10 @@ describe('fiche d\u2019un scénario', () => {
     const idle = render('idle');
     expect([...idle.querySelectorAll('button[data-vote]')].map((b) => b.textContent)).toEqual(['Utile', 'Déjà su', 'Faux']);
     expect([...idle.querySelectorAll<HTMLButtonElement>('button[data-vote]')].every((b) => !b.disabled)).toBe(true);
+    // Seule zone annoncée : le message des retours, présent (vide) avant le vote.
+    expect(idle.querySelectorAll('[aria-live]')).toHaveLength(1);
+    expect(idle.querySelector('.anr-fb-state')?.getAttribute('aria-live')).toBe('polite');
+    expect(idle.querySelector('.anr-fb-state')?.textContent).toBe('');
     const ok = render('ok');
     expect(ok.querySelector('.anr-fb-state')?.textContent).toBe('Merci');
     expect([...ok.querySelectorAll<HTMLButtonElement>('button[data-vote]')].every((b) => b.disabled)).toBe(true);
