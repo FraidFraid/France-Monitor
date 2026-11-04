@@ -256,7 +256,7 @@ function fromFootball(/** @type {any} */ football, /** @type {number} */ now, /*
       const kick = ms(m.kickoff);
       if (!Number.isFinite(kick) || kick + 3 * H < now) continue;
       const code = normalizeDepartmentCode(m.dept);
-      out.push(mk({ kind: 'evenement_sportif', domain: 'event', source: 'football-data', origin: 'football-data', official: false, dept: code ? [code] : [],
+      out.push(mk({ kind: 'evenement_sportif', domain: 'event', source: 'football-data', origin: 'football-data', official: false, dept: code ? [code] : [], communes: typeof m.commune === 'string' ? [m.commune] : [],
         window: { from: iso(kick - 2 * H), to: iso(kick + 3 * H) }, publishedAt: iso(kick), readAt: football.readAt, key: String(m.id), ref: String(m.id),
         meta: { competition: m.competition ?? null, home: m.home ?? null, away: m.away ?? null, venue: m.venue ?? null } }));
     } catch (e) { errors.push(`Calendrier sportif: ${m?.id}: ${errMsg(e)}`); }

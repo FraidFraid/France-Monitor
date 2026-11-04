@@ -44,11 +44,13 @@ const BY_TLA = new Map(STADIUMS.filter((s) => s.tla).map((s) => [String(s.tla).t
 
 /**
  * Stade d'un club de football-data (`{ name, shortName, tla }`), ou null si le club n'est pas dans la table.
+ * Le sigle (TLA) n'est un repli que pour la Ligue 1 (`useTla`) : un club étranger de Ligue des champions peut porter le même sigle.
  * @param {{ name?: unknown, shortName?: unknown, tla?: unknown }|null|undefined} team
+ * @param {{ useTla?: boolean }} [opts]
  * @returns {Stadium|null}
  */
-export function stadiumOf(team) {
+export function stadiumOf(team, { useTla = false } = {}) {
   if (!team || typeof team !== 'object') return null;
   return BY_NAME.get(normalizeTeamName(team.name)) ?? BY_NAME.get(normalizeTeamName(team.shortName))
-    ?? (typeof team.tla === 'string' ? BY_TLA.get(team.tla.toUpperCase()) : undefined) ?? null;
+    ?? (useTla && typeof team.tla === 'string' ? BY_TLA.get(team.tla.toUpperCase()) : undefined) ?? null;
 }

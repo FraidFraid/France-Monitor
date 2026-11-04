@@ -92,6 +92,19 @@ describe('tick de l’anticipation', () => {
     expect(snap.scenarios).toEqual([]);
   });
 
+  it('football: not configured is named in the snapshot unknown; unrecognised stadium and collector errors surface', async () => {
+    await tickAnticipation(T0, { ...readers(), readFootball: async () => ({ configured: false, readAt: iso(T0), matches: [], errors: [] }) });
+    const a = await anticipationSnapshot(T0 + 1_000, readers());
+    expect(a.unknown).toContain('Calendrier sportif non configuré');
+    __resetAnticipationForTests();
+    const match = { id: '1', competition: 'FL1', home: 'Club Inconnu', away: 'X', kickoff: iso(T0 + 3_600_000), venue: null, commune: null, dept: null };
+    await tickAnticipation(T0, { ...readers(), readFootball: async () => ({ configured: true, readAt: iso(T0), matches: [match], errors: ['Calendrier sportif CL : HTTP 500'] }) });
+    const b = await anticipationSnapshot(T0 + 1_000, readers());
+    expect(b.unknown).toContain('Stade non reconnu : Club Inconnu');
+    expect(b.unknown).not.toContain('Calendrier sportif non configuré');
+    expect(b.errors).toContain('Calendrier sportif CL : HTTP 500');
+  });
+
   it('snapshot recomputes when tick is stale', async () => {
     await tickAnticipation(T0, readers());
     const later = T0 + 4 * 60_000;

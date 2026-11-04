@@ -1,5 +1,6 @@
 // api/_lib/anticipation/rules/evenement-mobilisation.js : règle 6 (v1, 04/11/2026), match de football × rassemblements ou mouvement social
 // dans les transports, même département et même demi-journée. Texte fixé par gabarit, aucun mot ni chiffre produit par une IA.
+// Un stade non reconnu (sans département) est nommé dans l'instantané, pas ici.
 // Sans clé football-data, aucun signal sportif n'existe : la règle ne renvoie rien (le snapshot nomme « Calendrier sportif non configuré »).
 import { DEPT_NAMES } from '../../../_shared/departments.js';
 import { cleanSignals, evidenceOf, inDept, inPlace, span } from './common.js';
@@ -37,7 +38,6 @@ const rule = {
     const rallies = all.filter((s) => RALLY.has(s.kind) && span(s));
     const socials = all.filter((s) => s.kind === 'mouvement_social_transport' && socialSpan(s, ctx.now));
     const arretes = all.filter((s) => s.kind === 'arrete_prefectoral');
-    const unlocated = matches.filter((s) => !(Array.isArray(s.dept) && s.dept.length));
     /** @type {import('./index.js').Candidate[]} */
     const out = [];
     /** @type {Set<string>} */
@@ -61,17 +61,17 @@ const rule = {
       const where = inPlace(dept, DEPT_NAMES);
       const today = parisDayBounds(ctx.now);
       const when = slot.from >= today.from && slot.from < today.to ? slot.label : `${slot.label} du ${parisDayLabel(slot.from)}`;
-      const m = sm[0].meta ?? {};
-      const label = m.home && m.away ? `${m.home} contre ${m.away}` : 'match';
-      const notRecognised = unlocated.filter((s) => meets(span(s), slot.from, slot.to)).map((s) => `Stade non reconnu : ${s.meta?.home ?? 'club n.d.'}`);
+      // Match(s) du stade dans la demi-journée, nommés d'après leurs propres signaux (le match évalué en premier).
+      const named = [match, ...sm.filter((s) => s.id !== match.id)];
+      const label = named.map((s) => (s.meta?.home && s.meta?.away ? `${s.meta.home} contre ${s.meta.away}` : 'match')).join(' et ');
       out.push({
         ruleId: RULE_ID,
         ruleVersion: 1,
-        zone: { dept: [dept], communes: [...new Set(sm.flatMap((s) => (Array.isArray(s.communes) ? s.communes : [])))] },
+        zone: { dept: [dept], communes: [...new Set(named.flatMap((s) => (Array.isArray(s.communes) ? s.communes : [])))] },
         window: { from: new Date(slot.from).toISOString(), to: new Date(slot.to).toISOString() },
         title: rule.title,
         chain: [
-          { text: `Match ${label} ${where}, ${when}`, signalIds: sm.map((s) => s.id) },
+          { text: `${named.length > 1 ? 'Matchs' : 'Match'} ${label} ${where}, ${when}`, signalIds: sm.map((s) => s.id) },
           { text: sr.length && ss.length
             ? `${sr.length} rassemblement${sr.length > 1 ? 's' : ''} et ${ss.length} mouvement${ss.length > 1 ? 's' : ''} social${ss.length > 1 ? 'aux' : ''} dans les transports, même département, même demi-journée`
             : sr.length
@@ -82,7 +82,7 @@ const rule = {
         ],
         word: sr.length && ss.length ? 'probable' : 'possibilite_reelle',
         why: '',
-        unknowns: ["Affluence réelle au stade et en ville : aucune donnée publique", 'Dispositif de sécurité et plan de transport du jour', ...notRecognised],
+        unknowns: ["Affluence réelle au stade et en ville : aucune donnée publique", 'Dispositif de sécurité et plan de transport du jour'],
         bascules: [
           { id: 'arrete', label: 'Arrêté préfectoral publié', state: arrete ? 'atteint' : 'surveille', at: arrete ? (arrete.publishedAt ?? arrete.observedAt) : null },
           { id: 'preavis_leve', label: 'Préavis levé', state: 'surveille', at: null },

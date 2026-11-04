@@ -42,12 +42,27 @@ describe('rule 6 evenement-mobilisation', () => {
     expect(rule.evaluate([game(), { ...rally, window: { from: '2026-11-05T08:00:00Z', to: '2026-11-05T09:00:00Z' } }], ctx)).toEqual([]);
   });
 
-  it('unrecognised stadium is listed in unknowns, never guessed', () => {
-    const lost = game({ id: 'evenement_sportif:football-data:-:9', dept: [], meta: { home: 'AS Monaco FC', away: 'Autre FC' } });
-    const out = rule.evaluate([game(), lost, rally], ctx);
+  it('names the matches overlapping the half-day, not just the first one', () => {
+    const b = game({ id: 'evenement_sportif:football-data:69:2', meta: { home: 'Autre Club', away: 'Visiteur' }, communes: ['Villeurbanne'] });
+    const out = rule.evaluate([b, game(), rally], ctx);
     expect(out).toHaveLength(1);
-    expect(out[0].unknowns).toContain('Stade non reconnu : AS Monaco FC');
+    expect(out[0].chain[0].text).toContain('Olympique Lyonnais contre Autre FC');
+    expect(out[0].chain[0].text).toContain('Autre Club contre Visiteur');
+    expect(out[0].chain[0].signalIds).toHaveLength(2);
+    expect(out[0].zone.communes).toEqual(['Villeurbanne']);
+  });
+
+  it('a match outside the half-day is not named', () => {
+    const night = game({ id: 'evenement_sportif:football-data:69:3', meta: { home: 'Match du soir', away: 'X' }, window: { from: '2026-11-04T22:30:00Z', to: '2026-11-05T02:00:00Z' } });
+    const out = rule.evaluate([night, game(), rally], ctx);
+    expect(out).toHaveLength(1);
+    expect(out[0].chain[0].text).not.toContain('Match du soir');
+  });
+
+  it('a match without dept opens nothing and adds nothing to scenarios', () => {
+    const lost = game({ id: 'evenement_sportif:football-data:-:9', dept: [], meta: { home: 'AS Monaco FC', away: 'Autre FC' } });
     expect(rule.evaluate([lost, rally], ctx)).toEqual([]);
+    expect(rule.evaluate([game(), lost, rally], ctx)[0].unknowns.join()).not.toContain('Stade non reconnu');
   });
 
   it('arrived: transport disruption in the window arrives, unread press is undecidable', () => {

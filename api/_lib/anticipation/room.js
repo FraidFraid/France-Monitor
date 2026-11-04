@@ -126,6 +126,14 @@ function newlyReached(/** @type {any} */ before, /** @type {any} */ after) {
     && !(Array.isArray(before?.bascules) ? before.bascules : []).some((/** @type {any} */ p) => p.id === b.id && p.state === 'atteint'));
 }
 
+/** Lignes d'inconnu propres à l'instantané : calendrier non configuré, stades non reconnus (club français sans département). */
+function footballUnknown(/** @type {any} */ football) {
+  if (!football) return [];
+  if (football.configured === false) return ['Calendrier sportif non configuré'];
+  const clubs = [...new Set((Array.isArray(football.matches) ? football.matches : []).filter((/** @type {any} */ m) => !m?.dept).map((/** @type {any} */ m) => String(m?.home ?? 'n.d.')))];
+  return clubs.map((c) => `Stade non reconnu : ${c}`);
+}
+
 async function run(/** @type {number} */ now, /** @type {any} */ readers) {
   const nowIso = new Date(now).toISOString();
   const registry = state?.registry ?? await (readers.openRegistry ?? ((/** @type {number} */ at) => openRegistry({ now: at })))(now);
@@ -151,6 +159,7 @@ async function run(/** @type {number} */ now, /** @type {any} */ readers) {
   }
   if (inputs.fuel) inputs.fuel = withPrevious(inputs.fuel, fuelMemo);
 
+  if (Array.isArray(inputs.football?.errors)) readErrors.push(...inputs.football.errors);
   const { signals, unknown, errors: signalErrors } = toSignals(/** @type {any} */ (inputs), now);
   const rules = readers.rules ?? RULES;
   const before = new Map(registry.state());
@@ -189,7 +198,7 @@ async function run(/** @type {number} */ now, /** @type {any} */ readers) {
   state = {
     registry, tickAt: now, signals, scenarios: served, agenda,
     // Calendrier sportif sans clé : nommé dans l'instantané seulement (ni dans la note ni dans les relevés de la règle).
-    unknown: inputs.football && inputs.football.configured === false ? [...unknown, 'Calendrier sportif non configuré'] : unknown,
+    unknown: [...unknown, ...footballUnknown(inputs.football)],
     errors: [...readErrors, ...signalErrors, ...engineErrors, ...registry.errors], fuel: fuelMemo, compactDay, frozenDay,
   };
 }
