@@ -26,10 +26,20 @@ const INPUTS = [
   ['rail', 'SNCF'], ['room', 'pannes'], ['cyber', 'veille cyber'], ['ecowatt', 'Écowatt'], ['fuel', 'carburants'], ['football', 'calendrier sportif'],
 ];
 
+/** Familles de signaux dont chaque règle a besoin : [libellé, genres, entrée source absente ou vide]. */
+const NEEDS = {
+  'mobilisation-transports': [['rassemblements', ['rassemblement_annonce', 'rassemblement_signale'], 'manifestations'], ['transport', ['mouvement_social_transport', 'perturbation_sncf'], 'SNCF non archivée, presse : aucun article grève + opérateur']],
+  'tempete-reseaux': [['vigilance', ['vigilance'], 'vigilance par département non rejouable'], ['pannes', ['panne'], 'pannes non archivées']],
+  'chaleur-sante': [['vigilance', ['vigilance'], 'vigilance par département non rejouable'], ['Écowatt', ['ecowatt'], 'Écowatt non archivé']],
+  'social-cyber': [['cyber', ['cyber_pic', 'cyber_revendication'], 'veille cyber non archivée']],
+  'greve-carburant': [['tension carburant', ['tension_carburant'], 'carburants non archivés']],
+  'evenement-mobilisation': [['calendrier sportif', ['evenement_sportif'], 'calendrier sportif non archivé']],
+};
+
 /**
  * @param {string[]} instants Instants ISO.
  * @param {Record<string, ((at: string) => Promise<unknown>) | undefined>} sources Une fonction par entrée (news, protests, vigilance…) ; absente ou null : entrée inconnue.
- * @returns {Promise<Array<{ at: string, scenarios: any[], unknown: string[], errors: string[], limits: string[] }>>}
+ * @returns {Promise<Array<{ at: string, scenarios: any[], unknown: string[], errors: string[], limits: string[], read: string[], kinds: Record<string, number>, rules: string[], stats: { news: number|null, feeds: number|null } }>>}
  */
 export async function replayAt(instants, sources) {
   const out = [];
@@ -48,7 +58,7 @@ export async function replayAt(instants, sources) {
         const v = await read(at);
         inputs[key] = v ?? null;
         if (v == null) limits.push(`${label} : non archivé à cet instant`);
-        else { const n = Array.isArray(v) ? v.length : Array.isArray(v?.items) ? v.items.length : null; if (n !== null) read_.push(`${label} : ${n} élément(s) lus`); }
+        else { if (key === 'protests') limits.push('manifestations : lignes filtrées sur firstSeenAt, chacune garde son dernier état (relevé peut-être après l\'instant)'); const n = Array.isArray(v) ? v.length : Array.isArray(v?.items) ? v.items.length : null; if (n !== null) read_.push(`${label} : ${n} élément(s) lus`); }
       } catch (e) {
         inputs[key] = null;
         limits.push(`${label} : lecture en échec (${e instanceof Error ? e.message : String(e)})`);
@@ -56,9 +66,24 @@ export async function replayAt(instants, sources) {
     }
     // @ts-ignore entrées nulles acceptées par toSignals (elles deviennent « inconnu »)
     const { signals, unknown, errors: sigErrors } = toSignals(inputs, now);
+    /** @type {Record<string, number>} */
+    const kinds = {};
+    for (const k of ['presse', 'rassemblement_annonce', 'rassemblement_signale', 'mouvement_social_transport', 'perturbation_sncf', 'arrete_prefectoral', 'vigilance', 'panne', 'ecowatt', 'cyber_pic', 'cyber_revendication', 'tension_carburant', 'evenement_sportif']) kinds[k] = 0;
+    for (const sg of signals) kinds[sg.kind] = (kinds[sg.kind] ?? 0) + 1;
+    const newsArr = Array.isArray(inputs.news) ? inputs.news : null;
+    const stats = { news: newsArr ? newsArr.length : null, feeds: newsArr ? new Set(newsArr.map((/** @type {any} */ n) => n?.feedId ?? n?.feedName)).size : null };
+    /** @type {string[]} */
+    const rules = [];
+    for (const [id, needs] of Object.entries(NEEDS)) {
+      const missing = needs.filter(([, ks]) => !ks.some((k) => (kinds[k] ?? 0) > 0));
+      if (!missing.length) continue;
+      const detail = missing.map(([label, , why]) => `${label} (${why})`).join(' · ');
+      rules.push(`Règle ${id} : aucun signal de ${detail}${stats.news !== null ? `, parmi ${stats.news} articles de presse lus` : ''}`);
+    }
+    limits.push('archive des signaux (Task 3) : absente, elle n\'existe qu\'à partir du déploiement du moteur');
     const registry = { state: () => new Map() };
     const res = evaluate(signals, registry, now, undefined, unknown);
-    out.push({ at, scenarios: res.open, unknown, errors: [...sigErrors, ...res.errors], limits, read: read_ });
+    out.push({ at, scenarios: res.open, unknown, errors: [...sigErrors, ...res.errors], limits, read: read_, kinds, rules, stats });
   }
   return out;
 }
@@ -72,7 +97,15 @@ export function renderReport(results, generatedAt = new Date().toISOString()) {
     '# Rejeu du moteur d\'anticipation', '',
     `Généré le ${generatedAt}. Constats, pas des critères de recette : le moteur réel est rejoué sur ce que les archives publiques permettent de reconstituer, avec un registre vide à chaque instant. Les entrées non archivées sont inconnues, donc une règle qui en dépend ne peut pas s'ouvrir : l'absence de scénario ne prouve rien.`, '',
   ];
+  lines.push('## Portée', '', 'Avec les archives d\'aujourd\'hui, le rejeu exerce la plomberie (lecture des archives, signaux, moteur, rapport) mais aucune règle ne peut s\'ouvrir sur des données réelles : SNCF, pannes, Écowatt, carburants et veille cyber ne sont pas archivés. Il devient significatif quand l\'archive des signaux, déployée avec ce moteur, aura accumulé des relevés.', '');
+  const med = (/** @type {number[]} */ a) => { const b = [...a].sort((x, y) => x - y); return b.length ? (b.length % 2 ? b[(b.length - 1) / 2] : (b[b.length / 2 - 1] + b[b.length / 2]) / 2) : 0; };
+  const medNews = med(results.map((r) => r.stats?.news).filter((n) => typeof n === 'number'));
+  const medFeeds = med(results.map((r) => r.stats?.feeds).filter((n) => typeof n === 'number'));
   for (const r of results) {
+    /** @type {string[]} */
+    const alerts = [];
+    if (typeof r.stats?.news === 'number' && r.stats.news < medNews / 2) alerts.push(`volume de presse anormal : ${r.stats.news} articles de ${r.stats.feeds} flux, contre une médiane de ${medNews} articles de ${medFeeds} flux sur les instants rejoués : vérifier l'historique d'ingestion avant de citer cet instant`);
+    else if (typeof r.stats?.feeds === 'number' && r.stats.feeds < medFeeds * 0.8) alerts.push(`nombre de flux en baisse : ${r.stats.feeds} flux, contre une médiane de ${medFeeds} : vérifier l'historique d'ingestion avant de citer cet instant`);
     lines.push(`## ${r.at}`, '');
     if (r.scenarios.length === 0) lines.push('Aucun scénario ouvert.', '');
     else {
@@ -82,9 +115,12 @@ export function renderReport(results, generatedAt = new Date().toISOString()) {
       }
       lines.push('');
     }
+    lines.push(`Signaux par genre : ${Object.entries(r.kinds ?? {}).map(([k, n]) => `${k} ${n}`).join(' · ')}`, '');
+    if (r.rules?.length) { lines.push('Règles privées d\'une entrée :', ''); for (const l of r.rules) lines.push(`- ${l}`); lines.push(''); }
     lines.push(`Lu : ${(r.read ?? []).join(' · ') || 'rien'}`, '', `Inconnus : ${r.unknown.length ? r.unknown.join(' · ') : 'aucun'}`, '', '### Limites', '');
+    for (const a of alerts) lines.push(`- ${a}`);
     for (const l of r.limits) lines.push(`- ${l}`);
-    if (!r.limits.length) lines.push('- aucune');
+    if (!r.limits.length && !alerts.length) lines.push('- aucune');
     if (r.errors.length) { lines.push('', 'Erreurs du moteur :'); for (const e of r.errors) lines.push(`- ${e}`); }
     lines.push('');
   }
@@ -147,11 +183,16 @@ async function archivedNews(/** @type {string} */ at) {
   });
 }
 
-let archiveDays = null;
 /** Manifestations archivées : lignes vues au plus tard à l'instant, jours de la veille et du jour ; null si le jour n'est pas archivé. */
 async function archivedProtests(/** @type {string} */ at) {
-  archiveDays ??= (await fetchJson(`${SITE}/api/social/protests-archive`))?.days ?? [];
   const day = at.slice(0, 10);
+  // Liste des jours gardée sur disque (rejeu hors ligne) ; relue en ligne seulement si le jour voulu n'y figure pas.
+  let archiveDays = (await cached('protests-days.json', async () => null))?.days ?? [];
+  if (!archiveDays.includes(day)) {
+    archiveDays = (await fetchJson(`${SITE}/api/social/protests-archive`))?.days ?? [];
+    await mkdir(CACHE_DIR, { recursive: true });
+    await writeFile(path.join(CACHE_DIR, 'protests-days.json'), JSON.stringify({ days: archiveDays }));
+  }
   if (!archiveDays.includes(day)) return null;
   const prev = new Date(Date.parse(at) - DAY_MS).toISOString().slice(0, 10);
   const rows = [];
