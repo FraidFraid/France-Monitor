@@ -35,6 +35,13 @@ import { parisDay } from '../../../src/services/paris-day.js';
  * @property {{ utile: number, deja_su: number, faux: number }} feedback
  */
 /** @typedef {{ at: string, type: 'ouverture'|'revision'|'bascule'|'cloture'|'manque'|'retour', scenario: Scenario }} JournalEvent */
+/** @typedef {'utile'|'deja_su'|'faux'} Vote */
+/** Ligne compacte d'un retour (revue finale) : le delta seul, jamais le scénario entier. Les anciennes lignes « retour » complètes restent lues. */
+/** @typedef {{ at: string, type: 'retour', id: string, vote: Vote }} VoteEvent */
+
+const VOTES = new Set(['utile', 'deja_su', 'faux']);
+/** Scénario avec un vote de plus (copie). */
+const withVote = (/** @type {Scenario} */ s, /** @type {Vote} */ vote) => ({ ...s, feedback: { utile: 0, deja_su: 0, faux: 0, ...s.feedback, [vote]: (s.feedback?.[vote] ?? 0) + 1 } });
 
 const DEFAULT_DIR = '/var/lib/francemonitor/data/anticipation';
 const ARCHIVE_EVERY_MS = 15 * 60_000;
@@ -155,6 +162,7 @@ export async function openRegistry({ dir, now, archiveMaxBytes = ARCHIVE_DAY_MAX
     state: () => scenarios,
     scenariosOfMonth,
     record,
+    recordVote,
     archiveSignals,
     signalsBetween,
     compact,
@@ -214,7 +222,11 @@ export async function openRegistry({ dir, now, archiveMaxBytes = ARCHIVE_DAY_MAX
       try {
         const ev = JSON.parse(line);
         if (ev && ev.scenario && typeof ev.scenario.id === 'string') into.set(ev.scenario.id, ev.scenario);
-        else dropped += 1;
+        else if (ev && ev.type === 'retour' && typeof ev.id === 'string' && VOTES.has(ev.vote)) {
+          // Retour compact : delta appliqué au scénario déjà relu (scénario d'un mois non relu : ignoré).
+          const cur = into.get(ev.id);
+          if (cur) into.set(ev.id, withVote(cur, ev.vote));
+        } else dropped += 1;
       } catch {
         dropped += 1; // ligne coupée : ignorée mais comptée
       }
@@ -238,6 +250,22 @@ export async function openRegistry({ dir, now, archiveMaxBytes = ARCHIVE_DAY_MAX
     await ensureDirs();
   } catch (e) {
     fail(e);
+  }
+
+  /**
+   * Retour compact : un vote de plus en mémoire, une ligne `{ at, type: 'retour', id, vote }` au journal. Scénario inconnu : false, rien
+   * n'est écrit.
+   * @param {string} id
+   * @param {Vote} vote
+   * @param {number} at
+   */
+  function recordVote(id, vote, at) {
+    const cur = scenarios.get(id);
+    if (!cur || !VOTES.has(vote)) return Promise.resolve(false);
+    scenarios.set(id, withVote(cur, vote));
+    /** @type {VoteEvent} */
+    const event = { at: new Date(at).toISOString(), type: 'retour', id, vote };
+    return enqueue(() => append(path.join(journalDir, `${parisMonth(at)}.jsonl`), `${JSON.stringify(event)}\n`)).then(() => true);
   }
 
   /** @param {JournalEvent} event */

@@ -124,6 +124,12 @@ describe('feedback', () => {
     expect(f).toHaveBeenCalledTimes(4);
   });
 
+  it('429 avec Retry-After (plafond par minute) donne erreur sans mémoriser', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 429, headers: { 'Retry-After': '30' } })));
+    expect(await sendAnticipationFeedback('s5', 'utile')).toBe('erreur');
+    expect(readAnticipationVote('s5')).toBeNull();
+  });
+
   it('400 et panne réseau donnent erreur sans mémoriser', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 400 })));
     expect(await sendAnticipationFeedback('s3', 'utile')).toBe('erreur');

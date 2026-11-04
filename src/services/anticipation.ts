@@ -96,7 +96,8 @@ export function readAnticipationVote(scenarioId: string): AnticipationVote | nul
 }
 
 /**
- * Envoie un retour. 'ok' : enregistré (204) ; 'deja' : déjà voté ici ou refusé par le serveur (429) ; 'erreur' : 400, panne ou réseau.
+ * Envoie un retour. 'ok' : enregistré (204) ; 'deja' : déjà voté ici ou refusé par le serveur (429) ; 'erreur' : 400, 415, plafond
+ * passager (429 avec Retry-After), panne ou réseau.
  */
 export async function sendAnticipationFeedback(
   scenarioId: string,
@@ -111,6 +112,8 @@ export async function sendAnticipationFeedback(
       body: JSON.stringify({ scenarioId, vote }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
+    // 429 avec Retry-After : plafond passager du serveur (par minute), pas un vote déjà compté ; on ne le mémorise pas.
+    if (res.status === 429 && res.headers.get('retry-after') !== null) return 'erreur';
     if (res.status === 429) {
       rememberVote(scenarioId, vote);
       return 'deja';

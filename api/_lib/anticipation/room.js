@@ -243,9 +243,10 @@ export async function recordFeedback(scenarioId, vote, now = Date.now(), readers
   const registry = state?.registry;
   const current = registry?.state().get(scenarioId);
   if (!registry || !current) return false;
-  const next = { ...current, feedback: { ...current.feedback, [vote]: (current.feedback?.[vote] ?? 0) + 1 } };
-  await registry.record({ at: new Date(now).toISOString(), type: 'retour', scenario: next });
-  if (state) state.scenarios = state.scenarios.map((/** @type {any} */ s) => (s.id === scenarioId ? next : s));
+  // Ligne compacte (id + vote) : le journal ne recopie plus le scénario entier à chaque retour.
+  if (!(await registry.recordVote(scenarioId, vote, now))) return false;
+  const next = registry.state().get(scenarioId);
+  if (state && next) state.scenarios = state.scenarios.map((/** @type {any} */ s) => (s.id === scenarioId ? next : s));
   return true;
 }
 
