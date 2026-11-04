@@ -101,13 +101,11 @@ async function fetchOdreOfficial() {
   return normalizeOdreRecords(results);
 }
 
-export default async function handler(req, res) {
-  if (req.method !== 'GET') {
-    res.setHeader('Cache-Control', 'no-store');
-    res.status(405).json({ error: 'method not allowed' });
-    return;
-  }
-
+/**
+ * Signal officiel (RTE puis repli ODRÉ), avec l'état du jeton RTE et du cache. Partagé par la route et par le moteur d'anticipation.
+ * @returns {Promise<{ official: import('../../../src/types/index.ts').EcowattOfficial | null, rteStatus: 'ok' | 'unavailable', cacheState: 'hit' | 'stale' | 'miss' }>}
+ */
+async function resolveOfficial() {
   const clientId = process.env.RTE_CLIENT_ID;
   const clientSecret = process.env.RTE_CLIENT_SECRET;
 
@@ -145,6 +143,24 @@ export default async function handler(req, res) {
       console.error('[api/energy/ecowatt-signal] Repli ODRÉ indisponible :', error instanceof Error ? error.message : error);
     }
   }
+
+  return { official, rteStatus, cacheState };
+}
+
+/** Signal Écowatt officiel pour le moteur d'anticipation (04/11/2026) : null si RTE et le repli sont indisponibles. */
+export async function loadEcowattOfficial(now = Date.now()) {
+  void now;
+  return (await resolveOfficial()).official;
+}
+
+export default async function handler(req, res) {
+  if (req.method !== 'GET') {
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(405).json({ error: 'method not allowed' });
+    return;
+  }
+
+  const { official, rteStatus, cacheState } = await resolveOfficial();
 
   if (!official) {
     res.setHeader('Cache-Control', 'no-store');

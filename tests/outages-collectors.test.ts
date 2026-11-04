@@ -18,6 +18,6 @@ describe('collecteurs Pannes réseau', () => {
   it('le serveur de production les lance avec les autres', () => {
     const server = readFileSync(new URL('../server/prod/http-server.mjs', import.meta.url), 'utf8');
     expect(server).toContain("import { OUTAGES_COLLECTORS } from './outages-collectors.mjs';");
-    expect(server).toContain('startTrafficCollectors({ collectors: [...COLLECTORS, ...ENVIRONMENT_COLLECTORS, ...SOVEREIGNTY_COLLECTORS, ...OUTAGES_COLLECTORS] })');
+    expect(server).toContain('startTrafficCollectors({ collectors: [...COLLECTORS, ...ENVIRONMENT_COLLECTORS, ...SOVEREIGNTY_COLLECTORS, ...OUTAGES_COLLECTORS, ...ANTICIPATION_COLLECTORS] })');
   });
 });

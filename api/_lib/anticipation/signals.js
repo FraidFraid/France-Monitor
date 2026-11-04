@@ -238,7 +238,8 @@ function fromFuel(/** @type {any} */ fuel) {
   // Part nationale des stations en rupture (sans département), lue par l'arrivée de la règle grève × carburant.
   const national = fuel.national?.anomalyShare;
   if (typeof national === 'number') {
-    out.push(mk({ kind: 'tension_carburant', domain: 'fuel', source: 'prix-carburants', origin: 'prix-carburants', official: true, dept: [], value: national, readAt: fuel.generatedAt, key: 'national', ref: 'national', meta: { national: true } }));
+    out.push(mk({ kind: 'tension_carburant', domain: 'fuel', source: 'prix-carburants', origin: 'prix-carburants', official: true, dept: [], value: national, readAt: fuel.generatedAt, key: 'national', ref: 'national',
+      meta: { national: true, ...(typeof fuel.national?.previousAnomalyShare === 'number' ? { previousValue: fuel.national.previousAnomalyShare } : {}) } }));
   }
   return out;
 }

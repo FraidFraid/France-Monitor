@@ -472,3 +472,27 @@ ssh -i ~/.ssh/francemonitor_oracle ubuntu@141.145.223.156 'sudo bash /srv/france
 ```
 
 Suivi : `journalctl -u fm-archive-protests -n 20`.
+
+---
+
+## Registre d'anticipation (04/11/2026)
+
+`fm-api` calcule chaque minute les scénarios d'anticipation (bêta) et les écrit dans `/var/lib/francemonitor/data/anticipation/`
+(`journal/AAAA-MM.jsonl` : un événement par ligne ; `signals/AAAA-MM-JJ.jsonl` : archive des signaux, 13 mois puis résumé). Sans ce
+dossier inscriptible, le moteur tourne en mémoire et le dit dans le champ `errors` de `/api/anticipation/now`. Le tick ne passe pas par
+un minuteur : il est dans la relève d'une minute de `fm-api` (`server/prod/anticipation-collectors.mjs`).
+
+Étapes manuelles, une seule fois, à chaque réinstallation de l'unité `fm-api.service` (elle gagne `ReadWritePaths=`) :
+
+```bash
+ssh -i ~/.ssh/francemonitor_oracle ubuntu@141.145.223.156
+sudo install -d -o fm -g fm -m 750 /var/lib/francemonitor/data/anticipation
+diff /srv/francemonitor/current/deploy/oracle/systemd/fm-api.service /etc/systemd/system/fm-api.service   # relire l'écart
+sudo install -m 644 /srv/francemonitor/current/deploy/oracle/systemd/fm-api.service /etc/systemd/system/fm-api.service
+sudo systemctl daemon-reload
+sudo systemctl restart fm-api
+curl -s http://127.0.0.1:3000/api/anticipation/now | jq '.beta, .errors'    # attendu : true puis []
+```
+
+Si le dossier n'existe pas au démarrage, `ReadWritePaths=` fait échouer le service : créer le dossier avant le redémarrage.
+Sauvegarde : le registre est un historique d'évaluation, pas une donnée de service ; aucune copie automatique pour l'instant.

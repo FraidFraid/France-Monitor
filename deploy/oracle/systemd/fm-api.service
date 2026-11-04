@@ -16,8 +16,8 @@ Restart=on-failure
 RestartSec=5
 TimeoutStopSec=20
 
-# Durcissement raisonnable — service purement réseau (Upstash/Neon distants),
-# aucune écriture locale attendue.
+# Durcissement raisonnable : service essentiellement réseau (Upstash/Neon distants) ;
+# la seule écriture locale est le registre d'anticipation (journal et archive des signaux).
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
@@ -28,6 +28,8 @@ ProtectControlGroups=true
 RestrictSUIDSGID=true
 RestrictNamespaces=true
 LockPersonality=true
+# Registre d'anticipation (04/11/2026) : seul dossier inscriptible, à créer avant le démarrage (voir docs/deployment-oracle.md).
+ReadWritePaths=/var/lib/francemonitor/data/anticipation
 
 [Install]
 WantedBy=multi-user.target
