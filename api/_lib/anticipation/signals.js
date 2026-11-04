@@ -169,7 +169,7 @@ function fromRoom(/** @type {any} */ room, /** @type {number} */ now, /** @type 
     out.push(mk({ kind: 'panne', domain: o.network === 'electricite' ? 'energy' : 'telecom', source: src, origin: src,
       official: OFFICIAL_OUTAGE_SOURCES.has(src), dept: code ? [code] : [], level: o.level ?? null,
       window: Number.isFinite(from) ? { from: iso(from), to: iso(Math.max(from, to)) } : null, publishedAt: Number.isFinite(from) ? iso(from) : null,
-      readAt: room.generatedAt, key: String(o.id), ref: String(o.id), meta: { network: o.network, exposed: Boolean(o.exposed) } }));
+      readAt: room.generatedAt, key: String(o.id), ref: String(o.id), meta: { network: o.network, exposed: Number(o.exposed?.total) > 0 } }));
     } catch (e) { errors.push(`Pannes: ${o?.id}: ${errMsg(e)}`); }
   }
   return out;

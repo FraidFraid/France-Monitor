@@ -164,9 +164,9 @@ describe('toSignals', () => {
   });
 
   it('outage signals carry meta.exposed', () => {
-    const room = { generatedAt: ago(60_000), outages: [{ id: 'o1', network: 'cloud', dept: '75', since: ago(H), exposed: { n: 2 }, evidence: [{ source: 'statut' }] }, { id: 'o2', network: 'internet', dept: '75', since: ago(H), evidence: [] }] };
+    const room = { generatedAt: ago(60_000), outages: [{ id: 'o1', network: 'cloud', dept: '75', since: ago(H), exposed: { basis: 'departement', total: 2, byType: { mairie: 2 }, sample: [] }, evidence: [{ source: 'statut' }] }, { id: 'o2', network: 'internet', dept: '75', since: ago(H), exposed: { basis: 'departement', total: 0, byType: {}, sample: [] }, evidence: [] }, { id: 'o3', network: 'cloud', dept: '75', since: ago(H), evidence: [] }] };
     const p = run({ room }).signals.filter((x: { kind: string }) => x.kind === 'panne');
-    expect(p.map((x: { meta: { exposed: boolean } }) => x.meta.exposed)).toEqual([true, false]);
+    expect(p.map((x: { meta: { exposed: boolean } }) => x.meta.exposed)).toEqual([true, false, false]);
   });
 
   it('stale protests relevé (read 3 h ago) → no signals, unknown contains Manifestations', () => {

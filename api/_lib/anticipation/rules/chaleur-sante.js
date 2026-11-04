@@ -71,9 +71,14 @@ const rule = {
     const from = Date.parse(scenario?.window?.from ?? ''), to = Date.parse(scenario?.window?.to ?? '');
     const dept = scenario?.zone?.dept?.[0];
     if (!Number.isFinite(from) || !Number.isFinite(to) || !dept) return null;
+    // Ni les signaux cités par le scénario ni ceux antérieurs à son ouverture ne comptent : sinon l'ouverture vaudrait arrivée.
+    const opened = Date.parse(scenario?.openedAt ?? '');
+    const cited = new Set((Array.isArray(scenario?.chain) ? scenario.chain : []).flatMap((c) => (Array.isArray(c?.signalIds) ? c.signalIds : [])));
     const hit = cleanSignals(signals).some((s) => {
-      const w = span(s);
-      if (w === null || !(w.from <= to && w.to >= from)) return false;
+      if (cited.has(s.id)) return false;
+      const seen = Date.parse(s.publishedAt ?? s.observedAt ?? '');
+      if (Number.isFinite(opened) && !(seen > opened)) return false;
+      if (!overlaps(span(s), from, to)) return false;
       if (s.kind === 'ecowatt') return s.level === 'rouge';
       return isElectric(s) && inDept(s, dept) && STRONG(s);
     });

@@ -28,7 +28,8 @@ const rule = {
     const all = cleanSignals(signals);
     const day = parisDayBounds(ctx.now);
     const rallies = all.filter((s) => s.kind === 'rassemblement_annonce' && overlapsDay(s, day));
-    const pressSocial = all.filter((s) => s.kind === 'presse' && s.meta?.category === 'social' && (s.meta?.severity === 'high' || s.meta?.severity === 'critical'));
+    const pressSocial = all.filter((s) => s.kind === 'presse' && s.meta?.category === 'social' && (s.meta?.severity === 'high' || s.meta?.severity === 'critical')
+      && ctx.now - published(s) <= DAY_MS && published(s) - ctx.now <= 5 * 60_000);
     const social = rallies.length >= MIN_RALLIES || pressSocial.length > 0;
     if (!social) return [];
     const revendications = all.filter((s) => s.kind === 'cyber_revendication' && ctx.now - published(s) <= DAY_MS && published(s) - ctx.now <= 5 * 60_000);
@@ -72,7 +73,8 @@ const rule = {
       if (s.kind === 'cyber_revendication') { const t = published(s); return Number.isFinite(t) && t > since && t <= to; }
       if (s.kind === 'panne' && PUBLIC_NETWORKS.has(String(s.meta?.network)) && s.meta?.exposed === true) {
         const f = Date.parse(s.window?.from ?? ''), e = Date.parse(s.window?.to ?? '');
-        return Number.isFinite(f) && Number.isFinite(e) && f <= to && e >= from;
+        // Une panne déjà en cours à l'ouverture du scénario ne compte pas.
+        return Number.isFinite(f) && Number.isFinite(e) && f <= to && e >= from && (!Number.isFinite(opened) || f > opened);
       }
       return false;
     });

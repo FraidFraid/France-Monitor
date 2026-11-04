@@ -69,8 +69,37 @@ describe('rule 3 chaleur-sante', () => {
     expect(chaleur.evaluate([null, {}, 3], ctx())).toEqual([]);
   });
 
+  it('two vigilance periods in one département merge into one window', () => {
+    const v2 = canicule({ id: 'vig2', window: { from: '2026-11-06T00:00:00Z', to: '2026-11-07T00:00:00Z' }, meta: { phenomenon: 'canicule', echeance: 'J1' } });
+    const out = chaleur.evaluate([canicule(), v2, eco('orange', { window: { from: '2026-11-06T00:00:00Z', to: '2026-11-07T00:00:00Z' } })], ctx());
+    expect(out).toHaveLength(1);
+    expect(out[0].window).toEqual({ from: '2026-11-05T00:00:00.000Z', to: '2026-11-07T00:00:00.000Z' });
+    expect(out[0].chain[0].signalIds).toEqual(['vig', 'vig2']);
+  });
+
+  it('really floors to peu_probable through the engine when all cited signals share one origin', () => {
+    const one = [canicule(), panne({ origin: 'meteo-france', official: false })];
+    const cands = chaleur.evaluate(one, ctx());
+    expect(cands[0].evidence.origins).toBe(1);
+    const out = evaluate(one, { state: () => new Map() }, NOW, [chaleur]);
+    expect(out.opened[0].word).toBe('peu_probable');
+  });
+
   describe('arrived', () => {
     const scenario = { window: DAY, zone: { dept: ['13'] } };
+    it('is not circular and uses strict bounds', () => {
+      const opened = { ...scenario, openedAt: '2026-11-04T09:00:00.000Z', chain: [{ text: 't', signalIds: ['pe', 'eco'] }] };
+      // signaux cités : ne comptent pas
+      expect(chaleur.arrived(opened, [eco('rouge'), panne()], { now: NOW })).toBeNull();
+      // signal non cité mais antérieur à l'ouverture : ne compte pas
+      expect(chaleur.arrived(opened, [panne({ id: 'old', publishedAt: '2026-11-04T08:00:00Z', observedAt: '2026-11-04T08:00:00Z' })], { now: NOW })).toBeNull();
+      // signal nouveau, non cité, après l'ouverture : arrive
+      expect(chaleur.arrived(opened, [panne({ id: 'new' })], { now: NOW })).toBe('arrive');
+      // Écowatt rouge du jour adjacent (fin de la fenêtre = début du jour suivant) : pas arrive
+      const next = eco('rouge', { id: 'eco2', window: { from: '2026-11-06T00:00:00Z', to: '2026-11-07T00:00:00Z' } });
+      expect(chaleur.arrived(opened, [next], { now: Date.parse('2026-11-06T01:00:00Z'), unknown: [] })).toBe('pas_arrive');
+    });
+
     it('arrive on Écowatt rouge or panne orange; null before end; pas_arrive after; indecidable when unread', () => {
       expect(chaleur.arrived(scenario, [eco('rouge')], { now: NOW })).toBe('arrive');
       expect(chaleur.arrived(scenario, [panne()], { now: NOW })).toBe('arrive');
@@ -123,6 +152,11 @@ describe('rule 4 social-cyber', () => {
       expect(socialCyber.arrived(scenario, [revendication({ publishedAt: '2026-11-04T10:00:00Z' })], { now: NOW })).toBe('arrive');
       const out = sig({ id: 'pc', kind: 'panne', domain: 'telecom', window: { from: '2026-11-04T11:00:00Z', to: '2026-11-04T12:00:00Z' }, meta: { network: 'cloud', exposed: true } });
       expect(socialCyber.arrived(scenario, [out], { now: NOW })).toBe('arrive');
+    });
+    it('an outage already ongoing before openedAt does not count; press social older than 24 h does not trigger', () => {
+      const before = sig({ id: 'pc3', kind: 'panne', domain: 'telecom', window: { from: '2026-11-04T07:00:00Z', to: '2026-11-04T12:00:00Z' }, meta: { network: 'cloud', exposed: true } });
+      expect(socialCyber.arrived(scenario, [before], { now: NOW })).toBeNull();
+      expect(socialCyber.evaluate([press({ publishedAt: '2026-11-02T06:00:00Z' }), revendication()], ctx())).toEqual([]);
     });
     it('the revendication that opened the scenario is not new; null before end; pas_arrive / indecidable after', () => {
       expect(socialCyber.arrived(scenario, [revendication()], { now: NOW })).toBeNull();
