@@ -1,6 +1,6 @@
 // tests/anticipation-registry.test.ts : registre sur disque de l'anticipation (04/11/2026).
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, rm, readdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, readdir, readFile, writeFile, appendFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 // @ts-expect-error module JS sans déclaration
@@ -80,5 +80,66 @@ describe('registry', () => {
     const summary = JSON.parse(await readFile(path.join(dir, 'signals', '2025-08-01.summary.json'), 'utf8'));
     expect(summary.counts['vigilance|75']).toBe(2);
     expect(summary.counts['panne|69']).toBe(1);
+  });
+
+  it('truncated last line does not corrupt the next event', async () => {
+    const reg = await openRegistry({ dir, now: NOW });
+    await reg.record({ at: '2026-11-04T10:00:00Z', type: 'ouverture', scenario: scenario('a', 'peu_probable') });
+    const file = path.join(dir, 'journal', '2026-11.jsonl');
+    await appendFile(file, '{"at":"2026-11-04T10:30:00Z","type":"revi');
+    const second = await openRegistry({ dir, now: NOW });
+    await second.record({ at: '2026-11-04T11:00:00Z', type: 'ouverture', scenario: scenario('b', 'probable') });
+    const third = await openRegistry({ dir, now: NOW });
+    expect(third.state().get('b').word).toBe('probable');
+    expect(third.state().get('a').word).toBe('peu_probable');
+    expect(third.errors.some((e: string) => e.includes('journal/2026-11.jsonl') && e.includes('1 ligne illisible ignorée'))).toBe(true);
+  });
+
+  it('unreadable journal is reported, not swallowed', async () => {
+    await mkdir(path.join(dir, 'journal', '2026-11.jsonl'), { recursive: true });
+    const reg = await openRegistry({ dir, now: NOW });
+    expect(reg.errors.some((e: string) => e.includes('journal/2026-11.jsonl'))).toBe(true);
+  });
+
+  it('non awaited records keep call order on disk', async () => {
+    const reg = await openRegistry({ dir, now: NOW });
+    const jobs = [];
+    for (let i = 0; i < 20; i++) jobs.push(reg.record({ at: '2026-11-04T10:00:00Z', type: 'revision', scenario: scenario('a', `mot${i}`) }));
+    jobs.push(reg.archiveSignals([sig('a')], NOW));
+    await Promise.all(jobs);
+    const again = await openRegistry({ dir, now: NOW });
+    expect(again.state().get('a').word).toBe(reg.state().get('a').word);
+    expect(again.state().get('a').word).toBe('mot19');
+  });
+
+  it('writable recovers after a later successful append', async () => {
+    const reg = await openRegistry({ dir, now: NOW });
+    await rm(dir, { recursive: true, force: true });
+    await writeFile(dir, 'x');
+    await reg.record({ at: '2026-11-04T10:00:00Z', type: 'ouverture', scenario: scenario('a', 'probable') });
+    expect(reg.writable).toBe(false);
+    await rm(dir, { force: true });
+    await reg.record({ at: '2026-11-04T10:00:00Z', type: 'revision', scenario: scenario('a', 'tres_probable') });
+    expect(reg.writable).toBe(true);
+  });
+
+  it('compaction errors do not flip writable', async () => {
+    const reg = await openRegistry({ dir, now: NOW });
+    await mkdir(path.join(dir, 'signals', '2020-01-01.jsonl'), { recursive: true });
+    await reg.compact(NOW);
+    expect(reg.writable).toBe(true);
+    expect(reg.errors.some((e: string) => e.includes('compaction'))).toBe(true);
+  });
+
+  it('reads ANTICIPATION_DIR when no dir option is given', async () => {
+    const prev = process.env.ANTICIPATION_DIR;
+    process.env.ANTICIPATION_DIR = dir;
+    try {
+      const reg = await openRegistry({ now: NOW });
+      await reg.record({ at: '2026-11-04T10:00:00Z', type: 'ouverture', scenario: scenario('a', 'probable') });
+      expect(await readdir(path.join(dir, 'journal'))).toEqual(['2026-11.jsonl']);
+    } finally {
+      if (prev === undefined) delete process.env.ANTICIPATION_DIR; else process.env.ANTICIPATION_DIR = prev;
+    }
   });
 });

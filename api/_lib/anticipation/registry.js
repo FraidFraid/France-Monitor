@@ -70,11 +70,25 @@ export async function openRegistry({ dir, now }) {
     compact,
   };
 
-  function fail(/** @type {unknown} */ e) {
-    registry.writable = false;
-    const msg = `Registre d'anticipation non inscriptible dans ${root} : ${errMsg(e)}`;
+  function pushError(/** @type {string} */ msg) {
     if (!errors.includes(msg)) errors.push(msg);
   }
+
+  function fail(/** @type {unknown} */ e) {
+    registry.writable = false;
+    pushError(`Registre d'anticipation non inscriptible dans ${root} : ${errMsg(e)}`);
+  }
+
+  // File unique : toutes les écritures disque passent dans l'ordre des appels, même si l'appelant n'attend pas.
+  let queue = Promise.resolve();
+  function enqueue(/** @type {() => Promise<void>} */ fn) {
+    const run = queue.then(fn);
+    queue = run.catch(() => {});
+    return run;
+  }
+
+  // Fichiers déjà vérifiés par ce processus : une dernière ligne coupée (sans saut de ligne) est terminée avant le premier ajout.
+  const checkedFiles = new Set();
 
   async function ensureDirs() {
     await mkdir(journalDir, { recursive: true });
@@ -84,7 +98,18 @@ export async function openRegistry({ dir, now }) {
   async function append(/** @type {string} */ file, /** @type {string} */ line) {
     try {
       await ensureDirs();
-      await appendFile(file, line, 'utf8');
+      let prefix = '';
+      if (!checkedFiles.has(file)) {
+        try {
+          const existing = await readFile(file, 'utf8');
+          if (existing.length > 0 && !existing.endsWith('\n')) prefix = '\n';
+        } catch (e) {
+          if (/** @type {NodeJS.ErrnoException} */ (e).code !== 'ENOENT') throw e;
+        }
+      }
+      await appendFile(file, prefix + line, 'utf8');
+      checkedFiles.add(file);
+      registry.writable = true;
     } catch (e) {
       fail(e);
     }
@@ -96,18 +121,24 @@ export async function openRegistry({ dir, now }) {
     let text = '';
     try {
       text = await readFile(path.join(journalDir, `${key}.jsonl`), 'utf8');
-    } catch {
+    } catch (e) {
+      if (/** @type {NodeJS.ErrnoException} */ (e).code !== 'ENOENT') {
+        pushError(`journal/${key}.jsonl : lecture impossible dans ${root} : ${errMsg(e)}`);
+      }
       continue; // fichier absent : rien à rejouer
     }
+    let dropped = 0;
     for (const line of text.split('\n')) {
       if (!line.trim()) continue;
       try {
         const ev = JSON.parse(line);
         if (ev && ev.scenario && typeof ev.scenario.id === 'string') scenarios.set(ev.scenario.id, ev.scenario);
+        else dropped += 1;
       } catch {
-        // ligne coupée : ignorée
+        dropped += 1; // ligne coupée : ignorée mais comptée
       }
     }
+    if (dropped > 0) pushError(`journal/${key}.jsonl : ${dropped} ligne${dropped > 1 ? 's' : ''} illisible${dropped > 1 ? 's' : ''} ignorée${dropped > 1 ? 's' : ''}`);
   }
   try {
     await ensureDirs();
@@ -116,18 +147,23 @@ export async function openRegistry({ dir, now }) {
   }
 
   /** @param {JournalEvent} event */
-  async function record(event) {
+  function record(event) {
     scenarios.set(event.scenario.id, event.scenario);
     const t = Date.parse(event.at);
     const key = parisMonth(Number.isFinite(t) ? t : Date.now());
-    await append(path.join(journalDir, `${key}.jsonl`), `${JSON.stringify(event)}\n`);
+    const line = `${JSON.stringify(event)}\n`;
+    return enqueue(() => append(path.join(journalDir, `${key}.jsonl`), line));
   }
 
   /**
    * @param {Signal[]} signals
    * @param {number} at
    */
-  async function archiveSignals(signals, at) {
+  function archiveSignals(signals, at) {
+    return enqueue(() => archiveNow(signals, at));
+  }
+
+  async function archiveNow(/** @type {Signal[]} */ signals, /** @type {number} */ at) {
     const fingerprint = signals.map((s) => `${s.id}|${s.level}|${s.value}`).sort().join('\n');
     if (fingerprint === lastFingerprint && at - lastArchiveAt < ARCHIVE_EVERY_MS) return;
     lastFingerprint = fingerprint;
@@ -137,7 +173,11 @@ export async function openRegistry({ dir, now }) {
   }
 
   /** @param {number} at */
-  async function compact(at) {
+  function compact(at) {
+    return enqueue(() => compactNow(at));
+  }
+
+  async function compactNow(/** @type {number} */ at) {
     const limit = new Date(at);
     limit.setUTCMonth(limit.getUTCMonth() - KEEP_MONTHS);
     const limitDay = parisDay(limit.getTime());
@@ -169,7 +209,7 @@ export async function openRegistry({ dir, now }) {
         await writeFile(path.join(signalsDir, `${m[1]}.summary.json`), `${JSON.stringify({ day: m[1], counts })}\n`, 'utf8');
         await unlink(path.join(signalsDir, name));
       } catch (e) {
-        fail(e);
+        pushError(`signals/${name} : compaction impossible dans ${root} : ${errMsg(e)}`);
       }
     }
   }
