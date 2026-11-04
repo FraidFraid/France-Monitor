@@ -59,7 +59,7 @@ describe('toSignals', () => {
     expect(s.official).toBe(true);
     expect(s.origin).toBe('meteo-france');
     expect(s.dept).toEqual(['29']);
-    expect(s.ref).toBe('vent');
+    expect(s.meta).toEqual({ phenomenon: 'vent', echeance: 'J1' });
     expect(s.domain).toBe('weather');
   });
 
@@ -140,6 +140,59 @@ describe('toSignals', () => {
     expect(f[0].dept).toEqual(['13']);
     expect(f[0].value).toBe(27);
     expect(f[0].level).toBe('orange');
+  });
+
+  it('stale protests relevé (read 3 h ago) → no signals, unknown contains Manifestations', () => {
+    const protests = { readAt: ago(3 * H), items: [{ id: 'd1', source: 'demosphere', status: 'annonce', title: 'x', startsAt: ago(-2 * H), allDay: false, city: null, dept: '31', lat: null, lon: null }] };
+    const r = run({ protests });
+    expect(r.signals).toEqual([]);
+    expect(r.unknown).toContain('Manifestations non lues');
+  });
+
+  it('one malformed date drops only that department, with one error', () => {
+    const vigilance = { readAt: ago(60_000), updateTime: ago(60_000), periods: [{ echeance: 'J', begin: ago(H), end: ago(-5 * H), departments: [
+      { code: '29', color: 3, phenomena: [{ id: '3', color: 3, slots: [{ from: 'pas une date', to: 'x', color: 3 }] }] },
+      { code: '22', color: 3, phenomena: [{ id: '3', color: 3, slots: [] }] },
+      { code: '35', color: 3, phenomena: [{ id: '3', color: 3, slots: [] }] },
+    ] }] };
+    const r = run({ vigilance });
+    expect(r.signals.map((x: { dept: string[] }) => x.dept[0]).sort()).toEqual(['22', '35']);
+    expect(r.errors).toHaveLength(1);
+    expect(r.unknown).toEqual(expect.not.arrayContaining(['Météo-France non lue']));
+  });
+
+  it('two orange slots are merged into min(from)..max(to)', () => {
+    const vigilance = { readAt: ago(60_000), updateTime: ago(60_000), periods: [{ echeance: 'J', begin: ago(H), end: ago(-20 * H), departments: [
+      { code: '29', color: 3, phenomena: [{ id: '1', color: 3, slots: [
+        { from: '2026-11-04T06:00:00Z', to: '2026-11-04T09:00:00Z', color: 3 },
+        { from: '2026-11-04T14:00:00Z', to: '2026-11-04T18:00:00Z', color: 3 },
+        { from: '2026-11-04T10:00:00Z', to: '2026-11-04T12:00:00Z', color: 2 },
+      ] }] },
+    ] }] };
+    const s = run({ vigilance }).signals[0];
+    expect(s.window).toEqual({ from: '2026-11-04T06:00:00.000Z', to: '2026-11-04T18:00:00.000Z' });
+  });
+
+  it('outages of the same emitter share one origin; meta carries network', () => {
+    const o = (id: string, dept: string) => ({ id, network: 'electricite', dept, level: 'jaune', since: ago(H), evidence: [{ source: 'rte', text: '', at: null, link: null }] });
+    const { signals } = run({ room: { generatedAt: ago(60_000), outages: [o('electricite|dept:29', '29'), o('electricite|dept:22', '22')] } });
+    expect(new Set(signals.map((x: { origin: string }) => x.origin))).toEqual(new Set(['rte']));
+    expect(signals[0].meta.network).toBe('electricite');
+    expect(new Set(signals.map((x: { id: string }) => x.id)).size).toBe(2);
+  });
+
+  it('press event keeps the max severity of its articles in meta', () => {
+    const base = { category: 'security', lat: 48.85, lon: 2.35, feedName: 'A', publishedAt: ago(H), eventId: 7 };
+    const news = [{ ...base, id: 1, severity: 'low', title: 'a' }, { ...base, id: 2, severity: 'critical', title: 'b' }];
+    const p = run({ news }).signals[0];
+    expect(p.meta).toEqual({ eventId: 7, category: 'security', severity: 'critical' });
+    expect(p.level).toBe('rouge');
+  });
+
+  it('periods and rail situations long over are dropped', () => {
+    const vigilance = { readAt: ago(60_000), updateTime: ago(60_000), periods: [{ echeance: 'J', begin: ago(40 * H), end: ago(10 * H), departments: [{ code: '29', color: 3, phenomena: [{ id: '1', color: 3, slots: [] }] }] }] };
+    const rail = { at: ago(60_000), errors: [], situations: [{ id: 'r1', title: 'x', cause: 'grève', causeKind: 'autre', scope: 'Lyon', start: ago(20 * H), end: ago(10 * H), trains: 1 }] };
+    expect(run({ vigilance, rail }).signals).toEqual([]);
   });
 
   it('stale vigilance (readAt 7 h ago) → no signal, unknown contains "Météo-France"', () => {

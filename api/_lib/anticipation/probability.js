@@ -20,7 +20,8 @@
  * @property {string|null} publishedAt
  * @property {string} observedAt
  * @property {string} checkedAt
- * @property {string} ref
+ * @property {string} ref Référence de la source (adresse ou identifiant).
+ * @property {{phenomenon?: string, echeance?: 'J'|'J1', network?: string, eventId?: number|null, category?: string|null, severity?: string|null, participants?: number|null}} [meta] Champs propres à chaque nature de signal.
  * @typedef {object} Evidence Preuves réunies pour un scénario, entrée du plancher.
  * @property {number} origins Origines indépendantes.
  * @property {boolean} hasOfficial Au moins une origine officielle.

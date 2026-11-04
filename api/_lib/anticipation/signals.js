@@ -21,6 +21,9 @@ export const MAX_AGE_MS = Object.freeze({
   presse: 24 * H,
 });
 
+/** Âge maximal du relevé lui-même (distinct de la péremption d'un signal : un rassemblement reste 26 h après sa fin). */
+export const RELEVE_MAX_AGE_MS = Object.freeze({ protests: 2 * H });
+
 const SOCIAL_RE = /grève|mouvement social|préavis/i;
 const OPERATOR_RE = /\b(SNCF|RATP|TCL|RTM|Tisséo|TBM|Ilévia|Star|Tan)\b/i;
 /** Phénomènes de vigilance (id Météo-France → nom court porté par `ref`). */
@@ -28,6 +31,7 @@ const PHENOMENA = Object.freeze({ 1: 'vent', 2: 'pluie_inondation', 3: 'orages',
 const LEVEL_OF_COLOR = Object.freeze({ 2: 'jaune', 3: 'orange', 4: 'rouge' });
 const OFFICIAL_OUTAGE_SOURCES = new Set(['rte', 'edf', 'statut', 'arcep']);
 
+const errMsg = (/** @type {unknown} */ e) => (e instanceof Error ? e.message : String(e));
 const iso = (/** @type {number} */ ms) => new Date(ms).toISOString();
 const ms = (/** @type {unknown} */ v) => (typeof v === 'string' ? Date.parse(v) : NaN);
 /** Relevé lu il y a moins de `max` ms (date illisible ou future au-delà de 5 min : périmé). */
@@ -46,7 +50,7 @@ function mk(p) {
   return {
     id: `${p.kind}:${p.origin}:${dept.join('+') || '-'}:${p.key}`,
     domain: p.domain, kind: p.kind, source: p.source, origin: p.origin,
-    official: p.official ?? false, dept, communes: p.communes ?? [],
+    official: p.official ?? false, dept, communes: p.communes ?? [], ...(p.meta ? { meta: p.meta } : {}),
     level: p.level ?? null, value: p.value ?? null, window: p.window ?? null,
     publishedAt: p.publishedAt ?? null, observedAt: p.observedAt ?? p.readAt, checkedAt: p.readAt, ref: p.ref ?? '',
   };
@@ -61,11 +65,12 @@ function deptOfPoint(/** @type {unknown} */ lat, /** @type {unknown} */ lon) {
 
 // ─── Manifestations ───
 
-function fromProtests(/** @type {any} */ protests, /** @type {number} */ now) {
+function fromProtests(/** @type {any} */ protests, /** @type {number} */ now, /** @type {string[]} */ errors) {
   /** @type {Signal[]} */
   const out = [];
   const readAt = protests.readAt;
   for (const it of Array.isArray(protests.items) ? protests.items : []) {
+    try {
     const start = ms(it.startsAt);
     if (!Number.isFinite(start)) continue;
     const signale = it.status === 'signale' || it.source === 'presse' || it.source === 'gdelt';
@@ -80,33 +85,42 @@ function fromProtests(/** @type {any} */ protests, /** @type {number} */ now) {
       out.push(mk({ ...base, kind: 'rassemblement_annonce', source: 'prefecture', origin: `prefecture:${dept[0] ?? 'n.d.'}`, official: true }));
     } else if (signale) {
       const origin = it.source === 'gdelt' ? `gdelt:${it.id}` : `presse:item:${it.id}`;
-      out.push(mk({ ...base, kind: 'rassemblement_signale', source: it.source, origin, value: typeof it.participants === 'number' ? it.participants : null, publishedAt: iso(start) }));
+      out.push(mk({ ...base, kind: 'rassemblement_signale', source: it.source, origin, value: typeof it.participants === 'number' ? it.participants : null, publishedAt: iso(start), meta: { participants: typeof it.participants === 'number' ? it.participants : null } }));
     } else {
       const origin = it.source === 'giletsjaunes' ? 'gilets-jaunes' : it.source;
       out.push(mk({ ...base, kind: 'rassemblement_annonce', source: it.source, origin }));
     }
+    } catch (e) { errors.push(`Manifestations: ${it?.id}: ${errMsg(e)}`); }
   }
   return out;
 }
 
 // ─── Vigilance Météo-France ───
 
-function fromVigilance(/** @type {any} */ v) {
+function fromVigilance(/** @type {any} */ v, /** @type {number} */ now, /** @type {string[]} */ errors) {
   /** @type {Signal[]} */
   const out = [];
   for (const period of Array.isArray(v.periods) ? v.periods : []) {
+    if (ms(period.end) + MAX_AGE_MS.vigilance < now) continue;
     for (const d of Array.isArray(period.departments) ? period.departments : []) {
-      const code = normalizeDepartmentCode(d.code);
-      if (!code) continue;
-      for (const ph of Array.isArray(d.phenomena) ? d.phenomena : []) {
-        const level = /** @type {Record<number, string>} */ (LEVEL_OF_COLOR)[ph.color];
-        const name = /** @type {Record<string, string>} */ (PHENOMENA)[ph.id];
-        if (!level || !name) continue;
-        const slot = (Array.isArray(ph.slots) ? ph.slots : []).find((/** @type {any} */ s) => s.color === ph.color && Number.isFinite(ms(s.from)) && Number.isFinite(ms(s.to)));
-        const window = slot ? { from: iso(ms(slot.from)), to: iso(ms(slot.to)) } : { from: iso(ms(period.begin)), to: iso(ms(period.end)) };
-        out.push(mk({ kind: 'vigilance', domain: 'weather', source: 'meteo-france', origin: 'meteo-france', official: true, dept: [code], level, window,
-          publishedAt: v.updateTime ?? null, readAt: v.readAt, key: `${name}:${period.echeance}`, ref: name }));
-      }
+      try {
+        const code = normalizeDepartmentCode(d.code);
+        if (!code) continue;
+        for (const ph of Array.isArray(d.phenomena) ? d.phenomena : []) {
+          const level = /** @type {Record<number, string>} */ (LEVEL_OF_COLOR)[ph.color];
+          const name = /** @type {Record<string, string>} */ (PHENOMENA)[ph.id];
+          if (!level || !name) continue;
+          // Créneaux de la couleur du phénomène (ou plus forte) fusionnés : du premier début à la dernière fin.
+          const all = Array.isArray(ph.slots) ? ph.slots : [];
+          if (all.some((/** @type {any} */ s) => !Number.isFinite(ms(s.from)) || !Number.isFinite(ms(s.to)))) throw new Error('créneau à date illisible');
+          const slots = all.filter((/** @type {any} */ s) => s.color >= ph.color);
+          const window = slots.length
+            ? { from: iso(Math.min(...slots.map((/** @type {any} */ s) => ms(s.from)))), to: iso(Math.max(...slots.map((/** @type {any} */ s) => ms(s.to)))) }
+            : { from: iso(ms(period.begin)), to: iso(ms(period.end)) };
+          out.push(mk({ kind: 'vigilance', domain: 'weather', source: 'meteo-france', origin: 'meteo-france', official: true, dept: [code], level, window,
+            publishedAt: v.updateTime ?? null, readAt: v.readAt, key: `${name}:${period.echeance}`, ref: 'meteo-france:vigilance', meta: { phenomenon: name, echeance: period.echeance } }));
+        }
+      } catch (e) { errors.push(`Météo-France: département ${d?.code}: ${errMsg(e)}`); }
     }
   }
   return out;
@@ -114,50 +128,57 @@ function fromVigilance(/** @type {any} */ v) {
 
 // ─── Situations ferroviaires ───
 
-function fromRail(/** @type {any} */ rail, /** @type {number} */ now) {
+function fromRail(/** @type {any} */ rail, /** @type {number} */ now, /** @type {string[]} */ errors) {
   /** @type {Signal[]} */
   const out = [];
   for (const s of Array.isArray(rail.situations) ? rail.situations : []) {
+    try {
+    if (ms(s.end) + MAX_AGE_MS.perturbation_sncf < now) continue;
     const social = SOCIAL_RE.test(`${s.cause ?? ''} ${s.title ?? ''}`);
     if (!social && s.causeKind === 'travaux') continue; // travaux annoncés : pas une perturbation
     const from = ms(s.start);
     if (!Number.isFinite(from)) continue;
     const to = Number.isFinite(ms(s.end)) ? ms(s.end) : Math.max(from, now);
     out.push(mk({ kind: social ? 'mouvement_social_transport' : 'perturbation_sncf', domain: 'transport', source: 'sncf', origin: 'sncf', official: true,
-      dept: deptsOfRailScope(String(s.scope ?? s.title ?? '')), window: { from: iso(from), to: iso(to) }, publishedAt: iso(from), readAt: rail.at, key: String(s.id), ref: String(s.title ?? s.id) }));
+      dept: deptsOfRailScope(String(s.scope ?? s.title ?? '')), window: { from: iso(from), to: iso(to) }, publishedAt: iso(from), readAt: rail.at, key: String(s.id), ref: String(s.id) }));
+    } catch (e) { errors.push(`SNCF: ${s?.id}: ${errMsg(e)}`); }
   }
   return out;
 }
 
 // ─── Pannes en cours ───
 
-function fromRoom(/** @type {any} */ room, /** @type {number} */ now) {
+function fromRoom(/** @type {any} */ room, /** @type {number} */ now, /** @type {string[]} */ errors) {
   /** @type {Signal[]} */
   const out = [];
   for (const o of Array.isArray(room.outages) ? room.outages : []) {
+    try {
     const evidence = Array.isArray(o.evidence) ? o.evidence : [];
     const best = evidence.find((/** @type {any} */ e) => OFFICIAL_OUTAGE_SOURCES.has(e.source)) ?? evidence[0];
     const src = best?.source ?? 'presse';
     const code = normalizeDepartmentCode(o.dept);
     const from = ms(o.since);
     const to = Number.isFinite(ms(o.until)) ? ms(o.until) : now;
-    out.push(mk({ kind: 'panne', domain: o.network === 'electricite' ? 'energy' : 'telecom', source: src, origin: `${src}:${o.id}`,
+    out.push(mk({ kind: 'panne', domain: o.network === 'electricite' ? 'energy' : 'telecom', source: src, origin: src,
       official: OFFICIAL_OUTAGE_SOURCES.has(src), dept: code ? [code] : [], level: o.level ?? null,
       window: Number.isFinite(from) ? { from: iso(from), to: iso(Math.max(from, to)) } : null, publishedAt: Number.isFinite(from) ? iso(from) : null,
-      readAt: room.generatedAt, key: String(o.id), ref: String(o.id) }));
+      readAt: room.generatedAt, key: String(o.id), ref: String(o.id), meta: { network: o.network } }));
+    } catch (e) { errors.push(`Pannes: ${o?.id}: ${errMsg(e)}`); }
   }
   return out;
 }
 
 // ─── Veille cyber ───
 
-function fromCyber(/** @type {any} */ cyber, /** @type {number} */ now) {
+function fromCyber(/** @type {any} */ cyber, /** @type {number} */ now, /** @type {string[]} */ errors) {
   /** @type {Signal[]} */
   const out = [];
   for (const h of Array.isArray(cyber.ddosia?.hosts) ? cyber.ddosia.hosts : []) {
+    try {
     if (!/\.fr$/i.test(String(h.host)) || !(ms(h.last) >= now - 24 * H)) continue;
     const code = normalizeDepartmentCode(h.place?.dept);
     out.push(mk({ kind: 'cyber_revendication', domain: 'cyber', source: 'ddosia', origin: 'ddosia', dept: code ? [code] : [], publishedAt: h.last, readAt: cyber.readAt, key: String(h.host), ref: String(h.host) }));
+    } catch (e) { errors.push(`Veille cyber: ${h?.host}: ${errMsg(e)}`); }
   }
   const ratio = Math.max(cyber.radar?.l7Ratio ?? 0, cyber.radar?.l3Ratio ?? 0);
   if (ratio > 1) {
@@ -210,59 +231,73 @@ function fromFuel(/** @type {any} */ fuel) {
 
 // ─── Presse ───
 
-function fromNews(/** @type {any[]} */ news, /** @type {number} */ now) {
+const SEVERITY_RANK = Object.freeze({ info: 0, low: 1, medium: 2, high: 3, critical: 4 });
+
+function fromNews(/** @type {any[]} */ news, /** @type {number} */ now, /** @type {string[]} */ errors) {
   /** @type {Signal[]} */
   const out = [];
-  const seen = new Set();
-  const seenSocial = new Set();
-  const level = { medium: 'jaune', high: 'orange', critical: 'rouge' };
+  /** @type {Map<string, any>} */
+  const events = new Map();
   for (const n of news) {
-    const t = ms(n?.publishedAt);
-    if (!Number.isFinite(t) || now - t > MAX_AGE_MS.presse || t - now > 5 * 60_000) continue;
-    const origin = n.eventId != null ? `presse:event:${n.eventId}` : n.id != null ? `presse:item:${n.id}` : null;
-    if (!origin) continue;
-    const common = { domain: /** @type {const} */ ('press'), source: String(n.feedName ?? 'presse'), origin, dept: deptOfPoint(n.lat, n.lon), publishedAt: iso(t), readAt: iso(now), ref: String(n.link ?? origin), key: origin };
-    if (!seen.has(origin)) {
-      seen.add(origin);
-      out.push(mk({ ...common, kind: 'presse', level: /** @type {Record<string, string>} */ (level)[n.severity] ?? null }));
-    }
-    const title = String(n.title ?? '');
-    if (n.category === 'social' && SOCIAL_RE.test(title) && OPERATOR_RE.test(title) && !seenSocial.has(origin)) {
-      seenSocial.add(origin);
-      out.push(mk({ ...common, domain: 'transport', kind: 'mouvement_social_transport' }));
-    }
+    try {
+      const t = ms(n?.publishedAt);
+      if (!Number.isFinite(t) || now - t > MAX_AGE_MS.presse || t - now > 5 * 60_000) continue;
+      const origin = n.eventId != null ? `presse:event:${n.eventId}` : n.id != null ? `presse:item:${n.id}` : null;
+      if (!origin) continue;
+      const rank = /** @type {Record<string, number>} */ (SEVERITY_RANK)[n.severity] ?? -1;
+      const cur = events.get(origin);
+      if (!cur) events.set(origin, { origin, first: n, best: n, bestRank: rank, social: false });
+      else if (rank > cur.bestRank) { cur.best = n; cur.bestRank = rank; }
+      const e = events.get(origin);
+      if (n.category === 'social' && SOCIAL_RE.test(String(n.title ?? '')) && OPERATOR_RE.test(String(n.title ?? ''))) e.social = e.social || n;
+    } catch (err) { errors.push(`Presse: ${n?.id}: ${errMsg(err)}`); }
+  }
+  const level = { medium: 'jaune', high: 'orange', critical: 'rouge' };
+  for (const e of events.values()) {
+    try {
+      const n = e.first;
+      const t = ms(n.publishedAt);
+      const meta = { eventId: n.eventId ?? null, category: e.best.category ?? null, severity: e.best.severity ?? null };
+      // Point : le premier article localisé de l'événement.
+      const located = [e.first, e.best, e.social].find((x) => x && typeof x.lat === 'number' && typeof x.lon === 'number') ?? n;
+      const common = { domain: /** @type {const} */ ('press'), source: String(n.feedName ?? 'presse'), origin: e.origin, dept: deptOfPoint(located.lat, located.lon), publishedAt: iso(t), readAt: iso(now), ref: String(n.link ?? e.origin), key: e.origin, meta };
+      out.push(mk({ ...common, kind: 'presse', level: /** @type {Record<string, string>} */ (level)[e.best.severity] ?? null }));
+      if (e.social) out.push(mk({ ...common, domain: 'transport', kind: 'mouvement_social_transport', meta: { ...meta, category: e.social.category ?? null } }));
+    } catch (err) { errors.push(`Presse: ${e.origin}: ${errMsg(err)}`); }
   }
   return out;
 }
 
 /**
- * Normalise les relevés en signaux. `unknown` nomme (en français) les relevés absents ou périmés.
+ * Normalise les relevés en signaux. `unknown` nomme (en français) les relevés absents ou périmés ; `errors` rapporte les éléments illisibles écartés.
  * @param {{protests: any, vigilance: any, rail: any, room: any, cyber: any, ecowatt: any, fuel: any, news: any[]|null, football?: any}} inputs
  * @param {number} now Heure de référence en ms (aucune lecture d'horloge ici).
- * @returns {{signals: Signal[], unknown: string[]}}
+ * @returns {{signals: Signal[], unknown: string[], errors: string[]}}
  */
 export function toSignals(inputs, now) {
   /** @type {Signal[]} */
   const signals = [];
   /** @type {string[]} */
   const unknown = [];
+  /** @type {string[]} */
+  const errors = [];
   /** @type {Array<[any, unknown, number, string, () => Signal[]]>} */
   const sources = [
-    [inputs.protests, inputs.protests?.readAt, MAX_AGE_MS.rassemblement, 'Manifestations non lues', () => fromProtests(inputs.protests, now)],
-    [inputs.vigilance, inputs.vigilance?.readAt, MAX_AGE_MS.vigilance, 'Météo-France non lue', () => fromVigilance(inputs.vigilance)],
-    [inputs.rail, inputs.rail?.at, MAX_AGE_MS.perturbation_sncf, 'SNCF non lue', () => fromRail(inputs.rail, now)],
-    [inputs.room, inputs.room?.generatedAt, MAX_AGE_MS.panne, 'Pannes non lues', () => fromRoom(inputs.room, now)],
-    [inputs.cyber, inputs.cyber?.readAt, MAX_AGE_MS.cyber, 'Veille cyber non lue', () => fromCyber(inputs.cyber, now)],
+    [inputs.protests, inputs.protests?.readAt, RELEVE_MAX_AGE_MS.protests, 'Manifestations non lues', () => fromProtests(inputs.protests, now, errors)],
+    [inputs.vigilance, inputs.vigilance?.readAt, MAX_AGE_MS.vigilance, 'Météo-France non lue', () => fromVigilance(inputs.vigilance, now, errors)],
+    [inputs.rail, inputs.rail?.at, MAX_AGE_MS.perturbation_sncf, 'SNCF non lue', () => fromRail(inputs.rail, now, errors)],
+    [inputs.room, inputs.room?.generatedAt, MAX_AGE_MS.panne, 'Pannes non lues', () => fromRoom(inputs.room, now, errors)],
+    [inputs.cyber, inputs.cyber?.readAt, MAX_AGE_MS.cyber, 'Veille cyber non lue', () => fromCyber(inputs.cyber, now, errors)],
     [inputs.ecowatt, inputs.ecowatt?.generatedAt, MAX_AGE_MS.ecowatt, 'Écowatt non lu', () => fromEcowatt(inputs.ecowatt, now)],
     [inputs.fuel, inputs.fuel?.generatedAt, MAX_AGE_MS.tension_carburant, 'Carburants non lus', () => fromFuel(inputs.fuel)],
   ];
   for (const [input, readAt, max, label, map] of sources) {
     if (!input || !fresh(readAt, max, now)) { unknown.push(label); continue; }
-    try { signals.push(...map()); } catch { unknown.push(label); }
+    try { signals.push(...map()); } catch (e) { unknown.push(label); errors.push(`${label}: ${errMsg(e)}`); }
   }
   // Presse : un tableau sans date de lecture, chaque article est daté et filtré à 24 h.
   if (Array.isArray(inputs.news)) {
-    try { signals.push(...fromNews(inputs.news, now)); } catch { unknown.push('Presse non lue'); }
+    try { signals.push(...fromNews(inputs.news, now, errors)); } catch (e) { unknown.push('Presse non lue'); errors.push(`Presse: ${errMsg(e)}`); }
   } else unknown.push('Presse non lue');
-  return { signals, unknown };
+  return { signals, unknown, errors };
 }
