@@ -233,7 +233,7 @@ describe('archive des signaux bornée (revue finale)', () => {
     await reg.archiveSignals([sig('a'), sig('b'), sig('c')], NOW + 2 * MIN);
     await reg.archiveSignals([sig('a'), sig('d')], NOW + 3 * MIN);
     expect((await readFile(file, 'utf8')).split('\n').filter(Boolean).length).toBe(before);
-    expect(reg.errors.filter((e: string) => e === 'archive des signaux du 2026-11-04 : plafond de 50 Mo atteint')).toHaveLength(1);
+    expect(reg.errors.filter((e: string) => e === 'archive des signaux du 2026-11-04 : plafond de 50\u00a0Mo atteint')).toHaveLength(1);
     // Jour suivant : nouveau fichier, ajouts repris.
     await reg.archiveSignals([sig('e')], NOW + 24 * 60 * MIN);
     expect((await readFile(path.join(dir, 'signals', '2026-11-05.jsonl'), 'utf8')).trim().split('\n')).toHaveLength(1);
