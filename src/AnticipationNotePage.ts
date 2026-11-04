@@ -5,7 +5,7 @@ import './styles/anticipation-pages.css';
 import type { AnticipationNote, AnticipationScenario, AnticipationStatus } from './types/index.ts';
 import { fetchAnticipationNote } from './services/anticipation.ts';
 import { WORD_LABEL } from './services/anticipation-words.ts';
-import { dayLabel, scenarioPlace } from './components/anticipation/agenda-view.ts';
+import { scenarioPlace } from './components/anticipation/agenda-view.ts';
 import { escapeHtml } from './components/france-intel-events.ts';
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -53,9 +53,16 @@ function todayTable(list: readonly AnticipationScenario[]): string {
   return `<table><thead><tr><th>Où</th><th>Scénario</th><th>Probabilité</th><th>Bascule à surveiller</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
+/** « Jeu. 5/11 » : jour de la semaine abrégé et date, sans dépendre du libellé « Aujourd'hui · ». */
+function shortDayLabel(day: string): string {
+  const [y, m, d] = day.split('-').map(Number);
+  const wd = new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString('fr-FR', { weekday: 'short', timeZone: 'UTC' });
+  return `${wd.charAt(0).toUpperCase()}${wd.slice(1)} ${d}/${String(m).padStart(2, '0')}`;
+}
+
 function weekTable(note: AnticipationNote): string {
   if (note.week.length === 0) return '<p class="anp-none">Aucun scénario ouvert pour les sept prochains jours.</p>';
-  const rows = note.week.map(({ day, scenario }) => `<tr><td class="anp-nw">${escapeHtml(dayLabel(day, note.day).replace(/^Aujourd'hui · /, ''))}</td>`
+  const rows = note.week.map(({ day, scenario }) => `<tr><td class="anp-nw">${escapeHtml(shortDayLabel(day))}</td>`
     + `<td>${escapeHtml(scenarioPlace(scenario))} : ${escapeHtml(scenario.title)}</td><td class="anp-p">${escapeHtml(wordText(scenario))}</td></tr>`).join('');
   return `<table><tbody>${rows}</tbody></table>`;
 }
@@ -83,7 +90,7 @@ export function noteHtml(note: AnticipationNote): string {
     <h2>Scénarios du jour</h2>${todayTable(note.today)}
     <h2>Les 7 prochains jours</h2>${weekTable(note)}
     <h2>Depuis hier</h2>${sinceYesterday(note)}
-    <div class="anp-ft">Probabilités exprimées sur l’échelle standard des services de renseignement (mots et fourchettes). Chaque scénario cite ses sources ; méthode et bilan publics sur francemonitor.com/methodology. Hypothèses à vérifier, pas des prévisions officielles.</div>
+    <div class="anp-ft">Probabilités exprimées sur l’échelle standard des services de renseignement (mots et fourchettes). Chaque scénario cite ses sources ; méthode et bilan publics : <a href="/methodology.html#anticipation">francemonitor.com/methodology.html#anticipation</a>. Hypothèses à vérifier, pas des prévisions officielles.</div>
     ${degraded}
   </article>`;
 }

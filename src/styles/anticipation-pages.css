@@ -28,6 +28,9 @@
 }
 @page { size: A4; margin: 14mm; }
 @media print {
+  html, body, #app { height: auto !important; overflow: visible !important; }
+  .anp-page { min-height: 0; overflow: visible; }
+  .anp-ft a { color: inherit; }
   html, body, .anp-page { background: #fff !important; color: #000; }
   .anp-page { padding: 0; }
   .anp-bar { display: none; }
