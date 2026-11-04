@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 // @ts-expect-error module JS sans déclaration
 import { RULES } from '../api/_lib/anticipation/rules/index.js';
 // @ts-expect-error module JS sans déclaration
-// @ts-expect-error module JS sans déclaration
 import { evaluate } from '../api/_lib/anticipation/engine.js';
 // @ts-expect-error module JS sans déclaration
 import mobilisation from '../api/_lib/anticipation/rules/mobilisation-transports.js';

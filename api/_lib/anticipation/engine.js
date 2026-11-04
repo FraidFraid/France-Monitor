@@ -31,7 +31,7 @@ const overlap = (/** @type {{from: string, to: string}} */ a, /** @type {{from: 
   return af < bt && bf < at;
 };
 const sameJson = (/** @type {unknown} */ a, /** @type {unknown} */ b) => JSON.stringify(a) === JSON.stringify(b);
-const WATCHED = /** @type {const} */ (['word', 'chain', 'bascules', 'window', 'unknowns', 'verify', 'disconfirmers']);
+const WATCHED = /** @type {const} */ (['word', 'why', 'title', 'chain', 'bascules', 'window', 'unknowns', 'verify', 'disconfirmers']);
 
 /**
  * @param {Signal[]|null} signals
@@ -83,7 +83,8 @@ export function evaluate(signals, registry, now, rules = RULES, unknown = []) {
           // Une bascule déjà atteinte le reste, même si le signal qui l'a levée a disparu entre-temps.
           const bascules = c.bascules.map((b) => {
             const prev = existing.bascules?.find((p) => p.id === b.id);
-            return prev && prev.state === 'atteint' && b.state !== 'atteint' ? prev : b;
+            // Atteinte puis toujours atteinte : on garde l'ancienne (date comprise), sinon l'heure de lecture ferait réviser à chaque tick.
+            return prev && prev.state === 'atteint' ? prev : b;
           });
           const { evidence: _evidence, ...fields } = c;
           void _evidence;

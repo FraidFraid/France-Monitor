@@ -45,6 +45,14 @@ describe('toSignals', () => {
     expect(arr.origin).toBe('prefecture:75');
   });
 
+  it('arrêté: publishedAt comes from arrete.publishedOn (Paris day), null when absent', () => {
+    const item = (id: string, arrete: object) => ({ id, source: 'prefecture', status: 'annonce', title: 'Interdiction', startsAt: '2026-11-05T08:00:00Z', allDay: false, city: 'Paris', dept: '75', lat: null, lon: null, arrete });
+    const { signals } = run({ protests: { readAt: ago(60_000), items: [item('a1', { kind: 'interdiction', publishedOn: '2026-11-04' }), item('a2', { kind: 'interdiction' })] } });
+    const arr = signals.filter((x: { kind: string }) => x.kind === 'arrete_prefectoral');
+    expect(arr.find((x: { id: string }) => x.id.includes('a1')).publishedAt).toBe('2026-11-03T23:00:00.000Z');
+    expect(arr.find((x: { id: string }) => x.id.includes('a2')).publishedAt).toBeNull();
+  });
+
   it('vigilance J1 orange vent → level orange, window from slot, official true', () => {
     const vigilance = {
       readAt: ago(30 * 60_000), updateTime: ago(30 * 60_000),

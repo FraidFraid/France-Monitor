@@ -162,6 +162,29 @@ describe('engine fixes', () => {
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 
+  it('reached bascules keep their date: only the relevé readAt changing does not revise', async () => {
+    const { dir, registry } = await reg();
+    try {
+      const b = (at: string) => [{ id: 'arrete', label: 'Arrêté préfectoral publié', state: 'atteint', at }];
+      const first = evaluate([], registry, NOW, [rule('r1', () => [cand({ bascules: b('2026-11-04T08:00:00.000Z') })])]);
+      await registry.record({ at: new Date(NOW).toISOString(), type: 'ouverture', scenario: first.opened[0] });
+      const t2 = evaluate([], registry, NOW + 60_000, [rule('r1', () => [cand({ bascules: b('2026-11-04T08:01:00.000Z') })])]);
+      expect(t2.revised).toHaveLength(0);
+      expect(t2.open[0].bascules[0].at).toBe('2026-11-04T08:00:00.000Z');
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it('a changed why or title is persisted', async () => {
+    const { dir, registry } = await reg();
+    try {
+      const first = evaluate([], registry, NOW, [rule('r1', () => [cand()])]);
+      await registry.record({ at: new Date(NOW).toISOString(), type: 'ouverture', scenario: first.opened[0] });
+      const t2 = evaluate([], registry, NOW + 60_000, [rule('r1', () => [cand({ evidence: { ...strong, origins: 4 } })])]);
+      expect(t2.revised).toHaveLength(1);
+      expect(t2.revised[0].why).toContain('4 sources');
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
   it('a closed scenario is neither reopened nor overwritten', async () => {
     const { dir, registry } = await reg();
     try {

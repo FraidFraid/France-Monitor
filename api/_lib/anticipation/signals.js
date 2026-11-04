@@ -4,6 +4,7 @@
 import { departementAt } from '../geo-fr.js';
 import { normalizeDepartmentCode } from '../../_shared/departments.js';
 import { deptsOfRailScope } from './rail-hubs.js';
+import { parisInstant } from './rules/paris-time.js';
 
 /** @typedef {import('./probability.js').Signal} Signal */
 
@@ -30,6 +31,12 @@ const OPERATOR_RE = /\b(SNCF|RATP|TCL|RTM|Tisséo|TBM|Ilévia|Star|Tan)\b/i;
 const PHENOMENA = Object.freeze({ 1: 'vent', 2: 'pluie_inondation', 3: 'orages', 4: 'crues', 5: 'neige_verglas', 6: 'canicule', 7: 'grand_froid', 9: 'vagues_submersion' });
 const LEVEL_OF_COLOR = Object.freeze({ 2: 'jaune', 3: 'orange', 4: 'rouge' });
 const OFFICIAL_OUTAGE_SOURCES = new Set(['rte', 'edf', 'statut', 'arcep']);
+
+/** Jour de publication « AAAA-MM-JJ » (jour de Paris) en ISO (minuit de Paris), ou null s'il manque ou est illisible. */
+function parisDayToIso(/** @type {unknown} */ day) {
+  const m = typeof day === 'string' ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(day) : null;
+  return m ? new Date(parisInstant(Number(m[1]), Number(m[2]), Number(m[3]), 0)).toISOString() : null;
+}
 
 const errMsg = (/** @type {unknown} */ e) => (e instanceof Error ? e.message : String(e));
 const iso = (/** @type {number} */ ms) => new Date(ms).toISOString();
@@ -80,7 +87,7 @@ function fromProtests(/** @type {any} */ protests, /** @type {number} */ now, /*
     const dept = code ? [code] : deptOfPoint(it.lat, it.lon);
     const base = { domain: /** @type {const} */ ('social'), readAt, dept, window: { from: iso(start), to: iso(end) }, ref: it.url || String(it.id), key: String(it.id) };
     if (it.arrete) {
-      out.push(mk({ ...base, kind: 'arrete_prefectoral', source: 'prefecture', origin: `prefecture:${dept[0] ?? 'n.d.'}`, official: true }));
+      out.push(mk({ ...base, kind: 'arrete_prefectoral', source: 'prefecture', origin: `prefecture:${dept[0] ?? 'n.d.'}`, official: true, publishedAt: parisDayToIso(it.arrete.publishedOn) }));
     } else if (it.source === 'prefecture') {
       out.push(mk({ ...base, kind: 'rassemblement_annonce', source: 'prefecture', origin: `prefecture:${dept[0] ?? 'n.d.'}`, official: true }));
     } else if (signale) {
