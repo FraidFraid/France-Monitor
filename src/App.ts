@@ -4696,6 +4696,7 @@ export class App {
           flyTo: (lon, lat, zoom) => map?.flyTo(lon, lat, zoom),
           refitFrance: () => map?.refitFrance(),
         },
+        onData: () => this.refreshThemeBrief(),
         schedule: (fn, ms) => this.registerPausableInterval(fn, ms),
         unschedule: (timer) => this.removePausableInterval(timer),
       });
@@ -5213,6 +5214,8 @@ export class App {
       ...(theme === 'transport' ? { transport: this.transportBriefData() } : {}),
       // Pannes en cours : elles font le niveau de l'onglet Pannes (et de la Vue générale), l'En bref doit les nommer.
       ...(theme === 'outages' || theme === 'general' ? { levelSignals: this.outagesNow?.hotOutages() ?? [] } : {}),
+      // Anticipation (04/11/2026) : dernière relève déjà en mémoire seulement, aucune relève propre à la Vue générale.
+      ...(theme === 'general' ? { anticipationLine: this.anticipation?.briefLine() ?? null } : {}),
       now: Date.now(),
     };
   }

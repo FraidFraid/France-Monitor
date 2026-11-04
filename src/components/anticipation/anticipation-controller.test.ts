@@ -74,4 +74,23 @@ describe('pilote de l\u2019onglet Anticipation', () => {
     expect(mapEl.querySelector('.anr')).toBeNull();
     expect(timers.filter((t) => t.live)).toHaveLength(0);
   });
+
+  it('briefLine: un scénario très probable d’aujourd’hui seulement, sans relève rien, relève trop vieille rien', async () => {
+    const tres = { ...LYON, id: 'sc-tempete', title: 'Coupures d’électricité puis de réseau mobile', word: 'tres_probable' as const, zone: { dept: ['29'], communes: [] } };
+    const mapEl = document.createElement('div');
+    const make = (data: typeof FIXTURE) => new AnticipationController<number>({
+      mapEl, map: { setOutagesRoom: () => undefined, flyTo: () => undefined, refitFrance: () => undefined },
+      read: async () => data, loadDepts: async () => depts, colorOf, schedule: () => 1, unschedule: () => undefined,
+    });
+    const now = Date.parse('2026-11-04T12:35:00Z');
+    const none = make(FIXTURE);
+    expect(none.briefLine(now)).toBeNull();
+    await none.setActive(true);
+    expect(none.briefLine(now)).toBeNull(); // seulement « probable »
+    const ctl = make({ ...FIXTURE, scenarios: [LYON, tres] });
+    await ctl.setActive(true);
+    expect(ctl.briefLine(now)).toBe('Très probable aujourd’hui : Coupures d’électricité puis de réseau mobile (Finistère).');
+    expect(ctl.briefLine(Date.parse('2026-11-06T12:00:00Z'))).toBeNull(); // autre jour (et relève périmée)
+    expect(ctl.briefLine(now + 20 * 60_000)).toBeNull(); // relève de plus de 15 min
+  });
 });

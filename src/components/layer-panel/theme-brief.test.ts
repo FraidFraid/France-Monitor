@@ -125,3 +125,17 @@ describe('zéros lisibles (20/10/2026)', () => {
     expect(visibleText(renderLayerView('brief', v))).toContain('Panne en cours : Électricité · L 400kV');
   });
 });
+
+describe('ligne d’anticipation de la Vue générale', () => {
+  it('une section d’information avec lien vers la note, sans toucher au niveau ni à l’attention', () => {
+    const base = input();
+    const withLine = input({ anticipationLine: 'Très probable aujourd’hui : Coupures (Finistère).' });
+    const view = buildThemeBriefView(withLine);
+    const sec = view.sections.find((x) => x.id === 'anticipation');
+    expect(sec?.html).toContain('Très probable aujourd’hui : Coupures (Finistère).');
+    expect(sec?.html).toContain('href="/anticipation/note"');
+    expect(buildThemeBriefView(base).sections.find((x) => x.id === 'anticipation')).toBeUndefined();
+    expect(themeBriefLevel(withLine)).toBe(themeBriefLevel(base));
+    expect(themeAttention(withLine)).toEqual(themeAttention(base));
+  });
+});

@@ -345,7 +345,7 @@ export function hospitalCategoryVar(c: HospitalCategory): string {
 }
 
 /** Codes INSEE dans l'ordre de DEPARTEMENT_NAMES : 01 à 19, 2A, 2B, 21 à 95, puis les DROM. */
-const DEPARTEMENT_CODES: readonly string[] = [
+export const DEPARTEMENT_CODES: readonly string[] = [
   ...Array.from({ length: 19 }, (_, i) => String(i + 1).padStart(2, '0')), '2A', '2B',
   ...Array.from({ length: 75 }, (_, i) => String(i + 21)), '971', '972', '973', '974', '976',
 ];

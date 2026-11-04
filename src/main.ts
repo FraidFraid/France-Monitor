@@ -53,6 +53,14 @@ function shouldRenderLanding(): boolean {
   return isLandingRoute(pathname, search, hash);
 }
 
+/** Pages publiques de l'anticipation (04/11/2026), chargées à la demande : note de 7 h et bilan. */
+function anticipationPage(): 'note' | 'bilan' | null {
+  const { pathname } = new URL(window.location.href);
+  if (pathname === '/anticipation/note') return 'note';
+  if (pathname === '/anticipation/bilan') return 'bilan';
+  return null;
+}
+
 function shouldRenderSourcesQuality(): boolean {
   return new URL(window.location.href).pathname === '/sources-quality';
 }
@@ -60,7 +68,12 @@ function shouldRenderSourcesQuality(): boolean {
 void initI18n().then(() => {
   const container = document.getElementById('app');
   if (container) {
-    if (shouldRenderSourcesQuality()) {
+    const anticipation = anticipationPage();
+    if (anticipation === 'note') {
+      void import('./AnticipationNotePage.ts').then((m) => m.renderAnticipationNotePage(container));
+    } else if (anticipation === 'bilan') {
+      void import('./AnticipationBilanPage.ts').then((m) => m.renderAnticipationBilanPage(container));
+    } else if (shouldRenderSourcesQuality()) {
       renderSourcesQualityPage(container);
     } else if (shouldRenderLanding()) {
       renderLandingPage(container);

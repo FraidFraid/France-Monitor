@@ -7,6 +7,8 @@ import { DEPARTEMENT_CENTERS } from '../../config/departement-centers.ts';
 import { fetchAnticipationNow } from '../../services/anticipation.ts';
 import { ALL_WORDS, WORD_COLOR_VAR } from '../../services/anticipation-words.ts';
 import { loadDepartementsGeojson } from '../../services/departements-geojson.ts';
+import { parisDay } from '../../services/paris-day.js';
+import { scenarioPlace } from './agenda-view.ts';
 import { AnticipationRoom, type AnticipationColumns, type AnticipationReveal } from './AnticipationRoom.ts';
 
 /** Relève dans l'onglet Anticipation. */
@@ -47,9 +49,13 @@ export interface AnticipationControllerOptions<T> {
   loadDepts?: () => Promise<GeoJSON.FeatureCollection | null>;
   /** Jeton CSS → teinte (défaut : cssColor). */
   colorOf?: (variable: string) => string;
+  /** Appelée après chaque relève réussie (le En bref de la Vue générale relit alors sa ligne d'anticipation). */
+  onData?: () => void;
   schedule: (fn: () => void, ms: number) => T;
   unschedule: (timer: T | null) => void;
 }
+
+const BRIEF_MAX_AGE_MS = 15 * 60_000;
 
 const rank = (w: AnticipationWord | ''): number => (w === '' ? -1 : ALL_WORDS.indexOf(w));
 
@@ -121,6 +127,19 @@ export class AnticipationController<T = unknown> {
     }
   }
 
+  /**
+   * Une ligne pour le En bref de la Vue générale : un scénario « très probable » ouvert dont la fenêtre touche aujourd'hui (Paris),
+   * d'après la dernière relève en mémoire ; null sans relève ou sans tel scénario. Ne relève rien elle-même.
+   */
+  briefLine(nowMs: number = Date.now()): string | null {
+    const today = parisDay(nowMs);
+    // Relève plus vieille que 15 min (onglet quitté depuis) : on n'affiche pas une ligne peut-être périmée.
+    if (!this.data || nowMs - Date.parse(this.data.generatedAt) > BRIEF_MAX_AGE_MS) return null;
+    const s = this.data.scenarios.find((x) => x.word === 'tres_probable' && x.status === 'ouvert'
+      && parisDay(Date.parse(x.window.from)) <= today && today <= parisDay(Date.parse(x.window.to)));
+    return s ? `Très probable aujourd’hui : ${s.title} (${scenarioPlace(s)}).` : null;
+  }
+
   destroy(): void {
     this.opts.unschedule(this.timer);
     this.timer = null;
@@ -138,6 +157,7 @@ export class AnticipationController<T = unknown> {
       if (!this.data) this.room?.setUnavailable();
       return;
     }
+    this.opts.onData?.();
     if (!this.room) return;
     this.room.setData(this.data);
     this.paintMap();

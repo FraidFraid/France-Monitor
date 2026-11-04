@@ -217,6 +217,7 @@ function buildPage(data: SourcesQualityDashboardData, snapshot: SourcesSnapshot 
         <div class="sq-cols" role="row"><span role="columnheader">Source</span><span role="columnheader">État</span><span role="columnheader">Fiabilité</span><span role="columnheader">Limite connue</span></div>
         <div class="sq-rows">${renderSourceList(data.sources, filter, measured, now)}</div>
       </div>
+      <p class="sq-anticipation"><a href="/anticipation/bilan">Bilan public de l’anticipation (bêta)</a> : les mots de probabilité tiennent-ils parole ?</p>
       <div class="sq-folds">
         ${methodFold(data)}
         ${reviewFold(data)}

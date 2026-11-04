@@ -106,6 +106,7 @@
       h1, h2 { line-height: 1.2; }
       h1 { margin: 0 0 14px; font-size: clamp(2rem, 4vw, 2.5rem); letter-spacing: -0.03em; }
       h2 { margin: 28px 0 12px; font-size: 1.1rem; }
+      h3 { margin: 18px 0 8px; font-size: 0.95rem; }
       p, li { color: var(--muted); }
       ul { padding-left: 18px; margin: 0 0 12px; }
       li + li { margin-top: 8px; }
@@ -201,6 +202,48 @@
           <li><strong>Deux déclencheurs seulement.</strong> Le niveau national change de couleur, ou une situation devient élevée ou critique (ou passe d'élevée à critique).</li>
           <li><strong>Confirmation.</strong> Un changement ne part que s'il tient sur deux relevés successifs, soit environ quinze minutes. Les relevés où plus d'une source sur quatorze n'a pas été lue sont écartés : une source muette ne déclenche jamais d'alerte.</li>
           <li><strong>Sans prévision.</strong> L'urgence CAP est toujours « inconnue » : une alerte décrit ce que les sources montrent, jamais ce qui va arriver.</li>
+        </ul>
+        <h2 id="anticipation">Anticipation (bêta)</h2>
+        <p>L'onglet Anticipation croise des signaux ouverts et propose des <strong>hypothèses à vérifier</strong>, avec un mot de probabilité. Ce n'est pas une prévision : chaque scénario est produit par une règle publique, à partir de relevés datés et cités, et sa suite est mesurée dans un <a href="/anticipation/bilan">bilan public</a>. La <a href="/anticipation/note">note de 7&nbsp;h</a> en donne la synthèse imprimable.</p>
+        <h3>L'échelle à sept mots</h3>
+        <p>Les mots et leurs fourchettes sont ceux de l'échelle standard des services de renseignement (PHIA, OTAN).</p>
+        <ul>
+          <li><strong>chance infime</strong> : 5&nbsp;% ou moins</li>
+          <li><strong>très peu probable</strong> : 10 à 20&nbsp;%</li>
+          <li><strong>peu probable</strong> : 25 à 35&nbsp;%</li>
+          <li><strong>possibilité réelle</strong> : 40 à 50&nbsp;%</li>
+          <li><strong>probable</strong> : 55 à 75&nbsp;%</li>
+          <li><strong>très probable</strong> : 80 à 90&nbsp;%</li>
+          <li><strong>quasi certain</strong> : 95&nbsp;% ou plus</li>
+        </ul>
+        <p>Pour l'instant, seuls les quatre mots du milieu de l'échelle (peu probable, possibilité réelle, probable, très probable) sont attribués. Les trois autres sont réservés tant que le bilan ne montre pas qu'ils tiennent parole.</p>
+        <h3>Le plancher des règles</h3>
+        <ul>
+          <li><strong>Une seule source</strong> : au plus « peu probable ».</li>
+          <li><strong>« Probable »</strong> demande au moins deux sources indépendantes, dont une source officielle ou une échéance publiée.</li>
+          <li><strong>« Très probable »</strong> demande en plus un niveau officiel orange ou rouge, une bascule atteinte ou un précédent.</li>
+        </ul>
+        <h3>Ce qui compte comme source indépendante</h3>
+        <p>On compte les <strong>origines</strong>, pas les reprises : une dépêche reprise par dix titres est une seule origine, et un même rassemblement listé par deux sites a deux origines seulement si les deux l'ont relevé séparément. Un relevé absent ou en erreur n'est jamais compté : la règle tourne sans lui, l'écrit comme « inconnu » et n'ouvre jamais un scénario sur une seule preuve.</p>
+        <h3>Les règles et leur test d'arrivée</h3>
+        <p>Chaque règle publie la phrase qui décide, après coup, si le scénario est arrivé.</p>
+        <ul>
+          <li><strong>Canicule et tension sur l'électricité</strong> : Un signal Écowatt rouge est publié, ou une panne d'électricité de niveau orange ou rouge est relevée dans le département, pendant la fenêtre de la vigilance canicule.</li>
+          <li><strong>Saturation des transports et de l'espace public autour du stade</strong> : Un événement de presse de sécurité ou social avec violences, ou une perturbation de transport, est relevé dans le département pendant la demi-journée du match.</li>
+          <li><strong>Grève dans le raffinage et tension sur les carburants</strong> : La part nationale des stations en rupture dépasse 15&nbsp;% pendant la journée annoncée.</li>
+          <li><strong>Foule bloquée ou débordements en fin de cortège</strong> : Un événement de presse de sécurité ou social avec violences, ou une perturbation de transport, est relevé dans le département pendant la demi-journée annoncée.</li>
+          <li><strong>Forte mobilisation sociale et activité cyber hostile</strong> : Une nouvelle revendication cyber visant un site public en .fr, ou une panne d'un service public exposé (cloud ou internet), est relevée pendant la journée annoncée.</li>
+          <li><strong>Coupures d'électricité puis de réseau mobile</strong> : Une panne d'électricité de niveau orange ou rouge est relevée dans le département pendant la fenêtre de la vigilance.</li>
+        </ul>
+        <h3>Règle d'arrêt</h3>
+        <p>Pour une règle, on regarde ses scénarios clos dont le mot le plus haut atteint était « probable » ou au-dessus (les indécidables et les expirés ne comptent pas). Dès qu'il y en a au moins dix et que plus de la moitié ne sont pas arrivés, la règle est <strong>mise en revue</strong> : elle est signalée dans le bilan, puis corrigée ou retirée. Une règle corrigée repart d'une version neuve.</p>
+        <h3>Limites</h3>
+        <ul>
+          <li>Données gratuites et ouvertes seulement ; une source payante ou fermée n'est jamais lue.</li>
+          <li>Échelle du département : les scénarios portent sur un département ou sur la France, jamais sur une personne.</li>
+          <li>Aucune probabilité n'est attribuée par une intelligence artificielle : les mots, les lieux et les chiffres viennent des règles ci-dessus.</li>
+          <li>Ce n'est pas une prévision : un scénario est une hypothèse à vérifier auprès des sources primaires, qui ne remplace ni les alertes officielles ni la vigilance Météo-France.</li>
+          <li>Les crises qu'aucune règle n'avait vues sont comptées dans le bilan comme « crises manquées ». Le pourcentage d'un mot n'est affiché qu'à partir de 30 scénarios clos.</li>
         </ul>
         <h2>Limites</h2>
         <ul>

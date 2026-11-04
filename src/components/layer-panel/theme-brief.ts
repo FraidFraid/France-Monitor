@@ -8,6 +8,7 @@ import { LEVEL_RANK, levelLabel, type VigilanceLevel } from '../../services/vigi
 import type { EventsStatus, WorkItem } from '../../services/work-queue.ts';
 import { rowMeta } from '../poste/WorkList.ts';
 import type { FicheSection } from '../fiche/parts.ts';
+import { escapeHtml } from '../france-intel-events.ts';
 import { emptyLine, listRow, valueHtml, type LayerHeadModel, type LayerView } from './frame.ts';
 import { formatAge } from './environment-format.ts';
 import type { WatchLevel } from './watch.ts';
@@ -38,6 +39,11 @@ export interface ThemeBriefInput {
    * l'onglet Pannes, qui le passait orange alors que la phrase disait « Aucun signal orange ou rouge »).
    */
   levelSignals?: ReadonlyArray<{ text: string; where: string | null; level: VigilanceLevel }>;
+  /**
+   * Vue générale (04/11/2026) : une ligne pour un scénario d'anticipation « très probable » d'aujourd'hui, texte brut déjà composé par
+   * AnticipationController.briefLine(). Hors niveau, hors note de stabilité : elle n'ajoute qu'une section d'information.
+   */
+  anticipationLine?: string | null;
   now: number;
   open: OpenFn;
 }
@@ -91,6 +97,12 @@ function attentionSection(input: ThemeBriefInput): FicheSection {
       text: r.text, value: r.where, level: r.level, ...(r.workKey ? { data: { work: r.workKey }, link: true } : {}),
     })).join('');
   return { id: 'attention', title: 'Ce qui demande attention', collapsible: true, open: input.open('attention', true), summary: String(rows.length), html };
+}
+
+/** Anticipation (bêta) : une ligne, avec le lien vers la note du jour. Information seulement, aucun niveau. */
+function anticipationSection(line: string, open: OpenFn): FicheSection {
+  const html = `<p class="fiche-empty">${escapeHtml(line)} <a href="/anticipation/note">Note du jour</a></p>`;
+  return { id: 'anticipation', title: 'Anticipation (bêta)', collapsible: true, open: open('anticipation', true), summary: '1', html };
 }
 
 /** Éléments à traiter sous l'orange (les orange et rouges sont déjà dans « Ce qui demande attention »). */
@@ -222,7 +234,10 @@ export function buildThemeBriefView(input: ThemeBriefInput): LayerView {
       figure: attentionFigure(themeAttention(input)),
       status: [], lead: lead(input),
     },
-    sections: [attentionSection(input), pastillesSynthesisSection(input.pastilles, input.open), itemsSection(input), changesSection(input)],
+    sections: [
+      ...(input.anticipationLine ? [anticipationSection(input.anticipationLine, input.open)] : []),
+      attentionSection(input), pastillesSynthesisSection(input.pastilles, input.open), itemsSection(input), changesSection(input),
+    ],
     bodyHtml: copy,
   };
 }
