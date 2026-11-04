@@ -2,7 +2,7 @@
 // Échelle des sept mots (le mot actif à la couleur de son jeton --sev-*), chaîne de preuves avec source et heure de Paris, inconnues,
 // bascules, ce qui l'infirmerait, vérifications, retours. Aucun accès réseau ni DOM ; tout texte venu du serveur est échappé.
 import type { AnticipationChainLink, AnticipationScenario, AnticipationSignal } from '../../types/index.ts';
-import { ALL_WORDS, WORD_COLOR_VAR, WORD_LABEL, WORD_RANGE } from '../../services/anticipation-words.ts';
+import { ALL_WORDS, isKnownWord, WORD_COLOR_VAR, WORD_LABEL, WORD_RANGE, wordLabel } from '../../services/anticipation-words.ts';
 import { parisDay } from '../../services/paris-day.js';
 import { escapeHtml } from '../france-intel-events.ts';
 import { localClock } from '../layer-panel/format.ts';
@@ -73,10 +73,14 @@ function scaleHtml(s: AnticipationScenario): string {
     const color = WORD_COLOR_VAR[w];
     return `<span${on ? ` class="is-on" style="--c: var(${color ?? '--text-muted'})"` : ''}>${escapeHtml(WORD_LABEL[w])}</span>`;
   }).join('');
-  const note = s.word === ''
+  // Mot inconnu de ce client (serveur plus récent) : mot brut échappé, couleur neutre, sans fourchette.
+  const word: string = s.word;
+  const known = isKnownWord(word);
+  const label = wordLabel(word);
+  const note = word === ''
     ? '<p class="anr-scalenote">Crise relevée sans scénario émis : aucun mot attribué.</p>'
-    : `<p class="anr-scalenote"><b style="color: var(${WORD_COLOR_VAR[s.word] ?? '--text-muted'})">${escapeHtml(WORD_LABEL[s.word].charAt(0).toUpperCase() + WORD_LABEL[s.word].slice(1))}</b>`
-      + ` (${WORD_RANGE[s.word]})${ruleText(s.ruleId)}${s.why ? ` : ${escapeHtml(s.why)}` : ''}. Mot attribué par règle écrite, pas par l'IA.</p>`;
+    : `<p class="anr-scalenote"><b style="color: var(${(known ? WORD_COLOR_VAR[word] : undefined) ?? '--text-muted'})">${escapeHtml(label.charAt(0).toUpperCase() + label.slice(1))}</b>`
+      + `${known ? ` (${WORD_RANGE[word]})` : ''}${ruleText(s.ruleId)}${s.why ? ` : ${escapeHtml(s.why)}` : ''}. Mot attribué par règle écrite, pas par l'IA.</p>`;
   return `<div class="anr-scale" role="img" aria-label="Échelle de probabilité">${cells}</div>${note}`;
 }
 

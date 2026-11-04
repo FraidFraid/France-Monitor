@@ -49,6 +49,10 @@ export interface AnticipationControllerOptions<T> {
   loadDepts?: () => Promise<GeoJSON.FeatureCollection | null>;
   /** Jeton CSS → teinte (défaut : cssColor). */
   colorOf?: (variable: string) => string;
+  /** Faux sur la carte SVG de repli (mobile) : aucun département coloré, la légende des mots est remplacée par une ligne. */
+  mapColoured?: boolean;
+  /** Vrai (grand écran) : la carte est recadrée sur la France à l'entrée dans l'onglet. Absente : pas de recadrage. */
+  refitOnEnter?: () => boolean;
   /** Appelée après chaque relève réussie (le En bref de la Vue générale relit alors sa ligne d'anticipation). */
   onData?: () => void;
   schedule: (fn: () => void, ms: number) => T;
@@ -106,7 +110,7 @@ export class AnticipationController<T = unknown> {
   async setActive(active: boolean): Promise<void> {
     if (active === (this.room !== null)) return;
     if (active) {
-      const room = new AnticipationRoom(this.opts.mapEl, this.opts.columns ?? undefined);
+      const room = new AnticipationRoom(this.opts.mapEl, this.opts.columns ?? undefined, { mapColoured: this.opts.mapColoured !== false });
       this.room = room;
       room.onFocus((s) => this.focus(s));
       room.onDay(() => this.paintMap());
@@ -118,6 +122,8 @@ export class AnticipationController<T = unknown> {
       this.opts.unschedule(this.timer);
       this.timer = this.opts.schedule(() => { void this.refresh(); }, ANTICIPATION_POLL_MS);
       await this.refresh();
+      // Grand écran : la carte revient au cadrage France (colonnes de l'onglet en place), comme le bouton de recadrage.
+      if (this.room === room && this.opts.refitOnEnter?.() === true) this.opts.map.refitFrance();
     } else {
       this.room?.destroy();
       this.room = null;

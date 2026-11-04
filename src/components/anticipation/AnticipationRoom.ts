@@ -33,6 +33,23 @@ function dataSignature(d: AnticipationNowResponse): string {
   });
 }
 
+/**
+ * Signature des signaux cités, telle que la fiche les montre (id, source, heure affichée : publication sinon relevé) : un signal cité qui
+ * change redessine la fiche seule. L'heure de relecture seule (`observedAt` d'un signal publié) ne redessine rien chaque minute.
+ */
+function signalsSignature(d: AnticipationNowResponse): string {
+  return Object.values(d.signals).map((x) => `${x.id}|${x.source}|${x.publishedAt ?? x.observedAt}`).sort().join('\n');
+}
+
+/** Options de la salle. */
+export interface AnticipationRoomOptions {
+  /** Faux sur la carte SVG de repli (mobile) : les départements n'y sont pas colorés, la légende des mots laisse place à une ligne. */
+  mapColoured?: boolean;
+}
+
+/** Ligne affichée à la place de la légende quand la carte ne colore pas les départements. */
+export const NO_COLOUR_LINE = 'Zones colorées sur la carte grand écran';
+
 export class AnticipationRoom {
   private readonly el: HTMLElement;
   /** Conteneur des colonnes, marqué `anr-active` tant que la salle est montée (les colonnes d'origine y sont masquées). */
@@ -50,12 +67,13 @@ export class AnticipationRoom {
   private dayCb: ((day: string) => void) | null = null;
   private revealCb: ((where: AnticipationReveal) => void) | null = null;
   private signature = '';
+  private signalsSig = '';
   private recordedWords: string | null = null;
   /** Sous la barre des pastilles posée sur la carte, comme la salle des pannes (sa hauteur dépend de la largeur). */
   private readonly resize: ResizeObserver | null = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => this.placeBelowPills());
   private observedPills: Element | null = null;
 
-  constructor(host: HTMLElement, columns?: AnticipationColumns) {
+  constructor(host: HTMLElement, columns?: AnticipationColumns, options: AnticipationRoomOptions = {}) {
     this.el = document.createElement('div');
     this.el.className = 'anr';
     const top = document.createElement('div');
@@ -77,8 +95,10 @@ export class AnticipationRoom {
     bottom.className = 'anr-bottom';
     const legend = document.createElement('div');
     legend.className = 'anr-legend';
-    legend.innerHTML = [...V1_WORDS].reverse().map((w: AnticipationWord) =>
-      `<span><i class="anr-dot" style="--c: var(${WORD_COLOR_VAR[w] ?? '--text-muted'})"></i>${escapeHtml(WORD_LABEL[w])}</span>`).join('');
+    legend.innerHTML = options.mapColoured === false
+      ? `<span>${escapeHtml(NO_COLOUR_LINE)}</span>`
+      : [...V1_WORDS].reverse().map((w: AnticipationWord) =>
+        `<span><i class="anr-dot" style="--c: var(${WORD_COLOR_VAR[w] ?? '--text-muted'})"></i>${escapeHtml(WORD_LABEL[w])}</span>`).join('');
     this.slider = document.createElement('div');
     this.slider.className = 'anr-slider';
     this.slider.setAttribute('role', 'group');
@@ -109,8 +129,18 @@ export class AnticipationRoom {
 
   setData(d: AnticipationNowResponse): void {
     const signature = dataSignature(d);
-    if (this.data !== null && signature === this.signature) return;
+    const signalsSig = signalsSignature(d);
+    if (this.data !== null && signature === this.signature) {
+      // Scénarios et agenda inchangés : seuls les signaux cités ont pu changer, la fiche seule est redessinée (l'agenda garde son focus).
+      if (signalsSig !== this.signalsSig) {
+        this.signalsSig = signalsSig;
+        this.data = d;
+        this.renderCard();
+      }
+      return;
+    }
     this.signature = signature;
+    this.signalsSig = signalsSig;
     this.data = d;
     const days = d.agenda.map((a) => a.day);
     if (this.day === null || !days.includes(this.day)) this.day = days[0] ?? null;

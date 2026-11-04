@@ -93,4 +93,28 @@ describe('pilote de l\u2019onglet Anticipation', () => {
     expect(ctl.briefLine(Date.parse('2026-11-06T12:00:00Z'))).toBeNull(); // autre jour (et relève périmée)
     expect(ctl.briefLine(now + 20 * 60_000)).toBeNull(); // relève de plus de 15 min
   });
+  it('entering the tab refits the map to France on desktop only; SVG fallback shows no word legend', async () => {
+    const make = (desktop: boolean, mapColoured: boolean) => {
+      const mapEl = document.createElement('div');
+      const refits: number[] = [];
+      const ctl = new AnticipationController<number>({
+        mapEl, map: { setOutagesRoom: () => undefined, flyTo: () => undefined, refitFrance: () => refits.push(1) },
+        read: async () => FIXTURE, loadDepts: async () => depts, colorOf, schedule: () => 1, unschedule: () => undefined,
+        refitOnEnter: () => desktop, mapColoured,
+      });
+      return { mapEl, refits, ctl };
+    };
+    const wide = make(true, true);
+    await wide.ctl.setActive(true);
+    expect(wide.refits).toHaveLength(1);
+    expect(wide.mapEl.querySelectorAll('.anr-legend .anr-dot')).toHaveLength(4);
+    await wide.ctl.setActive(false);
+    await wide.ctl.setActive(true);
+    expect(wide.refits).toHaveLength(2); // à chaque entrée
+    const phone = make(false, false);
+    await phone.ctl.setActive(true);
+    expect(phone.refits).toHaveLength(0);
+    expect(phone.mapEl.querySelector('.anr-legend')?.textContent).toBe('Zones colorées sur la carte grand écran');
+    wide.ctl.destroy(); phone.ctl.destroy();
+  });
 });

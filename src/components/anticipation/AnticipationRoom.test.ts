@@ -9,7 +9,7 @@ vi.mock('../../services/anticipation.ts', () => ({
   readAnticipationVote: (id: string) => readVote(id),
 }));
 
-const { AnticipationRoom } = await import('./AnticipationRoom.ts');
+const { AnticipationRoom, NO_COLOUR_LINE } = await import('./AnticipationRoom.ts');
 
 const flush = async (): Promise<void> => { for (let i = 0; i < 5; i += 1) await Promise.resolve(); };
 
@@ -160,5 +160,36 @@ describe('AnticipationRoom', () => {
     room.setData(FIXTURE);
     expect(host.innerHTML).not.toContain('\u2014');
     room.destroy();
+  });
+  it('a cited signal that changes refreshes the card only (agenda keeps its focus)', () => {
+    const host = document.createElement('div');
+    document.body.append(host);
+    const room = new AnticipationRoom(host);
+    room.setData(FIXTURE);
+    const item = host.querySelector<HTMLElement>('.anr-agenda [data-scenario="sc-lyon"]');
+    item?.focus();
+    const card = host.querySelector('.anr-side')?.innerHTML;
+    // Même heure affichée (publication), relecture plus récente : rien ne bouge.
+    room.setData({ ...FIXTURE, signals: { ...FIXTURE.signals, 's-cgt': { ...FIXTURE.signals['s-cgt'], observedAt: '2026-11-04T12:31:00Z', checkedAt: '2026-11-04T12:31:00Z' } } });
+    expect(host.querySelector('.anr-side')?.innerHTML).toBe(card);
+    // Signal cité republié plus tard : la fiche montre la nouvelle heure, l'agenda n'est pas redessiné.
+    room.setData({ ...FIXTURE, signals: { ...FIXTURE.signals, 's-cgt': { ...FIXTURE.signals['s-cgt'], publishedAt: '2026-11-04T11:20:00Z', observedAt: '2026-11-04T11:20:00Z' } } });
+    expect(host.querySelector('.anr-side')?.textContent).toContain('12:20');
+    expect(host.querySelector('.anr-agenda [data-scenario="sc-lyon"]')).toBe(item);
+    expect(document.activeElement).toBe(item);
+    room.destroy();
+    host.remove();
+  });
+
+  it('SVG fallback map: the word legend gives way to one line', () => {
+    const host = document.createElement('div');
+    const room = new AnticipationRoom(host, undefined, { mapColoured: false });
+    expect(host.querySelector('.anr-legend')?.textContent).toBe(NO_COLOUR_LINE);
+    expect(host.querySelectorAll('.anr-legend .anr-dot')).toHaveLength(0);
+    room.destroy();
+    const wide = document.createElement('div');
+    const colored = new AnticipationRoom(wide);
+    expect(wide.querySelectorAll('.anr-legend .anr-dot')).toHaveLength(4);
+    colored.destroy();
   });
 });

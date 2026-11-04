@@ -10,7 +10,7 @@ import type {
   AnticipationSignalDomain,
   AnticipationWord,
 } from '../../types/index.ts';
-import { ALL_WORDS, WORD_COLOR_VAR, WORD_LABEL } from '../../services/anticipation-words.ts';
+import { ALL_WORDS, isKnownWord, WORD_COLOR_VAR, wordLabel } from '../../services/anticipation-words.ts';
 import type { AnticipationVisit } from '../../services/intel-last-visit.ts';
 import { escapeHtml } from '../france-intel-events.ts';
 import { departementName } from '../layer-panel/health-format.ts';
@@ -83,8 +83,10 @@ export function scenarioDomains(s: AnticipationScenario, signals: Readonly<Recor
 /** Pastille du mot, à la couleur de son jeton (--sev-*) ; rien pour une crise manquée (mot vide). */
 export function wordChip(word: AnticipationWord | ''): string {
   if (word === '') return '';
-  const color = WORD_COLOR_VAR[word] ?? '--text-muted';
-  return `<span class="anr-lvl" style="--c: var(${color})">${escapeHtml(WORD_LABEL[word])}</span>`;
+  // Mot inconnu de ce client : mot brut échappé, couleur neutre.
+  const w: string = word;
+  const color = (isKnownWord(w) ? WORD_COLOR_VAR[w] : undefined) ?? '--text-muted';
+  return `<span class="anr-lvl" style="--c: var(${color})">${escapeHtml(wordLabel(w))}</span>`;
 }
 
 /** Pur : marques depuis la visite précédente (null : première visite, aucune marque). */

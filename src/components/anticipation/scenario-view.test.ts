@@ -2,6 +2,8 @@
 import { describe, expect, it } from 'vitest';
 import { ALL_WORDS, WORD_LABEL } from '../../services/anticipation-words.ts';
 import { scenarioHtml, stepSource } from './scenario-view.ts';
+import { wordChip } from './agenda-view.ts';
+import type { AnticipationScenario } from '../../types/index.ts';
 import type { FeedbackState } from './scenario-view.ts';
 import { FIXTURE, LYON } from './fixture.test-data.ts';
 
@@ -102,5 +104,19 @@ describe('fiche d\u2019un scénario', () => {
       expect(html).not.toContain('\u2014');
       expect(html).not.toMatch(/&mdash;/);
     }
+  });
+  it('unknown word from a newer server: raw word escaped, neutral colour, no throw', () => {
+    const odd = { ...LYON, word: 'quasi_<b>nouveau</b>' } as unknown as AnticipationScenario;
+    let el: HTMLElement | null = null;
+    expect(() => { el = render('idle', odd); }).not.toThrow();
+    const note = (el as HTMLElement | null)?.querySelector('.anr-scalenote');
+    expect(note?.textContent).toContain('Quasi_<b>nouveau</b>');
+    expect(note?.querySelector('b b')).toBeNull();
+    expect(note?.querySelector('b')?.getAttribute('style')).toContain('--text-muted');
+    expect((el as HTMLElement | null)?.querySelectorAll('.anr-scale > span.is-on')).toHaveLength(0);
+    const chip = document.createElement('div');
+    chip.innerHTML = wordChip('autre_mot' as unknown as AnticipationScenario['word']);
+    expect(chip.textContent).toBe('autre_mot');
+    expect(chip.querySelector('.anr-lvl')?.getAttribute('style')).toContain('--text-muted');
   });
 });

@@ -47,3 +47,13 @@ export const WORD_COLOR_VAR: Readonly<Partial<Record<AnticipationWord, string>>>
   possibilite_reelle: '--sev-yellow',
   peu_probable: '--sev-blue',
 };
+
+/** Mot connu de l'échelle (une réponse du serveur peut porter un mot inconnu de ce client). */
+export function isKnownWord(word: string): word is AnticipationWord {
+  return ALL_WORDS.some((w) => w === word);
+}
+
+/** Libellé d'un mot, ou le mot brut s'il est inconnu (à échapper par l'appelant). */
+export function wordLabel(word: string): string {
+  return isKnownWord(word) ? WORD_LABEL[word] : word;
+}

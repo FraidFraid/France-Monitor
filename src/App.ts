@@ -4696,6 +4696,10 @@ export class App {
           flyTo: (lon, lat, zoom) => map?.flyTo(lon, lat, zoom),
           refitFrance: () => map?.refitFrance(),
         },
+        // Carte SVG de repli (mobile) : pas de départements colorés, la légende des mots laisse place à une ligne.
+        mapColoured: map?.canFocusMap() ?? true,
+        // Grand écran : recadrage France à l'entrée dans l'onglet.
+        refitOnEnter: () => layoutFor(window.innerWidth) !== 'mobile',
         onData: () => this.refreshThemeBrief(),
         schedule: (fn, ms) => this.registerPausableInterval(fn, ms),
         unschedule: (timer) => this.removePausableInterval(timer),
