@@ -19,6 +19,8 @@ import { capOpen, evaluate } from './engine.js';
 import { openRegistry } from './registry.js';
 import { closeDue, missedCrises } from './closing.js';
 import { buildAgenda } from './agenda.js';
+import { buildNote, latestNote, noteExists, parisHour, readNote, writeNote } from './note.js';
+import { buildBilan, rulesInReview } from './bilan.js';
 import { RULES } from './rules/index.js';
 
 /** Écart minimal entre deux ticks (la boucle de collecte tourne toutes les 60 s). */
@@ -53,7 +55,7 @@ const DEFAULT_READERS = {
  * @property {{ national: number|null, depts: Record<string, number> }} previous Parts du relevé précédent (tendance de la règle 5).
  */
 
-/** @type {{ registry: any, tickAt: number, signals: any[], scenarios: any[], agenda: any[], unknown: string[], errors: string[], fuel: FuelMemo | null, compactDay: string } | null} */
+/** @type {{ registry: any, tickAt: number, signals: any[], scenarios: any[], agenda: any[], unknown: string[], errors: string[], fuel: FuelMemo | null, compactDay: string, frozenDay: string } | null} */
 let state = null;
 /** @type {Promise<void> | null} */
 let running = null;
@@ -162,14 +164,28 @@ async function run(/** @type {number} */ now, /** @type {any} */ readers) {
   let compactDay = state?.compactDay ?? '';
   if (compactDay !== parisDay(now)) { compactDay = parisDay(now); await registry.compact(now); }
 
-  const served = capOpen([...registry.state().values()].filter((/** @type {any} */ s) => s.status === 'ouvert'), now);
+  // Règle d'arrêt (spec § 11) : les scénarios d'une règle en revue ne sont plus servis.
+  const served = capOpen([...registry.state().values()].filter((/** @type {any} */ s) => s.status === 'ouvert'), now, rulesInReview([...registry.state().values()]));
   const upcoming = upcomingFromSources({
     ecowatt: inputs.ecowatt ? { official: inputs.ecowatt } : null, vigilance: inputs.vigilance,
     protests: Array.isArray(inputs.protests?.items) ? inputs.protests.items : null, floods: null, now,
   }, { phenomenonWord: PHENOMENON_WORD, readForecast: () => null });
+  const agenda = buildAgenda(served, upcoming, now);
+  // Note de 7 h : figée une fois par jour de Paris, au premier tick à partir de 07:00. Le drapeau est en mémoire ; après un redémarrage
+  // on regarde si le fichier du jour existe déjà.
+  let frozenDay = state?.frozenDay ?? '';
+  const today = parisDay(now);
+  if (frozenDay !== today && parisHour(now) >= 7) {
+    if (!(await noteExists(registry.root, today))) {
+      const closedSince = [...registry.state().values()].filter((/** @type {any} */ s) => s.closedAt && s.status !== 'ouvert' && s.status !== 'manque' && Date.parse(s.closedAt) >= now - 24 * HOUR);
+      const failure = await writeNote(registry.root, buildNote(served, agenda, closedSince, now));
+      if (failure && !registry.errors.includes(failure)) registry.errors.push(failure);
+    }
+    frozenDay = today;
+  }
   state = {
-    registry, tickAt: now, signals, scenarios: served, agenda: buildAgenda(served, upcoming, now), unknown,
-    errors: [...readErrors, ...signalErrors, ...engineErrors, ...registry.errors], fuel: fuelMemo, compactDay,
+    registry, tickAt: now, signals, scenarios: served, agenda, unknown,
+    errors: [...readErrors, ...signalErrors, ...engineErrors, ...registry.errors], fuel: fuelMemo, compactDay, frozenDay,
   };
 }
 
@@ -217,4 +233,34 @@ export async function recordFeedback(scenarioId, vote, now = Date.now(), readers
   await registry.record({ at: new Date(now).toISOString(), type: 'retour', scenario: next });
   if (state) state.scenarios = state.scenarios.map((/** @type {any} */ s) => (s.id === scenarioId ? next : s));
   return true;
+}
+
+/**
+ * Note de 7 h : celle du jour demandé, ou (sans jour) celle d'aujourd'hui si elle est figée, sinon la plus récente d'avant. Null si absente.
+ * @param {string|null} [day] AAAA-MM-JJ
+ * @param {number} [now]
+ */
+export async function anticipationNote(day = null, now = Date.now(), readers = DEFAULT_READERS) {
+  await ensureState(now, readers);
+  const root = state?.registry?.root;
+  if (!root) return null;
+  return day ? readNote(root, day) : latestNote(root, parisDay(now));
+}
+
+/**
+ * Bilan d'un mois de Paris (AAAA-MM, mois courant par défaut) : scénarios ouverts dans ce mois. Le mois courant et le précédent viennent
+ * de la mémoire du registre, les plus anciens du journal de leur mois.
+ * @param {string|null} [month]
+ * @param {number} [now]
+ */
+export async function anticipationBilan(month = null, now = Date.now(), readers = DEFAULT_READERS) {
+  await ensureState(now, readers);
+  const key = month || parisDay(now).slice(0, 7);
+  const registry = state?.registry;
+  if (!registry) return buildBilan(key, [], RULES);
+  const current = parisDay(now).slice(0, 7);
+  const recent = key === current || key === (current.endsWith('-01') ? `${Number(current.slice(0, 4)) - 1}-12` : `${current.slice(0, 5)}${String(Number(current.slice(5)) - 1).padStart(2, '0')}`);
+  const source = recent ? registry.state() : await registry.scenariosOfMonth(key);
+  const mine = [...source.values()].filter((/** @type {any} */ s) => parisDay(Date.parse(s.openedAt)).slice(0, 7) === key);
+  return buildBilan(key, mine, RULES);
 }

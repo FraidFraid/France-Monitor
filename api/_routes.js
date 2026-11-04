@@ -5,7 +5,9 @@
 export const ROUTES = {
   '/api/alerts/atom': () => import('./_handlers/alerts/atom.js'),
   '/api/alerts/cap': () => import('./_handlers/alerts/cap.js'),
+  '/api/anticipation/bilan': () => import('./_handlers/anticipation/bilan.js'),
   '/api/anticipation/feedback': () => import('./_handlers/anticipation/feedback.js'),
+  '/api/anticipation/note': () => import('./_handlers/anticipation/note.js'),
   '/api/anticipation/now': () => import('./_handlers/anticipation/now.js'),
   '/api/copernicus': () => import('./_handlers/copernicus.js'),
   '/api/energy/biogas-sites': () => import('./_handlers/energy/biogas-sites.js'),

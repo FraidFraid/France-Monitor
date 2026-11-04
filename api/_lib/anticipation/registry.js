@@ -62,7 +62,9 @@ export async function openRegistry({ dir, now }) {
   const registry = {
     writable: true,
     errors,
+    root,
     state: () => scenarios,
+    scenariosOfMonth,
     record,
     archiveSignals,
     signalsBetween,
@@ -114,9 +116,8 @@ export async function openRegistry({ dir, now }) {
     }
   }
 
-  // Relecture du journal : mois précédent puis mois en cours, une ligne illisible (écriture coupée) est ignorée.
-  const month = parisMonth(now);
-  for (const key of [previousMonth(month), month]) {
+  /** Rejoue le journal d'un mois (AAAA-MM) dans `into` ; une ligne illisible (écriture coupée) est ignorée mais comptée. */
+  async function replayMonth(/** @type {string} */ key, /** @type {Map<string, Scenario>} */ into) {
     let text = '';
     try {
       text = await readFile(path.join(journalDir, `${key}.jsonl`), 'utf8');
@@ -124,20 +125,33 @@ export async function openRegistry({ dir, now }) {
       if (/** @type {NodeJS.ErrnoException} */ (e).code !== 'ENOENT') {
         pushError(`journal/${key}.jsonl : lecture impossible dans ${root} : ${errMsg(e)}`);
       }
-      continue; // fichier absent : rien à rejouer
+      return; // fichier absent : rien à rejouer
     }
     let dropped = 0;
     for (const line of text.split('\n')) {
       if (!line.trim()) continue;
       try {
         const ev = JSON.parse(line);
-        if (ev && ev.scenario && typeof ev.scenario.id === 'string') scenarios.set(ev.scenario.id, ev.scenario);
+        if (ev && ev.scenario && typeof ev.scenario.id === 'string') into.set(ev.scenario.id, ev.scenario);
         else dropped += 1;
       } catch {
         dropped += 1; // ligne coupée : ignorée mais comptée
       }
     }
     if (dropped > 0) pushError(`journal/${key}.jsonl : ${dropped} ligne${dropped > 1 ? 's' : ''} illisible${dropped > 1 ? 's' : ''} ignorée${dropped > 1 ? 's' : ''}`);
+  }
+
+  // Relecture au démarrage : mois précédent puis mois en cours.
+  const month = parisMonth(now);
+  for (const key of [previousMonth(month), month]) await replayMonth(key, scenarios);
+
+  /** Scénarios d'un mois (AAAA-MM) tels que le journal de ce mois les a laissés (bilan d'un mois ancien). */
+  async function scenariosOfMonth(/** @type {string} */ key) {
+    await queue; // écritures en cours terminées
+    /** @type {Map<string, Scenario>} */
+    const out = new Map();
+    await replayMonth(key, out);
+    return out;
   }
   try {
     await ensureDirs();

@@ -145,11 +145,13 @@ const dayOf = parisDay;
  * Tri : mot le plus fort d'abord, puis ouverture la plus ancienne.
  * @param {Scenario[]} open
  * @param {number} [now]
+ * @param {Set<string>} [inReview] Identifiants des règles en revue : leurs scénarios ne sont pas servis.
  * @returns {Scenario[]}
  */
-export function capOpen(open, now = Date.now()) {
+export function capOpen(open, now = Date.now(), inReview = new Set()) {
   const rank = (/** @type {Scenario} */ s) => WORDS.indexOf(/** @type {import('./probability.js').Word} */ (s.word));
-  const sorted = [...(Array.isArray(open) ? open : [])].sort((a, b) => rank(b) - rank(a) || Date.parse(a.openedAt) - Date.parse(b.openedAt));
+  // Une règle en revue (règle d'arrêt, spec § 11) n'est plus servie.
+  const sorted = [...(Array.isArray(open) ? open : [])].filter((s) => !inReview.has(s.ruleId)).sort((a, b) => rank(b) - rank(a) || Date.parse(a.openedAt) - Date.parse(b.openedAt));
   const today = dayOf(now);
   /** @type {Map<string, number>} */
   const count = new Map();
