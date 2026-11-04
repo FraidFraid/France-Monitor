@@ -25,28 +25,35 @@ function precedentIn(/** @type {Map<string, Scenario>} */ state, /** @type {stri
 }
 
 const deptKey = (/** @type {{ zone: { dept: string[] } }} */ s) => s.zone?.dept?.[0] ?? 'national';
+/** Recoupement strict : deux demi-journées voisines (fin de l'une = début de l'autre) ne se chevauchent pas. */
 const overlap = (/** @type {{from: string, to: string}} */ a, /** @type {{from: string, to: string}} */ b) => {
   const af = Date.parse(a.from), at = Date.parse(a.to), bf = Date.parse(b.from), bt = Date.parse(b.to);
-  return af <= bt && bf <= at;
+  return af < bt && bf < at;
 };
+const sameJson = (/** @type {unknown} */ a, /** @type {unknown} */ b) => JSON.stringify(a) === JSON.stringify(b);
+const WATCHED = /** @type {const} */ (['word', 'chain', 'bascules', 'window', 'unknowns', 'verify', 'disconfirmers']);
 
 /**
  * @param {Signal[]|null} signals
  * @param {{ state(): Map<string, Scenario> }} registry
  * @param {number} now Heure de référence en ms.
  * @param {import('./rules/index.js').CrossRule[]} [rules]
+ * @param {string[]} [unknown] Relevés absents ou périmés (liste `unknown` de toSignals), transmise aux règles.
  * @returns {{ opened: Scenario[], revised: Scenario[], open: Scenario[], errors: string[] }}
  */
-export function evaluate(signals, registry, now, rules = RULES) {
+export function evaluate(signals, registry, now, rules = RULES, unknown = []) {
   const list = Array.isArray(signals) ? signals : [];
   const state = registry.state();
   const nowIso = new Date(now).toISOString();
-  const ctx = { now, precedent: (/** @type {string} */ ruleId, /** @type {string} */ dept) => precedentIn(state, ruleId, dept) };
+  const ctx = { now, unknown: Array.isArray(unknown) ? unknown : [], precedent: (/** @type {string} */ ruleId, /** @type {string} */ dept) => precedentIn(state, ruleId, dept) };
   /** @type {string[]} */
   const errors = [];
   /** @type {Map<string, Scenario>} */
   const pool = new Map();
   for (const [id, s] of state) if (s.status === 'ouvert') pool.set(id, s);
+  // Seuls les scénarios déjà ouverts avant ce tick peuvent être révisés ; deux demi-journées voisines restent deux scénarios.
+  const before = [...pool.values()];
+  const closed = [...state.values()].filter((s) => s.status !== 'ouvert');
   /** @type {Set<string>} */
   const openedIds = new Set();
   /** @type {Set<string>} */
@@ -68,7 +75,10 @@ export function evaluate(signals, registry, now, rules = RULES) {
         const word = applyFloor(/** @type {import('./probability.js').Word} */ (c.word), c.evidence);
         const why = wordWhy(c.evidence);
         const key = deptKey(c);
-        const existing = [...pool.values()].find((s) => s.ruleId === c.ruleId && deptKey(s) === key && overlap(s.window, c.window));
+        const id = `${c.ruleId}:${key}:${c.window.from}`;
+        // Scénario déjà clos (même id, ou même règle, même département et fenêtre qui se chevauche) : jamais rouvert ni écrasé.
+        if (closed.some((s) => s.id === id || (s.ruleId === c.ruleId && deptKey(s) === key && overlap(s.window, c.window)))) continue;
+        const existing = before.find((s) => s.ruleId === c.ruleId && deptKey(s) === key && overlap(s.window, c.window));
         if (existing) {
           // Une bascule déjà atteinte le reste, même si le signal qui l'a levée a disparu entre-temps.
           const bascules = c.bascules.map((b) => {
@@ -79,12 +89,15 @@ export function evaluate(signals, registry, now, rules = RULES) {
           void _evidence;
           const next = { ...existing, ...fields, bascules, word, why, id: existing.id, openedAt: existing.openedAt, status: existing.status, closedAt: existing.closedAt,
             outcomeNote: existing.outcomeNote, feedback: existing.feedback, revisedAt: nowIso };
-          pool.set(existing.id, next);
-          revisedIds.add(existing.id);
+          const changed = WATCHED.some((k) => !sameJson(/** @type {Record<string, unknown>} */ (next)[k], /** @type {Record<string, unknown>} */ (existing)[k]));
+          if (changed) {
+            pool.set(existing.id, next);
+            revisedIds.add(existing.id);
+          }
         } else {
           const { evidence: _evidence, ...fields } = c;
           void _evidence;
-          const id = `${c.ruleId}:${key === 'national' ? 'national' : key}:${c.window.from}`;
+          if (pool.has(id)) continue; // même candidat deux fois dans le tick
           pool.set(id, { ...fields, id, word, why, openedAt: nowIso, revisedAt: nowIso, status: 'ouvert', closedAt: null, outcomeNote: null, feedback: { utile: 0, deja_su: 0, faux: 0 } });
           openedIds.add(id);
         }
@@ -99,21 +112,38 @@ export function evaluate(signals, registry, now, rules = RULES) {
   return { opened, revised, open: [...pool.values()], errors };
 }
 
+const dayOf = (/** @type {number} */ ms) => dayFmt.format(new Date(ms));
+
 /**
- * Plafonds d'affichage : 5 scénarios nationaux, 3 par département ; les autres restent au registre sans être servis.
+ * Plafonds d'affichage : 5 scénarios nationaux dont la fenêtre recoupe aujourd'hui (jour de Paris), 3 par département et par jour de Paris
+ * (jour de début de la fenêtre) ; les jours futurs ne comptent pas dans le plafond national. Les autres restent au registre sans être servis.
  * Tri : mot le plus fort d'abord, puis ouverture la plus ancienne.
  * @param {Scenario[]} open
+ * @param {number} [now]
  * @returns {Scenario[]}
  */
-export function capOpen(open) {
-  const sorted = [...(Array.isArray(open) ? open : [])].sort((a, b) => WORDS.indexOf(/** @type {any} */ (b.word)) - WORDS.indexOf(/** @type {any} */ (a.word))
-    || Date.parse(a.openedAt) - Date.parse(b.openedAt));
+export function capOpen(open, now = Date.now()) {
+  const rank = (/** @type {Scenario} */ s) => WORDS.indexOf(/** @type {import('./probability.js').Word} */ (s.word));
+  const sorted = [...(Array.isArray(open) ? open : [])].sort((a, b) => rank(b) - rank(a) || Date.parse(a.openedAt) - Date.parse(b.openedAt));
+  const today = dayOf(now);
   /** @type {Map<string, number>} */
   const count = new Map();
   return sorted.filter((s) => {
-    const key = deptKey(s);
+    const from = Date.parse(s.window?.from ?? ''), to = Date.parse(s.window?.to ?? '');
+    const national = deptKey(s) === 'national';
+    let key;
+    let max;
+    if (national) {
+      const intersectsToday = Number.isFinite(from) && Number.isFinite(to) && dayOf(from) <= today && dayOf(Math.max(from, to - 1)) >= today;
+      if (!intersectsToday) return true; // jour futur ou passé : pas de plafond national
+      key = 'national';
+      max = MAX_NATIONAL;
+    } else {
+      key = `${deptKey(s)}|${Number.isFinite(from) ? dayOf(from) : 'n.d.'}`;
+      max = MAX_PER_DEPT;
+    }
     const n = count.get(key) ?? 0;
-    if (n >= (key === 'national' ? MAX_NATIONAL : MAX_PER_DEPT)) return false;
+    if (n >= max) return false;
     count.set(key, n + 1);
     return true;
   });

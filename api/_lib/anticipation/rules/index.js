@@ -12,8 +12,8 @@ import tempeteReseaux from './tempete-reseaux.js';
  * @property {number} version
  * @property {string} title
  * @property {string[]} domains
- * @property {(signals: Signal[], ctx: { now: number, precedent(ruleId: string, dept: string): string|null }) => Candidate[]} evaluate
- * @property {(scenario: Scenario, signals: Signal[], now?: number) => 'arrive'|'pas_arrive'|'indecidable'|null} arrived
+ * @property {(signals: Signal[], ctx: { now: number, precedent(ruleId: string, dept: string): string|null, unknown?: string[] }) => Candidate[]} evaluate
+ * @property {(scenario: Scenario, signals: Signal[], ctx?: { now?: number, unknown?: string[] }) => 'arrive'|'pas_arrive'|'indecidable'|null} arrived
  * @property {string} arrivalTest Phrase publique de la méthode.
  */
 

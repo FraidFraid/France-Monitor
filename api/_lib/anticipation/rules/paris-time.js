@@ -29,6 +29,18 @@ function parisYmd(/** @type {number} */ ms) {
   return { y: p.year, m: p.month, d: p.day };
 }
 
+/** Bornes [début, fin) du jour de Paris de l'instant donné. */
+export function parisDayBounds(/** @type {number} */ ms) {
+  const { y, m, d } = parisYmd(ms);
+  return { from: parisInstant(y, m, d, 0), to: parisInstant(y, m, d + 1, 0) };
+}
+
+/** Date du jour de Paris, JJ/MM. */
+export function parisDayLabel(/** @type {number} */ ms) {
+  const { m, d } = parisYmd(ms);
+  return `${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`;
+}
+
 const SLOTS = Object.freeze([
   { id: 'matin', start: 6, end: 14, label: 'matin' },
   { id: 'apres_midi', start: 14, end: 22, label: 'après-midi' },
@@ -45,6 +57,7 @@ export function halfDaysOverlapping(from, to) {
   if (!Number.isFinite(from) || !Number.isFinite(to) || to < from) return [];
   const first = parisYmd(from);
   const last = parisYmd(to);
+  const end = Math.max(to, from + 1); // fin exclusive ; un événement ponctuel compte pour 1 ms
   const endKey = Date.UTC(last.y, last.m - 1, last.d);
   /** @type {Array<{ id: string, label: string, from: number, to: number }>} */
   const out = [];
@@ -54,7 +67,7 @@ export function halfDaysOverlapping(from, to) {
     for (const s of SLOTS) {
       const a = parisInstant(y, m, d, s.start);
       const b = parisInstant(y, m, d, s.end);
-      if (a < to + 1 && b > from) out.push({ id: s.id, label: s.label, from: a, to: b });
+      if (a < end && b > from) out.push({ id: s.id, label: s.label, from: a, to: b });
     }
   }
   return out;

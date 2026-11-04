@@ -41,3 +41,32 @@ export function evidenceOf(cited, extra) {
   });
   return { origins: countOrigins(cited), hasOfficial: official.length > 0, hasPublishedDeadline, officialLevel, basculeHit: extra.basculeHit, precedentDay: extra.precedentDay };
 }
+
+/** Locutions de lieu qui ne suivent pas « dans le <nom> ». */
+const PLACE_PHRASE = Object.freeze({
+  '01': "dans l'Ain", '02': "dans l'Aisne", '03': "dans l'Allier", '04': 'dans les Alpes-de-Haute-Provence', '05': 'dans les Hautes-Alpes',
+  '06': 'dans les Alpes-Maritimes', '07': 'en Ardèche', '08': 'dans les Ardennes', '09': 'en Ariège', '10': "dans l'Aube", '11': "dans l'Aude",
+  '12': "dans l'Aveyron", '13': 'dans les Bouches-du-Rhône', '16': 'en Charente', '17': 'en Charente-Maritime', '19': 'en Corrèze',
+  '21': "en Côte-d'Or", '22': "dans les Côtes-d'Armor", '23': 'dans la Creuse', '24': 'en Dordogne', '26': 'dans la Drôme', '27': "dans l'Eure",
+  '28': 'en Eure-et-Loir', '31': 'en Haute-Garonne', '33': 'en Gironde', '34': "dans l'Hérault", '35': 'en Ille-et-Vilaine', '36': "dans l'Indre",
+  '37': 'en Indre-et-Loire', '38': "dans l'Isère", '40': 'dans les Landes', '42': 'dans la Loire', '43': 'en Haute-Loire', '44': 'en Loire-Atlantique',
+  '45': 'dans le Loiret', '48': 'en Lozère', '50': 'dans la Manche', '51': 'dans la Marne', '52': 'en Haute-Marne', '53': 'en Mayenne',
+  '54': 'en Meurthe-et-Moselle', '55': 'dans la Meuse', '57': 'en Moselle', '58': 'dans la Nièvre', '60': "dans l'Oise", '61': "dans l'Orne",
+  '64': 'dans les Pyrénées-Atlantiques', '65': 'dans les Hautes-Pyrénées', '66': 'dans les Pyrénées-Orientales', '70': 'en Haute-Saône',
+  '71': 'en Saône-et-Loire', '72': 'dans la Sarthe', '73': 'en Savoie', '74': 'en Haute-Savoie', '75': 'à Paris', '76': 'en Seine-Maritime',
+  '77': 'en Seine-et-Marne', '78': 'dans les Yvelines', '79': 'dans les Deux-Sèvres', '80': 'dans la Somme', '85': 'en Vendée', '86': 'dans la Vienne',
+  '87': 'en Haute-Vienne', '88': 'dans les Vosges', '89': "dans l'Yonne", '91': "dans l'Essonne", '92': 'dans les Hauts-de-Seine',
+  '93': 'en Seine-Saint-Denis', '95': "dans le Val-d'Oise", '2A': 'en Corse-du-Sud', '2B': 'en Haute-Corse', '971': 'en Guadeloupe',
+  '972': 'en Martinique', '973': 'en Guyane', '974': 'à La Réunion', '976': 'à Mayotte',
+});
+
+/**
+ * Locution de lieu d'un département : « dans le Rhône », « en Gironde », « dans les Bouches-du-Rhône », « à Paris ».
+ * @param {string} code
+ * @param {Record<string, string>} names DEPT_NAMES
+ */
+export function inPlace(code, names) {
+  const fixed = /** @type {Record<string, string>} */ (PLACE_PHRASE)[code];
+  if (fixed) return fixed;
+  return `dans le ${names[code] ?? code}`;
+}

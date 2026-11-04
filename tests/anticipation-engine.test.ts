@@ -72,7 +72,7 @@ describe('evaluate', () => {
       await registry.record({ at: new Date(NOW).toISOString(), type: 'ouverture', scenario: first.opened[0] });
       const out = evaluate([], registry, NOW, [rule('r1', () => [cand(), cand({ zone: { dept: ['13'], communes: [] } }), cand({ window: { from: '2026-11-05T13:00:00.000Z', to: '2026-11-05T21:00:00.000Z' } })])]);
       expect(out.opened).toHaveLength(2);
-      expect(out.revised).toHaveLength(1);
+      expect(out.revised).toHaveLength(0); // inchangé : pas de révision
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
 
@@ -109,15 +109,80 @@ describe('evaluate', () => {
 });
 
 describe('capOpen', () => {
-  const mk = (id: string, dept: string[], word: string, openedAt: string) => ({ id, zone: { dept, communes: [] }, word, openedAt, status: 'ouvert' });
-  it('keeps 5 national / 3 per dept', () => {
+  const NOON = Date.parse('2026-11-04T11:00:00Z');
+  const today = { from: '2026-11-04T13:00:00.000Z', to: '2026-11-04T21:00:00.000Z' };
+  const tomorrow = { from: '2026-11-05T13:00:00.000Z', to: '2026-11-05T21:00:00.000Z' };
+  const mk = (id: string, dept: string[], word: string, openedAt: string, window = today) => ({ id, zone: { dept, communes: [] }, word, openedAt, status: 'ouvert', window });
+  it('keeps 5 national for today / 3 per dept per Paris day; future days are not capped nationally', () => {
     const list = [];
     for (let i = 0; i < 7; i++) list.push(mk(`n${i}`, [], 'probable', `2026-11-04T0${i}:00:00Z`));
+    for (let i = 0; i < 4; i++) list.push(mk(`f${i}`, [], 'probable', `2026-11-04T0${i}:00:00Z`, tomorrow));
     for (let i = 0; i < 5; i++) list.push(mk(`d${i}`, ['69'], i === 4 ? 'tres_probable' : 'probable', `2026-11-04T0${i}:00:00Z`));
-    const kept = capOpen(list);
-    expect(kept.filter((s: { zone: { dept: string[] } }) => s.zone.dept.length === 0)).toHaveLength(5);
-    expect(kept.filter((s: { zone: { dept: string[] } }) => s.zone.dept[0] === '69')).toHaveLength(3);
-    expect(kept.map((s: { id: string }) => s.id)).toContain('d4'); // le mot le plus fort passe avant
-    expect(kept.map((s: { id: string }) => s.id)).not.toContain('n6');
+    for (let i = 0; i < 2; i++) list.push(mk(`e${i}`, ['69'], 'probable', `2026-11-04T0${i}:00:00Z`, tomorrow));
+    const kept = capOpen(list, NOON);
+    const ids = kept.map((s: { id: string }) => s.id);
+    expect(kept.filter((s: { id: string }) => s.id.startsWith('n'))).toHaveLength(5);
+    expect(ids).not.toContain('n6');
+    expect(kept.filter((s: { id: string }) => s.id.startsWith('f'))).toHaveLength(4);
+    expect(kept.filter((s: { id: string }) => s.id.startsWith('d'))).toHaveLength(3);
+    expect(ids).toContain('d4'); // le mot le plus fort passe avant
+    expect(kept.filter((s: { id: string }) => s.id.startsWith('e'))).toHaveLength(2); // autre jour : autre plafond
+  });
+});
+
+describe('engine fixes', () => {
+  const morning = { from: '2026-11-04T05:00:00.000Z', to: '2026-11-04T13:00:00.000Z' };
+  const afternoon = { from: '2026-11-04T13:00:00.000Z', to: '2026-11-04T21:00:00.000Z' };
+
+  it('neighbouring half-days stay two scenarios, stable over two ticks', async () => {
+    const { dir, registry } = await reg();
+    try {
+      const r = rule('r1', () => [cand({ window: morning }), cand({ window: afternoon })]);
+      const t1 = evaluate([], registry, NOW, [r]);
+      expect(t1.opened.map((s: { id: string }) => s.id)).toEqual(['r1:69:2026-11-04T05:00:00.000Z', 'r1:69:2026-11-04T13:00:00.000Z']);
+      expect(t1.opened[0].window).toEqual(morning);
+      for (const s of t1.opened) await registry.record({ at: new Date(NOW).toISOString(), type: 'ouverture', scenario: s });
+      const t2 = evaluate([], registry, NOW + 60_000, [r]);
+      expect(t2.opened).toHaveLength(0);
+      expect(t2.revised).toHaveLength(0);
+      expect(t2.open).toHaveLength(2);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it('two identical ticks → second revised is empty; a changed word is revised', async () => {
+    const { dir, registry } = await reg();
+    try {
+      const first = evaluate([], registry, NOW, [rule('r1', () => [cand()])]);
+      await registry.record({ at: new Date(NOW).toISOString(), type: 'ouverture', scenario: first.opened[0] });
+      expect(evaluate([], registry, NOW + 60_000, [rule('r1', () => [cand()])]).revised).toHaveLength(0);
+      const weaker = cand({ evidence: { ...strong, officialLevel: 'orange' }, word: 'possibilite_reelle' });
+      const t3 = evaluate([], registry, NOW + 120_000, [rule('r1', () => [weaker])]);
+      expect(t3.revised).toHaveLength(1);
+      expect(t3.revised[0].revisedAt).toBe(new Date(NOW + 120_000).toISOString());
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it('a closed scenario is neither reopened nor overwritten', async () => {
+    const { dir, registry } = await reg();
+    try {
+      const first = evaluate([], registry, NOW, [rule('r1', () => [cand()])]);
+      await registry.record({ at: new Date(NOW).toISOString(), type: 'cloture', scenario: { ...first.opened[0], status: 'arrive', closedAt: new Date(NOW).toISOString() } });
+      const same = evaluate([], registry, NOW + 60_000, [rule('r1', () => [cand()])]);
+      expect(same.opened).toHaveLength(0);
+      expect(same.revised).toHaveLength(0);
+      const shifted = evaluate([], registry, NOW + 60_000, [rule('r1', () => [cand({ window: { from: '2026-11-04T14:00:00.000Z', to: '2026-11-04T22:00:00.000Z' } })])]);
+      expect(shifted.opened).toHaveLength(0);
+      expect(registry.state().get(first.opened[0].id).status).toBe('arrive');
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+
+  it('passes the unknown relevés to rules', async () => {
+    const { dir, registry } = await reg();
+    try {
+      let seen: string[] = [];
+      const r = { ...rule('r1', () => []), evaluate: (_s: unknown, c: { unknown: string[] }) => { seen = c.unknown; return []; } };
+      evaluate([], registry, NOW, [r], ['Pannes non lues']);
+      expect(seen).toEqual(['Pannes non lues']);
+    } finally { await rm(dir, { recursive: true, force: true }); }
   });
 });

@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest';
 // @ts-expect-error module JS sans déclaration
 import { RULES } from '../api/_lib/anticipation/rules/index.js';
 // @ts-expect-error module JS sans déclaration
+// @ts-expect-error module JS sans déclaration
+import { evaluate } from '../api/_lib/anticipation/engine.js';
+// @ts-expect-error module JS sans déclaration
 import mobilisation from '../api/_lib/anticipation/rules/mobilisation-transports.js';
 // @ts-expect-error module JS sans déclaration
 import tempete from '../api/_lib/anticipation/rules/tempete-reseaux.js';
@@ -86,11 +89,44 @@ describe('rule 1 mobilisation-transports', () => {
     expect(mobilisation.evaluate([rally('a', 'demosphere'), sncf('s3', undefined, undefined, { dept: ['13'] })], ctx())).toEqual([]);
   });
 
-  it('single origin evidence floors to peu_probable (floor applied by the engine, evidence says 1 origin)', () => {
+  it('single origin evidence floors to peu_probable through the engine', () => {
     const one = [rally('a', 'presse:event:1'), sncf('s4', undefined, undefined, { origin: 'presse:event:1', official: false })];
-    const out = mobilisation.evaluate(one, ctx());
-    expect(out[0].evidence.origins).toBe(1);
-    expect(out[0].word).toBe('possibilite_reelle'); // mot de base ; le plancher est appliqué par le moteur
+    const cands = mobilisation.evaluate(one, ctx());
+    expect(cands[0].evidence.origins).toBe(1);
+    expect(cands[0].word).toBe('possibilite_reelle'); // mot de base ; le plancher est appliqué par le moteur
+    const out = evaluate(one, { state: () => new Map() }, NOW, RULES);
+    expect(out.opened).toHaveLength(1);
+    expect(out.opened[0].word).toBe('peu_probable');
+  });
+
+  it('a rally ending exactly at 14 h Paris gives no afternoon candidate (end exclusive)', () => {
+    const morning = rally('a', 'demosphere', '2026-11-04T09:00:00Z', '2026-11-04T13:00:00Z'); // 10 h à 14 h Paris
+    expect(mobilisation.evaluate([morning, sncf('s6', '2026-11-04T09:00:00Z', '2026-11-04T20:00:00Z')], { now: Date.parse('2026-11-04T05:00:00Z'), precedent: () => null }).map((c: { window: { from: string } }) => c.window.from))
+      .toEqual(['2026-11-04T05:00:00.000Z']);
+    // transport finissant à 14 h pile : pas de candidat l'après-midi
+    expect(mobilisation.evaluate([rally('b', 'demosphere'), sncf('s7', '2026-11-04T09:00:00Z', '2026-11-04T13:00:00Z')], ctx())).toEqual([]);
+  });
+
+  it('press-derived strike (window null) covers the Paris day of its publication when recent', () => {
+    const strike = sig({ id: 'tcl1', domain: 'transport', kind: 'mouvement_social_transport', source: 'Le Progrès', origin: 'presse:event:77', official: false, publishedAt: '2026-11-04T07:00:00Z' });
+    const out = mobilisation.evaluate([rally('a', 'demosphere'), rally('b', 'cgt'), strike], ctx());
+    expect(out).toHaveLength(1);
+    expect(out[0].chain[1].signalIds).toEqual(['tcl1']);
+    const stale = { ...strike, publishedAt: '2026-11-02T07:00:00Z' };
+    expect(mobilisation.evaluate([rally('a', 'demosphere'), stale], ctx())).toEqual([]);
+  });
+
+  it('place phrases follow the département', () => {
+    const mk = (dept: string) => mobilisation.evaluate([rally('a', 'demosphere', undefined, undefined, { dept: [dept] }), sncf('s', undefined, undefined, { dept: [dept] })], ctx())[0].chain[0].text;
+    expect(mk('69')).toContain('dans le Rhône, après-midi');
+    expect(mk('33')).toContain('en Gironde');
+    expect(mk('13')).toContain('dans les Bouches-du-Rhône');
+    expect(mk('75')).toContain('à Paris');
+  });
+
+  it('a future half-day names its Paris date', () => {
+    const out = mobilisation.evaluate([rally('a', 'demosphere', '2026-11-06T15:00:00Z', '2026-11-06T18:00:00Z'), sncf('s8', '2026-11-06T12:00:00Z', '2026-11-06T20:00:00Z')], ctx());
+    expect(out[0].chain[0].text).toContain('après-midi du 06/11');
   });
 
   it('half-days use Paris time across the DST change (summer, UTC+2): 14 h Paris = 12:00Z', () => {
@@ -113,10 +149,11 @@ describe('rule 1 mobilisation-transports', () => {
     const other = sig({ id: 'p2', domain: 'press', kind: 'presse', origin: 'presse:event:6', dept: ['13'], level: 'jaune', publishedAt: '2026-11-04T16:00:00Z', meta: { category: 'security', severity: 'high' } });
     const mild = sig({ id: 'p3', domain: 'press', kind: 'presse', origin: 'presse:event:7', dept: ['69'], level: 'jaune', publishedAt: '2026-11-04T16:00:00Z', meta: { category: 'energy', severity: 'medium' } });
     const after = Date.parse('2026-11-04T22:30:00Z');
-    expect(mobilisation.arrived(scen, [press], after)).toBe('arrive');
-    expect(mobilisation.arrived(scen, [other, mild], after)).toBe('pas_arrive');
-    expect(mobilisation.arrived(scen, [], after)).toBe('indecidable');
-    expect(mobilisation.arrived(scen, [other, mild], Date.parse('2026-11-04T17:00:00Z'))).toBeNull();
+    expect(mobilisation.arrived(scen, [press], { now: after })).toBe('arrive');
+    expect(mobilisation.arrived(scen, [other, mild], { now: after, unknown: [] })).toBe('pas_arrive');
+    expect(mobilisation.arrived(scen, [], { now: after })).toBe('indecidable');
+    expect(mobilisation.arrived(scen, [other, mild], { now: after, unknown: ['Presse non lue'] })).toBe('indecidable');
+    expect(mobilisation.arrived(scen, [other, mild], { now: Date.parse('2026-11-04T17:00:00Z') })).toBeNull();
   });
 });
 
@@ -159,6 +196,12 @@ describe('rule 2 tempete-reseaux', () => {
     expect(withPanne[0].evidence.basculeHit).toBe(true);
   });
 
+  it('a panne before the vigilance window and publication is not cited', () => {
+    const old = panne('electricite', { id: 'old', window: { from: '2026-11-01T07:00:00Z', to: '2026-11-01T09:00:00Z' }, publishedAt: '2026-11-01T07:00:00Z' });
+    const out = tempete.evaluate([vig({ publishedAt: '2026-11-04T12:00:00Z' }), old], ctx());
+    expect(out[0].bascules.find((x: { id: string }) => x.id === 'coupures').state).toBe('surveille');
+  });
+
   it('panne in another département is ignored', () => {
     const out = tempete.evaluate([vig(), panne('electricite', { dept: ['35'] })], ctx());
     expect(out[0].bascules.find((x: { id: string }) => x.id === 'coupures').state).toBe('surveille');
@@ -172,8 +215,9 @@ describe('rule 2 tempete-reseaux', () => {
 
   it('arrival: panne electricite rouge/orange in the dept during the window', () => {
     const scen = { ruleId: 'tempete-reseaux', zone: { dept: ['29'], communes: [] }, window: { from: '2026-11-05T06:00:00Z', to: '2026-11-05T18:00:00Z' } };
-    expect(tempete.arrived(scen, [panne('electricite')], Date.parse('2026-11-05T10:00:00Z'))).toBe('arrive');
-    expect(tempete.arrived(scen, [panne('electricite', { level: 'jaune' })], Date.parse('2026-11-05T19:00:00Z'))).toBe('pas_arrive');
-    expect(tempete.arrived(scen, [], Date.parse('2026-11-05T10:00:00Z'))).toBeNull();
+    expect(tempete.arrived(scen, [panne('electricite')], { now: Date.parse('2026-11-05T10:00:00Z') })).toBe('arrive');
+    expect(tempete.arrived(scen, [panne('electricite', { level: 'jaune' })], { now: Date.parse('2026-11-05T19:00:00Z'), unknown: [] })).toBe('pas_arrive');
+    expect(tempete.arrived(scen, [], { now: Date.parse('2026-11-05T19:00:00Z'), unknown: ['Pannes non lues'] })).toBe('indecidable');
+    expect(tempete.arrived(scen, [], { now: Date.parse('2026-11-05T10:00:00Z') })).toBeNull();
   });
 });
