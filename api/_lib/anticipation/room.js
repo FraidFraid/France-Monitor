@@ -3,8 +3,8 @@
 // L'instantané servi par /api/anticipation/now est recalculé à la demande quand le dernier tick a plus de 3 min (serveur de dev).
 // Un relevé en échec devient une entrée nulle (« inconnu ») : le tick ne lève jamais.
 import { readFile } from 'node:fs/promises';
-import { parisDay } from '../../_shared/paris-day.js';
-import { upcomingFromSources } from '../../_shared/upcoming.js';
+import { parisDay } from '../../../src/services/paris-day.js';
+import { upcomingFromSources } from '../../../src/services/upcoming-core.js';
 import { PHENOMENON_WORD } from '../../_shared/phenomenon-word.js';
 import { loadProtests } from '../protests.js';
 import { loadVigilance } from '../meteo-vigilance.js';
@@ -76,14 +76,22 @@ function sharesOfFuel(/** @type {any} */ fuel) {
   }
   return out;
 }
-function sharesOfSignals(/** @type {any[]} */ signals) {
-  const out = emptyShares();
+/** Mémoire carburants rebâtie depuis l'archive : parts, date du relevé (lecture) et parts précédentes (`meta.previousValue`). */
+function memoOfSignals(/** @type {any[]} */ signals) {
+  const shares = emptyShares();
+  const previous = emptyShares();
+  let generatedAt = /** @type {string|null} */ (null);
   for (const s of signals) { // dans l'ordre d'archivage : le plus récent l'emporte
     if (s?.kind !== 'tension_carburant' || typeof s.value !== 'number') continue;
-    if (s.meta?.national === true) out.national = s.value;
-    else if (Array.isArray(s.dept) && s.dept.length === 1) out.depts[s.dept[0]] = s.value;
+    if (typeof s.checkedAt === 'string' && (generatedAt === null || s.checkedAt > generatedAt)) generatedAt = s.checkedAt;
+    const prev = typeof s.meta?.previousValue === 'number' ? s.meta.previousValue : null;
+    if (s.meta?.national === true) { shares.national = s.value; previous.national = prev; }
+    else if (Array.isArray(s.dept) && s.dept.length === 1) {
+      shares.depts[s.dept[0]] = s.value;
+      if (prev !== null) previous.depts[s.dept[0]] = prev; else delete previous.depts[s.dept[0]];
+    }
   }
-  return out;
+  return /** @type {FuelMemo} */ ({ generatedAt, shares, previous });
 }
 
 /** Relevé carburants avec la part précédente injectée (`previousAnomalyShare`), sans toucher à l'original. */
@@ -97,8 +105,15 @@ function withPrevious(/** @type {any} */ fuel, /** @type {FuelMemo} */ memo) {
   };
 }
 
-async function settle(/** @type {(now: number) => Promise<any>} */ read, /** @type {number} */ now) {
-  try { return (await read(now)) ?? null; } catch { return null; }
+/** Durée maximale d'un relevé : un relevé bloqué ne doit pas figer la boucle d'une minute. */
+export const READ_BUDGET_MS = 25_000;
+
+/** Lecture bornée : échec ou délai dépassé donnent null (le délai est aussi noté dans `errors`). */
+async function settle(/** @type {string} */ name, /** @type {(now: number) => Promise<any>} */ read, /** @type {number} */ now, /** @type {number} */ budget, /** @type {string[]} */ errors) {
+  /** @type {ReturnType<typeof setTimeout>|undefined} */
+  let timer;
+  const timeout = new Promise((resolve) => { timer = setTimeout(() => { errors.push(`${name} : délai dépassé`); resolve(null); }, budget); });
+  try { return (await Promise.race([Promise.resolve().then(() => read(now)), timeout])) ?? null; } catch { return null; } finally { clearTimeout(timer); }
 }
 
 /** Scénario enregistré avec une bascule qui vient d'être atteinte ? */
@@ -115,16 +130,17 @@ async function run(/** @type {number} */ now, /** @type {any} */ readers) {
     // Après un redémarrage : parts du dernier relevé archivé (2 h), pour garder la tendance.
     let archived = [];
     try { archived = await registry.signalsBetween(new Date(now - 2 * HOUR).toISOString(), nowIso); } catch { /* archive illisible : pas de tendance */ }
-    fuelMemo = { generatedAt: null, shares: sharesOfSignals(archived), previous: emptyShares() };
+    fuelMemo = memoOfSignals(archived);
   }
   const names = ['protests', 'vigilance', 'rail', 'room', 'cyber', 'ecowatt', 'fuel', 'news'];
-  const results = await Promise.allSettled([
-    settle(readers.readProtests, now), settle(readers.readVigilance, now), settle(readers.readRail, now), settle(readers.readRoom, now),
-    settle(readers.readCyber, now), settle(readers.readEcowatt, now), settle(readers.readFuel, now), settle(readers.readNews, now),
-  ]);
+  /** @type {string[]} */
+  const readErrors = [];
+  const budget = typeof readers.budgetMs === 'number' ? readers.budgetMs : READ_BUDGET_MS;
+  const labels = { protests: 'Manifestations', vigilance: 'Météo-France', rail: 'SNCF', room: 'Pannes', cyber: 'Veille cyber', ecowatt: 'Écowatt', fuel: 'Carburants', news: 'Presse' };
+  const values = await Promise.all(names.map((n) => settle(/** @type {Record<string, string>} */ (labels)[n], readers[`read${n[0].toUpperCase()}${n.slice(1)}`], now, budget, readErrors)));
   /** @type {Record<string, any>} */
   const inputs = {};
-  names.forEach((n, i) => { const r = results[i]; inputs[n] = r.status === 'fulfilled' ? r.value : null; });
+  names.forEach((n, i) => { inputs[n] = values[i]; });
   // Tendance carburants : à chaque nouveau relevé, les parts du relevé courant deviennent « précédentes ».
   if (inputs.fuel && typeof inputs.fuel.generatedAt === 'string' && inputs.fuel.generatedAt !== fuelMemo.generatedAt) {
     fuelMemo = { generatedAt: inputs.fuel.generatedAt, previous: fuelMemo.shares, shares: sharesOfFuel(inputs.fuel) };
@@ -136,8 +152,10 @@ async function run(/** @type {number} */ now, /** @type {any} */ readers) {
   const before = new Map(registry.state());
   const { opened, revised, open, errors: engineErrors } = evaluate(signals, registry, now, rules, unknown);
   for (const s of opened) await registry.record({ at: nowIso, type: 'ouverture', scenario: s });
-  for (const s of revised) await registry.record({ at: nowIso, type: newlyReached(before.get(s.id), s) ? 'bascule' : 'revision', scenario: s });
-  for (const c of await closeDue(open, signals, rules, now, { registry, unknown })) await registry.record({ at: nowIso, type: 'cloture', scenario: c.scenario });
+  // Les retours arrivés pendant le tick sont relus juste avant l'écriture : aucun vote perdu.
+  const keepVotes = (/** @type {any} */ s) => ({ ...s, feedback: registry.state().get(s.id)?.feedback ?? s.feedback });
+  for (const s of revised) await registry.record({ at: nowIso, type: newlyReached(before.get(s.id), s) ? 'bascule' : 'revision', scenario: keepVotes(s) });
+  for (const c of await closeDue(open, signals, rules, now, { registry, unknown })) await registry.record({ at: nowIso, type: 'cloture', scenario: keepVotes(c.scenario) });
   const stillOpen = [...registry.state().values()].filter((/** @type {any} */ s) => s.status === 'ouvert');
   for (const m of missedCrises(signals, stillOpen, [...registry.state().values()], now)) await registry.record({ at: nowIso, type: 'manque', scenario: m });
   await registry.archiveSignals(signals, now);
@@ -151,7 +169,7 @@ async function run(/** @type {number} */ now, /** @type {any} */ readers) {
   }, { phenomenonWord: PHENOMENON_WORD, readForecast: () => null });
   state = {
     registry, tickAt: now, signals, scenarios: served, agenda: buildAgenda(served, upcoming, now), unknown,
-    errors: [...signalErrors, ...engineErrors, ...registry.errors], fuel: fuelMemo, compactDay,
+    errors: [...readErrors, ...signalErrors, ...engineErrors, ...registry.errors], fuel: fuelMemo, compactDay,
   };
 }
 
@@ -185,7 +203,7 @@ export async function anticipationSnapshot(now = Date.now(), readers = DEFAULT_R
 }
 
 /**
- * Enregistre un retour sur un scénario connu (compteur + ligne « retour » du journal). Renvoie false si le scénario est inconnu.
+ * Enregistre un retour sur un scénario connu, ouvert ou clos (décision du 04/11/2026 : le bilan « utile » compte aussi les scénarios clos) (compteur + ligne « retour » du journal). Renvoie false si le scénario est inconnu.
  * @param {string} scenarioId
  * @param {'utile'|'deja_su'|'faux'} vote
  * @param {number} [now]

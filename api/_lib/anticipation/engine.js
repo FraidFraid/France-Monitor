@@ -2,7 +2,7 @@
 // Évalue les règles sur les signaux, applique le plancher des grilles, ouvre ou révise les scénarios (jamais de doublon : même règle,
 // même premier département, fenêtres qui se chevauchent). N'écrit rien : l'appelant enregistre `opened` et `revised` dans le registre.
 import { applyFloor, WORDS, wordWhy } from './probability.js';
-import { parisDay } from '../../_shared/paris-day.js';
+import { parisDay } from '../../../src/services/paris-day.js';
 import { RULES } from './rules/index.js';
 
 /** @typedef {import('./probability.js').Signal} Signal */

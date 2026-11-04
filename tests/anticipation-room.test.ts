@@ -29,7 +29,7 @@ function readers() {
     readRoom: guard('room', { generatedAt: iso(T0), outages: [] }),
     readCyber: guard('cyber', null),
     readEcowatt: guard('ecowatt', null),
-    readFuel: async () => ({ generatedAt: fuelAt, national: { anomalyShare: fuelShare }, summaries: [{ departmentCode: '13', anomalyShare: fuelShare }] }),
+    readFuel: async () => { if (throwing === 'fuel') throw new Error('fuel en panne'); return { generatedAt: fuelAt, national: { anomalyShare: fuelShare }, summaries: [{ departmentCode: '13', anomalyShare: fuelShare }] }; },
     readNews: guard('news', news),
   };
 }
@@ -99,6 +99,60 @@ describe('tick de l’anticipation', () => {
     expect(snap.generatedAt).toBe(iso(later));
     const fresh = await anticipationSnapshot(later + 10_000, readers());
     expect(fresh.generatedAt).toBe(iso(later));
+  });
+
+  it('keeps the earlier previous value when the same relevé is read again after a restart', async () => {
+    await tickAnticipation(T0, readers()); // relevé A : 20
+    fuelShare = 30; fuelAt = iso(T0 + 30_000);
+    await tickAnticipation(T0 + 60_000, readers()); // relevé B : 30, précédent 20
+    __resetAnticipationForTests();
+    await tickAnticipation(T0 + 120_000, readers()); // même relevé B après redémarrage
+    const snap = await anticipationSnapshot(T0 + 121_000, readers());
+    const fuel = Object.values(snap.signals as Record<string, { kind: string; meta?: { previousValue?: number } }>).filter((s) => s.kind === 'tension_carburant');
+    expect(fuel.map((s) => s.meta?.previousValue)).toEqual([20]);
+    expect((await journal()).map((e) => e.type)).toEqual(['ouverture']);
+  });
+
+  it('a second identical tick writes no revision line', async () => {
+    await tickAnticipation(T0, readers());
+    fuelShare = 30; fuelAt = iso(T0 + 30_000);
+    await tickAnticipation(T0 + 60_000, readers());
+    await tickAnticipation(T0 + 120_000, readers());
+    expect((await journal()).map((e) => e.type)).toEqual(['ouverture']);
+  });
+
+  it('readFuel throwing gives unknown "Carburants non lus" and the tick completes', async () => {
+    throwing = 'fuel';
+    await tickAnticipation(T0, readers());
+    const snap = await anticipationSnapshot(T0 + 1_000, readers());
+    expect(snap.unknown).toContain('Carburants non lus');
+    expect(snap.generatedAt).toBe(iso(T0));
+  });
+
+  it('a reader that never resolves times out: null input and a "délai dépassé" error', async () => {
+    const hung = { ...readers(), readNews: () => new Promise(() => {}), budgetMs: 20 };
+    await tickAnticipation(T0, hung);
+    const snap = await anticipationSnapshot(T0 + 1_000, hung);
+    expect(snap.errors).toContain('Presse : délai dépassé');
+    expect(snap.unknown).toContain('Presse non lue');
+  });
+
+  it('records a bascule line when a revised scenario reaches a bascule', async () => {
+    let reached = false;
+    const rule = {
+      id: 'test-regle', version: 1, title: 't', domains: [], arrivalTest: 'x',
+      arrived: () => null,
+      evaluate: () => [{
+        ruleId: 'test-regle', ruleVersion: 1, zone: { dept: [], communes: [] }, window: { from: iso(T0), to: iso(T0 + 6 * 3_600_000) }, title: 't',
+        chain: [], word: 'possibilite_reelle', unknowns: [], disconfirmers: [], verify: [],
+        bascules: [{ id: 'b', label: 'b', state: reached ? 'atteint' : 'surveille', at: reached ? iso(T0 + 60_000) : null }],
+        evidence: { origins: 2, hasOfficial: false, hasPublishedDeadline: false, officialLevel: null, basculeHit: reached, precedentDay: null },
+      }],
+    };
+    await tickAnticipation(T0, { ...readers(), rules: [rule] });
+    reached = true;
+    await tickAnticipation(T0 + 60_000, { ...readers(), rules: [rule] });
+    expect((await journal()).map((e) => e.type)).toEqual(['ouverture', 'bascule']);
   });
 
   it('server phenomenon words mirror src/services/environment-levels.ts', () => {

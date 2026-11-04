@@ -1,7 +1,7 @@
 // api/_lib/anticipation/agenda.js : agenda de 7 jours à l'heure de Paris (04/11/2026, spec § 8).
 // Aujourd'hui puis J+1 à J+6. Un scénario figure dans chaque jour de Paris que sa fenêtre recoupe ; aujourd'hui est coupé en trois
 // demi-journées (mêmes définitions que rules/paris-time.js : matin 6 h à 14 h, après-midi 14 h à 22 h, soir 22 h à 6 h le lendemain). Les échéances publiées par les sources sont listées par jour.
-import { parisDay } from '../../_shared/paris-day.js';
+import { parisDay } from '../../../src/services/paris-day.js';
 import { halfDaysOverlapping, parisDayBounds } from './rules/paris-time.js';
 
 /** @typedef {import('./registry.js').Scenario} Scenario */
@@ -25,7 +25,7 @@ const crosses = (/** @type {{from: number, to: number}} */ w, /** @type {number}
 
 /**
  * @param {Scenario[]} open Scénarios (seuls les ouverts sont placés), dans l'ordre d'affichage voulu.
- * @param {AgendaDay['deadlines']} upcoming Échéances publiées (api/_shared/upcoming.js).
+ * @param {AgendaDay['deadlines']} upcoming Échéances publiées (src/services/upcoming-core.js).
  * @param {number} now
  * @returns {AgendaDay[]}
  */

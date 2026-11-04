@@ -11,7 +11,7 @@ import type { EcowattResponse, FloodsResponse, ProtestItem, VigilanceResponse } 
 import { readForecast } from './flood-forecast.ts';
 import { PHENOMENON_WORD } from './environment-levels.ts';
 import type { VigilanceLevel } from './vigilance.ts';
-import { parisDay as sharedParisDay, PROTESTS_HORIZON_DAYS as SHARED_HORIZON, upcomingFromSources as sharedUpcoming } from '../../api/_shared/upcoming.js';
+import { parisDay as sharedParisDay, PROTESTS_HORIZON_DAYS as SHARED_HORIZON, upcomingFromSources as sharedUpcoming } from './upcoming-core.js';
 
 export interface UpcomingItem {
   /** Jour concerné, heure de Paris, « AAAA-MM-JJ ». */
@@ -39,7 +39,7 @@ export function parisDay(ms: number): string {
   return sharedParisDay(ms);
 }
 
-/** Échéances des jours à venir, par jour puis par gravité publiée (implémentation partagée : api/_shared/upcoming.js). */
+/** Échéances des jours à venir, par jour puis par gravité publiée (implémentation partagée : src/services/upcoming-core.js). */
 export function upcomingFromSources(input: UpcomingInput): UpcomingItem[] {
   return sharedUpcoming(input, { phenomenonWord: PHENOMENON_WORD, readForecast });
 }

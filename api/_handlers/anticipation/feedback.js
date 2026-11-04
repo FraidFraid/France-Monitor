@@ -2,7 +2,7 @@
 // par jour de Paris. L'empreinte est sha256(sel aléatoire du jour + adresse IP) : le sel ne vit qu'en mémoire et change à minuit (Paris),
 // l'adresse et l'empreinte ne sont jamais écrites (ni disque, ni journal) ; seul le compteur du scénario l'est.
 import { createHash, randomBytes } from 'node:crypto';
-import { parisDay } from '../../_shared/paris-day.js';
+import { parisDay } from '../../../src/services/paris-day.js';
 import { getClientIp } from '../../_utils/rate-limit.js';
 import { recordFeedback } from '../../_lib/anticipation/room.js';
 
@@ -53,10 +53,12 @@ export default async function handler(req, res) {
     res.status(429).json({ error: 'un seul retour par scénario et par jour' });
     return;
   }
+  // Clé posée avant l'attente : deux requêtes simultanées ne passent pas toutes les deux ; retirée si le scénario est inconnu.
+  daily.seen.add(key);
   if (!(await recordFeedback(scenarioId, /** @type {'utile'|'deja_su'|'faux'} */ (vote), now))) {
+    daily.seen.delete(key);
     res.status(400).json({ error: 'scénario inconnu' });
     return;
   }
-  daily.seen.add(key);
   res.status(204).end();
 }

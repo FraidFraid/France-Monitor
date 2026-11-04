@@ -5,7 +5,7 @@
 import { appendFile, mkdir, readdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
-import { parisDay } from '../../_shared/paris-day.js';
+import { parisDay } from '../../../src/services/paris-day.js';
 
 /** @typedef {import('./probability.js').Signal} Signal */
 /**

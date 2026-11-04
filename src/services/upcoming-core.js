@@ -1,7 +1,7 @@
-// api/_shared/upcoming.js : échéances annoncées par les sources, partie pure partagée client et serveur (04/11/2026, issue de
+// src/services/upcoming-core.js : échéances annoncées par les sources, partie pure partagée client et serveur (04/11/2026, issue de
 // src/services/upcoming.ts du 26/10/2026). France Monitor ne prévoit rien : il reprend ce que les émetteurs publient eux-mêmes pour
 // les jours à venir, attribué et daté. Les deux dépendances propres au client (libellé des phénomènes de vigilance, lecture des
-// prévisions Vigicrues) sont passées en argument (`deps`) : le serveur n'importe rien de src/.
+// prévisions Vigicrues) sont passées en argument (`deps`) : le serveur importe ce fichier depuis src/ (code partagé, jamais l'inverse).
 import { parisDay } from './paris-day.js';
 
 export { parisDay };
@@ -10,11 +10,11 @@ const DAY_MS = 24 * 3_600_000;
 export const PROTESTS_HORIZON_DAYS = 7;
 
 /**
- * @typedef {import('../../src/types/index.ts').EcowattResponse} EcowattResponse
- * @typedef {import('../../src/types/index.ts').VigilanceResponse} VigilanceResponse
- * @typedef {import('../../src/types/index.ts').FloodsResponse} FloodsResponse
- * @typedef {import('../../src/types/index.ts').FloodStation} FloodStation
- * @typedef {import('../../src/types/index.ts').ProtestItem} ProtestItem
+ * @typedef {import('../types/index.ts').EcowattResponse} EcowattResponse
+ * @typedef {import('../types/index.ts').VigilanceResponse} VigilanceResponse
+ * @typedef {import('../types/index.ts').FloodsResponse} FloodsResponse
+ * @typedef {import('../types/index.ts').FloodStation} FloodStation
+ * @typedef {import('../types/index.ts').ProtestItem} ProtestItem
  * @typedef {'vert'|'jaune'|'orange'|'rouge'} VigilanceLevel
  * @typedef {object} UpcomingItem
  * @property {string} day Jour concerné, heure de Paris, « AAAA-MM-JJ ».

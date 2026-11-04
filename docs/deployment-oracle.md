@@ -494,5 +494,5 @@ sudo systemctl restart fm-api
 curl -s http://127.0.0.1:3000/api/anticipation/now | jq '.beta, .errors'    # attendu : true puis []
 ```
 
-Si le dossier n'existe pas au démarrage, `ReadWritePaths=` fait échouer le service : créer le dossier avant le redémarrage.
+`ReadWritePaths=-…` ignore un dossier absent : le service démarre quand même, le moteur reste alors en mémoire et le signale dans `errors`. `deploy/oracle/setup.sh` crée le dossier pour une nouvelle VM.
 Sauvegarde : le registre est un historique d'évaluation, pas une donnée de service ; aucune copie automatique pour l'instant.

@@ -1,7 +1,7 @@
 // api/_lib/anticipation/rules/paris-time.js : demi-journées à l'heure de Paris (matin 06 h à 14 h, après-midi 14 h à 22 h, soir 22 h à 06 h le lendemain).
 // Passage à l'heure d'été ou d'hiver géré par Intl (Europe/Paris), aucun décalage fixe.
 
-import { parisDay } from '../../../_shared/paris-day.js';
+import { parisDay } from '../../../../src/services/paris-day.js';
 
 const partsFmt = new Intl.DateTimeFormat('en-GB', {
   timeZone: 'Europe/Paris', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',

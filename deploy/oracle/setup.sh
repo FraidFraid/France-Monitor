@@ -137,6 +137,8 @@ install -d -m 750 -o "$FM_USER" -g "$FM_GROUP" "$RADAR_STORAGE_DIR"
 # Fichiers de données régénérés par minuteur (eau du robinet) : lus par Caddy, d'où 755.
 install -d -m 755 -o "$FM_USER" -g "$FM_GROUP" /var/lib/francemonitor
 install -d -m 755 -o "$FM_USER" -g "$FM_GROUP" /var/lib/francemonitor/data
+# Registre d'anticipation (04/11/2026) : inscriptible par fm-api (ReadWritePaths de fm-api.service).
+install -d -m 750 -o "$FM_USER" -g "$FM_GROUP" /var/lib/francemonitor/data/anticipation
 install -d -m 755 -o "$FM_USER" -g "$FM_GROUP" /opt/francemonitor
 # Caddy écrit ses journaux d'accès ici sous l'utilisateur caddy.
 install -d -m 750 -o caddy     -g caddy        /var/log/caddy
