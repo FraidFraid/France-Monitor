@@ -15,7 +15,7 @@ import process from 'node:process';
  * @property {{ dept: string[], communes: string[] }} zone
  * @property {{ from: string, to: string }} window
  * @property {string} title
- * @property {Array<{ text: string, signalIds: string[] }>} chain
+ * @property {Array<{ text: string, signalIds: string[], levels?: Record<string, string|null> }>} chain
  * @property {string} word
  * @property {string} why
  * @property {string[]} unknowns

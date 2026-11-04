@@ -8,6 +8,7 @@ const OUTAGES_UNKNOWN = 'Pannes non lues';
 const ECOWATT_UNKNOWN = 'Écowatt non lu';
 const WEATHER_UNKNOWN = 'Météo-France non lue';
 const HEALTH_UNKNOWN = 'Passages aux urgences de la semaine non encore publiés';
+const RANK = { jaune: 1, orange: 2, rouge: 3 };
 const STRONG = (/** @type {import('../probability.js').Signal} */ s) => s.level === 'orange' || s.level === 'rouge';
 const isElectric = (/** @type {import('../probability.js').Signal} */ s) => s.kind === 'panne' && s.meta?.network === 'electricite';
 const overlaps = (/** @type {{from: number, to: number}|null} */ w, /** @type {number} */ from, /** @type {number} */ to) => w !== null && w.from < to && Math.max(w.to, w.from + 1) > from;
@@ -40,10 +41,12 @@ const rule = {
       const name = /** @type {Record<string, string>} */ (DEPT_NAMES)[dept] ?? dept;
       const where = inPlace(dept, DEPT_NAMES);
       const cited = [...vs, ...eco, ...pannes];
-      const chain = [{ text: `Vigilance canicule ${rouge ? 'rouge' : 'orange'} ${where} (Météo-France)`, signalIds: vs.map((s) => s.id) }];
-      if (eco.length) chain.push({ text: `Écowatt ${eco.some((s) => s.level === 'rouge') ? 'rouge' : 'orange'} le même jour (RTE)`, signalIds: eco.map((s) => s.id) });
-      if (pannes.length) chain.push({ text: `Panne d'électricité relevée ${where}`, signalIds: pannes.map((s) => s.id) });
-      chain.push({ text: "Hypothèse : tension sur l'électricité pendant la chaleur, avec un risque pour les personnes fragiles", signalIds: cited.map((s) => s.id) });
+      // `levels` : niveau de chaque signal cité à l'écriture, pour reconnaître plus tard une montée de niveau (les ids ne portent pas le niveau).
+      const step = (/** @type {string} */ text, /** @type {import('../probability.js').Signal[]} */ list) => ({ text, signalIds: list.map((s) => s.id), levels: Object.fromEntries(list.map((s) => [s.id, s.level ?? null])) });
+      const chain = [step(`Vigilance canicule ${rouge ? 'rouge' : 'orange'} ${where} (Météo-France)`, vs)];
+      if (eco.length) chain.push(step(`Écowatt ${eco.some((s) => s.level === 'rouge') ? 'rouge' : 'orange'} le même jour (RTE)`, eco));
+      if (pannes.length) chain.push(step(`Panne d'électricité relevée ${where}`, pannes));
+      chain.push(step("Hypothèse : tension sur l'électricité pendant la chaleur, avec un risque pour les personnes fragiles", cited));
       const unknown = Array.isArray(ctx.unknown) ? ctx.unknown : [];
       out.push({
         ruleId: RULE_ID,
@@ -73,11 +76,22 @@ const rule = {
     if (!Number.isFinite(from) || !Number.isFinite(to) || !dept) return null;
     // Ni les signaux cités par le scénario ni ceux antérieurs à son ouverture ne comptent : sinon l'ouverture vaudrait arrivée.
     const opened = Date.parse(scenario?.openedAt ?? '');
-    const cited = new Set((Array.isArray(scenario?.chain) ? scenario.chain : []).flatMap((c) => (Array.isArray(c?.signalIds) ? c.signalIds : [])));
+    const steps = Array.isArray(scenario?.chain) ? scenario.chain : [];
+    const cited = new Set(steps.flatMap((c) => (Array.isArray(c?.signalIds) ? c.signalIds : [])));
+    // Niveau le plus bas écrit pour un id cité (0 si inconnu) : un niveau actuel strictement plus haut est un fait nouveau.
+    const citedRank = (/** @type {string} */ id) => {
+      const ranks = steps.map((c) => c?.levels?.[id]).filter((l) => l !== undefined).map((l) => /** @type {Record<string, number>} */ (RANK)[String(l)] ?? 0);
+      return ranks.length ? Math.min(...ranks) : null;
+    };
     const hit = cleanSignals(signals).some((s) => {
-      if (cited.has(s.id)) return false;
+      let escalated = false;
+      if (cited.has(s.id)) {
+        const before = citedRank(s.id);
+        escalated = before !== null && ((/** @type {Record<string, number>} */ (RANK))[String(s.level)] ?? 0) > before;
+        if (!escalated) return false;
+      }
       const seen = Date.parse(s.publishedAt ?? s.observedAt ?? '');
-      if (Number.isFinite(opened) && !(seen > opened)) return false;
+      if (!escalated && Number.isFinite(opened) && !(seen > opened)) return false;
       if (!overlaps(span(s), from, to)) return false;
       if (s.kind === 'ecowatt') return s.level === 'rouge';
       return isElectric(s) && inDept(s, dept) && STRONG(s);

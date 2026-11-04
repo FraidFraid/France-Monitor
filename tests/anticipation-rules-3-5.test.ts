@@ -87,6 +87,23 @@ describe('rule 3 chaleur-sante', () => {
 
   describe('arrived', () => {
     const scenario = { window: DAY, zone: { dept: ['13'] } };
+    it('a cited signal counts only when its level rose since it was cited', () => {
+      const chain = (lv: Record<string, string>) => [{ text: 't', signalIds: Object.keys(lv), levels: lv }];
+      const base = { ...scenario, openedAt: '2026-11-04T09:00:00.000Z' };
+      // même id cité orange, maintenant rouge : arrive
+      expect(chaleur.arrived({ ...base, chain: chain({ eco: 'orange' }) }, [eco('rouge')], { now: NOW })).toBe('arrive');
+      // cité rouge, toujours rouge : n'arrive pas
+      expect(chaleur.arrived({ ...base, chain: chain({ eco: 'rouge' }) }, [eco('rouge')], { now: NOW })).toBeNull();
+      // panne commencée avant l'ouverture, montée d'orange à rouge après : arrive
+      const early = { publishedAt: '2026-11-04T06:00:00Z', observedAt: '2026-11-04T06:00:00Z' };
+      expect(chaleur.arrived({ ...base, chain: chain({ pe: 'orange' }) }, [panne({ ...early, level: 'rouge' })], { now: NOW })).toBe('arrive');
+      expect(chaleur.arrived({ ...base, chain: chain({ pe: 'orange' }) }, [panne({ ...early })], { now: NOW })).toBeNull();
+    });
+    it('evaluate writes the cited levels into the chain', () => {
+      const c = chaleur.evaluate([canicule(), eco('orange')], ctx())[0];
+      expect(c.chain[1].levels).toEqual({ eco: 'orange' });
+      expect(c.chain[0].levels).toEqual({ vig: 'orange' });
+    });
     it('is not circular and uses strict bounds', () => {
       const opened = { ...scenario, openedAt: '2026-11-04T09:00:00.000Z', chain: [{ text: 't', signalIds: ['pe', 'eco'] }] };
       // signaux cités : ne comptent pas
