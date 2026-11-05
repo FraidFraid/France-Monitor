@@ -119,6 +119,8 @@ declare global {
     __fmRecorderSnapshot?: SituationSnapshot;
     /** Note de situation du relevé, archivée par l'enregistreur (scripts/score-recorder.mjs, 26/10/2026). */
     __fmRecorderReport?: SituationReportData;
+    /** Brief national partagé rédigé pendant ce passage (05/11/2026) : origine « llm » si Groq a répondu, sinon « deterministic ». */
+    __fmRecorderBrief?: { source: string; generatedAt: number | null; error?: string };
   }
 }
 

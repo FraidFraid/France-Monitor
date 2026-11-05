@@ -34,6 +34,14 @@ const context = await chromium.launchPersistentContext(PROFILE_DIR, {
 });
 let snapshot = null;
 let report = null;
+let brief = null;
+// Brief partagé (05/11/2026) : la page de l'enregistreur le fait rédiger ; le jeton n'est envoyé qu'à la route du brief.
+const BRIEF_TOKEN = process.env.FM_BRIEF_TOKEN ?? '';
+if (BRIEF_TOKEN) {
+  await context.route('**/api/intelligence/v1/france-intel-brief*', (route) => route.continue({
+    headers: { ...route.request().headers(), 'x-fm-brief-token': BRIEF_TOKEN },
+  }));
+}
 try {
   const page = context.pages()[0] ?? await context.newPage();
   await page.goto(URL_TO_RECORD, { waitUntil: 'domcontentloaded', timeout: 90_000 });
@@ -46,6 +54,11 @@ try {
   for (let i = 0; i < 6 && snapshot && !report; i += 1) {
     report = await page.evaluate(() => window.__fmRecorderReport ?? null);
     if (!report) await page.waitForTimeout(2_000);
+  }
+  // Le brief attend les événements (8 s au plus) puis Groq : jusqu'à 90 s, sans dépasser le délai du passage.
+  for (let i = 0; i < 45 && snapshot && !brief && Date.now() - started < DEADLINE_MS + 90_000; i += 1) {
+    brief = await page.evaluate(() => window.__fmRecorderBrief ?? null);
+    if (!brief) await page.waitForTimeout(2_000);
   }
 } finally {
   await context.close();
@@ -89,4 +102,4 @@ if (report) {
 }
 
 const cov = snapshot.coverage;
-console.log(`[score-recorder] relevé ${snapshot.capturedAt} : note ${snapshot.score}, ${cov ? `${cov.read}/${cov.total} sources` : 'couverture inconnue'}${cov?.missing?.length ? ` (manquent : ${cov.missing.join(', ')})` : ''}, ${Math.round((now - started) / 1000)} s, ${kept.length} relevés gardés, ${notesKept === null ? 'note absente' : `${notesKept} notes archivées`}`);
+console.log(`[score-recorder] relevé ${snapshot.capturedAt} : note ${snapshot.score}, ${cov ? `${cov.read}/${cov.total} sources` : 'couverture inconnue'}${cov?.missing?.length ? ` (manquent : ${cov.missing.join(', ')})` : ''}, ${Math.round((now - started) / 1000)} s, ${kept.length} relevés gardés, ${notesKept === null ? 'note absente' : `${notesKept} notes archivées`}, brief ${brief ? brief.source : (BRIEF_TOKEN ? 'non remis' : 'sans jeton')}`);

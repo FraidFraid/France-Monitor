@@ -1415,6 +1415,8 @@ export class App {
   private v2IntelStarted = false;
   /** Page ouverte par l'enregistreur de la note sur la VM (?recorder=1) : relevé remis à la page, aucune note de synthèse demandée. */
   private readonly recorderPage = isRecorderPage(window.location.search);
+  /** Brief partagé déjà demandé pendant ce passage de l'enregistreur. */
+  private recorderBriefRequested = false;
   /** Thème choisi dans la v2 : filtre les points d'événements (spec 2026-09-29 § 5). */
   private v2Theme: ThemeId = 'general';
   /** Niveaux masqués depuis la légende (clic sur une ligne de niveau, spec 2026-10-14). */
@@ -9362,6 +9364,7 @@ export class App {
     }
     if (canRecord) void pushHistorySnapshot(snapshot, this.scoreCoverage(env), performance.now());
     if (canRecord && this.recorderPage) void this.exposeRecorderReport();
+    if (canRecord && this.recorderPage) void this.exposeRecorderBrief(snapshot);
     if (!this.isIntelSurfaceVisible()) return;
     this.franceIntelPanel?.show(snapshot);
     if (this.firstBriefWaitingSince !== null) {
@@ -9457,6 +9460,24 @@ export class App {
   private async exposeRecorderReport(): Promise<void> {
     const { collectSituationReportData } = await import('./components/SituationReport.ts');
     window.__fmRecorderReport = { ...collectSituationReportData(this.buildSituationReportContext()), permalink: 'https://www.francemonitor.com/?view=app' };
+  }
+
+  /**
+   * Page de l'enregistreur (?recorder=1) : fait rédiger le brief national partagé, une fois par passage (05/11/2026). Le jeton de
+   * rédaction est ajouté aux requêtes par scripts/score-recorder.mjs ; le serveur garde le brief, que lisent tous les visiteurs.
+   * Résultat remis dans window.__fmRecorderBrief pour le journal de l'enregistreur.
+   */
+  private async exposeRecorderBrief(snapshot: FranceCountrySnapshot): Promise<void> {
+    if (this.recorderBriefRequested) return;
+    this.recorderBriefRequested = true;
+    try {
+      const loaded = await settleWithin(this.loadFranceIntelEvents(), FRANCE_INTEL_BRIEF_EVENTS_WAIT_MS, null);
+      const situationIds = briefSituationIds(snapshot.situations);
+      const result = await fetchFranceIntelBrief(snapshot, 'fr', loaded?.briefEvents ?? [], { generate: true, situationIds });
+      window.__fmRecorderBrief = { source: result.brief.origin, generatedAt: result.generatedAt };
+    } catch (err) {
+      window.__fmRecorderBrief = { source: 'error', generatedAt: null, error: err instanceof Error ? err.message : String(err) };
+    }
   }
 
   private async openSituationReport(): Promise<void> {
@@ -9603,8 +9624,11 @@ export class App {
         if (!result || requestId !== this.franceIntelBriefRequestId) return;
         if (!this.isIntelSurfaceVisible()) return;
         if (this.intelLang() !== lang) return;
-        this.franceIntelPanel?.updateBrief(result.brief, result.freshness, situationIds);
-        this.poste?.setBrief(result.brief, result.freshness, situationIds, { at: result.generatedAt ?? Date.now(), level: scoreLevel(snapshot.score) });
+        // Brief partagé : ses preuves S<n> renvoient aux situations du relevé qui l'a fait rédiger, et son niveau est celui de ce relevé.
+        const ids = result.situationIds && result.situationIds.length > 0 ? result.situationIds : situationIds;
+        const level = scoreLevel(typeof result.score === 'number' ? result.score : snapshot.score);
+        this.franceIntelPanel?.updateBrief(result.brief, result.freshness, ids);
+        this.poste?.setBrief(result.brief, result.freshness, ids, { at: result.generatedAt ?? Date.now(), level });
       });
   }
 

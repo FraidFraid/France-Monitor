@@ -13,6 +13,8 @@ WorkingDirectory=/srv/francemonitor/current
 Environment=PLAYWRIGHT_MODULE=/opt/fm-recorder/node_modules/playwright/index.mjs
 Environment=PLAYWRIGHT_BROWSERS_PATH=/opt/fm-recorder/browsers
 Environment=HOME=/var/lib/francemonitor/recorder
+# FM_BRIEF_TOKEN (05/11/2026) : jeton de redaction du brief national partage, ajoute par l'enregistreur aux seules requetes du brief.
+EnvironmentFile=-/etc/francemonitor/francemonitor.env
 # Trois a cinq minutes : la page lit ses sources comme un visiteur. Ecrit hors de la release : l'historique survit aux deploiements.
 ExecStart=/usr/bin/node scripts/score-recorder.mjs
 TimeoutStartSec=8min

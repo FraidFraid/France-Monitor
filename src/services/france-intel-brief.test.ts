@@ -2,6 +2,7 @@ import { afterEach, describe, it, vi } from 'vitest';
 import assert from 'node:assert/strict';
 
 import {
+  clearFranceBriefCache,
   BRIEF_LEVEL_REFRESH_MIN_MS,
   BRIEF_LEVEL_SETTLE_MS,
   briefSituationIds,
@@ -327,27 +328,52 @@ describe('fetchFranceIntelBrief — heure de rédaction (spec 2026-09-29 § 8)',
   it('lit generatedAt du serveur, y compris pour une réponse venue du cache serveur', async () => {
     const iso = '2026-09-29T06:00:00.000Z';
     vi.stubGlobal('fetch', serving({ brief: BRIEF, fromCache: true, generatedAt: iso }));
-    const r = await fetchFranceIntelBrief(snapshot(51));
+    const r = await fetchFranceIntelBrief(snapshot(51), 'fr', [], { generate: true });
     assert.equal(r.generatedAt, Date.parse(iso));
     assert.equal(r.freshness, 'cached');
   });
 
   it('absent ou invalide : null (ancienne entrée Redis)', async () => {
     vi.stubGlobal('fetch', serving({ brief: BRIEF, fromCache: true }));
-    assert.equal((await fetchFranceIntelBrief(snapshot(52))).generatedAt, null);
+    assert.equal((await fetchFranceIntelBrief(snapshot(52), 'fr', [], { generate: true })).generatedAt, null);
     vi.stubGlobal('fetch', serving({ brief: BRIEF, fromCache: true, generatedAt: 'pas une date' }));
-    assert.equal((await fetchFranceIntelBrief(snapshot(53))).generatedAt, null);
+    assert.equal((await fetchFranceIntelBrief(snapshot(53), 'fr', [], { generate: true })).generatedAt, null);
   });
 
   it('survit à un passage par le cache client', async () => {
     const iso = '2026-09-29T05:00:00.000Z';
     const fetchMock = serving({ brief: BRIEF, fromCache: false, generatedAt: iso });
     vi.stubGlobal('fetch', fetchMock);
-    await fetchFranceIntelBrief(snapshot(54));
-    const again = await fetchFranceIntelBrief(snapshot(54));
+    await fetchFranceIntelBrief(snapshot(54), 'fr', [], { generate: true });
+    const again = await fetchFranceIntelBrief(snapshot(54), 'fr', [], { generate: true });
     assert.equal(fetchMock.mock.calls.length, 1);
     assert.equal(again.freshness, 'cached');
     assert.equal(again.generatedAt, Date.parse(iso));
+  });
+});
+
+describe('fetchFranceIntelBrief — brief partagé (05/11/2026)', () => {
+  afterEach(() => { vi.unstubAllGlobals(); clearFranceBriefCache(); });
+  const BRIEF = { bluf: 'Pression concentrée sur la Gironde.', judgments: [{ priority: 1, text: 'Crue.', confidence: 'moderate', evidence: ['S1'], sources: [] }], watch: [] };
+  const snap = { score: 60, scoreBreakdown: breakdown(), situations: [], briefContext: { score: 60, axes: {}, signals: {}, topHeadlines: [], cyberScore: 0, isnrComponents: {}, energySummary: null } } as unknown as Parameters<typeof fetchFranceIntelBrief>[0];
+
+  it('visiteur : une lecture GET, jamais de POST ; situations et note du relevé remises ; une minute en cache', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ brief: BRIEF, generatedAt: '2026-11-05T14:15:00.000Z', score: 72, situationIds: ['sit-a'], shared: true })));
+    vi.stubGlobal('fetch', fetchMock);
+    const r = await fetchFranceIntelBrief(snap, 'fr');
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit | undefined];
+    assert.equal(url, '/api/intelligence/v1/france-intel-brief?lang=fr');
+    assert.equal(init?.method ?? 'GET', 'GET');
+    assert.deepEqual([r.brief.origin, r.score, r.situationIds, r.generatedAt], ['llm', 72, ['sit-a'], Date.parse('2026-11-05T14:15:00.000Z')]);
+    await fetchFranceIntelBrief(snap, 'fr');
+    assert.equal(fetchMock.mock.calls.length, 1);
+  });
+
+  it('aucun brief gardé ou serveur muet : brief déterministe, jamais « indisponible »', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ brief: null, shared: true }))));
+    assert.equal((await fetchFranceIntelBrief(snap, 'fr')).brief.origin, 'deterministic');
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new Error('hors ligne'); }));
+    assert.equal((await fetchFranceIntelBrief(snap, 'en')).brief.origin, 'deterministic');
   });
 });
 

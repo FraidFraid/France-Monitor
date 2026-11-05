@@ -444,8 +444,13 @@ comme aujourd'hui sur Railway.
 `fm-score-recorder.timer` (toutes les 15 min) ouvre `https://www.francemonitor.com/?view=app&recorder=1` dans un Chromium sans écran
 (`scripts/score-recorder.mjs`) : la page calcule la note avec son propre code et la remet au script, qui l'ajoute à
 `/var/lib/francemonitor/data/score-history.jsonl` (35 jours). `/api/situation-history` lit ce fichier en premier, Redis (relevés des
-navigateurs) seulement pour les créneaux qu'il n'a pas ; `?resolution=15m` rend les relevés bruts. En mode enregistreur, la page ne
-demande pas de note de synthèse (quota Groq).
+navigateurs) seulement pour les créneaux qu'il n'a pas ; `?resolution=15m` rend les relevés bruts.
+
+Brief national partagé (05/11/2026) : à chaque passage, la page de l'enregistreur fait aussi rédiger le brief (français). Le script
+ajoute l'en-tête `x-fm-brief-token` (valeur `FM_BRIEF_TOKEN` de `/etc/francemonitor/francemonitor.env`, lue par les deux unités
+fm-api et fm-score-recorder) aux seules requêtes du brief ; le serveur garde le brief dans
+`/var/lib/francemonitor/data/brief-latest-fr.json`. Les visiteurs le lisent en GET (une minute de cache), sans appel Groq ; un POST
+sans jeton reçoit le même brief partagé. Sans brief gardé (ou en anglais), le navigateur affiche son brief déterministe.
 
 Installation ou mise à jour (Playwright 1.49.1 et son Chromium dans `/opt/fm-recorder`, hors release) :
 

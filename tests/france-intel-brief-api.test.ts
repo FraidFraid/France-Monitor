@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 // @ts-expect-error — module JS sans déclaration de types
 import handler, { validateBriefShape, buildPrompt, describeStability, parseFinance } from '../api/_handlers/intelligence/v1/france-intel-brief.js';
 import { levelVigilanceWord, scoreLevel } from '../src/services/vigilance.ts';
@@ -212,6 +215,49 @@ describe('handler v14 (Groq simulé)', () => {
     expect(payload.brief.judgments[0]).toMatchObject({ evidence: ['E42', 'S1'], sources: ['Sud Ouest', 'France Info', 'Ecowatt RTE'] });
     const sent = JSON.parse(String((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body)) as { messages: Array<{ content: string }> };
     expect(sent.messages[0].content).toContain('E42 [weather/high');
+  });
+});
+
+describe('brief partagé (05/11/2026) : rédigé une fois sur la VM, lu par tous', () => {
+  afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+  const URL_BRIEF = 'http://localhost/api/intelligence/v1/france-intel-brief';
+  const groqReply = { bluf: BLUF, judgments: [{ priority: 1, text: 'Crue durable en Gironde.', confidence: 'high', evidence: ['E42', 'S1'] }], watch: [] };
+  const post = (headers: Record<string, string> = {}) => handler(new Request(URL_BRIEF, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ countryScore: 72, situations: SITUATIONS, events: EVENTS, lang: 'fr', situationIds: ['sit-energie'] }),
+  }));
+  const setup = () => {
+    const dir = mkdtempSync(join(tmpdir(), 'fm-brief-'));
+    vi.stubEnv('FM_BRIEF_DIR', dir);
+    vi.stubEnv('GROQ_API_KEY', 'test');
+    vi.stubEnv('FM_BRIEF_TOKEN', 'jeton-de-test');
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(groqReply) } }] })));
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  };
+
+  it('sans jeton : aucun appel Groq, le brief partagé (vide au départ) est servi', async () => {
+    const fetchMock = setup();
+    const res = await post();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(await res.json()).toMatchObject({ brief: null, shared: true });
+  });
+
+  it('avec le jeton : rédigé, gardé, puis servi tel quel à tous en GET (situations du relevé, note, heure)', async () => {
+    const fetchMock = setup();
+    const written = await (await post({ 'x-fm-brief-token': 'jeton-de-test' })).json() as { generatedAt: string };
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const res = await handler(new Request(`${URL_BRIEF}?lang=fr`, { method: 'GET' }));
+    expect(res.headers.get('cache-control')).toBe('public, max-age=60');
+    const shared = await res.json() as Record<string, unknown>;
+    expect(shared).toMatchObject({ shared: true, score: 72, situationIds: ['sit-energie'], generatedAt: written.generatedAt });
+    expect((shared.brief as { bluf: string }).bluf).toBe(BLUF);
+    // Un faux jeton ne rédige pas : il reçoit le même brief partagé.
+    await post({ 'x-fm-brief-token': 'jeton-de-tesX' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // Rien en anglais : null, le navigateur affichera son brief déterministe.
+    expect(await (await handler(new Request(`${URL_BRIEF}?lang=en`, { method: 'GET' }))).json()).toMatchObject({ brief: null });
   });
 });
 

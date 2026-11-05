@@ -96,13 +96,63 @@ export interface FranceBriefResult {
   freshness: 'fresh' | 'cached';
   /** Heure réelle de rédaction du brief (ms) ; null si le serveur ne la fournit pas (ancienne entrée de cache). */
   generatedAt: number | null;
+  /** Brief partagé : identifiants des situations S1…S5 du relevé qui l'a fait rédiger (ses preuves S<n> y renvoient). */
+  situationIds?: string[];
+  /** Brief partagé : note nationale du relevé qui l'a fait rédiger. */
+  score?: number | null;
+}
+
+/** Brief partagé gardé une minute dans la page (le serveur le renouvelle au plus tous les quarts d'heure). */
+const SHARED_TTL_MS = 60 * 1000;
+const _shared = new Map<'fr' | 'en', { result: FranceBriefResult; expiresAt: number }>();
+
+/**
+ * Brief partagé (05/11/2026) : le même pour tous, rédigé sur la VM pour l'enregistreur de la note ; aucun appel Groq par visiteur.
+ * null si aucun brief n'est encore gardé ou si le serveur ne répond pas : l'appelant affiche alors le brief déterministe.
+ */
+async function fetchSharedBrief(lang: 'fr' | 'en'): Promise<FranceBriefResult | null> {
+  const hit = _shared.get(lang);
+  if (hit && Date.now() < hit.expiresAt) return { ...hit.result, freshness: 'cached' };
+  try {
+    const res = await fetch(`/api/intelligence/v1/france-intel-brief?lang=${lang}`);
+    if (!res.ok) return null;
+    const payload = await res.json() as { brief?: unknown; generatedAt?: unknown; situationIds?: unknown; score?: unknown };
+    const parsed = parseStructuredBrief(payload.brief, 'llm');
+    if (!parsed) return null;
+    const generatedAt = typeof payload.generatedAt === 'string' && Number.isFinite(Date.parse(payload.generatedAt))
+      ? Date.parse(payload.generatedAt) : null;
+    const result: FranceBriefResult = {
+      brief: parsed,
+      freshness: 'cached',
+      generatedAt,
+      situationIds: Array.isArray(payload.situationIds) ? payload.situationIds.filter((x): x is string => typeof x === 'string') : [],
+      score: typeof payload.score === 'number' && Number.isFinite(payload.score) ? payload.score : null,
+    };
+    _shared.set(lang, { result, expiresAt: Date.now() + SHARED_TTL_MS });
+    return result;
+  } catch {
+    return null;
+  }
+}
+
+export interface FranceBriefOptions {
+  /** Page de l'enregistreur seulement : fait rédiger le brief (le jeton est ajouté par le navigateur de la VM). */
+  generate?: boolean;
+  /** Identifiants des situations S1…S5 de ce relevé, gardés avec le brief rédigé. */
+  situationIds?: string[];
 }
 
 export async function fetchFranceIntelBrief(
   snapshot: Pick<FranceCountrySnapshot, 'score' | 'scoreBreakdown' | 'situations' | 'briefContext'>,
   lang: 'fr' | 'en' = 'fr',
   events: BriefEventInput[] = [],
+  options: FranceBriefOptions = {},
 ): Promise<FranceBriefResult> {
+  if (!options.generate) {
+    const shared = await fetchSharedBrief(lang);
+    if (shared) return shared;
+    return { brief: buildDeterministicBrief(snapshot, lang, getDelta24h(), events), freshness: 'fresh', generatedAt: Date.now() };
+  }
   const ctx = snapshot.briefContext;
   const cacheKey = buildClientCacheKey(ctx, snapshot.situations, events, lang);
   const cached = _cache.get(cacheKey);
@@ -156,6 +206,7 @@ export async function fetchFranceIntelBrief(
         situations: compactSituations(snapshot.situations),
         events,
         lang,
+        situationIds: options.situationIds ?? [],
       }),
     });
 
@@ -184,6 +235,8 @@ export async function fetchFranceIntelBrief(
 
 /** Clear client-side brief cache (e.g. on lang toggle to force refetch). */
 export function clearFranceBriefCache(lang?: 'fr' | 'en'): void {
+  if (lang) _shared.delete(lang);
+  else _shared.clear();
   if (lang) {
     for (const key of _cache.keys()) {
       if (key.includes(`:${lang}:`)) _cache.delete(key);

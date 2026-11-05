@@ -16,6 +16,7 @@
 export const config = { runtime: 'edge' };
 
 import { redisGet, redisSet } from '../../../_utils/redis.js';
+import { mayGenerate, readStoredBrief, writeStoredBrief } from '../../../_lib/brief-store.js';
 import { GROQ_MODEL, groqModelParams, withReasoningHeadroom } from '../../../_lib/groq-models.js';
 import { sanitizeEvents, buildEvidenceIndex, formatEventsBlock, applyEvidence } from '../../../_lib/brief-evidence.js';
 
@@ -505,7 +506,42 @@ ${headlineList}
 9. N'utilise jamais de tiret long (cadratin) : préfère les deux-points ou une virgule.`;
 }
 
+/**
+ * Brief partagé (05/11/2026) : le dernier rédigé pour l'enregistreur de la VM, le même pour tous les visiteurs. Aucun appel Groq.
+ * brief null quand aucun n'est encore gardé : le navigateur affiche alors son brief déterministe.
+ * @param {'fr' | 'en'} lang
+ */
+async function sharedBriefResponse(lang) {
+  const stored = await readStoredBrief(lang);
+  const body = stored
+    ? { brief: stored.brief, generatedAt: stored.generatedAt, score: stored.score, situationIds: stored.situationIds, fromCache: true, shared: true }
+    : { brief: null, fromCache: false, shared: true };
+  // Une minute en cache (Cloudflare compris) : le brief change au plus tous les quarts d'heure.
+  return new Response(JSON.stringify(body), {
+    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=60' },
+  });
+}
+
+/** Garde le brief rédigé pour l'enregistreur (jamais un null) : c'est lui que liront les visiteurs. */
+async function keepShared(lang, brief, generatedAt, countryScore, situationIds) {
+  if (!brief || typeof generatedAt !== 'string') return;
+  await writeStoredBrief(lang, { brief, generatedAt, score: countryScore, situationIds });
+}
+
+function langOfQuery(request) {
+  try {
+    return new URL(request.url ?? '/', 'http://localhost').searchParams.get('lang') === 'en' ? 'en' : 'fr';
+  } catch {
+    return 'fr';
+  }
+}
+
 export default async function handler(request) {
+  if (request.method === 'GET') return sharedBriefResponse(langOfQuery(request));
+  // Rédiger coûte un appel Groq : réservé à l'enregistreur (jeton). Un autre POST (ancien client) reçoit le brief partagé.
+  if (request.method === 'POST' && !mayGenerate(request.headers?.get?.('x-fm-brief-token'), process.env.FM_BRIEF_TOKEN)) {
+    return sharedBriefResponse(langOfQuery(request));
+  }
   if (request.method !== 'POST') {
     return new Response(JSON.stringify({ error: 'Method not allowed' }), {
       status: 405,
@@ -594,6 +630,7 @@ export default async function handler(request) {
   } : null;
   const situations = sanitizeSituations(body.situations);
   const events = sanitizeEvents(body.events);
+  const situationIds = Array.isArray(body.situationIds) ? body.situationIds.filter((x) => typeof x === 'string').slice(0, 12).map((x) => x.slice(0, 120)) : [];
   const evidenceIndex = buildEvidenceIndex(events, situations);
 
   // Try Redis cache using the request context, so one bad or outdated response
@@ -616,7 +653,9 @@ export default async function handler(request) {
   const cached = await redisGet(cacheKey);
   if (cached) {
     try {
-      return new Response(JSON.stringify({ ...JSON.parse(cached), fromCache: true }), {
+      const hit = JSON.parse(cached);
+      await keepShared(lang, hit?.brief, hit?.generatedAt, countryScore, situationIds);
+      return new Response(JSON.stringify({ ...hit, fromCache: true }), {
         headers: { 'Content-Type': 'application/json' },
       });
     } catch { /* corrupted — fall through */ }
@@ -685,6 +724,7 @@ export default async function handler(request) {
     // Les échecs HTTP de Groq (429, 5xx) ne sont pas mis en cache, plus haut.
     const generatedAt = new Date().toISOString();
     await redisSet(cacheKey, JSON.stringify({ brief, generatedAt }), CACHE_TTL);
+    await keepShared(lang, brief, generatedAt, countryScore, situationIds);
     return new Response(JSON.stringify({ brief, generatedAt, fromCache: false }), {
       headers: { 'Content-Type': 'application/json' },
     });

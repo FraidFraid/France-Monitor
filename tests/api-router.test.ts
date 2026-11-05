@@ -163,8 +163,9 @@ describe('dispatch', () => {
 
   it('sert le brief France par la vraie table de routes (plus de miroir dev)', async () => {
     const res = mockRes();
+    // GET : brief partagé (05/11/2026), servi par le handler de production.
     await dispatch({ url: '/api/intelligence/v1/france-intel-brief', method: 'GET', headers: { host: 'localhost' } }, res);
-    expect(res.statusCode).toBe(405);
+    expect(res.statusCode).toBe(200);
     expect(existsSync(join(ROOT, 'src/plugins/france-intel-proxy.ts'))).toBe(false);
   });
 
