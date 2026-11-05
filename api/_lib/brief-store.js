@@ -4,7 +4,8 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
-const DEFAULT_DIR = '/var/lib/francemonitor/data';
+// Dossier à part, seul ouvert en écriture à fm-api avec celui de l'anticipation (ReadWritePaths de l'unité).
+const DEFAULT_DIR = '/var/lib/francemonitor/data/brief';
 
 /** @param {'fr' | 'en'} lang */
 export function briefFile(lang) {

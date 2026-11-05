@@ -449,7 +449,7 @@ navigateurs) seulement pour les créneaux qu'il n'a pas ; `?resolution=15m` rend
 Brief national partagé (05/11/2026) : à chaque passage, la page de l'enregistreur fait aussi rédiger le brief (français). Le script
 ajoute l'en-tête `x-fm-brief-token` (valeur `FM_BRIEF_TOKEN` de `/etc/francemonitor/francemonitor.env`, lue par les deux unités
 fm-api et fm-score-recorder) aux seules requêtes du brief ; le serveur garde le brief dans
-`/var/lib/francemonitor/data/brief-latest-fr.json`. Les visiteurs le lisent en GET (une minute de cache), sans appel Groq ; un POST
+`/var/lib/francemonitor/data/brief/brief-latest-fr.json` (dossier fm:fm 750, ouvert en écriture à fm-api par `ReadWritePaths`). Les visiteurs le lisent en GET (une minute de cache), sans appel Groq ; un POST
 sans jeton reçoit le même brief partagé. Sans brief gardé (ou en anglais), le navigateur affiche son brief déterministe.
 
 Installation ou mise à jour (Playwright 1.49.1 et son Chromium dans `/opt/fm-recorder`, hors release) :

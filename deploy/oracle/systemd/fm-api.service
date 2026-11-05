@@ -29,7 +29,7 @@ RestrictSUIDSGID=true
 RestrictNamespaces=true
 LockPersonality=true
 # Registre d'anticipation (04/11/2026) : seul dossier inscriptible, le « - » ignore un dossier absent (le moteur reste alors en mémoire et le dit dans errors) ; à créer (voir docs/deployment-oracle.md).
-ReadWritePaths=-/var/lib/francemonitor/data/anticipation
+ReadWritePaths=-/var/lib/francemonitor/data/anticipation -/var/lib/francemonitor/data/brief
 
 [Install]
 WantedBy=multi-user.target
