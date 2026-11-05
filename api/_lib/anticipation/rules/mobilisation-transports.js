@@ -1,7 +1,7 @@
 // api/_lib/anticipation/rules/mobilisation-transports.js : règle 1 (v1), rassemblements × transports, même département et même demi-journée.
 // Texte fixé par gabarit, aucun mot ni chiffre produit par une IA. Les seuils sont ceux écrits dans la méthode.
 import { DEPT_NAMES } from '../../../_shared/departments.js';
-import { arreteBascule, cleanSignals, evidenceOf, firstDept, inDept, inPlace, span } from './common.js';
+import { arreteBascule, cleanSignals, evidenceOf, firstDept, inDept, inPlace, ofPlace, span } from './common.js';
 import { halfDaysOverlapping, parisDayBounds, parisDayLabel } from './paris-time.js';
 
 /** @typedef {import('../probability.js').Signal} Signal */
@@ -73,7 +73,6 @@ const rule = {
         const people = Math.max(0, ...sr.map(participants));
         const arrete = arretes.find((a) => inDept(a, dept) && meets(span(a), slot.from, slot.to));
         const affluence = people >= AFFLUENCE;
-        const name = /** @type {Record<string, string>} */ (DEPT_NAMES)[dept] ?? dept;
         const where = inPlace(dept, DEPT_NAMES);
         const today = parisDayBounds(ctx.now);
         const when = slot.from >= today.from && slot.from < today.to ? slot.label : `${slot.label} du ${parisDayLabel(slot.from)}`;
@@ -98,7 +97,7 @@ const rule = {
             { id: 'affluence', label: 'Plus de 15\u00a0000 participants signalés', state: affluence ? 'atteint' : 'surveille', at: affluence ? (sr.find((s) => participants(s) >= AFFLUENCE)?.observedAt ?? null) : null },
           ],
           disconfirmers: ['Préavis de grève levé', 'Rassemblement annulé ou interdit par arrêté préfectoral', 'Plan de transport finalement maintenu'],
-          verify: [`Effectifs auprès de la DDSP du ${name}`, 'Plan de transport auprès de SNCF Voyageurs'],
+          verify: [`Effectifs auprès ${policeOf(dept)}`, 'Plan de transport auprès de SNCF Voyageurs'],
           evidence: evidenceOf(cited, { basculeHit: Boolean(arrete) || affluence, precedentDay, nowMs: ctx.now }),
         });
       }
@@ -127,5 +126,13 @@ const rule = {
     return pressRead ? 'pas_arrive' : 'indecidable';
   },
 };
+
+// Police nationale depuis la réforme du 01/01/2024 : DDPN par département (les DDSP n'existent plus) ; Paris et petite couronne
+// relèvent de la Préfecture de police.
+const PREFECTURE_DE_POLICE = new Set(['75', '92', '93', '94']);
+/** @param {string} dept */
+function policeOf(dept) {
+  return PREFECTURE_DE_POLICE.has(dept) ? 'de la Préfecture de police' : `de la DDPN ${ofPlace(dept, DEPT_NAMES)}`;
+}
 
 export default rule;

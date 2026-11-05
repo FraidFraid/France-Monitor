@@ -23,7 +23,7 @@ export const LYON: AnticipationScenario = {
     { id: 'arrete', label: 'Arrêté préfectoral publié', state: 'surveille', at: null },
   ],
   disconfirmers: ['Préavis de grève levé'],
-  verify: ['Effectifs auprès de la DDSP du Rhône'],
+  verify: ['Effectifs auprès de la DDPN du Rhône'],
   openedAt: '2026-11-04T08:40:00Z',
   revisedAt: '2026-11-04T12:10:00Z',
   status: 'ouvert',

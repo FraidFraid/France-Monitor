@@ -99,3 +99,22 @@ export function inPlace(code, names) {
   if (fixed) return fixed;
   return `dans le ${names[code] ?? code}`;
 }
+
+/**
+ * Complément « de » d'un département, tiré de sa locution de lieu : « du Rhône », « de la Gironde », « de l'Ardèche », « des Landes »,
+ * « de Paris ». Les départements en « en » sont tous féminins dans la table (« en Gironde » → « de la Gironde »).
+ * @param {string} code
+ * @param {Record<string, string>} names DEPT_NAMES
+ */
+export function ofPlace(code, names) {
+  const at = inPlace(code, names);
+  const m = /^(dans le |dans la |dans l'|dans les |en |à )(.+)$/.exec(at);
+  if (!m) return `de ${names[code] ?? code}`;
+  const [, prep, rest] = m;
+  if (prep === 'dans le ') return `du ${rest}`;
+  if (prep === 'dans la ') return `de la ${rest}`;
+  if (prep === "dans l'") return `de l'${rest}`;
+  if (prep === 'dans les ') return `des ${rest}`;
+  if (prep === 'à ') return `de ${rest}`;
+  return /^[AEIOUYÉÈÊÂÎÔ]/i.test(rest) ? `de l'${rest}` : `de la ${rest}`;
+}

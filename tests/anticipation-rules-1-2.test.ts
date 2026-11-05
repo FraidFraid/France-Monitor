@@ -8,6 +8,8 @@ import { evaluate } from '../api/_lib/anticipation/engine.js';
 import mobilisation from '../api/_lib/anticipation/rules/mobilisation-transports.js';
 // @ts-expect-error module JS sans déclaration
 import tempete from '../api/_lib/anticipation/rules/tempete-reseaux.js';
+// @ts-expect-error module JS sans déclaration
+import { ofPlace } from '../api/_lib/anticipation/rules/common.js';
 
 type Sig = Record<string, unknown>;
 // 4 nov 2026 : heure d'hiver (UTC+1). Après-midi de Paris 14 h à 22 h = 13:00Z à 21:00Z.
@@ -56,7 +58,7 @@ describe('rule 1 mobilisation-transports', () => {
     expect(c.evidence.hasOfficial).toBe(true);
     expect(c.bascules.map((b: { id: string; state: string }) => [b.id, b.state])).toEqual([['arrete', 'surveille'], ['affluence', 'surveille']]);
     expect(c.unknowns).toContain('Effectifs réels engagés : aucune donnée publique');
-    expect(c.verify).toContain('Effectifs auprès de la DDSP du Rhône');
+    expect(c.verify).toContain('Effectifs auprès de la DDPN du Rhône');
     expect(c.verify).toContain('Plan de transport auprès de SNCF Voyageurs');
     expect(c.disconfirmers.length).toBeGreaterThan(0);
   });
@@ -218,5 +220,13 @@ describe('rule 2 tempete-reseaux', () => {
     expect(tempete.arrived(scen, [panne('electricite', { level: 'jaune' })], { now: Date.parse('2026-11-05T19:00:00Z'), unknown: [] })).toBe('pas_arrive');
     expect(tempete.arrived(scen, [], { now: Date.parse('2026-11-05T19:00:00Z'), unknown: ['Pannes non lues'] })).toBe('indecidable');
     expect(tempete.arrived(scen, [], { now: Date.parse('2026-11-05T10:00:00Z') })).toBeNull();
+  });
+});
+
+describe('complément « de » d’un département', () => {
+  it('accorde l’article : du Rhône, de la Gironde, de l’Ardèche, des Landes, de Paris', () => {
+    const names = { '69': 'Rhône', '33': 'Gironde', '07': 'Ardèche', '40': 'Landes', '75': 'Paris', '35': 'Ille-et-Vilaine', '49': 'Maine-et-Loire' };
+    expect(['69', '33', '07', '40', '75', '35', '49'].map((c) => ofPlace(c, names)))
+      .toEqual(['du Rhône', 'de la Gironde', "de l'Ardèche", 'des Landes', 'de Paris', "de l'Ille-et-Vilaine", 'du Maine-et-Loire']);
   });
 });

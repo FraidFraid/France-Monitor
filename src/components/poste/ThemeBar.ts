@@ -18,6 +18,10 @@ export interface ThemeBarModel {
   lang: Lang;
 }
 
+// Thèmes encore en bêta (Anticipation, 04/11/2026) : étiquette sur le bouton, dite aux lecteurs d'écran.
+const BETA_THEMES: ReadonlySet<ThemeId> = new Set<ThemeId>(['anticipation']);
+const BETA_TAG = '<span class="tb-beta">bêta</span>';
+
 export function renderThemeBar(model: ThemeBarModel): string {
   const buttons = THEMES.map((th) => {
     const on = th.id === model.selected;
@@ -31,7 +35,7 @@ export function renderThemeBar(model: ThemeBarModel): string {
     // Même pictogramme que la vue de couches du thème (LayerPanel).
     const icon = LAYER_PRESETS.find((p) => p.id === th.id)?.icon;
     return `<button type="button" class="tb-theme${on ? ' is-on' : ''}" data-theme="${th.id}" aria-pressed="${on ? 'true' : 'false'}">`
-      + `${icon ? fmIcon(icon, { size: 13 }) : ''}${escapeHtml(themeLabel(th.id, model.lang))}${level}</button>`;
+      + `${icon ? fmIcon(icon, { size: 13 }) : ''}${escapeHtml(themeLabel(th.id, model.lang))}${BETA_THEMES.has(th.id) ? BETA_TAG : ''}${level}</button>`;
   }).join('');
   // Avant les thèmes (décision du 12/10/2026) : ouvre la fiche État de la France, à toutes les largeurs.
   const franceOn = model.franceOn === true;
