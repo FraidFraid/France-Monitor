@@ -16,13 +16,24 @@
 # dans le même quota. Plages officielles (https://www.cloudflare.com/ips-v4 et ips-v6, relevées le
 # 27/09/2026) : les mettre à jour si Cloudflare les change.
 {
+	# abort avant toute autre directive (redir, handle, reverse_proxy) : sinon le filtre cloudflare_only passe après le site.
+	order abort first
 	servers {
 		trusted_proxies static 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32
 		client_ip_headers CF-Connecting-IP X-Forwarded-For
 	}
 }
 
+# Origine fermée hors Cloudflare (05/11/2026) : connexions directes à l'IP de la VM coupées pour francemonitor.com.
+# Liste https://www.cloudflare.com/ips-v4 et ips-v6 (même liste que trusted_proxies) + boucle locale et réseaux internes de la VM.
+# api.disq.online n'est pas derrière Cloudflare : il n'importe pas ce bloc.
+(cloudflare_only) {
+	@not_cloudflare not remote_ip 173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22 2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32 127.0.0.0/8 ::1 10.0.0.0/8 172.16.0.0/12
+	abort @not_cloudflare
+}
+
 francemonitor.com {
+	import cloudflare_only
 	# TLS automatique (Let's Encrypt, HTTP-01) : reconnu par les navigateurs ET par Cloudflare en
 	# Full (strict). Indispensable pendant l'activation de la zone Cloudflare, quand le DNS renvoie
 	# directement l'IP de la VM (vu le 28/09/2026). Renouvellement par HTTP-01, qui traverse le proxy
@@ -33,6 +44,7 @@ francemonitor.com {
 }
 
 www.francemonitor.com {
+	import cloudflare_only
 	# TLS automatique (Let's Encrypt, HTTP-01) : reconnu par les navigateurs ET par Cloudflare en
 	# Full (strict). Indispensable pendant l'activation de la zone Cloudflare, quand le DNS renvoie
 	# directement l'IP de la VM (vu le 28/09/2026). Renouvellement par HTTP-01, qui traverse le proxy
