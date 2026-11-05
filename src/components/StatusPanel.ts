@@ -181,7 +181,6 @@ export class StatusPanel {
             // Souveraineté (spec 2026-10-04 souveraineté S1 ; arbitrage 22) : lignes datées par leur donnée dès la première lecture ;
             // détail et lien de la source lus dans SOVEREIGNTY_SOURCE_DETAILS au rendu.
             { name: 'Vols militaires', lastUpdate: null, status: 'loading' },
-            { name: 'Vigipirate (page du SGDSN)', lastUpdate: null, status: 'loading' },
             { name: 'Câbles et AIS', lastUpdate: null, status: 'loading' },
             { name: 'CERT-FR', lastUpdate: null, status: 'loading' },
             { name: 'CISA KEV', lastUpdate: null, status: 'loading' },
@@ -260,7 +259,6 @@ export class StatusPanel {
             // Souveraineté (spec 2026-10-04 souveraineté S1 ; arbitrage 22) : lignes datées par leur donnée dès la première lecture ;
             // détail et lien de la source lus dans SOVEREIGNTY_SOURCE_DETAILS au rendu.
             { name: 'Vols militaires', lastUpdate: null, status: 'loading' },
-            { name: 'Vigipirate (page du SGDSN)', lastUpdate: null, status: 'loading' },
             { name: 'Câbles et AIS', lastUpdate: null, status: 'loading' },
             { name: 'CERT-FR', lastUpdate: null, status: 'loading' },
             { name: 'CISA KEV', lastUpdate: null, status: 'loading' },

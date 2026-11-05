@@ -438,7 +438,7 @@ function methodSection(input: DefenseViewInput): FicheSection {
   const aisState = navy.lastMessageAt !== null ? `dernier message ${absoluteTime(navy.lastMessageAt, now, 'fr')}` : 'aucun message reçu';
   const html = kvRow('Aéronefs', `${sourceLinkHtml('adsb.lol', ADSB_URL)} · ${escapeHtml(adsbState)}`)
     + kvRow('Marine nationale', escapeHtml(`aisstream.io via le relais · ${aisState}`))
-    + kvRow('Vigipirate', `${sourceLinkHtml(VIGIPIRATE_SOURCE_LABEL, vigipirate.lien)} · ${escapeHtml(`saisie du ${dateOf(vigipirate.saisiLe)}, page relue chaque jour`)}`)
+    + kvRow('Vigipirate', `${sourceLinkHtml(VIGIPIRATE_SOURCE_LABEL, vigipirate.lien)} · ${escapeHtml(`saisie du ${dateOf(vigipirate.saisiLe)}, à vérifier sur la page officielle`)}`)
     + kvRow('Sites', escapeHtml('liste interne de sites publics · ouvrages OpenStreetMap en option'))
     + note('Données adsb.lol, ODbL 1.0 : réseau communautaire de récepteurs ADS-B. Un appareil est militaire ou d’État si la base adsb.lol le classe '
       + 'ainsi ; elle classe aussi des appareils d’État non militaires (hélicoptères de la Sécurité civile). Ce compte d’appareils qui émettent '

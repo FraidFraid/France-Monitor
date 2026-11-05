@@ -417,7 +417,7 @@ describe('méthode et sources (S4, S5, O9)', () => {
     expect(t).toContain('Le ministère des Armées modifie l’adresse mode S des avions de la flotte gouvernementale');
     expect(t).toContain('(réponse ministérielle publiée au JO le 25/10/2016).');
     expect(h).toContain('href="https://www.assemblee-nationale.fr/dyn/14/questions/QANR5L14QE93414"');
-    expect(t).toContain('VigipirateSource : site internet du SGDSN · saisie du 04/10/2026, page relue chaque jour');
+    expect(t).toContain('VigipirateSource : site internet du SGDSN · saisie du 04/10/2026, à vérifier sur la page officielle');
     expect(t).toContain('code affiché par le transpondeur, non confirmé par les autorités');
     expect(t).toContain(`Retard : relevé de plus de 10${NBSP}min`);
   });

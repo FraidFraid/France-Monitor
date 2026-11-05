@@ -4,7 +4,7 @@
 // https://www.sgdsn.gouv.fr/vigipirate, date de la lecture qui l'a vue changer) et rend les mentions de la ligne Vigipirate :
 // fin des 12 jours d'une « alerte attentat » (échéance passée : à revérifier), « niveau à revérifier sur sgdsn.gouv.fr (page modifiée
 // le JJ/MM) », rappel d'une saisie de plus de 4 mois, vérification en panne (S3 : une panne se voit, jamais « inchangée »). Lue avec la
-// relève de la couche Défense ; ligne « Vigipirate (page du SGDSN) » du panneau des sources datée par la relecture du serveur.
+// relève de la couche Défense. Depuis le 05/11/2026 (page anti-robot), la relecture n'est plus demandée : lien officiel seul.
 import type { VigipirateEntry, VigipiratePageCheck } from '../types/index.ts';
 import { parisDayOf } from './environment-levels.ts';
 import { SOVEREIGNTY_LATE_AFTER_MIN, vigipirateAlertEnd, vigipiratePageChangedOn, vigipirateReminderDue } from './sovereignty-levels.ts';

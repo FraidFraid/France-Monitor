@@ -15,17 +15,17 @@ describe('couches et sources Souveraineté (contrats § 3.4)', () => {
     expect(hasActiveSovereignty({ subseaCables: true })).toBe(true);
     expect(hasActiveSovereignty({ military: false, subseaCables: false, cyber: false })).toBe(false);
   });
-  it('douze lignes datées par la donnée (quatre de la phase B), chacune rattachée à une couche ; aucune ligne « Cyber », d’exposition ni de NVD', () => {
+  it('onze lignes datées par la donnée (quatre de la phase B ; Vigipirate en lien officiel seul depuis le 05/11/2026), chacune rattachée à une couche ; aucune ligne « Cyber », d’exposition ni de NVD', () => {
     expect(SOVEREIGNTY_SOURCE_NAMES).toEqual([
-      'Vols militaires', 'Vigipirate (page du SGDSN)', 'Câbles et AIS', 'CERT-FR', 'CISA KEV', 'Ransomware.live', 'Have I Been Pwned',
+      'Vols militaires', 'Câbles et AIS', 'CERT-FR', 'CISA KEV', 'Ransomware.live', 'Have I Been Pwned',
       'Cybermalveillance.gouv.fr', 'Grille GNSS', 'NOAA SWPC', 'RIPEstat', 'Registre des gels',
     ]);
     expect(Object.values(SOVEREIGNTY_LAYER_SOURCES).flat().sort()).toEqual([...SOVEREIGNTY_SOURCE_NAMES].sort());
     expect(SOVEREIGNTY_STATUS_SOURCES.map(([key]) => key)).toEqual([
-      'adsb-mil', 'vigipirate', 'ais-cables', 'certfr', 'kev', 'ransomware', 'hibp', 'cybermalveillance', 'adsb-gnss', 'noaa', 'ripestat', 'gels',
+      'adsb-mil', 'ais-cables', 'certfr', 'kev', 'ransomware', 'hibp', 'cybermalveillance', 'adsb-gnss', 'noaa', 'ripestat', 'gels',
     ]);
-    // La relecture de la page du SGDSN (O14) a sa ligne, rattachée à la Défense ; la saisie Vigipirate n'en a pas.
-    expect(SOVEREIGNTY_LAYER_SOURCES.military).toEqual(['Vols militaires', 'Vigipirate (page du SGDSN)', 'Grille GNSS', 'NOAA SWPC', 'Registre des gels']);
+    // Vigipirate : ni la saisie ni la page du SGDSN (lien officiel seul depuis le 05/11/2026) n'ont de ligne.
+    expect(SOVEREIGNTY_LAYER_SOURCES.military).toEqual(['Vols militaires', 'Grille GNSS', 'NOAA SWPC', 'Registre des gels']);
     expect(SOVEREIGNTY_LAYER_SOURCES.subseaCables).toEqual(['Câbles et AIS', 'RIPEstat']);
     expect(SOVEREIGNTY_SOURCE_NAMES.join(' ')).not.toMatch(/^Cyber$|Shodan|Censys|NVD|adsb\.fi|OpenSky/);
   });
@@ -40,9 +40,8 @@ describe('couches et sources Souveraineté (contrats § 3.4)', () => {
     expect(SOVEREIGNTY_SOURCE_DETAILS['Vols militaires'].detail).toContain('Données adsb.lol, ODbL 1.0');
     // O9 : libellé du gros chiffre de la Défense repris par la ligne des sources.
     expect(SOVEREIGNTY_SOURCE_DETAILS['Vols militaires'].detail).toContain(MILITARY_FIGURE_LABEL);
-    expect(SOVEREIGNTY_SOURCE_DETAILS['Vigipirate (page du SGDSN)']).toEqual({
-      detail: 'SGDSN, page Vigipirate relue chaque jour par le serveur (empreinte du texte, sans le reprendre)', link: 'https://www.sgdsn.gouv.fr/vigipirate',
-    });
+    // Vigipirate en lien officiel seul (05/11/2026) : plus de ligne de source.
+    expect(Object.keys(SOVEREIGNTY_SOURCE_DETAILS)).not.toContain('Vigipirate (page du SGDSN)');
     expect(SOVEREIGNTY_SOURCE_DETAILS['Have I Been Pwned'].detail).toContain('CC BY 4.0');
     expect(SOVEREIGNTY_SOURCE_DETAILS['CERT-FR'].detail).toContain('Licence ouverte 2.0');
     expect(SOVEREIGNTY_SOURCE_DETAILS['CISA KEV'].detail).toContain('domaine public');
@@ -53,7 +52,7 @@ describe('couches et sources Souveraineté (contrats § 3.4)', () => {
   });
   it('détail d’une ligne par son nom (panneau des sources) : lien de la source, null hors Souveraineté', () => {
     expect(sovereigntySourceDetail('Ransomware.live')).toEqual(SOVEREIGNTY_SOURCE_DETAILS['Ransomware.live']);
-    expect(sovereigntySourceDetail('Vigipirate (page du SGDSN)')?.link).toBe('https://www.sgdsn.gouv.fr/vigipirate');
+    expect(sovereigntySourceDetail('Vigipirate (page du SGDSN)')).toBeNull();
     expect(sovereigntySourceDetail('Vigicrues')).toBeNull();
     expect(sovereigntySourceDetail('Cyber')).toBeNull();
   });

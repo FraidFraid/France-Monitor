@@ -1,8 +1,8 @@
 // src/config/sovereignty-sources.ts : couches et sources Souveraineté du panneau des sources, hors Watchdog (spec 2026-10-04
 // souveraineté S1 ; contrats § 3.4 ; amendement 7, S11) : chaque ligne est datée par sa donnée, jamais par l'heure de lecture, et
 // nomme sa source avec un lien (attributions affichées). Une seule liste pour App.ts (panneau des sources, note de situation,
-// historique de qualité, relèves). La saisie Vigipirate n'est pas une source lue : pas de ligne ; la relecture quotidienne de la page
-// du SGDSN par le serveur (O14) en a une, « Vigipirate (page du SGDSN) », datée par cette lecture (arbitrage du contrôleur, A15).
+// historique de qualité, relèves). La saisie Vigipirate n'est pas une source lue : pas de ligne. La relecture quotidienne de la page du
+// SGDSN (O14) est arrêtée le 05/11/2026 (page anti-robot depuis le 13/10, jamais contournée) : lien officiel seul, plus de ligne.
 import type { DataSourceStatus, WatchdogSnapshot } from '../types/index.ts';
 import { MILITARY_FIGURE_LABEL, type SovereigntySource } from '../services/sovereignty-levels.ts';
 import { GELS_REGISTRY_URL } from '../services/sovereignty-sanctions.ts';
@@ -19,7 +19,7 @@ export function hasActiveSovereignty(layers: Partial<Record<SovereigntyLayerKey,
 
 /** Clé de la source (retards S2) et nom dans le panneau des sources (hors Watchdog, datés par la donnée). */
 export const SOVEREIGNTY_STATUS_SOURCES = [
-  ['adsb-mil', 'Vols militaires'], ['vigipirate', 'Vigipirate (page du SGDSN)'], ['ais-cables', 'Câbles et AIS'], ['certfr', 'CERT-FR'],
+  ['adsb-mil', 'Vols militaires'], ['ais-cables', 'Câbles et AIS'], ['certfr', 'CERT-FR'],
   ['kev', 'CISA KEV'], ['ransomware', 'Ransomware.live'], ['hibp', 'Have I Been Pwned'], ['cybermalveillance', 'Cybermalveillance.gouv.fr'],
   ['adsb-gnss', 'Grille GNSS'], ['noaa', 'NOAA SWPC'], ['ripestat', 'RIPEstat'], ['gels', 'Registre des gels'],
 ] as const satisfies ReadonlyArray<readonly [SovereigntySource, string]>;
@@ -38,9 +38,6 @@ export const SOVEREIGNTY_SOURCE_NAMES: readonly string[] = SOVEREIGNTY_STATUS_SO
 export const SOVEREIGNTY_SOURCE_DETAILS: Readonly<Record<SovereigntySourceName, { detail: string; link: string }>> = {
   // O9 : même libellé que le gros chiffre du panneau Défense, sa légende et sa tuile.
   'Vols militaires': { detail: `Données adsb.lol, ODbL 1.0 · ${MILITARY_FIGURE_LABEL}, relevé du serveur`, link: 'https://www.adsb.lol' },
-  'Vigipirate (page du SGDSN)': {
-    detail: 'SGDSN, page Vigipirate relue chaque jour par le serveur (empreinte du texte, sans le reprendre)', link: 'https://www.sgdsn.gouv.fr/vigipirate',
-  },
   'Câbles et AIS': {
     detail: 'Relais AIS du serveur · câbles Shom (CC BY-SA) et OpenStreetMap (ODbL 1.0)',
     link: 'https://www.data.gouv.fr/datasets/conduites-et-cables-sous-marins-repertories-par-le-shom/',
@@ -65,7 +62,7 @@ export function sovereigntySourceDetail(name: string): { detail: string; link: s
 
 /** Lignes mises en erreur si le service d'une couche ne se charge pas. */
 export const SOVEREIGNTY_LAYER_SOURCES: Readonly<Record<SovereigntyLayerKey, readonly SovereigntySourceName[]>> = {
-  military: ['Vols militaires', 'Vigipirate (page du SGDSN)', 'Grille GNSS', 'NOAA SWPC', 'Registre des gels'],
+  military: ['Vols militaires', 'Grille GNSS', 'NOAA SWPC', 'Registre des gels'],
   subseaCables: ['Câbles et AIS', 'RIPEstat'],
   cyber: ['CERT-FR', 'CISA KEV', 'Ransomware.live', 'Have I Been Pwned', 'Cybermalveillance.gouv.fr'],
 };

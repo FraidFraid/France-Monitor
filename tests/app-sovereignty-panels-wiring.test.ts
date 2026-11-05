@@ -148,7 +148,7 @@ describe('panneaux Souveraineté : un panneau par couche (contrats § 4.2 à 4.4
     expect(app).not.toMatch(/refreshLegacyMilitaryScore|loadLegacyCyberScore|fetchMilitaryFlights|fetchCyberDashboard|fetchThreatMapEvents/);
     const status = read('src/components/StatusPanel.ts');
     expect(status).not.toMatch(/adsb\.fi|airplanes\.live|Shodan|Censys|NVD|status\.details\.militaryFlights/);
-    for (const name of ['Vols militaires', 'Vigipirate (page du SGDSN)', 'Câbles et AIS', 'CERT-FR', 'CISA KEV', 'Ransomware.live', 'Have I Been Pwned', 'Cybermalveillance.gouv.fr']) {
+    for (const name of ['Vols militaires', 'Câbles et AIS', 'CERT-FR', 'CISA KEV', 'Ransomware.live', 'Have I Been Pwned', 'Cybermalveillance.gouv.fr']) {
       expect(status.split(`{ name: '${name}', lastUpdate: null, status: 'loading' },`)).toHaveLength(3);
     }
     // Lien de la source rendu par le panneau des sources (Ransomware.live : conditions d'utilisation).
@@ -159,16 +159,13 @@ describe('panneaux Souveraineté : un panneau par couche (contrats § 4.2 à 4.4
     expect(methodBody('markSovereigntySourcesFailed')).toContain('SOVEREIGNTY_LAYER_SOURCES[key]');
     expect(methodBody('buildSituationReportContext')).toContain('context.sources.push(...sovereigntyReportSources(this.statusPanel?.getSources() ?? []));');
   });
-  it('O14 : relecture de la page Vigipirate du SGDSN lue avec la Défense, passée au panneau et datée dans sa propre ligne', () => {
+  it('Vigipirate en lien officiel seul (05/11/2026, page anti-robot depuis le 13/10) : plus de relecture ni de ligne de source', () => {
     const military = methodBody('loadMilitary');
-    expect(military).toContain('fetchVigipirateCheck(this.currentVigipirate)');
-    expect(military).toContain('this.currentVigipirate = mergeVigipirateCheck(this.currentVigipirate, check);');
-    expect(military).toContain('this.statusPanel?.updateSource(VIGIPIRATE_CHECK_SOURCE, vigipirateCheckStatus(this.currentVigipirate, now));');
-    expect(app).toContain("const VIGIPIRATE_CHECK_SOURCE = 'Vigipirate (page du SGDSN)';");
-    expect(methodBody('defensePanelState')).toContain('vigipirate: this.currentVigipirate');
+    expect(military).not.toContain('fetchVigipirateCheck');
+    expect(app).not.toContain("'Vigipirate (page du SGDSN)'");
+    expect(app).not.toContain('VIGIPIRATE_CHECK_SOURCE');
+    // Le panneau garde la saisie datée ; sans relecture, aucune mention de panne.
     expect(read('src/components/DefensePanel.ts')).toContain('vigipirateCheck: vigipirate?.check ?? null,');
-    expect(app).toContain("  'Vigipirate (page du SGDSN)': 'military',");
-    expect(methodBody('handleSourcePanelClick')).toContain("} else if (name === VIGIPIRATE_CHECK_SOURCE) {\n      void this.ensureDefensePanel().then(() => this.openSovereigntyPanel('military'));");
   });
   it('clic sur une source, bouton du baromètre et clic sur la carte ouvrent le bon panneau (points 18 et 19)', () => {
     const click = methodBody('handleSourcePanelClick');

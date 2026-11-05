@@ -179,9 +179,7 @@ import {
 import { fetchDefenseOsmWorks, fetchMilitary, mergeMilitary, militaryStatus, type MilitaryState } from './services/sovereignty-military.ts';
 import { cablesStatus, fetchCables, mergeCables, type CablesState } from './services/sovereignty-cables.ts';
 import { cyberStatus, fetchCyber, mergeCyber, type CyberPart, type SovCyberState } from './services/sovereignty-cyber.ts';
-import {
-  fetchVigipirateCheck, mergeVigipirateCheck, vigipirateCheckStatus, type VigipirateCheckState,
-} from './services/sovereignty-vigipirate.ts';
+import type { VigipirateCheckState } from './services/sovereignty-vigipirate.ts';
 import {
   SOVEREIGNTY_ALWAYS_POLLED, SOVEREIGNTY_LAYER_KEYS, SOVEREIGNTY_LAYER_SOURCES, SOVEREIGNTY_POLL_MS, SOVEREIGNTY_SOURCE_NAMES,
   hasActiveSovereignty, sovereigntyReportSources, type SovereigntyLayerKey,
@@ -217,8 +215,6 @@ const CYBER_STATUS_PARTS: ReadonlyArray<readonly [CyberPart, string]> = [
   ['certfr', 'CERT-FR'], ['kev', 'CISA KEV'], ['ransomware', 'Ransomware.live'], ['hibp', 'Have I Been Pwned'],
   ['cybermalveillance', 'Cybermalveillance.gouv.fr'],
 ];
-/** Ligne de la relecture quotidienne de la page Vigipirate du SGDSN (O14, arbitrage du contrôleur) ; la saisie n'a pas de ligne. */
-const VIGIPIRATE_CHECK_SOURCE = 'Vigipirate (page du SGDSN)';
 /** Sites de défense avant la lecture de la liste interne : jamais affichés (ensureDefensePanel attend loadDefenseSites). */
 const NO_DEFENSE_SITES: DefenseSitesSummary = {
   curated: { total: 0, byType: { air: 0, navy: 0, army: 0, joint: 0, fortification: 0, other: 0 }, overseas: 0, abroad: 0 },
@@ -749,7 +745,6 @@ const SOURCE_NAME_TO_FLOATING_PANEL: Record<string, keyof MapLayers> = {
   'Réseau Gaz / EcoGaz': 'gasNetwork',
   'Pétrole SDES / INSEE': 'oilNetwork',
   'Vols militaires': 'military',
-  'Vigipirate (page du SGDSN)': 'military',
   'Grille GNSS': 'military',
   'NOAA SWPC': 'military',
   'Registre des gels': 'military',
@@ -3131,8 +3126,6 @@ export class App {
     } else if (name === 'Pétrole SDES / INSEE') {
       if (this.currentOilData) this.oilPanel?.show(this.currentOilData, this.currentFuelTensionData);
     } else if (name === 'Vols militaires') {
-      void this.ensureDefensePanel().then(() => this.openSovereigntyPanel('military'));
-    } else if (name === VIGIPIRATE_CHECK_SOURCE) {
       void this.ensureDefensePanel().then(() => this.openSovereigntyPanel('military'));
     } else if (name === 'Grille GNSS' || name === 'NOAA SWPC' || name === 'Registre des gels') {
       void this.ensureDefensePanel().then(() => this.openSovereigntyPanel('military'));
@@ -5902,18 +5895,17 @@ export class App {
 
   /**
    * Défense (spec souveraineté § 2.1 ; amendement 7, O9, O14) : aéronefs militaires ou d'État visibles en ADS-B au-dessus de la
-   * métropole (collecte adsb.lol du serveur) et relecture quotidienne de la page Vigipirate du SGDSN (cache de 30 min : une requête au
-   * plus par demi-heure) ; panneau, carte, légende et lignes « Vols militaires » et « Vigipirate (page du SGDSN) » datées par leur
-   * donnée (S1), jamais « LIVE ».
+   * métropole (collecte adsb.lol du serveur) ; panneau, carte, légende et ligne « Vols militaires » datée par sa donnée (S1), jamais
+   * « LIVE ». Vigipirate : saisie datée et lien officiel seuls (05/11/2026).
    */
   private loadMilitary(): Promise<void> {
     return this.readSovereignty('military', async () => {
-      const [incoming, check] = await Promise.all([fetchMilitary(this.currentMilitary), fetchVigipirateCheck(this.currentVigipirate)]);
+      // Vigipirate en lien officiel seul (05/11/2026) : la page du SGDSN renvoie une page anti-robot au serveur depuis le 13/10, jamais
+      // contournée ; plus de relecture ni de ligne de source. La saisie datée et le lien vers la page officielle restent.
+      const incoming = await fetchMilitary(this.currentMilitary);
       this.currentMilitary = mergeMilitary(this.currentMilitary, incoming);
-      this.currentVigipirate = mergeVigipirateCheck(this.currentVigipirate, check);
       const now = Date.now();
       this.statusPanel?.updateSource('Vols militaires', militaryStatus(this.currentMilitary, now));
-      this.statusPanel?.updateSource(VIGIPIRATE_CHECK_SOURCE, vigipirateCheckStatus(this.currentVigipirate, now));
       this.mapContainer?.updateMilitaryLayer(this.currentMilitary.military.data, now);
       this.defensePanel?.update(this.defensePanelStateB());
       this.refreshSovereigntyLegend();

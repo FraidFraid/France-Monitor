@@ -73,7 +73,7 @@ describe('StatusPanel : lignes Souveraineté (spec 2026-10-04 souveraineté S1 ;
     const host = document.createElement('div');
     const panel = new StatusPanel(host);
     panel.mount();
-    const names = ['Vols militaires', 'Vigipirate (page du SGDSN)', 'Câbles et AIS', 'CERT-FR', 'CISA KEV', 'Ransomware.live', 'Have I Been Pwned',
+    const names = ['Vols militaires', 'Câbles et AIS', 'CERT-FR', 'CISA KEV', 'Ransomware.live', 'Have I Been Pwned',
       'Cybermalveillance.gouv.fr'];
     for (const name of names) expect(panel.getSources().find((s) => s.name === name)?.status).toBe('loading');
     expect(host.textContent).not.toMatch(/adsb\.fi|airplanes\.live|LIVE/);
@@ -84,8 +84,8 @@ describe('StatusPanel : lignes Souveraineté (spec 2026-10-04 souveraineté S1 ;
     expect(link?.getAttribute('target')).toBe('_blank');
     expect(link?.getAttribute('rel')).toBe('noopener noreferrer');
     expect(link?.textContent).toBe('Source : Ransomware.live · revendications non confirmées, conditions d’utilisation');
-    const vigipirate = rows.find((r) => r.textContent?.startsWith('Vigipirate (page du SGDSN)'))?.querySelector('a');
-    expect(vigipirate?.getAttribute('href')).toBe('https://www.sgdsn.gouv.fr/vigipirate');
+    // Vigipirate en lien officiel seul (05/11/2026) : plus de ligne.
+    expect(rows.find((r) => r.textContent?.startsWith('Vigipirate (page du SGDSN)'))).toBeUndefined();
     // Une ligne hors Souveraineté garde son détail en texte, sans lien.
     expect(rows.find((r) => r.textContent?.startsWith('Vigicrues'))?.querySelector('a')).toBeNull();
   });
