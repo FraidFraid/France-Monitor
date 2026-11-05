@@ -529,6 +529,17 @@ export function evaluateBriefLevel(
   };
 }
 
+/**
+ * Enregistreur de la VM : le brief partagé est rédigé sur l'indice complet, ou au plus tard 4 min après l'ouverture de la page
+ * (le passage s'arrête à 4 min 30 ; une source en panne ne prive pas tout le monde de brief). Un brief demandé à l'ouverture partait
+ * sur une note partielle (78 contre 70 relevé à la fin, 05/11/2026).
+ */
+export const RECORDER_BRIEF_MAX_WAIT_MS = 4 * 60 * 1000;
+
+export function recorderBriefDue(coverage: { read: number; total: number }, elapsedMs: number): boolean {
+  return coverage.read >= coverage.total || elapsedMs >= RECORDER_BRIEF_MAX_WAIT_MS;
+}
+
 /** Attente maximale du premier brief : au-delà, il part même si l'indice n'a pas lu toutes ses sources. */
 export const FIRST_BRIEF_MAX_WAIT_MS = 45 * 1000;
 

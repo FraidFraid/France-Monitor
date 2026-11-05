@@ -145,7 +145,7 @@ describe('panneaux Trafics : un panneau par couche (spec 2026-10-03 trafics § 3
     const ships = methodBody('startShipsPolling');
     expect(ships).toContain('const aisState = getAisConnectionState();');
     // Date du dernier message, « (en retard) » selon la source AIS : connecté ne veut jamais dire à jour (m1).
-    expect(ships).toContain('...aisLiveStatus({ connected: aisStatus.connected, shipCount: aisStatus.shipCount, lastMessageAt: aisState.lastMessageAt }, Date.now()),');
+    expect(ships).toContain('...aisLiveStatus({ connected: aisStatus.connected, shipCount: aisStatus.shipCount, lastMessageAt: aisState.lastMessageAt, requested: isAisRequested() }, Date.now()),');
     expect(ships).not.toContain('lastUpdate: aisStatus.connected ? new Date() : null');
     expect(ships).not.toContain('toLocaleTimeString');
     expect(ships).toContain('this.maritimePanel?.refreshLive();');

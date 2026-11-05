@@ -112,6 +112,12 @@ describe('« AIS maritime » : daté par le dernier message ; connecté ne veut 
     expect(aisLiveStatus({ connected: true, shipCount: 0, lastMessageAt: null }, TRAFFIC_NOW)).toMatchObject({ status: 'loading', lastUpdate: null });
     expect(aisLiveStatus({ connected: false, shipCount: 0, lastMessageAt: null }, TRAFFIC_NOW)).toMatchObject({ status: 'error', lastUpdate: null });
   });
+  it('relais jamais demandé (couches éteintes, 05/11/2026) : non lu, pas « relais déconnecté », pas compté', () => {
+    expect(aisLiveStatus({ connected: false, shipCount: 0, lastMessageAt: null, requested: false }, TRAFFIC_NOW))
+      .toMatchObject({ status: 'loading', error: undefined });
+    expect(aisLiveStatus({ connected: false, shipCount: 0, lastMessageAt: null, requested: true }, TRAFFIC_NOW))
+      .toMatchObject({ status: 'error', error: 'relais déconnecté' });
+  });
 });
 
 describe('lignes par couche (m2)', () => {

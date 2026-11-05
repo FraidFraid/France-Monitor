@@ -63,9 +63,13 @@ export function airPositionsStatus(read: { at: number | null; errors: readonly s
 
 /**
  * Ligne « AIS maritime » (WebSocket du relais) : datée par le dernier message reçu ; connecté ne veut jamais dire à jour (dernier
- * message trop ancien : « stale », « (en retard) ») ; relais déconnecté : « error », la date du dernier message reste affichée.
+ * message trop ancien : « stale », « (en retard) ») ; relais déconnecté : « error », la date du dernier message reste affichée ;
+ * relais jamais demandé (couches éteintes) : « loading », non compté.
  */
-export function aisLiveStatus(ais: { connected: boolean; shipCount: number; lastMessageAt: number | null }, now: number): DatedSourceStatus {
+export function aisLiveStatus(ais: { connected: boolean; shipCount: number; lastMessageAt: number | null; requested?: boolean }, now: number): DatedSourceStatus {
+  // Relais jamais demandé (aucune couche maritime ni Défense allumée, 05/11/2026) : non lu, pas en panne ; il n'est pas compté
+  // dans les sources indisponibles de l'en-tête.
+  if (ais.requested === false) return { status: 'loading', lastUpdate: null, period: undefined, error: undefined };
   if (ais.lastMessageAt === null) {
     return { status: ais.connected ? 'loading' : 'error', lastUpdate: null, period: undefined, error: ais.connected ? undefined : 'relais déconnecté' };
   }

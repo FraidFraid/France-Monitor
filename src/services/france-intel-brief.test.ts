@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 
 import {
   clearFranceBriefCache,
+  recorderBriefDue,
+  RECORDER_BRIEF_MAX_WAIT_MS,
   BRIEF_LEVEL_REFRESH_MIN_MS,
   BRIEF_LEVEL_SETTLE_MS,
   briefSituationIds,
@@ -387,5 +389,15 @@ describe('firstBriefDue : premier brief sur l’indice complet (03/11/2026, note
   });
   it('échéance passée : il part même incomplet (une source en panne ne bloque pas la note)', () => {
     assert.equal(firstBriefDue({ read: 12, total: 14 }, T, T + FIRST_BRIEF_MAX_WAIT_MS).due, true);
+  });
+});
+
+describe('recorderBriefDue : brief partagé sur l’indice complet (05/11/2026, 78 rédigé contre 70 relevé)', () => {
+  it('indice incomplet avant 4 min : pas encore', () => {
+    assert.equal(recorderBriefDue({ read: 9, total: 14 }, 35_000), false);
+  });
+  it('indice complet : tout de suite ; incomplet après 4 min : il part quand même', () => {
+    assert.equal(recorderBriefDue({ read: 14, total: 14 }, 35_000), true);
+    assert.equal(recorderBriefDue({ read: 13, total: 14 }, RECORDER_BRIEF_MAX_WAIT_MS), true);
   });
 });

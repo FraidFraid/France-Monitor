@@ -3,7 +3,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 // @ts-expect-error — module JS sans déclaration de types
-import handler, { validateBriefShape, buildPrompt, describeStability, parseFinance } from '../api/_handlers/intelligence/v1/france-intel-brief.js';
+import handler, { validateBriefShape, buildPrompt, describeStability, parseFinance, overstates } from '../api/_handlers/intelligence/v1/france-intel-brief.js';
 import { levelVigilanceWord, scoreLevel } from '../src/services/vigilance.ts';
 // @ts-expect-error — module JS sans déclaration de types
 import { sanitizeEvents, buildEvidenceIndex } from '../api/_lib/brief-evidence.js';
@@ -256,8 +256,26 @@ describe('brief partagé (05/11/2026) : rédigé une fois sur la VM, lu par tous
     // Un faux jeton ne rédige pas : il reçoit le même brief partagé.
     await post({ 'x-fm-brief-token': 'jeton-de-tesX' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    // Brief de plus de 2 h (enregistreur arrêté) : plus servi.
+    vi.useFakeTimers({ now: Date.parse(written.generatedAt) + 2 * 60 * 60 * 1000 + 1, toFake: ['Date'] });
+    expect(await (await handler(new Request(`${URL_BRIEF}?lang=fr`, { method: 'GET' }))).json()).toMatchObject({ brief: null });
+    vi.useRealTimers();
     // Rien en anglais : null, le navigateur affichera son brief déterministe.
     expect(await (await handler(new Request(`${URL_BRIEF}?lang=en`, { method: 'GET' }))).json()).toMatchObject({ brief: null });
+  });
+});
+
+describe('garde anti-emphase (05/11/2026)', () => {
+  const b = (bluf: string, text = 'Surveillance des infrastructures critiques.') => ({ bluf, judgments: [{ text }] });
+  const HIGH = [{ severity: 'high' }];
+  it('rejette les superlatifs et « seuil critique » sous une situation HIGH, garde « infrastructures critiques »', () => {
+    expect(overstates(b('Mobilisation sociale sans précédent.'), HIGH, 'fr')).toBe(true);
+    expect(overstates(b('Mobilisation forte.', 'Le nombre d’événements dépasse le seuil critique.'), HIGH, 'fr')).toBe(true);
+    expect(overstates(b('Mobilisation trois fois au-dessus du repère (43 à 61).'), HIGH, 'fr')).toBe(false);
+    expect(overstates(b('Unprecedented social unrest.'), HIGH, 'en')).toBe(true);
+  });
+  it('« critique » permis quand une situation est CRITICAL', () => {
+    expect(overstates(b('Mobilisation au niveau critique.'), [{ severity: 'critical' }], 'fr')).toBe(false);
   });
 });
 

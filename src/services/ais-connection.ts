@@ -27,6 +27,8 @@ const INITIAL_TIMEOUT_MS = 10_000;            // 10s pour le 1er message après 
 const STALE_CHECK_INTERVAL_MS = 15_000;       // Vérifie l'état toutes les 15s
 
 let _status: AisConnectionStatus = 'disconnected';
+/** WebSocket demandé au moins une fois (couche maritime ou Défense allumée) : avant, « déconnecté » n'est pas une panne. */
+let _requested = false;
 let _lastMessageTs = 0;
 let _reconnectAttempt = 0;
 let _reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -43,6 +45,11 @@ function _setStatus(s: AisConnectionStatus): void {
 /** Retourne l'état courant de la connexion AIS. */
 export function getAisConnectionStatus(): AisConnectionStatus {
     return _status;
+}
+
+/** Vrai dès que le WebSocket a été demandé (couche maritime ou Défense allumée au moins une fois). */
+export function isAisRequested(): boolean {
+    return _requested;
 }
 
 /** Retourne le timestamp (Unix ms) du dernier message AIS reçu. */
@@ -71,6 +78,7 @@ function _startStaleCheck(): void {
 
 /** Ouvre le WebSocket. Idempotent si déjà en cours de connexion ou connecté. */
 export function connectAis(): void {
+    _requested = true;
     if (!AIS_RELAY_URL) {
         console.info('[AIS] Pas de relais configuré (VITE_AIS_RELAY_URL non défini) : layer maritime désactivé');
         return;

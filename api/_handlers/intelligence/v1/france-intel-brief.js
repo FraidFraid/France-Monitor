@@ -23,7 +23,7 @@ import { sanitizeEvents, buildEvidenceIndex, formatEventsBlock, applyEvidence } 
 const GROQ_URL   = 'https://api.groq.com/openai/v1/chat/completions';
 // Modèle centralisé (Groq a retiré llama-3.3-70b-versatile) : voir api/_lib/groq-models.js
 const CACHE_TTL  = 6 * 60 * 60; // 6 hours
-const BRIEF_PROMPT_VERSION = 'v15';
+const BRIEF_PROMPT_VERSION = 'v16';
 
 // Échelle L1 (quatre couleurs de vigilance officielles), seuils du score v3 85/70/55.
 // Alignée sur src/services/vigilance.ts#scoreLevel : test d'alignement dans
@@ -472,7 +472,8 @@ ${headlineList}
 6. Calm wording (stable/calm/normal/under control) is ${calmAllowed ? 'allowed' : 'FORBIDDEN'}.
 7. Never quote numeric scores or /100 values. Never invent facts, actors or locations.
 8. If no correlated situation exists, say so honestly in the bluf and focus judgments on the strongest background signals.
-9. Never use an em dash: prefer a colon or a comma.`;
+9. Never use an em dash: prefer a colon or a comma.
+10. No superlatives (unprecedented, historic, record, massive): compare with the reference given in the situation (e.g. "43 to 61 on a normal day"). Say "critical" about a situation or a threshold only if its level is CRITICAL.`;
   }
 
   return `[SYSTEM]
@@ -503,8 +504,32 @@ ${headlineList}
 6. Vocabulaire calme (stable/calme/normal/sous contrôle) : ${calmAllowed ? 'autorisé' : 'INTERDIT'}.
 7. Ne cite jamais de score numérique ni de valeur /100. N'invente aucun fait, acteur ou lieu.
 8. S'il n'existe aucune situation corrélée, dis-le honnêtement dans le bluf et fonde les jugements sur les signaux de fond les plus forts.
-9. N'utilise jamais de tiret long (cadratin) : préfère les deux-points ou une virgule.`;
+9. N'utilise jamais de tiret long (cadratin) : préfère les deux-points ou une virgule.
+10. Aucun superlatif (sans précédent, inédit, historique, record, massif) : compare au repère donné dans la situation (ex. « 43 à 61 en temps normal »). Ne dis « critique » d'une situation ou d'un seuil que si son niveau est CRITICAL.`;
 }
+
+/**
+ * Emphase interdite : superlatifs, ou « critique » appliqué à une situation ou à un seuil alors qu'aucune situation n'est CRITICAL
+ * (« infrastructures critiques » reste permis).
+ * @param {{ bluf: string, judgments: Array<{ text: string }> }} brief
+ * @param {Array<{ severity: string }>} situations
+ * @param {'fr' | 'en'} lang
+ */
+export function overstates(brief, situations, lang) {
+  const text = [brief.bluf, ...brief.judgments.map((j) => j.text)].join(' ');
+  const superlative = lang === 'fr'
+    ? /(sans précédent|inédit|historique|record|jamais vu)/i
+    : /(unprecedented|historic|record[- ]breaking|never seen)/i;
+  if (superlative.test(text)) return true;
+  if (situations.some((s) => String(s.severity).toLowerCase() === 'critical')) return false;
+  const critical = lang === 'fr'
+    ? /((seuil|niveau|stade|situation|phase)s? critiques?|critiques? (seuil|niveau))/i
+    : /(critical (threshold|level|stage|situation|phase))/i;
+  return critical.test(text);
+}
+
+/** Au-delà, le brief partagé n'est plus servi (enregistreur arrêté, rédactions refusées) : le navigateur affiche son brief déterministe. */
+const SHARED_MAX_AGE_MS = 2 * 60 * 60 * 1000;
 
 /**
  * Brief partagé (05/11/2026) : le dernier rédigé pour l'enregistreur de la VM, le même pour tous les visiteurs. Aucun appel Groq.
@@ -512,7 +537,8 @@ ${headlineList}
  * @param {'fr' | 'en'} lang
  */
 async function sharedBriefResponse(lang) {
-  const stored = await readStoredBrief(lang);
+  const read = await readStoredBrief(lang);
+  const stored = read && Date.now() - Date.parse(read.generatedAt) <= SHARED_MAX_AGE_MS ? read : null;
   const body = stored
     ? { brief: stored.brief, generatedAt: stored.generatedAt, score: stored.score, situationIds: stored.situationIds, fromCache: true, shared: true }
     : { brief: null, fromCache: false, shared: true };
@@ -717,6 +743,14 @@ export default async function handler(request) {
         ? /(situation stable|situation normalisée|sous contrôle|période de calme)/i
         : /(situation is stable|normalized situation|under control|calm period)/i;
       if (calmWords.test(brief.bluf)) brief = null;
+    }
+
+    // Garde anti-emphase (05/11/2026, « mobilisation sans précédent », « dépasse le seuil critique » sous une situation HIGH) :
+    // rejeté sans être mis en cache, le passage suivant de l'enregistreur redemande.
+    if (brief && overstates(brief, situations, lang)) {
+      return new Response(JSON.stringify({ brief: null, fromCache: false, rejected: 'overstatement' }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
     }
 
     // Mis en cache même rejeté (null) : Groq a répondu, redemander la même clé donnerait le

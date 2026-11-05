@@ -32,7 +32,7 @@ import type { CyberPanel } from './components/CyberPanel.ts';
 import type { FranceIntelPanel } from './components/FranceIntelPanel.ts';
 import type { PosteSituation } from './components/poste/PosteSituation.ts';
 import type { VisitBaselineSession } from './services/intel-last-visit.ts';
-import { briefSituationIds, evaluateBriefLevel, fetchFranceIntelBrief, firstBriefDue, type BriefLevelMark } from './services/france-intel-brief.ts';
+import { briefSituationIds, evaluateBriefLevel, fetchFranceIntelBrief, firstBriefDue, recorderBriefDue, RECORDER_BRIEF_MAX_WAIT_MS, type BriefLevelMark } from './services/france-intel-brief.ts';
 import { LEVEL_RANK, levelHex, scoreLevel, type VigilanceLevel } from './services/vigilance.ts';
 import { eventMapPoints } from './services/v2-map.ts';
 import { inTheme, themeLabel, type ThemeId } from './services/themes.ts';
@@ -83,7 +83,7 @@ import { ALL_INFRASTRUCTURE, NUCLEAR_PLANTS } from './config/infrastructure.ts';
 // ACTIVE_INSTALLATIONS (config/military-bases-db ~1100 l.) chargé dynamiquement dans loadDefenseSites(), sans fusion OpenStreetMap.
 
 import { AIS_RELAY_URL, getAisStatus, getAisConnectionState, getMilitaryShips, getAllLiveTraffic, NAVY_MMSI_SET, onFirstAisData } from './services/military-ships.ts';
-import { connectAis } from './services/ais-connection.ts';
+import { connectAis, isAisRequested } from './services/ais-connection.ts';
 import { detectAisAnomalies } from './services/ais-anomalies.ts';
 import { ALL_FEEDS } from './config/feeds.ts';
 import { VIEW_PRESETS } from './config/geo.ts';
@@ -2181,6 +2181,8 @@ export class App {
     this.startHealthPolling();
     this.startEventPressurePolling();
     this.startScoreSourcesKeeper();
+    // Enregistreur : relevé recalculé à l'échéance du brief partagé, même si aucune donnée n'arrive à ce moment-là.
+    if (this.recorderPage) window.setTimeout(() => this.refreshFranceIntelPanel(), RECORDER_BRIEF_MAX_WAIT_MS + 1_000);
     if (this.uiV2 && !this.recorderPage) {
       this.startArchivedNotesPolling();
       // Échéances : rassemblements annoncés lus même couche Manifestations éteinte, une fois par heure.
@@ -7256,7 +7258,7 @@ export class App {
         // Date du dernier message reçu du relais (S1), jamais l'heure de lecture ; message trop ancien : en retard même connecté (S2).
         const aisState = getAisConnectionState();
         this.statusPanel?.updateSource('AIS maritime', {
-          ...aisLiveStatus({ connected: aisStatus.connected, shipCount: aisStatus.shipCount, lastMessageAt: aisState.lastMessageAt }, Date.now()),
+          ...aisLiveStatus({ connected: aisStatus.connected, shipCount: aisStatus.shipCount, lastMessageAt: aisState.lastMessageAt, requested: isAisRequested() }, Date.now()),
           detail: aisStatus.connected ? aisDetail : aisRelayLabel,
         });
 
@@ -9364,7 +9366,7 @@ export class App {
     }
     if (canRecord) void pushHistorySnapshot(snapshot, this.scoreCoverage(env), performance.now());
     if (canRecord && this.recorderPage) void this.exposeRecorderReport();
-    if (canRecord && this.recorderPage) void this.exposeRecorderBrief(snapshot);
+    if (canRecord && this.recorderPage && recorderBriefDue(this.scoreCoverage(env), performance.now())) void this.exposeRecorderBrief(snapshot);
     if (!this.isIntelSurfaceVisible()) return;
     this.franceIntelPanel?.show(snapshot);
     if (this.firstBriefWaitingSince !== null) {
