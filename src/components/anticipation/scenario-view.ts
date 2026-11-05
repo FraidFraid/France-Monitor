@@ -146,7 +146,8 @@ export function arretesLinkHtml(depts: readonly string[]): string {
   const page = arretesPageOf(depts);
   const url = safeDocUrl(page?.url);
   if (!page || !url) return '';
-  return `<p class="anr-doc-where">Pas encore d'arrêté relevé. <a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(page.label)}</a></p>`;
+  return '<div class="anr-doc-where"><span>Pas encore d\'arrêté relevé</span>'
+    + `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(page.label)}<span aria-hidden="true"> ↗</span></a></div>`;
 }
 
 /** Fiche complète ; null : aucun scénario pour le jour choisi. */
@@ -169,7 +170,9 @@ export function scenarioHtml(s: AnticipationScenario | null, signals: Readonly<R
     const at = hit ? clock(b.at) : null;
     const st = hit ? `Atteint${at ? ` ${at}` : ''}` : 'surveillé';
     const doc = hit ? docHtml(b.doc) : '';
-    return `<div class="anr-trig${hit ? ' is-hit' : ''}"><span>${escapeHtml(b.label)}</span><span class="anr-st">${st}</span></div>${doc || (b.id === 'arrete' ? arretesLinkHtml(s.zone.dept) : '')}`;
+    const foot = doc || (b.id === 'arrete' ? arretesLinkHtml(s.zone.dept) : '');
+    return `<div class="anr-bas${hit ? ' is-hit' : ''}"><div class="anr-trig${hit ? ' is-hit' : ''}"><i class="anr-dot" aria-hidden="true"></i>`
+      + `<span class="anr-lbl">${escapeHtml(b.label)}</span><span class="anr-st">${st}</span></div>${foot}</div>`;
   }).join('');
   return '<div class="anr-card">'
     + `<p class="anr-meta">${escapeHtml(meta)}</p>`
