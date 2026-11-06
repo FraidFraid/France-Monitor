@@ -70,7 +70,7 @@ Il publie aussi ses **alertes aux formats CAP et Atom**. [V]
 | Domaine | Sources | Nature | Cadence | Alimente | État |
 |---|---|---|---|---|---|
 | Presse | 35 flux RSS nationaux et régionaux (3 retirés le 26/10 : Marianne et Le Télégramme, fermés aux robots ; guadeloupe.fr, supprimé) | Presse | 30 min (VM) | Événements, piliers Sécurité et Signal, situations d'étendue | OK : 35 flux lus, 0 erreur |
-| Étendue des mouvements | Comptage d'événements distincts sur 24 h (`/api/news/event-pressure`) | Calcul sur la presse | 10 min | Situations « Mobilisation sociale étendue » et « Violences et troubles étendus » | OK. Le 26/10 au soir : 57 événements sociaux, 45 de sécurité élevés, dont l'essentiel concerne l'attentat de Trappes et ses suites, d'où « Violences et troubles étendus » en élevée |
+| Étendue des mouvements | Comptage d'événements distincts sur 12 h depuis le 06/11 (24 h avant ; `/api/news/event-pressure`) | Calcul sur la presse | 10 min | Situations « Mobilisation sociale étendue » et « Violences et troubles étendus » | OK. Le 26/10 au soir : 57 événements sociaux, 45 de sécurité élevés, dont l'essentiel concerne l'attentat de Trappes et ses suites, d'où « Violences et troubles étendus » en élevée |
 | Météo | Vigilance Météo-France (J et J+1), radar | Officiel | 5 à 15 min | Pilier Continuité, échéances | OK |
 | Eau | Vigicrues, Hub'Eau, VigiEau, marégraphes | Officiel | VM | Continuité, couches | OK |
 | Feux | NASA FIRMS, EUMETSAT MTG-FRP (étiqueté démonstration) | Officiel | 10 à 15 min | Pilier Signal | OK |
