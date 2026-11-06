@@ -223,7 +223,7 @@ export const RAIL_TRAFFIC_LEGEND: LegendCategory = {
     { id: 'rail-orange', label: `De 45 à 89${NBSP}min`, color: levelHex('orange'), shape: 'circle' },
     { id: 'rail-minor', label: `De 15 à 44${NBSP}min (anneau jaune)`, color: levelHex('jaune'), icon: fmIcon('train-front') },
   ],
-  source: { label: 'SNCF (perturbations du jour) · SIRI SX (situations)', url: 'https://numerique.sncf.com/startup/api/' },
+  source: { label: 'SNCF (perturbations du jour) · SIRI SX (situations)', url: 'https://ressources.data.sncf.com/explore/dataset/api-sncf/' },
   refresh: { label: `Relève toutes les 5${NBSP}min` },
   notes: [
     'Pastille d’une gare (icône train) : retard du train le plus en retard à cet arrêt ; pleine à partir de 45\u00a0min, anneau jaune de 15 à 44\u00a0min ; trains à venir dans le panneau seulement.',

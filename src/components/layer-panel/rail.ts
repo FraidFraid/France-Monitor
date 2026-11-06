@@ -33,7 +33,7 @@ export interface RailViewInput {
 type OpenFn = RailViewInput['open'];
 
 const TITLE = 'Réseau ferroviaire';
-const SNCF_URL = 'https://numerique.sncf.com/startup/api/';
+const SNCF_URL = 'https://ressources.data.sncf.com/explore/dataset/api-sncf/';
 const SIRI_URL = 'https://transport.data.gouv.fr/datasets/horaires-sncf';
 const MAX_REGIONS = 5;
 const MAX_SITUATIONS = 6;

@@ -101,7 +101,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'sncf',
     name: 'SNCF',
-    sourceUrl: 'https://numerique.sncf.com/startup/api/',
+    sourceUrl: 'https://ressources.data.sncf.com/explore/dataset/api-sncf/',
     domain: 'Transport',
     sourceType: 'official',
     natureBaseline: 80,
