@@ -177,7 +177,7 @@ export const ROAD_TRAFFIC_LEGEND: LegendCategory = {
     { id: 'road-section-heavy', label: 'Dense', color: levelHex('orange'), icon: LINE, iconSize: 18 },
     { id: 'road-section-free', label: 'Fluide', color: levelHex('vert'), icon: LINE, iconSize: 18 },
   ],
-  source: { label: 'DIR (DATEX II, Traficolor) · TomTom (collecte du serveur)' },
+  source: { label: 'DIR (DATEX II, Traficolor) · TomTom (collecte du serveur)', url: 'https://transport.data.gouv.fr/datasets/evenements-routiers-sur-le-reseau-routier-national-non-concede' },
   refresh: { label: `Relève toutes les 5${NBSP}min` },
   notes: [
     `DIR : routes nationales non concédées, événements en cours depuis moins de 24${NBSP}h ; accidents et coupures au premier plan ; fermetures et chantiers de longue durée dans le panneau.`,
@@ -205,7 +205,7 @@ export const AIR_TRAFFIC_LEGEND: LegendCategory = {
     { id: 'air-emergency-away', label: 'Urgence hors territoire et approches, ou vue une fois', color: TRAFFIC_NEUTRAL_HEX, shape: 'circle' },
     { id: 'air-airport', label: 'Aéroport : surface selon les départs détectés', color: CAT_AIRPORT_HEX, shape: 'circle' },
   ],
-  source: { label: 'OpenSky Network (ADS-B, compte authentifié)' },
+  source: { label: 'OpenSky Network (ADS-B, compte authentifié)', url: 'https://opensky-network.org' },
   refresh: { label: `Positions toutes les 12${NBSP}s, synthèse toutes les 2${NBSP}min` },
   notes: [
     'Zone suivie : France métropolitaine et ses approches ; vols militaires dans la couche Défense.',
@@ -223,7 +223,7 @@ export const RAIL_TRAFFIC_LEGEND: LegendCategory = {
     { id: 'rail-orange', label: `De 45 à 89${NBSP}min`, color: levelHex('orange'), shape: 'circle' },
     { id: 'rail-minor', label: `De 15 à 44${NBSP}min (anneau jaune)`, color: levelHex('jaune'), icon: fmIcon('train-front') },
   ],
-  source: { label: 'SNCF (perturbations du jour) · SIRI SX (situations)' },
+  source: { label: 'SNCF (perturbations du jour) · SIRI SX (situations)', url: 'https://numerique.sncf.com/startup/api/' },
   refresh: { label: `Relève toutes les 5${NBSP}min` },
   notes: [
     'Pastille d’une gare (icône train) : retard du train le plus en retard à cet arrêt ; pleine à partir de 45\u00a0min, anneau jaune de 15 à 44\u00a0min ; trains à venir dans le panneau seulement.',
@@ -244,7 +244,7 @@ export const MARITIME_TRAFFIC_LEGEND: LegendCategory = {
     { id: 'sea-signal', label: 'Signalement : autre navire', color: levelHex('orange'), shape: 'ring' },
     { id: 'sea-anchorage', label: 'Mouillage devant un port (surface : navires)', color: CAT_PORT_HEX, shape: 'circle' },
   ],
-  source: { label: 'AIS (aisstream.io, relais du serveur)' },
+  source: { label: 'AIS (aisstream.io, relais du serveur)', url: 'https://aisstream.io' },
   refresh: { label: `Positions en continu, synthèse toutes les 2${NBSP}min` },
   notes: [
     'Eaux françaises : métropole et Corse.',

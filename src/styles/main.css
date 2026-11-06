@@ -8126,6 +8126,8 @@ a.fiche-source, button.fiche-source { color: var(--text-accent); }
 .fin-table__cause { font-size: 11px; color: var(--text-muted); padding: 6px 4px 8px; }
 /* Phrase d'explication sous le titre des blocs Stabilité financière et Matières premières (26/10/2026). */
 .fin-table__intro { margin: 0 0 6px; padding: 0 8px 0 10px; font-size: 11px; line-height: 1.4; color: var(--text-muted); }
+.commodity-strip__source { margin: 8px 0 0; }
+.commodity-strip__source a { color: inherit; text-decoration: underline; }
 /* Carte étroite (bande à trois colonnes sous la carte) : le nom écrasé devenait illisible (« C a. »). Chaque ligne passe sur deux
    niveaux : nom complet et unité en haut ; valeur, appréciation et courbe dessous. Carte large : grille inchangée. */
 .under-map-card--markets, .under-map-card--commodities { container: fincard / inline-size; }

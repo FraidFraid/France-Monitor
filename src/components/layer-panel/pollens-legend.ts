@@ -23,7 +23,7 @@ export const POLLENS_LEGEND: LegendCategory = {
     { id: 'pollens-header', label: 'Niveau de pollens du jour, plus haut du département', color: HEADER_HEX, isHeader: true },
     ...[1, 2, 3, 4, 5, 6].map((code) => ({ id: `pollens-${code}`, label: `${POLLEN_WORD[code][0].toUpperCase()}${POLLEN_WORD[code].slice(1)} (${code})`, color: POLLEN_HEX[code], shape: 'square' as const })),
   ],
-  source: { label: 'Atmo France et AASQA (Licence Ouverte)' },
+  source: { label: 'Atmo France et AASQA (Licence Ouverte)', url: 'https://data.atmo-france.org/' },
   refresh: { label: `Relève toutes les 2${NBSP}h` },
   notes: [
     'Six taxons suivis : aulne, bouleau, olivier, graminées, armoise, ambroisie. Niveau du département : plus haut niveau de ses communes.',

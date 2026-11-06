@@ -13,7 +13,7 @@ export const SEVESO_LEGEND: LegendCategory = {
     { id: 'seveso-bas', label: 'Seveso seuil bas', color: SEVESO_BAS_HEX, shape: 'circle' },
     { id: 'seveso-ring', label: 'Anneau : exposé à un phénomène en cours (couleur du phénomène)', borderColor: levelHex('orange'), shape: 'ring' },
   ],
-  source: { label: 'Géorisques, installations classées (Licence Ouverte)' },
+  source: { label: 'Géorisques, installations classées (Licence Ouverte)', url: 'https://www.georisques.gouv.fr/risques/installations/donnees' },
   refresh: { label: 'Recensement trimestriel ; exposition recalculée à chaque lecture des phénomènes' },
   notes: ['Groupes aux petites échelles, cerclés d’orange s’ils contiennent un site exposé ; noms des seuils hauts au zoom 9.'],
 };

@@ -1,7 +1,7 @@
 // src/components/CommodityStrip.test.ts : cours des matières premières à la française (virgule décimale, milliers groupés,
 // unité insécable), comme le bloc « Stabilité financière » voisin.
 import { describe, expect, it } from 'vitest';
-import { SECTION_LABELS, commodityRowHTML, commoditySparkline, formatCommodityPct, formatCommodityPrice } from './CommodityStrip.ts';
+import { COMMODITY_SOURCE_HTML, COMMODITY_SOURCE_URL, SECTION_LABELS, commodityRowHTML, commoditySparkline, formatCommodityPct, formatCommodityPrice } from './CommodityStrip.ts';
 import type { CommodityData } from '../types/index.ts';
 
 const NB = ' ';
@@ -50,5 +50,14 @@ describe('ligne de tableau (refonte du 12/10)', () => {
   it('mouvement exceptionnel de l’énergie (± 5 %) : variation en alerte jaune', () => {
     expect(commodityRowHTML({ ...base, changePercent: -6.1 })).toContain('fin-row__note is-alert');
     expect(commodityRowHTML({ ...base, category: 'metals', changePercent: -6.1 })).toContain('fin-row__note is-down');
+  });
+});
+
+describe('source du bloc Matières premières (audit des sources, 06/11/2026)', () => {
+  it('cite Yahoo Finance avec un lien et dit que les cours ne sont pas officiels', () => {
+    expect(COMMODITY_SOURCE_HTML).toContain(`href="${COMMODITY_SOURCE_URL}"`);
+    expect(COMMODITY_SOURCE_HTML).toContain('Yahoo Finance');
+    expect(COMMODITY_SOURCE_HTML).toContain('non officiels');
+    expect(COMMODITY_SOURCE_HTML).not.toMatch(/—/);
   });
 });

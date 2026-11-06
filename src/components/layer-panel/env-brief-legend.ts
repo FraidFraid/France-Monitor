@@ -16,7 +16,7 @@ export const ENV_BRIEF_LEGEND: LegendCategory = {
     { id: 'eb-ring-rouge', label: 'Anneau rouge : phénomène rouge', borderColor: levelHex('rouge'), shape: 'ring' },
     { id: 'eb-ring-orange', label: 'Anneau orange : phénomène orange', borderColor: levelHex('orange'), shape: 'ring' },
   ],
-  source: { label: 'Géorisques (Seveso) · SAE et FINESS (urgences, EHPAD) · EDF (centrales)' },
+  source: { label: 'Géorisques (Seveso) · SAE et FINESS (urgences, EHPAD) · EDF (centrales)', url: 'https://www.georisques.gouv.fr/risques/installations/donnees' },
   refresh: { label: 'Recalculé à chaque lecture des phénomènes' },
   notes: [
     'Seuls les enjeux à portée d’un phénomène en cours sont dessinés : crue à 2\u00a0km, feu à 5\u00a0km, séisme de 10 à 50\u00a0km, zone Copernicus.',

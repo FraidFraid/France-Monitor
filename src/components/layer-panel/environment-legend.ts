@@ -161,7 +161,7 @@ export const RADAR_LEGEND: LegendCategory = {
   columns: 2,
   splitIndex: 5,
   items: [...RADAR_ITEMS],
-  source: { label: 'Météo-France, mosaïque de réflectivité (DPRadar, Licence Ouverte 2.0)' },
+  source: { label: 'Météo-France, mosaïque de réflectivité (DPRadar, Licence Ouverte 2.0)', url: 'https://portail-api.meteofrance.fr/web/fr/api/DPRadar' },
   refresh: { label: `Une image toutes les 5${NBSP}min` },
   notes: [
     'Mosaïque 1 km : métropole et Corse, avec leurs marges.',
@@ -205,7 +205,7 @@ export const FIRES_LEGEND: LegendCategory = {
   id: 'fires',
   title: 'Feux de forêt',
   items: [...FIRE_ITEMS],
-  source: { label: 'NASA FIRMS (VIIRS Suomi NPP, NOAA-20, NOAA-21 ; MODIS Terra, Aqua) · Météo-France, météo des forêts' },
+  source: { label: 'NASA FIRMS (VIIRS Suomi NPP, NOAA-20, NOAA-21 ; MODIS Terra, Aqua) · Météo-France, météo des forêts', url: 'https://firms.modaps.eosdis.nasa.gov/active_fire/' },
   refresh: { label: `Collecte du serveur toutes les 15${NBSP}min` },
   notes: [
     'Départements français seulement ; détections hors de France en gris.',
@@ -257,7 +257,7 @@ export const DROUGHT_LEGEND: LegendCategory = {
     { id: 'drought-vigilance', label: 'Vigilance (sensibilisation, sans restriction)', color: CAT_SECHERESSE_VIGILANCE_HEX, shape: 'square' },
     { id: 'drought-unavailable', label: 'Donnée indisponible (VigiEau « unavailable »)', color: DROUGHT_UNAVAILABLE_HEX, shape: 'square' },
   ],
-  source: { label: 'VigiEau (ministère de la Transition écologique)' },
+  source: { label: 'VigiEau (ministère de la Transition écologique)', url: 'https://vigieau.gouv.fr' },
   refresh: { label: `Relève toutes les 6${NBSP}h` },
   notes: ['Département sans arrêté : non rempli. 96 départements de métropole dessinés.', 'Un stock, pas un événement : hors du score France.'],
 };
@@ -272,7 +272,7 @@ export const AIR_QUALITY_LEGEND: LegendCategory = {
     { id: 'air-4', label: 'Mauvais (4)', color: levelHex('orange'), shape: 'square' },
     { id: 'air-5', label: 'Très mauvais et plus (5 à 7)', color: levelHex('rouge'), shape: 'square' },
   ],
-  source: { label: 'Atmo France (AASQA), indice ATMO par commune' },
+  source: { label: 'Atmo France (AASQA), indice ATMO par commune', url: 'https://data.atmo-france.org/' },
   refresh: { label: `Relève toutes les heures de 13${NBSP}h à 19${NBSP}h, toutes les 6${NBSP}h sinon` },
   notes: ['Couleurs de l’échelle FranceMonitor, pas la palette officielle ATMO.', 'Département sans indice publié ce jour : non rempli (communes couvertes par les AASQA).'],
 };
@@ -289,7 +289,7 @@ export const EARTHQUAKES_LEGEND: LegendCategory = {
     { id: 'quake-weak', label: 'Moins de 2,5', color: QUAKE_WEAK_HEX, shape: 'circle' },
     { id: 'quake-abroad', label: `Hors de France, à 20${NBSP}km au plus`, color: QUAKE_ABROAD_HEX, shape: 'circle' },
   ],
-  source: { label: 'BCSF-RéNaSS (EMSC en repli)' },
+  source: { label: 'BCSF-RéNaSS (EMSC en repli)', url: 'https://renass.unistra.fr/fr/' },
   refresh: { label: `Relève toutes les 10${NBSP}min` },
   notes: ['En France : territoire métropolitain, Corse comprise, ou eaux françaises. Magnitude 3 ou plus étiquetée.'],
 };
@@ -354,7 +354,7 @@ export const DISASTERS_LEGEND: LegendCategory = {
     { id: 'disaster-vert', label: 'Alerte verte : petit point, pulsation lente', color: levelHex('vert'), shape: 'circle' },
     { id: 'ems-zone', label: 'Zone cartographiée par Copernicus EMS (activation en cours)', color: EMS_ZONE_HEX, shape: 'zone' },
   ],
-  source: { label: 'GDACS (ONU, Commission européenne)' },
+  source: { label: 'GDACS (ONU, Commission européenne)', url: 'https://www.gdacs.org/' },
   refresh: { label: `Relève toutes les 10${NBSP}min` },
   notes: [
     'Métropole, outre-mer et collectivités du Pacifique. Alertes calculées par modèle, pas une vigilance officielle française.',

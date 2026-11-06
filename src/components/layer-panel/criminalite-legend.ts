@@ -32,5 +32,5 @@ export function crimeLegend(ds: CrimeDataset | null, key: CrimeIndicatorKey): Le
   const ind = indicatorOf(ds, key);
   const fr = franceRate(ds, key);
   const head = `${ind?.label ?? key} ${ds.year} · France ${formatCrimeRate(key, fr)} (${rateBaseWord(ind)}).`;
-  return { ...base, source: { ...(CRIME_LEGEND.source ?? { label: '' }), year: ds.year }, notes: [head, ...(CRIME_LEGEND.notes ?? [])] };
+  return { ...base, source: { ...(CRIME_LEGEND.source ?? { label: '' }), year: ds.year, url: ds.sourceUrl }, notes: [head, ...(CRIME_LEGEND.notes ?? [])] };
 }

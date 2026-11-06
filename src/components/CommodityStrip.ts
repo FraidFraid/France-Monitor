@@ -34,6 +34,13 @@ export function commodityRowHTML(item: CommodityData): string {
   });
 }
 
+/**
+ * Source du bloc (audit des sources, 06/11/2026) : cours de marché non officiels, relevés par le serveur sur Yahoo Finance
+ * (contrats à terme NYMEX, COMEX, CBOT), cache de 15 minutes.
+ */
+export const COMMODITY_SOURCE_URL = 'https://finance.yahoo.com/commodities';
+export const COMMODITY_SOURCE_HTML = `<p class="fin-table__intro commodity-strip__source">Source : <a href="${COMMODITY_SOURCE_URL}" target="_blank" rel="noopener noreferrer">Yahoo Finance</a>, contrats à terme (NYMEX, COMEX, CBOT), cours de marché non officiels relevés toutes les 15${NBSP}minutes.</p>`;
+
 export const SECTION_LABELS: Readonly<Record<'energy' | 'metals' | 'agro', string>> = { energy: 'Énergie', metals: 'Métaux', agro: 'Agro' };
 
 // ─── Composant ────────────────────────────────────────────────────────────────
@@ -75,6 +82,7 @@ export class CommodityStrip {
           <div class="commodity-strip__section-label">${SECTION_LABELS.agro}</div>
           <div class="commodity-strip__list" id="commodity-list-agro"></div>
         </div>
+        ${COMMODITY_SOURCE_HTML}
       </div>
     `;
 

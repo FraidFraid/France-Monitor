@@ -31,6 +31,12 @@ const n = (v: unknown): number | null => {
   return typeof x === 'number' && Number.isFinite(x) ? x : null;
 };
 
+/**
+ * Sites tirés des listes internes du projet (config/infrastructure.ts, config/oil-infrastructure.ts), sans source primaire datée
+ * site par site : dit tel quel plutôt que « Inventaire » (audit des sources, 06/11/2026).
+ */
+export const INTERNAL_INVENTORY = 'liste interne FranceMonitor (sites publics, non datée)';
+
 export function fmtNum(v: unknown, unit: string, digits = 0): string {
   const x = n(v);
   if (x === null) return 'n.d.';
@@ -83,7 +89,7 @@ export function infraCard(p: Props, units: ReadonlyArray<{ name: string; lostMw:
   }
   const hex = type === 'hydro' ? H.hydraulique : type.startsWith('gas') ? H.gaz : type === 'refinery' || type === 'oil-depot' ? H.petrole : H.electricite;
   return { sectorHex: hex, title: s(p.name), time: null, state: stateOf(p),
-    rows: [['Capacité', fmtPos(p.capacity, s(p.capacityUnit) || 'MW')], ['Opérateur', s(p.operator) || 'n.d.']], source: 'Inventaire' };
+    rows: [['Capacité', fmtPos(p.capacity, s(p.capacityUnit) || 'MW')], ['Opérateur', s(p.operator) || 'n.d.']], source: INTERNAL_INVENTORY };
 }
 
 export function powerUnitCard(p: Props): TooltipCard {
@@ -103,14 +109,14 @@ export function gasCard(p: Props): TooltipCard {
 
 export function refineryCard(p: Props): TooltipCard {
   return { sectorHex: H.petrole, title: s(p.name), time: null, state: stateOf(p),
-    rows: [['Opérateur', s(p.operator) || 'n.d.'], ['Capacité', fmtPos(p.capacity, 'Mt/an', 1)]], source: 'Inventaire' };
+    rows: [['Opérateur', s(p.operator) || 'n.d.'], ['Capacité', fmtPos(p.capacity, 'Mt/an', 1)]], source: INTERNAL_INVENTORY };
 }
 
 const DEPOT_TYPE: Readonly<Record<string, string>> = { strategic: 'Dépôt stratégique', terminal: 'Terminal pétrolier' };
 
 export function oilDepotCard(p: Props): TooltipCard {
   return { sectorHex: H.petrole, title: s(p.name), time: null, state: null,
-    rows: [['Type', DEPOT_TYPE[s(p.role)] ?? 'Dépôt'], ['Capacité', fmtPos(p.capacityM3, 'm³')], ['Opérateur', s(p.operator) || 'n.d.']], source: 'Inventaire' };
+    rows: [['Type', DEPOT_TYPE[s(p.role)] ?? 'Dépôt'], ['Capacité', fmtPos(p.capacityM3, 'm³')], ['Opérateur', s(p.operator) || 'n.d.']], source: INTERNAL_INVENTORY };
 }
 
 const DEPOT_ROLE: Readonly<Record<string, string>> = {
@@ -126,7 +132,7 @@ export function oilDepotDetailCard(p: Props, ctx: {
   const imports = [...ctx.imports].sort((x, y) => (n(y.value) ?? 0) - (n(x.value) ?? 0))
     .map((f) => [`Import · ${f.who}`, fmtNum(f.value, f.unit)] as const);
   const refineries = ctx.refineries.length > 0 ? [['Raffineries à moins de 30 km', ctx.refineries.join(', ')] as const] : [];
-  return { ...base, rows: [...base.rows, ...imports, ...refineries], source: imports.length > 0 ? 'Inventaire, DGEC (origines)' : 'Inventaire',
+  return { ...base, rows: [...base.rows, ...imports, ...refineries], source: imports.length > 0 ? `${INTERNAL_INVENTORY} · imports par origine : DGEC` : INTERNAL_INVENTORY,
     hint: DEPOT_ROLE[s(p.role)] ?? 'Dépôt de distribution : approvisionne les stations de sa zone.' };
 }
 
@@ -220,13 +226,13 @@ export function chokeCard(p: Props): TooltipCard {
   const total = flows.reduce((t, f) => t + (n(f.value) ?? 0), 0);
   return { sectorHex: H.petrole, title: s(p.name), time: null, state: null,
     rows: [...flows.map((f) => [f.who, fmtNum(f.value, f.unit)] as const), ['Total', fmtNum(total, unit)]],
-    source: 'Routes simplifiées', hint: 'Point de passage obligé : sa fermeture coupe ces flux' };
+    source: 'Imports par origine : DGEC · routes maritimes simplifiées par FranceMonitor', hint: 'Point de passage obligé : sa fermeture coupe ces flux' };
 }
 
 export function pipelineCard(p: Props, kind: 'gaz' | 'petrole'): TooltipCard {
   const nature = kind === 'gaz' ? 'Gazoduc' : s(p.kind) === 'products' ? 'Oléoduc (produits raffinés)' : 'Oléoduc (pétrole brut)';
   return { sectorHex: kind === 'gaz' ? H.gaz : H.petrole, title: s(p.name) || nature, time: null, state: null,
-    rows: [['Nature', nature], ['Opérateur', s(p.operator) || 'n.d.']], source: kind === 'gaz' ? 'GRTgaz, Teréga' : 'Inventaire' };
+    rows: [['Nature', nature], ['Opérateur', s(p.operator) || 'n.d.']], source: kind === 'gaz' ? 'GRTgaz, Teréga' : INTERNAL_INVENTORY };
 }
 
 export function metroCard(p: Props): TooltipCard {
