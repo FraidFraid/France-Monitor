@@ -7,17 +7,17 @@ const NOW = Date.parse('2026-10-17T18:00:00Z');
 
 afterEach(() => { vi.unstubAllEnvs(); });
 
-describe('route : événements distincts sur 24 h complètes', () => {
+describe('route : événements distincts sur les 12 dernières heures', () => {
   it('compte des événements (DISTINCT event_id), jamais des articles ; social moyen ou plus, sécurité élevée ou plus', () => {
     expect(EVENT_PRESSURE_SQL).toContain('COUNT(DISTINCT event_id) FILTER (WHERE category = \'social\' AND severity IN (\'medium\', \'high\', \'critical\'))');
     expect(EVENT_PRESSURE_SQL).toContain('COUNT(DISTINCT event_id) FILTER (WHERE category = \'security\' AND severity IN (\'high\', \'critical\'))');
     expect(EVENT_PRESSURE_SQL).not.toMatch(/LIMIT/i);
   });
-  it('fenêtre des 24 h qui précèdent ; comptages en nombres', async () => {
+  it('fenêtre des 12 h qui précèdent ; comptages en nombres', async () => {
     const calls: unknown[][] = [];
     const r = await queryEventPressure(NOW, async (_text, params) => { calls.push(params); return [{ social: '111', security_high: 24 }]; });
-    expect(calls[0]).toEqual(['2026-10-16T18:00:00.000Z', '2026-10-17T18:00:00.000Z']);
-    expect(r).toEqual({ status: 200, body: { readAt: '2026-10-17T18:00:00.000Z', since: '2026-10-16T18:00:00.000Z', socialEvents24h: 111, securityHighEvents24h: 24 } });
+    expect(calls[0]).toEqual(['2026-10-17T06:00:00.000Z', '2026-10-17T18:00:00.000Z']);
+    expect(r).toEqual({ status: 200, body: { readAt: '2026-10-17T18:00:00.000Z', since: '2026-10-17T06:00:00.000Z', socialEvents12h: 111, securityHighEvents12h: 24 } });
   });
   it('base absente ou en panne : 503, jamais un zéro', async () => {
     vi.stubEnv('DATABASE_URL', '');
@@ -28,11 +28,12 @@ describe('route : événements distincts sur 24 h complètes', () => {
 });
 
 describe('lecture côté page', () => {
-  const ok = { readAt: '2026-10-17T18:00:00.000Z', since: '2026-10-16T18:00:00.000Z', socialEvents24h: 111, securityHighEvents24h: 24 };
+  const ok = { readAt: '2026-10-17T18:00:00.000Z', since: '2026-10-17T06:00:00.000Z', socialEvents12h: 111, securityHighEvents12h: 24 };
   it('forme validée : comptages entiers positifs', () => {
     expect(isEventPressureResponse(ok)).toBe(true);
-    expect(isEventPressureResponse({ ...ok, socialEvents24h: -1 })).toBe(false);
-    expect(isEventPressureResponse({ ...ok, securityHighEvents24h: '24' })).toBe(false);
+    expect(isEventPressureResponse({ ...ok, socialEvents12h: -1 })).toBe(false);
+    expect(isEventPressureResponse({ readAt: ok.readAt, since: ok.since, socialEvents24h: 111, securityHighEvents24h: 24 })).toBe(false);
+    expect(isEventPressureResponse({ ...ok, securityHighEvents12h: '24' })).toBe(false);
     expect(isEventPressureResponse(null)).toBe(false);
   });
   it('HTTP en erreur, réseau en panne ou corps mal formé : null', async () => {

@@ -463,14 +463,18 @@ function detectSocialEscalation(raw: FranceRawData): DetectedSituation | null {
 // couvre-feux, sans aucune situation levée. L'étendue d'un mouvement se mesure en événements distincts sur 24 h complètes, jamais en
 // articles (un crash repris par cent médias compte une fois). Seuils calés sur les soirs du 12 au 25/10/2026 : avant le mouvement,
 // 43 à 61 événements sociaux et 9 à 15 événements de sécurité élevés par jour. À revérifier avec `npm run replay:score`.
+// 06/11/2026, journée du 05/11 (mobilisation très étendue, sans violences) : sur 24 h, l'orange n'arrivait qu'à 16 h 30, après les
+// cortèges, et restait jusqu'au lendemain après-midi. Comptage ramené à 12 h glissantes (un signal que rien ne vient renouveler
+// s'éteint en 12 h) et seuils recalés sur les mêmes journées : calme 34 à 48 sociaux et 9 à 14 de sécurité en 12 h ; 13/10 82,
+// 17/10 97, 22/10 90, 24/10 152, 05/11 155 (critique dès 12 h) ; nuit des pillages du 18/10 : 56 de sécurité.
 
-/** Événements sociaux distincts (gravité moyenne ou plus) en 24 h : modérée, élevée, critique. */
-export const SOCIAL_MOBILISATION_THRESHOLDS = { medium: 90, high: 110, critical: 160 } as const;
-/** Événements de sécurité distincts de gravité élevée ou critique en 24 h : modérée, élevée, critique. */
-export const SECURITY_UNREST_THRESHOLDS = { medium: 25, high: 40, critical: 70 } as const;
-/** Repères d'avant le mouvement, cités dans le texte des situations. */
-const SOCIAL_BASELINE = '43 à 61';
-const SECURITY_BASELINE = '9 à 15';
+/** Événements sociaux distincts (gravité moyenne ou plus) en 12 h : modérée, élevée, critique. */
+export const SOCIAL_MOBILISATION_THRESHOLDS = { medium: 60, high: 80, critical: 95 } as const;
+/** Événements de sécurité distincts de gravité élevée ou critique en 12 h : modérée, élevée, critique. */
+export const SECURITY_UNREST_THRESHOLDS = { medium: 20, high: 30, critical: 50 } as const;
+/** Repères d'avant le mouvement (plus forte fenêtre de 12 h des journées calmes), cités dans le texte des situations. */
+const SOCIAL_BASELINE = '34 à 48';
+const SECURITY_BASELINE = '9 à 14';
 
 function levelFor(count: number, t: { medium: number; high: number; critical: number }): SituationSeverity | null {
   return count >= t.critical ? 'critical' : count >= t.high ? 'high' : count >= t.medium ? 'medium' : null;
@@ -480,7 +484,7 @@ function levelFor(count: number, t: { medium: number; high: number; critical: nu
 const EXTENT_RULES = {
   social: {
     id: 'social-mobilisation', type: 'SOCIAL_MOBILISATION', title: 'Mobilisation sociale étendue', thresholds: SOCIAL_MOBILISATION_THRESHOLDS,
-    count: (p: EventPressureResponse) => p.socialEvents24h, what: 'événements sociaux distincts', baseline: SOCIAL_BASELINE,
+    count: (p: EventPressureResponse) => p.socialEvents12h, what: 'événements sociaux distincts', baseline: SOCIAL_BASELINE,
     detail: 'chacun compté une fois quel que soit le nombre d\u2019articles',
     actions: [
       action('Ouvrir la couche Manifestations pour situer les rassemblements', 'Analyste OSINT', 'monitor', true),
@@ -489,7 +493,7 @@ const EXTENT_RULES = {
   },
   security: {
     id: 'security-unrest', type: 'SECURITY_UNREST', title: 'Violences et troubles étendus', thresholds: SECURITY_UNREST_THRESHOLDS,
-    count: (p: EventPressureResponse) => p.securityHighEvents24h, what: 'événements de sécurité distincts de gravité élevée', baseline: SECURITY_BASELINE,
+    count: (p: EventPressureResponse) => p.securityHighEvents12h, what: 'événements de sécurité distincts de gravité élevée', baseline: SECURITY_BASELINE,
     detail: 'violences, pillages, attaques, chacun compté une fois',
     actions: [
       action('Lire les événements de sécurité de la liste « À traiter »', 'Analyste OSINT', 'investigate', true),
@@ -509,9 +513,9 @@ function detectExtent(raw: FranceRawData, kind: keyof typeof EXTENT_RULES): Dete
   return {
     ...situation(
       r.id, r.type, severity, 0.7, r.title,
-      `${n} ${r.what} rapportés par la presse en 24${NBSP}h (avant le mouvement d'octobre 2026 : ${r.baseline} par jour).`,
+      `${n} ${r.what} rapportés par la presse en 12${NBSP}h (en temps calme : ${r.baseline} sur 12${NBSP}h).`,
       ['France'],
-      [`${n} ${r.what} en 24${NBSP}h, ${r.detail}`, `Seuils : ${t.medium} (modérée), ${t.high} (élevée), ${t.critical} (critique)`],
+      [`${n} ${r.what} en 12${NBSP}h, ${r.detail}`, `Seuils : ${t.medium} (modérée), ${t.high} (élevée), ${t.critical} (critique)`],
       [...r.actions],
       ['Presse nationale et régionale (événements consolidés)'],
     ),

@@ -1,5 +1,5 @@
 // src/services/event-pressure.ts : lecture de /api/news/event-pressure (26/10/2026) : événements sociaux et de sécurité distincts sur
-// 24 h complètes, comptés par le serveur (la page ne lit que les 1 000 derniers articles). Entrée des situations SOCIAL_MOBILISATION et
+// les 12 dernières heures (24 h jusqu'au 06/11/2026), comptés par le serveur (la page ne lit que les 1 000 derniers articles). Entrée des situations SOCIAL_MOBILISATION et
 // SECURITY_UNREST (situation-engine.ts) ; jamais de rejet : une réponse absente, en erreur ou mal formée donne null, et null ne lève
 // aucune de ces deux situations.
 import type { EventPressureResponse } from '../types/index.ts';
@@ -13,7 +13,7 @@ const isCount = (v: unknown): v is number => typeof v === 'number' && Number.isI
 export function isEventPressureResponse(v: unknown): v is EventPressureResponse {
   if (typeof v !== 'object' || v === null) return false;
   const r = v as Record<string, unknown>;
-  return typeof r.readAt === 'string' && typeof r.since === 'string' && isCount(r.socialEvents24h) && isCount(r.securityHighEvents24h);
+  return typeof r.readAt === 'string' && typeof r.since === 'string' && isCount(r.socialEvents12h) && isCount(r.securityHighEvents12h);
 }
 
 export async function fetchEventPressure(fetchImpl: typeof fetch = fetch): Promise<EventPressureResponse | null> {

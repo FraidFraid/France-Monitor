@@ -1963,16 +1963,16 @@ export type SituationType =
 export type SituationSeverity = 'critical' | 'high' | 'medium' | 'watch';
 
 /**
- * Étendue des mobilisations et des violences sur 24 h complètes (/api/news/event-pressure, 26/10/2026) : événements consolidés
+ * Étendue des mobilisations et des violences sur les 12 dernières heures (/api/news/event-pressure, 26/10/2026) : événements consolidés
  * distincts, jamais des articles.
  */
 export interface EventPressureResponse {
   readAt: string;
   since: string;
   /** Événements dont un article social est de gravité moyenne ou plus. */
-  socialEvents24h: number;
+  socialEvents12h: number;
   /** Événements dont un article de sécurité est de gravité élevée ou critique. */
-  securityHighEvents24h: number;
+  securityHighEvents12h: number;
 }
 
 export type SituationActionType = 'investigate' | 'monitor' | 'cross-check' | 'escalate';

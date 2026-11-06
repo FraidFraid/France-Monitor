@@ -28,6 +28,8 @@ import type { EventPressureResponse, ISNRData, NewsItem } from '../../src/types/
 const SITE = process.env.REPLAY_SITE ?? 'https://www.francemonitor.com';
 const CACHE_DIR = path.resolve('node_modules/.cache/score-replay');
 const DAY_MS = 24 * 3_600_000;
+/** Fenêtre du comptage d'étendue, comme /api/news/event-pressure (12 h depuis le 06/11/2026). */
+const PRESSURE_WINDOW_MS = 12 * 3_600_000;
 const PAGE_LIMIT = 1000;
 const MAX_PAGES = 12;
 
@@ -140,17 +142,18 @@ function socialBreadth(items: NewsItem[]): number {
   return depts.size;
 }
 
-/** Même comptage que /api/news/event-pressure (api/_handlers/news/event-pressure.js), refait sur les articles archivés. */
+/** Même comptage et même fenêtre que /api/news/event-pressure (api/_handlers/news/event-pressure.js), refait sur les articles archivés. */
 function eventPressureOf(items: NewsItem[], atMs: number): EventPressureResponse {
   const social = new Set<number>();
   const security = new Set<number>();
   for (const i of items) {
     const level = i.threat?.level;
     if (i.eventId === undefined || level === undefined) continue;
+    if (i.pubDate.getTime() < atMs - PRESSURE_WINDOW_MS) continue;
     if (i.threat?.category === 'social' && (level === 'medium' || level === 'high' || level === 'critical')) social.add(i.eventId);
     if (i.threat?.category === 'security' && (level === 'high' || level === 'critical')) security.add(i.eventId);
   }
-  return { readAt: new Date(atMs).toISOString(), since: new Date(atMs - DAY_MS).toISOString(), socialEvents24h: social.size, securityHighEvents24h: security.size };
+  return { readAt: new Date(atMs).toISOString(), since: new Date(atMs - PRESSURE_WINDOW_MS).toISOString(), socialEvents12h: social.size, securityHighEvents12h: security.size };
 }
 
 const avg = (xs: number[]): number => (xs.length === 0 ? 0 : Math.round(xs.reduce((a, b) => a + b, 0) / xs.length));

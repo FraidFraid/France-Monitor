@@ -505,7 +505,7 @@ ${headlineList}
 7. Ne cite jamais de score numérique ni de valeur /100. N'invente aucun fait, acteur ou lieu.
 8. S'il n'existe aucune situation corrélée, dis-le honnêtement dans le bluf et fonde les jugements sur les signaux de fond les plus forts.
 9. N'utilise jamais de tiret long (cadratin) : préfère les deux-points ou une virgule.
-10. Aucun superlatif (sans précédent, inédit, historique, record, massif) : compare au repère donné dans la situation (ex. « 43 à 61 en temps normal »). Ne dis « critique » d'une situation ou d'un seuil que si son niveau est CRITICAL.`;
+10. Aucun superlatif (sans précédent, inédit, historique, record, massif) : compare au repère donné dans la situation (ex. « 34 à 48 en temps normal »). Ne dis « critique » d'une situation ou d'un seuil que si son niveau est CRITICAL.`;
 }
 
 /**
