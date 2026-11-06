@@ -8,7 +8,7 @@ import type { FicheSection } from '../fiche/parts.ts';
 import { NBSP, formatPct, frNumber } from './format.ts';
 import { barRow, emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, valueHtml, type LayerView } from './frame.ts';
 import {
-  APL_DIGITS, APL_PROFESSIONS, APL_PROFESSION_LABEL, APL_PROFESSION_SHORT, APL_UNIT, PER_100K, aplMgLevel, digitWord, joinFr, parisDay,
+  APL_DIGITS, APL_PROFESSIONS, HEALTH_SOURCE_URL, APL_PROFESSION_LABEL, APL_PROFESSION_SHORT, APL_UNIT, PER_100K, aplMgLevel, digitWord, joinFr, parisDay,
 } from './health-format.ts';
 
 export interface AccesSoinsViewInput {
@@ -25,7 +25,7 @@ type OpenFn = AccesSoinsViewInput['open'];
 
 const THEME = 'Santé';
 const TITLE = 'Accès aux soins';
-const DREES_URL = 'https://data.drees.solidarites-sante.gouv.fr/explore/dataset/530_l-accessibilite-potentielle-localisee-apl/';
+const DREES_URL = HEALTH_SOURCE_URL.apl;
 const CAPTION_BASE = 'de la population vit dans une commune où l’APL aux médecins généralistes est inférieure à 2,5';
 const OUTRE_MER_CORSE: readonly string[] = ['2A', '2B', '971', '972', '973', '974'];
 const MISSING_NAME: Readonly<Record<string, string>> = { '976': 'Mayotte' };

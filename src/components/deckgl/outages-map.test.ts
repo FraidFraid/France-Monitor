@@ -150,7 +150,7 @@ describe('carte des pannes : couches et infobulle', () => {
     expect(outTooltipHtml('sov-aircraft', props)).toBeNull();
     expect(outTooltipHtml('out-power-unplanned', props)).toBeNull();
     expect(outTooltipHtml('out-telecom-recent', { name: 'x' })).toBeNull();
-    expect(outTooltipHtml('out-telecom-recent', { body: '<b>ok</b>' })).toBe('<div class="hm-tip"><b>ok</b></div>');
+    expect(outTooltipHtml('out-telecom-recent', { body: '<b>ok</b>' })).toBe('<div class="hm-tip"><b>ok</b><div class="hm-note hm-src">Source : Arcep, sites mobiles indisponibles (Licence Ouverte)</div></div>');
   });
   it('le corps d’une infobulle Télécoms échappe les textes de la source', () => {
     const t = telecomFixtureResponse();

@@ -24,7 +24,7 @@ import {
   LYR_SUBMARINE_CABLES, LYR_SUBMARINE_CABLES_CORE, LYR_SUBMARINE_CABLES_GLOW, LYR_SUBMARINE_CABLES_HITAREA, LYR_SUBMARINE_CABLES_LANDING,
   SRC_SOV_AIRCRAFT, SRC_SOV_AIRCRAFT_ABROAD, SRC_SOV_CABLE_VESSELS, SRC_SOV_EMERGENCIES, SRC_SOV_NAVY, SRC_SOV_OSM_WORKS,
 } from './constants.ts';
-import { escapeHtml } from './format-utils.ts';
+import { escapeHtml, withSourceNote, type TooltipSource } from './format-utils.ts';
 import { droneZoneTooltipHtml } from './sovereignty-map-b.ts';
 
 type Fc<G extends GeoJSON.Geometry = GeoJSON.Geometry> = GeoJSON.FeatureCollection<G>;
@@ -392,13 +392,24 @@ export function topSovHit<T extends { layer: { id: string } }>(hits: readonly T[
   return undefined;
 }
 
-/** Infobulle préparée avec la donnée (propriété `body`, déjà échappée) ; null hors des couches survolables ou sans corps. */
+/** Source citée au pied des infobulles Souveraineté (withSourceNote : rien si l'infobulle la nomme déjà ; listes internes : aucune). */
+const SOV_TOOLTIP_SOURCE: Readonly<Record<string, TooltipSource>> = {
+  [LYR_SOV_EMERGENCIES]: { label: 'adsb.lol (ADS-B), ODbL 1.0', token: 'adsb.lol' },
+  [LYR_SOV_AIRCRAFT]: { label: 'adsb.lol (ADS-B), ODbL 1.0', token: 'adsb.lol' },
+  [LYR_SOV_AIRCRAFT_ABROAD]: { label: 'adsb.lol (ADS-B), ODbL 1.0', token: 'adsb.lol' },
+  [LYR_SOV_CABLE_VESSELS]: { label: 'AIS, aisstream.io', token: 'aisstream' },
+  [LYR_SOV_NAVY_OBSERVED]: { label: 'AIS, aisstream.io', token: 'aisstream' },
+  [LYR_SOV_OSM_WORKS]: { label: 'OpenStreetMap, ODbL 1.0', token: 'OpenStreetMap' },
+  [LYR_SOV_GNSS_FILL]: { label: 'adsb.lol (qualité de navigation déclarée par les avions)', token: 'adsb.lol' },
+};
+
+/** Infobulle préparée avec la donnée (propriété `body`, déjà échappée), source au pied ; null hors des couches survolables ou sans corps. */
 export function sovTooltipHtml(layerId: string, props: Readonly<Record<string, unknown>>): string | null {
   // Zones drones (phase B) : infobulle construite au survol, aucun corps stocké sur 5 541 zones.
   if (layerId === LYR_SOV_DRONES_FILL) return droneZoneTooltipHtml(props);
   const body = props['body'];
   if (typeof body !== 'string' || body === '' || !HOVERABLE.has(layerId)) return null;
-  return tip(body);
+  return tip(withSourceNote(body, SOV_TOOLTIP_SOURCE[layerId]));
 }
 
 // Phase B (tâche B27) : mailles GNSS et zones drones DGAC (contrats § 5), écrites dans sovereignty-map-b.ts.

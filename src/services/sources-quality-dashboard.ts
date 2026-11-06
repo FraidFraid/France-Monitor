@@ -35,6 +35,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'meteo-france',
     name: 'Météo-France',
+    sourceUrl: 'https://vigilance.meteofrance.fr/',
     domain: 'Météo',
     sourceType: 'official',
     natureBaseline: 90,
@@ -45,6 +46,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'vigicrues',
     name: 'Vigicrues',
+    sourceUrl: 'https://www.vigicrues.gouv.fr',
     domain: 'Crues',
     sourceType: 'official',
     natureBaseline: 90,
@@ -55,6 +57,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'hubeau',
     name: 'Hub’Eau hydrométrie',
+    sourceUrl: 'https://hubeau.eaufrance.fr/page/api-hydrometrie',
     domain: 'Hydrométrie',
     sourceType: 'open_data',
     natureBaseline: 90,
@@ -65,6 +68,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'ecowatt',
     name: 'Écowatt RTE',
+    sourceUrl: 'https://www.monecowatt.fr',
     domain: 'Énergie',
     sourceType: 'official',
     natureBaseline: 90,
@@ -75,6 +79,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'nuclear-rte',
     name: 'Nucléaire RTE',
+    sourceUrl: 'https://www.services-rte.com/fr/visualisez-les-donnees-publiees-par-rte.html',
     domain: 'Énergie',
     sourceType: 'official',
     natureBaseline: 90,
@@ -85,6 +90,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'asnr',
     name: 'ASNR',
+    sourceUrl: 'https://www.asnr.fr/actualites',
     domain: 'Énergie',
     sourceType: 'official',
     natureBaseline: 90,
@@ -95,6 +101,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'sncf',
     name: 'SNCF',
+    sourceUrl: 'https://numerique.sncf.com/startup/api/',
     domain: 'Transport',
     sourceType: 'official',
     natureBaseline: 80,
@@ -105,6 +112,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'cyber',
     name: 'Cyber',
+    sourceUrl: 'https://www.cert.ssi.gouv.fr',
     domain: 'Cyber',
     sourceType: 'technical',
     natureBaseline: 80,
@@ -126,6 +134,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'bce',
     name: 'BCE',
+    sourceUrl: 'https://data.ecb.europa.eu',
     domain: 'Finance',
     sourceType: 'official',
     natureBaseline: 90,
@@ -146,6 +155,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'fires-nasa',
     name: 'NASA FIRMS',
+    sourceUrl: 'https://firms.modaps.eosdis.nasa.gov/active_fire/',
     domain: 'Environnement',
     sourceType: 'official',
     natureBaseline: 80,
@@ -156,6 +166,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'fire-mtg-frp',
     name: 'MTG-FRP LSA SAF',
+    sourceUrl: 'https://lsa-saf.eumetsat.int/en/news/news/release-of-mtg-fire-radiative-power-product-as-demonstration/',
     domain: 'Environnement',
     sourceType: 'official',
     natureBaseline: 80,
@@ -166,6 +177,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'fire-radar-2d',
     name: 'Radar Météo-France',
+    sourceUrl: 'https://portail-api.meteofrance.fr/web/fr/api/DPRadar',
     domain: 'Environnement',
     sourceType: 'official',
     natureBaseline: 90,
@@ -176,6 +188,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'forest-danger',
     name: 'Météo des forêts',
+    sourceUrl: 'https://meteofrance.com/meteo-des-forets',
     domain: 'Environnement',
     sourceType: 'open_data',
     natureBaseline: 80,
@@ -186,6 +199,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'vigieau',
     name: 'VigiEau',
+    sourceUrl: 'https://vigieau.gouv.fr',
     domain: 'Sécheresse',
     sourceType: 'official',
     natureBaseline: 80,
@@ -196,6 +210,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'atmo',
     name: 'Atmo France',
+    sourceUrl: 'https://www.atmo-france.org/',
     domain: 'Qualité de l’air',
     sourceType: 'official',
     natureBaseline: 80,
@@ -206,6 +221,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'bcsf-renass',
     name: 'BCSF-RéNaSS',
+    sourceUrl: 'https://renass.unistra.fr/fr/',
     domain: 'Séismes',
     sourceType: 'official',
     natureBaseline: 80,
@@ -216,6 +232,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'gdacs',
     name: 'GDACS',
+    sourceUrl: 'https://www.gdacs.org/',
     domain: 'Catastrophes',
     sourceType: 'official',
     natureBaseline: 75,
@@ -225,6 +242,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   },  {
     id: 'copernicus-ems',
     name: 'Copernicus EMS',
+    sourceUrl: 'https://mapping.emergency.copernicus.eu/',
     domain: 'Catastrophes',
     sourceType: 'official',
     natureBaseline: 85,
@@ -236,6 +254,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'shom-refmar',
     name: 'Marégraphes SHOM',
+    sourceUrl: 'https://refmar.shom.fr',
     domain: 'Submersion marine',
     sourceType: 'official',
     natureBaseline: 80,
@@ -246,6 +265,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'military-flights',
     name: 'Vols militaires',
+    sourceUrl: 'https://www.adsb.lol',
     domain: 'Défense',
     sourceType: 'technical',
     natureBaseline: 65,
@@ -258,6 +278,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'gnss-grid',
     name: 'Grille GNSS',
+    sourceUrl: 'https://www.adsb.lol',
     domain: 'Défense',
     sourceType: 'technical',
     natureBaseline: 50,
@@ -272,6 +293,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'noaa-swpc',
     name: 'NOAA SWPC',
+    sourceUrl: 'https://www.swpc.noaa.gov/',
     domain: 'Météo spatiale',
     sourceType: 'official',
     natureBaseline: 90,
@@ -282,6 +304,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'ripestat',
     name: 'RIPEstat',
+    sourceUrl: 'https://stat.ripe.net',
     domain: 'Connectivité',
     sourceType: 'open_data',
     natureBaseline: 80,
@@ -292,6 +315,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'gels-avoirs',
     name: 'Registre des gels',
+    sourceUrl: 'https://gels-avoirs.dgtresor.gouv.fr/',
     domain: 'Sanctions',
     sourceType: 'official',
     natureBaseline: 90,
@@ -302,6 +326,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'ais-maritime',
     name: 'AIS maritime',
+    sourceUrl: 'https://aisstream.io',
     domain: 'Maritime',
     sourceType: 'technical',
     natureBaseline: 65,
@@ -312,6 +337,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'air-traffic',
     name: 'Trafic aérien',
+    sourceUrl: 'https://opensky-network.org',
     domain: 'Aviation',
     sourceType: 'technical',
     natureBaseline: 65,
@@ -323,6 +349,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'arcep',
     name: 'ARCEP sites mobiles',
+    sourceUrl: 'https://www.data.gouv.fr/datasets/5f7c7fae9cd6c79b58da3e20/',
     domain: 'Infrastructures',
     sourceType: 'open_data',
     natureBaseline: 80,
@@ -334,6 +361,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'edf-indispo',
     name: 'EDF indisponibilités',
+    sourceUrl: 'https://opendata.edf.fr/datasets/indisponibilites-des-moyens-de-production-edf-sa',
     domain: 'Énergie',
     sourceType: 'open_data',
     natureBaseline: 80,
@@ -344,6 +372,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'rte-iip',
     name: 'RTE IIP',
+    sourceUrl: 'https://iip.cloud-rte-france.com',
     domain: 'Énergie',
     sourceType: 'official',
     natureBaseline: 80,
@@ -354,6 +383,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'edf-sei',
     name: 'EDF SEI (îles)',
+    sourceUrl: 'https://opendata.edf.fr',
     domain: 'Énergie',
     sourceType: 'open_data',
     natureBaseline: 80,
@@ -364,6 +394,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'ioda',
     name: 'IODA',
+    sourceUrl: 'https://ioda.inetintel.cc.gatech.edu',
     domain: 'Infrastructures',
     sourceType: 'technical',
     natureBaseline: 65,
@@ -374,6 +405,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'cloudflare-radar',
     name: 'Cloudflare Radar',
+    sourceUrl: 'https://radar.cloudflare.com/fr-fr/security/fr',
     domain: 'Infrastructures',
     sourceType: 'technical',
     natureBaseline: 65,
@@ -394,6 +426,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'health',
     name: 'Santé publique France',
+    sourceUrl: 'https://odisse.santepubliquefrance.fr',
     domain: 'Santé',
     sourceType: 'official',
     natureBaseline: 90,
@@ -405,6 +438,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'eolien',
     name: 'Éolien France',
+    sourceUrl: 'https://odre.opendatasoft.com/explore/dataset/parc-prod-par-filiere/',
     domain: 'Énergie',
     sourceType: 'open_data',
     natureBaseline: 80,
@@ -415,6 +449,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'gas',
     name: 'Gaz',
+    sourceUrl: 'https://odre.opendatasoft.com',
     domain: 'Énergie',
     sourceType: 'official',
     natureBaseline: 80,
@@ -425,6 +460,7 @@ const SOURCE_REGISTRY: SourceQualityRegistryEntry[] = [
   {
     id: 'oil',
     name: 'Pétrole',
+    sourceUrl: 'https://www.statistiques.developpement-durable.gouv.fr',
     domain: 'Énergie',
     sourceType: 'open_data',
     natureBaseline: 80,

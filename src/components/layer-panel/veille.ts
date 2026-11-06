@@ -23,7 +23,7 @@ import {
   type LayerFigure, type LayerHeadModel, type LayerTab, type LayerView,
 } from './frame.ts';
 import {
-  HEALTH_PART, PER_100K, SYNDROME_LABEL, capitalize, changeHtml, changePct, failedPillSyndromes, inSentence, isoWeekId, joinFr, parisDay,
+  HEALTH_PART, HEALTH_SOURCE_URL, PER_100K, SYNDROME_LABEL, capitalize, changeHtml, changePct, failedPillSyndromes, inSentence, isoWeekId, joinFr, parisDay,
   partFailed, positionWords, ratioText, regionIn, seasonalDigits, seasonalNote, seasonalReading, shiftDate, sourceUnavailable,
   trendArrowHtml, trendOf, urgencesDriver, weekNumber, weekShort, weekYear,
 } from './health-format.ts';
@@ -51,7 +51,7 @@ export const VEILLE_THEME = 'Santé';
 export const VEILLE_TITLE = 'Veille sanitaire';
 const SOURCES_SEGMENT = 'Santé publique France, Sentinelles';
 const DAY_MS = 86_400_000;
-const ODISSE = 'https://odisse.santepubliquefrance.fr';
+const ODISSE = HEALTH_SOURCE_URL.odisse;
 const DGS_OFFICIAL_URL = 'https://sante.gouv.fr/ministere/informations-pratiques/site/dgs-urgent';
 /** Ordre remis à nationalHealthLevel, qui garde la première entrée au plus haut niveau : eaux usées, urgences, alertes, Sentinelles. */
 const PILL_ORDER: ReadonlyArray<NationalInput['key']> = ['wastewater', 'urgences', 'alerts', 'sentinelles'];
@@ -560,24 +560,24 @@ const SOURCE_LINES: readonly SourceLine[] = [
       const ignored = n > 0 ? ` ; ${n} code${n > 1 ? 's' : ''} de région sans libellé écarté${n > 1 ? 's' : ''} (${d.ignoredRegionCodes.join(', ')})` : '';
       return `dernière semaine ${d.latestWeek ? weekShort(d.latestWeek.id) : 'n.d.'}${ignored}`;
     } },
-  { label: 'Médecine générale', html: sourceLinkHtml('Réseau Sentinelles', 'https://www.sentiweb.fr'), key: 'sentinelles',
+  { label: 'Médecine générale', html: sourceLinkHtml('Réseau Sentinelles', HEALTH_SOURCE_URL.sentinelles), key: 'sentinelles',
     text: (s, now) => {
       const d = s.sentinelles.data;
       return d?.week ? `${weekShort(d.week.id)}${d.provisional ? ' provisoire' : ''}${lateTag(s, 'sentinelles', now)}` : 'n.d.';
     } },
-  { label: 'Eaux usées', html: sourceLinkHtml('SUM’eau (Santé publique France)', `${ODISSE}/explore/dataset/sum-eau-indicateurs/`), key: 'wastewater',
+  { label: 'Eaux usées', html: sourceLinkHtml('SUM’eau (Santé publique France)', HEALTH_SOURCE_URL.sumeau), key: 'wastewater',
     text: (s, now) => {
       const last = lastWastewaterPoint(s.wastewater.data);
       return last ? `${weekShort(last.week)}, publiée le ${parisDay(s.wastewater.data?.publishedAt)}${lateTag(s, 'wastewater', now)}` : 'n.d.';
     } },
   { label: 'Veille internationale',
-    html: `${sourceLinkHtml('OMS', 'https://www.who.int/emergencies/disease-outbreak-news')}, ${sourceLinkHtml('ECDC', 'https://www.ecdc.europa.eu/en/threats-and-outbreaks/reports-and-data/weekly-threats')}`,
+    html: `${sourceLinkHtml('OMS', HEALTH_SOURCE_URL.oms)}, ${sourceLinkHtml('ECDC', HEALTH_SOURCE_URL.ecdc)}`,
     key: 'international', text: (s) => `dernier message le ${parisDay(surveillanceDataDate(s, 'international'))}` },
   { label: 'Messages du ministère', html: sourceLinkHtml('page officielle DGS-Urgent', DGS_OFFICIAL_URL), key: 'ministry',
     text: (s) => ((s.ministry.data?.messages.length ?? 0) > 0 ? `dernier message le ${parisDay(surveillanceDataDate(s, 'ministry'))}` : LINK_ONLY) },
-  { label: 'Médicaments', html: sourceLinkHtml('ANSM', 'https://ansm.sante.fr/disponibilites-des-produits-de-sante/medicaments'), key: 'drugs',
+  { label: 'Médicaments', html: sourceLinkHtml('ANSM', HEALTH_SOURCE_URL.ansm), key: 'drugs',
     text: (s, now) => `liste mise à jour le ${parisDay(s.drugs.data?.latestUpdate)}${lateTag(s, 'drugs', now)}` },
-  { label: 'Rappels de produits', html: sourceLinkHtml('RappelConso', 'https://rappel.conso.gouv.fr'), key: 'recalls',
+  { label: 'Rappels de produits', html: sourceLinkHtml('RappelConso', HEALTH_SOURCE_URL.rappelconso), key: 'recalls',
     text: (s, now) => `dernière publication le ${parisDay(surveillanceDataDate(s, 'recalls'))}${lateTag(s, 'recalls', now)}` },
 ];
 

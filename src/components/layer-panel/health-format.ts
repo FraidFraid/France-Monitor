@@ -12,6 +12,9 @@ import { emptyLine, valueHtml } from './frame.ts';
 
 const DAY_MS = 86_400_000;
 
+/** Adresses officielles des sources Santé (config/health-sources.ts), réexportées pour les panneaux et la carte. */
+export { HEALTH_SOURCE_URL } from '../../config/health-sources.ts';
+
 /** « pour 100 000 habitants » : séparateur de milliers insécable (U+202F), jamais coupé. */
 export const PER_100K = `pour ${frNumber(100_000, 0)} habitants`;
 

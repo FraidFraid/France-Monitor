@@ -30,7 +30,7 @@ import {
 import { DISASTER_LAYERS, DISASTER_LAYER_KEYS } from './environment-map-disasters.ts';
 import { EMS_LAYERS } from './environment-map-ems.ts';
 import { ENV_B_FILL_LAYERS, ENV_B_HOVERABLE, ENV_B_LAYER_BEFORE, ENV_B_LAYER_KEYS, ENV_B_POINT_LAYERS, ENV_B_SOURCE_IDS } from './environment-map-b.ts';
-import { deptCodeToId, escapeHtml } from './format-utils.ts';
+import { deptCodeToId, escapeHtml, withSourceNote, type TooltipSource } from './format-utils.ts';
 
 export { airDeptFeatures, droughtDeptFeatures, quakeFeatures, tideGaugeFeatures } from './environment-map-b.ts';
 export { envBReshowPaints, placeEnvBPoints, type EnvBData, type EnvBLayerState } from './environment-map-b.ts';
@@ -468,9 +468,29 @@ export function topEnvHit<T extends { layer: { id: string } }>(hits: readonly T[
   return undefined;
 }
 
-/** Infobulle préparée avec la donnée (propriété `body`, déjà échappée) ; null hors des couches survolables ou sans corps. */
+/** Source citée au pied de chaque infobulle Environnement (withSourceNote : rien si l'infobulle la nomme déjà). */
+const ENV_TOOLTIP_SOURCE: Readonly<Record<string, TooltipSource>> = {
+  [LYR_EXPOSURE]: { label: 'Géorisques, DREES (SAE), FINESS, EDF', token: 'Géorisques' },
+  [LYR_FLOOD_ASSETS]: { label: 'Géorisques, DREES (SAE), FINESS, EDF', token: 'Géorisques' },
+  [LYR_SEVESO]: { label: 'Géorisques (installations classées)', token: 'Géorisques' },
+  [LYR_POLLEN_FILL]: { label: 'Atmo France (AASQA), indice pollen', token: 'Atmo France' },
+  [LYR_FIRES_POINTS]: { label: 'NASA FIRMS', token: 'FIRMS' },
+  [LYR_FIRES_ABROAD]: { label: 'NASA FIRMS', token: 'FIRMS' },
+  [LYR_FLOOD_STATIONS]: { label: 'Hub’Eau hydrométrie, Vigicrues', token: 'Hub’Eau' },
+  [LYR_FLOODS]: { label: 'Vigicrues', token: 'Vigicrues' },
+  [LYR_FOREST_DANGER_FILL]: { label: 'Météo-France, météo des forêts', token: 'Météo-France' },
+  [LYR_WEATHER_FILL]: { label: 'Météo-France, vigilance', token: 'Météo-France' },
+  [LYR_QUAKES]: { label: 'BCSF-RéNaSS, EMSC', token: 'RéNaSS' },
+  [LYR_TIDE_GAUGES]: { label: 'Shom, marégraphes', token: 'Shom' },
+  [LYR_AIR_FILL]: { label: 'Atmo France (AASQA), indice ATMO', token: 'Atmo France' },
+  [LYR_DROUGHT_FILL]: { label: 'VigiEau, arrêtés de restriction d’eau', token: 'VigiEau' },
+  [LYR_DISASTERS]: { label: 'GDACS', token: 'GDACS' },
+  [LYR_EMS_ZONE_FILL]: { label: 'Copernicus EMS', token: 'Copernicus' },
+};
+
+/** Infobulle préparée avec la donnée (propriété `body`, déjà échappée), source au pied ; null hors des couches survolables ou sans corps. */
 export function envTooltipHtml(layerId: string, props: Readonly<Record<string, unknown>>): string | null {
   const body = props['body'];
   if (typeof body !== 'string' || body === '' || !HOVERABLE.has(layerId)) return null;
-  return tip(body);
+  return tip(withSourceNote(body, ENV_TOOLTIP_SOURCE[layerId]));
 }

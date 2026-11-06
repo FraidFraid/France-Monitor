@@ -42,6 +42,7 @@ describe('départements', () => {
     expect(body).toContain('56');
     expect(body).toContain('pour 100 000 hab.');
     expect(body).not.toContain(DASH);
+    expect(body).toContain('Source : SSMSI (ministère de l’Intérieur)');
     // 2,7 pour 100 000 contre 1,43 en France : rapport de 1,9, orange.
     expect(f?.properties?.['crimeBand']).toBe('orange');
     expect(f?.properties?.['crimeColor']).toBe(levelHex('orange'));

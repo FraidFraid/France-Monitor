@@ -12,7 +12,7 @@ import { alertInSeason, phaseLabel, phaseLevel, seasonalLevel, type HealthLevel 
 import { LEVEL_RANK, levelColorVar, levelHex, levelLabel, type VigilanceLevel } from '../../services/vigilance.ts';
 import { NBSP, formatPct, frNumber } from '../layer-panel/format.ts';
 import {
-  APL_DIGITS, APL_PROFESSIONS, APL_PROFESSION_LABEL, APL_UNIT, HOSPITAL_CATEGORY_LABEL, URGENCES_SYNDROMES, URGENCES_SYNDROME_LABEL,
+  APL_DIGITS, APL_PROFESSIONS, APL_PROFESSION_LABEL, HEALTH_SOURCE_URL, APL_UNIT, HOSPITAL_CATEGORY_LABEL, URGENCES_SYNDROMES, URGENCES_SYNDROME_LABEL,
   aplProfessionLevel, departementName, joinFr, parisDay, seasonalDigits, weekShort, type SeasonalReading, type UrgencesSyndrome,
 } from '../layer-panel/health-format.ts';
 import { urgencesLate } from '../layer-panel/urgences-legend.ts';
@@ -75,6 +75,24 @@ function note(text: string): string {
   return `<div class="hm-note">${escapeHtml(text)}</div>`;
 }
 
+/** Sources citées par la carte Santé (adresses partagées avec les panneaux). */
+interface HealthSource { readonly label: string; readonly url: string }
+const SRC_ODISSE: HealthSource = { label: 'Santé publique France, Odissé', url: HEALTH_SOURCE_URL.odisse };
+const SRC_APL: HealthSource = { label: 'DREES, accessibilité potentielle localisée', url: HEALTH_SOURCE_URL.apl };
+const SRC_SAE: HealthSource = { label: 'DREES, SAE', url: HEALTH_SOURCE_URL.sae };
+const SRC_FINESS: HealthSource = { label: 'FINESS', url: HEALTH_SOURCE_URL.finess };
+
+/** Ligne « Source » d'une infobulle de survol : texte seul (l'infobulle suit la souris, un lien n'y serait pas cliquable). */
+function sourceText(...sources: HealthSource[]): string {
+  return `<div class="hm-note hm-src">Source : ${escapeHtml(sources.map((s) => s.label).join(' · '))}</div>`;
+}
+
+/** Ligne « Source » d'une fiche ouverte au clic : liens vers les jeux de données officiels (adresses constantes du code). */
+function sourceLinks(...sources: HealthSource[]): string {
+  const links = sources.map((s) => `<a href="${escapeHtml(s.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(s.label)}</a>`);
+  return `<div class="hm-note hm-src">Source : ${links.join(' · ')}</div>`;
+}
+
 // ─── Régions : alertes Odissé (Veille sanitaire, § 3.1) ───
 
 const PATHOLOGIES = ['grippe', 'bronchiolite'] as const;
@@ -122,7 +140,7 @@ export function regionAlertTooltipHtml(name: string, code: string, levels: reado
       : escapeHtml(`hors saison (dernière publication le ${parisDay(l.start)} : ${phaseLabel(l.phase)})`);
     return row(PATHOLOGY_LABEL[p], words);
   }).join('');
-  return tip(head(name, `Alertes épidémiques · ${state}`) + rows);
+  return tip(head(name, `Alertes épidémiques · ${state}`) + rows + sourceText(SRC_ODISSE));
 }
 
 // ─── Départements : urgences (§ 3.2) et APL (§ 3.3), une propriété de couleur par syndrome et par profession ───
@@ -205,7 +223,8 @@ export function urgencesTooltipHtml(name: string, code: string, syndromic: Syndr
     + row('SOS Médecins', sos === null ? 'n.d.' : escapeHtml(`${formatPct(sos, nonZeroDigits(sos))} des actes`))
     + row('Niveau', r.level === 'nd' ? 'n.d.' : `${dot(r.level)}${escapeHtml(levelLabel(r.level))}`)
     + (max === null ? '' : row(refLabel, escapeHtml(formatPct(max, digits))))
-    + note(urgencesNote(r, late)));
+    + note(urgencesNote(r, late))
+    + sourceText(SRC_ODISSE));
 }
 
 /** Survol d'un département (Accès aux soins) : APL de la profession choisie, France, rapport à la moyenne, niveau, millésime. */
@@ -221,7 +240,8 @@ export function aplTooltipHtml(name: string, code: string, apl: AplDataset | nul
     + row('Département', amount(value))
     + row('France', amount(national))
     + ratio
-    + row('Niveau', level ? `${dot(level)}${escapeHtml(levelLabel(level))}` : 'n.d.'));
+    + row('Niveau', level ? `${dot(level)}${escapeHtml(levelLabel(level))}` : 'n.d.')
+    + sourceText(SRC_APL));
 }
 
 // ─── Sites d'urgences (Hôpitaux, § 3.4) ───
@@ -270,7 +290,7 @@ function beds(n: number | null): string {
 }
 
 export function hospitalTooltipHtml(s: EmergencySite, vintage: number | null): string {
-  return tip(head(s.name, place(s)) + row(passagesLabel(vintage), count(s.passages)) + note('Clic : fiche du site.'));
+  return tip(head(s.name, place(s)) + row(passagesLabel(vintage), count(s.passages)) + note('Clic : fiche du site.') + sourceText(SRC_SAE, SRC_FINESS));
 }
 
 /** Fiche d'un site (clic sur la carte ou dans le panneau) : catégorie, autorisations, passages, lits, réanimation, n° FINESS. */
@@ -282,7 +302,8 @@ export function hospitalPopupHtml(s: EmergencySite, vintage: number | null): str
     + row('Réanimation', beds(s.bedsIcu))
     + row('Soins intensifs', beds(s.bedsIntensive))
     + row('Unité d’hospitalisation de courte durée', beds(s.bedsUhcd))
-    + row('N° FINESS', escapeHtml(s.finess)));
+    + row('N° FINESS', escapeHtml(s.finess))
+    + sourceLinks(SRC_SAE, SRC_FINESS));
 }
 
 // ─── Aiguillage du survol ───

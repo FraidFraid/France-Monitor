@@ -7,6 +7,7 @@
 import type { DataSourceStatus } from '../types/index.ts';
 import { sovereigntySourceDetail } from '../config/sovereignty-sources.ts';
 import { outagesSourceDetail } from '../config/outages-sources.ts';
+import { healthSourceDetail } from '../config/health-sources.ts';
 import { t } from '../services/i18n.ts';
 import { saveSourcesSnapshot } from '../services/sources-snapshot.ts';
 import { fmIcon, fmStatusDot } from './shared/icons.ts';
@@ -433,8 +434,8 @@ export class StatusPanel {
             nameEl.textContent = translateSourceName(src.name);
             textWrap.appendChild(nameEl);
 
-            // ── Détail statique (provenance, licence…) ; lignes Souveraineté et Pannes réseau : la source nommée avec son lien (attributions de la spec) ──
-            const sovereign = sovereigntySourceDetail(src.name) ?? outagesSourceDetail(src.name);
+            // ── Détail statique (provenance, licence…) ; lignes Souveraineté, Pannes réseau et Santé : la source nommée avec son lien (attributions de la spec) ──
+            const sovereign = sovereigntySourceDetail(src.name) ?? outagesSourceDetail(src.name) ?? healthSourceDetail(src.name);
             const detail = src.detail !== undefined ? translateDetail(src.detail) : sovereign?.detail ?? null;
             if (detail) {
                 const link = sovereign?.link ?? null;

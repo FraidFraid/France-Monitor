@@ -17,6 +17,19 @@ export function escapeHtml(value: unknown): string {
     .replaceAll("'", '&#39;');
 }
 
+/** Source citée au pied d'une infobulle de carte : libellé affiché et mot qui, déjà présent dans l'infobulle, rend la ligne inutile. */
+export interface TooltipSource { readonly label: string; readonly token: string }
+
+/**
+ * Ajoute « Source : … » au pied d'une infobulle (citer chaque donnée, retour d'un médecin du 05/11/2026). Texte seul : l'infobulle
+ * suit la souris, un lien n'y serait pas cliquable. Rien n'est ajouté si l'infobulle cite déjà une source (ligne « Source » ou nom
+ * de la source dans le texte), ni pour une couche sans source attribuée.
+ */
+export function withSourceNote(body: string, source: TooltipSource | undefined): string {
+  if (!source || /Source\b/.test(body) || body.toLowerCase().includes(source.token.toLowerCase())) return body;
+  return `${body}<div class="hm-note hm-src">Source : ${escapeHtml(source.label)}</div>`;
+}
+
 
 export function scoreToISNRColor(score: number): string {
   if (score >= 80) return ISNR_COLORS.critical;

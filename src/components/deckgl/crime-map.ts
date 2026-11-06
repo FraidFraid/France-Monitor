@@ -51,7 +51,8 @@ function tipBody(
   ];
   if (ds.previousYear !== null && !r.estimated) rows.push(row(`Évolution vs ${ds.previousYear}`, formatEvolution(r.count, r.previous)));
   return `<b>${dot(band)}${escapeHtml(title)}</b><div class="hm-sub">${escapeHtml(sub)}</div>${rows.join('')}`
-    + (r.estimated ? '<div class="hm-note">Estimation lissée : le nombre est masqué par le secret statistique.</div>' : '');
+    + (r.estimated ? '<div class="hm-note">Estimation lissée : le nombre est masqué par le secret statistique.</div>' : '')
+    + '<div class="hm-note hm-src">Source : SSMSI (ministère de l’Intérieur), crimes et délits enregistrés</div>';
 }
 
 function deptFeature(f: GeoJSON.Feature, ds: CrimeDataset, key: CrimeIndicatorKey, fr: number | null, byCode: ReadonlyMap<string, CrimeDepartment>): GeoJSON.Feature {

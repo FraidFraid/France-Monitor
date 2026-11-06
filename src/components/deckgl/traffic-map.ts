@@ -21,7 +21,7 @@ import {
   LYR_RAIL_STATION_ICON, LYR_RAIL_STATION_LABEL, LYR_ROAD_EVENT_BADGES, LYR_ROAD_EVENTS, LYR_ROAD_JAMS, LYR_ROAD_JAM_POINTS, LYR_ROAD_SECTIONS, LYR_TRAIN_STATIONS, SRC_AIRPORTS, SRC_AIR_EMERGENCIES,
   SRC_AIS_SIGNALS, SRC_ANCHORAGES, SRC_RAIL_STATIONS, SRC_ROAD_EVENTS, SRC_ROAD_JAMS, SRC_ROAD_SECTIONS,
 } from './constants.ts';
-import { escapeHtml } from './format-utils.ts';
+import { escapeHtml, withSourceNote, type TooltipSource } from './format-utils.ts';
 import type { IconName } from '../shared/icons.ts';
 
 type Fc<G extends GeoJSON.Geometry = GeoJSON.Geometry> = GeoJSON.FeatureCollection<G>;
@@ -619,9 +619,19 @@ export function topTrafficHit<T extends { layer: { id: string } }>(hits: readonl
   return undefined;
 }
 
-/** Infobulle préparée avec la donnée (propriété `body`, déjà échappée) ; bouchon : rappel du clic. */
+/** Source citée au pied des infobulles Transports (withSourceNote : rien si l'infobulle la nomme déjà). */
+const AIS_SOURCE: TooltipSource = { label: 'AIS, aisstream.io', token: 'aisstream' };
+const TRAFFIC_TOOLTIP_SOURCE: Readonly<Record<string, TooltipSource>> = {
+  [LYR_AIRPORTS]: { label: 'OpenSky (ADS-B), sites officiels des aéroports', token: 'OpenSky' },
+  [LYR_AIR_EMERGENCIES]: { label: 'OpenSky (ADS-B)', token: 'OpenSky' },
+  [LYR_RAIL_STATION]: { label: 'SNCF', token: 'SNCF' },
+  [LYR_ANCHORAGES]: AIS_SOURCE,
+  [LYR_AIS_SIGNALS]: AIS_SOURCE,
+};
+
+/** Infobulle préparée avec la donnée (propriété `body`, déjà échappée), source au pied ; bouchon : rappel du clic. */
 export function trafficTooltipHtml(layerId: string, props: Readonly<Record<string, unknown>>): string | null {
   const body = props['body'];
   if (typeof body !== 'string' || body === '' || !HOVERABLE.has(layerId)) return null;
-  return tip(body + (TRAFFIC_JAM_LAYERS.includes(layerId) ? note('Clic : vitesse du tronçon.') : ''));
+  return tip(withSourceNote(body, TRAFFIC_TOOLTIP_SOURCE[layerId]) + (TRAFFIC_JAM_LAYERS.includes(layerId) ? note('Clic : vitesse du tronçon.') : ''));
 }

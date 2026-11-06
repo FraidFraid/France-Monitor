@@ -7,7 +7,7 @@ import { kvRow } from '../fiche/kit.ts';
 import type { FicheSection } from '../fiche/parts.ts';
 import { NBSP, frNumber } from './format.ts';
 import { emptyLine, listRow, loadingBody, sourceErrorCallout, sourceLinkHtml, valueHtml, type LayerView } from './frame.ts';
-import { HOSPITAL_CATEGORY_LABEL, HOSPITAL_CATEGORY_ORDER, departementName, hospitalCategoryVar, parisDay } from './health-format.ts';
+import { HEALTH_SOURCE_URL, HOSPITAL_CATEGORY_LABEL, HOSPITAL_CATEGORY_ORDER, departementName, hospitalCategoryVar, parisDay } from './health-format.ts';
 
 export interface HopitauxViewInput {
   data: HospitalsDataset | null;
@@ -23,8 +23,8 @@ type OpenFn = HopitauxViewInput['open'];
 const THEME = 'Santé';
 const TITLE = 'Hôpitaux';
 const CAPTION = 'sites d’urgences autorisés';
-const SAE_URL = 'https://data.drees.solidarites-sante.gouv.fr/explore/dataset/707_bases-administratives-sae/';
-const FINESS_URL = 'https://www.data.gouv.fr/fr/datasets/finess-extraction-du-fichier-des-etablissements/';
+const SAE_URL = HEALTH_SOURCE_URL.sae;
+const FINESS_URL = HEALTH_SOURCE_URL.finess;
 const MAX_DEPARTMENTS = 20;
 const note = (text: string): string => `<p class="fmk-note">${escapeHtml(text)}</p>`;
 const share = (part: number, total: number): number => Math.round((part / total) * 1000) / 10;

@@ -259,7 +259,8 @@ describe('sources, couches et survol', () => {
     expect(TRAFFIC_HOVER_LAYERS[0]).toBe(LYR_AIS_SIGNALS);
     expect(TRAFFIC_HOVER_LAYERS).not.toContain(LYR_AIR_EMERGENCY_LABEL);
     expect(topTrafficHit([{ layer: { id: LYR_ANCHORAGES } }, { layer: { id: LYR_AIS_SIGNALS } }])?.layer.id).toBe(LYR_AIS_SIGNALS);
-    expect(trafficTooltipHtml(LYR_RAIL_STATION, { body: '<b>Narbonne</b>' })).toBe('<div class="hm-tip"><b>Narbonne</b></div>');
+    expect(trafficTooltipHtml(LYR_RAIL_STATION, { body: '<b>Narbonne</b>' })).toBe('<div class="hm-tip"><b>Narbonne</b><div class="hm-note hm-src">Source : SNCF</div></div>');
+    expect(trafficTooltipHtml(LYR_RAIL_STATION, { body: '<b>Narbonne</b> SNCF, 10:02' })).toBe('<div class="hm-tip"><b>Narbonne</b> SNCF, 10:02</div>');
     expect(trafficTooltipHtml(LYR_ROAD_EVENTS, {})).toBeNull();
     expect(trafficTooltipHtml(LYR_AIR_EMERGENCY_LABEL, { body: 'x' })).toBeNull();
   });

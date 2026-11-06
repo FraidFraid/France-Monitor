@@ -200,7 +200,9 @@ describe('sources, couches, survol', () => {
     expect(ENV_HOVER_LAYERS.indexOf(LYR_FIRES_POINTS)).toBeLessThan(ENV_HOVER_LAYERS.indexOf(LYR_WEATHER_FILL));
     const hit = topEnvHit([{ layer: { id: LYR_WEATHER_FILL } }, { layer: { id: LYR_FLOODS } }]);
     expect(hit?.layer.id).toBe(LYR_FLOODS);
-    expect(envTooltipHtml(LYR_FLOODS, { body: '<b>Têt</b>' })).toBe('<div class="hm-tip"><b>Têt</b></div>');
+    // Source au pied (retour médecin 05/11/2026), jamais en double si l'infobulle la nomme déjà.
+    expect(envTooltipHtml(LYR_FLOODS, { body: '<b>Têt</b>' })).toBe('<div class="hm-tip"><b>Têt</b><div class="hm-note hm-src">Source : Vigicrues</div></div>');
+    expect(envTooltipHtml(LYR_FLOODS, { body: '<b>Têt</b> relevé Vigicrues' })).toBe('<div class="hm-tip"><b>Têt</b> relevé Vigicrues</div>');
     expect(envTooltipHtml(LYR_WEATHER_FILL, { body: '' })).toBeNull();
     expect(envTooltipHtml(LYR_RADAR_PICK, { body: 'x' })).toBeNull();
   });

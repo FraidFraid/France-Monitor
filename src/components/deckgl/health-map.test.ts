@@ -246,3 +246,23 @@ describe('infobulle au survol : la couche la plus précise d’abord', () => {
     expect(healthTooltipHtml('autre-couche', {}, data())).toBeNull();
   });
 });
+
+describe('sources citées dans les infobulles et la fiche de site (retour médecin 05/11/2026)', () => {
+  it('chaque survol nomme sa source en texte, sans lien (l’infobulle suit la souris)', () => {
+    const urg = urgencesTooltipHtml('Bouches-du-Rhône', '13', syndromicFixture(), 'ira', HEALTH_NOW);
+    expect(urg).toContain('Source : Santé publique France, Odissé');
+    expect(regionAlertTooltipHtml('Mayotte', '06', alertLevelsFixture().levels, HEALTH_NOW)).toContain('Source : Santé publique France, Odissé');
+    expect(aplTooltipHtml('Val-d’Oise', '95', aplFixture(), 'mg')).toContain('Source : DREES, accessibilité potentielle localisée');
+    const site = hospitalsFixture().sites[0];
+    expect(hospitalTooltipHtml(site, 2025)).toContain('Source : DREES, SAE · FINESS');
+    for (const h of [urg, hospitalTooltipHtml(site, 2025)]) expect(h).not.toContain('<a ');
+  });
+
+  it('la fiche de site, ouverte au clic, cite SAE et FINESS avec des liens officiels', () => {
+    const fiche = hospitalPopupHtml(hospitalsFixture().sites[0], 2025);
+    expect(fiche).toContain('href="https://data.drees.solidarites-sante.gouv.fr/explore/dataset/707_bases-administratives-sae/"');
+    expect(fiche).toContain('href="https://www.data.gouv.fr/fr/datasets/finess-extraction-du-fichier-des-etablissements/"');
+    expect(fiche).toContain('rel="noopener noreferrer"');
+    expect(fiche).not.toMatch(EM_DASH);
+  });
+});

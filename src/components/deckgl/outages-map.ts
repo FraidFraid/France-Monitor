@@ -25,7 +25,7 @@ import {
   LYR_OUT_CLOUD_REF, LYR_OUT_CLOUD_ZONES, LYR_OUT_INTERNET_FILL, LYR_OUT_INTERNET_LINE, LYR_OUT_POWER_PLANNED, LYR_OUT_POWER_UNPLANNED, LYR_OUT_TELECOM_LONG,
   LYR_OUT_POWER_PULSE, LYR_OUT_TELECOM_MAINT, LYR_OUT_TELECOM_PULSE, LYR_OUT_TELECOM_RECENT, SRC_OUT_CLOUD_REF, SRC_OUT_CLOUD_ZONES, SRC_OUT_INTERNET, SRC_OUT_POWER, SRC_OUT_TELECOM,
 } from './constants.ts';
-import { escapeHtml } from './format-utils.ts';
+import { escapeHtml, withSourceNote, type TooltipSource } from './format-utils.ts';
 import { ENERGY_SECTOR_HEX, ENERGY_STATE_HEX, powerOutageState } from '../../services/energy-state.ts';
 import { discColorExpr, discCompanionLayers, ENERGY_DISC_RADIUS, energyIconImage, glyphColorExpr } from './energy-map.ts';
 import { resolveAssetCoords } from './iip-geocoding.ts';
@@ -381,9 +381,18 @@ export function topOutHit<T extends { layer: { id: string } }>(hits: readonly T[
   return undefined;
 }
 
-/** Infobulle préparée avec la donnée (propriété `body`, déjà échappée) ; null hors des couches survolables ou sans corps. */
+/** Source citée au pied des infobulles Pannes (withSourceNote : rien si l'infobulle la nomme déjà ; référentiel : source par site). */
+const ARCEP_SOURCE: TooltipSource = { label: 'Arcep, sites mobiles indisponibles (Licence Ouverte)', token: 'Arcep' };
+const OUT_TOOLTIP_SOURCE: Readonly<Record<string, TooltipSource>> = {
+  [LYR_OUT_TELECOM_RECENT]: ARCEP_SOURCE, [LYR_OUT_TELECOM_LONG]: ARCEP_SOURCE, [LYR_OUT_TELECOM_MAINT]: ARCEP_SOURCE,
+  [LYR_OUT_CLOUD_ZONES]: { label: 'pages d’état publiques des fournisseurs', token: 'pages d’état publiques' },
+  [LYR_OUT_INTERNET_FILL]: { label: 'IODA (Georgia Tech)', token: 'Georgia Tech' },
+  [LYR_OUT_INTERNET_LINE]: { label: 'IODA (Georgia Tech)', token: 'Georgia Tech' },
+};
+
+/** Infobulle préparée avec la donnée (propriété `body`, déjà échappée), source au pied ; null hors des couches survolables ou sans corps. */
 export function outTooltipHtml(layerId: string, props: Readonly<Record<string, unknown>>): string | null {
   const body = props['body'];
   if (typeof body !== 'string' || body === '' || !HOVERABLE.has(layerId)) return null;
-  return `<div class="hm-tip">${body}</div>`;
+  return `<div class="hm-tip">${withSourceNote(body, OUT_TOOLTIP_SOURCE[layerId])}</div>`;
 }
