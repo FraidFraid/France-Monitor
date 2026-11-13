@@ -29,21 +29,21 @@ describe('fiche d\u2019un scénario', () => {
     expect(note).toContain('Probable');
     expect(note).toContain('55\u00a0à\u00a075\u00a0%');
     expect(note).toContain('3 sources indépendantes, précédent du 12/10');
-    expect(note).toContain('d\'après la règle \u00ab\u00a0mobilisation × transports\u00a0\u00bb');
+    expect(note).toContain('Niveau fixé par une règle écrite (\u00ab\u00a0mobilisation × transports\u00a0\u00bb), pas par l\'IA.');
     expect(el.querySelector('h3')?.textContent).toBe(LYON.title);
     // Lieu, fenêtre et heures à Paris (UTC+1 en novembre).
     expect(el.querySelector('.anr-meta')?.textContent).toContain('Rhône');
-    expect(el.querySelector('.anr-meta')?.textContent).toContain('ouvert à 09:40, revu à 13:10');
+    expect(el.querySelector('.anr-meta')?.textContent).toContain('repérée à 09:40, mise à jour à 13:10');
   });
 
   it('sections et intitulés de la maquette, dans l\u2019ordre', () => {
     expect(sectionTitles(render())).toEqual([
-      'Pourquoi : le croisement',
-      'Inconnu',
-      'Indicateurs de bascule',
-      'Ce qui l\'infirmerait',
+      'Pourquoi on le pense',
       'À vérifier avant d\'agir',
-      'Ce scénario vous a-t-il servi ?',
+      'Signes qui renforcent l\'hypothèse',
+      'Ce qu\'on ne sait pas',
+      'Ce qui écarterait l\'hypothèse',
+      'Cette fiche vous a-t-elle servi ?',
     ]);
     expect(render().querySelector('.anr-warn')?.textContent).toContain('Hypothèse à vérifier');
   });
@@ -53,21 +53,27 @@ describe('fiche d\u2019un scénario', () => {
     const steps = [...el.querySelectorAll('.anr-step')];
     expect(steps[0].querySelector('.anr-src')?.textContent).toBe('CGT, Démosphère · 08:55');
     expect(steps[1].querySelector('.anr-src')?.textContent).toBe('SNCF · 07:30');
-    expect(steps[2].querySelector('.anr-src')).toBeNull();
+    // La phrase « Hypothèse : … » sort de la liste des faits : elle ouvre la fiche, sans son préfixe.
+    expect(steps).toHaveLength(2);
+    expect(el.querySelector('.anr-lead')?.textContent).toBe('Ce qui pourrait arriverFoule bloquée si les transports restent perturbés');
     expect(stepSource({ text: 'x', signalIds: ['inconnu'] }, FIXTURE.signals)).toBe('');
   });
 
-  it('bascule atteint shows time', () => {
+  it('signe constaté : heure affichée, section ouverte ; les autres sections repliées', () => {
     const el = render();
     const trig = [...el.querySelectorAll('.anr-trig')];
     expect(trig[0].classList.contains('is-hit')).toBe(true);
-    expect(trig[0].textContent).toContain('Atteint 13:10');
+    expect(trig[0].textContent).toContain('Constaté à 13:10');
     expect(trig[1].classList.contains('is-hit')).toBe(false);
-    expect(trig[1].textContent).toContain('surveillé');
+    expect(trig[1].textContent).toContain('pas encore');
+    const open = (k: string): boolean | undefined => el.querySelector<HTMLDetailsElement>(`details[data-k="${k}"]`)?.open;
+    expect([open('signes'), open('inconnu'), open('contre')]).toEqual([true, false, false]);
+    const calm = render('idle', { ...LYON, bascules: LYON.bascules.map((b) => ({ ...b, state: 'surveille' as const, at: null })) });
+    expect(calm.querySelector<HTMLDetailsElement>('details[data-k="signes"]')?.open).toBe(false);
   });
 
   it('unknowns rendered in their section', () => {
-    const items = [...(section(render(), 'Inconnu')?.querySelectorAll('li') ?? [])].map((li) => li.textContent);
+    const items = [...(section(render(), 'Ce qu\'on ne sait pas')?.querySelectorAll('li') ?? [])].map((li) => li.textContent);
     expect(items).toEqual(LYON.unknowns);
   });
 
@@ -94,7 +100,7 @@ describe('fiche d\u2019un scénario', () => {
   it('aucun scénario : message, mention BÊTA', () => {
     const el = document.createElement('div');
     el.innerHTML = scenarioHtml(null, {}, { today: '2026-11-04', feedback: 'idle' });
-    expect(el.textContent).toContain('Aucun scénario');
+    expect(el.textContent).toContain('Aucune hypothèse pour ce jour');
     expect(el.querySelector('.anr-warn')).not.toBeNull();
   });
 
@@ -118,5 +124,23 @@ describe('fiche d\u2019un scénario', () => {
     chip.innerHTML = wordChip('autre_mot' as unknown as AnticipationScenario['word']);
     expect(chip.textContent).toBe('autre_mot');
     expect(chip.querySelector('.anr-lvl')?.getAttribute('style')).toContain('--text-muted');
+  });
+});
+
+describe('mots courants', () => {
+  it('la raison du niveau ne parle plus de bascule', () => {
+    const el = render('idle', { ...LYON, word: 'peu_probable', why: '1 source, bascule atteinte' });
+    expect(el.querySelector('.anr-scalenote')?.textContent).toContain('1 source, un signe constaté.');
+    expect(el.textContent).not.toMatch(/bascule|croisement|scénario/i);
+  });
+});
+
+describe('échelle colorisée', () => {
+  it('chaque mot porte sa couleur, de chance infime à quasi certain', () => {
+    const colours = [...render().querySelectorAll('.anr-scale > span')].map((c) => c.getAttribute('style'));
+    expect(colours).toEqual([
+      '--c: var(--anr-w-infime)', '--c: var(--anr-w-tres-peu)', '--c: var(--sev-blue)', '--c: var(--sev-yellow)',
+      '--c: var(--sev-orange)', '--c: var(--sev-red)', '--c: var(--anr-w-certain)',
+    ]);
   });
 });

@@ -1,9 +1,10 @@
-// src/components/anticipation/scenario-view.ts : vue pure de la fiche d'un scénario (onglet Anticipation, 04/11/2026, maquette écran 1).
+// src/components/anticipation/scenario-view.ts : vue pure de la fiche d'une hypothèse (onglet Anticipation, 04/11/2026, maquette écran 1 ;
+// lecture simplifiée le 13/11/2026 : l'essentiel d'abord, le reste en sections repliables).
 // Échelle des sept mots (le mot actif à la couleur de son jeton --sev-*), chaîne de preuves avec source et heure de Paris, inconnues,
 // bascules, ce qui l'infirmerait, vérifications, retours. Aucun accès réseau ni DOM ; tout texte venu du serveur est échappé.
 import { arretesPageOf } from '../../services/prefecture-arretes-pages.ts';
 import type { AnticipationChainLink, AnticipationDoc, AnticipationScenario, AnticipationSignal } from '../../types/index.ts';
-import { ALL_WORDS, isKnownWord, WORD_COLOR_VAR, WORD_LABEL, WORD_RANGE, wordLabel } from '../../services/anticipation-words.ts';
+import { ALL_WORDS, isKnownWord, SCALE_COLOR_VAR, WORD_LABEL, WORD_RANGE, wordLabel } from '../../services/anticipation-words.ts';
 import { parisDay } from '../../services/paris-day.js';
 import { escapeHtml } from '../france-intel-events.ts';
 import { localClock } from '../layer-panel/format.ts';
@@ -69,20 +70,18 @@ function windowText(s: AnticipationScenario, today: string): string {
 }
 
 function scaleHtml(s: AnticipationScenario): string {
-  const cells = ALL_WORDS.map((w) => {
-    const on = w === s.word;
-    const color = WORD_COLOR_VAR[w];
-    return `<span${on ? ` class="is-on" style="--c: var(${color ?? '--text-muted'})"` : ''}>${escapeHtml(WORD_LABEL[w])}</span>`;
-  }).join('');
+  // Chaque mot porte sa couleur (barre au-dessus du libellé) ; le mot attribué est mis en avant, les autres restent atténués.
+  const cells = ALL_WORDS.map((w) =>
+    `<span${w === s.word ? ' class="is-on"' : ''} style="--c: var(${SCALE_COLOR_VAR[w]})">${escapeHtml(WORD_LABEL[w])}</span>`).join('');
   // Mot inconnu de ce client (serveur plus récent) : mot brut échappé, couleur neutre, sans fourchette.
   const word: string = s.word;
   const known = isKnownWord(word);
   const label = wordLabel(word);
   const note = word === ''
-    ? '<p class="anr-scalenote">Crise relevée sans scénario émis : aucun mot attribué.</p>'
-    : `<p class="anr-scalenote"><b style="color: var(${(known ? WORD_COLOR_VAR[word] : undefined) ?? '--text-muted'})">${escapeHtml(label.charAt(0).toUpperCase() + label.slice(1))}</b>`
-      + `${known ? ` (${WORD_RANGE[word]})` : ''}${ruleText(s.ruleId)}${s.why ? ` : ${escapeHtml(s.why)}` : ''}. Mot attribué par règle écrite, pas par l'IA.</p>`;
-  return `<div class="anr-scale" role="img" aria-label="Échelle de probabilité">${cells}</div>${note}`;
+    ? '<p class="anr-scalenote">Crise relevée sans hypothèse émise avant : aucun niveau attribué.</p>'
+    : `<p class="anr-scalenote"><b style="color: var(${known ? SCALE_COLOR_VAR[word] : '--text-muted'})">${escapeHtml(label.charAt(0).toUpperCase() + label.slice(1))}</b>`
+      + `${known ? ` (${WORD_RANGE[word]})` : ''}${s.why ? ` : ${escapeHtml(plainWhy(s.why))}` : ''}. Niveau fixé par une règle écrite${ruleText(s.ruleId)}, pas par l'IA.</p>`;
+  return `<div class="anr-scale" role="img" aria-label="Échelle de probabilité, du moins au plus probable">${cells}</div>${note}`;
 }
 
 /** Nom court des règles de croisement (api/_lib/anticipation/rules/*.js) ; règle inconnue : non nommée. */
@@ -101,13 +100,20 @@ export const RULE_LABEL: Readonly<Record<string, string>> = {
 };
 const ruleText = (ruleId: string): string => {
   const label = RULE_LABEL[ruleId];
-  return label ? ` d'après la règle \u00ab\u00a0${escapeHtml(label)}\u00a0\u00bb` : '';
+  return label ? ` (\u00ab\u00a0${escapeHtml(label)}\u00a0\u00bb)` : '';
 };
+
+/** Raison du niveau en mots courants (le serveur écrit « bascule atteinte »). */
+export const plainWhy = (why: string): string => why.replace(/bascule atteinte/g, 'un signe constaté');
 
 const list = (items: readonly string[], cls = ''): string =>
   items.length === 0 ? '<p class="anr-empty">n.d.</p>'
     : `<ul>${items.map((t) => `<li${cls ? ` class="${cls}"` : ''}>${escapeHtml(t)}</li>`).join('')}</ul>`;
 const sec = (title: string, body: string): string => `<section class="anr-sec"><h4>${escapeHtml(title)}</h4>${body}</section>`;
+/** Section repliable (clé `data-k` : la salle garde l'état ouvert ou fermé d'une relève à l'autre) ; le compte s'affiche à côté du titre. */
+const fold = (key: string, title: string, body: string, n: number | null, open = false): string =>
+  `<details class="anr-sec anr-fold" data-k="${key}"${open ? ' open' : ''}><summary><h4>${escapeHtml(title)}</h4>`
+  + `${n === null ? '' : `<span class="anr-count">${n}</span>`}</summary>${body}</details>`;
 
 const NB = '\u202f';
 const count = (n: number): string => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, NB);
@@ -127,6 +133,14 @@ export function floodHtml(s: AnticipationScenario): string {
   return sec('Établissements en zone de crue cartographiée', `<ul>${items}</ul><p class="anr-scalenote">${more}${escapeHtml(f.source)}. Seuls les territoires à risque important sont cartographiés : un établissement absent de cette liste n’est pas pour autant hors d’eau.</p>`);
 }
 
+/** Phrase de l'hypothèse (maillon « Hypothèse : … » de la chaîne) sans son préfixe, et les faits qui la fondent. */
+export function splitChain(s: AnticipationScenario): { guess: string | null; facts: AnticipationChainLink[] } {
+  const isGuess = (l: AnticipationChainLink): boolean => /^hypoth[eè]se\s*:/i.test(l.text.trim());
+  const link = s.chain.find(isGuess);
+  const text = link ? link.text.trim().replace(/^hypoth[eè]se\s*:\s*/i, '') : '';
+  return { guess: text ? text.charAt(0).toUpperCase() + text.slice(1) : null, facts: s.chain.filter((l) => !isGuess(l)) };
+}
+
 /** Enjeux exposés dans la zone (comptes par département, sources datées) ; rien pour un scénario national. */
 export function exposureHtml(s: AnticipationScenario): string {
   const e = s.exposure;
@@ -136,7 +150,7 @@ export function exposureHtml(s: AnticipationScenario): string {
     `${count(e.ehpad)} EHPAD, ${count(e.ehpadPlaces)}\u00a0places`,
     `${count(e.sevesoHaut)} site${e.sevesoHaut > 1 ? 's' : ''} Seveso seuil haut, ${count(e.sevesoBas)} seuil bas`,
   ];
-  return floodHtml(s) + sec('Enjeux dans le département', `${list(lines)}<p class="anr-scalenote">${escapeHtml(e.sources.join(' · '))}. Comptes du département entier, pas de la seule zone touchée.</p>`);
+  return floodHtml(s) + fold('enjeux', 'Ce qui est exposé dans le département', `${list(lines)}<p class="anr-scalenote">${escapeHtml(e.sources.join(' · '))}. Comptes du département entier, pas de la seule zone touchée.</p>`, null);
 }
 
 function feedbackHtml(state: FeedbackState): string {
@@ -185,25 +199,27 @@ export function arretesLinkHtml(depts: readonly string[]): string {
     + `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(page.label)}<span aria-hidden="true"> ↗</span></a></div>`;
 }
 
-/** Fiche complète ; null : aucun scénario pour le jour choisi. */
+/** Fiche complète ; null : aucune hypothèse pour le jour choisi. L'essentiel d'abord (quoi, où, quand, niveau, pourquoi, quoi vérifier), le reste replié. */
 export function scenarioHtml(s: AnticipationScenario | null, signals: Readonly<Record<string, AnticipationSignal>>, opts: ScenarioViewOptions): string {
   if (!s) {
-    return '<div class="anr-card"><h3>Aucun scénario ouvert</h3>'
-      + '<p class="anr-hint">Aucun croisement entre domaines n\'est relevé pour ce jour. Les échéances publiées restent dans l\'agenda.</p>'
+    return '<div class="anr-card"><h3>Aucune hypothèse pour ce jour</h3>'
+      + '<p class="anr-hint">Aucun rapprochement de signaux n\'est relevé pour ce jour. Les échéances publiées restent dans la liste.</p>'
       + `${WARN}</div>`;
   }
   const opened = clock(s.openedAt) ?? 'n.d.';
   const revised = clock(s.revisedAt);
-  const meta = `Scénario · ${scenarioPlace(s)} · ${windowText(s, opts.today)} · ouvert à ${opened}`
-    + (revised !== null && s.revisedAt !== s.openedAt ? `, revu à ${revised}` : '');
-  const chain = s.chain.map((link, i) => {
+  const meta = `${scenarioPlace(s)} · ${windowText(s, opts.today)} · repérée à ${opened}`
+    + (revised !== null && s.revisedAt !== s.openedAt ? `, mise à jour à ${revised}` : '');
+  const { guess, facts } = splitChain(s);
+  const chain = facts.map((link, i) => {
     const src = stepSource(link, signals);
     return `<div class="anr-step"><i>${i + 1}</i><div>${escapeHtml(link.text)}${src ? ` <span class="anr-src">${escapeHtml(src)}</span>` : ''}</div></div>`;
   }).join('');
+  const hits = s.bascules.filter((b) => b.state === 'atteint').length;
   const bascules = s.bascules.length === 0 ? '<p class="anr-empty">n.d.</p>' : s.bascules.map((b) => {
     const hit = b.state === 'atteint';
     const at = hit ? clock(b.at) : null;
-    const st = hit ? `Atteint${at ? ` ${at}` : ''}` : 'surveillé';
+    const st = hit ? `Constaté${at ? ` à ${at}` : ''}` : 'pas encore';
     const doc = hit ? docHtml(b.doc) : '';
     const foot = doc || (b.id === 'arrete' ? arretesLinkHtml(s.zone.dept) : '');
     return `<div class="anr-bas${hit ? ' is-hit' : ''}"><div class="anr-trig${hit ? ' is-hit' : ''}"><i class="anr-dot" aria-hidden="true"></i>`
@@ -212,14 +228,15 @@ export function scenarioHtml(s: AnticipationScenario | null, signals: Readonly<R
   return '<div class="anr-card">'
     + `<p class="anr-meta">${escapeHtml(meta)}</p>`
     + `<h3>${escapeHtml(s.title)}</h3>`
+    + (guess ? `<p class="anr-lead"><span>Ce qui pourrait arriver</span>${escapeHtml(guess)}</p>` : '')
     + scaleHtml(s)
-    + sec('Pourquoi : le croisement', `<div class="anr-chain">${chain}</div>`)
-    + exposureHtml(s)
-    + sec('Inconnu', list(s.unknowns, 'anr-unk'))
-    + sec('Indicateurs de bascule', bascules)
-    + sec('Ce qui l\'infirmerait', list(s.disconfirmers))
+    + sec('Pourquoi on le pense', chain ? `<div class="anr-chain">${chain}</div>` : '<p class="anr-empty">n.d.</p>')
     + sec('À vérifier avant d\'agir', list(s.verify) + '<div class="anr-actions"><button type="button" data-fly>Voir sur la carte</button></div>')
-    + sec('Ce scénario vous a-t-il servi ?', feedbackHtml(opts.feedback))
+    + fold('signes', 'Signes qui renforcent l\'hypothèse', '<p class="anr-scalenote">Faits surveillés : s\'ils se produisent, l\'hypothèse se renforce.</p>' + bascules, hits > 0 ? hits : null, hits > 0)
+    + fold('inconnu', 'Ce qu\'on ne sait pas', list(s.unknowns, 'anr-unk'), s.unknowns.length)
+    + fold('contre', 'Ce qui écarterait l\'hypothèse', list(s.disconfirmers), s.disconfirmers.length)
+    + exposureHtml(s)
+    + sec('Cette fiche vous a-t-elle servi ?', feedbackHtml(opts.feedback))
     + WARN
     + '</div>';
 }

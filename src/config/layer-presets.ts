@@ -162,7 +162,7 @@ export const LAYER_PRESETS: ReadonlyArray<LayerPreset> = [
     id: 'anticipation',
     label: 'Anticipation',
     icon: 'target',
-    description: 'Scénarios croisés entre domaines, à vérifier : agenda à 7 jours, preuves, inconnues, bascules.',
+    description: 'Ce qui pourrait arriver dans les 7 jours : hypothèses à vérifier, avec leurs preuves et ce qu\u2019on ignore.',
     layers: [],
     events: false,
   },

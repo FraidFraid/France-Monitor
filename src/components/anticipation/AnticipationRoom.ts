@@ -66,6 +66,8 @@ export class AnticipationRoom {
   private focusCb: ((s: AnticipationScenario) => void) | null = null;
   private dayCb: ((day: string) => void) | null = null;
   private revealCb: ((where: AnticipationReveal) => void) | null = null;
+  /** Hypothèse dont la fiche est affichée (les blocs repliés ne gardent leur état que pour elle). */
+  private cardFor: string | null = null;
   private signature = '';
   private signalsSig = '';
   private recordedWords: string | null = null;
@@ -87,10 +89,10 @@ export class AnticipationRoom {
     // Dans une colonne v2, l'élément porte la classe de la colonne qu'il remplace : mêmes largeurs, mêmes règles des onglets mobiles.
     this.agenda = document.createElement('aside');
     this.agenda.className = columns ? 'fm-v2-list anr-col anr-agenda' : 'anr-col anr-agenda';
-    this.agenda.setAttribute('aria-label', 'Agenda des risques croisés');
+    this.agenda.setAttribute('aria-label', 'Ce qui pourrait arriver, 7 jours');
     this.card = document.createElement('aside');
     this.card.className = columns ? 'fm-v2-fiche anr-col anr-side' : 'anr-col anr-side';
-    this.card.setAttribute('aria-label', 'Fiche du scénario');
+    this.card.setAttribute('aria-label', 'Fiche de l\'hypothèse');
     const bottom = document.createElement('div');
     bottom.className = 'anr-bottom';
     const legend = document.createElement('div');
@@ -143,7 +145,9 @@ export class AnticipationRoom {
     this.signalsSig = signalsSig;
     this.data = d;
     const days = d.agenda.map((a) => a.day);
-    if (this.day === null || !days.includes(this.day)) this.day = days[0] ?? null;
+    // Premier affichage : le premier jour qui porte une hypothèse (un aujourd'hui calme n'ouvre pas une fiche vide), sinon aujourd'hui.
+    if (this.day === null) this.day = d.agenda.find((x) => x.scenarioIds.length > 0)?.day ?? days[0] ?? null;
+    else if (!days.includes(this.day)) this.day = days[0] ?? null;
     if (this.picked !== null && !d.scenarios.some((s) => s.id === this.picked)) this.picked = null;
     this.render();
     // Visite notée au premier affichage puis quand les mots changent : la prochaine session comparera à ce qui a été vu (la visite
@@ -166,7 +170,7 @@ export class AnticipationRoom {
   /** Aucune réponse lisible et rien en mémoire (première lecture en échec). */
   setUnavailable(): void {
     if (this.data) return;
-    this.agenda.innerHTML = '<h2>Agenda des risques croisés</h2><p class="anr-hint">Scénarios indisponibles pour le moment : nouvel essai dans une minute.</p>';
+    this.agenda.innerHTML = '<h2>Ce qui pourrait arriver · 7 jours</h2><p class="anr-hint">Hypothèses indisponibles pour le moment : nouvel essai dans une minute.</p>';
   }
 
   /** Jour affiché (AAAA-MM-JJ) ; null avant la première réponse. */
@@ -211,10 +215,26 @@ export class AnticipationRoom {
     return readAnticipationVote(id) ? 'deja' : 'idle';
   }
 
+  /**
+   * Remplace le contenu en gardant l'état ouvert ou fermé des blocs repliables (`details[data-k]`) : une relève ou un clic ne referme
+   * pas ce que le lecteur a ouvert. `keep` faux (autre hypothèse) : chaque bloc reprend son état de départ.
+   */
+  private static swap(node: HTMLElement, html: string, keep = true): void {
+    const before = new Map<string, boolean>();
+    if (keep) for (const d of node.querySelectorAll<HTMLDetailsElement>('details[data-k]')) before.set(d.dataset.k ?? '', d.open);
+    node.innerHTML = html;
+    for (const d of node.querySelectorAll<HTMLDetailsElement>('details[data-k]')) {
+      const was = before.get(d.dataset.k ?? '');
+      if (was !== undefined) d.open = was;
+    }
+  }
+
   private renderCard(): void {
     const d = this.data;
     const s = this.current();
-    this.card.innerHTML = d ? scenarioHtml(s, d.signals, { today: d.agenda[0]?.day ?? '', feedback: s ? this.feedbackOf(s.id) : 'idle' }) : '';
+    const id = s?.id ?? null;
+    AnticipationRoom.swap(this.card, d ? scenarioHtml(s, d.signals, { today: d.agenda[0]?.day ?? '', feedback: s ? this.feedbackOf(s.id) : 'idle' }) : '', id === this.cardFor);
+    this.cardFor = id;
   }
 
   private render(): void {
@@ -222,13 +242,13 @@ export class AnticipationRoom {
     const d = this.data;
     const today = d?.agenda[0]?.day ?? '';
     const s = this.current();
-    this.agenda.innerHTML = agendaHtml(d, { selectedId: s?.id ?? null, marks: visitMarks(d?.scenarios ?? [], this.visit) });
+    AnticipationRoom.swap(this.agenda, agendaHtml(d, { selectedId: s?.id ?? null, marks: visitMarks(d?.scenarios ?? [], this.visit) }));
     this.renderCard();
     const n = this.dayIds().length;
     const hits = (d?.scenarios ?? []).filter((x) => this.dayIds().includes(x.id) && x.bascules.some((b) => b.state === 'atteint')).length;
     this.title.innerHTML = !d || this.day === null ? 'Anticipation'
-      : `<b>${escapeHtml(dayLabel(this.day, ''))}</b> · ${n} scénario${n > 1 ? 's' : ''} ouvert${n > 1 ? 's' : ''}`
-        + (hits > 0 ? ` · ${hits} bascule${hits > 1 ? 's' : ''} atteinte${hits > 1 ? 's' : ''}` : '');
+      : `<b>${escapeHtml(dayLabel(this.day, ''))}</b> · ${n === 0 ? 'rien à signaler' : `${n} hypothèse${n > 1 ? 's' : ''}`}`
+        + (hits > 0 ? ` · ${hits} avec un signe constaté` : '');
     this.slider.innerHTML = (d?.agenda ?? []).map((a) => {
       const label = a.day === today ? 'Auj.' : weekdayOf(a.day, 'short').replace(/^./, (c) => c.toUpperCase());
       const on = a.day === this.day;

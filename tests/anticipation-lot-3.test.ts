@@ -89,7 +89,7 @@ describe('enjeux exposés', () => {
   });
   it('la fiche affiche les comptes avec leurs sources, texte échappé, sans tiret cadratin', () => {
     const html = exposureHtml({ exposure: { ...table['2A'], mainHospitals: ['CH <b>Ajaccio</b>'], sources: ['FINESS du 12/05/2026'] } } as unknown as AnticipationScenario);
-    expect(html).toContain('Enjeux dans le département');
+    expect(html).toContain('Ce qui est exposé dans le département');
     expect(html).toMatch(/3 services d(&#39;|')urgences/);
     expect(html).toContain('61 000');
     expect(html).toContain('CH &lt;b&gt;Ajaccio&lt;/b&gt;');

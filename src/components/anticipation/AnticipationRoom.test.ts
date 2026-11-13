@@ -55,7 +55,7 @@ describe('AnticipationRoom', () => {
     expect(host.querySelector('.anr-card h3')?.textContent).toBe(FIXTURE.scenarios[0].title);
     room.setDay('2026-11-05');
     expect(host.querySelector('[data-day="2026-11-05"]')?.getAttribute('aria-pressed')).toBe('true');
-    expect(host.querySelector('.anr-maptitle')?.textContent).toContain('1 scénario');
+    expect(host.querySelector('.anr-maptitle')?.textContent).toContain('1 hypothèse');
     room.destroy();
   });
 
@@ -98,7 +98,7 @@ describe('AnticipationRoom', () => {
     const room = new AnticipationRoom(host);
     room.setData(FIXTURE);
     expect(host.querySelector('.anr-agenda [data-scenario="sc-lyon"]')?.textContent).toContain('nouveau');
-    expect(host.querySelector('.anr-agenda [data-scenario="sc-carburant"]')?.textContent).toContain('monté');
+    expect(host.querySelector('.anr-agenda [data-scenario="sc-carburant"]')?.textContent).toContain('en hausse');
     // La visite est notée : mots vus enregistrés pour la prochaine fois.
     const saved = JSON.parse(localStorage.getItem('fm:anticipation:last-seen') ?? '{}') as { words?: Record<string, string> };
     expect(saved.words).toEqual({ 'sc-lyon': 'probable', 'sc-carburant': 'peu_probable' });
@@ -191,5 +191,36 @@ describe('AnticipationRoom', () => {
     const colored = new AnticipationRoom(wide);
     expect(wide.querySelectorAll('.anr-legend .anr-dot')).toHaveLength(4);
     colored.destroy();
+  });
+});
+
+describe('blocs repliables', () => {
+  it('un bloc ouvert le reste après une relève ; une autre hypothèse repart de l’état de départ', () => {
+    const host = document.createElement('div');
+    const room = new AnticipationRoom(host);
+    room.setData(FIXTURE);
+    const fold = (): HTMLDetailsElement => host.querySelector('.anr-card details[data-k="inconnu"]') as HTMLDetailsElement;
+    const help = (): HTMLDetailsElement => host.querySelector('.anr-agenda details.anr-help') as HTMLDetailsElement;
+    expect(fold().open).toBe(false);
+    fold().open = true;
+    help().open = true;
+    // Relève avec un signal cité modifié : la fiche est redessinée, le bloc reste ouvert.
+    room.setData({ ...FIXTURE, signals: { ...FIXTURE.signals, 's-sncf': { ...FIXTURE.signals['s-sncf'], publishedAt: '2026-11-04T06:45:00Z' } } });
+    expect(fold().open).toBe(true);
+    (host.querySelector('.anr-agenda [data-scenario="sc-carburant"]') as HTMLElement).click();
+    expect(fold().open).toBe(false);
+    expect(help().open).toBe(true);
+    room.destroy();
+  });
+});
+
+describe('jour d’ouverture', () => {
+  it('aujourd’hui calme : la salle s’ouvre sur le premier jour qui porte une hypothèse', () => {
+    const host = document.createElement('div');
+    const room = new AnticipationRoom(host);
+    room.setData({ ...FIXTURE, agenda: FIXTURE.agenda.map((d, i) => (i === 0 ? { ...d, scenarioIds: [], halves: d.halves?.map((h) => ({ ...h, scenarioIds: [] })) } : d)) });
+    expect(room.currentDay()).toBe('2026-11-05');
+    expect(host.querySelector('.anr-card h3')?.textContent).toBe('Tensions sur le carburant');
+    room.destroy();
   });
 });

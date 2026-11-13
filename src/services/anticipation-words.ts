@@ -48,6 +48,20 @@ export const WORD_COLOR_VAR: Readonly<Partial<Record<AnticipationWord, string>>>
   peu_probable: '--sev-blue',
 };
 
+/**
+ * Couleur de chaque mot sur l'échelle de la fiche, du gris (chance infime) au magenta (quasi certain). Les quatre mots attribuables
+ * gardent leur couleur de carte ; les trois autres n'ont de couleur que sur l'échelle (variables --anr-w-* de main.css).
+ */
+export const SCALE_COLOR_VAR: Readonly<Record<AnticipationWord, string>> = {
+  chance_infime: '--anr-w-infime',
+  tres_peu_probable: '--anr-w-tres-peu',
+  peu_probable: '--sev-blue',
+  possibilite_reelle: '--sev-yellow',
+  probable: '--sev-orange',
+  tres_probable: '--sev-red',
+  quasi_certain: '--anr-w-certain',
+};
+
 /** Mot connu de l'échelle (une réponse du serveur peut porter un mot inconnu de ce client). */
 export function isKnownWord(word: string): word is AnticipationWord {
   return ALL_WORDS.some((w) => w === word);
