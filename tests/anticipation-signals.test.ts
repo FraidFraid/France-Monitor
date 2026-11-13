@@ -212,7 +212,7 @@ describe('toSignals', () => {
     const base = { category: 'security', lat: 48.85, lon: 2.35, feedName: 'A', publishedAt: ago(H), eventId: 7 };
     const news = [{ ...base, id: 1, severity: 'low', title: 'a' }, { ...base, id: 2, severity: 'critical', title: 'b' }];
     const p = run({ news }).signals[0];
-    expect(p.meta).toEqual({ eventId: 7, category: 'security', severity: 'critical', title: 'a' });
+    expect(p.meta).toEqual({ eventId: 7, category: 'security', severity: 'critical', title: 'a', topic: null, nature: 'fait', placeDoubt: false });
     expect(p.level).toBe('rouge');
   });
 

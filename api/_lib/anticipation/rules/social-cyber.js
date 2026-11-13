@@ -20,6 +20,8 @@ const overlapsDay = (/** @type {Signal} */ s, /** @type {{from: number, to: numb
 /** @type {import('./index.js').CrossRule} */
 const rule = {
   id: RULE_ID,
+  // Suspendue le 13/11/2026 : 5 scénarios émis en novembre, aucun arrivé. Le test d'arrivée est à revoir avant de la rouvrir.
+  suspended: { since: '2026-11-13', reason: "5 scénarios émis, aucun arrivé : test d'arrivée à revoir" },
   version: 1,
   title: 'Forte mobilisation sociale et activité cyber hostile',
   domains: ['social', 'cyber'],

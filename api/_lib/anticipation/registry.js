@@ -33,6 +33,7 @@ import { parisDay } from '../../../src/services/paris-day.js';
  * @property {string|null} closedAt
  * @property {string|null} outcomeNote
  * @property {{ utile: number, deja_su: number, faux: number }} feedback
+ * @property {boolean} [counted] Crise manquée écartée du compte (false) : suite d'un fait passé, fait divers ou lieu incertain (13/11/2026).
  */
 /** @typedef {{ at: string, type: 'ouverture'|'revision'|'bascule'|'cloture'|'manque'|'retour', scenario: Scenario }} JournalEvent */
 /** @typedef {'utile'|'deja_su'|'faux'} Vote */
@@ -55,7 +56,7 @@ export const ARCHIVE_DAY_MAX_BYTES = 50 * 1024 * 1024;
 /** Plafond de signaux de presse par ligne d'archive, les plus utiles aux tests d'arrivée d'abord. */
 export const ARCHIVE_PRESS_MAX = 120;
 /** Champs de `meta` gardés dans l'archive (lus par les tests d'arrivée, les crises manquées et la mémoire carburants). */
-const ARCHIVE_META_KEYS = ['eventId', 'category', 'severity', 'network', 'phenomenon', 'echeance', 'participants', 'previousValue', 'exposed', 'national'];
+const ARCHIVE_META_KEYS = ['eventId', 'category', 'severity', 'network', 'phenomenon', 'echeance', 'participants', 'previousValue', 'exposed', 'national', 'topic', 'nature', 'placeDoubt'];
 
 /** Signal tiré de la presse (événement consolidé, ou mouvement social dans les transports lu dans un titre). */
 const isPress = (/** @type {Signal} */ s) => s.kind === 'presse' || (s.kind === 'mouvement_social_transport' && String(s.origin).startsWith('presse:'));

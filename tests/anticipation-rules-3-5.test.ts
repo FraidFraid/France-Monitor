@@ -29,8 +29,8 @@ const panne = (over: Sig = {}) => sig({ id: 'pe', domain: 'energy', kind: 'panne
   window: { from: '2026-11-05T10:00:00Z', to: '2026-11-05T12:00:00Z' }, publishedAt: '2026-11-05T10:00:00Z', meta: { network: 'electricite' }, ...over });
 
 describe('registry', () => {
-  it('lists the six rules in order, each with a public arrival test', () => {
-    expect(RULES.map((r: { id: string }) => r.id)).toEqual(['mobilisation-transports', 'tempete-reseaux', 'chaleur-sante', 'social-cyber', 'greve-carburant', 'evenement-mobilisation']);
+  it('lists the eight rules in order, each with a public arrival test', () => {
+    expect(RULES.map((r: { id: string }) => r.id)).toEqual(['mobilisation-transports', 'tempete-reseaux', 'chaleur-sante', 'social-cyber', 'greve-carburant', 'evenement-mobilisation', 'lycees-mobilisation', 'alertes-serie']);
     for (const r of RULES) expect(r.arrivalTest.length).toBeGreaterThan(20);
   });
 });
@@ -159,7 +159,9 @@ describe('rule 4 social-cyber', () => {
   });
 
   it('engine opens it with a national id', () => {
-    const out = evaluate([...rallies(20), revendication()], { state: () => new Map() }, NOW, [socialCyber]);
+    // Règle suspendue le 13/11/2026 : le moteur ne l'évalue plus ; l'identifiant national se vérifie sur la règle sans suspension.
+    expect(evaluate([...rallies(20), revendication()], { state: () => new Map() }, NOW, [socialCyber]).opened).toEqual([]);
+    const out = evaluate([...rallies(20), revendication()], { state: () => new Map() }, NOW, [{ ...socialCyber, suspended: undefined }]);
     expect(out.opened[0].id).toBe('social-cyber:national:2026-11-03T23:00:00.000Z');
   });
 

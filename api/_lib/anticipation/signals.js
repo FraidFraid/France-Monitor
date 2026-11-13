@@ -1,6 +1,7 @@
 // api/_lib/anticipation/signals.js : normalisation des relevés du site en signaux datés et attribués (spec anticipation § 6, 04/11/2026).
 // Fonction pure : aucune lecture, aucune horloge (l'heure est passée en argument). Un relevé absent ou trop ancien ne produit aucun
 // signal et son nom entre dans `unknown` : la règle tourne sans lui, elle ne lève jamais.
+import { pressTags } from './press-tags.js';
 import { departementAt } from '../geo-fr.js';
 import { normalizeDepartmentCode } from '../../_shared/departments.js';
 import { deptsOfRailScope } from './rail-hubs.js';
@@ -304,7 +305,12 @@ function fromNews(/** @type {any[]} */ news, /** @type {number} */ now, /** @typ
       const meta = { eventId: n.eventId ?? null, category: e.best.category ?? null, severity: e.best.severity ?? null, title: String(n.title ?? '') };
       // Point : le premier article localisé de l'événement.
       const located = [e.first, e.best, e.social].find((x) => x && typeof x.lat === 'number' && typeof x.lon === 'number') ?? n;
-      const common = { domain: /** @type {const} */ ('press'), source: String(n.feedName ?? 'presse'), origin: e.origin, dept: deptOfPoint(located.lat, located.lon), publishedAt: iso(t), readAt: iso(now), ref: String(n.link ?? e.origin), key: e.origin, meta };
+      // Étiquettes lues dans le titre (press-tags.js) : sujet, nature du fait, lieu contredit par le titre.
+      const dept = deptOfPoint(located.lat, located.lon);
+      let tags = pressTags(n.title, dept[0]);
+      if (!tags.topic && e.best !== n) { const other = pressTags(e.best.title, dept[0]); if (other.topic) tags = { ...other, placeDoubt: tags.placeDoubt || other.placeDoubt }; }
+      Object.assign(meta, { topic: tags.topic, nature: tags.nature, placeDoubt: tags.placeDoubt });
+      const common = { domain: /** @type {const} */ ('press'), source: String(n.feedName ?? 'presse'), origin: e.origin, dept, publishedAt: iso(t), readAt: iso(now), ref: String(n.link ?? e.origin), key: e.origin, meta };
       out.push(mk({ ...common, kind: 'presse', level: /** @type {Record<string, string>} */ (level)[e.best.severity] ?? null }));
       if (e.social) out.push(mk({ ...common, domain: 'transport', kind: 'mouvement_social_transport', meta: { ...meta, category: e.social.category ?? null } }));
     } catch (err) { errors.push(`Presse: ${e.origin}: ${errMsg(err)}`); }

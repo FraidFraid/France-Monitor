@@ -100,6 +100,7 @@ export function evaluate(signals, registry, now, rules = RULES, unknown = []) {
   for (const rule of rules) {
     /** @type {import('./rules/index.js').Candidate[]} */
     let candidates;
+    if (rule.suspended) continue; // règle suspendue : plus d'émission, ses scénarios ouverts restent clos par closeDue
     try {
       candidates = rule.evaluate(list, ctx);
       if (!Array.isArray(candidates)) candidates = [];

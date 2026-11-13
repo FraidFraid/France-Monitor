@@ -34,6 +34,8 @@ const NEEDS = {
   'social-cyber': [['cyber', ['cyber_pic', 'cyber_revendication'], 'veille cyber non archivée']],
   'greve-carburant': [['tension carburant', ['tension_carburant'], 'carburants non archivés']],
   'evenement-mobilisation': [['calendrier sportif', ['evenement_sportif'], 'calendrier sportif non archivé']],
+  'lycees-mobilisation': [['presse', ['presse'], 'presse : aucun incident dans un établissement scolaire']],
+  'alertes-serie': [['presse', ['presse'], 'presse : moins de trois alertes en 24 h']],
 };
 
 /**

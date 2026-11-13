@@ -43,7 +43,7 @@ function wordRow(w: AnticipationBilan['byWord'][number]): string {
 function ruleRow(r: AnticipationBilan['byRule'][number]): string {
   const none = r.emitted === 0;
   const nd = '<span class="anb-nd">n.d.</span>';
-  const flag = r.inReview ? ' <span class="anb-review">en revue</span>' : '';
+  const flag = r.suspended ? ' <span class="anb-review">suspendue</span>' : r.inReview ? ' <span class="anb-review">en revue</span>' : '';
   return `<tr><td><b>${escapeHtml(r.title)}</b>${flag}<small>Arrivée constatée si : ${escapeHtml(r.arrivalTest)}</small></td>`
     + `<td>${r.emitted}</td><td>${none ? nd : r.arrived}</td><td>${none ? nd : r.useful}</td></tr>`;
 }
@@ -55,6 +55,7 @@ export function bilanHtml(b: AnticipationBilan): string {
     : `<table class="anb-tbl anb-rules"><thead><tr><th>Règle</th><th>Émis</th><th>Arrivés</th><th>Utile*</th></tr></thead><tbody>${b.byRule.map(ruleRow).join('')}</tbody></table>`;
   return `<h2>Bilan des scénarios · ${escapeHtml(monthLabel(b.month))}</h2>
     <div class="anb-kpis">${kpi(b.emitted, 'scénarios émis')}${kpi(b.arrived, 'arrivés', 'anb-ok')}${kpi(b.notArrived, 'pas arrivés')}${kpi(b.missed, 'crises manquées (aucun scénario)', b.missed > 0 ? 'anb-ko' : '')}</div>
+    ${(b.missedExcluded ?? 0) > 0 ? `<p class="anb-hint">Crises manquées : faits nouveaux seulement, au lieu certain. ${b.missedExcluded} signal${(b.missedExcluded ?? 0) > 1 ? 'aux' : ''} d’abord compté${(b.missedExcluded ?? 0) > 1 ? 's' : ''} puis écarté${(b.missedExcluded ?? 0) > 1 ? 's' : ''} le 13/11/2026 (suite d’un fait passé, fait divers ou lieu contredit par le titre).</p>` : ''}
     ${b.undecided > 0 ? `<p class="anb-hint">${b.undecided} scénario${b.undecided > 1 ? 's' : ''} sans issue décidable (données manquantes), non compté${b.undecided > 1 ? 's' : ''} ci-dessus.</p>` : ''}
     <div class="anb-two">
       <section class="anb-box"><h3>Les mots tiennent-ils parole ?</h3>${words}

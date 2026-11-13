@@ -3830,6 +3830,8 @@ export interface AnticipationBilan {
   notArrived: number;
   undecided: number;
   missed: number;
+  /** Signaux écartés du compte des crises manquées (suite d'un fait passé, fait divers, lieu incertain). */
+  missedExcluded?: number;
   byWord: Array<{ word: string; closed: number; arrived: number; percent: number | null }>;
-  byRule: Array<{ ruleId: string; title: string; emitted: number; arrived: number; useful: number; inReview: boolean; arrivalTest: string }>;
+  byRule: Array<{ ruleId: string; title: string; emitted: number; arrived: number; useful: number; inReview: boolean; suspended?: boolean; arrivalTest: string }>;
 }

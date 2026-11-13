@@ -5,6 +5,8 @@ import chaleurSante from './chaleur-sante.js';
 import socialCyber from './social-cyber.js';
 import greveCarburant from './greve-carburant.js';
 import evenementMobilisation from './evenement-mobilisation.js';
+import lyceesMobilisation from './lycees-mobilisation.js';
+import alertesSerie from './alertes-serie.js';
 
 /** @typedef {import('../probability.js').Signal} Signal */
 /** @typedef {import('../probability.js').Evidence} Evidence */
@@ -19,7 +21,8 @@ import evenementMobilisation from './evenement-mobilisation.js';
  * @property {(signals: Signal[], ctx: { now: number, precedent(ruleId: string, dept: string): string|null, unknown?: string[] }) => Candidate[]} evaluate
  * @property {(scenario: Scenario, signals: Signal[], ctx?: { now?: number, unknown?: string[] }) => 'arrive'|'pas_arrive'|'indecidable'|null} arrived
  * @property {string} arrivalTest Phrase publique de la méthode.
+ * @property {{ since: string, reason: string }} [suspended] Règle suspendue : elle n'émet plus, son bilan reste publié.
  */
 
 /** @type {CrossRule[]} */
-export const RULES = [mobilisationTransports, tempeteReseaux, chaleurSante, socialCyber, greveCarburant, evenementMobilisation];
+export const RULES = [mobilisationTransports, tempeteReseaux, chaleurSante, socialCyber, greveCarburant, evenementMobilisation, lyceesMobilisation, alertesSerie];

@@ -12,8 +12,9 @@ import { WORDS, peakWordOf } from './probability.js';
  * @property {number} notArrived
  * @property {number} undecided Indécidables ou expirés.
  * @property {number} missed Crises que le moteur n'avait pas anticipées.
+ * @property {number} missedExcluded Signaux d'abord consignés comme manqués puis écartés du compte (suite d'un fait passé, fait divers, lieu incertain).
  * @property {Array<{ word: string, closed: number, arrived: number, percent: number|null }>} byWord
- * @property {Array<{ ruleId: string, title: string, emitted: number, arrived: number, useful: number, inReview: boolean, arrivalTest: string }>} byRule
+ * @property {Array<{ ruleId: string, title: string, emitted: number, arrived: number, useful: number, inReview: boolean, suspended: boolean, arrivalTest: string }>} byRule
  */
 
 /** Effectif clos par mot à partir duquel (inclus) un pourcentage s'affiche. */
@@ -59,7 +60,8 @@ export function buildBilan(month, scenarios, rules, review = undefined) {
     arrived: all.filter((s) => s.status === 'arrive').length,
     notArrived: all.filter((s) => s.status === 'pas_arrive').length,
     undecided: all.filter((s) => s.status === 'indecidable' || s.status === 'expire').length,
-    missed: all.filter((s) => s.status === 'manque').length,
+    missed: all.filter((s) => s.status === 'manque' && s.counted !== false).length,
+    missedExcluded: all.filter((s) => s.status === 'manque' && s.counted === false).length,
     byWord: WORDS.map((word) => {
       const closed = all.filter((s) => peakWordOf(s) === word && isDecided(s));
       const arrived = closed.filter((s) => s.status === 'arrive').length;
@@ -69,7 +71,7 @@ export function buildBilan(month, scenarios, rules, review = undefined) {
       const mine = emittedList.filter((s) => s.ruleId === r.id);
       return {
         ruleId: r.id, title: r.title, emitted: mine.length, arrived: mine.filter((s) => s.status === 'arrive').length,
-        useful: mine.reduce((n, s) => n + (s.feedback?.utile ?? 0), 0), inReview: inReview.has(r.id), arrivalTest: r.arrivalTest,
+        useful: mine.reduce((n, s) => n + (s.feedback?.utile ?? 0), 0), inReview: inReview.has(r.id), suspended: Boolean(r.suspended), arrivalTest: r.arrivalTest,
       };
     }),
   };

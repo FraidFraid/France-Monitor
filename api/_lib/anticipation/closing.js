@@ -3,6 +3,10 @@
 // instantané : une arrivée vue puis disparue reste une arrivée. `missedCrises` consigne ce que le moteur n'avait pas anticipé.
 // Aucun texte de jugement n'est produit par une IA : les notes sont des gabarits.
 import { cleanSignals, firstDept } from './rules/common.js';
+import { pressTags } from './press-tags.js';
+
+/** Règles nationales (zone sans département) et sujet de presse qu'elles couvrent. */
+const NATIONAL_TOPIC_RULES = /** @type {Record<string, string>} */ ({ 'alertes-serie': 'alerte_bombe', 'lycees-mobilisation': 'lycee' });
 
 /** @typedef {import('./probability.js').Signal} Signal */
 /** @typedef {import('./registry.js').Scenario} Scenario */
@@ -96,12 +100,15 @@ export async function closeDue(open, signals, rules, now, opts = {}) {
 
 /**
  * Signal qui aurait dû ouvrir un scénario. Dans ce moteur, une « crise » est une panne rouge ou un événement de presse consolidé
- * critique ou élevé en sécurité ou social : le moteur de situations du client n'est pas disponible côté serveur.
+ * critique ou élevé en sécurité ou social, s'il est un fait nouveau au lieu certain (étiquettes de press-tags.js) : le moteur de situations du client n'est pas disponible côté serveur.
  */
-function isCrisis(/** @type {Signal} */ s) {
+export function isCrisis(/** @type {Signal} */ s) {
   if (s.kind === 'presse') {
     const sev = s.meta?.severity;
-    return (s.meta?.category === 'security' || s.meta?.category === 'social') && (sev === 'critical' || sev === 'high');
+    if (!((s.meta?.category === 'security' || s.meta?.category === 'social') && (sev === 'critical' || sev === 'high'))) return false;
+    // Depuis le 13/11/2026 : un fait nouveau seulement (ni suite judiciaire, ni fait divers), dans un lieu que le titre ne contredit pas.
+    const tags = typeof s.meta?.nature === 'string' ? s.meta : typeof s.meta?.title === 'string' ? pressTags(s.meta.title, firstDept(s)) : null;
+    return !tags || (tags.nature === 'fait' && tags.placeDoubt !== true);
   }
   return s.kind === 'panne' && s.level === 'rouge';
 }
@@ -124,8 +131,10 @@ export function missedCrises(signals, open, recent, now) {
    * Un scénario couvre la crise s'il a été ouvert strictement avant elle (un scénario ouvert en réaction ne compte pas) et s'il était
    * encore ouvert à un moment de [t - 24 h, t) : un scénario de longue durée toujours ouvert couvre son département.
    */
-  const covers = (/** @type {Scenario} */ sc, /** @type {string} */ dept, /** @type {number} */ t) => {
-    if (!(Array.isArray(sc.zone?.dept) && sc.zone.dept.includes(dept))) return false;
+  const covers = (/** @type {Scenario} */ sc, /** @type {string} */ dept, /** @type {number} */ t, /** @type {unknown} */ topic = null) => {
+    // Scénario national : il ne couvre que les crises de son sujet (série de fausses alertes).
+    const national = Array.isArray(sc.zone?.dept) && sc.zone.dept.length === 0 && topic !== null && NATIONAL_TOPIC_RULES[sc.ruleId] === topic;
+    if (!national && !(Array.isArray(sc.zone?.dept) && sc.zone.dept.includes(dept))) return false;
     const opened = Date.parse(sc.openedAt ?? '');
     if (!Number.isFinite(opened) || !(opened < t)) return false;
     if (sc.closedAt == null) return true;
@@ -142,7 +151,7 @@ export function missedCrises(signals, open, recent, now) {
     const id = `manque:${s.id}`;
     const at = Date.parse(s.publishedAt ?? s.observedAt ?? '');
     if (!dept || handled.has(dept) || knownIds.has(id)) continue;
-    if (Number.isFinite(at) && known.some((sc) => covers(sc, dept, at))) continue;
+    if (Number.isFinite(at) && known.some((sc) => covers(sc, dept, at, s.meta?.topic ?? null))) continue;
     handled.add(dept); // un seul par département et par appel
     const when = Number.isFinite(at) ? new Date(at).toISOString() : nowIso;
     out.push({
@@ -152,7 +161,7 @@ export function missedCrises(signals, open, recent, now) {
       zone: { dept: [dept], communes: Array.isArray(s.communes) ? s.communes : [] },
       window: { from: when, to: when },
       title: 'Crise sans scénario anticipé',
-      chain: [{ text: "Signal grave relevé dans un département où aucun scénario n'avait été ouvert dans les 24 h précédentes", signalIds: [s.id] }],
+      chain: [{ text: `Signal grave relevé dans un département où aucun scénario n'avait été ouvert dans les 24 h précédentes${typeof s.meta?.title === 'string' && s.meta.title ? ` : « ${s.meta.title.slice(0, 160)} »` : ''}`, signalIds: [s.id] }],
       word: '',
       why: '',
       unknowns: [],
