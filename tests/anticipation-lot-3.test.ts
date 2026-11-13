@@ -10,10 +10,10 @@ import neige from '../api/_lib/anticipation/rules/neige-transports.js';
 // @ts-expect-error module JS sans déclaration
 import { pressTags } from '../api/_lib/anticipation/press-tags.js';
 // @ts-expect-error module JS sans déclaration
-import { exposureOf, withExposure } from '../api/_lib/anticipation/exposure.js';
+import { exposureOf, floodSitesOf, withExposure } from '../api/_lib/anticipation/exposure.js';
 // @ts-expect-error module JS sans déclaration
 import { archivedCopy } from '../api/_lib/anticipation/registry.js';
-import { exposureHtml } from '../src/components/anticipation/scenario-view.ts';
+import { exposureHtml, floodHtml } from '../src/components/anticipation/scenario-view.ts';
 import type { AnticipationScenario } from '../src/types/index.ts';
 
 const NOW = Date.parse('2026-11-04T16:35:00Z');
@@ -129,5 +129,35 @@ describe('règles d’hiver', () => {
   it('un paysage enneigé ou une vigilance annoncée ne sont pas un blocage', () => {
     expect(pressTags('Premières neiges sur les sommets des Pyrénées, les stations se préparent', '65').topic).toBeNull();
     expect(pressTags('Neige-verglas : douze départements placés en vigilance orange', '38').topic).toBeNull();
+  });
+});
+
+describe('établissements en zone de crue', () => {
+  const table = { '30': [
+    { kind: 'ehpad', name: 'EHPAD Petit', commune: 'Sommières', scenario: 'moyen', river: 'Vidourle', places: 40 },
+    { kind: 'seveso_bas', name: 'Dépôt', commune: 'Alès', scenario: 'extreme', river: null },
+    { kind: 'urgences', name: 'CH <Alès>', commune: 'Alès', scenario: 'extreme', river: 'Gardon' },
+    { kind: 'ehpad', name: 'EHPAD Grand', commune: 'Nîmes', scenario: 'moyen', river: null, places: 120 },
+  ] };
+  it('crue moyenne d’abord, puis urgences et Seveso, EHPAD par places ; rien hors table', () => {
+    const f = floodSitesOf({ zone: { dept: ['30'] } }, table);
+    expect(f.total).toBe(4);
+    expect(f.counts).toEqual({ ehpad: 2, seveso_bas: 1, urgences: 1 });
+    expect(f.sites.map((x: { name: string }) => x.name)).toEqual(['EHPAD Grand', 'EHPAD Petit', 'CH <Alès>', 'Dépôt']);
+    expect(floodSitesOf({ zone: { dept: ['75'] } }, table)).toBeNull();
+    expect(floodSitesOf({ zone: { dept: [] } }, table)).toBeNull();
+  });
+  it('la fiche nomme l’établissement, la commune, le cours d’eau, et dit la limite de la cartographie', () => {
+    const flood = floodSitesOf({ zone: { dept: ['30'] } }, table);
+    const html = floodHtml({ exposure: { flood } } as unknown as AnticipationScenario);
+    expect(html).toContain('Établissements en zone de crue cartographiée');
+    expect(html).toContain('crue Vidourle');
+    expect(html).toContain('CH &lt;Alès&gt;');
+    expect(html).toContain('n’est pas pour autant hors d’eau');
+    expect(html).not.toContain('\u2014');
+    expect(floodHtml({ exposure: {} } as unknown as AnticipationScenario)).toBe('');
+  });
+  it('seule la règle crue reçoit la liste', () => {
+    expect(withExposure({ ruleId: 'tempete-reseaux', zone: { dept: ['30'] } }).exposure.flood).toBeUndefined();
   });
 });

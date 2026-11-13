@@ -3787,7 +3787,9 @@ export interface AnticipationScenario {
   closedAt: string | null;
   outcomeNote: string | null;
   /** Enjeux exposés dans les départements de la zone (absent pour un scénario national). */
-  exposure?: { urgences: number; passages: number; mainHospitals: string[]; ehpad: number; ehpadPlaces: number; sevesoHaut: number; sevesoBas: number; sources: string[] };
+  exposure?: { urgences: number; passages: number; mainHospitals: string[]; ehpad: number; ehpadPlaces: number; sevesoHaut: number; sevesoBas: number; sources: string[];
+    /** Règle crue seulement : établissements dans une zone de crue cartographiée (Géorisques, TRI). */
+    flood?: { total: number; counts: Record<string, number>; source: string; sites: Array<{ kind: string; name: string; commune: string; scenario: string; river: string | null; places?: number }> } };
   feedback: Record<AnticipationVote, number>;
 }
 

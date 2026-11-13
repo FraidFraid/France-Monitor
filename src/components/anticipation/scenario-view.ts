@@ -112,6 +112,21 @@ const sec = (title: string, body: string): string => `<section class="anr-sec"><
 const NB = '\u202f';
 const count = (n: number): string => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, NB);
 
+const FLOOD_KIND: Readonly<Record<string, string>> = { urgences: 'Urgences', seveso_haut: 'Seveso seuil haut', seveso_bas: 'Seveso seuil bas', ehpad: 'EHPAD' };
+
+/** Établissements en zone de crue cartographiée (règle crue) : nommés, avec la commune, le cours d'eau et le scénario de crue. */
+export function floodHtml(s: AnticipationScenario): string {
+  const f = s.exposure?.flood;
+  if (!f || f.sites.length === 0) return '';
+  const items = f.sites.map((x) => {
+    const kind = FLOOD_KIND[x.kind] ?? x.kind;
+    const where = [x.commune, x.river ? `crue ${x.river}` : null, x.scenario === 'moyen' ? 'crue moyenne' : 'crue extrême seulement'].filter((v): v is string => Boolean(v)).join(' · ');
+    return `<li><b>${escapeHtml(kind)}</b> ${escapeHtml(x.name)}${x.places ? ` (${count(x.places)}\u00a0places)` : ''}<small class="anr-scalenote"> ${escapeHtml(where)}</small></li>`;
+  }).join('');
+  const more = f.total > f.sites.length ? `${f.sites.length} sur ${f.total} affichés. ` : '';
+  return sec('Établissements en zone de crue cartographiée', `<ul>${items}</ul><p class="anr-scalenote">${more}${escapeHtml(f.source)}. Seuls les territoires à risque important sont cartographiés : un établissement absent de cette liste n’est pas pour autant hors d’eau.</p>`);
+}
+
 /** Enjeux exposés dans la zone (comptes par département, sources datées) ; rien pour un scénario national. */
 export function exposureHtml(s: AnticipationScenario): string {
   const e = s.exposure;
@@ -121,7 +136,7 @@ export function exposureHtml(s: AnticipationScenario): string {
     `${count(e.ehpad)} EHPAD, ${count(e.ehpadPlaces)}\u00a0places`,
     `${count(e.sevesoHaut)} site${e.sevesoHaut > 1 ? 's' : ''} Seveso seuil haut, ${count(e.sevesoBas)} seuil bas`,
   ];
-  return sec('Enjeux dans le département', `${list(lines)}<p class="anr-scalenote">${escapeHtml(e.sources.join(' · '))}. Comptes du département entier, pas de la seule zone touchée.</p>`);
+  return floodHtml(s) + sec('Enjeux dans le département', `${list(lines)}<p class="anr-scalenote">${escapeHtml(e.sources.join(' · '))}. Comptes du département entier, pas de la seule zone touchée.</p>`);
 }
 
 function feedbackHtml(state: FeedbackState): string {
