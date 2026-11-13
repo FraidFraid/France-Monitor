@@ -83,7 +83,9 @@ if (isMain) {
     await sleep(150);
   }
   await writeFile(CACHE, JSON.stringify(cache));
-  const title = (name) => String(name).toLowerCase().replace(/(^|[\s'’(-])([a-zà-ÿ])/g, (_, a, b) => a + b.toUpperCase()).replace(/\b(Chu|Chr|Ch|Aphp|Ghu|Chi|Hia|Ehpad|Sa|Sas)\b/g, (m) => m.toUpperCase());
+  // Quelques noms FINESS arrivent mal encodés (« RÃ‰SIDENCE ») : remis en clair avant la mise en casse.
+  const MOJIBAKE = { 'Ã‰': 'É', 'Ãˆ': 'È', 'Ã€': 'À', 'Ã©': 'é', 'Ã¨': 'è', 'Ã´': 'ô', 'Ã§': 'ç', 'Ã‚': 'Â', 'Ã¢': 'â', 'Ãª': 'ê', 'Ã®': 'î' };
+  const title = (name) => String(name).replace(/Ã[‰ˆ€©¨´§‚¢ª®]/g, (m) => MOJIBAKE[m] ?? m).toLowerCase().replace(/(^|[\s'’(-])([a-zà-ÿ])/g, (_, a, b) => a + b.toUpperCase()).replace(/\b(Chu|Chr|Ch|Aphp|Ghu|Chi|Hia|Ehpad|Sa|Sas)\b/g, (m) => m.toUpperCase());
   /** @type {Record<string, Array<{ kind: string, name: string, commune: string, scenario: string, river: string|null, places?: number }>>} */
   const byDept = {};
   let checked = 0;
