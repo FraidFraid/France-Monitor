@@ -25,6 +25,8 @@ export const STADIUMS = [
   { names: ['Le Havre AC', 'Le Havre'], tla: 'HAC', commune: 'Le Havre', dept: '76' },
   { names: ['Angers SCO', 'Angers'], tla: 'ANG', commune: 'Angers', dept: '49' },
   { names: ['AJ Auxerre', 'Auxerre'], tla: 'AUX', commune: 'Auxerre', dept: '89' },
+  // Ajouté le 13/11/2026 (première lecture du calendrier avec la clé : « Stade non reconnu : ES Troyes AC »). Sans code TLA, non vérifié.
+  { names: ['ES Troyes AC', 'ESTAC Troyes', 'Troyes'], commune: 'Troyes', dept: '10' },
   { names: ['AS Saint-Étienne', 'AS Saint-Etienne', 'Saint-Étienne'], tla: 'STE', commune: 'Saint-Étienne', dept: '42' },
   { names: ['FC Lorient', 'Lorient'], tla: 'LOR', commune: 'Lorient', dept: '56' },
   { names: ['FC Metz', 'Metz'], tla: 'MET', commune: 'Metz', dept: '57' },
