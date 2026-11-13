@@ -93,6 +93,9 @@ export const RULE_LABEL: Readonly<Record<string, string>> = {
   'tempete-reseaux': 'tempête × électricité × télécoms',
   'chaleur-sante': 'chaleur × électricité × santé',
   'greve-carburant': 'grève × carburant',
+  'lycees-mobilisation': 'incidents dans les lycées × mobilisation',
+  'alertes-serie': 'série de fausses alertes',
+  'crue-inondation': 'vigilance crues × pluie-inondation × réseaux',
 };
 const ruleText = (ruleId: string): string => {
   const label = RULE_LABEL[ruleId];
@@ -103,6 +106,21 @@ const list = (items: readonly string[], cls = ''): string =>
   items.length === 0 ? '<p class="anr-empty">n.d.</p>'
     : `<ul>${items.map((t) => `<li${cls ? ` class="${cls}"` : ''}>${escapeHtml(t)}</li>`).join('')}</ul>`;
 const sec = (title: string, body: string): string => `<section class="anr-sec"><h4>${escapeHtml(title)}</h4>${body}</section>`;
+
+const NB = '\u202f';
+const count = (n: number): string => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, NB);
+
+/** Enjeux exposés dans la zone (comptes par département, sources datées) ; rien pour un scénario national. */
+export function exposureHtml(s: AnticipationScenario): string {
+  const e = s.exposure;
+  if (!e) return '';
+  const lines = [
+    `${count(e.urgences)} service${e.urgences > 1 ? 's' : ''} d'urgences, ${count(e.passages)}\u00a0passages par an${e.mainHospitals.length ? ` (dont ${e.mainHospitals.join(', ')})` : ''}`,
+    `${count(e.ehpad)} EHPAD, ${count(e.ehpadPlaces)}\u00a0places`,
+    `${count(e.sevesoHaut)} site${e.sevesoHaut > 1 ? 's' : ''} Seveso seuil haut, ${count(e.sevesoBas)} seuil bas`,
+  ];
+  return sec('Enjeux dans le département', `${list(lines)}<p class="anr-scalenote">${escapeHtml(e.sources.join(' · '))}. Comptes du département entier, pas de la seule zone touchée.</p>`);
+}
 
 function feedbackHtml(state: FeedbackState): string {
   const done = state === 'ok' || state === 'deja';
@@ -179,6 +197,7 @@ export function scenarioHtml(s: AnticipationScenario | null, signals: Readonly<R
     + `<h3>${escapeHtml(s.title)}</h3>`
     + scaleHtml(s)
     + sec('Pourquoi : le croisement', `<div class="anr-chain">${chain}</div>`)
+    + exposureHtml(s)
     + sec('Inconnu', list(s.unknowns, 'anr-unk'))
     + sec('Indicateurs de bascule', bascules)
     + sec('Ce qui l\'infirmerait', list(s.disconfirmers))

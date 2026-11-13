@@ -3786,6 +3786,8 @@ export interface AnticipationScenario {
   status: AnticipationStatus;
   closedAt: string | null;
   outcomeNote: string | null;
+  /** Enjeux exposés dans les départements de la zone (absent pour un scénario national). */
+  exposure?: { urgences: number; passages: number; mainHospitals: string[]; ehpad: number; ehpadPlaces: number; sevesoHaut: number; sevesoBas: number; sources: string[] };
   feedback: Record<AnticipationVote, number>;
 }
 

@@ -35,6 +35,7 @@ const NEEDS = {
   'greve-carburant': [['tension carburant', ['tension_carburant'], 'carburants non archivés']],
   'evenement-mobilisation': [['calendrier sportif', ['evenement_sportif'], 'calendrier sportif non archivé']],
   'lycees-mobilisation': [['presse', ['presse'], 'presse : aucun incident dans un établissement scolaire']],
+  'crue-inondation': [['vigilance', ['vigilance'], 'vigilance par département non rejouable']],
   'alertes-serie': [['presse', ['presse'], 'presse : moins de trois alertes en 24 h']],
 };
 

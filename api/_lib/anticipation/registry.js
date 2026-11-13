@@ -66,11 +66,12 @@ const pressRank = (/** @type {Signal} */ s) => {
   const sev = s.meta?.severity;
   const grave = sev === 'high' || sev === 'critical';
   const cat = s.meta?.category === 'security' || s.meta?.category === 'social';
-  return cat && grave ? 1 : grave ? 2 : 3;
+  // Un sujet reconnu (lycée, alerte, inondation) sert un test d'arrivée : gardé avec les plus utiles.
+  return (cat && grave) || s.meta?.topic ? 1 : grave ? 2 : 3;
 };
 /** Presse archivée : localisée, et sécurité ou social, ou gravité élevée, ou mouvement social dans les transports. */
 const keepPress = (/** @type {Signal} */ s) => Array.isArray(s.dept) && s.dept.length > 0
-  && (pressRank(s) < 3 || s.meta?.category === 'security' || s.meta?.category === 'social');
+  && (pressRank(s) < 3 || s.meta?.category === 'security' || s.meta?.category === 'social' || Boolean(s.meta?.topic));
 
 /**
  * Copies archivées des signaux : tous les signaux hors presse, la presse retenue par `keepPress` (au plus ARCHIVE_PRESS_MAX, les plus

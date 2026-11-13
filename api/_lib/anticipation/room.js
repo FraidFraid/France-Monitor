@@ -24,6 +24,7 @@ import { closeDue, missedCrises } from './closing.js';
 import { buildAgenda } from './agenda.js';
 import { buildNote, latestNote, noteExists, parisHour, readNote, writeNote } from './note.js';
 import { buildBilan, rulesInReview } from './bilan.js';
+import { withExposure } from './exposure.js';
 import { RULES } from './rules/index.js';
 import { publicErrors, TICK_FAILED_LABEL } from './public-errors.js';
 
@@ -227,7 +228,7 @@ async function run(/** @type {number} */ now, /** @type {any} */ readers) {
     if (failure === null) frozenDay = today; // erreur passagère : nouvel essai au tick suivant
   }
   state = {
-    tickAt: now, signals, scenarios: served, agenda,
+    tickAt: now, signals, scenarios: served.map(withExposure), agenda,
     // Calendrier sportif sans clé : nommé dans l'instantané seulement (ni dans la note ni dans les relevés de la règle).
     unknown: [...unknown, ...footballUnknown(inputs.football)],
     errors: [...readErrors, ...signalErrors, ...engineErrors, ...registry.errors], fuel: fuelMemo, compactDay, frozenDay,
