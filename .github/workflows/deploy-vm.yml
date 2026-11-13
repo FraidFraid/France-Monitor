@@ -37,12 +37,14 @@ jobs:
             echo "::notice::secret VM_HOST absent — déploiement VM sauté (la VM Oracle n'est pas encore configurée, voir docs/deployment-oracle.md)"
           fi
 
-  deploy:
-    name: Build + déploiement
+  # Compilation à part (audit du 13/11/2026) : `npm ci` exécute du code de dépendances ; ce job n'a ni la clé SSH ni
+  # l'adresse de la VM. Le job `deploy` ne reçoit que l'archive, sans installer ni exécuter le dépôt.
+  build:
+    name: Build
     needs: check-vm
     if: needs.check-vm.outputs.configured == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -78,6 +80,25 @@ jobs:
             public/data/regions.geojson public/data/departements.geojson public/data/subsea-cables.json \
             scripts/build-eau-potable.mjs scripts/build-deces.mjs scripts/build-arretes.mjs scripts/score-recorder.mjs scripts/archive-protests.mjs \
             deploy/oracle/systemd deploy/oracle/install-arretes.sh deploy/oracle/install-snapshots.sh deploy/oracle/install-score-recorder.sh deploy/oracle/install-archive-protests.sh
+
+      - name: Remettre l'archive au job de déploiement
+        uses: actions/upload-artifact@v4
+        with:
+          name: release
+          path: francemonitor-${{ github.sha }}.tar.gz
+          retention-days: 1
+          if-no-files-found: error
+
+  deploy:
+    name: Déploiement
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Récupérer l'archive
+        uses: actions/download-artifact@v4
+        with:
+          name: release
 
       - name: Préparer la clé SSH et known_hosts
         env:
