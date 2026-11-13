@@ -12,7 +12,7 @@
 // HTTPS uniquement, GET uniquement, 15s de timeout amont, taille plafonnée
 // (safe-fetch.js), 600 req/min/IP (rate-limit.js, fail-open sans Redis).
 
-import { safeFetch, readCapped, SafeFetchError, MAX_RESPONSE_BYTES } from '../_utils/safe-fetch.js';
+import { safeFetch, readCapped, SafeFetchError, MAX_RESPONSE_BYTES, inertContentType, PROXY_SECURITY_HEADERS } from '../_utils/safe-fetch.js';
 import { checkRateLimit } from '../_utils/rate-limit.js';
 
 const ALLOWED_HOSTS = [
@@ -151,10 +151,11 @@ export default async function handler(req, res) {
     );
 
     const bytes = await readCapped(upstream, MAX_RESPONSE_BYTES);
-    const contentType = upstream.headers.get('content-type') ?? 'application/json';
+    const contentType = inertContentType(upstream.headers.get('content-type'), 'application/json');
 
     res.statusCode = upstream.status;
     res.setHeader('Content-Type', contentType);
+    for (const [name, value] of Object.entries(PROXY_SECURITY_HEADERS)) res.setHeader(name, value);
     res.setHeader('Cache-Control', upstream.ok ? cacheControlHeader(cacheTtlSeconds(parsed)) : 'no-store');
     res.end(Buffer.from(bytes));
   } catch (err) {

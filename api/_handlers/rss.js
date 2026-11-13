@@ -12,6 +12,11 @@
 export const config = { runtime: 'edge' };
 
 import { parseRssXml, detectSourceFormat } from '../_lib/parse-rss.js';
+import { safeFetch, readCapped, decodeBody, SafeFetchError, MAX_RESPONSE_BYTES } from '../_utils/safe-fetch.js';
+import { checkRateLimit, rateLimitResponse } from '../_utils/rate-limit.js';
+
+/** Appels par adresse et par minute : la page lit une cinquantaine de flux à l'ouverture, puis par vagues. */
+const RSS_RATE_LIMIT_PER_MIN = 240;
 
 const ALLOWED_DOMAINS = [
   // RTE / Énergie — REMIT / IIP
@@ -87,6 +92,9 @@ const JSON_HEADERS = { 'Content-Type': 'application/json', 'Access-Control-Allow
  * @returns {Promise<Response>}
  */
 export default async function handler(request) {
+  const rl = await checkRateLimit('rss', request, RSS_RATE_LIMIT_PER_MIN);
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfter);
+
   const { searchParams } = new URL(request.url);
   const feedUrl = searchParams.get('url');
 
@@ -117,14 +125,15 @@ export default async function handler(request) {
 
   try {
     const ua = USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
-    const resp = await fetch(feedUrl, {
+    // safeFetch : chaque redirection est revalidée contre la liste (une redirection ouverte chez un titre de presse ne doit
+    // pas mener vers une adresse interne), IP littérales refusées.
+    const { response: resp } = await safeFetch(feedUrl, ALLOWED_DOMAINS, {
       headers: {
         'User-Agent': ua,
         'Accept': 'application/rss+xml, application/xml, text/xml, application/atom+xml, */*',
         'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
         'Cache-Control': 'no-cache',
       },
-      redirect: 'follow',
       signal: AbortSignal.timeout(10_000),
     });
 
@@ -135,7 +144,7 @@ export default async function handler(request) {
       });
     }
 
-    const xml = await resp.text();
+    const xml = decodeBody(await readCapped(resp, MAX_RESPONSE_BYTES), resp.headers.get('content-type'));
     const items = parseRssXml(xml);
     const sourceFormat = detectSourceFormat(xml);
 
@@ -147,7 +156,14 @@ export default async function handler(request) {
       },
     });
   } catch (err) {
-    return new Response(JSON.stringify({ error: 'Fetch failed', message: err.message, items: [] }), {
+    if (err instanceof SafeFetchError) {
+      const refused = err.code === 'DOMAIN_NOT_ALLOWED' || err.code === 'INVALID_URL';
+      return new Response(JSON.stringify({ error: 'Fetch refused', code: err.code, items: [] }), {
+        status: refused ? 403 : 502,
+        headers: JSON_HEADERS,
+      });
+    }
+    return new Response(JSON.stringify({ error: 'Fetch failed', items: [] }), {
       status: 502,
       headers: JSON_HEADERS,
     });

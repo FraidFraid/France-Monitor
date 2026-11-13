@@ -238,6 +238,15 @@ export function parseRSSItems(xml: string, feed: Feed): NewsItem[] | null {
     return dropPlaceholderDrafts(items);
 }
 
+/**
+ * Lien d'article : http(s) seulement, sinon chaîne vide (l'article est alors écarté). Un flux ne doit pas pouvoir glisser un
+ * lien javascript: ou data:, que l'interface ouvrirait au clic.
+ */
+export function httpLink(raw: unknown): string {
+    const link = typeof raw === 'string' ? raw.trim() : '';
+    return /^https?:\/\//i.test(link) ? link : '';
+}
+
 /** Simple hash for dedup IDs */
 function hashString(str: string): string {
     let hash = 0;
@@ -250,7 +259,7 @@ function hashString(str: string): string {
 /** Élément du proxy JSON → NewsItem (titre et description sans tiret cadratin). */
 export function mapJsonProxyItem(rawItem: JsonProxyItem, feed: Feed): NewsItem | null {
     const title = typeof rawItem.title === 'string' ? rawItem.title.trim() : '';
-    const link = typeof rawItem.link === 'string' ? rawItem.link.trim() : '';
+    const link = httpLink(rawItem.link);
     if (!title || !link) return null;
 
     const rawDate = typeof rawItem.pubDate === 'string' ? rawItem.pubDate : '';
@@ -370,7 +379,7 @@ function buildServerClassification(item: IngestApiItem): ThreatClassification | 
 
 export function mapIngestItem(raw: IngestApiItem): NewsItem | null {
     const title = typeof raw.title === 'string' ? raw.title.trim() : '';
-    const link = typeof raw.link === 'string' ? raw.link.trim() : '';
+    const link = httpLink(raw.link);
     if (!title || !link) return null;
 
     const dateStr = raw.publishedAt ?? raw.collectedAt ?? '';

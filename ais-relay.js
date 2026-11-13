@@ -114,6 +114,33 @@ function sendJson(res, statusCode, payload, extraHeaders = {}) {
   res.end(JSON.stringify(payload));
 }
 
+/** Origines de navigateur admises sur le WebSocket : le site, et le poste de développement. */
+const DEFAULT_ALLOWED_ORIGINS = ['https://www.francemonitor.com', 'https://francemonitor.com'];
+const LOCAL_ORIGIN_RE = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
+/** Plafonds du WebSocket public : connexions au total et par adresse, taille d'un message entrant, file d'attente par client. */
+const MAX_WS_CLIENTS = 300;
+const MAX_WS_CLIENTS_PER_IP = 8;
+const MAX_WS_INBOUND_BYTES = 4096;
+const MAX_WS_BUFFERED_BYTES = 2 * 1024 * 1024;
+
+/**
+ * Origine admise ? Un navigateur envoie toujours Origin : un site tiers est refusé (il consommerait le flux payé par la clé
+ * du projet). Sans en-tête Origin (sonde, script, test), la connexion passe : les plafonds s'appliquent quand même.
+ * @param {string | undefined} origin
+ * @param {string[]} allowed
+ */
+export function isRelayOriginAllowed(origin, allowed = DEFAULT_ALLOWED_ORIGINS) {
+  if (!origin) return true;
+  return allowed.includes(origin) || LOCAL_ORIGIN_RE.test(origin);
+}
+
+/** Adresse du client : cf-connecting-ip derrière Cloudflare (seule valeur non choisie par le visiteur), sinon celle du socket. */
+function relayClientIp(req) {
+  const cf = req.headers['cf-connecting-ip'];
+  const value = Array.isArray(cf) ? cf[0] : cf;
+  return (typeof value === 'string' && /^[0-9a-fA-F:.]{3,45}$/.test(value.trim()) ? value.trim() : req.socket?.remoteAddress) || 'unknown';
+}
+
 export function getRelayHttpBaseUrl() {
   return `http://127.0.0.1:${process.env.RELAY_PORT || DEFAULT_RELAY_PORT}`;
 }
@@ -128,6 +155,15 @@ export function startRelayServer(options = {}) {
   loadRelayEnv(options.mode);
 
   const relayPort = Number(options.port ?? (process.env.RELAY_PORT || DEFAULT_RELAY_PORT));
+  // Boucle locale par défaut : Caddy (prod) et le navigateur du poste (dev) sont sur la même machine. RELAY_HOST pour un
+  // hébergement qui exige 0.0.0.0.
+  const relayHost = options.host ?? process.env.RELAY_HOST ?? '127.0.0.1';
+  const allowedOrigins = [
+    ...DEFAULT_ALLOWED_ORIGINS,
+    ...String(process.env.AIS_RELAY_ALLOWED_ORIGINS ?? '').split(',').map((o) => o.trim()).filter(Boolean),
+  ];
+  /** @type {Map<string, number>} connexions ouvertes par adresse */
+  const clientsPerIp = new Map();
   const aisApiKey = options.aisApiKey ?? process.env.AISSTREAM_API_KEY ?? process.env.VITE_AISSTREAM_KEY ?? '';
   const upstreamUrl = options.upstreamUrl ?? process.env.AISSTREAM_UPSTREAM_URL ?? DEFAULT_AISSTREAM_URL;
   const keepUpstream = options.keepUpstream ?? process.env.AIS_RELAY_KEEP_UPSTREAM === '1';
@@ -186,7 +222,16 @@ export function startRelayServer(options = {}) {
   });
   const chunkStart = (index) => index * MAX_BOUNDING_BOXES_PER_SUBSCRIPTION;
 
-  const wsServer = new WebSocketServer({ server });
+  const wsServer = new WebSocketServer({
+    server,
+    maxPayload: MAX_WS_INBOUND_BYTES,
+    verifyClient: ({ origin, req }, done) => {
+      if (!isRelayOriginAllowed(origin, allowedOrigins)) return done(false, 403, 'Origin not allowed');
+      if (wsServer.clients.size >= MAX_WS_CLIENTS) return done(false, 503, 'Too many connections');
+      if ((clientsPerIp.get(relayClientIp(req)) ?? 0) >= MAX_WS_CLIENTS_PER_IP) return done(false, 429, 'Too many connections');
+      return done(true);
+    },
+  });
   const upstreamStates = chunks.map((chunk, index) => ({
     index,
     subscription: chunk,
@@ -301,9 +346,13 @@ export function startRelayServer(options = {}) {
 
   const broadcast = (payload) => {
     wsServer.clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(payload);
+      if (client.readyState !== WebSocket.OPEN) return;
+      // Client qui ne lit plus : sa file grossirait sans fin en mémoire, on coupe.
+      if (client.bufferedAmount > MAX_WS_BUFFERED_BYTES) {
+        client.terminate();
+        return;
       }
+      client.send(payload);
     });
   };
 
@@ -389,6 +438,16 @@ export function startRelayServer(options = {}) {
       return;
     }
 
+    const clientIp = relayClientIp(req);
+    clientsPerIp.set(clientIp, (clientsPerIp.get(clientIp) ?? 0) + 1);
+    client.on('close', () => {
+      const left = (clientsPerIp.get(clientIp) ?? 1) - 1;
+      if (left > 0) clientsPerIp.set(clientIp, left);
+      else clientsPerIp.delete(clientIp);
+    });
+    // Un message entrant trop gros ferme la connexion (maxPayload) : sans écouteur, l'erreur ferait tomber le process.
+    client.on('error', () => {});
+
     if (!aisApiKey) {
       client.send(JSON.stringify({
         MessageType: 'Error',
@@ -431,7 +490,7 @@ export function startRelayServer(options = {}) {
     return { ...result, count: list.length, bytes, trimmed };
   };
 
-  server.listen(relayPort, () => {
+  server.listen(relayPort, relayHost, () => {
     if (usingExternalRelay || closed) return;
     console.log(`[AIS Relay] 🚀 Nouveau relay démarré et à l’écoute sur le port ${relayPort} (clé: ${aisApiKey ? 'OK' : 'Manquante'})`);
     // Élagage des suivis sur minuteur (sans appel HTTP, les tables ne seraient plus bornées).

@@ -10,15 +10,28 @@ export const RATE_LIMIT_PER_MIN = 60;
 /** Durée de la fenêtre fixe, en secondes. */
 export const WINDOW_SEC = 60;
 
+/** Une adresse IP et rien d'autre : la valeur entre dans une clé Redis, elle ne doit pas être un texte libre. */
+const IP_RE = /^[0-9a-fA-F:.]{3,45}$/;
+
 /**
- * Extrait l'IP cliente : premier élément de x-forwarded-for, sinon x-real-ip.
+ * Extrait l'IP cliente. En production l'origine n'accepte que Cloudflare (deploy/oracle/Caddyfile, cloudflare_only), qui
+ * écrase toujours cf-connecting-ip : c'est la seule valeur que le visiteur ne choisit pas. Le premier élément de
+ * x-forwarded-for, lui, est fourni par le client (Cloudflare ajoute la vraie adresse à la suite) : il ne sert qu'en repli,
+ * hors Cloudflare (poste de développement).
  * @param {Request} request
  * @returns {string}
  */
 export function getClientIp(request) {
-  const xff = request.headers.get('x-forwarded-for') || '';
-  const first = xff.split(',')[0].trim();
-  return first || request.headers.get('x-real-ip') || 'unknown';
+  const candidates = [
+    request.headers.get('cf-connecting-ip'),
+    request.headers.get('x-real-ip'),
+    (request.headers.get('x-forwarded-for') || '').split(',')[0],
+  ];
+  for (const candidate of candidates) {
+    const ip = String(candidate || '').trim();
+    if (ip && IP_RE.test(ip)) return ip;
+  }
+  return 'unknown';
 }
 
 /**

@@ -1,4 +1,4 @@
-import { safeFetch, readCapped, SafeFetchError, MAX_RESPONSE_BYTES } from '../_utils/safe-fetch.js';
+import { safeFetch, readCapped, SafeFetchError, MAX_RESPONSE_BYTES, inertContentType, PROXY_SECURITY_HEADERS } from '../_utils/safe-fetch.js';
 import { checkRateLimit, rateLimitResponse } from '../_utils/rate-limit.js';
 
 export const config = { runtime: 'edge' };
@@ -91,9 +91,10 @@ export default async function handler(request) {
     return new Response(body, {
       status: 200,
       headers: {
-        'Content-Type': resp.headers.get('content-type') ?? 'application/json; charset=utf-8',
+        'Content-Type': inertContentType(resp.headers.get('content-type'), 'application/json; charset=utf-8'),
         'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=60',
         'Access-Control-Allow-Origin': '*',
+        ...PROXY_SECURITY_HEADERS,
       },
     });
   } catch (error) {

@@ -4,7 +4,7 @@
  * Identique au plugin Vite mais en Edge Function.
  */
 
-import { safeFetch, readCapped, decodeBody, SafeFetchError, MAX_RESPONSE_BYTES } from '../_utils/safe-fetch.js';
+import { safeFetch, readCapped, decodeBody, SafeFetchError, MAX_RESPONSE_BYTES, PROXY_SECURITY_HEADERS } from '../_utils/safe-fetch.js';
 import { checkRateLimit, rateLimitResponse } from '../_utils/rate-limit.js';
 
 export const config = { runtime: 'edge' };
@@ -145,6 +145,7 @@ export default async function handler(request) {
                 'Content-Type': 'application/xml; charset=utf-8',
                 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=60',
                 'Access-Control-Allow-Origin': '*',
+                ...PROXY_SECURITY_HEADERS,
             },
         });
     } catch (err) {

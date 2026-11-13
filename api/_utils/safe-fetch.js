@@ -197,3 +197,31 @@ export function decodeBody(bytes, contentType) {
     return new TextDecoder('utf-8').decode(bytes);
   }
 }
+
+/**
+ * En-têtes posés sur toute réponse relayée par un proxy : le contenu vient d'un tiers et sort sous l'origine du site, il ne
+ * doit donc jamais être interprété comme un document (pas de reniflage de type, bac à sable sans script si on l'ouvre en page).
+ */
+export const PROXY_SECURITY_HEADERS = {
+  'X-Content-Type-Options': 'nosniff',
+  'Content-Security-Policy': "default-src 'none'; sandbox",
+};
+
+/** Types qu'un navigateur exécute ou met en page : relayés en texte brut (le client les lit par fetch, jamais en navigation). */
+const ACTIVE_TYPE_RE = /(html|xml|svg|javascript|ecmascript)/i;
+
+/**
+ * Type MIME sans danger pour une réponse relayée : HTML, XML (dont XHTML et SVG) et JavaScript deviennent text/plain, le
+ * reste passe tel quel. Le charset amont est conservé.
+ * @param {string | null | undefined} upstreamType
+ * @param {string} [fallback]
+ * @returns {string}
+ */
+export function inertContentType(upstreamType, fallback = 'text/plain; charset=utf-8') {
+  const raw = String(upstreamType || '').trim();
+  if (!raw || /[\r\n]/.test(raw)) return fallback;
+  const [type] = raw.split(';');
+  if (!ACTIVE_TYPE_RE.test(type)) return raw;
+  const charset = /charset=([A-Za-z0-9._-]+)/i.exec(raw);
+  return `text/plain; charset=${charset ? charset[1] : 'utf-8'}`;
+}

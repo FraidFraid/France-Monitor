@@ -1,4 +1,4 @@
-import { safeFetch, readCapped, SafeFetchError, MAX_RESPONSE_BYTES } from '../_utils/safe-fetch.js';
+import { safeFetch, readCapped, SafeFetchError, MAX_RESPONSE_BYTES, inertContentType, PROXY_SECURITY_HEADERS } from '../_utils/safe-fetch.js';
 import { checkRateLimit, rateLimitResponse } from '../_utils/rate-limit.js';
 
 export const config = { runtime: 'edge' };
@@ -8,7 +8,6 @@ const ALLOWED_DOMAINS = [
   'statistiques.developpement-durable.gouv.fr',
   'www.data.gouv.fr',
   'data.gouv.fr',
-  'data.statistiques.development-durable.gouv.fr',
   'data.statistiques.developpement-durable.gouv.fr',
   'www.insee.fr',
   'insee.fr',
@@ -71,7 +70,8 @@ export default async function handler(request) {
       });
     }
 
-    const contentType = resp.headers.get('content-type') ?? 'text/plain; charset=utf-8';
+    // Type amont neutralisé : une page HTML ou un XML déposé chez un hôte autorisé ne doit pas s'exécuter sous notre origine.
+    const contentType = inertContentType(resp.headers.get('content-type'));
     // Octets bruts (plafonnés) : passthrough fidèle pour texte comme binaire (zip, csv…)
     const body = await readCapped(resp, MAX_RESPONSE_BYTES);
     return new Response(body, {
@@ -80,6 +80,7 @@ export default async function handler(request) {
         'Content-Type': contentType,
         'Cache-Control': 'public, s-maxage=900, stale-while-revalidate=300',
         'Access-Control-Allow-Origin': '*',
+        ...PROXY_SECURITY_HEADERS,
       },
     });
   } catch (error) {
@@ -91,7 +92,7 @@ export default async function handler(request) {
       });
     }
     return new Response(JSON.stringify({
-      error: error instanceof Error ? error.message : 'Fetch failed',
+      error: 'Fetch failed',
       proxyError: true,
     }), {
       status: 502,

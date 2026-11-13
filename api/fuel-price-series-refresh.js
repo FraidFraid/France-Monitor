@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import { refreshFuelPriceSeriesCache } from './_lib/fuel-price-series.js';
 
 function getHeader(req, name) {
@@ -5,19 +6,16 @@ function getHeader(req, name) {
   return Array.isArray(value) ? value[0] : value;
 }
 
+// Seul « Authorization: Bearer <secret> » ouvre la route (minuteur fm-fuel-series, cron Vercel). L'en-tête x-vercel-cron
+// n'est plus accepté : n'importe quel client peut l'envoyer. Le secret en paramètre d'URL non plus : il finissait dans les
+// journaux d'accès.
 function isAuthorized(req) {
-  if (getHeader(req, 'x-vercel-cron')) return true;
-
   const secret = process.env.CRON_SECRET ?? process.env.FUEL_PRICE_SERIES_REFRESH_SECRET;
   if (!secret) return false;
 
-  const authHeader = getHeader(req, 'authorization') ?? '';
-  if (authHeader === `Bearer ${secret}`) return true;
-
-  const protocol = getHeader(req, 'x-forwarded-proto') ?? 'https';
-  const host = getHeader(req, 'host') ?? 'localhost';
-  const url = new URL(req.url ?? '/', `${protocol}://${host}`);
-  return url.searchParams.get('secret') === secret;
+  const presented = Buffer.from(String(getHeader(req, 'authorization') ?? ''));
+  const expected = Buffer.from(`Bearer ${secret}`);
+  return presented.length === expected.length && timingSafeEqual(presented, expected);
 }
 
 export default async function handler(req, res) {

@@ -16,6 +16,20 @@ import {
 } from '../services/ministers.ts';
 import type { EventCategory } from '../types/index.ts';
 import { fmIcon } from './shared/icons.ts';
+import { escapeHtml, safeHref } from './france-intel-events.ts';
+
+// Tout ce que ce panneau affiche vient de tiers (data.gouv.fr, Wikidata, pages et agendas ministériels) : chaque valeur est
+// échappée, chaque lien doit être http(s).
+/** Texte tiers, échappé pour un contexte HTML ou d'attribut. */
+const esc = (value: unknown): string => escapeHtml(String(value ?? ''));
+/** Lien tiers : valeur d'attribut href échappée, ou null s'il n'est pas http(s). */
+const href = (value: unknown): string | null => (typeof value === 'string' ? safeHref(value) : null);
+/** Identifiant de compte X : lettres, chiffres, tiret bas. */
+const twitterHandle = (value: unknown): string | null =>
+  typeof value === 'string' && /^[A-Za-z0-9_]{1,30}$/.test(value.replace(/^@/, '')) ? value.replace(/^@/, '') : null;
+/** Adresse de courriel plausible, sinon null (elle entre dans un lien mailto:). */
+const emailAddress = (value: unknown): string | null =>
+  typeof value === 'string' && /^[^\s@<>"']+@[^\s@<>"']+\.[^\s@<>"']+$/.test(value.trim()) ? value.trim() : null;
 
 export class MinistresPanel {
   private containerEl!: HTMLElement;
@@ -166,10 +180,10 @@ export class MinistresPanel {
     info.style.cssText = 'flex:1;min-width:0;';
     info.innerHTML = `
       <div style="color:var(--text-primary);font-weight:600;font-size:12px;line-height:1.35;white-space:normal;overflow:visible;text-overflow:clip;">
-        ${this._formatPersonName(minister.prenom, minister.nom)}${minister.isPM ? ` ${fmIcon('landmark', { label: 'Premier ministre' })}` : ''}
+        ${esc(this._formatPersonName(minister.prenom, minister.nom))}${minister.isPM ? ` ${fmIcon('landmark', { label: 'Premier ministre' })}` : ''}
       </div>
       <div style="color:var(--text-muted);font-size:10px;margin-top:1px;line-height:1.35;white-space:normal;overflow:visible;text-overflow:clip;">
-        ${minister.titreShort}${minister.parti ? ` \u00B7 ${minister.parti}` : ''}
+        ${esc(minister.titreShort)}${minister.parti ? ` \u00B7 ${esc(minister.parti)}` : ''}
       </div>`;
 
     const chevron = document.createElement('span');
@@ -226,12 +240,12 @@ export class MinistresPanel {
     return `
       <div style="display:flex;gap:14px;align-items:flex-start;margin-bottom:16px;">
         <div id="minister-photo" style="width:72px;height:72px;border-radius:50%;background:rgba(255,255,255,0.1);flex-shrink:0;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:var(--text-muted);">
-          ${minister.prenom[0]}${minister.nom[0]}
+          ${esc(`${minister.prenom[0] ?? ''}${minister.nom[0] ?? ''}`)}
         </div>
         <div style="flex:1;min-width:0;">
-          <div style="color:var(--text-primary);font-weight:700;font-size:14px;">${this._formatPersonName(minister.prenom, minister.nom)}</div>
-          <div style="color:var(--text-muted);font-size:11px;margin-top:3px;line-height:1.5;">${minister.titre}</div>
-          ${minister.parti ? `<div style="margin-top:5px;"><span style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:3px;padding:2px 6px;font-size:10px;color:var(--text-muted);">${minister.parti}</span></div>` : ''}
+          <div style="color:var(--text-primary);font-weight:700;font-size:14px;">${esc(this._formatPersonName(minister.prenom, minister.nom))}</div>
+          <div style="color:var(--text-muted);font-size:11px;margin-top:3px;line-height:1.5;">${esc(minister.titre)}</div>
+          ${minister.parti ? `<div style="margin-top:5px;"><span style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);border-radius:3px;padding:2px 6px;font-size:10px;color:var(--text-muted);">${esc(minister.parti)}</span></div>` : ''}
           ${minister.dateNomination ? `<div style="color:var(--text-muted);font-size:10px;margin-top:4px;">Nommé(e) le ${new Date(minister.dateNomination).toLocaleDateString('fr-FR')}</div>` : ''}
         </div>
       </div>
@@ -282,16 +296,16 @@ export class MinistresPanel {
         ? '<div style="color:var(--text-muted);font-size:11px;">Aucun dataset open data pertinent trouvé</div>'
         : datasets.map(dataset => `
             <div style="padding:9px 0;border-bottom:1px solid var(--border-color);">
-              <div style="color:var(--text-primary);font-size:11px;line-height:1.5;font-weight:600;">${dataset.title ?? 'Dataset'}</div>
+              <div style="color:var(--text-primary);font-size:11px;line-height:1.5;font-weight:600;">${esc(dataset.title ?? 'Dataset')}</div>
               <div style="color:var(--text-muted);font-size:10px;margin-top:4px;line-height:1.5;">
-                ${dataset.organization ? `Source: ${dataset.organization}` : 'Source: data.gouv.fr'}
+                ${dataset.organization ? `Source: ${esc(dataset.organization)}` : 'Source: data.gouv.fr'}
                 ${dataset.lastUpdate ? ` · MAJ ${new Date(dataset.lastUpdate).toLocaleDateString('fr-FR')}` : ''}
                 ${typeof dataset.resourceCount === 'number' ? ` · ${dataset.resourceCount} ressource(s)` : ''}
               </div>
-              ${dataset.description ? `<div style="color:var(--text-muted);font-size:10px;margin-top:4px;line-height:1.5;">${dataset.description}</div>` : ''}
+              ${dataset.description ? `<div style="color:var(--text-muted);font-size:10px;margin-top:4px;line-height:1.5;">${esc(dataset.description)}</div>` : ''}
               <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">
-                ${dataset.url ? `<a href="${dataset.url}" target="_blank" rel="noopener" style="color:var(--text-primary);font-size:10px;">Fiche dataset ${fmIcon('external-link')}</a>` : ''}
-                ${(dataset.resources ?? []).map(resource => resource.url ? `<a href="${resource.url}" target="_blank" rel="noopener" style="color:var(--text-primary);font-size:10px;">${resource.format ?? resource.type ?? 'Ressource'} ${fmIcon('external-link')}</a>` : '').join('')}
+                ${href(dataset.url) ? `<a href="${href(dataset.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--text-primary);font-size:10px;">Fiche dataset ${fmIcon('external-link')}</a>` : ''}
+                ${(dataset.resources ?? []).map(resource => href(resource.url) ? `<a href="${href(resource.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--text-primary);font-size:10px;">${esc(resource.format ?? resource.type ?? 'Ressource')} ${fmIcon('external-link')}</a>` : '').join('')}
               </div>
             </div>`).join('');
     };
@@ -307,21 +321,25 @@ export class MinistresPanel {
         contentEl.innerHTML = `
           <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Domaines de comp\u00E9tence</div>
           <div style="display:flex;flex-wrap:wrap;gap:5px;">
-            ${minister.portefeuilles.map(p => `<span style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:3px;padding:3px 8px;font-size:11px;color:var(--text-primary);">${p}</span>`).join('')}
+            ${minister.portefeuilles.map(p => `<span style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.12);border-radius:3px;padding:3px 8px;font-size:11px;color:var(--text-primary);">${esc(p)}</span>`).join('')}
           </div>`;
       } else if (tabName === 'agenda') {
         contentEl.innerHTML = '<div style="color:var(--text-muted);font-size:11px;">Chargement agenda...</div>';
         this._loadAgenda(contentEl, minister);
       } else if (tabName === 'contact') {
+        const email = emailAddress(minister.officeEmail ?? minister.emailCabinet);
+        const source = minister as { sourceLabel?: string; sourceUrl?: string; sourceUpdatedAt?: string };
+        const sourceHref = href(source.sourceUrl);
+        const handle = twitterHandle(minister.twitter);
         const contactRows = [
-          minister.officeEmail || minister.emailCabinet ? `<div style="margin-bottom:8px;"><span style="color:var(--text-muted);font-size:10px;">Email : </span><a href="mailto:${minister.officeEmail ?? minister.emailCabinet}" target="_blank" rel="noopener" style="color:var(--text-primary);font-size:11px;">${minister.officeEmail ?? minister.emailCabinet}</a></div>` : '',
-          minister.officePhone ? `<div style="margin-bottom:8px;"><span style="color:var(--text-muted);font-size:10px;">Téléphone : </span><span style="color:var(--text-primary);font-size:11px;">${minister.officePhone}</span></div>` : '',
-          minister.siteMinistere ? `<div style="margin-bottom:8px;"><span style="color:var(--text-muted);font-size:10px;">Site : </span><a href="${minister.siteMinistere}" target="_blank" rel="noopener" style="color:var(--text-primary);font-size:11px;">${minister.siteMinistere}</a></div>` : '',
-          minister.agendaUrl ? `<div style="margin-bottom:8px;"><span style="color:var(--text-muted);font-size:10px;">Agenda : </span><a href="${minister.agendaUrl}" target="_blank" rel="noopener" style="color:var(--text-primary);font-size:11px;">Agenda officiel</a></div>` : '',
-          minister.servicePublicUrl ? `<div style="margin-bottom:8px;"><span style="color:var(--text-muted);font-size:10px;">Annuaire : </span><a href="${minister.servicePublicUrl}" target="_blank" rel="noopener" style="color:var(--text-primary);font-size:11px;">Service-Public</a></div>` : '',
-          ((minister as { sourceLabel?: string; sourceUrl?: string; sourceUpdatedAt?: string }).sourceLabel || (minister as { sourceUrl?: string }).sourceUrl) ? `<div style="margin-bottom:8px;"><span style="color:var(--text-muted);font-size:10px;">Source : </span>${(minister as { sourceUrl?: string }).sourceUrl ? `<a href="${(minister as { sourceUrl?: string }).sourceUrl}" target="_blank" rel="noopener" style="color:var(--text-primary);font-size:11px;">${(minister as { sourceLabel?: string }).sourceLabel ?? 'Source officielle'}</a>` : `<span style="color:var(--text-primary);font-size:11px;">${(minister as { sourceLabel?: string }).sourceLabel}</span>`}${(minister as { sourceUpdatedAt?: string }).sourceUpdatedAt ? `<span style="color:var(--text-muted);font-size:10px;"> · MAJ ${new Date((minister as { sourceUpdatedAt: string }).sourceUpdatedAt).toLocaleDateString('fr-FR')}</span>` : ''}</div>` : '',
-          this._formatVerificationStatus(minister) ? `<div style="margin-bottom:8px;"><span style="color:var(--text-muted);font-size:10px;">Vérification : </span><span style="color:var(--text-primary);font-size:11px;">${this._formatVerificationStatus(minister)}</span>${minister.identityConfidence ? `<span style="color:var(--text-muted);font-size:10px;"> · confiance ${minister.identityConfidence}</span>` : ''}</div>` : '',
-          minister.twitter ? `<div><span style="color:var(--text-muted);font-size:10px;">Twitter/X : </span><a href="https://twitter.com/${minister.twitter}" target="_blank" rel="noopener" style="color:var(--text-primary);font-size:11px;">@${minister.twitter}</a></div>` : '',
+          email ? `<div style="margin-bottom:8px;"><span style="color:var(--text-muted);font-size:10px;">Email : </span><a href="mailto:${esc(email)}" target="_blank" rel="noopener noreferrer" style="color:var(--text-primary);font-size:11px;">${esc(email)}</a></div>` : '',
+          minister.officePhone ? `<div style="margin-bottom:8px;"><span style="color:var(--text-muted);font-size:10px;">Téléphone : </span><span style="color:var(--text-primary);font-size:11px;">${esc(minister.officePhone)}</span></div>` : '',
+          href(minister.siteMinistere) ? `<div style="margin-bottom:8px;"><span style="color:var(--text-muted);font-size:10px;">Site : </span><a href="${href(minister.siteMinistere)}" target="_blank" rel="noopener noreferrer" style="color:var(--text-primary);font-size:11px;">${esc(minister.siteMinistere)}</a></div>` : '',
+          href(minister.agendaUrl) ? `<div style="margin-bottom:8px;"><span style="color:var(--text-muted);font-size:10px;">Agenda : </span><a href="${href(minister.agendaUrl)}" target="_blank" rel="noopener noreferrer" style="color:var(--text-primary);font-size:11px;">Agenda officiel</a></div>` : '',
+          href(minister.servicePublicUrl) ? `<div style="margin-bottom:8px;"><span style="color:var(--text-muted);font-size:10px;">Annuaire : </span><a href="${href(minister.servicePublicUrl)}" target="_blank" rel="noopener noreferrer" style="color:var(--text-primary);font-size:11px;">Service-Public</a></div>` : '',
+          (source.sourceLabel || sourceHref) ? `<div style="margin-bottom:8px;"><span style="color:var(--text-muted);font-size:10px;">Source : </span>${sourceHref ? `<a href="${sourceHref}" target="_blank" rel="noopener noreferrer" style="color:var(--text-primary);font-size:11px;">${esc(source.sourceLabel ?? 'Source officielle')}</a>` : `<span style="color:var(--text-primary);font-size:11px;">${esc(source.sourceLabel)}</span>`}${source.sourceUpdatedAt ? `<span style="color:var(--text-muted);font-size:10px;"> · MAJ ${esc(new Date(source.sourceUpdatedAt).toLocaleDateString('fr-FR'))}</span>` : ''}</div>` : '',
+          this._formatVerificationStatus(minister) ? `<div style="margin-bottom:8px;"><span style="color:var(--text-muted);font-size:10px;">Vérification : </span><span style="color:var(--text-primary);font-size:11px;">${esc(this._formatVerificationStatus(minister))}</span>${minister.identityConfidence ? `<span style="color:var(--text-muted);font-size:10px;"> · confiance ${esc(minister.identityConfidence)}</span>` : ''}</div>` : '',
+          handle ? `<div><span style="color:var(--text-muted);font-size:10px;">Twitter/X : </span><a href="https://twitter.com/${handle}" target="_blank" rel="noopener noreferrer" style="color:var(--text-primary);font-size:11px;">@${handle}</a></div>` : '',
         ].filter(Boolean);
         contentEl.innerHTML = contactRows.length > 0
           ? contactRows.join('')
@@ -353,10 +371,10 @@ export class MinistresPanel {
     if (items.length === 0) { el.innerHTML = '<div style="color:var(--text-muted);font-size:11px;">Aucun agenda disponible</div>'; return; }
     el.innerHTML = items.map(item => `
       <div style="padding:8px 0;border-bottom:1px solid var(--border-color);">
-        <div style="color:var(--text-primary);font-size:11px;line-height:1.5;">${item.title}</div>
-        <div style="color:var(--text-muted);font-size:10px;margin-top:3px;">${item.date}${item.location ? ` · ${item.location}` : ''}</div>
-        ${item.sourceLabel ? `<div style="color:var(--text-muted);font-size:10px;margin-top:2px;">${item.sourceLabel}</div>` : ''}
-        ${item.url ? `<a href="${item.url}" target="_blank" style="color:var(--text-muted);font-size:10px;">Voir ${fmIcon('external-link')}</a>` : ''}
+        <div style="color:var(--text-primary);font-size:11px;line-height:1.5;">${esc(item.title)}</div>
+        <div style="color:var(--text-muted);font-size:10px;margin-top:3px;">${esc(item.date)}${item.location ? ` · ${esc(item.location)}` : ''}</div>
+        ${item.sourceLabel ? `<div style="color:var(--text-muted);font-size:10px;margin-top:2px;">${esc(item.sourceLabel)}</div>` : ''}
+        ${href(item.url) ? `<a href="${href(item.url)}" target="_blank" rel="noopener noreferrer" style="color:var(--text-muted);font-size:10px;">Voir ${fmIcon('external-link')}</a>` : ''}
       </div>`).join('');
   }
 
@@ -365,13 +383,13 @@ export class MinistresPanel {
     if (!linksEl) return;
 
     const addLinkButton = (label: string, url?: string) => {
-      if (!url) return;
+      if (!url || !/^https?:\/\//i.test(url.trim())) return;
       const link = document.createElement('a');
-      link.href = url;
+      link.href = url.trim();
       link.target = '_blank';
-      link.rel = 'noopener';
+      link.rel = 'noopener noreferrer';
       link.style.cssText = 'display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,0.06);border:1px solid var(--border-color);border-radius:4px;padding:4px 8px;font-size:10px;color:var(--text-muted);text-decoration:none;';
-      link.innerHTML = `${label} ${fmIcon('external-link')}`;
+      link.innerHTML = `${esc(label)} ${fmIcon('external-link')}`;
       linksEl.appendChild(link);
     };
 
@@ -380,8 +398,8 @@ export class MinistresPanel {
     addLinkButton('Service-Public', minister.servicePublicUrl);
     addLinkButton((minister as { appointmentLabel?: string }).appointmentLabel ?? 'JORF', minister.appointmentUrl);
     addLinkButton('Wikipedia', (minister as { wikipediaUrl?: string }).wikipediaUrl);
-    addLinkButton('Wikidata', minister.wikidataId ? `https://www.wikidata.org/wiki/${minister.wikidataId}` : undefined);
-    addLinkButton('X/Twitter', minister.twitter ? `https://twitter.com/${minister.twitter}` : undefined);
+    addLinkButton('Wikidata', minister.wikidataId && /^Q\d{1,12}$/.test(minister.wikidataId) ? `https://www.wikidata.org/wiki/${minister.wikidataId}` : undefined);
+    addLinkButton('X/Twitter', twitterHandle(minister.twitter) ? `https://twitter.com/${twitterHandle(minister.twitter)}` : undefined);
     minister.openDataLinks?.forEach((link) => addLinkButton(link.label, link.url));
 
     const photoUrl = (minister as { photoHd?: string }).photoHd ?? minister.photoUrl;
