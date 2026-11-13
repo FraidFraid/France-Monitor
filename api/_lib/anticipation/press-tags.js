@@ -4,7 +4,7 @@
 // crises manquées et aux règles « lycées » et « fausses alertes ». Mots-clés seulement, aucun appel à une IA.
 import { DEPT_NAMES } from '../../_shared/departments.js';
 
-/** @typedef {'lycee'|'alerte_bombe'|'inondation'|null} PressTopic */
+/** @typedef {'lycee'|'alerte_bombe'|'inondation'|'neige'|null} PressTopic */
 /** @typedef {'fait'|'suite'|'fait_divers'} PressNature */
 
 /** Minuscules sans accents, apostrophes droites. */
@@ -18,6 +18,9 @@ const INCIDENT_RE = /\b(mortiers?|blocages?|blocus|bloque[es]*|casseurs?|incendi
 /** Inondation avec dégâts : l'eau ET une conséquence (une vigilance annoncée seule n'est pas un dégât). */
 const FLOOD_RE = /\b(inondations?|inonde[es]*|crues?|deborde[es]*|submersion|submerge[es]*|coulees? de boue|montee des eaux)\b/;
 const FLOOD_DAMAGE_RE = /\b(routes? (coupees?|fermees?|barrees?|inondees?)|evacue[es]*|evacuations?|sinistre[es]*|degats|habitations?|maisons?|caves?|sous les eaux|les pieds dans l'eau|interventions?|pompiers|coupe[es]* du monde|coupures?|releve[es]* sur le toit|helitreuill\w*|disparue?s?|morts?|victimes?)\b/;
+/** Neige ou verglas avec blocage : une vigilance annoncée ou un paysage enneigé ne compte pas. */
+const SNOW_RE = /\b(neige|verglas|chutes de neige|pluies? verglacantes?)\b/;
+const SNOW_BLOCK_RE = /\b(naufrages? de la route|routes? (coupees?|fermees?|bloquees?|impraticables?)|automobilistes? (bloques?|coinces?|immobilises?)|poids lourds|circulation (interdite|coupee|paralysee|tres difficile)|carambolages?|trains? (supprimes?|annules?|a l'arret)|transports? scolaires? (suspendus?|annules?)|ecoles? fermees?|foyers? prives? d'electricite)\b/;
 /** Suite certaine d'un fait passé : l'emporte même sur un sujet reconnu (le dessin du jour sur les alertes n'est pas une alerte). */
 const HARD_SUITE_RE = /\b(dessin du|hommages?|un an apres|proces|assises|non-lieu|interrogatoires?|recit|recueill\w*|temoignages?|message fort|mis en examen|mise en examen|condamne[es]*|juge[es]? (pour|en)|avait dresse|liste[es]* par)\b/;
 /** Suite probable : cède devant un sujet reconnu (une plainte annoncée après un tir de mortier dans un lycée reste un incident). */
@@ -62,6 +65,7 @@ export function pressTags(title, dept) {
   if (ALERTE_RE.test(t)) topic = 'alerte_bombe';
   else if (SCHOOL_RE.test(t) && INCIDENT_RE.test(t)) topic = 'lycee';
   else if (FLOOD_RE.test(t) && FLOOD_DAMAGE_RE.test(t)) topic = 'inondation';
+  else if (SNOW_RE.test(t) && SNOW_BLOCK_RE.test(t)) topic = 'neige';
   /** @type {PressNature} */
   let nature = 'fait';
   if (HARD_SUITE_RE.test(t)) nature = 'suite';

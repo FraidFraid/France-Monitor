@@ -96,6 +96,8 @@ export const RULE_LABEL: Readonly<Record<string, string>> = {
   'lycees-mobilisation': 'incidents dans les lycées × mobilisation',
   'alertes-serie': 'série de fausses alertes',
   'crue-inondation': 'vigilance crues × pluie-inondation × réseaux',
+  'froid-electricite': 'grand froid × électricité',
+  'neige-transports': 'neige-verglas × transports',
 };
 const ruleText = (ruleId: string): string => {
   const label = RULE_LABEL[ruleId];

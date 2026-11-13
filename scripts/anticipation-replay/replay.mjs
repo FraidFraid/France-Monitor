@@ -36,6 +36,8 @@ const NEEDS = {
   'evenement-mobilisation': [['calendrier sportif', ['evenement_sportif'], 'calendrier sportif non archivé']],
   'lycees-mobilisation': [['presse', ['presse'], 'presse : aucun incident dans un établissement scolaire']],
   'crue-inondation': [['vigilance', ['vigilance'], 'vigilance par département non rejouable']],
+  'froid-electricite': [['vigilance', ['vigilance'], 'vigilance par département non rejouable'], ['Écowatt', ['ecowatt'], 'Écowatt non archivé']],
+  'neige-transports': [['vigilance', ['vigilance'], 'vigilance par département non rejouable']],
   'alertes-serie': [['presse', ['presse'], 'presse : moins de trois alertes en 24 h']],
 };
 

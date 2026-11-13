@@ -4,6 +4,10 @@ import { describe, expect, it } from 'vitest';
 // @ts-expect-error module JS sans déclaration
 import crue from '../api/_lib/anticipation/rules/crue-inondation.js';
 // @ts-expect-error module JS sans déclaration
+import froid from '../api/_lib/anticipation/rules/froid-electricite.js';
+// @ts-expect-error module JS sans déclaration
+import neige from '../api/_lib/anticipation/rules/neige-transports.js';
+// @ts-expect-error module JS sans déclaration
 import { pressTags } from '../api/_lib/anticipation/press-tags.js';
 // @ts-expect-error module JS sans déclaration
 import { exposureOf, withExposure } from '../api/_lib/anticipation/exposure.js';
@@ -76,7 +80,9 @@ describe('enjeux exposés', () => {
     expect(exposureOf({ zone: { dept: [] } }, table)).toBeNull();
     expect(exposureOf({ zone: { dept: ['ZZ'] } }, table)).toBeNull();
     expect(withExposure({ id: 'x', zone: { dept: [] } })).toEqual({ id: 'x', zone: { dept: [] } });
-    expect(withExposure({ id: 'x', zone: { dept: ['31'] } }).exposure.sources).toHaveLength(3);
+    expect(withExposure({ id: 'x', ruleId: 'crue-inondation', zone: { dept: ['31'] } }).exposure.sources).toHaveLength(3);
+    // Une fiche « lycées » n'affiche ni EHPAD ni sites Seveso.
+    expect(withExposure({ id: 'x', ruleId: 'lycees-mobilisation', zone: { dept: ['31'] } }).exposure).toBeUndefined();
   });
   it('la fiche affiche les comptes avec leurs sources, texte échappé, sans tiret cadratin', () => {
     const html = exposureHtml({ exposure: { ...table['2A'], mainHospitals: ['CH <b>Ajaccio</b>'], sources: ['FINESS du 12/05/2026'] } } as unknown as AnticipationScenario);
@@ -86,5 +92,39 @@ describe('enjeux exposés', () => {
     expect(html).toContain('CH &lt;b&gt;Ajaccio&lt;/b&gt;');
     expect(html).not.toContain('—');
     expect(exposureHtml({} as AnticipationScenario)).toBe('');
+  });
+});
+
+describe('règles d’hiver', () => {
+  const eco = (level: string) => ({
+    id: 'eco:J1', kind: 'ecowatt', domain: 'energy', source: 'rte', origin: 'rte', official: true, dept: [], communes: [], level, value: null,
+    window: { from: '2026-11-05T05:00:00.000Z', to: '2026-11-05T23:00:00.000Z' }, publishedAt: '2026-11-04T15:00:00.000Z', observedAt: '2026-11-04T16:30:00.000Z', checkedAt: '2026-11-04T16:30:00.000Z', ref: 'rte', meta: {},
+  });
+  it('grand froid : il faut la vigilance ET une tension électrique ; Écowatt rouge rend probable', () => {
+    expect(froid.evaluate([vigi('67', 'grand_froid', 'orange')], ctx())).toEqual([]);
+    expect(froid.evaluate([vigi('67', 'canicule', 'orange'), eco('orange')], ctx())).toEqual([]);
+    const [c] = froid.evaluate([vigi('67', 'grand_froid', 'orange'), eco('orange')], ctx());
+    expect(c).toMatchObject({ ruleId: 'froid-electricite', zone: { dept: ['67'] }, word: 'possibilite_reelle', title: "Grand froid et tension sur l'électricité" });
+    expect(c.chain[0].text).toBe('Vigilance grand froid orange dans le Bas-Rhin (Météo-France)');
+    expect(froid.evaluate([vigi('67', 'grand_froid', 'orange'), eco('rouge')], ctx())[0].word).toBe('probable');
+  });
+  it('neige-verglas : vigilance orange ouvre probable ; rail et presse cités rendent très probable', () => {
+    expect(neige.evaluate([vigi('38', 'neige_verglas', 'jaune')], ctx())).toEqual([]);
+    const [c] = neige.evaluate([vigi('38', 'neige_verglas', 'orange')], ctx());
+    expect(c).toMatchObject({ ruleId: 'neige-transports', word: 'probable' });
+    const rail = { id: 'rail:1', kind: 'perturbation_sncf', domain: 'transport', source: 'sncf', origin: 'sncf', official: true, dept: ['38'], communes: [], level: null, value: null,
+      window: { from: '2026-11-05T06:00:00.000Z', to: '2026-11-05T12:00:00.000Z' }, publishedAt: '2026-11-04T16:00:00.000Z', observedAt: '2026-11-04T16:30:00.000Z', checkedAt: '2026-11-04T16:30:00.000Z', ref: 'sncf', meta: {} };
+    const press = flood('n1', '38', 'Neige en Isère : des automobilistes bloqués sur l’A48, la route coupée', '2026-11-04T15:00:00.000Z');
+    expect(press.meta.topic).toBe('neige');
+    const [d] = neige.evaluate([vigi('38', 'neige_verglas', 'orange'), rail, press], ctx());
+    expect(d.word).toBe('tres_probable');
+    // Arrivée : un blocage nouveau pendant la fenêtre, pas ceux cités.
+    const scenario = { ...c, openedAt: new Date(NOW).toISOString() };
+    expect(neige.arrived(scenario, [flood('n2', '38', 'Verglas : transports scolaires suspendus en Isère', '2026-11-05T07:00:00.000Z')], { now: NOW + 20 * H, unknown: [] })).toBe('arrive');
+    expect(neige.arrived(scenario, [], { now: NOW + 40 * H, unknown: [] })).toBe('pas_arrive');
+  });
+  it('un paysage enneigé ou une vigilance annoncée ne sont pas un blocage', () => {
+    expect(pressTags('Premières neiges sur les sommets des Pyrénées, les stations se préparent', '65').topic).toBeNull();
+    expect(pressTags('Neige-verglas : douze départements placés en vigilance orange', '38').topic).toBeNull();
   });
 });

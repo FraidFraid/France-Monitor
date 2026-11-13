@@ -33,7 +33,10 @@ export function exposureOf(scenario, table = EXPOSURE_BY_DEPT) {
 }
 
 /** Copie du scénario avec ses enjeux exposés (champ absent pour un scénario national). */
+/** Règles dont l'effet touche les établissements comptés (eau, vent, chaleur, froid, neige) ; les autres fiches n'affichent pas d'enjeux. */
+export const EXPOSURE_RULES = new Set(['crue-inondation', 'tempete-reseaux', 'chaleur-sante', 'froid-electricite', 'neige-transports']);
+
 export function withExposure(/** @type {any} */ scenario) {
-  const exposure = exposureOf(scenario);
+  const exposure = EXPOSURE_RULES.has(scenario?.ruleId) ? exposureOf(scenario) : null;
   return exposure ? { ...scenario, exposure } : scenario;
 }
