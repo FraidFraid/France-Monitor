@@ -83,3 +83,13 @@
   .anb-b { grid-template-columns: 1fr 100px; }
   .anb-b .anb-track { grid-column: 1 / -1; order: 3; }
 }
+
+/* Rejeu public (/anticipation/rejeu) : chronologie à deux voix. */
+.anb-tbl.anj-tl td:not(:first-child) { text-align: left; white-space: normal; }
+.anb-tbl.anj-tl td.anj-who { white-space: nowrap; padding-right: 12px; }
+.anb-tbl.anj-tl td:last-child { width: 100%; }
+.anj-tl small { display: block; margin-top: 2px; color: var(--text-muted); }
+.anj-at { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.anj-who { white-space: nowrap; font-weight: 600; }
+.anj-outil .anj-who { color: var(--sev-medium, #d97706); }
+.anj-outil td { background: color-mix(in srgb, var(--sev-medium, #d97706) 8%, transparent); }

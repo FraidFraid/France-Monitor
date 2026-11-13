@@ -97,7 +97,7 @@ export function renderAnticipationBilanPage(container: HTMLElement): void {
   const page = document.createElement('div');
   page.className = 'anb-page';
   page.innerHTML = `<header class="anb-top"><a href="/?view=app#live">France Monitor</a><span class="anb-beta">BÊTA · hypothèses à vérifier, pas des prévisions</span></header>
-    <main class="anb-wrap"><nav class="anb-nav"><a href="/anticipation/note">Note du jour</a><a href="/sources-quality">Sources &amp; qualité</a><a href="/methodology.html#anticipation">Méthode</a></nav>
+    <main class="anb-wrap"><nav class="anb-nav"><a href="/anticipation/note">Note du jour</a><a href="/anticipation/rejeu">Rejeu du 4 au 6 novembre</a><a href="/sources-quality">Sources &amp; qualité</a><a href="/methodology.html#anticipation">Méthode</a></nav>
     <div class="anb-main"><p class="anb-hint" role="status">Chargement du bilan…</p></div></main>`;
   container.appendChild(page);
   const main = page.querySelector('.anb-main') as HTMLElement;

@@ -54,10 +54,11 @@ function shouldRenderLanding(): boolean {
 }
 
 /** Pages publiques de l'anticipation (04/11/2026), chargées à la demande : note de 7 h et bilan. */
-function anticipationPage(): 'note' | 'bilan' | null {
+function anticipationPage(): 'note' | 'bilan' | 'rejeu' | null {
   const { pathname } = new URL(window.location.href);
   if (pathname === '/anticipation/note') return 'note';
   if (pathname === '/anticipation/bilan') return 'bilan';
+  if (pathname === '/anticipation/rejeu') return 'rejeu';
   return null;
 }
 
@@ -73,6 +74,8 @@ void initI18n().then(() => {
       void import('./AnticipationNotePage.ts').then((m) => m.renderAnticipationNotePage(container));
     } else if (anticipation === 'bilan') {
       void import('./AnticipationBilanPage.ts').then((m) => m.renderAnticipationBilanPage(container));
+    } else if (anticipation === 'rejeu') {
+      void import('./AnticipationRejeuPage.ts').then((m) => m.renderAnticipationRejeuPage(container));
     } else if (shouldRenderSourcesQuality()) {
       renderSourcesQualityPage(container);
     } else if (shouldRenderLanding()) {

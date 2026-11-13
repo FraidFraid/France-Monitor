@@ -44,7 +44,9 @@ const rule = {
       // Les deux phénomènes sur le même département (l'un orange ou rouge, l'autre au moins jaune) : pluie sur des cours d'eau déjà hauts.
       const phenomena = new Set(water.filter((s) => inDept(s, dept)).map((s) => String(s.meta?.phenomenon)));
       const both = phenomena.size === 2;
-      const others = water.filter((s) => inDept(s, dept) && !vs.includes(s));
+      // L'autre phénomène seulement : le même phénomène en jaune à une autre échéance n'ajoute rien (vu au rejeu de la Corse).
+      const strongPhenomena = new Set(vs.map((s) => String(s.meta?.phenomenon)));
+      const others = water.filter((s) => inDept(s, dept) && !strongPhenomena.has(String(s.meta?.phenomenon)));
       const overlaps = (/** @type {Signal} */ s) => { const w = span(s); return w !== null && w.from < to && Math.max(w.to, w.from + 1) > from; };
       const press = all.filter((s) => isFloodPress(s) && inDept(s, dept) && ctx.now - at(s) <= 86_400_000).sort((a, b) => at(a) - at(b));
       const electric = all.filter((s) => isElectric(s) && inDept(s, dept) && overlaps(s)).sort((a, b) => at(a) - at(b));

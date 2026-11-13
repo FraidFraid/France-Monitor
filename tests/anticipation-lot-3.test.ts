@@ -49,6 +49,9 @@ describe('règle crue et inondation', () => {
     expect(c).toMatchObject({ ruleId: 'crue-inondation', zone: { dept: ['2A'] }, word: 'probable', window: { from: '2026-11-05T05:00:00.000Z', to: '2026-11-05T23:00:00.000Z' } });
     expect(c.chain[0].text).toBe('Vigilance orange pluie-inondation en Corse-du-Sud (Météo-France, Vigicrues)');
     expect(c.evidence.hasOfficial).toBe(true);
+    // Même phénomène en jaune à une autre échéance : pas de ligne « sur le même département ».
+    const same = crue.evaluate([vigi('2A', 'pluie_inondation', 'orange'), vigi('2A', 'pluie_inondation', 'jaune', { id: 'vigi:2A:pi:J', meta: { phenomenon: 'pluie_inondation', echeance: 'J' } })], ctx())[0];
+    expect(same.chain).toHaveLength(2);
   });
   it('rouge, ou deux phénomènes avec premiers dégâts : très probable ; bascules atteintes', () => {
     expect(crue.evaluate([vigi('30', 'crues', 'rouge')], ctx())[0].word).toBe('tres_probable');
