@@ -338,7 +338,7 @@ export class SentinelModal {
       this.previewEl.innerHTML = `
         <div class="sentinel-modal__empty">
           Aucune scene exploitable.<br />
-          ${fallbackReason ? `Cause: ${fallbackReason}` : 'Le fallback EO Browser reste disponible.'}
+          ${fallbackReason ? `Cause: ${escapeHtml(fallbackReason)}` : 'Le fallback EO Browser reste disponible.'}
         </div>
       `;
       this.metaEl.innerHTML = '';

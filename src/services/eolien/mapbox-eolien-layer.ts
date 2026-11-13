@@ -1,6 +1,18 @@
 import type { EolienLayerFeatureProperties, EolienLayerGeoJSON, EolienLive, EolienParkSummary } from './types.ts';
 import { ENERGY_STATE_HEX, windState } from '../energy-state.ts';
 
+/** Texte du référentiel (nom de parc, exploitant, commune) échappé avant d'entrer dans l'infobulle. */
+function esc(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+/** Couleur CSS hexadécimale seulement (elle entre dans un attribut style). */
+const hexColor = (value: unknown, fallback: string): string => (typeof value === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(value) ? value : fallback);
+
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
@@ -105,8 +117,8 @@ export function buildEolienPopupHtml(properties: Partial<EolienLayerFeaturePrope
 
   return `
     <div style="color:#e8eef5;font-family:sans-serif;min-width:235px;">
-      <h4 style="margin:0 0 4px;font-weight:700;font-size:14px;color:#fff;">${properties.name ?? 'Parc éolien'}</h4>
-      <div style="font-size:11px;color:${properties.color ?? '#7DD3FC'};margin-bottom:10px;">
+      <h4 style="margin:0 0 4px;font-weight:700;font-size:14px;color:#fff;">${esc(properties.name ?? 'Parc éolien')}</h4>
+      <div style="font-size:11px;color:${hexColor(properties.color, '#7DD3FC')};margin-bottom:10px;">
         ${kindLabel((properties.kind as EolienParkSummary['kind']) ?? 'unknown')} · ${statusLabel((properties.status as EolienParkSummary['status']) ?? 'unknown')}
       </div>
       <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px;">
@@ -124,13 +136,13 @@ export function buildEolienPopupHtml(properties: Partial<EolienLayerFeaturePrope
       ${properties.turbineCount ? `
         <div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px;">
           <span style="color:#94a3b8">Éoliennes :</span>
-          <span style="font-weight:600;">${properties.turbineCount}</span>
+          <span style="font-weight:600;">${esc(properties.turbineCount)}</span>
         </div>
       ` : ''}
       <div style="margin-top:8px;font-size:11px;color:#cbd5e1;">
-        ${(properties.region ?? '').toString()}${properties.commune ? ` · ${properties.commune}` : ''}
+        ${esc(properties.region)}${properties.commune ? ` · ${esc(properties.commune)}` : ''}
       </div>
-      ${properties.operator ? `<div style="margin-top:4px;font-size:11px;color:#94a3b8;">Exploitant : ${properties.operator}</div>` : ''}
+      ${properties.operator ? `<div style="margin-top:4px;font-size:11px;color:#94a3b8;">Exploitant : ${esc(properties.operator)}</div>` : ''}
       <div style="margin-top:8px;font-size:10px;color:#6b7280;border-top:1px solid rgba(255,255,255,0.06);padding-top:6px;">
         Source : Géorisques / référentiel éolien · live ${live ? `${live.production_gw.toFixed(1)} GW` : 'n/d'}
       </div>

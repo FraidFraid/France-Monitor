@@ -6,9 +6,84 @@ export const config = { runtime: 'edge' };
 
 import { redisGet, redisSet } from '../../../_utils/redis.js';
 import { GROQ_MODEL, groqModelParams, withReasoningHeadroom } from '../../../_lib/groq-models.js';
+import { mayGenerate } from '../../../_lib/brief-store.js';
 
 const CACHE_KEY = 'isnr:synthesis:fr:v2';
-const CACHE_TTL = 900; // 15 minutes
+// Synthèse partagée (audit du 13/11/2026) : comme le brief, elle est rédigée par l'enregistreur de la VM (jeton, toutes les
+// 15 min) et lue par tous. 2 h de garde : elle survit à quelques passages manqués.
+const CACHE_TTL = 2 * 60 * 60;
+
+/** Texte court venu du client, mis sur une ligne et borné : il entre dans l'invite. */
+function cleanText(value, max) {
+  if (typeof value !== 'string') return '';
+  // eslint-disable-next-line no-control-regex
+  return value.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
+}
+const num = (value, min, max) => (typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : null);
+const oneOf = (value, list) => (list.includes(value) ? value : null);
+const textList = (value, maxItems, maxLen) => (Array.isArray(value) ? value.slice(0, maxItems).map((v) => cleanText(v, maxLen)).filter(Boolean) : []);
+
+/**
+ * Corps de la requête ramené à ce que l'invite attend : nombres bornés, listes courtes, textes sur une ligne. Tout le reste
+ * est ignoré. Exportée pour les tests.
+ */
+export function sanitizeSynthesisInput(body) {
+  const b = body && typeof body === 'object' ? body : {};
+  const d = b.scores && typeof b.scores.details === 'object' && b.scores.details ? b.scores.details : {};
+  const details = {};
+  for (const key of ['elec', 'bgp', 'telecom', 'space', 'cyber', 'wind']) details[key] = num(d[key], 0, 100);
+  const scores = { details, score: num(b.scores?.score, 0, 100) ?? 'N/A', status: cleanText(b.scores?.status, 24) || 'indéterminé' };
+
+  const isnrDepts = (Array.isArray(b.isnrDepts) ? b.isnrDepts : []).slice(0, 5)
+    .map((dep) => ({ name: cleanText(dep?.name, 60), score: num(dep?.score, 0, 100), social: num(dep?.social, 0, 100), security: num(dep?.security, 0, 100) }))
+    .filter((dep) => dep.name);
+
+  const n = b.nuclear && typeof b.nuclear === 'object' ? b.nuclear : null;
+  const nuclear = n && {
+    rteAvailable: n.rteAvailable === true,
+    unplannedOutageCount: num(n.unplannedOutageCount, 0, 100) ?? 0,
+    plannedOutageCount: num(n.plannedOutageCount, 0, 100) ?? 0,
+    reducedCount: num(n.reducedCount, 0, 100) ?? 0,
+    remitUnconfirmedCount: num(n.remitUnconfirmedCount, 0, 100) ?? 0,
+    gridTensionRisk: n.gridTensionRisk === true,
+    affectedSites: textList(n.affectedSites, 12, 40),
+    availableCapacityMW: num(n.availableCapacityMW, 0, 100_000),
+    installedCapacityMW: num(n.installedCapacityMW, 0, 100_000),
+  };
+
+  const e = b.eolien && typeof b.eolien === 'object' ? b.eolien : null;
+  const eolien = e && {
+    production_gw: num(e.production_gw, 0, 100) ?? undefined,
+    puissance_installee: num(e.puissance_installee, 0, 100) ?? undefined,
+    facteur_charge: num(e.facteur_charge, 0, 1) ?? undefined,
+    parcs_actifs: num(e.parcs_actifs, 0, 100_000) ?? undefined,
+    alertLevel: oneOf(e.alertLevel, ['normal', 'watch', 'low-production']) ?? 'normal',
+  };
+
+  const o = b.oil && typeof b.oil === 'object' ? b.oil : null;
+  const oil = o && {
+    structuralStatus: oneOf(o.structuralStatus, ['normal', 'tense', 'critical', 'unknown']) ?? 'unknown',
+    structuralScore: num(o.structuralScore, 0, 100) ?? undefined,
+    nationalStocksDays: num(o.nationalStocksDays, 0, 1000) ?? undefined,
+    monthlyRoadFuelYoYPct: num(o.monthlyRoadFuelYoYPct, -100, 1000) ?? undefined,
+    fuelTensionCoverage: cleanText(o.fuelTensionCoverage, 40) || undefined,
+    fuelTensionStationCount: num(o.fuelTensionStationCount, 0, 100_000) ?? undefined,
+    fuelTensionLevel: cleanText(o.fuelTensionLevel, 20) || undefined,
+    fuelTensionAnomalyShare: num(o.fuelTensionAnomalyShare, 0, 100) ?? undefined,
+    fuelTensionAvgUpdateAgeMinutes: num(o.fuelTensionAvgUpdateAgeMinutes, 0, 1_000_000) ?? undefined,
+    fuelTensionTopDepartments: textList(o.fuelTensionTopDepartments, 8, 40),
+  };
+
+  return {
+    scores,
+    headlines: textList(b.headlines, 10, 220),
+    isnrNationalScore: num(b.isnrNationalScore, 0, 100),
+    isnrDepts,
+    nuclear,
+    eolien,
+    oil,
+  };
+}
 const GROQ_URL  = 'https://api.groq.com/openai/v1/chat/completions';
 // Modèle centralisé (Groq a retiré llama-3.3-70b-versatile) : voir api/_lib/groq-models.js
 
@@ -136,7 +211,7 @@ export default async function handler(request) {
 
   let scores, headlines, isnrNationalScore, isnrDepts, nuclear, eolien, oil;
   try {
-    ({ scores, headlines, isnrNationalScore, isnrDepts, nuclear, eolien, oil } = await request.json());
+    ({ scores, headlines, isnrNationalScore, isnrDepts, nuclear, eolien, oil } = sanitizeSynthesisInput(await request.json()));
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
       status: 400,
@@ -157,9 +232,10 @@ export default async function handler(request) {
     }
   }
 
-  // 2. Call Groq
+  // 2. Call Groq : seulement pour le porteur du jeton de rédaction (l'enregistreur). Un visiteur lit la synthèse gardée ;
+  // il ne peut ni la faire rédiger avec ses propres chiffres et titres, ni dépenser le quota Groq.
   const GROQ_API_KEY = process.env.GROQ_API_KEY;
-  if (!GROQ_API_KEY) {
+  if (!GROQ_API_KEY || !mayGenerate(request.headers?.get?.('x-fm-brief-token'), process.env.FM_BRIEF_TOKEN)) {
     return new Response(JSON.stringify({ ...FALLBACK, computedAt: new Date().toISOString() }), {
       headers: { 'Content-Type': 'application/json' },
     });
@@ -198,8 +274,8 @@ export default async function handler(request) {
     const { briefing, stabilityImpact } = JSON.parse(clean);
 
     const result = {
-      briefing: typeof briefing === 'string' ? briefing : null,
-      stabilityImpact: typeof stabilityImpact === 'number' ? stabilityImpact : null,
+      briefing: cleanText(briefing, 600) || null,
+      stabilityImpact: num(stabilityImpact, 0, 100),
       fromCache: false,
       computedAt: new Date().toISOString(),
     };

@@ -20,7 +20,9 @@ export function briefFile(lang) {
  * @param {string | undefined} expected
  */
 export function mayGenerate(presented, expected) {
-  if (!expected) return true;
+  // Sans jeton configuré : ouvert sur un poste de développement, fermé en production (un oubli de variable ne doit pas
+  // laisser n'importe qui faire rédiger le texte servi à tous).
+  if (!expected) return process.env.NODE_ENV !== 'production';
   if (typeof presented !== 'string' || presented.length !== expected.length) return false;
   let diff = 0;
   for (let i = 0; i < expected.length; i += 1) diff |= presented.charCodeAt(i) ^ expected.charCodeAt(i);

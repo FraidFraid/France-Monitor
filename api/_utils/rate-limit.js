@@ -1,6 +1,6 @@
 // api/utils/rate-limit.js
 // Rate limiting fenêtre fixe par IP et par route, adossé au wrapper Redis Upstash.
-// Fail-open : si Redis est indisponible, on laisse passer (cohérent avec redis.js).
+// Si Redis est indisponible, le compte se fait dans la mémoire du process (plus de fail-open, audit du 13/11/2026).
 
 import { redisIncrFixedWindow } from './redis.js';
 
@@ -34,6 +34,45 @@ export function getClientIp(request) {
   return 'unknown';
 }
 
+/** Compteurs de repli (fenêtre fixe) quand Redis ne répond pas ; table bornée, purgée des fenêtres échues. */
+/** @type {Map<string, { count: number, resetAt: number }>} */
+const memoryWindows = new Map();
+const MEMORY_MAX_KEYS = 20_000;
+
+/** @param {string} key @param {number} now */
+function memoryIncr(key, now) {
+  const entry = memoryWindows.get(key);
+  if (entry && now < entry.resetAt) {
+    entry.count += 1;
+    return entry.count;
+  }
+  if (memoryWindows.size >= MEMORY_MAX_KEYS) {
+    for (const [k, v] of memoryWindows) if (now >= v.resetAt) memoryWindows.delete(k);
+    // Table encore pleine (afflux d'adresses) : on repart de zéro plutôt que de grossir sans fin.
+    if (memoryWindows.size >= MEMORY_MAX_KEYS) memoryWindows.clear();
+  }
+  memoryWindows.set(key, { count: 1, resetAt: now + WINDOW_SEC * 1000 });
+  return 1;
+}
+
+/**
+ * Requête Node (en-têtes en objet) vue comme une Request pour checkRateLimit.
+ * @param {{ headers?: Record<string, string | string[] | undefined> }} req
+ * @returns {Request}
+ */
+export function asRateLimitRequest(req) {
+  return /** @type {Request} */ (/** @type {unknown} */ ({
+    headers: {
+      /** @param {string} name */
+      get(name) {
+        const value = req.headers?.[name.toLowerCase()];
+        if (Array.isArray(value)) return value[0] ?? null;
+        return value ?? null;
+      },
+    },
+  }));
+}
+
 /**
  * Vérifie et incrémente le compteur fenêtre fixe pour (route, IP).
  * @param {string} route — identifiant de route, ex: 'rss-proxy'
@@ -44,12 +83,8 @@ export function getClientIp(request) {
 export async function checkRateLimit(route, request, limit = RATE_LIMIT_PER_MIN) {
   const ip = getClientIp(request);
   const key = `ratelimit:${route}:${ip}`;
-  const count = await redisIncrFixedWindow(key, WINDOW_SEC);
-
-  // count === null → Redis indisponible : fail-open.
-  if (count == null) {
-    return { allowed: true, remaining: limit, retryAfter: 0 };
-  }
+  // Redis indisponible (null) : compteur de ce process. La limite ne s'ouvre plus quand Redis tombe ou que son quota est épuisé.
+  const count = (await redisIncrFixedWindow(key, WINDOW_SEC)) ?? memoryIncr(key, Date.now());
   if (count > limit) {
     return { allowed: false, remaining: 0, retryAfter: WINDOW_SEC };
   }

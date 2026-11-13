@@ -8,6 +8,7 @@
 //
 // All SQL is fully parameterized. Missing DATABASE_URL or DB errors → 503.
 
+import { asRateLimitRequest, checkRateLimit } from '../../_utils/rate-limit.js';
 import { neon } from '@neondatabase/serverless';
 import { parseDateParam } from '../news.js';
 
@@ -26,11 +27,13 @@ export async function queryNewsHistory(searchParams) {
   }
 
   const now = new Date();
-  const from = parseDateParam(searchParams.get('from'), new Date(now.getTime() - 7 * DAY_MS));
+  const fromRaw = parseDateParam(searchParams.get('from'), new Date(now.getTime() - 7 * DAY_MS));
   const to = parseDateParam(searchParams.get('to'), now);
-  if (!from || !to) {
+  if (!fromRaw || !to) {
     return { status: 400, body: { error: 'invalid from/to parameter (expect ISO 8601 or epoch ms)' } };
   }
+  // La base garde 90 jours : l'agrégation ne remonte pas plus loin, quelle que soit la borne demandée.
+  const from = new Date(Math.max(fromRaw.getTime(), now.getTime() - 90 * DAY_MS));
   if (from.getTime() >= to.getTime()) {
     return { status: 400, body: { error: 'from must be earlier than to' } };
   }
@@ -88,6 +91,11 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'method not allowed' });
   }
 
+  const rl = await checkRateLimit('news-history', asRateLimitRequest(req), 60);
+  if (!rl.allowed) {
+    res.setHeader('Retry-After', String(rl.retryAfter || 60));
+    return res.status(429).json({ error: 'Too Many Requests' });
+  }
   const url = new URL(req.url ?? '/', 'http://localhost');
   const { status, body } = await queryNewsHistory(url.searchParams);
 

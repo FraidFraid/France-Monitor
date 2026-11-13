@@ -1,4 +1,5 @@
 import { getOrRefresh } from './_utils/swr-cache.js';
+import { asRateLimitRequest, checkRateLimit } from './_utils/rate-limit.js';
 import { MIN_PASS_COVERAGE, groupPasses, passTimeRange } from './_lib/s2-passes.js';
 
 type JsonPrimitive = string | number | boolean | null;
@@ -93,6 +94,9 @@ function explainNdwiError(error: unknown) {
   if (message.startsWith('stac_http_')) {
     return `Echec STAC (${message.replace('stac_http_', 'HTTP ')})`;
   }
+  if (message === 'daily_budget_exhausted') {
+    return 'Quota quotidien de rendus NDWI atteint. Utiliser le lien EO Browser en attendant demain.';
+  }
   if (message === 'stac_empty') {
     return 'Aucune scene Sentinel-2 exploitable pour cette AOI / cette fenetre temporelle';
   }
@@ -119,11 +123,44 @@ function json(res: MinimalResponse, status: number, payload: JsonValue) {
   res.end(JSON.stringify(payload));
 }
 
+/** Corps maximal : une emprise de crue pèse quelques centaines d'octets. Au-delà, la lecture s'arrête (413). */
+const MAX_BODY_BYTES = 32 * 1024;
+/** Sommets et étendue maximale d'une emprise (degrés) : une crue tient dans une fraction de degré. */
+const MAX_RING_POINTS = 200;
+const MAX_AOI_SPAN_DEG = 3;
+/** Rendus NDWI par adresse et par minute, et rendus nouveaux par jour pour tout le site (chacun coûte du quota CDSE). */
+const NDWI_RATE_LIMIT_PER_MIN = 20;
+const NDWI_DAILY_BUDGET = 400;
+let budgetDay = '';
+let budgetUsed = 0;
+
+/** Réserve un rendu dans le budget du jour (UTC) ; faux quand il est épuisé. */
+function reserveNdwiRender(now = new Date()): boolean {
+  const day = now.toISOString().slice(0, 10);
+  if (day !== budgetDay) { budgetDay = day; budgetUsed = 0; }
+  if (budgetUsed >= NDWI_DAILY_BUDGET) return false;
+  budgetUsed += 1;
+  return true;
+}
+
 function readJsonBody(req: MinimalRequest): Promise<NdwiRequestBody> {
   return new Promise((resolve, reject) => {
     let body = '';
-    req.on('data', (chunk: string | Buffer) => { body += chunk.toString(); });
+    let bytes = 0;
+    let tooLarge = false;
+    req.on('data', (chunk: string | Buffer) => {
+      if (tooLarge) return;
+      bytes += typeof chunk === 'string' ? Buffer.byteLength(chunk) : chunk.length;
+      if (bytes > MAX_BODY_BYTES) {
+        tooLarge = true;
+        body = '';
+        reject(new Error('body_too_large'));
+        return;
+      }
+      body += chunk.toString();
+    });
     req.on('end', () => {
+      if (tooLarge) return;
       try {
         resolve((body ? JSON.parse(body) : {}) as NdwiRequestBody);
       } catch (error) {
@@ -138,6 +175,11 @@ function isIsoDate(value: unknown): value is string {
   return typeof value === 'string' && !Number.isNaN(Date.parse(value));
 }
 
+function isDateRange(value: unknown): value is DateRangeInput {
+  return !!value && typeof value === 'object'
+    && isIsoDate((value as { from?: unknown }).from) && isIsoDate((value as { to?: unknown }).to);
+}
+
 function isPolygon(value: unknown): value is NdwiPolygon {
   return !!value
     && typeof value === 'object'
@@ -146,7 +188,33 @@ function isPolygon(value: unknown): value is NdwiPolygon {
     && 'coordinates' in value
     && Array.isArray(value.coordinates)
     && Array.isArray(value.coordinates[0])
-    && value.coordinates[0].length >= 4;
+    && value.coordinates[0].length >= 4
+    && isBoundedRing(value.coordinates[0]);
+}
+
+/** Anneau fait de couples de nombres finis, en nombre et en étendue bornés. */
+function isBoundedRing(ring: unknown[]): boolean {
+  if (ring.length > MAX_RING_POINTS) return false;
+  let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+  for (const coord of ring) {
+    if (!Array.isArray(coord) || coord.length < 2) return false;
+    const lng = coord[0];
+    const lat = coord[1];
+    if (typeof lng !== 'number' || typeof lat !== 'number' || !Number.isFinite(lng) || !Number.isFinite(lat)) return false;
+    if (lng < -180 || lng > 180 || lat < -90 || lat > 90) return false;
+    minLng = Math.min(minLng, lng); maxLng = Math.max(maxLng, lng);
+    minLat = Math.min(minLat, lat); maxLat = Math.max(maxLat, lat);
+  }
+  return maxLng - minLng <= MAX_AOI_SPAN_DEG && maxLat - minLat <= MAX_AOI_SPAN_DEG;
+}
+
+/** Emprise arrondie à 4 décimales (une dizaine de mètres) : deux demandes quasi identiques partagent le même rendu en cache. */
+function roundPolygon(polygon: NdwiPolygon): NdwiPolygon {
+  const round = (n: number) => Math.round(n * 1e4) / 1e4;
+  return {
+    ...polygon,
+    coordinates: polygon.coordinates.map((ring) => ring.map((c) => [round(Number(c[0])), round(Number(c[1]))])),
+  } as NdwiPolygon;
 }
 
 function polygonToBbox(polygon: NdwiPolygon) {
@@ -396,18 +464,34 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
     return;
   }
 
+  const rl = await checkRateLimit('sentinel-ndwi', asRateLimitRequest(req as { headers?: Record<string, string | string[] | undefined> }), NDWI_RATE_LIMIT_PER_MIN);
+  if (!rl.allowed) {
+    res.setHeader('Retry-After', String(rl.retryAfter || 60));
+    json(res, 429, { error: 'Too Many Requests' });
+    return;
+  }
+
+  let body: NdwiRequestBody;
   try {
-    const body: NdwiRequestBody = await readJsonBody(req);
-    const aoi = body.aoi;
-    const date = body.date;
+    body = await readJsonBody(req);
+  } catch (error) {
+    const tooLarge = error instanceof Error && error.message === 'body_too_large';
+    json(res, tooLarge ? 413 : 400, { error: tooLarge ? 'Corps trop volumineux' : 'Invalid JSON body' });
+    return;
+  }
+
+  try {
+    const rawAoi = body.aoi;
+    const date = isIsoDate(body.date) || isDateRange(body.date) ? body.date : undefined;
     const maxCloudCoverage = Number.isFinite(body.maxCloudCoverage)
       ? Math.max(0, Math.min(100, Number(body.maxCloudCoverage)))
       : 30;
 
-    if (!isPolygon(aoi)) {
+    if (!isPolygon(rawAoi)) {
       json(res, 400, { error: 'Invalid AOI polygon' });
       return;
     }
+    const aoi = roundPolygon(rawAoi);
 
     // v2 (20/10/2026) : choix par passage ; les images du choix par tuile ne sont plus servies.
     const cacheKey = `swr:sentinel-ndwi:v2:${buildCacheKey(aoi, date, maxCloudCoverage)}`;
@@ -415,6 +499,7 @@ export default async function handler(req: MinimalRequest, res: MinimalResponse)
       cacheKey,
       { ttlSec: NDWI_CACHE_TTL_SEC },
       async () => {
+        if (!reserveNdwiRender()) throw new Error('daily_budget_exhausted');
         const scene = await fetchClosestScene(aoi, date, maxCloudCoverage);
         const accessToken = await getCdseAccessToken();
         const base64Png = await fetchNdwiImage(aoi, scene.datetime, maxCloudCoverage, accessToken);

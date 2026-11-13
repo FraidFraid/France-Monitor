@@ -128,7 +128,8 @@ async function readLastArticle(now) {
     return {
       lastArticleAt: null,
       lastArticleAgeMs: null,
-      error: err instanceof Error ? err.message : String(err),
+      // Message du pilote gardé dans le journal du serveur : il peut nommer l'hôte ou l'utilisateur de la base.
+      error: (console.error('[health-check] lecture des articles', err), 'database_error'),
     };
   }
 }

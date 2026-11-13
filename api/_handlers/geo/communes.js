@@ -11,6 +11,7 @@
 // geo.api.gouv.fr et non la BAN : la BAN ne renvoie rien sur un foyer en forêt non adressée.
 
 import { getOrRefresh } from '../../_utils/swr-cache.js';
+import { asRateLimitRequest, checkRateLimit } from '../../_utils/rate-limit.js';
 
 const MAX_POINTS = 200;
 const CONCURRENCY = 8;
@@ -91,6 +92,14 @@ export default async function handler(req, res) {
   if (req.method && req.method !== 'GET') {
     res.setHeader('Cache-Control', 'no-store');
     res.status(405).json({ error: 'Méthode non autorisée' });
+    return;
+  }
+  // Une requête déclenche jusqu'à 200 appels sortants : débit limité par adresse.
+  const rl = await checkRateLimit('geo-communes', asRateLimitRequest(req), 30);
+  if (!rl.allowed) {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Retry-After', String(rl.retryAfter || 60));
+    res.status(429).json({ error: 'Too Many Requests' });
     return;
   }
   const points = parsePoints(req.query?.points);

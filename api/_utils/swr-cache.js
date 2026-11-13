@@ -30,8 +30,52 @@
 
 import { redisGet, redisSet } from './redis.js';
 
-/** @type {Map<string, { value: unknown, storedAt: number }>} */
+/** @type {Map<string, { value: unknown, storedAt: number, bytes?: number }>} */
 const memoryCache = new Map();
+
+// Mémoire bornée (audit du 13/11/2026) : certaines clés dépendent de la requête (emprise NDWI, boîte des zones inondables,
+// point d'une commune). Sans plafond, une boucle de requêtes variées faisait grossir le process sans fin. Les entrées les
+// plus anciennement rangées partent d'abord.
+const MEMORY_MAX_ENTRIES = 2_000;
+const MEMORY_MAX_BYTES = 96 * 1024 * 1024;
+let memoryBytes = 0;
+
+/** Taille approchée d'une valeur en mémoire (longueur de son JSON). */
+function approxBytes(value) {
+  try {
+    return typeof value === 'string' ? value.length : (JSON.stringify(value)?.length ?? 0);
+  } catch {
+    return 0;
+  }
+}
+
+/** Range une entrée en tête de récence et évince les plus anciennes au-delà des plafonds. */
+function rememberLocal(key, entry) {
+  const previous = memoryCache.get(key);
+  if (previous) {
+    memoryBytes -= previous.bytes ?? 0;
+    memoryCache.delete(key);
+  }
+  const bytes = entry.bytes ?? approxBytes(entry.value);
+  memoryCache.set(key, { ...entry, bytes });
+  memoryBytes += bytes;
+  for (const [oldKey, old] of memoryCache) {
+    if (memoryCache.size <= MEMORY_MAX_ENTRIES && memoryBytes <= MEMORY_MAX_BYTES) break;
+    if (oldKey === key) break;
+    memoryCache.delete(oldKey);
+    memoryBytes -= old.bytes ?? 0;
+  }
+}
+
+/** Mémoire de panne bornée elle aussi : purge des échecs échus, puis remise à zéro si la table reste pleine. */
+function rememberFailure(key, memo) {
+  if (failures.size >= MEMORY_MAX_ENTRIES) {
+    const now = Date.now();
+    for (const [k, v] of failures) if (now >= v.until) failures.delete(k);
+    if (failures.size >= MEMORY_MAX_ENTRIES) failures.clear();
+  }
+  failures.set(key, memo);
+}
 
 /** @type {Map<string, Promise<unknown>>} */
 const inflight = new Map();
@@ -58,7 +102,7 @@ function withFailureMemo(key, negativeTtlSec, producer) {
       failures.delete(key);
       return value;
     } catch (error) {
-      failures.set(key, { error, until: Date.now() + negativeTtlSec * 1000 });
+      rememberFailure(key, { error, until: Date.now() + negativeTtlSec * 1000 });
       throw error;
     }
   };
@@ -166,7 +210,7 @@ export async function getOrRefresh(key, options, rawProducer) {
     const fromRedis = await readRedis(redis, key);
     if (fromRedis) {
       entry = fromRedis;
-      memoryCache.set(key, entry);
+      rememberLocal(key, entry);
     }
   }
 
@@ -174,7 +218,7 @@ export async function getOrRefresh(key, options, rawProducer) {
 
   const persist = async (value) => {
     const storedAt = Date.now();
-    memoryCache.set(key, { value, storedAt });
+    rememberLocal(key, { value, storedAt });
     await writeRedis(redis, key, value, storedAt, ttlSec + staleSec);
   };
 
@@ -214,6 +258,7 @@ export async function getOrRefresh(key, options, rawProducer) {
 /** Réservé aux tests : vide les caches mémoire/single-flight entre deux scénarios. */
 export function __resetSwrCacheForTests() {
   memoryCache.clear();
+  memoryBytes = 0;
   inflight.clear();
   failures.clear();
 }

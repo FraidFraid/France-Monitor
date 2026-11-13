@@ -3599,7 +3599,7 @@ export class DeckGLMap {
     const html = `
       <div style="color:#e8e8ec;font-family:sans-serif;min-width:200px;padding:4px;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px;">
-          <strong style="font-size:13px;color:#fff;">${s.regionName}</strong>
+          <strong style="font-size:13px;color:#fff;">${escapeHtml(String(s.regionName ?? ''))}</strong>
           <span style="font-size:10px;color:#666;">${formatUpdateTime(s.updatedAt)}</span>
         </div>
         ${row('Écowatt (signal national RTE)', natLabel, natColor)}
@@ -3984,7 +3984,7 @@ export class DeckGLMap {
         ${row('Tendance', trendLabel[f.storageTrend] ?? f.storageTrend, trendColor[f.storageTrend] ?? '#8e8e93')}
         <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
           <span style="width:8px;height:8px;border-radius:50%;background:${ecoColor};display:inline-block;flex-shrink:0;"></span>
-          <span style="font-size:12px;color:${ecoColor};font-weight:600;">EcoGaz ${ecoLabel[f.ecogazSignal] ?? f.ecogazSignal}</span>
+          <span style="font-size:12px;color:${ecoColor};font-weight:600;">EcoGaz ${escapeHtml(String(ecoLabel[f.ecogazSignal] ?? f.ecogazSignal ?? ''))}</span>
         </div>
 
         ${sparklineBlock}
@@ -5345,7 +5345,7 @@ export class DeckGLMap {
     const html = `
       <div style="color:#e8e8ec;font-family:sans-serif;min-width:220px;padding:4px;">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;">
-          <strong style="font-size:13px;color:#fff;">${f.label}</strong>
+          <strong style="font-size:13px;color:#fff;">${escapeHtml(String(f.label ?? ''))}</strong>
           <span style="font-size:11px;padding:2px 7px;border-radius:4px;font-weight:700;color:#000;background:${color};">${FLOW_LABELS[f.direction]}</span>
         </div>
         ${sectionLabel('Puissance actuelle')}

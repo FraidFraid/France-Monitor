@@ -3,6 +3,7 @@
 // → { summary: string } | { error: string }
 // La clé Groq reste côté serveur (jamais dans le bundle client).
 
+import { checkRateLimit, rateLimitResponse } from '../../../_utils/rate-limit.js';
 import { redisGet, redisSet } from '../../../_utils/redis.js';
 import { GROQ_FAST_MODEL as GROQ_MODEL, groqModelParams, withReasoningHeadroom } from '../../../_lib/groq-models.js';
 
@@ -85,6 +86,9 @@ function parseJsonMaybe(text) {
   }
 }
 
+/** Résumés par adresse et par minute (la page en demande quelques-uns à l'ouverture d'un article). */
+const SUMMARIZE_RATE_LIMIT_PER_MIN = 30;
+
 export default async function handler(request) {
   if (request.method === 'OPTIONS') {
     return new Response(null, {
@@ -99,6 +103,10 @@ export default async function handler(request) {
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
     });
   }
+
+  // Chaque texte nouveau coûte un appel Groq sur la clé du projet : plafond par adresse.
+  const rl = await checkRateLimit('summarize', request, SUMMARIZE_RATE_LIMIT_PER_MIN);
+  if (!rl.allowed) return rateLimitResponse(rl.retryAfter);
 
   let text;
   try {
@@ -201,7 +209,6 @@ export default async function handler(request) {
         status: groqRes.status,
         summary: fallbackSummary,
         degraded: true,
-        upstream: parsedBody,
       }), {
         status: 502,
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
@@ -224,7 +231,6 @@ export default async function handler(request) {
     console.error('[summarize] Unhandled error', err);
     return new Response(JSON.stringify({
       error: 'internal_error',
-      message: err instanceof Error ? err.message : String(err),
     }), {
       status: 500,
       headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },

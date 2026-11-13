@@ -684,13 +684,14 @@ export async function handleMinistersRequest(req, res) {
 
   if (requestUrl.startsWith('/api/ministers/wikidata')) {
     const id = url.searchParams.get('id') ?? '';
-    if (!id) {
+    // Identifiant Wikidata strict : la valeur entre dans le chemin de l'URL appelée.
+    if (!/^Q\d{1,12}$/.test(id)) {
       setJson(res, 400, {});
       return true;
     }
     try {
       const apiUrl = `https://www.wikidata.org/wiki/Special:EntityData/${id}.json`;
-      const r = await fetch(apiUrl, { headers: { Accept: 'application/json' } });
+      const r = await fetch(apiUrl, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10_000) });
       const data = await r.json();
       setJson(res, 200, data?.entities?.[id] ?? {});
     } catch {

@@ -16,12 +16,16 @@
 // deployment — read via `to_jsonb(n)->>'…'` so the query never fails on a
 // missing column (to_jsonb of a row only ever contains columns that exist).
 
+import { asRateLimitRequest, checkRateLimit } from '../_utils/rate-limit.js';
 import { neon } from '@neondatabase/serverless';
 import { decodeHtmlEntities } from '../_lib/parse-rss.js';
 import { decodeReasons } from '../_lib/classification-columns.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_LIMIT = 500;
+const MAX_SINCE_AGE_MS = 90 * DAY_MS;
+/** Requêtes filtrées ou historiques par adresse et par minute. */
+const NEWS_QUERY_RATE_LIMIT_PER_MIN = 90;
 const MAX_LIMIT = 1000;
 
 /**
@@ -248,10 +252,12 @@ export async function queryNews(searchParams) {
     return { status: 503, body: { error: 'ingestion database not configured' } };
   }
 
-  const since = parseDateParam(searchParams.get('since'), new Date(Date.now() - DAY_MS));
-  if (!since) {
+  const sinceRaw = parseDateParam(searchParams.get('since'), new Date(Date.now() - DAY_MS));
+  if (!sinceRaw) {
     return { status: 400, body: { error: 'invalid since parameter (expect ISO 8601 or epoch ms)' } };
   }
+  // Borne basse : la base garde 90 jours ; une date plus ancienne (since=0) ne lit rien de plus.
+  const since = new Date(Math.max(sinceRaw.getTime(), Date.now() - MAX_SINCE_AGE_MS));
 
   let limit = parseInt(searchParams.get('limit') ?? '', 10);
   if (!Number.isFinite(limit)) limit = DEFAULT_LIMIT;
@@ -367,6 +373,16 @@ export default async function handler(req, res) {
   }
 
   const url = new URL(req.url ?? '/', 'http://localhost');
+  // Hors fil des 24 h (servi par l'instantané en mémoire), chaque requête lit la base : débit limité par adresse, sinon une
+  // boucle de filtres variés épuiserait le transfert Neon du mois.
+  const sinceParam = parseDateParam(url.searchParams.get('since'), new Date(Date.now() - DAY_MS)) ?? new Date();
+  if (!isSnapshotQuery(url.searchParams, sinceParam, Date.now())) {
+    const rl = await checkRateLimit('news-query', asRateLimitRequest(req), NEWS_QUERY_RATE_LIMIT_PER_MIN);
+    if (!rl.allowed) {
+      res.setHeader('Retry-After', String(rl.retryAfter || 60));
+      return res.status(429).json({ error: 'Too Many Requests' });
+    }
+  }
   const { status, body } = await queryNews(url.searchParams);
 
   if (status === 200) {

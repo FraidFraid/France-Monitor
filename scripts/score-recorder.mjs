@@ -35,12 +35,15 @@ const context = await chromium.launchPersistentContext(PROFILE_DIR, {
 let snapshot = null;
 let report = null;
 let brief = null;
-// Brief partagé (05/11/2026) : la page de l'enregistreur le fait rédiger ; le jeton n'est envoyé qu'à la route du brief.
+// Brief partagé (05/11/2026) : la page de l'enregistreur le fait rédiger ; le jeton n'est envoyé qu'aux routes de rédaction
+// (brief, et synthèse du baromètre depuis le 13/11/2026).
 const BRIEF_TOKEN = process.env.FM_BRIEF_TOKEN ?? '';
 if (BRIEF_TOKEN) {
-  await context.route('**/api/intelligence/v1/france-intel-brief*', (route) => route.continue({
-    headers: { ...route.request().headers(), 'x-fm-brief-token': BRIEF_TOKEN },
-  }));
+  for (const pattern of ['**/api/intelligence/v1/france-intel-brief*', '**/api/intelligence/v1/synthesis*']) {
+    await context.route(pattern, (route) => route.continue({
+      headers: { ...route.request().headers(), 'x-fm-brief-token': BRIEF_TOKEN },
+    }));
+  }
 }
 try {
   const page = context.pages()[0] ?? await context.newPage();
