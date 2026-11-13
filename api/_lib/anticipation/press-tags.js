@@ -16,9 +16,9 @@ const ALERTE_RE = /\b(alertes? a la bombe|fausses? alertes?|menaces? d'attentat|
 const SCHOOL_RE = /\b(lycees?|lyceens?|lyceennes?|colleges?|collegiens?|cite scolaire|etablissements? scolaires?)\b/;
 const INCIDENT_RE = /\b(mortiers?|blocages?|blocus|bloque[es]*|casseurs?|incendie[es]*|confine[es]*|confinement|evacue[es]*|evacuation|feux? de poubelles?|degradations?|affrontements?|heurts|interpelle[es]*|interpellations?)\b/;
 /** Suite certaine d'un fait passé : l'emporte même sur un sujet reconnu (le dessin du jour sur les alertes n'est pas une alerte). */
-const HARD_SUITE_RE = /\b(dessin du|hommages?|un an apres|proces|assises|non-lieu|interrogatoires?|recit|recueill\w*|temoignages?|message fort|mis en examen|mise en examen|condamne[es]*|juge[es]? (pour|en)|avait dresse|liste[es]* par|que sait-on|ce que l'on sait)\b/;
+const HARD_SUITE_RE = /\b(dessin du|hommages?|un an apres|proces|assises|non-lieu|interrogatoires?|recit|recueill\w*|temoignages?|message fort|mis en examen|mise en examen|condamne[es]*|juge[es]? (pour|en)|avait dresse|liste[es]* par)\b/;
 /** Suite probable : cède devant un sujet reconnu (une plainte annoncée après un tir de mortier dans un lycée reste un incident). */
-const SOFT_SUITE_RE = /\b(plaintes?|enquete ouverte|parquet|reactions?|dispositif|en direct|suivez|selon le procureur)\b/;
+const SOFT_SUITE_RE = /\b(plaintes?|enquete ouverte|parquet|reactions?|dispositif|en direct|suivez|selon le procureur|que sait-on|ce que l'on sait)\b/;
 const FAIT_DIVERS_RE = /\b(retrouvee? (tuee?|morte?|eviscere[es]*|sans vie)|tuee? (par balle|de plusieurs coups|a coups)|coups de (fusil|couteau)|feminicide|meurtre|homicide|corps (retrouve|decouvert)|son (fils|mari|compagnon|conjoint|ex)|domicile d'un\w* \w+ incendie|rixe|noyade|accident de la route)\b/;
 const ATTACK_RE = /\b(attentats?|terroris\w*)\b/;
 

@@ -38,6 +38,8 @@ describe('pressTags', () => {
     expect(pressTags("«Restez confinés» : des mortiers d'artifice tirés dans les couloirs d'un lycée à Chelles", '77').topic).toBe('lycee');
     expect(pressTags("Le ministre de l'Education nationale annonce une plainte après un tir de mortier dans l'enceinte d'un lycée de Lille", '59')).toMatchObject({ topic: 'lycee', nature: 'fait' });
     expect(pressTags('Un lycée évacué après une alerte à la bombe à Marseille', '13').topic).toBe('alerte_bombe');
+    // « Que sait-on » résume un fait en cours : l'alerte reste un fait nouveau.
+    expect(pressTags("Airbus A320 dérouté d'urgence : des alertes à la bombe revendiquées, que sait-on ?", '81')).toMatchObject({ topic: 'alerte_bombe', nature: 'fait' });
     expect(pressTags('Explosion devant les locaux de la Corsica Linea à Ajaccio', '2A')).toEqual({ topic: null, nature: 'fait', placeDoubt: false });
   });
   it('écarte les suites d’un fait passé, même sur un sujet reconnu', () => {
